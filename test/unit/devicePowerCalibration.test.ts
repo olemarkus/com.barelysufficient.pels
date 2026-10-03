@@ -5,13 +5,15 @@ import {
   hasRecentDrawAt,
   isStepCalibrationConfident,
   mergeRecoveredCalibrationHistory,
-  normalizePowerCalibrationSnapshot,
+  normalizePersistedPowerCalibration,
+  toPersistedPowerCalibrationValue,
   POWER_CALIBRATION_CONSTANTS,
   POWER_CALIBRATION_VERSION,
   pruneStale,
   recordSample,
   type RecordSampleInput,
 } from '../../lib/device/devicePowerCalibration';
+import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 
 const baseSample = (overrides: Partial<RecordSampleInput> = {}): RecordSampleInput => ({
   deviceId: 'dev1',
@@ -22,6 +24,20 @@ const baseSample = (overrides: Partial<RecordSampleInput> = {}): RecordSampleInp
   dataObservedAtMs: undefined,
   nowMs: 0,
   ...overrides,
+});
+
+// A confident `dev1`/`high` step as persistence hands it over, so a test can
+// start from a learned power without replaying the samples that built it.
+const persistedConfidentStep = (observedKw: number, nameplateAtSampleKw: number): PowerCalibrationSnapshot => ({
+  version: POWER_CALIBRATION_VERSION,
+  devices: {
+    dev1: {
+      steps: {
+        high: { observedKw, nameplateAtSampleKw, samples: 10, sustainedSeconds: 600, lastSampleMs: 0 },
+      },
+      lastTouchedMs: 0,
+    },
+  },
 });
 
 describe('recordSample acceptance gates', () => {
@@ -86,25 +102,53 @@ describe('recordSample acceptance gates', () => {
     if (!outcome.accepted) expect(outcome.reason).toBe('stale_observation');
   });
 
-  it('rejects anomalies once confident', () => {
-    let snapshot = createEmptyPowerCalibrationSnapshot();
-    // Build confidence with 6 samples spaced 70s apart. Each gap caps at the
-    // sustained-seconds gap cap (60s), so 5 gaps × 60 = 300 seconds, hitting
-    // the confidence threshold exactly.
-    for (let i = 0; i < 6; i += 1) {
-      const outcome = recordSample(snapshot, baseSample({
-        nowMs: i * 70_000,
-        measuredPowerKw: 0.5,
-      }));
-      expect(outcome.accepted).toBe(true);
-      if (outcome.accepted) snapshot = outcome.snapshot;
+  it('rejects a lowest-rung draw below 30 % of the step nameplate', () => {
+    // Production's single-phase 6 A charger rung (6 A x 230 V = 1.38 kW) has no
+    // rung beneath, and trickle/paused draws like these cleared the 10 % active
+    // floor (0.138 kW), so version 1 learned them. The step floor is 0.414 kW.
+    const snapshot = createEmptyPowerCalibrationSnapshot();
+    for (const measuredPowerKw of [0.149, 0.2, 0.4]) {
+      const outcome = recordSample(snapshot, baseSample({ stepId: '6a', measuredPowerKw, nameplateKw: 1.38 }));
+      expect(outcome.accepted).toBe(false);
+      if (!outcome.accepted) expect(outcome.reason).toBe('below_step_floor');
     }
-    const anomaly = recordSample(snapshot, baseSample({
-      nowMs: 6 * 70_000 + 70_000,
-      measuredPowerKw: 2.5,
+  });
+
+  it('learns a single-phase car on a lowest rung configured three-phase', () => {
+    // 6 A x 690 W/A = 4.14 kW configured; a single-phase car draws 1.38 kW, a
+    // third of nameplate, and must stay learnable.
+    const outcome = recordSample(createEmptyPowerCalibrationSnapshot(), baseSample({
+      stepId: '6a',
+      measuredPowerKw: 1.38,
+      nameplateKw: 4.14,
     }));
-    expect(anomaly.accepted).toBe(false);
-    if (!anomaly.accepted) expect(anomaly.reason).toBe('anomaly');
+    expect(outcome.accepted).toBe(true);
+    if (outcome.accepted) expect(outcome.snapshot.devices.dev1.steps['6a'].observedKw).toBeCloseTo(1.38);
+  });
+
+  it('keeps the rung-beneath reason where that guard is the stricter one', () => {
+    // 10 A rung (2.3 kW) above an 8 A rung (1.84 kW): 0.5 kW is under both the
+    // step floor (0.69 kW) and the rung beneath, and the rung beneath answers.
+    const outcome = recordSample(createEmptyPowerCalibrationSnapshot(), baseSample({
+      stepId: '10a',
+      measuredPowerKw: 0.5,
+      nameplateKw: 2.3,
+      lowerStepCeilingKw: 1.84,
+    }));
+    expect(outcome.accepted).toBe(false);
+    if (!outcome.accepted) expect(outcome.reason).toBe('below_lower_step');
+  });
+
+  it('accepts any in-band sample for a confident step: the band is the only bound', () => {
+    // 1.3 kW learned against a 1.38 kW nameplate. 0.42 kW is under a third of
+    // the learned power but above the 0.414 kW step floor, so it is learned;
+    // 0.40 kW is under the floor and rejected there.
+    const snapshot = persistedConfidentStep(1.3, 1.38);
+    const inBand = recordSample(snapshot, baseSample({ nowMs: 70_000, measuredPowerKw: 0.42, nameplateKw: 1.38 }));
+    expect(inBand.accepted).toBe(true);
+    const belowFloor = recordSample(snapshot, baseSample({ nowMs: 70_000, measuredPowerKw: 0.4, nameplateKw: 1.38 }));
+    expect(belowFloor.accepted).toBe(false);
+    if (!belowFloor.accepted) expect(belowFloor.reason).toBe('below_step_floor');
   });
 });
 
@@ -296,16 +340,20 @@ describe('pruneStale', () => {
   });
 });
 
-describe('normalizePowerCalibrationSnapshot', () => {
+describe('normalizePersistedPowerCalibration', () => {
   it('returns empty for unknown shapes', () => {
-    expect(normalizePowerCalibrationSnapshot(null).version).toBe(POWER_CALIBRATION_VERSION);
-    expect(normalizePowerCalibrationSnapshot({ version: 999, devices: {} }).devices).toEqual({});
-    expect(normalizePowerCalibrationSnapshot('garbage').devices).toEqual({});
+    expect(normalizePersistedPowerCalibration(null).snapshot.version).toBe(POWER_CALIBRATION_VERSION);
+    expect(normalizePersistedPowerCalibration({ version: 999, devices: {} })).toEqual({
+      kind: 'loaded',
+      snapshot: createEmptyPowerCalibrationSnapshot(),
+    });
+    expect(normalizePersistedPowerCalibration('garbage').snapshot.devices).toEqual({});
   });
 
   it('drops malformed device or step records but preserves valid siblings', () => {
-    const result = normalizePowerCalibrationSnapshot({
+    const { snapshot: result } = normalizePersistedPowerCalibration({
       version: POWER_CALIBRATION_VERSION,
+      stepFloorApplied: true,
       devices: {
         good: {
           lastTouchedMs: 0,
@@ -336,8 +384,9 @@ describe('normalizePowerCalibrationSnapshot', () => {
     // bad step would drop all of the device's calibration history. The
     // entry survives with an empty `steps` map; subsequent samples rebuild
     // the EMA in place.
-    const result = normalizePowerCalibrationSnapshot({
+    const { snapshot: result } = normalizePersistedPowerCalibration({
       version: POWER_CALIBRATION_VERSION,
+      stepFloorApplied: true,
       devices: {
         partial: {
           lastTouchedMs: 12345,
@@ -352,6 +401,65 @@ describe('normalizePowerCalibrationSnapshot', () => {
     expect(result.devices.partial.steps).toEqual({});
     expect(result.devices.partial.lastTouchedMs).toBe(12345);
   });
+
+  const persistedStep = (observedKw: number, nameplateAtSampleKw: number) => ({
+    observedKw,
+    nameplateAtSampleKw,
+    samples: 100,
+    sustainedSeconds: 6_000,
+    lastSampleMs: 1_000,
+  });
+
+  it('drops steps learned below 80 % of their nameplate from a value without the step-floor mark', () => {
+    // Written by a build before the step floor: version 1, no mark.
+    const result = normalizePersistedPowerCalibration({
+      version: 1,
+      devices: {
+        // The production 6 A rung: 0.7878 kW learned against 1.38 kW (57 %).
+        elbillader: { steps: { '6a': persistedStep(0.7878, 1.38) }, lastTouchedMs: 1_000 },
+        // A healthy rung at 96 % of nameplate.
+        hoiax: { steps: { max: persistedStep(2.87, 3) }, lastTouchedMs: 1_000 },
+      },
+    });
+    expect(result.kind).toBe('upgraded');
+    if (result.kind !== 'upgraded') return;
+    expect(result.resetSteps).toEqual([
+      { deviceId: 'elbillader', stepId: '6a', observedKw: 0.7878, nameplateAtSampleKw: 1.38 },
+    ]);
+    expect(result.snapshot.version).toBe(POWER_CALIBRATION_VERSION);
+    // The device entry survives with no steps, keeping its retention clock.
+    expect(result.snapshot.devices.elbillader).toEqual({ steps: {}, lastTouchedMs: 1_000 });
+    expect(result.snapshot.devices.hoiax.steps.max).toEqual(persistedStep(2.87, 3));
+  });
+
+  it('still reads a value without the mark as upgraded when nothing needs resetting', () => {
+    const result = normalizePersistedPowerCalibration({
+      version: 1,
+      devices: { hoiax: { steps: { max: persistedStep(2.87, 3) }, lastTouchedMs: 1_000 } },
+    });
+    expect(result).toEqual({
+      kind: 'upgraded',
+      snapshot: {
+        version: POWER_CALIBRATION_VERSION,
+        devices: { hoiax: { steps: { max: persistedStep(2.87, 3) }, lastTouchedMs: 1_000 } },
+      },
+      resetSteps: [],
+    });
+  });
+
+  it('never resets a step in a value carrying the mark, however low it learned', () => {
+    // A single-phase car on a rung configured three-phase learns about a third
+    // of nameplate under the current gates; once written back it must stay.
+    const snapshot: PowerCalibrationSnapshot = {
+      version: POWER_CALIBRATION_VERSION,
+      devices: { elbillader: { steps: { '6a': persistedStep(1.38, 4.14) }, lastTouchedMs: 1_000 } },
+    };
+    const persisted = toPersistedPowerCalibrationValue(snapshot);
+    expect(persisted.stepFloorApplied).toBe(true);
+    // Earlier builds read only `version: 1`, so the mark must not change it.
+    expect(persisted.version).toBe(1);
+    expect(normalizePersistedPowerCalibration(persisted)).toEqual({ kind: 'loaded', snapshot });
+  });
 });
 
 describe('exposed constants', () => {
@@ -360,6 +468,7 @@ describe('exposed constants', () => {
     expect(POWER_CALIBRATION_CONSTANTS.CONFIDENCE_MIN_SUSTAINED_SECONDS).toBe(300);
     expect(POWER_CALIBRATION_CONSTANTS.DEFAULT_FRESHNESS_WINDOW_MS).toBe(60_000);
     expect(POWER_CALIBRATION_CONSTANTS.NAMEPLATE_TOLERANCE_RATIO).toBe(0.02);
+    expect(POWER_CALIBRATION_CONSTANTS.STEP_FLOOR_NAMEPLATE_RATIO).toBe(0.3);
   });
 });
 

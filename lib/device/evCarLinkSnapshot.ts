@@ -9,7 +9,7 @@
  *
  * Everything here is pure. Unknown persisted shapes degrade to an empty snapshot
  * rather than throwing — the same defensive contract as
- * `normalizePowerCalibrationSnapshot`.
+ * `normalizePersistedPowerCalibration`.
  */
 import type {
     EvCarLinkAffinity,

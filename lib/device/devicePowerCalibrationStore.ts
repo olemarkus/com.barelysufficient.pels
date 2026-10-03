@@ -9,16 +9,19 @@
 import type { HomeyRuntime } from '../ports/homeyRuntime';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import {
+  type LegacyStepReset,
+  type PersistedPowerCalibration,
   type RecordSampleConfig,
   type RecordSampleInput,
   type RecordSampleOutcome,
-  POWER_CALIBRATION_VERSION,
   createEmptyPowerCalibrationSnapshot,
   isStrictlyValidPersistedDevice,
   mergeRecoveredCalibrationHistory,
-  normalizePowerCalibrationSnapshot,
+  normalizePersistedPowerCalibration,
+  POWER_CALIBRATION_VERSION,
   pruneStale,
   recordSample,
+  toPersistedPowerCalibrationValue,
 } from './devicePowerCalibration';
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../utils/settingsKeys';
 import type {
@@ -63,7 +66,8 @@ const DEFAULT_LOAD_GRACE_MS = 5 * 60 * 1000;
 const DEFAULT_RECOVERY_DEFERRAL_MS = 5 * 60 * 1000;
 
 export type PowerCalibrationStoreOptions = {
-  initialSnapshot?: PowerCalibrationSnapshot;
+  /** The persisted value as loaded. An `upgraded` one starts the store dirty. */
+  initial?: PersistedPowerCalibration;
   recordConfig?: RecordSampleConfig;
   persistDebounceMs?: number;
   pruneMaxAgeMs?: number;
@@ -109,7 +113,7 @@ type RecoveryWriteResolution =
  */
 export class PowerCalibrationStore {
   private snapshot: PowerCalibrationSnapshot;
-  private dirty = false;
+  private dirty: boolean;
   private lastPersistMs: number;
   private recoveryPending: boolean;
   /** Throttle cursor for recovery re-reads; sentinel = never attempted. */
@@ -130,7 +134,12 @@ export class PowerCalibrationStore {
   private readonly persistGraceUntilMs: number;
 
   constructor(options: PowerCalibrationStoreOptions = {}) {
-    this.snapshot = options.initialSnapshot ?? createEmptyPowerCalibrationSnapshot();
+    this.snapshot = options.initial?.snapshot ?? createEmptyPowerCalibrationSnapshot();
+    // An upgraded load differs from the stored bytes until it is written back,
+    // and the stored value's missing step-floor mark is what would run the step
+    // reset again on the next boot. Starting dirty lets the persist guard write
+    // it without waiting for a sample.
+    this.dirty = options.initial?.kind === 'upgraded';
     this.lastPersistMs = 0;
     this.recordConfig = options.recordConfig;
     this.persistDebounceMs = options.persistDebounceMs ?? DEFAULT_PERSIST_DEBOUNCE_MS;
@@ -191,11 +200,9 @@ export class PowerCalibrationStore {
     if (!this.beginRecoveryAttempt(params.nowMs)) return { kind: 'deferred' };
     const reread = readPersistedSnapshot(params.homey);
     if (!reread.threw && reread.value !== undefined && reread.value !== null) {
-      const recovered = pruneStale(
-        normalizePowerCalibrationSnapshot(reread.value),
-        this.pruneMaxAgeMs,
-        params.nowMs,
-      );
+      const persisted = normalizePersistedPowerCalibration(reread.value);
+      if (persisted.kind === 'upgraded') logLegacyStepReset(persisted.resetSteps, 'recovery');
+      const recovered = pruneStale(persisted.snapshot, this.pruneMaxAgeMs, params.nowMs);
       this.settleRecovery({ kind: 'recovered', snapshot: recovered });
       moduleLogger.info({
         event: 'power_calibration_recovery_merged',
@@ -395,13 +402,18 @@ export class PowerCalibrationStore {
  * branch (engage grace) when the SDK is unwilling to answer either query
  * — otherwise paired throws on startup would misclassify an existing
  * install as fresh.
+ *
+ * A value without the step-floor mark loads through the one-off step reset in
+ * `normalizePersistedPowerCalibration`; the reset is logged and leaves the store
+ * dirty, so the next persist writes the mark and later boots skip it.
  */
 export function loadPowerCalibrationStore(params: {
   homey: HomeyRuntime;
   options?: PowerCalibrationStoreOptions;
 }): PowerCalibrationStore {
   const rawRead = readPersistedSnapshot(params.homey);
-  const initialSnapshot = normalizePowerCalibrationSnapshot(rawRead.value);
+  const initial = normalizePersistedPowerCalibration(rawRead.value);
+  if (initial.kind === 'upgraded') logLegacyStepReset(initial.resetSteps, 'load');
   const rawIsPlausible = !rawRead.threw && isPlausiblePersistedSnapshot(rawRead.value);
   // Distinguish "raw genuinely absent" from "raw read threw". A throw means
   // we cannot tell whether prior history exists, so it must NOT collapse
@@ -432,8 +444,24 @@ export function loadPowerCalibrationStore(params: {
   });
   return new PowerCalibrationStore({
     ...(params.options ?? {}),
-    initialSnapshot,
+    initial,
     loadGraceMs,
+  });
+}
+
+/**
+ * One line per read that carried a value without the step-floor mark, naming
+ * every step the reset dropped (possibly none) so a relearning rung can be
+ * traced to it. `source` is
+ * the read: the boot load, or the first-write recovery re-read when the boot
+ * read was suspect.
+ */
+function logLegacyStepReset(resetSteps: LegacyStepReset[], source: 'load' | 'recovery'): void {
+  moduleLogger.info({
+    event: 'power_calibration_under_learned_steps_reset',
+    source,
+    resetCount: resetSteps.length,
+    resetSteps,
   });
 }
 
@@ -539,7 +567,7 @@ function writeAndMark(
   );
   if (resolution.kind === 'deferred') return false;
   try {
-    params.homey.settings.set(POWER_CALIBRATION, resolution.snapshot);
+    params.homey.settings.set(POWER_CALIBRATION, toPersistedPowerCalibrationValue(resolution.snapshot));
     params.store.markPersisted(params.nowMs);
   } catch (err) {
     moduleLogger.error({
@@ -706,6 +734,18 @@ export function createCalibrationSnapshotMutationHook(params: {
   const { getStore, debugStructured } = params;
   const minIntervalMs = params.minIntervalMs ?? DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS;
   const lastIngestMsByDeviceStep = new Map<string, number>();
+  const lastSkipLogMsByDeviceStepReason = new Map<string, number>();
+  // Whether this skip line may be written now, claiming the slot when it may.
+  // Unkeyed calls (no reported step) are never capped, as the ingest debounce
+  // does not cap them either.
+  const claimSkipLogSlot = (debounceKey: string | null, reason: string, nowMs: number): boolean => {
+    if (debounceKey === null) return true;
+    const skipKey = `${debounceKey}::${reason}`;
+    const previous = lastSkipLogMsByDeviceStepReason.get(skipKey);
+    if (previous !== undefined && nowMs - previous < minIntervalMs) return false;
+    lastSkipLogMsByDeviceStepReason.set(skipKey, nowMs);
+    return true;
+  };
   return (snapshot, nowMs) => {
     const stepId = snapshot.reportedStepId;
     const debounceKey = minIntervalMs > 0 && typeof stepId === 'string' && stepId.length > 0
@@ -734,8 +774,11 @@ export function createCalibrationSnapshotMutationHook(params: {
     // that invokes `callback()` immediately and dispatches the JSON line to
     // Homey SDK `this.log()` / `this.error()` — no in-memory queue, no
     // unbounded buffer; rotation is handled externally by the Homey supervisor.
-    // The per-(device, step) debounce above further caps the emit rate to
-    // roughly two records per minute per device under steady load.
+    // The per-(device, step) debounce above caps accepted records to roughly
+    // two a minute per device under steady load. It does not apply to rejected
+    // samples, which a trickling charger on its lowest rung produces on every
+    // reading for as long as the car trickles, so the skip line is capped the
+    // same way, per (device, step, reason), below.
     if (outcome.accepted) {
       debugStructured({
         event: 'power_calibration_sample_accepted',
@@ -747,6 +790,7 @@ export function createCalibrationSnapshotMutationHook(params: {
       });
       return;
     }
+    if (!claimSkipLogSlot(debounceKey, outcome.reason, nowMs)) return;
     debugStructured({
       event: 'power_calibration_sample_skipped',
       deviceId: snapshot.id,

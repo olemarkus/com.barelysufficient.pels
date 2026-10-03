@@ -791,6 +791,40 @@ describe('createCalibrationSnapshotMutationHook', () => {
     }));
   });
 
+  it('caps repeated skip lines per (device, step, reason) without debouncing ingestion', () => {
+    // A charger trickling on its lowest rung is rejected on every reading for
+    // as long as the car trickles; the skip line must not repeat each time.
+    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const debugStructured = vi.fn();
+    const hook = createCalibrationSnapshotMutationHook({
+      getStore: () => store,
+      debugStructured,
+      minIntervalMs: 30_000,
+    });
+    const skipped = (reason: string) => expect.objectContaining({
+      event: 'power_calibration_sample_skipped',
+      reason,
+    });
+    // 0.2 kW on the 1.25 kW lowest rung: under the 30 % step floor.
+    hook(makeSnapshot({ measuredPowerKw: 0.2 }), start);
+    hook(makeSnapshot({ measuredPowerKw: 0.21 }), start + 1_000);
+    expect(debugStructured).toHaveBeenCalledTimes(1);
+    expect(debugStructured).toHaveBeenLastCalledWith(skipped('below_step_floor'));
+    // Another reason on the same step is its own line.
+    hook(makeSnapshot({ measuredPowerKw: 1.3 }), start + 2_000);
+    expect(debugStructured).toHaveBeenLastCalledWith(skipped('above_step_ceiling'));
+    // An in-band sample still lands at once: only the log line was capped.
+    hook(makeSnapshot({ measuredPowerKw: 1.1 }), start + 3_000);
+    expect(debugStructured).toHaveBeenLastCalledWith(expect.objectContaining({
+      event: 'power_calibration_sample_accepted',
+    }));
+    // Past both windows: the skip line's (from `start`) and the accepted
+    // sample's ingest debounce (from `start + 3_000`).
+    hook(makeSnapshot({ measuredPowerKw: 0.22 }), start + 34_000);
+    expect(debugStructured).toHaveBeenLastCalledWith(skipped('below_step_floor'));
+    expect(debugStructured).toHaveBeenCalledTimes(4);
+  });
+
   it('debounces per (device, step) independently', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
     const debugStructured = vi.fn();

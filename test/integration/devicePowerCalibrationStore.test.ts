@@ -8,6 +8,7 @@ import {
 import {
   POWER_CALIBRATION_VERSION,
   createEmptyPowerCalibrationSnapshot,
+  type PersistedPowerCalibrationValue,
 } from '../../lib/device/devicePowerCalibration';
 import type {
   MeasuredPowerObservedProbe,
@@ -707,7 +708,7 @@ describe('persistPowerCalibrationIfDue', () => {
     const homeyStore = new Map<string, unknown>();
     const homey = mockHomey(homeyStore);
     const store = new PowerCalibrationStore({
-      initialSnapshot: createEmptyPowerCalibrationSnapshot(),
+      initial: { kind: 'loaded', snapshot: createEmptyPowerCalibrationSnapshot() },
     });
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
@@ -716,6 +717,122 @@ describe('persistPowerCalibrationIfDue', () => {
     });
     expect(wrote).toBe(false);
     expect(homeyStore.get(POWER_CALIBRATION)).toBeUndefined();
+  });
+});
+
+describe('step-floor reset', () => {
+  const legacyStep = (observedKw: number, nameplateAtSampleKw: number): Record<string, unknown> => ({
+    observedKw,
+    nameplateAtSampleKw,
+    samples: 100,
+    sustainedSeconds: 6_000,
+    lastSampleMs: 1_000,
+  });
+  // Written by a build before the step floor: version 1 and no mark.
+  // Production's 6 A rung learned 0.79 kW against 1.38 kW (57 %); the water
+  // heater's rung sits at 96 % of nameplate and must survive.
+  const legacyBlob = {
+    version: 1,
+    devices: {
+      elbillader: { steps: { '6a': legacyStep(0.79, 1.38) }, lastTouchedMs: 1_000 },
+      'hoiax-1': { steps: { max: legacyStep(2.87, 3) }, lastTouchedMs: 1_000 },
+    },
+  };
+  const expectedReset = { deviceId: 'elbillader', stepId: '6a', observedKw: 0.79, nameplateAtSampleKw: 1.38 };
+
+  it('drops an under-learned step on the first load only, logging it once', () => {
+    const homeyStore = new Map<string, unknown>([
+      [POWER_CALIBRATION, legacyBlob],
+      [POWER_CALIBRATION_INITIALIZED, true],
+    ]);
+    const homey = mockHomey(homeyStore);
+    const capture = captureLogger();
+    try {
+      const first = loadPowerCalibrationStore({
+        homey: homey as never,
+        options: { persistDebounceMs: 0, nowMs: 2_000 },
+      });
+      expect(first.getSnapshot().devices.elbillader.steps['6a']).toBeUndefined();
+      expect(first.getSnapshot().devices['hoiax-1'].steps.max.observedKw).toBeCloseTo(2.87);
+      // The upgraded load is itself something to write: no sample needed.
+      expect(first.isDirty()).toBe(true);
+      expect(persistPowerCalibrationIfDue({ homey: homey as never, store: first, nowMs: 2_000 })).toBe(true);
+      const upgraded = homeyStore.get(POWER_CALIBRATION) as PersistedPowerCalibrationValue;
+      expect(upgraded.stepFloorApplied).toBe(true);
+      // Still version 1: earlier builds read nothing else.
+      expect(upgraded.version).toBe(1);
+      expect(upgraded.devices.elbillader.steps['6a']).toBeUndefined();
+      // A single-phase car on a charger configured three-phase learns a third
+      // of nameplate, under 80 %: a reset that ran again would drop it.
+      expect(first.recordSample({
+        deviceId: 'easee',
+        stepId: '6a',
+        measuredPowerKw: 1.38,
+        nameplateKw: 4.14,
+        nowMs: 2_500,
+      }).accepted).toBe(true);
+      expect(persistPowerCalibrationIfDue({ homey: homey as never, store: first, nowMs: 2_500 })).toBe(true);
+
+      const second = loadPowerCalibrationStore({
+        homey: homey as never,
+        options: { persistDebounceMs: 0, nowMs: 3_000 },
+      });
+      expect(second.isDirty()).toBe(false);
+      expect(second.getSnapshot().devices.easee.steps['6a'].observedKw).toBeCloseTo(1.38);
+      expect(second.getSnapshot().devices['hoiax-1'].steps.max.observedKw).toBeCloseTo(2.87);
+
+      const resets = capture.findEvents('power_calibration_under_learned_steps_reset');
+      expect(resets).toHaveLength(1);
+      expect(resets[0]).toMatchObject({ source: 'load', resetCount: 1, resetSteps: [expectedReset] });
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it('runs the reset again over a value an earlier build wrote back without the mark', () => {
+    // Installing an earlier build keeps the calibration (it reads version 1) but
+    // drops the mark on its next write, so whatever it learned is checked again.
+    const homeyStore = new Map<string, unknown>([
+      [POWER_CALIBRATION, { ...legacyBlob, stepFloorApplied: true }],
+      [POWER_CALIBRATION_INITIALIZED, true],
+    ]);
+    const marked = loadPowerCalibrationStore({ homey: mockHomey(homeyStore) as never, options: { nowMs: 2_000 } });
+    expect(marked.isDirty()).toBe(false);
+    expect(marked.getSnapshot().devices.elbillader.steps['6a'].observedKw).toBeCloseTo(0.79);
+    homeyStore.set(POWER_CALIBRATION, legacyBlob);
+    const rewritten = loadPowerCalibrationStore({ homey: mockHomey(homeyStore) as never, options: { nowMs: 3_000 } });
+    expect(rewritten.isDirty()).toBe(true);
+    expect(rewritten.getSnapshot().devices.elbillader.steps['6a']).toBeUndefined();
+  });
+
+  it('resets an unmarked value that only the first-write recovery re-read delivers', () => {
+    // Marker present + value absent on boot → grace engages and the boot load
+    // has nothing to reset. The value reappears before the first write.
+    const homeyStore = new Map<string, unknown>([[POWER_CALIBRATION_INITIALIZED, true]]);
+    const store = loadPowerCalibrationStore({
+      homey: mockHomey(homeyStore) as never,
+      options: { persistDebounceMs: 0, nowMs: 1_000 },
+    });
+    store.ingestDeviceSnapshot(baseDeviceSnapshot({ lastFreshDataMs: 1_500 }), 1_500);
+    homeyStore.set(POWER_CALIBRATION, legacyBlob);
+    const capture = captureLogger();
+    try {
+      expect(persistPowerCalibrationIfDue({
+        homey: mockHomey(homeyStore) as never,
+        store,
+        nowMs: 302_000,
+      })).toBe(true);
+      const written = homeyStore.get(POWER_CALIBRATION) as PersistedPowerCalibrationValue;
+      expect(written.stepFloorApplied).toBe(true);
+      expect(written.devices.elbillader.steps).toEqual({});
+      // The in-memory EMA still wins the step both sides carry.
+      expect(written.devices['hoiax-1'].steps.max.observedKw).toBeCloseTo(2.75);
+      expect(capture.findEvents('power_calibration_under_learned_steps_reset')).toEqual([
+        expect.objectContaining({ source: 'recovery', resetCount: 1, resetSteps: [expectedReset] }),
+      ]);
+    } finally {
+      capture.restore();
+    }
   });
 });
 
@@ -732,6 +849,7 @@ describe('first-write recovery re-read', () => {
   });
   const historicBlob = {
     version: POWER_CALIBRATION_VERSION,
+    stepFloorApplied: true,
     devices: {
       'historic-1': { steps: { high: historicStep(2.9) }, lastTouchedMs: 500 },
       // Same device the in-memory store re-observes, but a different step.
