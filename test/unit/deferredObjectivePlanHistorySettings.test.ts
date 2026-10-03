@@ -788,6 +788,30 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
       expect(ids).toEqual(['hourly-sibling-ok']);
     });
 
+    it('round-trips hourStartBookings on a compact v5 record, zero bookings included', () => {
+      const record = {
+        ...normalizeDeferredObjectivePlanHistory({ version: 4, entries: [v3Entry] }).entries[0]!,
+        hourStartBookings: [{ atMs: 0, bookedKWh: 2.5 }, { atMs: HOUR_MS, bookedKWh: 0 }],
+      };
+      const parsed = parseDeferredObjectivePlanHistory({ version: 5, entries: [record] });
+      if (parsed.state !== 'resolved') throw new Error('expected resolved');
+      expect(parsed.snapshot.entries[0]!.hourStartBookings).toEqual(record.hourStartBookings);
+    });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['a negative booking', { atMs: HOUR_MS, bookedKWh: -1 }],
+      ['a NaN booking', { atMs: HOUR_MS, bookedKWh: Number.NaN }],
+      ['a non-finite hour', { atMs: Number.POSITIVE_INFINITY, bookedKWh: 1 }],
+      ['a negative hour', { atMs: -HOUR_MS, bookedKWh: 1 }],
+      ['a missing booking', { atMs: HOUR_MS }],
+    ])('rejects a compact v5 record whose hourStartBookings carry %s', (_label, booking) => {
+      const record = {
+        ...normalizeDeferredObjectivePlanHistory({ version: 4, entries: [v3Entry] }).entries[0]!,
+        hourStartBookings: [booking],
+      };
+      expect(parseDeferredObjectivePlanHistory({ version: 5, entries: [record] }).state).toBe('unavailable');
+    });
+
     it('accepts a v3 entry that lacks hourlyContributions entirely', () => {
       // Legacy v3 entries (and v4 entries written before the hourly-strip
       // feed shipped) persist without `hourlyContributions`. The optional
@@ -800,6 +824,8 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
       });
       expect(result.entries).toHaveLength(1);
       expect(result.entries[0]!.hourlyContributions).toBeUndefined();
+      // Nor hourStartBookings: absence is the legacy shape the readers fall back on.
+      expect(result.entries[0]!.hourStartBookings).toBeUndefined();
     });
   });
 });

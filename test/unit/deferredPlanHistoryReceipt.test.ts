@@ -135,6 +135,24 @@ describe('formatPlanHistoryReceiptTimeline (Succeeded)', () => {
     expect(started?.time).toBe('23:00'); // no motion -> startedAtMs at DEADLINE - 8h
   });
 
+  // Regression, prod 2026-10-01/02: the final revision of a run re-planned
+  // hourly held one hour shrunk to its last minutes, so the row read
+  // "0.0 kWh planned".
+  it('names the hour with the largest booking at its start, not the final revision\'s remainder', () => {
+    const rows = formatPlanHistoryReceiptTimeline(buildEntry({
+      finalPlan: buildSnapshot({ hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.03 }] }),
+      hourStartBookings: [
+        { atMs: DEADLINE_MS - 4 * HOUR_MS, bookedKWh: 1.5 },
+        { atMs: DEADLINE_MS - 3 * HOUR_MS, bookedKWh: 6.2 },
+        { atMs: DEADLINE_MS - 2 * HOUR_MS, bookedKWh: 0 },
+        { atMs: DEADLINE_MS - HOUR_MS, bookedKWh: 2 },
+      ],
+    }), 'UTC');
+    const peak = rows!.find((row) => row.label === RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR);
+    expect(peak?.time).toBe('04:00');
+    expect(peak?.detail).toContain('6.2 kWh');
+  });
+
   it('returns null when fewer than two rows can be composed (no plan, no metAtMs)', () => {
     const rows = formatPlanHistoryReceiptTimeline(buildEntry({
       originalPlan: null,
@@ -151,6 +169,7 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
       outcome: 'missed',
       finalProgressPercent: 60,
       deliveredKWh: 17,
+      initialEnergyExpectedKWh: 24,
       finalPlan: buildSnapshot({
         hours: [
           { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, plannedKWh: 8 },
@@ -166,16 +185,17 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
     expect(line!.endsWith('.')).toBe(false);
   });
 
-  it('drops the "of Y" denominator when delivery met or exceeded the scheduled total', () => {
-    // The denominator is the energy the plan *scheduled*, not the energy needed
-    // to reach the target. A heat run that lost heat faster than planned can
-    // deliver more than the scheduled total and still miss — "Delivered 14.2 of
-    // 9.9 kWh · short ≈ 49 min" reads as a >100% contradiction. When delivery
-    // meets/exceeds the schedule, energy wasn't the limiter: show the bare figure.
+  it('drops the "of Y" denominator when delivery met or exceeded the committed need', () => {
+    // The denominator is the run's estimated need, not the energy that turned
+    // out to be needed. A heat run that lost heat faster than estimated can
+    // deliver more than it and still miss — "Delivered 14.2 of 9.9 kWh · short
+    // ≈ 49 min" reads as a >100% contradiction. When delivery meets/exceeds the
+    // need, energy wasn't the limiter: show the bare figure.
     const line = formatPlanHistoryShortfallChip(buildEntry({
       outcome: 'missed',
       finalProgressPercent: 60,
       deliveredKWh: 14.2,
+      initialEnergyExpectedKWh: 9.9,
       finalPlan: buildSnapshot({
         hours: [
           { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 5 },
@@ -185,6 +205,46 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
     }));
     expect(line).toMatch(/Delivered 14\.2 kWh/);
     expect(line).not.toMatch(/of 9\.9 kWh/);
+  });
+
+  // A `:58` re-plan books an under-delivered hour's shortfall into later
+  // hours, so a starved run's hour-start bookings (3, 3, 4, 7) sum to 17 kWh
+  // against a 10 kWh need. The chip divides by the need.
+  it('divides by the committed need, not the re-booked hour-start total', () => {
+    const line = formatPlanHistoryShortfallChip(buildEntry({
+      outcome: 'missed',
+      finalProgressPercent: 60,
+      deliveredKWh: 4,
+      initialEnergyExpectedKWh: 10,
+      finalPlan: buildSnapshot({
+        hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.03 }],
+      }),
+      hourStartBookings: [
+        { atMs: DEADLINE_MS - 4 * HOUR_MS, bookedKWh: 3 },
+        { atMs: DEADLINE_MS - 3 * HOUR_MS, bookedKWh: 3 },
+        { atMs: DEADLINE_MS - 2 * HOUR_MS, bookedKWh: 4 },
+        { atMs: DEADLINE_MS - HOUR_MS, bookedKWh: 7 },
+      ],
+    }));
+    expect(line).toMatch(/Delivered 4\.0 of 10\.0 kWh/);
+  });
+
+  it('shows the bare delivered figure when the run never captured its need', () => {
+    // No stand-in denominator: neither the scheduled hours nor the final plan.
+    const line = formatPlanHistoryShortfallChip(buildEntry({
+      outcome: 'missed',
+      finalProgressPercent: 60,
+      deliveredKWh: 17,
+      finalPlan: buildSnapshot({
+        hours: [
+          { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 8 },
+        ],
+      }),
+    }));
+    expect(line).toMatch(/Delivered 17\.0 kWh/);
+    expect(line).not.toMatch(/ of /);
   });
 
   it('returns null on Succeeded entries', () => {
@@ -840,6 +900,7 @@ describe('receipt strings are sourced from the shared strings module', () => {
       outcome: 'missed',
       finalProgressPercent: 60,
       deliveredKWh: 17,
+      initialEnergyExpectedKWh: 24,
       finalPlan: buildSnapshot({
         hours: [
           { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, plannedKWh: 8 },

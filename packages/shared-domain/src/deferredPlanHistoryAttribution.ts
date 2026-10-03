@@ -26,7 +26,7 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP } from './deadlineLabels';
-import { snapshotShowsBudgetExhausted } from './deferredPlanHistoryShared';
+import { pickScheduledHours, snapshotShowsBudgetExhausted, sumScheduledKWh } from './deferredPlanHistoryShared';
 import {
   asDeliveredEnergyKWh,
   asPlannedFloorEnergyKWh,
@@ -107,7 +107,10 @@ const NO_DELIVERY_PROGRESS_DEADBAND_PERCENT = 1;
 // a kWh: less than this over a whole run is no delivery.
 const NO_DELIVERY_PROGRESS_DEADBAND_KWH = 0.1;
 
-const NO_DELIVERY_PROGRESS_DEADBAND: Record<DeferredObjectiveSettingsKind, number> = {
+// Also the plan-history recorder's restart gate (`progressSinceResumedStart`):
+// a move smaller than this is a sensor tick, not progress made while PELS was
+// down.
+export const NO_DELIVERY_PROGRESS_DEADBAND: Record<DeferredObjectiveSettingsKind, number> = {
   temperature: NO_DELIVERY_PROGRESS_DEADBAND_C,
   ev_soc: NO_DELIVERY_PROGRESS_DEADBAND_PERCENT,
   energy: NO_DELIVERY_PROGRESS_DEADBAND_KWH,
@@ -115,7 +118,7 @@ const NO_DELIVERY_PROGRESS_DEADBAND: Record<DeferredObjectiveSettingsKind, numbe
 
 type AttributionSnapshot = Pick<
   DeferredObjectivePlanHistoryRevisionSnapshot,
-  'hours' | 'planStatus' | 'rateConfidence' | 'acceptedSamples'
+  'planStatus' | 'rateConfidence' | 'acceptedSamples'
   | 'planningSpeedKw' | 'dailyBudgetExhaustedBucketCount' | 'energyExpectedKWh'
   | 'floorShortfallCause' | 'energyNeededKWh'
 >;
@@ -139,15 +142,16 @@ const pickFinalRevision = (
   entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'finalPlan' | 'originalPlan'>,
 ): AttributionSnapshot | null => entry.finalPlan ?? entry.originalPlan ?? null;
 
+// The run's booked floor energy: the sum of what each hour had booked when it
+// began (`pickScheduledHours`), not the final revision's hours, which by the
+// end hold only what was still ahead. It includes energy re-booked after a
+// short hour (a `:58` re-plan moves an hour's shortfall into later hours), so it
+// can exceed what the run needed; the need is `initialEnergyExpectedKWh`.
 const sumPlannedFloorKWh = (
-  snapshot: AttributionSnapshot | null,
+  entry: Pick<AttributionEntry, 'hourStartBookings' | 'finalPlan' | 'originalPlan'>,
 ): PlannedFloorEnergyKWh | null => {
-  if (snapshot === null) return null;
-  let total = 0;
-  for (const hour of snapshot.hours) {
-    if (Number.isFinite(hour.plannedKWh) && hour.plannedKWh > 0) total += hour.plannedKWh;
-  }
-  return asPlannedFloorEnergyKWh(total);
+  const scheduled = pickScheduledHours(entry);
+  return scheduled === null ? null : asPlannedFloorEnergyKWh(sumScheduledKWh(scheduled));
 };
 
 // Resolved attribution for a finalized run. `cause` is null on outcomes other
@@ -163,6 +167,8 @@ const sumPlannedFloorKWh = (
 // `resolveDeferredPlanHistoryMissAttribution`.
 export type DeferredPlanHistoryMissAttribution = {
   cause: DeferredPlanHistoryMissCause | null;
+  // Sum of each hour's booking at its start, including energy re-booked after
+  // a short hour. Telemetry only; never compared with delivery.
   plannedKWh: number | null;
   deliveredKWh: number | null;
   planningSpeedKw: number | null;
@@ -182,7 +188,7 @@ export type DeferredPlanHistoryMissAttribution = {
 // revision lookup. All present on the resolved consumer view of an entry.
 type AttributionEntry = Pick<
   ResolvedDeferredObjectivePlanHistoryEntry,
-  'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
+  'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan' | 'hourStartBookings'
   | 'objectiveKind' | 'progressDirection' | 'startProgressValue' | 'finalProgressValue'
   | 'initialEnergyExpectedKWh'
 >;
@@ -395,9 +401,9 @@ export const resolveDeferredPlanHistoryMissAttribution = (
   entry: AttributionEntry,
 ): DeferredPlanHistoryMissAttribution => {
   const finalRevision = pickFinalRevision(entry);
-  // Reported telemetry, not a decision input: the buffered hours sum as the
-  // planner last had it.
-  const plannedFloorKWh = sumPlannedFloorKWh(finalRevision);
+  // Reported telemetry, not a decision input: the buffered hours sum as each
+  // hour had it booked when it began.
+  const plannedFloorKWh = sumPlannedFloorKWh(entry);
   const deliveredKWh = asDeliveredEnergyKWh(entry.deliveredKWh);
   const deliveredAtOrAbovePlan = resolveDeliveredAtOrAboveCommitment(
     deliveredKWh,

@@ -52,15 +52,18 @@ describe('planHistoryStore', () => {
   it('round-trips and removes in-progress metered delivery independently of finalized history', () => {
     const { db, store } = open();
     const state: PersistedMeteredDeliveryState = {
-      commitment: { kind: 'known', kwh: 5 },
+      // A run still learning round-trips as learning, not frozen as unknown.
+      commitment: { kind: 'learning' },
       deviceId: 'dev',
       deadlineAtMs: 10_000,
       startedAtMs: 1_000,
+      startProgressValue: 50,
       deliveredKWh: 1.25,
       totalCost: 0.5,
       costDisplay: { unit: 'kr', divisor: 100 },
       deliveryPriceComplete: true,
       hourlyContributions: [{ atMs: 0, deliveredKWh: 1.25, priceValue: 0.4, tone: 'cheap' }],
+      hourStartBookings: [{ atMs: 0, bookedKWh: 2 }],
     };
 
     expect(store.readMeteredDelivery()).toEqual([]);
@@ -81,7 +84,9 @@ describe('planHistoryStore', () => {
     };
     db.prepare('INSERT INTO deferred_objective_metered_delivery (run_key, state_json) VALUES (?, ?)')
       .run('dev|10000', JSON.stringify(legacy));
-    expect(store.readMeteredDelivery()).toEqual([{ ...legacy, commitment: { kind: 'unknown' } }]);
+    expect(store.readMeteredDelivery()).toEqual([{
+      ...legacy, commitment: { kind: 'unknown' }, startProgressValue: null, hourStartBookings: [],
+    }]);
   });
 
   it('answers null while empty, and round-trips a history one row per entry, oldest first', () => {

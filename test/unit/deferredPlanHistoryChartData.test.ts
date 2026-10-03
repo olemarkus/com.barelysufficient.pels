@@ -186,6 +186,30 @@ describe('resolveHistoryDetailChartData', () => {
       ]);
     });
 
+    // Regression, prod 2026-10-01/02: hourly re-plans drop elapsed hours, so the
+    // final revision shaded only the last two minutes of an overnight run.
+    it('shades the hours booked when each began, not the final revision\'s remainder', () => {
+      const entry = buildEntry({
+        originalPlan: buildSnapshot(),
+        finalPlan: buildSnapshot({
+          hours: [{ startsAtMs: START_MS + 5 * HOUR_MS, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
+        }),
+        hourStartBookings: [
+          { atMs: START_MS, bookedKWh: 1 },
+          { atMs: START_MS + HOUR_MS, bookedKWh: 1 },
+          { atMs: START_MS + 2 * HOUR_MS, bookedKWh: 0 },
+          { atMs: START_MS + 3 * HOUR_MS, bookedKWh: 2 },
+          { atMs: START_MS + 5 * HOUR_MS, bookedKWh: 1.5 },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.runBands).toEqual([
+        { fromMs: START_MS, toMs: START_MS + 2 * HOUR_MS },
+        { fromMs: START_MS + 3 * HOUR_MS, toMs: START_MS + 4 * HOUR_MS },
+        { fromMs: START_MS + 5 * HOUR_MS, toMs: DEADLINE_MS },
+      ]);
+    });
+
     it('emits no bands in legacy_kwh mode', () => {
       const entry = buildEntry({
         originalPlan: buildSnapshot({ kwhPerUnitMean: undefined }),

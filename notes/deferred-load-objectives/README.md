@@ -501,6 +501,31 @@ as an in-page route off `index.html`.):
   active plan, and start a fresh pending active plan. History and the current-plan hero now
   both treat a target/deadline edit as abandoning the committed schedule and starting a new
   run.
+- Each hour's booking is recorded once, on the run's first tick in the hour, as
+  `hourStartBookings` (`captureHourStartBooking` in `planHistoryHourStartBookings.ts`). The
+  source is the revision in force at the hour's start: the newest of the plan's `latest`,
+  `history` and `original` written at or before it (normally the previous hour's `:58`
+  settle; every revision belongs to the run, since an objective change restarts the plan
+  with none), or the run's first plan for the hour it arrives in. An
+  hour with no revision in force at its start (a plan rebuilt after the hour began) has no
+  entry, and neither has an hour with no tick inside it. The final revision cannot answer
+  "what was scheduled": every hourly re-plan drops the elapsed hours, so it ends holding the
+  last hour's remainder. The chart run bands, hourly strip, receipt's largest planned hour
+  and the logged `plannedKWh` read the record through `pickScheduledHours`
+  (`packages/shared-domain/src/deferredPlanHistoryShared.ts`); entries without it keep the
+  final-revision reading. The record is per hour, not the run's need: a `:58` re-plan books
+  an under-delivered hour's shortfall into later hours, so its sum re-counts that energy. The
+  Missed shortfall chip therefore divides by `initialEnergyExpectedKWh` (an energy task's
+  target), and the "Observed N of M scheduled hours" line is hidden on entries that carry the
+  record: every booked hour is observed by construction, and after a restart the bookings
+  are restored while `observedIntervals` are not.
+- An open run's metered delivery, start progress, commitment and hour-start bookings are
+  saved with the in-progress state (`planHistoryMeteredState.ts`) and merged back after a
+  restart; the saved values win, and the downtime is never billed. A run still learning its
+  requirement is saved as `learning` (as `unknown` once energy has been delivered, which keeps
+  the row readable by an older build); after a restart it may capture one only while nothing
+  has been delivered and its progress has not moved by the per-kind deadband since the saved
+  start reading. See `notes/smart-task-miss-attribution.md`.
 - Entries are persisted to the userdata store, one row per entry (`planHistoryStore.ts`), with a 30-entry rolling cap.
   Throttled writes happen on finalize (rare); `onUninit` flushes any pending entries.
 - The Settings UI fetches this via `/ui_deferred_objective_history` and renders

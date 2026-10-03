@@ -1,6 +1,7 @@
 import type {
   DeferredObjectiveActivePlansV1,
   DeferredObjectiveActivePlanTrajectory,
+  DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryRecord,
@@ -33,10 +34,13 @@ import {
   promoteRecordToStalled,
   rawHorizonStatus,
   recordNonPlannableTick,
+  resumeMeteredCommitment,
   stallClassificationToMetReason,
   startRecord,
+  toPersistedCommitment,
   toStoredPlanHistoryRecord,
 } from './planHistoryInProgressState';
+import { captureHourStartBooking, mergeHourStartBookings } from './planHistoryHourStartBookings';
 import { randomUUID } from 'node:crypto';
 import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
 
@@ -235,7 +239,7 @@ export class DeferredObjectivePlanHistoryRecorder {
         ? mergeRecord(existing, diag, nowMs, plan)
         : recordNonPlannableTick(existing, diag, nowMs, plan);
       const settled = this.maybePromoteOnStall(merged, diag, nowMs);
-      this.inProgress.set(key, settled);
+      this.inProgress.set(key, this.captureHourStart(settled, plan, nowMs));
       return;
     }
     // Begin tracking on first sight of a future-dated deadline, regardless of status. The
@@ -271,7 +275,21 @@ export class DeferredObjectivePlanHistoryRecorder {
     // on its first tick and stick until finalization. The next tick — where
     // the classifier has had a chance to re-evaluate against the actual
     // current objective — handles promotion through the `existing` branch.
-    this.inProgress.set(key, next);
+    // The hour-start capture runs after the restore so a restart inside an
+    // hour the run already recorded keeps that hour's saved booking.
+    this.inProgress.set(key, this.captureHourStart(next, plan, nowMs));
+  }
+
+  // A newly recorded hour is part of the saved in-progress state, so it marks
+  // the recorder dirty like a delivery booking does.
+  private captureHourStart(
+    record: InProgressRecord,
+    plan: DeferredObjectiveActivePlanV1 | undefined,
+    nowMs: number,
+  ): InProgressRecord {
+    const next = captureHourStartBooking(record, plan, nowMs);
+    if (next !== record) this.dirty = true;
+    return next;
   }
 
   /**
@@ -534,14 +552,17 @@ export class DeferredObjectivePlanHistoryRecorder {
           deviceId: record.deviceId,
           deadlineAtMs: record.deadlineAtMs,
           startedAtMs: record.startedAtMs,
-          commitment: record.commitment.kind === 'learning'
-            ? { kind: 'unknown' as const }
-            : record.commitment,
+          // A run still learning is saved as learning: whether it may still
+          // capture a requirement after the restart is decided against the
+          // saved start progress (`resumeMeteredCommitment`).
+          commitment: toPersistedCommitment(record),
+          startProgressValue: record.startProgressValue,
           deliveredKWh: record.deliveredKWh,
           totalCost: record.totalCost,
           costDisplay: record.costDisplay,
           deliveryPriceComplete: record.deliveryPriceComplete,
           hourlyContributions: record.hourlyContributions.slice(),
+          hourStartBookings: record.hourStartBookings.slice(),
         }]
         : []
     ));
@@ -571,13 +592,18 @@ const mergeMeteredDelivery = (
   return {
     ...record,
     startedAtMs: Math.min(record.startedAtMs, state.startedAtMs),
-    commitment: state.commitment,
+    // The run began where it stood before the restart, not at the first
+    // reading after it. A run saved before any trusted reading keeps the
+    // live record's own first trusted reading.
+    startProgressValue: state.startProgressValue ?? record.startProgressValue,
+    commitment: resumeMeteredCommitment(state),
     deliveredKWh: state.deliveredKWh + record.deliveredKWh,
     totalCost: state.totalCost + record.totalCost,
     costDisplay: state.costDisplay ?? record.costDisplay,
     hasDeliveryContribution: true,
     deliveryPriceComplete: state.deliveryPriceComplete && record.deliveryPriceComplete,
     hourlyContributions,
+    hourStartBookings: mergeHourStartBookings(state.hourStartBookings, record.hourStartBookings),
   };
 };
 

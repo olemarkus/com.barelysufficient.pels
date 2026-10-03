@@ -162,6 +162,26 @@ export type DeferredObjectivePlanHistoryHourlyContribution = {
   tone: DeferredObjectivePlanHistoryHourlyTone;
 };
 
+// What one hour of the run had booked when it became current: the revision in
+// force at the hour's start (normally the one the previous hour's `:58` settle
+// wrote, or the run's first plan for the hour it arrived in). Recorded once
+// per hour and never revised, so it survives the hourly re-plans that drop
+// elapsed hours from every later revision — no revision snapshot can say
+// what an earlier hour had booked.
+//
+// `atMs` is the hour-aligned start; `bookedKWh` the useful energy booked for
+// it (`0` when the plan in force booked nothing for that hour). An hour with
+// no revision in force at its start has no entry, and neither has an hour with
+// no recorder tick inside it (an outage spanning the whole hour).
+//
+// A per-hour view, not the run's need: a `:58` re-plan books an
+// under-delivered hour's shortfall into later hours, so the sum over the
+// bookings counts that energy again. The need is `initialEnergyExpectedKWh`.
+export type DeferredObjectivePlanHistoryHourStartBooking = {
+  atMs: number;
+  bookedKWh: number;
+};
+
 // Snapshot of objective progress while a run is in flight. The recorder
 // maintains a per-run ring keyed on a 15-minute bucket grid (hourly before
 // v2.11.x — consumers must not assume a cadence: sort by `atMs` and tolerate
@@ -256,13 +276,15 @@ export type DeferredObjectivePlanHistoryEntry = {
   // (`backfillCommitment`), not only when the record is created — the recorder
   // starts a run on first sight of a future deadline "regardless of status",
   // which routinely lands inside the learning window before any profile has
-  // resolved.
+  // resolved. A run still learning when PELS restarts keeps learning across the
+  // restart, and may still capture its requirement afterwards while nothing has
+  // been delivered and its progress has not moved since the run started.
   //
   // Optional, and the reason is narrow enough to state exactly. A smart-task
   // device must have measured power to be valid; that yields credible profile
   // samples, which yield a learned rate, which yields a requirement. So a valid
   // run does not lack a commitment — it only lacks one for as long as the
-  // profile is still learning. Absence therefore means one of exactly two
+  // profile is still learning. Absence therefore means one of exactly three
   // things:
   //
   //   1. the entry predates this field (v4 shipped in v2.7.2; additive-optional
@@ -270,9 +292,13 @@ export type DeferredObjectivePlanHistoryEntry = {
   //      so older clients round-trip it untouched), or
   //   2. the run finalized without the profile EVER resolving — a deadline
   //      shorter than the learning window, or the `discoveredFrom: 'backfill'`
-  //      path, which synthesizes an entry with no live diagnostic at all.
+  //      path, which synthesizes an entry with no live diagnostic at all, or
+  //   3. the profile resolved only after the run had already moved: energy was
+  //      delivered, or, across a restart, progress was made while PELS was not
+  //      metering. The requirement stated then is a remainder, not what the run
+  //      set out to need.
   //
-  // Both are honestly "PELS never knew what this run needed", which is what the
+  // All three are honestly "PELS never knew what this run needed", which is what the
   // `low_confidence` attribution already says out loud ("Still learning this
   // device's energy use."). Consumers decline the delivered-vs-committed
   // comparison on absence — never substitute a different quantity for it.
@@ -353,6 +379,20 @@ export type DeferredObjectivePlanHistoryEntry = {
   // field (no migration: existing v4 entries simply load with the field absent
   // and degrade gracefully). See `DeferredObjectivePlanHistoryHourlyContribution`.
   hourlyContributions?: DeferredObjectivePlanHistoryHourlyContribution[];
+  // Each hour's booking as it stood when the hour began, in hour order. The
+  // record of what the run had scheduled: the chart's run bands, the hourly
+  // strip, the receipt's largest planned hour and the logged planned total read
+  // it (`pickScheduledHours` in
+  // `packages/shared-domain/src/deferredPlanHistoryShared.ts`). Its presence
+  // also hides the "Observed N of M scheduled hours" line, which it would make
+  // tautological (`formatPlanHistoryObservedCoverage`).
+  // Separate from `hourlyContributions` because that list only has hours that
+  // received delivery, and a booked hour with none must still count. Optional
+  // and additive like `costDisplay` (no version bump): entries finalized before
+  // it shipped, and runs that never had a plan, persist without it and the
+  // readers fall back to the final revision's hours. See
+  // `DeferredObjectivePlanHistoryHourStartBooking`.
+  hourStartBookings?: DeferredObjectivePlanHistoryHourStartBooking[];
 };
 
 // Runtime cap on `progressSamples` per entry (200) lives in

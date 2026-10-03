@@ -6,6 +6,7 @@ import type {
 import type {
   DeferredObjectivePlanHistoryDiscoveredFrom,
   DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryHourStartBooking,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryObservedInterval,
@@ -25,8 +26,9 @@ import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards
 // store (`planHistoryStore.ts`), which retires the settings keys after.
 // v4 was introduced in v2.7.2 alongside the smart-task history-detail trio:
 // `progressSamples`, `kwhPerUnitMean` (on revision snapshots), `deliveredKWh`
-// + `totalCost`, `revisions[]`, and (extension, no version bump) the
-// `costDisplay` price-display provenance. v4 is already released (shipped
+// + `totalCost`, `revisions[]`, and (extensions, no version bump) the
+// `costDisplay` price-display provenance and the `hourStartBookings` per-hour
+// schedule record. v4 is already released (shipped
 // v2.7.2, live in v2.11.x), but no bump is needed for an additive OPTIONAL
 // field: the normalizer validates every known field and compacts legacy rows,
 // while preserving optional extensions on the record. A newer client treats
@@ -226,6 +228,25 @@ const isHourlyContribution = (
     && isHourlyTone(v.tone);
 };
 
+// Per-hour booking at hour start. The recorder writes an hour-aligned `atMs`
+// and a non-negative `bookedKWh` (zero for an hour the plan in force booked
+// nothing for). A NaN or negative booking would corrupt the planned total and
+// the strip's bar heights, so the whole entry is rejected, as for
+// `hourlyContributions`. Optional: absence is the pre-field shape, and readers
+// fall back to the final revision's hours. The one guard for both persisted
+// homes of a booking: the finalized entry here and the in-progress row in
+// `planHistoryMeteredState.ts`.
+export const isHourStartBooking = (value: unknown): value is DeferredObjectivePlanHistoryHourStartBooking => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.atMs) && v.atMs >= 0 && isFiniteNumber(v.bookedKWh) && v.bookedKWh >= 0;
+};
+
+const hasValidHourStartBookings = (v: Record<string, unknown>): boolean => (
+  v.hourStartBookings === undefined
+    || (Array.isArray(v.hourStartBookings) && v.hourStartBookings.every(isHourStartBooking))
+);
+
 // Price-display provenance persisted alongside `totalCost`. A tampered or
 // downgraded payload could smuggle a non-string unit or a non-finite / zero /
 // negative divisor that would mislabel or 100×-misscale the archived figure (a
@@ -266,7 +287,7 @@ const hasValidV4Extensions = (v: Record<string, unknown>): boolean => {
   if (v.hourlyContributions !== undefined
     && (!Array.isArray(v.hourlyContributions)
       || !v.hourlyContributions.every(isHourlyContribution))) return false;
-  return true;
+  return hasValidHourStartBookings(v);
 };
 
 const isRevisionSnapshotOrNull = (
@@ -375,6 +396,7 @@ const hasValidRecordExtensions = (v: Record<string, unknown>): boolean => (
       || (Array.isArray(v.revisions) && v.revisions.every(isRevisionLogEntry)))
     && (v.hourlyContributions === undefined
       || (Array.isArray(v.hourlyContributions) && v.hourlyContributions.every(isHourlyContribution)))
+    && hasValidHourStartBookings(v)
 );
 
 const isPlanHistoryRecord = (value: unknown): value is DeferredObjectivePlanHistoryRecord => {

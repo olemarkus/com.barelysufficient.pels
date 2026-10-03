@@ -339,6 +339,37 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
     expect(attribution.plannedKWh).toBeCloseTo(5.0);
   });
 
+  // Regression, prod 2026-10-01/02: an overnight EV run logged plannedKWh 0.03
+  // because hourly re-plans had dropped every elapsed hour from the final
+  // revision and the last hour had shrunk to its remainder.
+  // The sum includes energy re-booked after a short hour; it is telemetry and
+  // never the comparison basis (that is `initialEnergyExpectedKWh`).
+  it('reports plannedKWh as the sum of each hour\'s booking at its start', () => {
+    const entry = buildEntry({
+      originalPlan: buildSnapshot(),
+      finalPlan: buildSnapshot({
+        hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
+      }),
+      hourStartBookings: [
+        { atMs: DEADLINE_MS - 4 * HOUR_MS, bookedKWh: 3.2 },
+        { atMs: DEADLINE_MS - 3 * HOUR_MS, bookedKWh: 0 },
+        { atMs: DEADLINE_MS - 2 * HOUR_MS, bookedKWh: 3.4 },
+        { atMs: DEADLINE_MS - HOUR_MS, bookedKWh: 2.9 },
+      ],
+      deliveredKWh: 9.1,
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).plannedKWh).toBeCloseTo(9.5);
+  });
+
+  it('keeps reading the final revision\'s hours for an entry recorded before hour-start bookings', () => {
+    const entry = buildEntry({
+      finalPlan: buildSnapshot({
+        hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.03 }],
+      }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).plannedKWh).toBeCloseTo(0.03);
+  });
+
   it('declines the comparison when no commitment was recorded', () => {
     // Legacy and backfill entries carry no `initialEnergyExpectedKWh`. The
     // comparison is skipped rather than falling back to some other quantity —

@@ -54,19 +54,43 @@ through:
   The delivered-vs-committed split (`DELIVERED_PLAN_FRACTION = 0.95`) is
   consulted ONLY where the producer recorded no shortfall, because that is the
   one case its verdict does not cover: the plan said it would make it and it
-  didn't. Its basis is the **original** revision's mean requirement. Using the
+  didn't. Its basis is the run's committed mean requirement, captured once on
+  the entry as `initialEnergyExpectedKWh` (`backfillCommitment` in
+  `planHistoryInProgressState.ts`), never a revision's figure. Using the
   final revision's — which is the energy still OUTSTANDING, and shrinks as a run
   delivers — made the split run backwards: the harder a device fought a real
   capacity limit, the smaller the final remainder and the more likely the
   comparison was to report an estimation error. That shipped, and produced a
   wrong "Target needed more energy than estimated." on a nine-hour EV run that
   was daily-budget-paced throughout (2026-08-11).
+
+  The commitment is captured only from a point where nothing has been
+  delivered; otherwise the stated requirement is a remainder and the split is
+  declined. A run still learning when PELS restarts is saved as `learning` and
+  may still capture afterwards, but only while restored plus live delivery is
+  zero and its progress has not moved in the task's direction, by at least the
+  per-kind no-progress deadband (0.5 °C, 1 %, 0.1 kWh), since the pre-restart
+  start reading, because energy delivered while PELS was down is
+  never metered. A run saved without a trusted start resumes as unknown, as
+  does every row an older build saved (`unknown` rows are not migrated). Before
+  this, a restart froze every learning run as unknown, which is how an EV run
+  that started ten minutes before a restart finalized with
+  `deliveredAtOrAbovePlan: null` (2026-10-01/02).
 - **Telemetry** — the recorder emits one `deferred_objective_history_finalized`
   structured-debug event per observation entry (gated on the
   `deferred_objectives` topic), carrying the cause + raw inputs. Emitted on
   *every* outcome so the met/missed ratio against the same inputs quantifies the
   false-alarm rate. This is the queryable signal Sessions B and C validate
-  against.
+  against. Its `plannedKWh` is the sum of each hour's booking at the hour's
+  start (`hourStartBookings`), the same schedule the history run bands and
+  hourly strip read through `pickScheduledHours`. It includes energy re-booked
+  after a short hour (a `:58` re-plan moves an hour's shortfall into later
+  hours), so it can exceed the run's need and is never compared with delivery;
+  the comparison and the Missed shortfall chip use `initialEnergyExpectedKWh`.
+  The final revision's hours cannot stand in: hourly re-plans drop elapsed
+  hours, so an overnight EV run once logged `plannedKWh: 0.03` against 29.6 kWh
+  delivered. Entries finalized before the per-hour record keep the
+  final-revision reading.
 - **UI** — the existing single "Why" line (`formatPlanHistoryMissedReason`) is
   *enriched*, not duplicated: a cold-start run reads "Still learning this
   device's energy use.", a delivered-but-short run reads "Target needed more

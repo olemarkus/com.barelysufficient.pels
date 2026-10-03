@@ -166,8 +166,12 @@ export const buildHistoryDetailHero = (
   // common ≥99 %-observed case. The helper's v2.9.x rewrite ("Observed N of M
   // scheduled hours") flips the actionable case (N=0, M>0 — planner thought the
   // device was active but it never drew power) from invisible to visible, so
-  // the line now carries real signal on every outcome shape and earns its
-  // place back on the hero.
+  // the line earned its place back on the hero for entries recorded before
+  // hour-start bookings. The helper returns null on every entry that carries
+  // `hourStartBookings`: a booking is captured only on a tick that is also an
+  // observation, so the line would always read "M of M", and after a restart
+  // the bookings are restored while the observed intervals are not. Those
+  // entries show the schedule through the hourly strip and run bands.
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
   const overshootLine = formatPlanHistoryOvershootLine(entry);
   const coverageLine = formatPlanHistoryObservedCoverage(entry);
@@ -197,7 +201,8 @@ export const buildHistoryDetailHero = (
       // 06:42, 18 min before 07:00" rows already encode the same information;
       // stacking them again was the density problem `pels-ux-fit` flagged.
       // coverageLine returns in v2.9.x with its actionable "N of M scheduled
-      // hours" rewrite — see the helper resolution above.
+      // hours" rewrite on entries without hour-start bookings (null on the
+      // rest) — see the helper resolution above.
       //
       // v2.9.x batch 47 — `overshootLine` is the exception. The receipt
       // timeline answers "what happened" but never names the final reading; a
@@ -254,7 +259,8 @@ export const buildHistoryDetailHero = (
       // doesn't. coverageLine returns in v2.9.x — the "N of M scheduled hours"
       // rewrite makes the planned-but-unobserved case (e.g. EV plugged in but
       // never drew power) actionable on the miss diagnosis, which the
-      // shortfall chip alone doesn't explain.
+      // shortfall chip alone doesn't explain. Null on entries with hour-start
+      // bookings, where the hourly strip's "Planned, didn't run" bars say it.
       progressLine: null,
       reachedAtLine,
       overshootLine,

@@ -600,16 +600,24 @@ export const formatPlanHistoryRevisionEntry = (
  * `observedIntervals` slice — matches the same hour-overlap rule used by the chart's
  * `observed` axis (`buildHistoryDetailRows`).
  *
+ * Hidden (null) on an entry that records each hour's booking at its start
+ * (`hourStartBookings`). A booking is captured only on a tick that also extends
+ * `observedIntervals`, so every booked hour is observed by construction and the line would
+ * always read "M of M"; after a restart it would be wrong outright, because the bookings
+ * are restored while the observed intervals are not saved. Such entries show the schedule
+ * through the hourly strip and the chart's run bands instead.
+ *
  * Lives in shared-domain so the same string can feed runtime log breadcrumbs alongside the
  * settings UI (per `feedback_ui_text_shared_with_logs.md`).
  */
 export const formatPlanHistoryObservedCoverage = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
-    'observedIntervals' | 'discoveredFrom' | 'originalPlan' | 'finalPlan'
+    'observedIntervals' | 'discoveredFrom' | 'originalPlan' | 'finalPlan' | 'hourStartBookings'
   >,
 ): string | null => {
   if (entry.discoveredFrom === 'backfill') return 'No observations recorded — smart task reconstructed from settings';
+  if (entry.hourStartBookings !== undefined) return null;
   // Final plan is the planner's last word; the original plan is the cold-start fallback when
   // the run finalized before a replan. Mirrors the snapshot-pick rule used by the other
   // history-detail producers (`pickLastPlan`, `buildHistoryDetailRows`) so the coverage line

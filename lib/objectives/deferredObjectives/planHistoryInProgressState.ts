@@ -1,5 +1,5 @@
 import { isCarLimitBinding, resolvedTrajectoryStatus } from './diagnosticTypes';
-import type { MeteredRunCommitment } from './planHistoryMeteredState';
+import type { MeteredRunCommitment, PersistedMeteredDeliveryState } from './planHistoryMeteredState';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
@@ -7,6 +7,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryCostDisplay,
+  DeferredObjectivePlanHistoryHourStartBooking,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryObservedInterval,
   DeferredObjectivePlanHistoryRecord,
@@ -31,13 +32,20 @@ import {
   seedProgressSamples,
 } from './planHistoryV4Helpers';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
+import { NO_DELIVERY_PROGRESS_DEADBAND } from '../../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import { randomUUID } from 'node:crypto';
 
 type ObservedInterval = DeferredObjectivePlanHistoryObservedInterval;
 
-// Only a newly observed run may learn its original requirement before delivery.
-// Restored unknown requirements stay unknown: a later estimate is not the original.
-type InProgressCommitment = MeteredRunCommitment | { kind: 'learning' };
+// A run learns its original requirement only from a point where nothing has
+// been delivered (`backfillCommitment`). Restored known and unknown
+// requirements stay as saved: a later estimate is not the original. A run saved
+// while still learning resumes as `resumed_learning`, carrying the trusted
+// start progress it had before the restart, because a restart adds a second
+// way to have moved unseen (`resumeMeteredCommitment`).
+export type InProgressCommitment =
+  | MeteredRunCommitment
+  | { kind: 'resumed_learning'; startProgressValue: number };
 
 export type InProgressKey = string; // `${deviceId}|${deadlineAtMs}`
 
@@ -65,6 +73,7 @@ export type InProgressRecord = Omit<
   | 'costDisplay'
   | 'revisions'
   | 'hourlyContributions'
+  | 'hourStartBookings'
   | 'metReason'
   | 'initialEnergyExpectedKWh'
   | 'progressDirection'
@@ -150,6 +159,11 @@ export type InProgressRecord = Omit<
   // `hasDeliveryContribution` the same way `deliveredKWh` / `totalCost`
   // are.
   hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[];
+  // One entry per hour whose start the run saw, in hour order, captured by
+  // `captureHourStartBooking` and never revised. Includes hours the plan in
+  // force booked nothing for, so a restart inside such an hour cannot book it
+  // afterwards from a plan revised mid-hour. Persisted with the metered state.
+  hourStartBookings: DeferredObjectivePlanHistoryHourStartBooking[];
 };
 
 
@@ -338,6 +352,7 @@ export const startRecord = (
     deliveryPriceComplete: true,
     revisions: [],
     hourlyContributions: [],
+    hourStartBookings: [],
   };
 };
 
@@ -431,9 +446,9 @@ const backfillStartProgress = (
 // power to be valid, so it produces credible samples, learns a rate, and
 // resolves a requirement — the question is only when, not whether.
 //
-// Only learning runs can capture a requirement; known and restored unknown values stay fixed.
-// The first answer wins: this is the energy the run set
-// out to need, not a later remainder.
+// Only learning runs, including one resumed after a restart, can capture a
+// requirement; known and unknown values stay fixed. The first answer wins: this
+// is the energy the run set out to need, not a later remainder.
 //
 // Gated on no positive energy having been delivered yet, and that gate is
 // load-bearing. A trusted 0 kW interval is still an exact delivery observation,
@@ -452,13 +467,82 @@ const backfillStartProgress = (
 // attribution lands on `low_confidence` — "Still learning this device's energy
 // use." — which is the honest thing to say about a run whose requirement PELS
 // never got to measure from the start.
+//
+// A restart adds a second way to have moved unseen: energy delivered while
+// PELS was down is never metered, so a run resumed while learning
+// (`resumed_learning`) passes `progressSinceResumedStart` as well. The
+// zero-delivery gate above still covers what was metered on both sides of the
+// restart, since the restored delivery is summed into `deliveredKWh`.
 const backfillCommitment = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
 ): InProgressCommitment => {
-  if (record.commitment.kind !== 'learning') return record.commitment;
+  const { commitment } = record;
+  if (commitment.kind === 'known' || commitment.kind === 'unknown') return commitment;
   if (record.deliveredKWh > 0) return { kind: 'unknown' };
-  return resolveCommitment(diag);
+  if (commitment.kind === 'resumed_learning') {
+    const progress = progressSinceResumedStart(commitment.startProgressValue, diag);
+    if (progress === 'moved') return { kind: 'unknown' };
+    // No trusted reading this cycle: nothing shows the run is still where it
+    // began, so wait for one rather than capture.
+    if (progress === 'unread') return commitment;
+  }
+  const resolved = resolveCommitment(diag);
+  // Still unresolved: keep the learning state, including its restart gate.
+  return resolved.kind === 'known' ? resolved : commitment;
+};
+
+// Has a run resumed while learning made progress since it started? Compares
+// the start progress saved before the restart with this cycle's trusted
+// reading. "Moved" is progress in the task's direction of at least the
+// per-kind deadband the miss attribution uses for "no progress" (0.5 °C, 1 %,
+// 0.1 kWh), so a single sensor tick does not count. A reading that fell back (a
+// tank cooling while PELS was down) is not progress, and the requirement read
+// from it is no smaller than the one the run started with. With no known
+// direction, a change of the deadband either way counts.
+const progressSinceResumedStart = (
+  startProgressValue: number,
+  diag: DeferredObjectiveDiagnostic,
+): 'moved' | 'unmoved' | 'unread' => {
+  const current = captureTrustedProgress(diag);
+  if (current === null) return 'unread';
+  const change = current - startProgressValue;
+  let progress = Math.abs(change);
+  if (diag.progressDirection === 'increasing') progress = change;
+  if (diag.progressDirection === 'decreasing') progress = -change;
+  return progress >= NO_DELIVERY_PROGRESS_DEADBAND[diag.objectiveKind] ? 'moved' : 'unmoved';
+};
+
+// The commitment a restored run resumes with. Known and unknown stay as saved;
+// a run saved while learning keeps learning under the restart gate, anchored at
+// the start progress it had before the restart.
+//
+// A learning run saved without a trusted start resumes as unknown: nothing can
+// show it stood still while PELS was down, and a start adopted after the
+// restart would measure only from the restart. Deciding that here, once, keeps
+// the anchor non-null for every later restart of the same run.
+export const resumeMeteredCommitment = (
+  state: Pick<PersistedMeteredDeliveryState, 'commitment' | 'startProgressValue'>,
+): InProgressCommitment => {
+  if (state.commitment.kind !== 'learning') return state.commitment;
+  return state.startProgressValue === null
+    ? { kind: 'unknown' }
+    : { kind: 'resumed_learning', startProgressValue: state.startProgressValue };
+};
+
+// The commitment as saved. A resumed run is still learning; its anchor is the
+// saved start progress, so a second restart resumes it the same way.
+//
+// A learning run that has already been delivered energy is saved as unknown:
+// that is what `backfillCommitment` decides on the next plannable tick anyway,
+// and it keeps the row readable by an older build, whose validator rejects
+// `learning` and deletes the row with its delivery.
+export const toPersistedCommitment = (
+  record: Pick<InProgressRecord, 'commitment' | 'deliveredKWh'>,
+): MeteredRunCommitment => {
+  const { commitment } = record;
+  if (commitment.kind === 'known' || commitment.kind === 'unknown') return commitment;
+  return record.deliveredKWh > 0 ? { kind: 'unknown' } : { kind: 'learning' };
 };
 
 
@@ -727,6 +811,12 @@ export const finalizeRecord = (
       ? { hourlyContributions: record.hourlyContributions.slice() }
       : {}),
     ...(record.revisions.length > 0 ? { revisions: record.revisions.slice() } : {}),
+    // Present whenever the run saw at least one hour begin under a plan, even
+    // one that booked nothing: presence is what tells the readers to trust
+    // this record over the final revision's hours.
+    ...(record.hourStartBookings.length > 0
+      ? { hourStartBookings: record.hourStartBookings.slice() }
+      : {}),
   };
 };
 

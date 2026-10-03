@@ -186,4 +186,18 @@ describe('formatPlanHistoryObservedCoverage', () => {
     expect(line).toBe('Observed 2 of 3 scheduled hours');
   });
 
+  // Owner decision 2026-10-03: a booking is captured only on a tick that also
+  // extends `observedIntervals`, so the line would always read "M of M", and
+  // after a restart the bookings are restored while the intervals are not.
+  it('hides the line on an entry that records each hour\'s booking at its start', () => {
+    const line = formatPlanHistoryObservedCoverage(buildEntry({
+      hourStartBookings: [
+        { atMs: STARTED_MS, bookedKWh: 2 },
+        { atMs: STARTED_MS + HOUR_MS, bookedKWh: 2.5 },
+      ],
+      observedIntervals: [{ fromMs: STARTED_MS, toMs: STARTED_MS + 2 * HOUR_MS }],
+    }));
+    expect(line).toBeNull();
+  });
+
 });
