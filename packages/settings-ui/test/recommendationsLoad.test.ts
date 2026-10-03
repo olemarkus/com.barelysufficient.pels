@@ -3,12 +3,14 @@ import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
 import type { AfterSetupFactsRead } from '../src/ui/afterSetupFacts.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
+  SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
 
 const OTHER_MODULES_API_PATH = '/ui_hub_market';
 const callApi = vi.fn();
+const historyApi = vi.fn();
 const refreshFlowConflictsApi = vi.fn();
 const getSetting = vi.fn();
 const getSettingFresh = vi.fn();
@@ -28,6 +30,7 @@ vi.mock('../src/ui/homey.ts', async () => {
     // the CAR inventory calls, and the hub-market read shares the seam.
     callApi: (...args: unknown[]) => {
       if (args[1] === OTHER_MODULES_API_PATH) return Promise.resolve({ state: 'unavailable' });
+      if (args[1] === SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH) return historyApi(...args);
       if (args[1] === SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH) return refreshFlowConflictsApi(...args);
       return callApi(...args);
     },
@@ -108,6 +111,8 @@ beforeEach(() => {
   vi.resetModules();
   installSurfaces();
   sleep.mockResolvedValue(undefined);
+  historyApi.mockReset();
+  historyApi.mockResolvedValue({ version: 1, entriesByDeviceId: {} });
   refreshFlowConflictsApi.mockReset();
   refreshFlowConflictsApi.mockResolvedValue({ devices: [], evSocReporters: [] });
   getSettingFresh.mockResolvedValue(undefined);
@@ -130,6 +135,147 @@ beforeEach(() => {
 });
 
 describe('recommendation loading', () => {
+  it.each(['success', 'failure'] as const)(
+    'ignores an older history %s after a newer read settles', async (olderResult) => {
+      const recommendations = await loadSubject([]);
+      getSetting.mockResolvedValue({});
+      callApi.mockResolvedValue(resolvedCars());
+      type History = { version: 1; entriesByDeviceId: Record<string, never[]> };
+      let resolveOlder!: (value: History) => void;
+      let rejectOlder!: (error: Error) => void;
+      let resolveNewer!: (value: History) => void;
+      let rejectNewer!: (error: Error) => void;
+      historyApi.mockReturnValueOnce(new Promise<History>((resolve, reject) => {
+        resolveOlder = resolve;
+        rejectOlder = reject;
+      }));
+      historyApi.mockReturnValueOnce(new Promise<History>((resolve, reject) => {
+        resolveNewer = resolve;
+        rejectNewer = reject;
+      }));
+      const older = recommendations.loadRecommendationData();
+      const newer = recommendations.loadRecommendationData();
+      const empty: History = { version: 1, entriesByDeviceId: {} };
+      if (olderResult === 'success') rejectNewer(new Error('Current read unavailable'));
+      else resolveNewer(empty);
+      await newer;
+      if (olderResult === 'success') resolveOlder(empty);
+      else rejectOlder(new Error('Obsolete read unavailable'));
+      await older;
+      const text = document.getElementById('setup-recommendations-root')?.textContent;
+      if (olderResult === 'success') {
+        expect(text).toContain('Some recommendation checks couldn’t be refreshed');
+        expect(text).not.toContain('No setup suggestions right now');
+      } else {
+        expect(text).toContain('No setup suggestions right now');
+        expect(text).not.toContain('Some recommendation checks couldn’t be refreshed');
+      }
+    },
+  );
+
+  it('does not claim an all-clear when Smart task history is unavailable, and can retry', async () => {
+    const recommendations = await loadSubject([]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    historyApi.mockRejectedValue(new Error('History unavailable'));
+    await recommendations.loadRecommendationData();
+    const surface = document.getElementById('setup-recommendations-root');
+    expect(surface?.textContent).toContain('Some recommendation checks couldn’t be refreshed');
+    expect(surface?.textContent).not.toContain('No setup suggestions right now');
+    historyApi.mockResolvedValue({ version: 1, entriesByDeviceId: {} });
+    const retry = [...document.querySelectorAll('md-text-button')]
+      .find((button) => button.textContent?.trim() === 'Try again');
+    retry?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await vi.waitFor(() => { expect(surface?.textContent).toContain('No setup suggestions right now'); });
+    expect(historyApi).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['ev_soc', 'temperature', 'energy'] as const)(
+    'offers and updates the start-policy hint for a current %s task', async (kind) => {
+      const recommendations = await loadSubject([device({ binaryControllable: true, powerCapable: true })]);
+      const { state } = await import('../src/ui/state.ts');
+      state.managedMap = { 'device-1': true };
+      state.deferredObjectiveSettings.objectivesByDeviceId['device-1'] = {
+        enabled: true, deadlineAtMs: Date.now() + 60_000,
+        ...(kind === 'ev_soc'
+          ? { kind, enforcement: 'soft', targetPercent: 80 }
+          : kind === 'temperature'
+            ? { kind, enforcement: 'soft', targetTemperatureC: 60 }
+            : { kind, enforcement: 'soft', targetEnergyKWh: 5 }),
+      };
+      getSetting.mockResolvedValue({});
+      callApi.mockResolvedValue(resolvedCars());
+      await recommendations.loadRecommendationData();
+      const surface = document.getElementById('setup-recommendations-root');
+      expect(surface?.textContent).toContain('Keep Connected 300 within Smart tasks');
+      expect(surface?.textContent).toContain('PELS turns it off if turned on outside a Smart task');
+
+      state.controllableMap = { 'device-1': true };
+      recommendations.refreshRecommendationSurfaces();
+      expect(surface?.textContent).not.toContain('Keep Connected 300 within Smart tasks');
+      state.controllableMap = {};
+      recommendations.refreshRecommendationSurfaces();
+      expect(surface?.textContent).toContain('Keep Connected 300 within Smart tasks');
+      state.deviceStartPolicyMap = { 'device-1': 'pels_only' };
+      recommendations.refreshRecommendationSurfaces();
+      expect(surface?.textContent).not.toContain('Keep Connected 300 within Smart tasks');
+      state.deviceStartPolicyMap = {};
+      recommendations.refreshRecommendationSurfaces();
+      expect(surface?.textContent).toContain('Keep Connected 300 within Smart tasks');
+    },
+  );
+
+  it('offers a past-task hint with device navigation and persistent dismissal', async () => {
+    const recommendations = await loadSubject([device({ binaryControllable: true, powerCapable: true })]);
+    const { state } = await import('../src/ui/state.ts');
+    state.managedMap = { 'device-1': true };
+    historyApi.mockResolvedValue({ version: 1, entriesByDeviceId: { 'device-1': [{ deviceId: 'device-1' }] } });
+    getSetting.mockResolvedValue({});
+    getSettingFresh.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    const openDevice = vi.fn();
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice });
+    try {
+      await recommendations.loadRecommendationData();
+      document.querySelector('md-filled-tonal-button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(openDevice).toHaveBeenCalledWith('device-1');
+      const dismiss = [...document.querySelectorAll('md-text-button')]
+        .find((button) => button.textContent?.trim() === 'Dismiss');
+      dismiss?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await vi.waitFor(() => {
+        expect(setSetting).toHaveBeenCalledWith('setup_recommendation_dismissals', {
+          'smart-task-start-policy:device-1': 1,
+        });
+      });
+      expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
+      state.deviceStartPolicyMap = { 'device-1': 'pels_only' };
+      recommendations.refreshRecommendationSurfaces();
+      expect(document.getElementById('setup-recommendations-root')?.textContent)
+        .not.toContain('Keep Connected 300 within Smart tasks');
+      state.deviceStartPolicyMap = {};
+      recommendations.refreshRecommendationSurfaces();
+      expect(document.getElementById('setup-recommendations-root')?.textContent).toContain('Dismissed');
+      getSetting.mockResolvedValue({ 'smart-task-start-policy:device-1': 1 });
+      historyApi.mockRejectedValue(new Error('History unavailable'));
+      await recommendations.loadRecommendationData();
+      expect(document.getElementById('setup-recommendations-root')?.textContent).toContain('Dismissed');
+      getSettingFresh.mockResolvedValue({ 'smart-task-start-policy:device-1': 1 });
+      const restore = [...document.querySelectorAll('md-text-button')]
+        .find((button) => button.textContent?.trim() === 'Show again');
+      restore?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await vi.waitFor(() => {
+        expect(setSetting).toHaveBeenLastCalledWith('setup_recommendation_dismissals', {});
+      });
+      expect(document.getElementById('setup-recommendations-root')?.textContent).not.toContain('Dismissed');
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
+  });
+
   it('does not let a narrow Flow refresh claim the full device list loaded during cold boot', async () => {
     const [{ state }, flowRefresh] = await Promise.all([
       import('../src/ui/state.ts'),
