@@ -121,31 +121,55 @@ export const resolveSurplusCeilingStepId = (
 };
 
 /**
- * The reading the last shed was decided on and the decision it produced,
- * latched as one pair by the shedding pass (`lib/plan/shedding/overshoot.ts`
- * reads it): a later sample repeating `powerW` exactly is a re-delivery of the
- * reading already acted on, so shedding re-asserts `shedIds` and adds nothing
- * for a short hold from `atMs`, unless the deficit has grown past `neededKw`.
- * Null when no shed has latched since the last incident ended.
+ * The reading the last shed was decided on and the decisions it stands on,
+ * latched as one pair by the shedding pass (`lib/plan/shedding/pendingRelief.ts`
+ * reads it). For a short window from each decision, the relief it counted on
+ * still counts against a later reading that does not show it yet, so shedding
+ * holds those devices where `stepTargets` put them and adds only what that
+ * relief leaves open. Null when no shed has latched since the last incident
+ * ended.
  */
 export type ShedPlanLatch = {
   readonly powerW: number;
-  /** The pass's OWN selection — copied, because the plan's shed set is merged with holds downstream. */
-  readonly shedIds: ReadonlySet<string>;
-  readonly atMs: number;
-  readonly neededKw: number;
+  /**
+   * Per device the shedding pass limited — its OWN selection, never the plan's
+   * shed set, which is merged with holds downstream — when it was decided and
+   * the relief it banked that `powerW` does not show.
+   */
+  readonly decisions: ReadonlyMap<string, ShedLatchDecision>;
+  /** The rung each stepped device was sent to, which a hold keeps it at rather than re-pricing it. */
+  readonly stepTargets: ReadonlyMap<string, string>;
+};
+
+export type ShedLatchDecision = {
+  /** When this device's shed was decided: its credit's own window runs from here. */
+  readonly decidedAtMs: number;
+  /**
+   * Relief this decision banked that the latched reading does not show. Zero for
+   * a device selected while an older command's relief was still unconfirmed:
+   * an older decision's relief earns no credit.
+   */
+  readonly creditedKw: number;
 };
 
 /**
  * What a shedding pass reports back for the planner state to commit
- * (`applySheddingOutcome`). One of three things happened this cycle: nothing
- * (withheld, held, or nothing to shed), an escalation that found no candidate,
- * or a shed — which stamps the instability clock, the sample it acted on, the
- * latch when the reading carried watts, and whether it was a same-sample
- * escalation.
+ * (`applySheddingOutcome`). One of four things happened this cycle: nothing
+ * (withheld, or nothing to shed), decisions in their window held with nothing
+ * added, an escalation that found no candidate, or a shed — which stamps the
+ * instability clock, the sample it acted on, the latch when the reading carried
+ * watts, and whether it was a same-sample escalation.
  */
 export type SheddingOutcome =
   | { kind: 'none' }
+  /**
+   * Nothing new was decided, but decisions in their window were held, and the
+   * latch they stand on is committed as the pass left it: a decision whose
+   * relief the reading has shown, or whose device has gone, is retired, so a
+   * later rise in the reading cannot bring its credit back. No clock is stamped
+   * — nothing was mitigated, so each decision's window keeps running.
+   */
+  | { kind: 'held'; latch: ShedPlanLatch }
   | { kind: 'escalation_blocked'; atMs: number }
   | {
     kind: 'shed';
@@ -259,28 +283,29 @@ export class PlanEngineState {
   lastShedPlanMeasurementTs: number | null = null;
 
   /**
-   * The unchanged-reading latch — see `ShedPlanLatch`. Its `shedIds` is the
+   * The pending-relief latch — see `ShedPlanLatch`. Its `decisions` are the
    * shedding pass's OWN selection, deliberately NOT `shedDecisions.lastPlannedShedIds`: that
    * is the FINAL plan's shed set, which `planBuilderSurplus` has already merged
    * the solar dump-load hold and the decoration seam's deferred force-sheds
    * into. Re-asserting from it would hand a solar-held dump load a capacity
    * shed reason, which mislabels it for the user and makes
-   * `isAnyOtherDeviceLimited` clamp unrelated stepped loads. Its `atMs` is the
-   * hold window's own anchor, deliberately NOT the incident's mitigation clock
-   * (`OvershootIncident`): `PlanBuilder` runs the shedding pass BEFORE
-   * `OvershootTracker.updateOvershootState`, whose entry resets that clock, so
-   * the very first shed of an incident would lose its anchor in the same build
-   * and the hold would never engage on the cycle that needs it most. In-memory
+   * `isAnyOtherDeviceLimited` clamp unrelated stepped loads. Each decision's
+   * `decidedAtMs` is its credit window's own anchor, deliberately NOT the
+   * incident's mitigation clock (`OvershootIncident`): `PlanBuilder` runs the
+   * shedding pass BEFORE `OvershootTracker.updateOvershootState`, whose entry
+   * resets that clock, so the very first shed of an incident would lose its
+   * anchor in the same build and nothing would be credited on the cycle that
+   * needs it most. In-memory
    * like `lastShedPlanMeasurementTs`: after a restart the latch is absent and
-   * the hold is simply inert. Cleared only when the overshoot ends.
+   * no relief is credited. Cleared only when the overshoot ends.
    */
   shedPlanLatch: ShedPlanLatch | null = null;
 
   /**
    * Drop the shed-plan latch when the overshoot it belongs to is over. The
    * latched reading described a decision taken under pressure that no longer
-   * exists; carrying it into the next incident could hold that incident's first
-   * shed if the meter happens to report the same watts again.
+   * exists; carrying it into the next incident could credit that decision's
+   * relief against the new incident's first shed.
    */
   clearShedPlanLatch(): void {
     this.shedPlanLatch = null;
@@ -294,6 +319,10 @@ export class PlanEngineState {
   applySheddingOutcome(outcome: SheddingOutcome, recoveredAtMs: number | null): void {
     if (recoveredAtMs !== null) this.restoreBackoff.noteRecovery(recoveredAtMs);
     if (outcome.kind === 'none') return;
+    if (outcome.kind === 'held') {
+      this.shedPlanLatch = outcome.latch;
+      return;
+    }
     this.overshoot.noteMitigation(outcome.atMs);
     if (outcome.kind === 'escalation_blocked') {
       this.overshoot.noteEscalation(outcome.atMs);

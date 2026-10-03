@@ -25,19 +25,22 @@ import type { ShedCandidate } from './types';
  * its priced ladder and this loop asks `chooseShedRung` for the gentlest rung
  * that covers what is left when its turn comes.
  *
- * A candidate whose relief is still unconfirmed banks nothing: it is already
- * commanded and the watts have not moved yet, so counting them would cover the
- * deficit on a promise. Note what that means downstream — the next candidate is
- * then sized as though nothing had been done, which is the honest answer while
- * the watts have not moved, and deliberately errs toward covering the breach
- * rather than toward under-shedding it.
+ * A candidate whose relief is still unconfirmed banks nothing: it was commanded
+ * by an earlier decision and the watts have not moved yet, so counting them here
+ * would cover the deficit on a promise nobody is tracking. The next candidate is
+ * then sized as though nothing had been done, which errs toward covering the
+ * breach rather than under-shedding it. That is the right answer for a promise
+ * older than the pending-relief window; a decision taken inside it is credited
+ * before selection runs (`pendingRelief.ts`) and never reaches this loop as an
+ * unconfirmed candidate to be re-sized.
  *
- * Three parallel maps leave here, all keyed by device id and all decided by this
- * loop: membership (`shedSet`), why (`shedReasons`), and — for a stepped
- * step-down — WHERE the device is parked (`shedStepTargets`). The third is what
- * makes the credited rung the delivered rung: materialization commands the step
- * this map names, so the deficit selection just spent is the deficit the cycle
- * actually frees.
+ * Four parallel maps leave here, all keyed by device id and all decided by this
+ * loop: membership (`shedSet`), why (`shedReasons`), — for a stepped step-down —
+ * WHERE the device is parked (`shedStepTargets`), and how much relief each
+ * banked (`creditedKw`). The third is what makes the credited rung the delivered
+ * rung: materialization commands the step this map names, so the deficit
+ * selection just spent is the deficit the cycle actually frees. The fourth is
+ * what the next cycle credits while the meter has not caught up.
  */
 export function selectShedDevices(
   candidates: ShedCandidate[],
@@ -45,14 +48,11 @@ export function selectShedDevices(
   reason: DeviceReason,
   shedAllCandidates: boolean,
   debugStructured?: StructuredDebugEmitter,
-): {
-  shedSet: Set<string>;
-  shedReasons: Map<string, DeviceReason>;
-  shedStepTargets: Map<string, string>;
-} {
+): ShedSelection {
   const shedSet = new Set<string>();
   const shedReasons = new Map<string, DeviceReason>();
   const shedStepTargets = new Map<string, string>();
+  const creditedKw = new Map<string, number>();
   let remaining = needed;
   for (const nextCandidate of candidates) {
     if (shouldStopSelection(shedAllCandidates, remaining)) break;
@@ -62,10 +62,22 @@ export function selectShedDevices(
     shedReasons.set(nextCandidate.id, reason);
     if (spend.toStepId !== undefined) shedStepTargets.set(nextCandidate.id, spend.toStepId);
     logSelectedCandidate(nextCandidate, spend, debugStructured);
-    if (!nextCandidate.unconfirmedRelief) remaining -= spend.reliefKw;
+    if (nextCandidate.unconfirmedRelief) continue;
+    remaining -= spend.reliefKw;
+    creditedKw.set(nextCandidate.id, spend.reliefKw);
   }
-  return { shedSet, shedReasons, shedStepTargets };
+  return {
+    shedSet, shedReasons, shedStepTargets, creditedKw,
+  };
 }
+
+/** One selection's decision — see `selectShedDevices` for what each map carries. */
+export type ShedSelection = {
+  shedSet: Set<string>;
+  shedReasons: Map<string, DeviceReason>;
+  shedStepTargets: Map<string, string>;
+  creditedKw: Map<string, number>;
+};
 
 /** What this candidate is taken FOR: how much it frees, and where it parks. */
 type CandidateSpend = {

@@ -211,36 +211,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       EV target-power) carries an explicit `off` step, so this needs a hand-configured profile.
       Source: Codex review of PR #1996, 2026-08-06. [P2]
 
-- [ ] **A meter that jitters *and* lags still reads as evidence that a shed achieved nothing.**
-      `resolveSameMeasurementSheddingDecision` now holds a shed from deepening while the whole-home
-      reading is byte-identical to the one the last shed was decided on
-      (`UNCHANGED_READING_SHED_HOLD_MS`). Exact equality is deliberate — it is the signature of a
-      re-delivered aggregate — but it means a meter that moves a watt or two while still not
-      reflecting the shed (4351 → 4348 with the ~1.08 kW relief unaccounted) slips through and the
-      planner cuts deeper than the real deficit needs. The complete fix splits across two layers:
-      recognising a re-delivered or lagging aggregate is a meter question and belongs in
-      `lib/power`, which owns the reading; comparing the realised drop against the relief actually
-      credited for the devices shed last cycle is shed bookkeeping and stays in the planner, which
-      is the only layer holding `shedPlanLatch.shedIds` and the credited figures. Do not push the
-      second half into `lib/power` — it cannot see them. Field case: 2026-08-01, hard cap 3.0 kW, total 4.351 kW; #4 shed at
-      11:03:44 credited ≥1.81 kW but realised ~1.08 kW; the 11:03:54 repeat then took both #2 and
-      the user's #1. Persona: the owner who ranked their priority list and expects #1 to survive;
-      hypothesis: "PELS ignores my priorities" when it is really over-cutting on a reading that
-      has not yet reflected the shed. [P2]
-
-- [ ] **The unchanged-reading shed hold freezes shed membership, not shed depth, so a stepped device
-      still deepens one notch per held cycle.** `holdSheddingAtLastDecision` re-asserts the decided
-      devices into `shedSet`, but `PlanEngineState` carries only their ids (`shedPlanLatch.shedIds`),
-      so each held cycle re-prices the ladder from wherever the device now sits and re-chooses a
-      rung against the same unchanged deficit. An EV charger on `set_step` shed behaviour at 16 A
-      therefore walks 10 A → 6 A → lowest active step across a 30 s hold, on readings the module
-      itself has declared to be non-evidence. Bounded (it leaves the candidate set at the lowest active step)
-      and not a regression versus the pre-hold behaviour, which stepped it down on those same cycles
-      — but it means the incident class is only closed for binary devices, and priority-ranked
-      stepped loads are exactly what users notice. Fix needs the hold to carry the decided target
-      step, not just membership. Persona: the owner who ranked an EV charger below their heating.
-      Source: `pels-runtime-reality` on the unchanged-reading-hold PR. [P2]
-
 - [ ] **Three user-visible need figures still use the deflated restore need.**
       *Persona:* owner (`notes/personas.md`) reading how much more power a device needs.
       *Hypothesis:* `maybeApplyShortfallReason` (`lib/plan/planReasons.ts:76`),
@@ -1561,13 +1531,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       has required a finite sample on the same tracker, so `powerTracker.lastTimestamp` and
       `lastPowerW` are always present there; the pass still re-derives their absence
       (`lib/plan/shedding/buildSheddingPlan.ts`, `resolveMeasurementPowerW` and the `?? null` on the
-      stamp) and `resolveUnchangedReadingHold` sniffs the watts again. Change: make both fields
+      stamp) and `resolvePendingShedRelief` sniffs the watts again. Change: make both fields
       required on the `shed` variant, read them through `requireLastSampleAtMs` and a watts-returning
       sibling of `requireLastTotalPowerKw` (`lib/power/lastTotalPower.ts`), drop the two `!== null`
       writes in `applySheddingOutcome`, and give the ~80 tracker fixtures in
       `test/integration/planShedding.test.ts` (and the three other `buildSheddingPlan` specs) the
       watts a sampled tracker carries — checking each multi-cycle case that repeats a stamp, since a
-      fixture that gains watts can newly take the unchanged-reading hold. Done when the `shed`
+      fixture that gains watts can newly be credited pending relief. Done when the `shed`
       variant has no `| null` and `resolveMeasurementPowerW` is gone. Source: layering review of the
       shed-outcome state layer, 2026-09-08.
 

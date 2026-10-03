@@ -2,7 +2,11 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { NO_SHEDDING_OUTCOME, type ShedPlanLatch } from '../../lib/plan/planState';
 
 const T = 1_000_000;
-const latch: ShedPlanLatch = { powerW: 4_351, shedIds: new Set(['vvb']), atMs: T, neededKw: 1.8 };
+const latch: ShedPlanLatch = {
+  powerW: 4_351,
+  decisions: new Map([['vvb', { decidedAtMs: T, creditedKw: 1.8 }]]),
+  stepTargets: new Map(),
+};
 
 // The shedding pass reports what it did; the state turns that into the clocks
 // the next cycle reads. Each kind's mapping is pinned here because nothing
@@ -60,6 +64,16 @@ describe('PlanEngineState.applySheddingOutcome', () => {
     expect(state.lastShedPlanMeasurementTs).toBeNull();
     expect(state.shedPlanLatch).toBeNull();
     // Only the incident's own start gates escalation: 60 s in, it is due.
+    expect(state.overshoot.shouldEscalate(T)).toBe(true);
+  });
+
+  it('commits a held latch and stamps no clock', () => {
+    const state = stateInIncident();
+    state.applySheddingOutcome({ kind: 'held', latch }, null);
+
+    expect(state.shedPlanLatch).toBe(latch);
+    expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
+    expect(state.lastShedPlanMeasurementTs).toBeNull();
     expect(state.overshoot.shouldEscalate(T)).toBe(true);
   });
 

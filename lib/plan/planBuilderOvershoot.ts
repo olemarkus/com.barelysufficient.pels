@@ -150,7 +150,7 @@ export class OvershootTracker {
       this.attributeOvershootToRecentRestores(deviceNameById, nowTs, overshootDiagnostics);
     } else if (!overshootActive && prevOvershoot) {
       const durationMs = incident.clear(nowTs);
-      // The unchanged-reading hold's latch belongs to the incident that just
+      // The pending-relief latch belongs to the incident that just
       // ended. Cleared HERE and not on entry: entry runs after this build's
       // shedding pass, so clearing it there would strip the anchor off the very
       // first shed of every incident.
