@@ -667,6 +667,15 @@ function resolveStepChangeBeforeKw(
   return direction === 'down' ? measuredKw : Math.min(measuredKw, modelKw);
 }
 
+/** Whether `stepId` sits below `referenceStepId` on the device's ladder — position, not watts. */
+export function isSteppedLoadStepBelow(
+  device: Pick<StepCapableDevice, 'steppedLoadProfile'>,
+  stepId: string,
+  referenceStepId: string,
+): boolean {
+  return resolveStepIndex(device, stepId) < resolveStepIndex(device, referenceStepId);
+}
+
 // Per the "resolution belongs in producer" rule, the producer
 // (`lib/planInput.buildStepPowerCalibrationView`) has already bound the calibrated
 // value to samples inside the configured step's power band. The plan layer

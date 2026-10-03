@@ -196,6 +196,12 @@ that needs to know whether a specific device responded must read that device —
 whole-home meter. This note previously proposed a `lib/power`-owned reservation released on the
 main meter's sample clock; that design was wrong on both counts and was never merged.
 
+The shedding planner's pending-relief credit (`lib/plan/shedding/pendingRelief.ts`) follows this
+rule. Whether a shed device has delivered the relief the planner counted on is read from that
+device's own meter. The whole-home reading is asked only whether it has *shown* relief the devices
+delivered. It is bookkeeping about the planner's own decisions, not settle: it applies no tolerance
+or timing to a device reading and never tells the executor that a write landed.
+
 ## The rule going forward
 
 - The executor may skip a write only for facts about **the write itself** — the device is

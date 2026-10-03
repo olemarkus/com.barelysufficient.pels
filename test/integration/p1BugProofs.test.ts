@@ -215,6 +215,7 @@ describe('P1 bug proofs', () => {
         shedStepTargets: new Map(),
         outcome: NO_SHEDDING_OUTCOME,
         overshootStats: null,
+        pendingReliefKw: 0,
       },
       {
         capacityGuard,

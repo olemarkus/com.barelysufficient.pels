@@ -21,6 +21,7 @@ const heldSelection = (deviceId: string): PlanSheddingResult => ({
   shedStepTargets: new Map(),
   outcome: NO_SHEDDING_OUTCOME,
   overshootStats: null,
+  pendingReliefKw: 0,
 });
 
 // Over the hard-cap threshold with the only managed device already limited: the
@@ -130,6 +131,34 @@ describe('reportShortfallToGuard', () => {
     expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(7, 5, expect.objectContaining({
       remainingActionableControlledLoad: false,
       shedReliefInFlight: false,
+    }));
+  });
+
+  it('reports relief in flight while the reading has not yet shown a shed that landed', async () => {
+    const state = createPlanEngineState();
+    const capacityGuard = guardDouble();
+
+    await reportShortfallToGuard(
+      buildPlanContextFixture({
+        devices: [buildPlanInputDevice({ id: 'heater', currentDrawKw: 0, binaryControl: { on: false }, controllable: true })],
+      }),
+      buildMeasuredPower({ drawKw: 7, headroomKw: -2, capacityBreached: true }),
+      state,
+      // The heater's own meter reads it off; the main meter still carries its 2 kW.
+      { ...heldSelection('heater'), pendingReliefKw: 2 },
+      {
+        capacityGuard,
+        shortfallThresholdKw: 5,
+        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        getShedBehavior: () => ({ action: 'turn_off' }),
+        log: vi.fn(),
+      },
+    );
+
+    expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(7, 5, expect.objectContaining({
+      remainingActionableControlledLoad: false,
+      shedReliefInFlight: true,
     }));
   });
 });

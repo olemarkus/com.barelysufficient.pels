@@ -86,10 +86,12 @@ function buildShortfallCapacityStateSummary(
     remainingReducibleControlledLoad: remainingReducibleControlledLoadW > 0,
     remainingActionableControlledLoadW,
     remainingActionableControlledLoad: remainingActionableControlledLoadW > 0,
-    // This build chose a shed its commands have not yet delivered, or a
+    // This build chose a shed its commands have not yet delivered, it credited
+    // relief a recent shed counted on that the reading does not show yet, or a
     // candidate's own relief is still unconfirmed (a turn-off, a lower step or a
     // limit PELS sent and the device has not yet reported).
     shedReliefInFlight: selection.outcome.kind === 'shed'
+      || selection.pendingReliefKw > 0
       || candidates.some((candidate) => candidate.unconfirmedRelief),
     summarySource: 'plan_input',
     summarySourceAtMs: Date.now(),

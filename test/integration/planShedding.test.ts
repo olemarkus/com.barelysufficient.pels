@@ -3795,7 +3795,7 @@ describe('buildSheddingPlan', () => {
       expect([...result.shedSet]).toEqual(['vvb']);
       // The pass latches its own selection alongside the reading it acted on.
       if (result.outcome.kind !== 'shed') throw new Error(`expected a shed outcome, got ${result.outcome.kind}`);
-      expect([...(result.outcome.latch?.shedIds ?? [])]).toEqual(['vvb']);
+      expect([...(result.outcome.latch?.decisions.keys() ?? [])]).toEqual(['vvb']);
       state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
       return state;
     };
@@ -3803,6 +3803,7 @@ describe('buildSheddingPlan', () => {
     it('does not deepen into a higher-priority device while the reading repeats', async () => {
       const deps = incidentDeps();
       const state = await shedLowestPriorityFirst(deps);
+      const decidedAtMs = state.shedPlanLatch?.decisions.get('vvb')?.decidedAtMs;
 
       vi.setSystemTime(new Date(Date.now() + 10_000));
 
@@ -3824,13 +3825,39 @@ describe('buildSheddingPlan', () => {
 
       expect(repeatResult.shedSet.size).toBe(0);
       expect(repeatResult.shedSet.has('bad-2etg')).toBe(false);
-      // Nothing was mitigated, so the hold window must keep running from the
-      // real shed rather than restarting on every held cycle.
-      expect(repeatResult.outcome).toEqual({ kind: 'none' });
+      // Nothing was mitigated, so the window must keep running from the real
+      // shed rather than restarting on every held cycle.
+      if (repeatResult.outcome.kind !== 'held') throw new Error(`expected a hold, got ${repeatResult.outcome.kind}`);
+      expect(repeatResult.outcome.latch.decisions.get('vvb')?.decidedAtMs).toBe(decidedAtMs);
       expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
-        event: 'plan_shed_held_unchanged_reading',
-        unchangedPowerW: UNCHANGED_READING_W,
+        event: 'plan_shed_held_pending_relief',
+        pendingReliefKw: 2,
+        realisedKw: 0,
       }));
+    });
+
+    // Field case 2026-08-01: 4351 -> 4348 still did not show the shed, and the
+    // repeat took both #2 and the user's #1.
+    it('does not deepen when the reading moves by a few watts without showing the shed', async () => {
+      const deps = incidentDeps();
+      const state = await shedLowestPriorityFirst(deps);
+
+      vi.setSystemTime(new Date(Date.now() + 10_000));
+
+      const jitterResult = await buildSheddingPlanForSpec(
+        ...incidentContext({ devices: incidentDevices({ vvbShed: true }), total: 4.348 }),
+        state,
+        {
+          ...deps,
+          capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+          shortfallThresholdKw: Number.POSITIVE_INFINITY,
+          powerTracker: { lastTimestamp: 2_000, lastPowerW: UNCHANGED_READING_W - 3 } as PowerTrackerState,
+          pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        },
+      );
+
+      expect(jitterResult.shedSet.size).toBe(0);
+      expect(jitterResult.outcome.kind).toBe('held');
     });
 
     it('re-asserts the decided shed instead of dropping it while the reading repeats', async () => {
@@ -3948,6 +3975,349 @@ describe('buildSheddingPlan', () => {
 
       expect(sustainedResult.shedSet.has('kontor-vk')).toBe(true);
       expect(sustainedResult.shedSet.has('bad-2etg')).toBe(true);
+    });
+  });
+
+  // SHS test Homey, 2026-10-01 22:25:17-20. The EV charger was stepped 20 A -> 14 A
+  // for a 1.02 kW deficit. It echoed 14 A a second later while still drawing its
+  // 20 A, and the next reading (42 W higher) re-priced it from that draw and cut
+  // it to 12 A. The 14 A step landed 60 ms after that decision.
+  describe('relief a stepped shed has not delivered yet', () => {
+    const chargerProfile = {
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: '6a', planningPowerW: 1380 },
+        { id: '10a', planningPowerW: 2300 },
+        { id: '12a', planningPowerW: 2760 },
+        { id: '14a', planningPowerW: 3220 },
+        { id: '16a', planningPowerW: 3680 },
+        { id: '20a', planningPowerW: 4600 },
+      ],
+    };
+    const SOFT_LIMIT_KW = 5.315;
+    const CHARGER_DRAW_KW = 4.541;
+
+    const chargingHome = (charger: Parameters<typeof buildDevice>[0] = {}) => [
+      buildDevice({
+        id: 'ev',
+        name: 'Elbillader',
+        priority: 5,
+        controlModel: 'stepped_load',
+        steppedLoadProfile: chargerProfile,
+        selectedStepId: '20a',
+        currentDrawKw: CHARGER_DRAW_KW,
+        binaryControl: { on: true },
+        controllable: true,
+        ...charger,
+      }),
+      // The owner's bathroom floor, ranked above the charger and drawing.
+      buildDevice({
+        id: 'bath',
+        name: 'Termostat bad',
+        priority: 1,
+        currentDrawKw: 1.14,
+        binaryControl: { on: true },
+        controllable: true,
+      }),
+    ];
+
+    const chargingCycle = (devices: PlanInputDevice[], totalKw: number) => cycleArgs({
+      devices,
+      total: totalKw,
+      softLimit: SOFT_LIMIT_KW,
+      capacitySoftLimit: SOFT_LIMIT_KW,
+      headroomRaw: SOFT_LIMIT_KW - totalKw,
+      headroom: SOFT_LIMIT_KW - totalKw,
+      softLimitSource: 'capacity',
+    });
+
+    const chargingDeps = (
+      state: ReturnType<typeof createPlanEngineState>,
+      sample: { ts: number; powerW: number },
+    ): SheddingDeps => ({
+      shortfallThresholdKw: Number.POSITIVE_INFINITY,
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getShedBehavior: () => ({ action: 'turn_off' }),
+      log: vi.fn(),
+      debugStructured: vi.fn(),
+      powerTracker: { lastTimestamp: sample.ts, lastPowerW: sample.powerW } as PowerTrackerState,
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    });
+
+    const stepChargerTo14a = async () => {
+      const state = createPlanEngineState();
+      state.overshoot.enter(Date.now());
+      const result = await buildSheddingPlanForSpec(
+        ...chargingCycle(chargingHome(), 6.336),
+        state,
+        chargingDeps(state, { ts: 1_000, powerW: 6_336 }),
+      );
+      expect([...result.shedSet]).toEqual(['ev']);
+      expect(result.shedStepTargets.get('ev')).toBe('14a');
+      state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
+      return state;
+    };
+
+    it('keeps the charger at 14 A while it still draws its 20 A, after it echoes the new step', async () => {
+      const state = await stepChargerTo14a();
+      vi.setSystemTime(new Date(Date.now() + 3_000));
+
+      const result = await buildSheddingPlanForSpec(
+        ...chargingCycle(chargingHome({ selectedStepId: '14a', desiredStepId: '14a' }), 6.378),
+        state,
+        chargingDeps(state, { ts: 2_000, powerW: 6_378 }),
+      );
+
+      expect([...result.shedSet]).toEqual(['ev']);
+      expect(result.shedStepTargets.get('ev')).toBe('14a');
+      expect(result.outcome.kind).toBe('held');
+    });
+
+    it('does not walk the charger down a rung per held cycle while its step is pending', async () => {
+      const state = await stepChargerTo14a();
+      const shedAtMs = Date.now();
+      const pendingCharger = { selectedStepId: '20a', desiredStepId: '14a', stepCommandPending: true };
+
+      for (const [afterMs, powerW] of [[3_000, 6_378], [10_000, 6_381], [20_000, 6_379]] as const) {
+        vi.setSystemTime(new Date(shedAtMs + afterMs));
+        const result = await buildSheddingPlanForSpec(
+          ...chargingCycle(chargingHome(pendingCharger), powerW / 1000),
+          state,
+          chargingDeps(state, { ts: 1_000 + afterMs, powerW }),
+        );
+        expect(result.shedStepTargets.get('ev')).toBe('14a');
+        expect(result.shedSet.has('bath')).toBe(false);
+        state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
+      }
+    });
+
+    it('prices the charger from 14 A once it has landed there but the reading has not caught up', async () => {
+      const state = await stepChargerTo14a();
+      vi.setSystemTime(new Date(Date.now() + 3_000));
+
+      // The charger's own meter shows the 14 A step landed; the whole-home
+      // reading still carries its 20 A, and a 1 kW load it did not cause has
+      // started on top.
+      const result = await buildSheddingPlanForSpec(
+        ...chargingCycle(chargingHome({ selectedStepId: '14a', desiredStepId: '14a', currentDrawKw: 3.07 }), 7.378),
+        state,
+        chargingDeps(state, { ts: 2_000, powerW: 7_378 }),
+      );
+
+      // 2.063 kW over, 1.321 kW of it not on the reading yet: 0.742 kW is new,
+      // and 14 A -> 10 A frees 0.77 kW of it. Priced from the meter alone the
+      // charger would have been turned off for the whole 2.063 kW.
+      expect(result.shedStepTargets.get('ev')).toBe('10a');
+      expect(result.shedSet.has('bath')).toBe(false);
+      if (result.outcome.kind !== 'shed') throw new Error(`expected a shed outcome, got ${result.outcome.kind}`);
+      // The credit still outstanding rides along, so the next reading is counted
+      // against both steps.
+      expect(result.outcome.latch?.decisions.get('ev')?.creditedKw).toBeCloseTo((CHARGER_DRAW_KW - 3.22) + (3.07 - 2.3), 6);
+      expect(result.outcome.latch?.stepTargets.get('ev')).toBe('10a');
+    });
+
+    it('does not count the charger\'s undelivered relief twice when a residual is shed', async () => {
+      const state = await stepChargerTo14a();
+      vi.setSystemTime(new Date(Date.now() + 3_000));
+
+      // Still drawing its 20 A, with a 1 kW load the charger did not cause on top.
+      const result = await buildSheddingPlanForSpec(
+        ...chargingCycle(chargingHome({ selectedStepId: '14a', desiredStepId: '14a' }), 7.378),
+        state,
+        chargingDeps(state, { ts: 2_000, powerW: 7_378 }),
+      );
+
+      // 0.742 kW is new. The 1.321 kW still above 14 A is already credited, so
+      // 14 A -> 12 A frees 0.46 kW, not the 1.78 kW the meter would price it at:
+      // stopping at 12 A would leave the deficit open.
+      expect(result.shedStepTargets.get('ev')).toBe('10a');
+      expect(result.shedSet.has('bath')).toBe(false);
+    });
+
+    it('keeps measuring a parked charger against its floor when a residual shed re-latches', async () => {
+      const state = createPlanEngineState();
+      state.overshoot.enter(Date.now());
+      const setStepDeps = (sample: { ts: number; powerW: number }): SheddingDeps => ({
+        ...chargingDeps(state, sample),
+        getShedBehavior: (deviceId: string) => (deviceId === 'ev' ? { action: 'set_step' } : { action: 'turn_off' }),
+      });
+      const first = await buildSheddingPlanForSpec(
+        ...chargingCycle(chargingHome(), SOFT_LIMIT_KW + 3),
+        state,
+        setStepDeps({ ts: 1_000, powerW: (SOFT_LIMIT_KW + 3) * 1000 }),
+      );
+      expect(first.shedStepTargets.get('ev')).toBe('6a');
+      state.applySheddingOutcome(first.outcome, first.recoveredAtMs);
+      vi.setSystemTime(new Date(Date.now() + 3_000));
+
+      // Parked at its floor, the charger is no candidate any more, but it still
+      // draws its 20 A; a 0.5 kW load starts and the bathroom floor covers it.
+      const result = await buildSheddingPlanForSpec(
+        ...chargingCycle(chargingHome({ selectedStepId: '6a', desiredStepId: '6a' }), SOFT_LIMIT_KW + 3.5),
+        state,
+        setStepDeps({ ts: 2_000, powerW: (SOFT_LIMIT_KW + 3.5) * 1000 }),
+      );
+
+      expect(result.shedSet.has('bath')).toBe(true);
+      if (result.outcome.kind !== 'shed') throw new Error(`expected a shed outcome, got ${result.outcome.kind}`);
+      // Without its rung, the next reading would count the charger's whole draw
+      // as still to come.
+      expect(result.outcome.latch?.stepTargets.get('ev')).toBe('6a');
+      expect(result.outcome.latch?.decisions.get('ev')?.creditedKw).toBeCloseTo(CHARGER_DRAW_KW - 1.38, 6);
+    });
+
+    it('credits a turn-off that is still pending, shedding only what it leaves open', async () => {
+      const devices = (heaterDrawKw: number) => [
+        buildDevice({
+          id: 'heater', name: 'VVB', priority: 5, currentDrawKw: heaterDrawKw, binaryControl: { on: true }, controllable: true,
+        }),
+        buildDevice({
+          id: 'hall', name: 'Gang', priority: 3, currentDrawKw: 0.5, binaryControl: { on: true }, controllable: true,
+        }),
+        buildDevice({
+          id: 'bath', name: 'Bad', priority: 1, currentDrawKw: 1.14, binaryControl: { on: true }, controllable: true,
+        }),
+      ];
+      const state = createPlanEngineState();
+      state.overshoot.enter(Date.now());
+      const first = await buildSheddingPlanForSpec(
+        ...chargingCycle(devices(2), SOFT_LIMIT_KW + 1.8),
+        state,
+        chargingDeps(state, { ts: 1_000, powerW: (SOFT_LIMIT_KW + 1.8) * 1000 }),
+      );
+      expect([...first.shedSet]).toEqual(['heater']);
+      state.applySheddingOutcome(first.outcome, first.recoveredAtMs);
+      // The executor's record of the off it sent, still unconfirmed.
+      state.pendingBinaryCommands.heater = { dispatchState: 'accepted', desired: false, startedMs: Date.now() };
+
+      vi.setSystemTime(new Date(Date.now() + 3_000));
+      // The heater still draws, and a 0.3 kW load has started.
+      const result = await buildSheddingPlanForSpec(
+        ...chargingCycle(devices(2), SOFT_LIMIT_KW + 2.1),
+        state,
+        chargingDeps(state, { ts: 2_000, powerW: (SOFT_LIMIT_KW + 2.1) * 1000 }),
+      );
+
+      expect(result.shedSet.has('heater')).toBe(true);
+      expect(result.shedSet.has('hall')).toBe(true);
+      expect(result.shedSet.has('bath')).toBe(false);
+    });
+
+    it('stops crediting an earlier device on its own clock when a residual shed re-latches', async () => {
+      const devices = (heaterDrawKw: number) => [
+        buildDevice({
+          id: 'heater', name: 'VVB', priority: 5, currentDrawKw: heaterDrawKw, binaryControl: { on: true }, controllable: true,
+        }),
+        buildDevice({
+          id: 'hall', name: 'Gang', priority: 3, currentDrawKw: 0.5, binaryControl: { on: true }, controllable: true,
+        }),
+        buildDevice({
+          id: 'bath', name: 'Bad', priority: 1, currentDrawKw: 1.14, binaryControl: { on: true }, controllable: true,
+        }),
+      ];
+      const state = createPlanEngineState();
+      state.overshoot.enter(Date.now());
+      const shedAtMs = Date.now();
+      const cycle = async (afterMs: number, overKw: number) => {
+        vi.setSystemTime(new Date(shedAtMs + afterMs));
+        const result = await buildSheddingPlanForSpec(
+          ...chargingCycle(devices(2), SOFT_LIMIT_KW + overKw),
+          state,
+          chargingDeps(state, { ts: 1_000 + afterMs, powerW: (SOFT_LIMIT_KW + overKw) * 1000 }),
+        );
+        state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
+        return result;
+      };
+
+      // The heater is shed for 1.8 kW, and its off write is lost: it keeps drawing,
+      // and the executor's record of the off stays unconfirmed.
+      expect([...(await cycle(0, 1.8)).shedSet]).toEqual(['heater']);
+      state.pendingBinaryCommands.heater = { dispatchState: 'accepted', desired: false, startedMs: shedAtMs };
+      // 20 s on, a 0.3 kW load starts: the hall covers it and the decision re-latches.
+      const residual = await cycle(20_000, 2.1);
+      expect(residual.shedSet.has('hall')).toBe(true);
+      expect(residual.shedSet.has('bath')).toBe(false);
+      // 31 s after the heater's own decision its credit is gone, however recent
+      // the hall's: its 2 kW escalates onto the next device, as an unconfirmed
+      // command always has.
+      const escalated = await cycle(31_000, 2.1);
+      expect(escalated.shedSet.has('bath')).toBe(true);
+    });
+
+    it('stops crediting a stuck charger 30 s after its first decision, however often it is deepened', async () => {
+      const state = await stepChargerTo14a();
+      const shedAtMs = Date.now();
+      // The 14 A write is lost: the charger keeps drawing its 20 A, never echoes,
+      // and the executor's step command stays pending.
+      const stuck = { selectedStepId: '20a', desiredStepId: '14a', stepCommandPending: true };
+      const cycle = async (afterMs: number, totalKw: number) => {
+        vi.setSystemTime(new Date(shedAtMs + afterMs));
+        const result = await buildSheddingPlanForSpec(
+          ...chargingCycle(chargingHome(stuck), totalKw),
+          state,
+          chargingDeps(state, { ts: 1_000 + afterMs, powerW: Math.round(totalKw * 1000) }),
+        );
+        state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
+        return result;
+      };
+
+      // A 0.4 kW load at 20 s deepens the charger one rung; it stays stamped at 0 s.
+      const deepened = await cycle(20_000, 6.736);
+      expect(deepened.shedStepTargets.get('ev')).toBe('12a');
+      expect(state.shedPlanLatch?.decisions.get('ev')?.decidedAtMs).toBe(shedAtMs);
+      // At 31 s nothing it was asked for has shown: its credit is gone and the
+      // breach escalates onto the next device.
+      const escalated = await cycle(31_000, 6.736);
+      expect(escalated.shedSet.has('bath')).toBe(true);
+    });
+
+    it('does not revive credit the reading has shown when another load lifts it again', async () => {
+      const heaterHome = (on: boolean) => [buildDevice({
+        id: 'heater', name: 'VVB', priority: 5, currentDrawKw: on ? 2 : 0, binaryControl: { on }, controllable: true,
+      })];
+      const state = createPlanEngineState();
+      state.overshoot.enter(Date.now());
+      const shedAtMs = Date.now();
+      const cycle = async (afterMs: number, on: boolean, overKw: number) => {
+        vi.setSystemTime(new Date(shedAtMs + afterMs));
+        const deps = chargingDeps(state, { ts: 1_000 + afterMs, powerW: Math.round((SOFT_LIMIT_KW + overKw) * 1000) });
+        const result = await buildSheddingPlanForSpec(
+          ...chargingCycle(heaterHome(on), SOFT_LIMIT_KW + overKw),
+          state,
+          deps,
+        );
+        state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
+        return { result, deps };
+      };
+      const credited = { event: 'plan_shed_held_pending_relief' };
+
+      expect([...(await cycle(0, true, 1.8)).result.shedSet]).toEqual(['heater']);
+      // The heater is off and the reading has fallen 1.2 kW: it has seen the shed,
+      // and the house is still over with nothing left to limit.
+      const seen = await cycle(5_000, false, 0.6);
+      expect(seen.deps.debugStructured).not.toHaveBeenCalledWith(expect.objectContaining(credited));
+      expect(state.shedPlanLatch?.decisions.has('heater')).toBe(false);
+      // A 1 kW load lifts the reading back up. The heater's relief is already on
+      // it, so nothing is on its way and none is credited.
+      const lifted = await cycle(10_000, false, 1.6);
+      expect(lifted.deps.debugStructured).not.toHaveBeenCalledWith(expect.objectContaining(credited));
+    });
+
+    it('holds a decision in its window on a rebuild of the same sample, adding nothing', async () => {
+      const state = await stepChargerTo14a();
+      vi.setSystemTime(new Date(Date.now() + 2_000));
+
+      // A settings change rebuilds on the sample the shed was planned from, with
+      // the charger still drawing its 20 A.
+      const result = await buildSheddingPlanForSpec(
+        ...chargingCycle(chargingHome({ selectedStepId: '14a', desiredStepId: '14a' }), 6.336),
+        state,
+        chargingDeps(state, { ts: 1_000, powerW: 6_336 }),
+      );
+
+      expect([...result.shedSet]).toEqual(['ev']);
+      expect(result.shedStepTargets.get('ev')).toBe('14a');
+      expect(result.outcome.kind).toBe('held');
     });
   });
 

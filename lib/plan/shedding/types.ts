@@ -91,6 +91,12 @@ export type PlanSheddingResult = {
   shedStepTargets: SheddingPlan['shedStepTargets'];
   outcome: SheddingOutcome;
   overshootStats: SheddingPlan['overshootStats'];
+  /**
+   * Relief a recent shed counted on that this cycle's reading does not show yet
+   * and that the cycle credited (`pendingRelief.ts`); 0 when none was. Relief
+   * still on its way, as far as the hard-cap verdict is concerned.
+   */
+  pendingReliefKw: number;
 };
 
 export type ShedCandidateParams = {
