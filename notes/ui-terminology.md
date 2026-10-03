@@ -1765,6 +1765,20 @@ things the path's lede promises: prices, solar, Smart tasks.
 - **Dismiss is the owner saying "not relevant to me"**, remembered like any
   other recommendation. Do not add a suggestion that cannot be dismissed.
 
+### Keep a device within Smart tasks
+
+A managed, switchable device with a current or past Smart task gets an Optional
+suggestion while Power-limit control and `Only PELS starts this device` are both
+off. This applies to charging, heating, and energy tasks; the copy stays
+device-neutral.
+
+- Title: `Keep {device name} within Smart tasks`.
+- Body: `Turn on “Only PELS starts this device” to keep it within Smart tasks. PELS turns it off if turned on outside a Smart task. Without a Smart task, it stays off.`
+- Action: `Review device`, opening that device's settings.
+- Dismissal is remembered per device and suggestion type. Enabling the policy
+  removes the suggestion; disabling it brings the suggestion back unless it
+  was dismissed. Toggling the policy does not clear a dismissal.
+
 ### Car battery recommendations
 
 - A supported car with no charger selection is **Optional**, not Recommended.

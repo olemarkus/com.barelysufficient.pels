@@ -3,7 +3,17 @@ import type {
   SettingsUiEvSocFlowReporter,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
-import { supportsNativeWiringActivation, type SettingsUiDeviceDetailItem } from './deviceUtils.ts';
+import {
+  resolveDeviceStartPolicy,
+  type DeviceStartPolicy,
+} from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
+import {
+  requiresNativeWiringForActivation,
+  supportsNativeWiringActivation,
+  supportsPowerDevice,
+  supportsTemperatureDevice,
+  type SettingsUiDeviceDetailItem,
+} from './deviceUtils.ts';
 
 export type RecommendationDismissals = Record<string, number>;
 
@@ -163,6 +173,32 @@ export const resolveEvSocFlowConflictRecommendations = (
     }];
   });
 };
+
+export const resolveSmartTaskStartPolicyRecommendations = (
+  devices: readonly SettingsUiDeviceDetailItem[],
+  managedMap: Readonly<Record<string, boolean>>,
+  controllableMap: Readonly<Record<string, boolean>>,
+  startPolicyMap: Readonly<Record<string, DeviceStartPolicy>>,
+  usedSmartTaskDeviceIds: ReadonlySet<string>,
+): SetupRecommendation[] => devices.flatMap((device) => {
+  if (!usedSmartTaskDeviceIds.has(device.id)
+    || managedMap[device.id] !== true
+    || device.binaryControllable !== true
+    || !(supportsPowerDevice(device) || supportsTemperatureDevice(device))
+    || requiresNativeWiringForActivation(device)
+    || controllableMap[device.id] === true
+    || resolveDeviceStartPolicy(startPolicyMap, device.id) === 'pels_only') return [];
+  return [{
+    id: recommendationId('smart-task-start-policy', device.id),
+    version: RECOMMENDATION_VERSION,
+    category: 'optional',
+    title: `Keep ${device.name} within Smart tasks`,
+    body: 'Turn on “Only PELS starts this device” to keep it within Smart tasks. '
+      + 'PELS turns it off if turned on outside a Smart task. Without a Smart task, it stays off.',
+    actionLabel: 'Review device',
+    target: { kind: 'device', deviceId: device.id },
+  }];
+});
 
 export const resolveSetupRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],

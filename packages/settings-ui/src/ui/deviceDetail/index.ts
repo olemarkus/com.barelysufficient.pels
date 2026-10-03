@@ -18,6 +18,7 @@ import {
   deviceDetailSetupDisclosure,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
+import { refreshRecommendationSurfaces } from '../recommendations.ts';
 import {
   createDefaultSteppedLoadProfile,
   isNativeSteppedLoadProfileActive,
@@ -149,6 +150,7 @@ const refreshSharedDeviceViews = () => {
   renderDevices(state.latestDevices);
   renderPriorities(state.latestDevices);
   renderPriceOptimization(state.latestDevices);
+  refreshRecommendationSurfaces();
 };
 
 const refreshCurrentDeviceControlStates = () => {

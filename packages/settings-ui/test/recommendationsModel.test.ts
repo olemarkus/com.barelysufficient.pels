@@ -4,6 +4,7 @@ import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
   resolveSetupRecommendations,
+  resolveSmartTaskStartPolicyRecommendations,
 } from '../src/ui/recommendationsModel.ts';
 import type { EvCarAssociations } from '../../contracts/src/types.ts';
 import type {
@@ -36,6 +37,34 @@ const resolve = (
 );
 
 describe('setup recommendations', () => {
+  it('offers the start policy only for switchable, managed task devices without power limiting', () => {
+    const devices = [
+      device({ id: 'eligible', binaryControllable: true, powerCapable: true }),
+      device({ id: 'unsupported', binaryControllable: true, powerCapable: false }),
+      device({ id: 'limited', binaryControllable: true, powerCapable: true }),
+      device({ id: 'enabled', binaryControllable: true, powerCapable: true }),
+      device({ id: 'unmanaged', binaryControllable: true, powerCapable: true }),
+      device({ id: 'unswitchable', binaryControllable: false, powerCapable: true }),
+      device({ id: 'unused', binaryControllable: true, powerCapable: true }),
+    ];
+    const used = new Set(devices.filter((item) => item.id !== 'unused').map((item) => item.id));
+    const recommendations = resolveSmartTaskStartPolicyRecommendations(
+      devices,
+      { eligible: true, unsupported: true, limited: true, enabled: true, unswitchable: true, unused: true },
+      { limited: true },
+      { enabled: 'pels_only' },
+      used,
+    );
+    expect(recommendations).toHaveLength(1);
+    expect(recommendations[0]).toMatchObject({
+      id: 'smart-task-start-policy:eligible',
+      category: 'optional',
+      target: { kind: 'device', deviceId: 'eligible' },
+    });
+    expect(groupSetupRecommendations(recommendations, { 'smart-task-start-policy:eligible': 1 }))
+      .toEqual({ active: [], dismissed: recommendations });
+  });
+
   it.each(['Easee', 'Høiax'])(
     'recommends available built-in control for %s without claiming a Flow was detected', (name) => {
       const recommendations = resolve([device({
