@@ -82,3 +82,5 @@ design-of-record behind those digests.
 - `starvation/README.md` — temperature-device starvation model; detection + rescue widget shipped,
   flow cards / insights still the gap.
 - `restore-eagerness/README.md` — narrowed remaining restore-admission concern (late-ramp overshoot).
+- `competitive-landscape.md` — internal market analysis: what each market pays for, the peer apps on
+  the platform, an honest scorecard, and the plan that follows from it.
