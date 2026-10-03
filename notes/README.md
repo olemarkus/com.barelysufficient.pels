@@ -82,3 +82,5 @@ design-of-record behind those digests.
 - `starvation/README.md` — temperature-device starvation model; detection + rescue widget shipped,
   flow cards / insights still the gap.
 - `restore-eagerness/README.md` — narrowed remaining restore-admission concern (late-ramp overshoot).
+- `battery-lever.md` — forward design: the home battery as a lever the planner spends (discharge
+  before shedding, charge from the surplus pool), its invariants and the staged slices.
