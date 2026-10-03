@@ -1,3 +1,4 @@
+import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
 // End-to-end proof of the PRIMARY price mechanism in smart tasks: the build-time
 // allocator fills CHEAPER hours first and leaves more expensive ones empty,
 // comparing hours RELATIVELY (currency-invariant), not against an absolute band.
@@ -118,6 +119,8 @@ const combinedFor = (snapshot: DailyBudgetUiPayload): CombinedPricesV2 => {
 };
 
 const objective = (energyNeededKWh: number): DeferredObjective => ({
+  fullyReserved: false,
+  deadlineMarginMs: 0,
   id: `${DEVICE_ID}:temperature`,
   kind: 'temperature',
   enforcement: 'soft',
@@ -126,6 +129,19 @@ const objective = (energyNeededKWh: number): DeferredObjective => ({
 });
 
 const diagnosticFor = (plan: DeferredObjectiveHorizonPlan, energyNeededKWh: number): DeferredObjectiveDiagnostic => ({
+  completion: resolveTaskCompletion({
+    currentValue: 50, requestedTarget: 65, direction: 'increasing', thermalEvidence: { kind: 'none' },
+  }),
+  evaluation: {
+    deviceId: DEVICE_ID, deadlineAtMs: DEADLINE_MS, requestedTarget: 65,
+    progress: { kind: 'known', value: 50, direction: 'increasing' },
+    completion: resolveTaskCompletion({
+      currentValue: 50, requestedTarget: 65, direction: 'increasing', thermalEvidence: { kind: 'none' },
+    }),
+    planning: { kind: 'allocated', plan },
+    permissions: { budgetExempt: false, limitLowerPriority: false, pauseLowerPriority: false },
+    targetControl: { kind: 'temperature', value: 65 },
+  },
   deviceId: DEVICE_ID,
   deviceName: 'Connected 300',
   objectiveId: `${DEVICE_ID}:temperature`,
@@ -184,11 +200,12 @@ const runBuildTime = (horizonPrices: readonly number[], energyNeededKWh: number)
   expect(horizon.reasonCode).toBeNull(); // the producer accepted the price horizon
 
   const plan = planDeferredObjectiveHorizon({
+    aheadOfHourMilestone: false,
     nowMs: NOW_MS,
     objective: objective(energyNeededKWh),
     steps: [STEP],
     buckets: horizon.buckets,
-    committed: false, // fresh build-time allocation (no prior commitment)
+    commitment: { kind: 'uncommitted' }, // fresh build-time allocation (no prior commitment)
   });
 
   const bookedByPrice = new Map<number, number>();
@@ -200,7 +217,7 @@ const runBuildTime = (horizonPrices: readonly number[], energyNeededKWh: number)
     if (bucket.current) currentHourBookedKWh += bucket.plannedUsefulEnergyKWh;
   }
 
-  const decision = applyDeferredObjectiveAdmission([diagnosticFor(plan, energyNeededKWh)], [device]).get(DEVICE_ID)!;
+  const decision = applyDeferredObjectiveAdmission([diagnosticFor(plan, energyNeededKWh).evaluation], [device]).get(DEVICE_ID)!;
   return {
     bookedByPrice,
     currentHourBookedKWh,
@@ -229,11 +246,12 @@ const runBuildTimeSingleHour = (price: number): number => {
   });
   expect(horizon.reasonCode).toBeNull();
   const plan = planDeferredObjectiveHorizon({
+    aheadOfHourMilestone: false,
     nowMs: DAY_START_MS + CURRENT_HOUR * HOUR_MS,
     objective: objective(0.8), // < 1 kWh step capacity, so the cap is not the binding limit
     steps: [STEP],
     buckets: horizon.buckets,
-    committed: false,
+    commitment: { kind: 'uncommitted' },
   });
   return plan.plannedBuckets.reduce((sum, b) => sum + b.plannedUsefulEnergyKWh, 0);
 };

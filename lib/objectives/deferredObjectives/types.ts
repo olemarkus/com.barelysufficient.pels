@@ -40,8 +40,7 @@ export type DeferredObjectiveHorizonStatusDetail =
  * Invariants a caller may rely on:
  * - Exactly one of the three holds per cycle, and it is resolved once. Consumers
  *   (`admission.resolveDecision`, and through its decision
- *   `decorationController.resolveDeferredAvoidDeviceIds`;
- *   `diagnosticFields.isCurrentBucketPlanned`) read it and must not re-derive it from
+ *   `decorationController.resolveDeferredAvoidDeviceIds`) read it and must not re-derive it from
  *   `currentBucket.plannedUsefulEnergyKWh`, `priceDeferralEligible` or the status.
  * - `claimed` ⇒ the hour carries booked energy and the device should be driven.
  * - `unclaimed` ⇒ the hour carries NO booked energy and the task cannot finish
@@ -81,11 +80,10 @@ export type DeferredObjective = {
   // (`horizonPlanner.ts`) promotes the
   // committed floor from `activeSteps[0]` to the highest step the per-bucket
   // `reservedHeadroomKw` forecast supports. The persisted commitment is still
-  // physical — only the step it commits to changes. Optional/backward-compat:
-  // missing → false → floor stays at min step.
-  fullyReserved?: boolean;
+  // physical — only the step it commits to changes.
+  fullyReserved: boolean;
   deadlineAtMs: number;
-  deadlineMarginMs?: number;
+  deadlineMarginMs: number;
 };
 
 /**
@@ -187,22 +185,19 @@ export type DeferredObjectiveHorizonInput = {
   objective: DeferredObjective;
   steps: DeferredObjectiveStep[];
   buckets: DeferredObjectiveHorizonBucket[];
-  // `true` when the producer has an active commitment for this objective —
-  // even when the committed hour list is empty (e.g. a `cannot_meet` plan
-  // committed zero hours). The horizon planner uses this flag, not
-  // `committedHours.length`, to decide between the committed-replan path and
-  // the fresh-optimizer path so the two cases stay distinguishable.
-  committed?: boolean;
-  committedHours?: DeferredObjectiveCommittedHour[];
+  // An active zero-hour commitment remains distinct from a fresh allocation.
+  // The producer resolves commitment presence before entering the horizon engine.
+  commitment:
+    | { kind: 'uncommitted' }
+    | { kind: 'committed'; hours: DeferredObjectiveCommittedHour[] };
   // Producer-resolved per-cycle trajectory gate (mid-execution price deferral).
   // `true` when the buffered energy still needed is already covered by the
   // committed plan's future hours — i.e. the device is at/above this hour's
   // committed milestone (resolved by `isAheadOfHourMilestone`, which the planner
   // cannot compute itself — it sees neither the measured-driven `energyNeededKWh`
   // nor the commitment). Combined with the relative-price test to set
-  // `priceDeferralEligible`. Optional/back-compat: missing → not ahead.
-  aheadOfHourMilestone?: boolean;
-  epsilonKWh?: number;
+  // `priceDeferralEligible`.
+  aheadOfHourMilestone: boolean;
 };
 
 export type DeferredObjectiveCommittedHour = {

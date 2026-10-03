@@ -3,20 +3,7 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 
-// Internal type matching `DeferredObjectiveDiagnostic`'s shape we need —
-// duplicated narrowly to keep this module decoupled from the full diagnostic
-// import surface. The recorder owns the full type; the resolver only needs
-// the horizon-plan shape to compute the price-up-to value. `pricesAvailableUpToMs`
-// is the authoritative price-data watermark stamped by the bridge from the SOURCE
-// price horizon; `plannedBuckets` is the legacy fallback for diagnostics that
-// predate that field (and for the frozen mid-hour read, which carries neither a
-// fresh horizon nor the watermark).
-type DiagnosticLike = {
-  horizonPlan?: {
-    plannedBuckets: ReadonlyArray<{ endMs: number }>;
-    pricesAvailableUpToMs?: number | null;
-  } | null;
-};
+import type { TaskEvaluation } from './taskEvaluation';
 
 // The "prices were valid through" watermark for a revision. Prefers
 // `horizonPlan.pricesAvailableUpToMs` — the far edge of the AVAILABLE price data
@@ -29,10 +16,10 @@ type DiagnosticLike = {
 // `energyNeededKWh === 0`, pending/invalid diagnostic, or a frozen read that
 // stamped no watermark and booked no buckets).
 export const resolveHorizonPriceWatermark = (
-  diag: DiagnosticLike,
+  evaluation: TaskEvaluation,
 ): number | null => {
-  const horizonPlan = diag.horizonPlan;
-  if (!horizonPlan) return null;
+  if (evaluation.planning.kind === 'inactive') return null;
+  const horizonPlan = evaluation.planning.plan;
   const stamped = horizonPlan.pricesAvailableUpToMs;
   if (typeof stamped === 'number' && Number.isFinite(stamped)) return stamped;
   let latest: number | null = null;
@@ -72,9 +59,9 @@ export const resolvePersistedPricesUpTo = (
 // on PR #890 named that mis-labelling.
 export const hasPriceHorizonAdvanced = (
   latest: DeferredObjectiveActivePlanRevisionV1,
-  diag: DiagnosticLike,
+  evaluation: TaskEvaluation,
 ): boolean => {
-  const next = resolveHorizonPriceWatermark(diag);
+  const next = resolveHorizonPriceWatermark(evaluation);
   if (next === null) return false;
   const previous = latest.computedFromPricesUpTo;
   if (previous === null) return false;

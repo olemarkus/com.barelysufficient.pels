@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 // Integration coverage for the "device is no longer managed" smart-task pause
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // (`unmanaged` exclusion → `objective_device_unmanaged`):
@@ -27,7 +28,6 @@ import { resolvePendingReason } from '../../lib/objectives/deferredObjectives/ac
 import { resolveDiagnosticReasonCode } from '../../lib/objectives/deferredObjectives/activePlanDiagnosticReason';
 import {
   hasTrustworthyProgress,
-  PROGRESS_UNTRUSTWORTHY_REASON_CODES,
 } from '../../lib/objectives/deferredObjectives/planHistoryV4Helpers';
 import type { ResolveObjectiveDeviceExclusion } from '../../lib/objectives/deferredObjectives/deviceExclusion';
 import { resolveSmartTaskDeviceExclusion } from '../../setup/appInit/smartTaskHomeScope';
@@ -107,6 +107,7 @@ const buildDiagnosticsParams = (overrides: {
   priceOptimizationEnabled: true,
   activePlans: null,
   getStallClassification: noStallEvidence,
+  isReservationSuppressed: noReservationSuppression,
   getDeliveredEnergyKWh: noDeliveredEnergy,
   resolveDeviceExclusion: overrides.resolveDeviceExclusion ?? noDeviceExclusion,
 });
@@ -143,7 +144,7 @@ describe('smart task on an un-managed device', () => {
       devices,
       resolveDeviceExclusion: () => 'unmanaged',
     }));
-    expect(applyDeferredObjectiveAdmission(diagnostics, devices).get('heater-1')?.kind)
+    expect(applyDeferredObjectiveAdmission((diagnostics).map((diagnostic) => diagnostic.evaluation), devices).get('heater-1')?.kind)
       .toBe('inactive');
   });
 
@@ -226,10 +227,9 @@ describe('smart task on an un-managed device', () => {
       resolveDeviceExclusion: () => 'unmanaged',
     }));
     // `hasTrustworthyProgress` is the gate the recorder actually applies before
-    // writing `progressSamples` / `finalProgress*`; the set below is what backs
-    // it, asserted too so the code cannot quietly leave the set.
+    // writing `progressSamples` / `finalProgress*` from operational facts.
     expect(hasTrustworthyProgress(diagnostic)).toBe(false);
-    expect(PROGRESS_UNTRUSTWORTHY_REASON_CODES.has('objective_device_unmanaged')).toBe(true);
+    expect(diagnostic.evaluation.progress.kind).toBe('unobserved');
   });
 });
 

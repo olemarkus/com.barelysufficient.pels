@@ -142,6 +142,7 @@ const OK_PREVIEW = {
   deadlineLabel: 'Today 07:00',
   scheduledWindowLabel: '02:00–04:00',
   estimate: {
+    budgetRole: 'none' as const,
     status: 'on_track' as const,
     scheduledHours: [{ startsAtMs: Date.now(), plannedKWh: 2 }],
     projectedFinishAtMs: Date.now() + 2 * 60 * 60 * 1000,
@@ -201,6 +202,7 @@ describe('create smart task widget browser', () => {
         deadlineLabel: 'Today 07:00',
         scheduledWindowLabel: '02:00–04:00',
         estimate: {
+          budgetRole: 'none' as const,
           status: 'on_track' as const,
           scheduledHours: [{ startsAtMs: Date.now(), plannedKWh: 2 }],
           projectedFinishAtMs: Date.now() + 2 * 60 * 60 * 1000,

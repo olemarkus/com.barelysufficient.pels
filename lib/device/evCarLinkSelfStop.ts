@@ -1,3 +1,4 @@
+import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDelivery';
 import type { EvCarLinkChargerView } from './evCarLinkChargerView';
 import type { EvCarLinkEvent } from './evCarLinkEvents';
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
@@ -98,6 +99,40 @@ export class EvCarSelfStopWatcher {
     private readonly lastStopCommandAtMs = new Map<string, number>();
 
     constructor(private readonly deps: SelfStopDeps) {}
+
+    /** Qualified limits use matched live readings; other stops require a confirmed episode. */
+    getTaskDeliveryConstraint(
+        chargerId: string,
+        chargers: readonly EvCarLinkChargerView[],
+        links: ReadonlyMap<string, SelfStopLink>,
+        cars: ReadonlyMap<string, CarObservation>,
+    ): TaskDeviceConstraint {
+        const confirmed = this.selfStopReported.has(chargerId);
+        const link = links.get(chargerId) ?? (confirmed ? this.lingering.get(chargerId) : undefined);
+        const car = link ? cars.get(link.carId) : undefined;
+        const charger = chargers.find((candidate) => candidate.id === chargerId);
+        if (link && car && charger && this.carReachedQualifiedLimit(charger, link, car)) {
+            return { kind: 'limit_reached' };
+        }
+        const episode = this.selfStopSince.get(chargerId);
+        if (!episode || !confirmed) return { kind: 'none' };
+        return {
+            kind: 'self_stopped',
+            cause: episode.reason === 'car_schedule_hold' ? 'device_schedule' : 'device_not_accepting',
+        };
+    }
+
+    private carReachedQualifiedLimit(
+        charger: EvCarLinkChargerView,
+        link: SelfStopLink,
+        car: CarObservation,
+    ): boolean {
+        if (car.state !== 'plugged_in' || car.socPct === undefined || car.socAtMs < link.sinceMs
+            || !hasSessionPowerEvidence(charger, link.sinceMs)
+            || charger.measuredPowerW > EV_CAR_LINK_IDLE_POWER_W) return false;
+        const limit = resolveEvCarChargeLimit(this.deps.getSnapshot(), link.carId);
+        return limit !== null && car.socPct >= limit;
+    }
 
     /** Drops a charger's episode state and idle history when its session ends. */
     forget(chargerId: string): void {
@@ -211,7 +246,7 @@ export class EvCarSelfStopWatcher {
         if (lingering && nowMs - lingering.endedAtMs < EV_CAR_LINK_LINGER_CONFIRM_MS) return;
 
         this.selfStopReported.add(charger.id);
-        this.lingering.delete(charger.id);
+        // Keep observing a confirmed stop until fresh car or power evidence ends it.
         this.emitSelfStop({
             charger, link, car, reason, heldForMs, nowMs, chargerPowerW: charger.measuredPowerW,
         });
@@ -225,7 +260,9 @@ export class EvCarSelfStopWatcher {
         const link = this.lingering.get(chargerId);
         if (link === undefined) return undefined;
         const linkedElsewhere = [...links.values()].some((active) => active.carId === link.carId);
-        if (!linkedElsewhere && nowMs - link.endedAtMs <= EV_CAR_LINK_LINGER_MAX_MS) return link;
+        const stillObserved = this.selfStopReported.has(chargerId)
+            || nowMs - link.endedAtMs <= EV_CAR_LINK_LINGER_MAX_MS;
+        if (!linkedElsewhere && stillObserved) return link;
         this.lingering.delete(chargerId);
         return undefined;
     }

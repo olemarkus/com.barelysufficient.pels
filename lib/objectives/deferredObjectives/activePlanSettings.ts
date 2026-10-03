@@ -1,3 +1,4 @@
+import { isDeferredObjectiveLiveCompletion } from '../../../packages/shared-domain/src/deferredObjectiveLiveCompletion';
 import type {
   DeferredObjectiveActivePlanCommitmentV1,
   DeferredObjectiveActivePlanHourV1,
@@ -323,7 +324,8 @@ const isOptionalCarChargeLimit = (value: unknown): boolean => {
 // `normalizeDeferredObjectiveActivePlans` moves to `targetValue` once.
 // The guard does not check the three target fields; `readStoredTargetValue`
 // reads them from the raw record, so they stay `unknown` here.
-type StoredActivePlan = Omit<DeferredObjectiveActivePlanV1, 'targetValue'> & {
+type StoredActivePlan = Omit<DeferredObjectiveActivePlanV1, 'targetValue' | 'liveCompletion'> & {
+  liveCompletion?: DeferredObjectiveActivePlanV1['liveCompletion'];
   targetValue?: unknown;
   targetTemperatureC?: unknown;
   targetPercent?: unknown;
@@ -339,6 +341,7 @@ const isActivePlan = (value: unknown): value is StoredActivePlan => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return hasValidPlanIdentity(v)
+    && (v.liveCompletion === undefined || isDeferredObjectiveLiveCompletion(v.liveCompletion))
     && isOptionalCarChargeLimit(v.carChargeLimit)
     && isRevisionOrNull(v.original)
     && isRevisionOrNull(v.latest)
@@ -378,6 +381,7 @@ const toLoadedPlan = (plan: StoredActivePlan): DeferredObjectiveActivePlanV1 | u
   if (targetValue === undefined) return undefined;
   return {
     ...current,
+    liveCompletion: plan.liveCompletion ?? { kind: 'unavailable' },
     targetValue,
     latest: plan.latest === null ? null : stripRetiredRevisionFields(plan.latest),
     ...(plan.history ? { history: plan.history.map(stripRetiredRevisionFields) } : {}),

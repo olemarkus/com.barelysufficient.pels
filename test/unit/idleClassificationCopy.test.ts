@@ -5,9 +5,9 @@ import {
 } from '../../lib/objectives/stallEvidence';
 
 describe('classificationImpliesStallSatisfied', () => {
-  it('treats parked classifications (near_target_idle, capped_idle) as stall-satisfied', () => {
+  it('accepts the near-target band while an internal device cap remains unmet', () => {
     expect(classificationImpliesStallSatisfied('near_target_idle')).toBe(true);
-    expect(classificationImpliesStallSatisfied('capped_idle')).toBe(true);
+    expect(classificationImpliesStallSatisfied('capped_idle')).toBe(false);
   });
 
   it('never treats a fault or the absence of a classification as satisfied', () => {

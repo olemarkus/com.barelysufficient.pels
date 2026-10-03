@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 /**
  * Integration safeguards for a committed smart task when planner-input
  * composition loses the effective selected step. The fixture keeps the chosen
@@ -233,6 +234,7 @@ const buildDiagnostic = (
 ): DeferredObjectiveDiagnostic | undefined => buildDeferredObjectiveDiagnostics({
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
+  isReservationSuppressed: noReservationSuppression,
   getDeliveredEnergyKWh: noDeliveredEnergy,
   getPrioritiesForDevices: createFixturePriorityQuery([device]),
   sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
@@ -297,7 +299,7 @@ describe('committed smart task through a planner-input projection gap', () => {
     // has no executable step to expect.
     expect(diag?.expectedStepId).toBeNull();
 
-    const decision = applyDeferredObjectiveAdmission(diag ? [diag] : [], [device]).get(DEVICE_ID);
+    const decision = applyDeferredObjectiveAdmission((diag ? [diag] : []).map((diagnostic) => diagnostic.evaluation), [device]).get(DEVICE_ID);
     expect(decision?.kind).toBe('planned');
     // The budget exemption — the protection whose loss collapsed the hero safe
     // pace 2.2 → 1.3 kW in prod — survives the gap.
@@ -324,7 +326,7 @@ describe('committed smart task through a planner-input projection gap', () => {
     expect(diag?.reasonCode).toBe('objective_missing_charge_rate');
     expect(diag?.liveStepsUnavailable).toBeUndefined();
 
-    const decision = applyDeferredObjectiveAdmission(diag ? [diag] : [], [device]).get(DEVICE_ID);
+    const decision = applyDeferredObjectiveAdmission((diag ? [diag] : []).map((diagnostic) => diagnostic.evaluation), [device]).get(DEVICE_ID);
     expect(decision?.kind).toBe('inactive');
     expect(decision?.budgetExempt).toBe(false);
   });

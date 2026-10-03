@@ -1,3 +1,4 @@
+import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
 import {
   mergeHoursPreservingCommitment,
   shouldFireNotification,
@@ -331,20 +332,26 @@ describe('hasMetadataDriftedWithinSchedule — budget contribution', () => {
   });
   const plan = (budgetContributedToShortfall: boolean) => partialDouble<Params['horizonPlan']>({
     status: 'cannot_meet',
+    statusDetail: 'target_cannot_be_met',
     budgetContributedToShortfall,
   });
-  // `reportedPlanStatus` prefers a resolved trajectory over the plan's status, so
-  // it is pinned to the same value the plan carries — leaving the metadata
-  // comparison as the only thing that can move.
-  const diag = partialDouble<Params['diag']>({
-    reasonCode: 'target_cannot_be_met',
-    trajectory: { kind: 'resolved', status: 'cannot_meet' },
-  });
+  // Operational progress remains below the requested target. The forecast and
+  // persisted status stay identical, isolating budget-contribution metadata.
+  const diag = (horizonPlan: Params['horizonPlan']) => withTaskDiagnosticFixture(
+    partialDouble<Parameters<typeof withTaskDiagnosticFixture>[0]>({
+      deviceId: 'heater', objectiveId: 'heater:temperature', objectiveKind: 'temperature',
+      deadlineAtMs: TWELVE, progressDirection: 'increasing', currentValue: 50, targetValue: 65,
+      targetTemperatureC: 65, currentTemperatureC: 50,
+      reasonCode: 'target_cannot_be_met',
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
+      horizonPlan,
+    }),
+  );
 
   const drifted = (
     latest: ReturnType<typeof revision>,
     horizonPlan: ReturnType<typeof plan>,
-  ): boolean => hasMetadataDriftedWithinSchedule({ latest, horizonPlan, diag });
+  ): boolean => hasMetadataDriftedWithinSchedule({ latest, horizonPlan, diag: diag(horizonPlan) });
 
   it('drifts when the budget starts contributing on an otherwise unchanged plan', () => {
     expect(drifted(revision(), plan(true))).toBe(true);

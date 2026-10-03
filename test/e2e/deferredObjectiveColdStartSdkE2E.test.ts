@@ -205,6 +205,7 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
     const [diag] = buildDeferredObjectiveDiagnostics({
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      isReservationSuppressed: () => false,
       getDeliveredEnergyKWh: noDeliveredEnergy,
       getPrioritiesForDevices: createFixturePriorityQuery([device]),
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
@@ -219,7 +220,7 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
       activePlans,
     });
     recorder.observe(diag ? [diag] : [], nowMs);
-    const decision = diag ? applyDeferredObjectiveAdmission([diag], [device]).get(DEVICE_ID) : undefined;
+    const decision = diag ? applyDeferredObjectiveAdmission([diag.evaluation], [device]).get(DEVICE_ID) : undefined;
     const driven = decision?.kind === 'planned';
 
     const dtH = STEP_MS / HOUR_MS;

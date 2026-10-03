@@ -124,22 +124,14 @@ horizon gating because no future allocation is needed. `satisfied` remains a liv
 not a terminal completion before the deadline: if a later fresh reading moves away from the target,
 the next cycle returns to normal deadline tracking.
 
-Observer stall evidence may also report a temperature objective as satisfied when the device's
-own thermostat has stopped or capped before reaching the requested value. That evidence carries
-the exact setpoint against which it was classified and applies only when the setpoint covers the
-smart-task target in the objective's progress direction. A classification against a setpoint
-that does not cover the task target must never satisfy it.
+Observer near-target idle evidence may accept a temperature objective inside the existing
+observer tolerance, only when the classified setpoint covers the requested target. Internal
+`capped_idle` evidence below target never completes a task. Energy and EV tasks never consume
+thermal evidence. `completionDiagnostic.ts` resolves the decision for live status, reservation
+and history; history records its acceptance and reopens on a trusted observer exit or unmet
+regression. The completion events carry the classification, classified setpoint, measured
+progress and requested target so the decision is traceable.
 
-The verdict and its setpoint travel together as `StallEvidence`, and
-`stallEvidenceCoversTarget` (`lib/objectives/stallEvidence.ts`) is the one
-gate — applied by BOTH stall consumers, `diagnosticsBridge.resolveStallReportedStatus` (live
-status) and `planHistory.maybePromoteOnStall` (recorded outcome), so the two cannot disagree.
-Passing the bare classification is what let a setback satisfy a higher target in production on
-2026-08-24: PELS parked a Connected 300 by writing `target_temperature = 40` while the task
-wanted more, the classifier reported `near_target_idle` against that 40 °C, and because stall
-promotion is terminal (`computeMergedMetState` freezes it, `recordNonPlannableTick` excludes it
-from the re-open path) the run stayed satisfied through an 18 °C collapse and finalized `met`
-on 6.67 of 10.89 planned kWh. Terminality is deliberate — the gate belongs on what may arm it.
 
 ## Soft Temperature Runtime Semantics
 
@@ -259,6 +251,16 @@ instead of re-sorting by fresh price or daily-budget optimizer output. A committ
 still revise status/source metadata, but optimizer churn alone must not move selected hours
 or fire `deadline_plan_changed`.
 
+The horizon engine requires a resolved commitment union: `uncommitted`, or
+`committed` with its hours. A committed empty list is a real commitment and
+keeps the committed allocation path; it never falls back to fresh optimization.
+
+Priority reservations consume the operational task evaluation: explicit planning,
+completion, observed progress, and permissions. Reporting reasons cannot release
+or manufacture a reservation. A fresh allocation is authoritative even when it
+books nothing; an inactive missing-device evaluation may retain persisted latest
+reservations through the eligibility grace.
+
 Runtime consumers must not read `commitment` and `latest` independently. Use the coherent
 active committed-plan accessor: `commitment.hours` is the allocator envelope, while the
 settled `latest.hours` revision is the control source for frozen reads and trajectory
@@ -279,7 +281,7 @@ the allocator actually applies stacks three caps via `Math.min`:
   the min step exceeds the forecast). For non-fully-reserved tasks and single-step
   devices every bucket stays at `activeSteps[0]`. Bounded by the device's calibrated
   useful-power profile.
-- **Daily-budget pacing slice** — `bucket.usefulEnergyCapKWh`, the hour's OWN controlled
+- **Daily-budget pacing slice** — `bucket.dailyBudgetCapKWh`, the hour's OWN controlled
   share as the budget layer allocated it (`plannedControlledKWh`, read through
   `policyHorizon.resolveMaxUsefulEnergyKWh`; Infinity for `exemptFromBudget` tasks).
   Deliberately not derived by differencing the day-total-clamped `allowedCumKWh` — that
@@ -300,6 +302,20 @@ the allocator actually applies stacks three caps via `Math.min`:
   net daily-budget reserve for the pacing slice above; `grossBackgroundKWh` prevents solar
   self-consumption from overstating physical room. When the forecast is unavailable
   (`undefined`), this term is skipped; a forecast of zero correctly caps the hour at zero kWh.
+
+The allocator keeps the raw daily-budget slice and higher-priority reserved kWh
+separate. Ordinary allocation takes the pacing slice minus overlapping reservations,
+then applies the device step and physical-headroom ceilings. The budget feasibility
+probe lifts only a slice smaller than the tested step's energy capacity, retaining
+the same reservation subtraction and physical ceiling. A slice already sufficient
+for the step was not itself a budget restriction; making it infinite would erase
+another task's reservation and falsely name the daily budget. The probe reports
+`sole`, `contributing`, or `none`; the preview carries that resolved verdict to its
+reason line rather than guessing from a cannot-finish status.
+
+Horizon inputs require the producer's commitment flag, fully-reserved flag, deadline
+margin, and milestone gate. The producer resolves these facts once. The horizon uses
+its fixed 0.001 kWh satisfaction epsilon, with no caller override.
 
 `allocateCommittedEnergyToBuckets` fills each committed hour up to that stacked ceiling,
 so slow drift in `energyNeededKWh` is absorbed into the existing committed hours
@@ -841,35 +857,18 @@ depends on the per-device Power-limit control setting:
 
 ### The car's own charge limit
 
-Owner ruling 2026-09-26: when the car stops charging on its own below the task's target, the
-task is capped at the car's limit. Production that night: an 80 % task on a Polestar set to stop
-at 70 % stopped at 70 and finalized `missed / energy_underestimate`, blaming PELS's learned rate
-for a car setting.
+The requested target remains the completion obligation. A car with a confirmed limit of
+70 % leaves an 80 % task unmet, even when PELS permits settled charging and there is headroom.
+The device owner qualifies observed limits and publishes them with the car's known level;
+`resolveReachableTargetValue` carries that reporting constraint separately from the requested
+target; allocation still covers the full requested target. No new run completes with `observed_limit`; historical results retain their original
+outcome when migrated.
 
-- **Where the limit comes from.** Observed stops only (`notes/ev-car-link/README.md`,
-  `resolveEvCarChargeLimit`); no vendor capability. The device layer lends it with the car's
-  battery level, as `carChargeLimitPercent` on the car-sourced known level, so it exists exactly
-  while the car lends its level and is re-derived on every rebuild of that level.
-- **Where it is applied.** Once, at the read edge: `resolveReachableTargetValue`
-  (`diagnosticProgress.ts`) is the owner's target, capped by that limit for an EV task.
-  Remaining units, energy needed and satisfaction all follow from it. The diagnostic carries it
-  as `reachableTargetValue` (logged as `reachableTargetPercent`); `targetValue` stays what the
-  owner asked for.
-- **What met means.** A run satisfied below the owner's target finalizes `met` with
-  `metReason: 'observed_limit'`, and the postmortem says the car stopped there. The recorder
-  judges "at target" against the reachable target, so a later reading at the limit does not
-  re-open it; a limit that is disproved brings the full target back.
-- **No pause at the limit.** A task satisfied only at the car's limit does not trigger the
-  satisfied-charger pause above: the car stops by itself there, and pausing would stop it from
-  ever charging past a wrong limit on this charger, which is what disproves one. "Only at the
-  limit" means the reading is below the owner's target too: a car that arrived above it
-  (fast-charged on a trip) is met the ordinary way.
-- **Known limit: the car must be seen at its limit.** The cap is met when a reading reaches it.
-  If the car stops and the charger ends the session before the car's reading of its limit
-  arrives, the task holds its last reading and finishes missed by that last step: an invalid
-  session withholds progress, so nothing later can credit it. Cars report the limit while still
-  topping off (the Polestar reported 70 % at 03:11:16 and stopped at 03:15:59), so the window is
-  narrow.
+Delivery evidence names the device limit or confirmed non-delivery, rather than inferring
+capacity pressure from missing energy. A changed limit updates reporting on
+the next lifecycle tick without replacing committed hours or milestones. The car remains able to resume
+charging when its limit is raised; it is never paused merely because a lower limit was reached.
+See [delivery evidence and attribution](../smart-task-miss-attribution.md).
 
 ## Energy Calculation
 
@@ -943,8 +942,9 @@ relay-switched water heater, which has neither a temperature nor a battery level
 - **Known limit**: a device that switches itself off when done (a water heater's own thermostat once
   the tank is hot) stops taking energy, so the task can end `cannot_meet` / `missed` with a full
   tank. A relay has no setpoint, so the idle classifier gives no stall evidence to satisfy the task
-  or to release its reservations; until the deadline it keeps reserving its booked hours against
-  lower-priority tasks.
+  to satisfy an energy obligation. The generic non-delivery hold releases future reservations
+  after 15 minutes of claimed, settled, permitted delivery without measured draw. Resumed draw
+  clears the hold. The remaining requested energy stays unmet, with device-side attribution.
 
 Values travel in the task's own unit, one per reading, so no layer below the settings entry keeps
 a column per kind. The diagnostic's progress is `currentValue` (for an energy task, the kWh

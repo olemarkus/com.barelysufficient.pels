@@ -48,6 +48,7 @@ const noTargetBudgetDevice: StarvationRescueDevice = {
 const buildEstimate = (
   overrides: Partial<DeferredObjectivePlanPreviewEstimate> = {},
 ): DeferredObjectivePlanPreviewEstimate => ({
+  budgetRole: 'none',
   status: 'on_track',
   scheduledHours: [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }],
   projectedFinishAtMs: NOW_MS + 2 * 60 * 60 * 1000,

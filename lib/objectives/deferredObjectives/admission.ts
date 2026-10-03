@@ -1,7 +1,6 @@
-import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
-import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import type { TaskEvaluation } from './taskEvaluation';
 
 export type { DeferredReleaseIntent };
 
@@ -37,17 +36,6 @@ export const buildDeferredDemandDeviceIds = (
     .map(([deviceId]) => deviceId),
 );
 
-// `satisfied` falls back to inactive: the goal is met, so the objective should
-// not keep forcing the device on. `cannot_meet` still drives the device — the
-// planner's lowest-step allocation is what we _can_ deliver, not a reason to
-// stop trying; runtime is free to step up when headroom appears, so a
-// hard-cap miss should still get us as close to the target as possible.
-const PLANNABLE_STATUSES = new Set<ReturnType<typeof resolvedTrajectoryStatus>>([
-  'on_track',
-  'at_risk',
-  'cannot_meet',
-]);
-
 // Release routing is keyed on the device's CONTROL MODALITY, not the objective
 // kind — a smart task is device-agnostic (the only EV-specific thing, the SoC
 // unit, lives in the objective's progress/target math, never here). A
@@ -60,20 +48,13 @@ const usesBinaryReleaseControl = (device: PlanInputDevice | undefined): boolean 
 );
 
 const resolveDecision = (
-  diagnostic: DeferredObjectiveDiagnostic,
+  evaluation: TaskEvaluation,
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
-  // Producer-resolved flat flag: the smart task's exempt-from-budget permission is active
-  // for the current planned bucket. Idle/background cycles must not inherit a standing
-  // budget exemption from a future planned bucket.
-  if (!PLANNABLE_STATUSES.has(resolvedTrajectoryStatus(diagnostic))) {
-    // Terminal fallback actuation belongs exclusively to the lifecycle clock. In particular,
-    // `handleDeferredSatisfied` retries cap-off devices until their fallback posture is observed;
-    // the power-driven plan must not duplicate it.
-    return { kind: 'inactive', budgetExempt: false };
-  }
-  const horizonPlan = diagnostic.horizonPlan;
-  if (!horizonPlan) return { kind: 'inactive', budgetExempt: false };
+  if (evaluation.completion.kind === 'target_reached'
+    || evaluation.completion.kind === 'accepted_near_target'
+    || evaluation.planning.kind === 'inactive') return { kind: 'inactive', budgetExempt: false };
+  const horizonPlan = evaluation.planning.plan;
   const releasesViaBinary = usesBinaryReleaseControl(device);
   // The producer resolved which of the three claims this hour carries
   // (`resolveCurrentHourClaim`); admission maps it 1:1 and adds only the release
@@ -111,24 +92,25 @@ const resolveDecision = (
   }
   return {
     kind: 'planned',
-    budgetExempt: diagnostic.budgetExemptApplied === true,
-    engageBoost: diagnostic.limitLowerPriorityApplied === true,
-    reservesStartupPower: diagnostic.pauseLowerPriorityApplied === true,
+    budgetExempt: evaluation.permissions.budgetExempt,
+    engageBoost: evaluation.permissions.limitLowerPriority,
+    reservesStartupPower: evaluation.permissions.pauseLowerPriority,
     expectedStepId: horizonPlan.currentBucket?.expectedStepId ?? null,
-    ...(diagnostic.objectiveKind === 'temperature' ? { deadlineFloorTargetC: diagnostic.targetTemperatureC } : {}),
+    ...(evaluation.targetControl.kind === 'temperature'
+      ? { deadlineFloorTargetC: evaluation.targetControl.value } : {}),
     ...(releasesViaBinary ? { releaseIntent: 'binary_restore' as const } : {}),
   };
 };
 
 /** Admission consumes live evaluations; the objective controller excludes expired tasks before this seam. */
 export const applyDeferredObjectiveAdmission = (
-  diagnostics: readonly DeferredObjectiveDiagnostic[],
+  evaluations: readonly TaskEvaluation[],
   devices: readonly PlanInputDevice[] = [],
 ): Map<string, DeferredAdmissionDecision> => {
   const deviceById = new Map(devices.map((device) => [device.id, device]));
   const decisions = new Map<string, DeferredAdmissionDecision>();
-  for (const diagnostic of diagnostics) {
-    decisions.set(diagnostic.deviceId, resolveDecision(diagnostic, deviceById.get(diagnostic.deviceId)));
+  for (const evaluation of evaluations) {
+    decisions.set(evaluation.deviceId, resolveDecision(evaluation, deviceById.get(evaluation.deviceId)));
   }
   return decisions;
 };

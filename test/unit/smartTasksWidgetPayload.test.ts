@@ -31,6 +31,7 @@ const NOW = new Date('2026-05-26T10:00:00.000Z').getTime();
 const HOUR = 60 * 60 * 1000;
 
 const buildPlan = (overrides: Partial<ActivePlanFixture>): ActivePlanFixture => ({
+  liveCompletion: { kind: 'unavailable' },
   deviceId: 'dev',
   deviceName: 'Device',
   objectiveKind: 'temperature',
@@ -783,7 +784,7 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
     expect(row.recourseHint).toBeNull();
   });
 
-  test('composes a blameless why + budget recourse on a budget-bound missed row', () => {
+  test('does not infer a legacy missed cause or recourse from budget-shaped telemetry', () => {
     const payload = buildSmartTasksWidgetPayload({
       activePlans: null,
       history: historyPayload({
@@ -798,9 +799,7 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
             planStatus: 'cannot_meet',
             revisedAtMs: NOW - 4 * HOUR,
             kwhPerUnitMean: 0.5,
-            // History snapshot, not an active-plan revision: entries recorded
-            // before v2.23.0 still carry the retired count, and
-            // `snapshotShowsBudgetExhausted` still honours it.
+            // A legacy budget counter does not establish a recorded delivery cause.
             dailyBudgetExhaustedBucketCount: 4,
             },
         })],
@@ -812,8 +811,8 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
     const row = payload.endedRows[0];
-    expect(row.whyLabel).toBe('Daily budget filled before the deadline.');
-    expect(row.recourseHint).toContain('Budget settings');
+    expect(row.whyLabel).toBe('Delivery blockers were not recorded for this earlier task.');
+    expect(row.recourseHint).toContain('Device settings');
     expect(row.reachedAtLabel).toBeNull();
   });
 

@@ -13,8 +13,6 @@ import {
   MINUTE_MS,
   formatHistoryValueForKind,
   OVERSHOOT_THRESHOLD_BY_KIND,
-  pickLastPlan,
-  snapshotShowsBudgetExhausted,
 } from './deferredPlanHistoryShared';
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
 
@@ -133,6 +131,7 @@ const wasOvershoot = (
 type PostmortemEntry = Pick<
   ResolvedDeferredObjectivePlanHistoryEntry,
   'outcome'
+  | 'deliveryExplanation'
   | 'metReason'
   | 'objectiveKind'
   | 'progressDirection'
@@ -330,17 +329,18 @@ const resolveMissedPostmortem = (
   entry: PostmortemEntry,
   timeZone: string,
 ): DeferredPlanHistoryPostmortem => {
-  const lastPlan = pickLastPlan(entry);
   const deadlineLabel = formatClockTime(entry.deadlineAtMs, timeZone);
-  if (snapshotShowsBudgetExhausted(lastPlan)) {
-    // Budget-exhaustion gets the most specific copy — the user opening a
-    // missed run needs to see that the cause was the budget cap, not a
-    // device problem, so the recourse (lower daily budget) lands cleanly.
+  const explanation = entry.deliveryExplanation;
+  if (explanation.kind === 'recorded'
+    && explanation.primary.kind === 'blocked'
+    && explanation.primary.cause === 'budget_limited') {
+    // Only the delivery owner's final active blocker establishes this cause.
+    // A past budget-shaped schedule does not prove that it prevented delivery.
     return {
       variant: 'missed-by-budget-exhaustion',
       sentence: deadlineLabel !== null
-        ? `The daily energy budget ran out before ${deadlineLabel}.`
-        : 'The daily energy budget ran out before the deadline.',
+        ? `The daily budget held delivery back before ${deadlineLabel}.`
+        : 'The daily budget held delivery back before the deadline.',
     };
   }
   const finalLabel = formatFinalProgressValue(entry.objectiveKind, entry.finalProgressValue);
@@ -432,8 +432,8 @@ const resolveAbandonedPostmortem = (
  *                            (`metReason: 'observed_limit'`) and met there.
  *  - `missed-by-shortfall` — final progress < target with no daily-budget
  *                            cause recorded.
- *  - `missed-by-budget-exhaustion` — the final revision recorded the daily
- *                                    budget cap collapsing buckets in the run-up.
+ *  - `missed-by-budget-exhaustion` — recorded delivery evidence names the daily
+ *                                    budget as the final active blocker.
  *  - `abandoned-by-clear`  — user cleared / replaced the smart task before
  *                            finalization (`outcome === 'replaced'`).
  *  - `abandoned-by-unplug` — diagnostic stream stopped before the deadline

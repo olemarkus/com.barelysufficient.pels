@@ -20,6 +20,7 @@ const HOUR_MS = 3_600_000;
 const T0 = Date.UTC(2026, 4, 11, 0, 0, 0);
 
 const buildPlan = (overrides: Partial<DeferredObjectiveActivePlanV1>): DeferredObjectiveActivePlanV1 => ({
+  liveCompletion: { kind: 'unavailable' as const },
   deviceId: 'dev_a',
   deviceName: 'Device A',
   objectiveKind: 'temperature',
@@ -435,7 +436,7 @@ describe('resolveDeadlinesListCards', () => {
     expect(cards[0].statusId).toBe('paused_unplugged');
   });
 
-  it('shows a task done at the car\'s own charge limit as satisfied, with the limit, not as unplugged', () => {
+  it('shows a task stopped at a lower car limit as at risk with the constraint', () => {
     // The charger ends the session at the car's limit and reads unplugged with
     // the car still in: the task is done (owner ruling 2026-09-26).
     const cards = resolveDeadlinesListCards({
@@ -452,7 +453,7 @@ describe('resolveDeadlinesListCards', () => {
       devices,
       nowMs: T0,
     });
-    expect(cards[0]).toMatchObject({ statusId: 'satisfied', carLimitLine: 'Car stopped at its limit of 70%' });
+    expect(cards[0]).toMatchObject({ statusId: 'at_risk', carLimitLine: 'Car stopped at its limit of 70%' });
   });
 
   it('suppresses a committed cached schedule after the device moves to a separate meter', () => {

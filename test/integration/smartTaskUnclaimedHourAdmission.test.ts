@@ -1,3 +1,4 @@
+import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
 // Integration-tier proof that a task which no longer needs an hour keeps only its
 // CHEAPEST allocated hours in play — the price half of what an unbooked hour means.
 //
@@ -79,6 +80,7 @@ const CHEAPEST_HOURS = [2, 6] as const;
 const ZERO_SHARE_HOURS = new Set([1, 5]);
 
 const objective = (energyNeededKWh: number): DeferredObjective => ({
+  fullyReserved: false,
   id: `${DEVICE_ID}:temperature`,
   kind: 'temperature',
   enforcement: 'soft',
@@ -109,7 +111,7 @@ const buildBuckets = (nowMs: number): DeferredObjectiveHorizonBucket[] => {
 const diagnosticFor = (
   plan: DeferredObjectiveHorizonPlan,
   energyNeededKWh: number,
-): DeferredObjectiveDiagnostic => ({
+): DeferredObjectiveDiagnostic => (withTaskDiagnosticFixture({
   deviceId: DEVICE_ID,
   deviceName: 'Connected 300',
   objectiveId: `${DEVICE_ID}:temperature`,
@@ -122,8 +124,8 @@ const diagnosticFor = (
   targetPercent: null,
   currentPercent: null,
   targetTemperatureC: 65,
-  currentTemperatureC: 60,
-  currentValue: 60,
+  currentTemperatureC: 65 - energyNeededKWh / 1.5,
+  currentValue: 65 - energyNeededKWh / 1.5,
   targetValue: 65,
   reachableTargetValue: 65,
   deadlineAtMs: BASE_MS + DEADLINE_HOUR * HOUR_MS,
@@ -141,7 +143,7 @@ const diagnosticFor = (
   horizonBucketCount: plan.plannedBuckets.length,
   expectedStepId: plan.expectedStepId,
   horizonPlan: plan,
-});
+}));
 
 // A cap-off water heater: the smart task is the only reason PELS drives it, so
 // every difference between claimed / unclaimed / released is visible in what the
@@ -189,12 +191,11 @@ const runTask = (energyNeededKWh: number): HourOutcome[] => {
       buckets: buildBuckets(nowMs),
       // Bootstrap/settle path: the allocator picks the hours afresh from price,
       // which is the decision the "only the cheapest hours" claim is about.
-      committed: false,
-      committedHours: [],
+      commitment: { kind: 'uncommitted' },
       aheadOfHourMilestone,
     });
     const diagnostic = diagnosticFor(plan, remainingKWh);
-    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
+    const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
     const decision = decisions.get(DEVICE_ID)!;
     const applied = applyDeferredAdmissionToInput([device], decisions);
 

@@ -1,3 +1,5 @@
+import { resolveFloorShortfallCause } from './floorShortfallCause';
+import type { TaskReservationReader } from './taskDeliveryState';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
@@ -70,6 +72,7 @@ export type PreviewDeferredObjectivePlanParams = {
   // already running (same device, same deadline) keeps what it has fed; any
   // other candidate starts from nothing.
   getDeliveredEnergyKWh: DeliveredEnergyReader;
+  isReservationSuppressed: TaskReservationReader;
   // The price-RATE label from the price store (e.g. "øre/kWh", "NOK",
   // "price units"). It is converted to a total-amount money unit before being
   // attached to the (total) `costEstimate`, so a UI never renders a total as a
@@ -120,6 +123,7 @@ export const previewDeferredObjectivePlan = (
     resolveDeviceExclusion: params.resolveDeviceExclusion,
     getStallClassification: params.getStallClassification,
     getDeliveredEnergyKWh: params.getDeliveredEnergyKWh,
+    isReservationSuppressed: params.isReservationSuppressed,
     forceFreshDeviceId: params.deviceId,
   }).find((diagnostic) => diagnostic.deviceId === params.deviceId);
   if (!diag) throw new Error(`Preview candidate ${params.deviceId} missing from its own roster`);
@@ -153,6 +157,7 @@ export const buildUnavailableDeferredObjectivePlanEstimate = (params: {
     : resolveGrantedRescuePermissions(params.candidate.rescue);
   return {
     status: 'unavailable',
+    budgetRole: 'none',
     unavailableReason: params.reason,
     scheduledHours: [],
     projectedFinishAtMs: null,
@@ -265,6 +270,7 @@ const buildEstimateFromDiagnostic = (
   if (!diag.horizonPlan) {
     return {
       status: 'unavailable',
+      budgetRole: 'none',
       unavailableReason: resolvePreviewUnavailableReason(diag),
       scheduledHours: [],
       projectedFinishAtMs: null,
@@ -274,7 +280,7 @@ const buildEstimateFromDiagnostic = (
       ...(grantedRescuePermissions ? { grantedRescuePermissions } : {}),
     };
   }
-  const scheduledHours: DeferredObjectivePlanPreviewHour[] = buildHoursFromHorizonPlan(diag) ?? [];
+  const scheduledHours: DeferredObjectivePlanPreviewHour[] = buildHoursFromHorizonPlan(diag.evaluation) ?? [];
   const cost = resolveCostEstimate({ diag, dailyBudgetSnapshot });
   // `costEstimate` is a TOTAL amount (Σ kWh × price), so it must be labelled
   // with the money unit, never the per-kWh rate label `priceRateLabel` carries.
@@ -285,8 +291,15 @@ const buildEstimateFromDiagnostic = (
   const priceSeries = buildDeferredObjectivePolicyWindowPrices(dailyBudgetSnapshot, nowMs, deadlineAtMs)
     .map((point) => ({ startsAtMs: point.startMs, price: point.price }));
   const atCapNow = resolveAtCapNow(scheduledHours, request);
+  const floorShortfallCause = resolveFloorShortfallCause(diag.horizonPlan.statusDetail);
+  let budgetRole: DeferredObjectivePlanPreviewEstimate['budgetRole'] = 'none';
+  if (floorShortfallCause === 'budget') budgetRole = 'sole';
+  else if (floorShortfallCause === 'time_capacity' && diag.horizonPlan.budgetContributedToShortfall) {
+    budgetRole = 'contributing';
+  }
   return {
     status: resolvePreviewStatus(diag.horizonPlan.status),
+    budgetRole,
     scheduledHours,
     projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
     // Match the recorder: persist the buffered `energyNeededKWh` rounded to

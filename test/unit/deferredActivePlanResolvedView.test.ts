@@ -6,6 +6,7 @@ import { toResolvedActivePlan } from '../../packages/shared-domain/src/deferredA
 const buildRaw = (
   overrides: Partial<DeferredObjectiveActivePlanV1> = {},
 ): DeferredObjectiveActivePlanV1 => ({
+  liveCompletion: { kind: 'unavailable' },
   deviceId: 'dev-1',
   deviceName: 'Connected 300',
   objectiveKind: 'temperature',
@@ -38,7 +39,8 @@ describe('toResolvedActivePlan', () => {
   });
 
   it('preserves non-value fields (objectiveKind, latest, signature)', () => {
-    const resolved = toResolvedActivePlan(buildRaw({ objectiveSignature: 'sig-2' }), nothingDelivered, null);
+    const resolved = toResolvedActivePlan(buildRaw({
+      liveCompletion: { kind: 'unavailable' as const }, objectiveSignature: 'sig-2' }), nothingDelivered, null);
     expect(resolved.objectiveKind).toBe('temperature');
     expect(resolved.objectiveSignature).toBe('sig-2');
     expect(resolved.latest).toBeNull();

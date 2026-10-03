@@ -12,6 +12,7 @@ const DEADLINE_MS = START_MS + 4 * HOUR_MS;
 const buildPlan = (
   overrides: Partial<ActivePlanFixture> = {},
 ): ActivePlanFixture => ({
+  liveCompletion: { kind: 'unavailable' },
   deviceId: 'dev-1',
   deviceName: 'Hot water',
   objectiveKind: 'temperature',

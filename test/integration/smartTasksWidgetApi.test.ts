@@ -26,6 +26,7 @@ const NOW = Date.now();
 const H = 60 * 60 * 1000;
 
 const activePlan = (o: Partial<ActivePlanFixture> = {}): ActivePlanFixture => ({
+  liveCompletion: { kind: 'unavailable' },
   deviceId: 'wh',
   deviceName: 'Water heater',
   objectiveKind: 'temperature',
@@ -202,8 +203,8 @@ describe('smart_tasks widget API — mocked SDK/settings scenarios', () => {
     if (payload.state !== 'ready') return;
     expect([...payload.endedRows.map((r) => r.outcomeLabel)].sort()).toEqual(['Missed', 'Succeeded']);
     const missed = payload.endedRows.find((r) => r.outcomeLabel === 'Missed')!;
-    expect(missed.whyLabel).toContain('Daily budget');
-    expect(missed.recourseHint).toContain('Budget settings');
+    expect(missed.whyLabel).toContain('Delivery blockers were not recorded');
+    expect(missed.recourseHint).toContain('Device settings');
     expect(missed.chart?.mode).toBe('trajectory');
   });
 

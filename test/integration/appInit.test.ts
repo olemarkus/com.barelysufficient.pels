@@ -1,3 +1,4 @@
+import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { inertPlanHistoryDeps, createInertEnergyDelivery } from '../helpers/deferredObjectiveWiringFixtures';
 const {
@@ -420,7 +421,7 @@ describe('app init plan service wiring', () => {
     const ctx = createAppContextMock();
     const database = ctx.getUserdataDatabase();
     const store = createPlanHistoryStore(database);
-    store.write(normalizeDeferredObjectivePlanHistory({ version: 5, entries: [] }));
+    store.write(normalizeDeferredObjectivePlanHistory({ version: 6, entries: [] }));
     // The recorder builds its own repository on the same database; its first
     // read fails at the database (I/O), every later one answers.
     let transactions = 0;
@@ -431,7 +432,7 @@ describe('app init plan service wiring', () => {
       return originalTransaction(work);
     });
     const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
-    expect(recorder.getHistorySnapshot()).toEqual({ version: 5, entries: [] });
+    expect(recorder.getHistorySnapshot()).toEqual({ version: 6, entries: [] });
     recorder.backfillFromConfig([{
       deviceId: 'dev',
       deadlineAtMs: 7_200_000,
@@ -505,11 +506,11 @@ describe('app init plan service wiring', () => {
     setSpy.mockClear();
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => false,
     });
     // Drive the recorder into a dirty-and-couldn't-flush state.
-    recorder.observe([{
+    recorder.observe([withTaskDiagnosticFixture({
       deviceId: 'dev',
       deviceName: 'Connected 300',
       objectiveId: 'dev:temperature',
@@ -540,7 +541,7 @@ describe('app init plan service wiring', () => {
       currentDrawKw: null,
       horizonBucketCount: 6,
       expectedStepId: null,
-    }], 0, null);
+    })], 0, null);
     recorder.observe([], 6 * 60 * 60 * 1000, null); // deadline-passed → finalized → dirty
     expect(recorder.flushIfDirty()).toBe(false);
     expect(recorder.isDirty()).toBe(true);
@@ -559,7 +560,7 @@ describe('app init plan service wiring', () => {
     setSpy.mockClear();
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => true,
     });
     expect(recorder.isDirty()).toBe(false);
@@ -635,7 +636,7 @@ describe('app init plan service wiring', () => {
     const ctx = createAppContextMock({ deviceManager: {} as AppContext['deviceManager'] });
     ctx.deferredObjectivePlanHistoryRecorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => true,
     });
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
@@ -651,7 +652,7 @@ describe('app init plan service wiring', () => {
       ) => void;
     }).observeDeferredObjectivePlanHistory;
     const baseMs = 1_000_000_000_000;
-    const drawing: DeferredObjectiveDiagnostic = {
+    const drawing: DeferredObjectiveDiagnostic = withTaskDiagnosticFixture({
       deviceId: 'dev',
       deviceName: 'd',
       objectiveId: 'dev:temperature',
@@ -682,7 +683,7 @@ describe('app init plan service wiring', () => {
       currentDrawKw: 2,
       horizonBucketCount: 6,
       expectedStepId: null,
-    };
+    });
 
     for (let tick = 0; tick < 6; tick += 1) observe([drawing], baseMs + tick * 30_000, null);
 
@@ -700,11 +701,11 @@ describe('app init plan service wiring', () => {
     // Save callback that always reports failure — drives the recorder into permanent dirty.
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 5, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => false,
     });
     // Force a dirty record using a directly-pushed entry via observe.
-    recorder.observe([{
+    recorder.observe([withTaskDiagnosticFixture({
       deviceId: 'dev',
       deviceName: 'd',
       objectiveId: 'dev:temperature',
@@ -735,7 +736,7 @@ describe('app init plan service wiring', () => {
       currentDrawKw: null,
       horizonBucketCount: 6,
       expectedStepId: null,
-    }], 0, null);
+    })], 0, null);
     recorder.observe([], 1_000, null);
     expect(recorder.isDirty()).toBe(true);
     ctx.deferredObjectivePlanHistoryRecorder = recorder;

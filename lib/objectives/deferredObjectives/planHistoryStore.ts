@@ -16,7 +16,7 @@
  */
 import type {
   DeferredObjectivePlanHistoryRecord,
-  DeferredObjectivePlanHistoryV5,
+  DeferredObjectivePlanHistoryV6,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { getLogger } from '../../logging/logger';
 import type { SettingsPort } from '../../ports/homeyRuntime';
@@ -46,9 +46,9 @@ const storeLogger = getLogger('deferred-objectives/plan-history-store');
 
 export type PlanHistoryStore = {
   /** The stored history, or `null` when the store holds nothing. Throws only on I/O. */
-  read(): DeferredObjectivePlanHistoryV5 | null;
+  read(): DeferredObjectivePlanHistoryV6 | null;
   /** Persist `history`, touching only the rows that differ from what the store holds. */
-  write(history: DeferredObjectivePlanHistoryV5): void;
+  write(history: DeferredObjectivePlanHistoryV6): void;
   readMeteredDelivery(): PersistedMeteredDeliveryState[];
   writeMeteredDelivery(states: readonly PersistedMeteredDeliveryState[]): void;
 };
@@ -105,17 +105,17 @@ const parseRow = (json: string): unknown => {
  */
 const salvageLegacyPlanHistory = (
   raw: unknown,
-): { snapshot: DeferredObjectivePlanHistoryV5; dropped: number } | null => {
+): { snapshot: DeferredObjectivePlanHistoryV6; dropped: number } | null => {
   if (!raw || typeof raw !== 'object') return null;
   const candidate = raw as Record<string, unknown>;
   if (!Array.isArray(candidate.entries)) return null;
-  if (![3, 4, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) return null;
+  if (![3, 4, 5, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) return null;
   const snapshot = normalizeDeferredObjectivePlanHistory(raw);
   return { snapshot, dropped: candidate.entries.length - snapshot.entries.length };
 };
 
 type Held = Map<string, DeferredObjectivePlanHistoryRecord>;
-const heldOf = (history: DeferredObjectivePlanHistoryV5): Held => (
+const heldOf = (history: DeferredObjectivePlanHistoryV6): Held => (
   new Map(history.entries.map((entry) => [entry.id, entry]))
 );
 
@@ -137,12 +137,12 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryStore =
    * Runs inside a transaction: a row that does not parse, fails the strict
    * parser, or disagrees with its own key columns is deleted as read.
    */
-  const load = (): DeferredObjectivePlanHistoryV5 | null => {
+  const load = (): DeferredObjectivePlanHistoryV6 | null => {
     const rows = s.load.all() as Array<{ id: string; finalized_at_ms: number; entry_json: string }>;
     if (rows.length === 0) return null;
     const entries = rows.flatMap((row) => {
       const parsed = parseDeferredObjectivePlanHistory({
-        version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION, entries: [parseRow(row.entry_json)],
+        version: 5, entries: [parseRow(row.entry_json)],
       });
       const entry = parsed.state === 'resolved' ? parsed.snapshot.entries[0] : undefined;
       if (entry !== undefined && entry.id === row.id && entry.finalizedAtMs === row.finalized_at_ms) return [entry];
@@ -227,9 +227,9 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryStore =
  * entries by finalisation, as the recorder itself would trim.
  */
 const withLegacyUnder = (
-  stored: DeferredObjectivePlanHistoryV5,
-  legacy: DeferredObjectivePlanHistoryV5,
-): DeferredObjectivePlanHistoryV5 => {
+  stored: DeferredObjectivePlanHistoryV6,
+  legacy: DeferredObjectivePlanHistoryV6,
+): DeferredObjectivePlanHistoryV6 => {
   const storedIds = new Set(stored.entries.map((entry) => entry.id));
   const merged = [...stored.entries, ...legacy.entries.filter((entry) => !storedIds.has(entry.id))]
     .sort((a, b) => a.finalizedAtMs - b.finalizedAtMs);

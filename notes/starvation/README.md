@@ -115,8 +115,11 @@ At rollup, heater shortfall is `max(0, actualKwh + budgetUnservedKwh - appliedBu
 Unused allowance therefore absorbs pending heater demand: a hold with sufficient
 spare daily energy calls for pacing/scheduling, not a bigger energy allowance.
 Unreliable/missing meter readings cannot prove spare allowance or heater shortfall.
-A finalized, priced budget-exhausted task miss remains independent evidence at
-its deadline. It uses `max(0, initialEnergyExpectedKWh - deliveredKWh)` from the
+A finalized, priced task miss remains independent evidence at its deadline
+when its recorded delivery blockers establish budget alone: `budget_limited`
+is the primary cause and no non-budget contributors are present. Legacy
+unrecorded history, device cutoffs, and mixed blockers do not qualify. Plan-time
+budget exhaustion and floor snapshots do not establish this attribution. It uses `max(0, initialEnergyExpectedKWh - deliveredKWh)` from the
 anchored entry figures, never a remaining-energy revision. Missing figures do
 not become zero delivery. The larger of heater shortfall and terminal task
 shortfall avoids counting one heater task twice.

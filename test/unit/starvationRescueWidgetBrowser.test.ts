@@ -92,6 +92,7 @@ const OK_PREVIEW = {
   deadlineLabel: 'Today 17:00',
   scheduledWindowLabel: '14:00–16:00',
   estimate: {
+    budgetRole: 'none' as const,
     status: 'on_track' as const,
     scheduledHours: [{ startsAtMs: HOUR_FLOOR, plannedKWh: 1.5 }],
     projectedFinishAtMs: Date.now() + 2 * 60 * 60 * 1000,

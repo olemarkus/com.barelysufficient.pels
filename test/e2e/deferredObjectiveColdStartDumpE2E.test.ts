@@ -1,3 +1,4 @@
+import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
 // REPRODUCTION of the production catastrophe (Connected 300 water heater, night
 // of 2026-05-31): a cold tank at the start of an expensive window dumped its
 // whole catch-up into the most expensive hour, then the cheap window sat unused.
@@ -71,6 +72,8 @@ const bucketsFrom = (nowMs: number): DeferredObjectiveHorizonBucket[] => {
 };
 
 const objective = (energyNeededKWh: number): DeferredObjective => ({
+  fullyReserved: false,
+  deadlineMarginMs: 0,
   id: `${DEVICE_ID}:temperature`,
   kind: 'temperature',
   enforcement: 'soft',
@@ -83,6 +86,19 @@ const diagnosticFor = (
   energyNeededKWh: number,
   currentTemperatureC: number,
 ): DeferredObjectiveDiagnostic => ({
+  completion: resolveTaskCompletion({
+    currentValue: currentTemperatureC, requestedTarget: TARGET_C, direction: 'increasing', thermalEvidence: { kind: 'none' },
+  }),
+  evaluation: {
+    deviceId: DEVICE_ID, deadlineAtMs: DAY + DEADLINE_HOUR * HOUR_MS, requestedTarget: TARGET_C,
+    progress: { kind: 'known', value: currentTemperatureC, direction: 'increasing' },
+    completion: resolveTaskCompletion({
+      currentValue: currentTemperatureC, requestedTarget: TARGET_C, direction: 'increasing', thermalEvidence: { kind: 'none' },
+    }),
+    planning: { kind: 'allocated', plan },
+    permissions: { budgetExempt: false, limitLowerPriority: false, pauseLowerPriority: false },
+    targetControl: { kind: 'temperature', value: TARGET_C },
+  },
   deviceId: DEVICE_ID,
   deviceName: 'Connected 300',
   objectiveId: `${DEVICE_ID}:temperature`,
@@ -140,14 +156,15 @@ const runScenario = (): { outcomes: HourOutcome[]; finalTempC: number } => {
     const energyNeededKWh = remainingC * RATE_KWH_PER_C;
 
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs,
       objective: objective(energyNeededKWh),
       steps: STEPS,
       buckets: bucketsFrom(nowMs),
-      committed: false,
+      commitment: { kind: 'uncommitted' },
     });
     const decision = applyDeferredObjectiveAdmission(
-      [diagnosticFor(plan, energyNeededKWh, tempC)],
+      [diagnosticFor(plan, energyNeededKWh, tempC).evaluation],
       [device],
     ).get(DEVICE_ID)!;
     const driven = decision.kind === 'planned';

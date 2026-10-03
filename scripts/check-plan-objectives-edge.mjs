@@ -1,4 +1,5 @@
-// AST guard for lib/plan source-level layer boundaries.
+// AST guard for planner peer boundaries and operational smart-task independence.
+// Core task decisions must not depend on diagnostic/reporting types or producers.
 //
 // WHY THIS EXISTS: .dependency-cruiser.cjs runs post-compilation
 // (tsPreCompilationDeps is unset), so `import type` edges are erased by tsc
@@ -53,11 +54,25 @@ function isWithin(directory, candidate) {
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
+const taskCoreDir = path.join(rootDir, 'lib', 'objectives', 'deferredObjectives');
+const taskCoreNames = [
+  'taskEvaluation', 'taskDeliveryState', 'taskCompletion', 'admission', 'priorityAllocation', 'horizonPlanner', 'contentionOverlay', 'replanReason',
+];
+const forbiddenTaskReportingTargets = [
+  'diagnosticTypes', 'diagnosticsBridge', 'diagnosticFields', 'freshDiagnostic',
+  'frozenDiagnostic', 'completionDiagnostic', 'deliveryEvidence',
+].map((name) => path.join(taskCoreDir, name));
+forbiddenTaskReportingTargets.push(path.join(rootDir, 'packages', 'contracts', 'src', 'taskDelivery'));
+
 function isForbiddenPeerSpecifier(importerPath, text) {
   const isRelative = text === '.' || text === '..' || text.startsWith('./') || text.startsWith('../');
   if (!isRelative && !path.isAbsolute(text)) return false;
   const resolvedTarget = path.resolve(path.dirname(importerPath), text);
-  return forbiddenPeerDirs.some((directory) => isWithin(directory, resolvedTarget));
+  if (isWithin(planDir, importerPath)) {
+    return forbiddenPeerDirs.some((directory) => isWithin(directory, resolvedTarget));
+  }
+  const targetWithoutExtension = resolvedTarget.replace(/\.(?:[cm]?[jt]sx?)$/, '');
+  return forbiddenTaskReportingTargets.includes(targetWithoutExtension);
 }
 
 // Extract a fully static specifier, or null when runtime evaluation is needed.
@@ -143,7 +158,10 @@ async function collectTsFiles(dir) {
   return files.flat();
 }
 
-const files = await collectTsFiles(planDir);
+const files = [
+  ...await collectTsFiles(planDir),
+  ...taskCoreNames.map((name) => path.join(taskCoreDir, `${name}.ts`)),
+];
 const offenders = [];
 
 for (const file of files) {
@@ -156,6 +174,7 @@ if (offenders.length > 0) {
   process.stderr.write(
     'Architecture boundary violation (planner peer source guard):\n'
     + 'lib/plan/** must not import objectives or executor modules — value OR type imports.\n'
+    + 'Operational smart-task core must not import diagnostic/reporting producers or delivery report contracts.\n'
     + 'dependency-cruiser runs post-compilation and cannot see `import type` edges,\n'
     + 'so this AST guard enforces the boundary. Offending import(s):\n',
   );
@@ -166,5 +185,5 @@ if (offenders.length > 0) {
 }
 
 process.stdout.write(
-  `arch:grep OK — no lib/plan -> objectives/executor import edges (${files.length} files scanned)\n`,
+  `arch:grep OK — no lib/plan -> objectives/executor import edges and no smart-task core -> reporting edges (${files.length} files scanned)\n`,
 );

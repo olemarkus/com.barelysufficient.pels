@@ -26,7 +26,7 @@ import type {
   DeferredObjectiveStep,
 } from './types';
 
-const DEFAULT_EPSILON_KWH = 0.001;
+const ENERGY_EPSILON_KWH = 0.001;
 type NonEmptyObjectiveSteps = [DeferredObjectiveStep, ...DeferredObjectiveStep[]];
 
 // Top rung of a non-empty ladder. The tuple guarantees the head exists but not
@@ -39,13 +39,13 @@ const topObjectiveStep = (steps: NonEmptyObjectiveSteps): DeferredObjectiveStep 
 export const planDeferredObjectiveHorizon = (
   input: DeferredObjectiveHorizonInput,
 ): DeferredObjectiveHorizonPlan => {
-  const epsilonKWh = normalizeEpsilon(input.epsilonKWh);
+  const epsilonKWh = ENERGY_EPSILON_KWH;
   const energyNeededKWh = normalizeEnergyNeededKWh(input.objective.energyNeededKWh);
   const varianceMarginKWh = normalizeVarianceMarginKWh(
     input.objective.energyExpectedKWh,
     energyNeededKWh,
   );
-  const deadlineMarginMs = normalizeDeadlineMarginMs(input.objective.deadlineMarginMs);
+  const deadlineMarginMs = input.objective.deadlineMarginMs;
   const invalidDetail = resolveInvalidDetail({
     nowMs: input.nowMs,
     deadlineAtMs: input.objective.deadlineAtMs,
@@ -101,10 +101,6 @@ export const planDeferredObjectiveHorizon = (
     });
   }
 
-  const committed = resolveCommittedFlag({
-    committed: input.committed,
-    committedHours: input.committedHours,
-  });
   // Floor commitment: by default the lowest active step is the only level we
   // can guarantee for the full hour (higher steps depend on transient
   // headroom). For a *fully-reserved* objective (both `exemptFromBudget` and
@@ -118,23 +114,21 @@ export const planDeferredObjectiveHorizon = (
   // forecast is caught by the per-cycle re-solve, the deadline-reserve
   // at-risk backstop, and the per-hour `reservedHeadroomKw × duration`
   // ceiling in `resolveBucketStepCapacityKWh`.
-  const fullyReserved = input.objective.fullyReserved ?? false;
+  const fullyReserved = input.objective.fullyReserved;
   const stepForBucket: StepForBucket = (bucket) => (
     resolveStepForBucket(bucket, activeSteps, fullyReserved)
   );
   const allocation = resolveAllocation({
     stepForBucket,
     buckets,
-    committed,
-    committedHours: input.committedHours,
+    commitment: input.commitment,
     energyNeededKWh,
     epsilonKWh,
   });
   const { feasibleOnClimbedBand, budgetRole } = resolveFloorFeasibility({
     activeSteps,
     buckets,
-    committed,
-    committedHours: input.committedHours,
+    commitment: input.commitment,
     energyNeededKWh,
     epsilonKWh,
     floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
@@ -142,7 +136,7 @@ export const planDeferredObjectiveHorizon = (
   });
   const priceDeferralEligible = resolvePriceDeferralEligible({
     allocation,
-    aheadOfHourMilestone: input.aheadOfHourMilestone ?? false,
+    aheadOfHourMilestone: input.aheadOfHourMilestone,
     epsilonKWh,
   });
   const coldStartReleaseEligible = resolveColdStartReleaseEligible({
@@ -176,8 +170,7 @@ export const planDeferredObjectiveHorizon = (
 const resolveFloorFeasibility = (params: {
   activeSteps: NonEmptyObjectiveSteps;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  committed: boolean;
-  committedHours: DeferredObjectiveHorizonInput['committedHours'];
+  commitment: DeferredObjectiveHorizonInput['commitment'];
   energyNeededKWh: number;
   epsilonKWh: number;
   floorUnplannedKWh: number;
@@ -186,24 +179,6 @@ const resolveFloorFeasibility = (params: {
   const climbedBand = resolveClimbedBandFeasibility(params);
   const budgetRole = resolveBudgetBoundFeasibility({ ...params, climbedBand });
   return { feasibleOnClimbedBand: climbedBand.feasible, budgetRole };
-};
-
-// Backward-compatible resolution of the committed flag. New callers pass an
-// explicit boolean (`true` enters the committed-replan path, `false` forces
-// the fresh optimizer regardless of `committedHours`). Legacy callers that
-// only supplied `committedHours` and left `committed` undefined fall back to
-// the historical length-based gate so we don't silently break them during the
-// migration window — they will keep behaving as before until updated to pass
-// an explicit boolean.
-const resolveCommittedFlag = (params: {
-  committed: DeferredObjectiveHorizonInput['committed'];
-  committedHours: DeferredObjectiveHorizonInput['committedHours'];
-}): boolean => {
-  if (params.committed === true) return true;
-  if (params.committed === undefined) {
-    return (params.committedHours?.length ?? 0) > 0;
-  }
-  return false;
 };
 
 // The commitment is sized against the lowest non-zero step (`activeSteps[0]`,
@@ -217,23 +192,22 @@ const resolveCommittedFlag = (params: {
 const resolveAllocation = (params: {
   stepForBucket: StepForBucket;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  committed: boolean;
-  committedHours: DeferredObjectiveHorizonInput['committedHours'];
+  commitment: DeferredObjectiveHorizonInput['commitment'];
   energyNeededKWh: number;
   epsilonKWh: number;
 }): BucketAllocationResult => {
   const { stepForBucket } = params;
-  // Branch on `committed`, not `committedHours.length`. An active commitment
+  // Branch on commitment kind, not hours.length. An active commitment
   // with zero allocated hours (e.g. a previously stored `cannot_meet` plan)
   // must stay on the committed-replan path so the allocator cannot silently
   // recover by re-running the fresh optimizer against the new horizon.
-  if (params.committed) {
+  if (params.commitment.kind === 'committed') {
     return allocateCommittedEnergyToBuckets({
       buckets: params.buckets,
       stepForBucket,
       energyNeededKWh: params.energyNeededKWh,
       epsilonKWh: params.epsilonKWh,
-      committedHours: params.committedHours ?? [],
+      committedHours: params.commitment.hours,
     });
   }
   return allocateEnergyToBuckets({
@@ -269,8 +243,7 @@ type ClimbedBandProbe = { feasible: boolean; cappedUnplannedKWh: number };
 const resolveClimbedBandFeasibility = (params: {
   activeSteps: NonEmptyObjectiveSteps;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  committed: boolean;
-  committedHours: DeferredObjectiveHorizonInput['committedHours'];
+  commitment: DeferredObjectiveHorizonInput['commitment'];
   energyNeededKWh: number;
   epsilonKWh: number;
   floorUnplannedKWh: number;
@@ -303,8 +276,7 @@ const resolveClimbedBandFeasibility = (params: {
   const climbed = resolveAllocation({
     stepForBucket: climbStepFor,
     buckets: params.buckets,
-    committed: params.committed,
-    committedHours: params.committedHours,
+    commitment: params.commitment,
     energyNeededKWh: params.energyNeededKWh,
     epsilonKWh: params.epsilonKWh,
   });
@@ -351,8 +323,8 @@ const resolveStepForBucket = (
 // lifted is *budget-bound*, not physical: the soft daily budget (the per-bucket
 // pacing slice net of forecast background) is the binding constraint, while
 // physical capacity and time would fit. We re-allocate on a copy of the buckets
-// with the per-bucket cap removed (`usefulEnergyCapKWh → Infinity`), mirroring the
-// floor pass's commitment mode.
+// with only the daily-budget slice lifted, preserving higher-priority energy
+// reservations and mirroring the floor pass's commitment mode.
 //
 // Only the soft cap is lifted: `reservedHeadroomKw` still bounds each hour, so the
 // probe cannot answer "yes" on room the hard cap does not have — and the step is
@@ -381,8 +353,7 @@ type BudgetShortfallRole = 'none' | 'contributing' | 'sole';
 const resolveBudgetBoundFeasibility = (params: {
   activeSteps: NonEmptyObjectiveSteps;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  committed: boolean;
-  committedHours: DeferredObjectiveHorizonInput['committedHours'];
+  commitment: DeferredObjectiveHorizonInput['commitment'];
   energyNeededKWh: number;
   epsilonKWh: number;
   floorUnplannedKWh: number;
@@ -398,7 +369,7 @@ const resolveBudgetBoundFeasibility = (params: {
   }
   const uncappedBuckets = params.buckets.map((bucket) => ({
     ...bucket,
-    usefulEnergyCapKWh: Number.POSITIVE_INFINITY,
+    budgetCapPolicy: 'lifted' as const,
   }));
   const uncapped = resolveAllocation({
     // Same per-bucket climb as the band probe, for the same reason.
@@ -407,8 +378,7 @@ const resolveBudgetBoundFeasibility = (params: {
       bucket.reservedHeadroomKw,
     ) ?? topObjectiveStep(params.activeSteps),
     buckets: uncappedBuckets,
-    committed: params.committed,
-    committedHours: params.committedHours,
+    commitment: params.commitment,
     energyNeededKWh: params.energyNeededKWh,
     epsilonKWh: params.epsilonKWh,
   });
@@ -684,18 +654,6 @@ const normalizeVarianceMarginKWh = (
   if (typeof energyExpectedKWh !== 'number' || !Number.isFinite(energyExpectedKWh)) return 0;
   return Math.max(0, energyNeededKWh - energyExpectedKWh);
 };
-
-const normalizeDeadlineMarginMs = (deadlineMarginMs: number | undefined): number => (
-  typeof deadlineMarginMs === 'number' && Number.isFinite(deadlineMarginMs)
-    ? Math.max(0, deadlineMarginMs)
-    : 0
-);
-
-const normalizeEpsilon = (epsilonKWh: number | undefined): number => (
-  typeof epsilonKWh === 'number' && Number.isFinite(epsilonKWh) && epsilonKWh > 0
-    ? epsilonKWh
-    : DEFAULT_EPSILON_KWH
-);
 
 const hasObjectiveSteps = (
   steps: DeferredObjectiveStep[],

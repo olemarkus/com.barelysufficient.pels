@@ -1,3 +1,5 @@
+import type { TaskEvaluation } from './taskEvaluation';
+import type { TaskCompletion } from './taskCompletion';
 import type { DeferredObjectiveKwhPerUnitSource } from './profileEnergyResolution';
 import type {
   DeferredObjectivePolicyHorizonUnavailableReason,
@@ -60,6 +62,9 @@ export type DeferredObjectiveDiagnosticReasonCode =
   // Live status resolved to `satisfied` because the device parked in a stall
   // classification (see `withStallSatisfiedStatus`). `near_target` = inside
   // the hysteresis band; `device_capped` = at the device's own internal cap.
+  | 'objective_delivery_restricted'
+  | 'objective_not_accepting_energy'
+  | 'objective_device_limit'
   | 'objective_stalled_near_target'
   // The device is being left off because it was turned off outside PELS. An
   // explicit off action beats the task, but the deadline consequence must still
@@ -67,6 +72,7 @@ export type DeferredObjectiveDiagnosticReasonCode =
   | 'objective_stalled_device_capped';
 
 type BaseDeferredObjectiveDiagnostic = {
+  evaluation: TaskEvaluation;
   deviceId: string;
   // Whether progress toward this task moves up or down. Resolved at the
   // device/progress boundary, then carried through gates that compare units.
@@ -124,11 +130,10 @@ type BaseDeferredObjectiveDiagnostic = {
   //   energy:      targetValue === targetEnergyKWh, and currentPercent is null
   currentValue: number | null;
   targetValue: number;
-  // The target this task can reach, same unit: `targetValue`, capped by the
-  // car's own charge limit when an EV task's car stops below it
-  // (`resolveReachableTargetValue`). Progress and satisfaction are judged
-  // against this; `targetValue` stays what the owner asked for.
+  // Reporting-only device ceiling in the same unit, capped by a known car limit.
+  // Energy sizing, allocation and completion always use the requested targetValue.
   reachableTargetValue: number;
+  completion: TaskCompletion | { kind: 'inactive' };
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
   energyNeededKWh: number | null;

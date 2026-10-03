@@ -452,10 +452,9 @@ export class EvCarLinkProducer {
         }
     }
 
-    /**
-     * PELS told this charger to stop charging — a switch-off, or a step to its
-     * off step. Recorded so a stop that follows is not banked as the car's own.
-     */
+    getTaskDeliveryConstraint = (chargerId: string) => this.selfStop.getTaskDeliveryConstraint(
+        chargerId, this.deps.getChargers(), this.activeLinks, this.cars);
+
     noteStopCommand(chargerId: string, nowMs: number): void { this.selfStop.noteStopCommand(chargerId, nowMs); }
 
     private applyCoincidences(
@@ -816,7 +815,5 @@ export class EvCarLinkProducer {
         return link;
     }
 
-    private carName(carId: string): string {
-        return this.cars.get(carId)?.name ?? this.unavailableCars.get(carId) ?? carId;
-    }
+    private carName = (carId: string): string => this.cars.get(carId)?.name ?? this.unavailableCars.get(carId) ?? carId;
 }

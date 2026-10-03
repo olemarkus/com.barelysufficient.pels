@@ -1,4 +1,6 @@
-import { isCarLimitBinding, resolvedTrajectoryStatus } from './diagnosticTypes';
+import { EMPTY_DELIVERY_EVIDENCE } from './deliveryEvidence';
+import type { TaskDeliveryEvidence } from '../../../packages/contracts/src/taskDelivery';
+import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { MeteredRunCommitment } from './planHistoryMeteredState';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
@@ -20,13 +22,10 @@ import type {
 import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { ObjectiveProgressDirectionRead } from '../../objectives/types';
-import type { IdleClassification } from '../../../packages/contracts/src/idleClassification';
-import { classificationImpliesStallSatisfied } from '../stallEvidence';
 import {
   appendRevisionLogIfNew,
   captureRevisionSnapshot,
   drainProgressSamples,
-  hasTrustworthyProgress,
   recordProgressSample,
   seedProgressSamples,
 } from './planHistoryV4Helpers';
@@ -53,6 +52,7 @@ const INTERVAL_MERGE_GAP_MS = 5 * 60 * 1000;
 export type InProgressRecord = Omit<
   DeferredObjectivePlanHistoryRecord,
   'id'
+  | 'deliveryExplanation'
   | 'finalizedAtMs'
   | 'outcome'
   | 'discoveredFrom'
@@ -75,6 +75,7 @@ export type InProgressRecord = Omit<
   deviceName: string | null;
   objectiveKind: DeferredObjectiveSettingsKind;
   targetValue: number;
+  deliveryEvidence: TaskDeliveryEvidence;
   commitment: InProgressCommitment;
   // Direction paired with `finalProgressValue`; persisted as the finalized
   // row's `progressDirection`.
@@ -198,54 +199,32 @@ export const isSatisfiedStatus = (
   status: ReturnType<typeof resolvedTrajectoryStatus>,
 ): boolean => status === 'satisfied';
 
-// The postmortem reasons about the raw trajectory verdict, not the live
-// user-facing status. `diagnosticsBridge` may resolve the top-level
-// `diagnostic.status` to `satisfied` when the device is parked in a stall
-// classification; reading that here would let `mergeRecord` pre-satisfy the
-// record and short-circuit the stall promotion (dropping the `stalled` /
-// `stalled_device_capped` met-reason). The planner's `horizonPlan.status` is
-// never resolved, so it stays the honest trajectory verdict. Falls back to the
-// top-level status on the unknown/invalid paths that carry no `horizonPlan`.
+// Operational planning and completion determine which history update applies.
 export const rawHorizonStatus = (
   diag: DeferredObjectiveDiagnostic,
-): ReturnType<typeof resolvedTrajectoryStatus> => (
-  diag.horizonPlan?.status ?? resolvedTrajectoryStatus(diag)
-);
-
-// Start-progress capture gated on `hasTrustworthyProgress` — the same definition
-// `progressSamples` (`recordProgressSample`) and `seedHourOpening` already use.
-// `diag.currentValue` is the raw reading even when the diagnostic is
-// stale/invalid (`objective_progress_stale` etc.), so seeding `startProgressValue`
-// from it lets an untrusted first read become a sticky start anchor
-// (`backfillStartProgress` only fills when start is null). That anchor feeds the
-// directional miss-attribution check (`final − start`), so a stale start could
-// flip a finalized run to `no_delivery`. Returning null instead defers to
-// `backfillStartProgress`, which adopts the first trustworthy reading.
-//
-// Scope note: only the START anchor is gated here. The `finalProgressValue`
-// seed + update paths remain ungated as on main — gating them is a separate,
-// more entangled change (it interacts with the "non-plannable ticks don't roll
-// final forward" rule and the finalized-outcome classification) tracked apart
-// from this focused fix.
-const captureTrustedProgress = (diag: DeferredObjectiveDiagnostic): number | null => (
-  hasTrustworthyProgress(diag) ? diag.currentValue : null
-);
-
-// Against the target the task can REACH: a run met at its car's own charge
-// limit is at its target there, and must not be re-opened by a reading below the
-// owner's.
-const diagnosticProgressAtTarget = (diag: DeferredObjectiveDiagnostic): boolean => {
-  if (diag.currentValue === null || diag.progressDirection === 'unknown') return false;
-  return diag.progressDirection === 'increasing'
-    ? diag.currentValue >= diag.reachableTargetValue
-    : diag.currentValue <= diag.reachableTargetValue;
+): ReturnType<typeof resolvedTrajectoryStatus> => {
+  const { evaluation } = diag;
+  if (evaluation.planning.kind === 'allocated') return evaluation.planning.plan.status;
+  if (evaluation.completion.kind === 'target_reached'
+    || evaluation.completion.kind === 'accepted_near_target') return 'satisfied';
+  return undefined;
 };
 
-// A run satisfied short of the owner's target was met at the car's own charge
-// limit; the postmortem says so rather than implying the target was reached.
-const resolveReachedMetReason = (diag: DeferredObjectiveDiagnostic): DeferredObjectivePlanMetReason | null => (
-  isCarLimitBinding(diag) ? 'observed_limit' : null
+const usesDeadlineReserve = (diag: DeferredObjectiveDiagnostic): boolean => (
+  diag.evaluation.planning.kind === 'allocated' && diag.evaluation.planning.plan.usesDeadlineReserve
 );
+
+// The producer's known progress is the sole history reading source.
+const captureTrustedProgress = (diag: DeferredObjectiveDiagnostic): number | null => (
+  diag.evaluation.progress.kind === 'known' ? diag.evaluation.progress.value : null
+);
+
+const captureTrustedDirection = (
+  diag: DeferredObjectiveDiagnostic,
+  fallback: InProgressRecord['finalProgressDirection'],
+): InProgressRecord['finalProgressDirection'] => diag.evaluation.progress.kind === 'known'
+  ? diag.evaluation.progress.direction
+  : fallback;
 
 export const lastObservedAtMs = (record: InProgressRecord): number => {
   const { observedIntervals } = record;
@@ -296,7 +275,7 @@ export const startRecord = (
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord | null => {
   if (diag.deadlineAtMs === null) return null;
-  const currentlySatisfied = isSatisfiedStatus(rawHorizonStatus(diag));
+  const currentlySatisfied = diag.evaluation.completion.kind === 'target_reached';
   const originalRevision = pickRevisionForOriginal(plan);
   const finalRevision = pickRevisionForFinal(plan);
   const originalSnapshot = originalRevision ? captureRevisionSnapshot(originalRevision, plan) : null;
@@ -305,12 +284,12 @@ export const startRecord = (
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
     objectiveKind: diag.objectiveKind,
-    finalProgressDirection: diag.progressDirection,
-    targetValue: diag.targetValue,
+    finalProgressDirection: captureTrustedDirection(diag, 'unknown'),
+    targetValue: diag.evaluation.requestedTarget,
     deadlineAtMs: diag.deadlineAtMs,
     startedAtMs: nowMs,
     startProgressValue: captureTrustedProgress(diag),
-    finalProgressValue: diag.currentValue,
+    finalProgressValue: captureTrustedProgress(diag),
     initialEnergyNeededKWh: diag.energyNeededKWh ?? 0,
     // Seeded here when the producer can already state it; otherwise filled by
     // `backfillCommitment` on the first cycle that can. Never read back off a
@@ -319,10 +298,10 @@ export const startRecord = (
     // is a shrinking remainder.
     commitment: resolveCommitment(diag),
     metAtMs: currentlySatisfied ? nowMs : null,
-    usedDeadlineReserve: diag.horizonPlan?.usesDeadlineReserve ?? false,
+    usedDeadlineReserve: usesDeadlineReserve(diag),
     observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
     satisfied: currentlySatisfied,
-    metReason: currentlySatisfied ? resolveReachedMetReason(diag) : null,
+    metReason: null,
     // Seed `originalPlan` with the richer of `plan.original` / `plan.latest`
     // so a recorder picking up mid-run after the planner has already expanded
     // the schedule does not anchor on a stale first revision. Subsequent
@@ -331,6 +310,7 @@ export const startRecord = (
     finalPlan: finalSnapshot,
     revisionCount: resolveRevisionCount(plan),
     progressSamples: seedProgressSamples(diag, nowMs),
+    deliveryEvidence: EMPTY_DELIVERY_EVIDENCE,
     deliveredKWh: 0,
     totalCost: 0,
     costDisplay: null,
@@ -462,18 +442,9 @@ const backfillCommitment = (
 };
 
 
-// Both stall variants behave identically against re-open / drift checks —
-// "device went as far as it would go" is terminal whether the plateau sat
-// inside the hysteresis band (`'stalled'`) or against the device's own cap
-// (`'stalled_device_capped'`).
-const isStallMetReason = (reason: DeferredObjectivePlanMetReason | null): boolean => (
-  reason === 'stalled' || reason === 'stalled_device_capped'
-);
-
-// Stall-promoted records freeze `satisfied` and `finalProgressValue` at the
-// plateau reading. Without the freeze, post-stall samples would
-// overwrite "as warm as the device would hold" and the next plannable
-// tick would re-derive `currentlySatisfied = false` and unflag the run.
+// The live completion owner retains near-target acceptance while the observer's
+// hysteresis evidence holds. A trusted exit reopens the run; unavailable progress
+// preserves the last accepted result until the owner can decide again.
 const computeMergedMetState = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
@@ -485,25 +456,20 @@ const computeMergedMetState = (
   finalProgressValue: number | null;
   finalProgressDirection: InProgressRecord['finalProgressDirection'];
 } => {
-  const stallPromoted = record.satisfied && isStallMetReason(record.metReason);
-  if (stallPromoted) {
-    return {
-      satisfied: true,
-      metAtMs: record.metAtMs,
-      metReason: record.metReason,
-      finalProgressValue: record.finalProgressValue,
-      finalProgressDirection: record.finalProgressDirection,
-    };
-  }
-  const currentlySatisfied = isSatisfiedStatus(rawHorizonStatus(diag));
+  const acceptedNearTarget = diag.evaluation.completion.kind === 'accepted_near_target';
+  const preserveAccepted = record.satisfied && diag.evaluation.completion.kind === 'inactive';
+  const currentlySatisfied = acceptedNearTarget || preserveAccepted
+    || diag.evaluation.completion.kind === 'target_reached';
+  const preservedMetReason = preserveAccepted ? record.metReason : null;
+  const preservePlateau = acceptedNearTarget && record.satisfied;
   return {
     satisfied: currentlySatisfied,
     metAtMs: currentlySatisfied ? (record.metAtMs ?? nowMs) : null,
-    metReason: currentlySatisfied ? resolveReachedMetReason(diag) : null,
-    finalProgressValue: diag.currentValue ?? record.finalProgressValue,
-    finalProgressDirection: hasTrustworthyProgress(diag)
-      ? diag.progressDirection
-      : record.finalProgressDirection,
+    metReason: acceptedNearTarget ? 'stalled' : preservedMetReason,
+    finalProgressValue: preservePlateau ? record.finalProgressValue
+      : captureTrustedProgress(diag) ?? record.finalProgressValue,
+    finalProgressDirection: preservePlateau ? record.finalProgressDirection
+      : captureTrustedDirection(diag, record.finalProgressDirection),
   };
 };
 
@@ -521,7 +487,7 @@ export const mergeRecord = (
     commitment: backfillCommitment(record, diag),
     finalProgressValue: merged.finalProgressValue,
     finalProgressDirection: merged.finalProgressDirection,
-    usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
+    usedDeadlineReserve: record.usedDeadlineReserve || usesDeadlineReserve(diag),
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: merged.satisfied,
     metAtMs: merged.metAtMs,
@@ -541,10 +507,8 @@ const clearSatisfiedWithProgress = (
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
     startProgressValue: backfillStartProgress(record, diag),
-    finalProgressValue: diag.currentValue ?? record.finalProgressValue,
-    finalProgressDirection: hasTrustworthyProgress(diag)
-      ? diag.progressDirection
-      : record.finalProgressDirection,
+    finalProgressValue: captureTrustedProgress(diag) ?? record.finalProgressValue,
+    finalProgressDirection: captureTrustedDirection(diag, record.finalProgressDirection),
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: false,
     metAtMs: null,
@@ -561,23 +525,15 @@ const recordObservedTick = (
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => ({
   ...record,
+  finalProgressValue: captureTrustedProgress(diag) ?? record.finalProgressValue,
+  finalProgressDirection: captureTrustedDirection(diag, record.finalProgressDirection),
   startProgressValue: backfillStartProgress(record, diag),
   observedIntervals: extendIntervals(record.observedIntervals, nowMs),
   progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
   ...refreshPlanSnapshots(record, plan),
 });
 
-// Promote a run to satisfied(stalled) when the classifier reports a stall
-// shape — `near_target_idle` (device parked inside the hysteresis band) or
-// `capped_idle` (device parked at its own internal cap below the PELS
-// target). Idempotent — already-satisfied records pass through. The
-// `reason` carries the distinct cause into the persisted entry so the
-// postmortem can render the right recourse copy. The promotion snapshots
-// `finalProgressValue` from the diagnostic when it carries trustworthy
-// progress; non-plannable ticks route through `recordObservedTick` which
-// doesn't refresh `finalProgressValue`, so without the capture here the freeze
-// would pin to the previous plannable tick's value rather than the
-// plateau reading.
+// Preserve the accepted near-target reason and its trustworthy reading.
 export const promoteRecordToStalled = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
@@ -585,30 +541,14 @@ export const promoteRecordToStalled = (
   reason: DeferredObjectivePlanMetReason,
 ): InProgressRecord => {
   if (record.satisfied) return record;
-  const captureFromDiag = hasTrustworthyProgress(diag);
   return {
     ...record,
-    finalProgressValue: captureFromDiag
-      ? (diag.currentValue ?? record.finalProgressValue)
-      : record.finalProgressValue,
-    finalProgressDirection: captureFromDiag ? diag.progressDirection : record.finalProgressDirection,
+    finalProgressValue: captureTrustedProgress(diag) ?? record.finalProgressValue,
+    finalProgressDirection: captureTrustedDirection(diag, record.finalProgressDirection),
     satisfied: true,
     metAtMs: nowMs,
     metReason: reason,
   };
-};
-
-// Producer-side translation of observer-layer classifier output to the
-// persisted `metReason`. Gated on the shared `classificationImpliesStallSatisfied`
-// so the postmortem and the live status producer (`diagnosticsBridge`) can never
-// disagree about which classifications count as a stall; `unresponsive` /
-// `undefined` return null so a tripped breaker doesn't get silently called
-// "succeeded".
-export const stallClassificationToMetReason = (
-  classification: IdleClassification | undefined,
-): DeferredObjectivePlanMetReason | null => {
-  if (!classificationImpliesStallSatisfied(classification)) return null;
-  return classification === 'capped_idle' ? 'stalled_device_capped' : 'stalled';
 };
 
 export const recordNonPlannableTick = (
@@ -617,17 +557,9 @@ export const recordNonPlannableTick = (
   nowMs: number,
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => {
-  // Stalled records skip the re-open path: "device settled short of target" is
-  // exactly the state the stall promotion accepts as terminal. Re-opening
-  // would discard the carefully-frozen `metAtMs` / `finalProgressValue` we
-  // captured at the plateau and produce a noisy "satisfied → not satisfied"
-  // oscillation against the idle classifier's exit hysteresis. Target-reached
-  // mets keep the existing clear-on-drift behavior.
   if (
     record.satisfied
-    && !isStallMetReason(record.metReason)
-    && hasTrustworthyProgress(diag)
-    && !diagnosticProgressAtTarget(diag)
+    && diag.evaluation.completion.kind === 'unmet'
   ) {
     return clearSatisfiedWithProgress(record, diag, nowMs, plan);
   }
@@ -665,6 +597,7 @@ export const finalizeRecord = (
   const outcome = classifyOutcome(record, reason);
   return {
     id: randomUUID(),
+    deliveryExplanation: record.deliveryEvidence.explanation,
     deviceId: record.deviceId,
     deviceName: record.deviceName ?? record.deviceId,
     objectiveKind: record.objectiveKind,

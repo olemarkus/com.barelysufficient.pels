@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
@@ -220,6 +221,7 @@ const buildBuilder = (
     getDeferredObjectiveActivePlans: () => null,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
+    isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
   });
   return new PlanBuilder({
@@ -374,6 +376,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     });
     const builder = new PlanBuilder({
@@ -642,6 +645,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     });
     const builder = new PlanBuilder({

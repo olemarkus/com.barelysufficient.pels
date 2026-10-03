@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // Integration proof: with the daily budget ON, the per-hour DAILY-BUDGET slice is
@@ -280,6 +281,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     getDeferredObjectiveActivePlans: () => null,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
+    isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
   });
 

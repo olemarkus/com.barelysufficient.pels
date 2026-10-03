@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // Integration coverage for the multi-home v1 smart-task scope gate
@@ -250,6 +251,7 @@ const buildDiagnosticsParams = (overrides: {
   priceOptimizationEnabled: true,
   activePlans: null,
   getStallClassification: noStallEvidence,
+  isReservationSuppressed: noReservationSuppression,
   getDeliveredEnergyKWh: noDeliveredEnergy,
   resolveDeviceExclusion: (deviceId: string) => (
     overrides.isDeviceInSubHome?.(deviceId) === true ? 'sub_home' as const : null
@@ -291,7 +293,7 @@ describe('diagnostics: existing task whose device is in a sub-home', () => {
       devices,
       isDeviceInSubHome: () => true,
     }));
-    const decisions = applyDeferredObjectiveAdmission(diagnostics, devices);
+    const decisions = applyDeferredObjectiveAdmission((diagnostics).map((diagnostic) => diagnostic.evaluation), devices);
     expect(decisions.get('heater-sub')?.kind).toBe('inactive');
   });
 });
@@ -826,6 +828,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       resolveDeviceExclusion,
       getDeferredObjectiveActivePlans: () => null,
       getStallClassification: noStallEvidence,
+      isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     });
     const bundle = controller.decorate({

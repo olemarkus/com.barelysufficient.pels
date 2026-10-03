@@ -1319,6 +1319,7 @@
           deadlineAtMs,
           startedAtMs: nowMs,
           pending: false,
+          liveCompletion: { kind: 'unmet', status: latestRevision.planStatus },
           objectiveSignature: 'stub',
           original: revision,
           latest: latestRevision,

@@ -8,7 +8,8 @@
  *
  * Behaviour is identical to the previous in-file definitions — moved verbatim.
  */
-import { resolvedTrajectoryStatus } from './diagnosticTypes';
+import { allocatedTaskPlan } from './taskEvaluation';
+import type { DeferredObjectiveHorizonPlan } from './types';
 import type {
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanReservationSegmentV1,
@@ -21,7 +22,9 @@ import type {
 import {
   formatEstimatedDuration,
 } from './activePlanDuration';
-import { resolveCarChargeLimitOverlay, resolveDiagnosticReasonCode } from './activePlanDiagnosticReason';
+import {
+  resolveCarChargeLimitOverlay, resolveDiagnosticReasonCode, resolveLiveCompletion,
+} from './activePlanDiagnosticReason';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 import {
   resolveHorizonPriceWatermark,
@@ -40,21 +43,16 @@ import { roundKWh } from './activePlanMath';
 import { buildObjectiveSignature } from './activePlanSignature';
 import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
-// The persisted `planStatus` is the status Flows read (deadlineObjectiveCards:
-// "public Flow status follows the active-plan recorder's settled status"). It
-// must follow the resolved user-facing `diagnostic.status` (idle-aware) so a
-// parked/stalled device reports `satisfied` to Flows, agreeing with the status
-// chip — NOT the raw `horizonPlan.status`, which stays the trajectory verdict
-// that drives commitment/energy. They are identical except when
-// `diagnosticsBridge` resolved a stalled device to `satisfied`. The trajectory
-// is always resolved here (callers only reach this with `horizonPlan` present);
-// the fallback keeps that from being an assumption.
+// Settled Flow status follows operational completion. A forecast below allocation
+// precision may need no booking while the requested obligation remains unmet.
 export const reportedPlanStatus = (
   diag: DeferredObjectiveDiagnostic,
-  horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>,
-): DeferredObjectiveActivePlanRevisionV1['planStatus'] => (
-  resolvedTrajectoryStatus(diag) ?? horizonPlan.status
-);
+  horizonPlan: DeferredObjectiveHorizonPlan,
+): DeferredObjectiveActivePlanRevisionV1['planStatus'] => {
+  if (diag.evaluation.completion.kind === 'target_reached'
+    || diag.evaluation.completion.kind === 'accepted_near_target') return 'satisfied';
+  return horizonPlan.status === 'satisfied' ? 'on_track' : horizonPlan.status;
+};
 
 export type ActivePlanPersistDeps = {
   load: () => DeferredObjectiveActivePlansV1 | null;
@@ -129,6 +127,7 @@ export const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic):
 // hand announced "Waiting for tomorrow's prices" (prod 2026-07-26). The first
 // lifecycle tick replaces this with the diagnostic-derived reason.
 export const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number): DeferredObjectiveActivePlanV1 => ({
+  liveCompletion: { kind: 'unavailable' },
   deviceId: seed.deviceId,
   deviceName: seed.deviceName,
   objectiveKind: seed.objectiveKind,
@@ -186,7 +185,7 @@ const THERMAL_LEARNING_CAPACITY_REASON_CODES: ReadonlySet<string> = new Set([
 // settle. The per-cycle `diagnosticReasonCode` refresh is unaffected, so
 // chip/overlay recovery stays immediate.
 export const isFrozenServedDiagnostic = (diag: DeferredObjectiveDiagnostic): boolean => (
-  diag.horizonPlan?.frozenRead === true
+  diag.evaluation.planning.kind === 'allocated' && diag.evaluation.planning.plan.frozenRead === true
 );
 
 export const resolvePendingReason = (
@@ -230,6 +229,7 @@ export const createPlanFromDiagnostic = (
   const diagnosticReasonCode = resolveDiagnosticReasonCode(diag);
   const carChargeLimit = resolveCarChargeLimitOverlay(diag, undefined);
   return {
+    liveCompletion: resolveLiveCompletion(diag),
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
     objectiveKind: diag.objectiveKind,
@@ -284,8 +284,8 @@ export const buildRevision = (params: {
   previousReservationSegments?: DeferredObjectiveActivePlanReservationSegmentV1[];
 }): DeferredObjectiveActivePlanRevisionV1 => {
   // Callers only invoke buildRevision after `buildHoursFromHorizonPlan` returned
-  // non-null, which guarantees `horizonPlan` is present.
-  const horizonPlan = params.diag.horizonPlan as NonNullable<typeof params.diag.horizonPlan>;
+  // allocated, which guarantees a complete operational plan.
+  const horizonPlan = allocatedTaskPlan(params.diag.evaluation);
   // Persist `kwhPerUnitSource` only when the diagnostic actually consulted a
   // profile (or its bootstrap fallback). `null` means the resolver short-
   // circuited (e.g. target already met) — omit the field rather than write
@@ -300,7 +300,7 @@ export const buildRevision = (params: {
   // consumer gets: the per-hour share either binds or it doesn't, and there is
   // no separate "the day total was reached" state to report.
   // — see the contract type for the full mapping.
-  const floorShortfallCause = resolveFloorShortfallCause(params.diag.reasonCode);
+  const floorShortfallCause = resolveFloorShortfallCause(horizonPlan.statusDetail);
   const energyNeededKWh = roundKWh(horizonPlan.energyNeededKWh);
   // Mean-based expected energy, rounded to match `energyNeededKWh`. Persisted
   // only when it differs from the buffered figure, so steady devices stay
@@ -321,7 +321,7 @@ export const buildRevision = (params: {
     revision: params.revision,
     revisedAtMs: params.nowMs,
     computedFromPricesUpTo: resolvePersistedPricesUpTo(
-      resolveHorizonPriceWatermark(params.diag),
+      resolveHorizonPriceWatermark(params.diag.evaluation),
       params.previousPricesUpTo,
     ),
     reason: params.reason,
@@ -418,11 +418,11 @@ const isProvenanceConfidence = (
 // an actively charging EV shrinks `energyNeededKWh` monotonically every cycle.
 export const hasMetadataDriftedWithinSchedule = (params: {
   latest: DeferredObjectiveActivePlanRevisionV1;
-  horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>;
+  horizonPlan: DeferredObjectiveHorizonPlan;
   diag: DeferredObjectiveDiagnostic;
 }): boolean => {
   const { latest, horizonPlan, diag } = params;
-  const floorShortfallCause = resolveFloorShortfallCause(diag.reasonCode);
+  const floorShortfallCause = resolveFloorShortfallCause(horizonPlan.statusDetail);
   return latest.planStatus !== reportedPlanStatus(diag, horizonPlan)
     || (latest.floorShortfallCause ?? 'none') !== floorShortfallCause
     // Compared as it would be PERSISTED, not as the plan carries it: the recorder

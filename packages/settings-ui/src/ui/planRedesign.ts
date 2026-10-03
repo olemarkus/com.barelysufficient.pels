@@ -370,6 +370,7 @@ const toRowStatus = (params: {
         : null,
       nowMs,
       carChargeLimitReached: plan.carChargeLimit?.reached === true,
+      liveCompletion: plan.liveCompletion,
     }),
     // The status derives from the recorded PLAN, so the ETA prefers the
     // plan's own deadline: after a deadline edit the settings blob reloads

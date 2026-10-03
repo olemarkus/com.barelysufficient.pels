@@ -108,7 +108,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     });
     // Schema is upgraded to v4 in-place; entry shape is preserved.
     expect(result.version).toBe(DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION);
-    expect(result.version).toBe(5);
+    expect(result.version).toBe(6);
     expect(result.entries).toHaveLength(1);
     const migrated = result.entries[0]!;
     expect(migrated.id).toBe('v3-entry-1');

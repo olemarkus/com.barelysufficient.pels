@@ -69,14 +69,14 @@ describe('car-limit copy', () => {
     expect(resolveSmartTaskCarChargeLimit({ limitValue: 70, reached: false }, null)).toBeNull();
   });
 
-  it('names the car\'s own limit and where PELS counts the task done', () => {
+  it('names the car\'s own limit and keeps the requested target unmet', () => {
     expect(formatSmartTaskCarLimitReason(charging)).toBe(
       "Your car stops at its own charge limit of 70%, below this smart task's 80% target."
-        + ' PELS charges to 70% and counts the task as done there.',
+        + ' Raise the car’s charge limit to allow this task to reach its target.',
     );
     expect(formatSmartTaskCarLimitReason(stopped)).toBe(
       "Your car stopped at its own charge limit of 70%, below this smart task's 80% target."
-        + ' PELS counted the task as done.',
+        + ' The requested target is still unmet.',
     );
     expect(formatSmartTaskCarLimitWhy(charging)).toBe('Your car stops at its own charge limit of 70%, below the 80% target.');
     expect(formatSmartTaskCarLimitListLine(charging)).toBe('Car stops at 70%');
@@ -99,7 +99,7 @@ describe('car-limit copy', () => {
   });
 });
 
-describe('the list status of a task done at the car\'s limit', () => {
+describe('the list status of a task stopped below target at the car\'s limit', () => {
   const base = {
     pending: false,
     pendingReason: undefined,
@@ -108,17 +108,20 @@ describe('the list status of a task done at the car\'s limit', () => {
     nowMs: 0,
   };
 
-  it('reads done, not unplugged, when the charger ended the session at the limit', () => {
+  it('reads at risk when the charger ended the session at the lower limit', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       ...base, diagnosticReasonCode: 'objective_invalid_session', carChargeLimitReached: true,
-    })).toBe('satisfied');
+    })).toBe('at_risk');
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       ...base, diagnosticReasonCode: 'objective_invalid_session', carChargeLimitReached: false,
     })).toBe('paused_unplugged');
   });
 
   it('still yields to a device moved to a separate meter', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       ...base, diagnosticReasonCode: 'objective_device_in_sub_home', carChargeLimitReached: true,
     })).toBe('unavailable');
   });

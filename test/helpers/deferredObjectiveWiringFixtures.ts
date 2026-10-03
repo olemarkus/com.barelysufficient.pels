@@ -1,3 +1,4 @@
+import { EMPTY_DELIVERY_EVIDENCE, type TaskDeliveryReader } from '../../lib/objectives/deferredObjectives/deliveryEvidence';
 import type { ResolveObjectiveDeviceExclusion } from '../../lib/objectives/deferredObjectives/deviceExclusion';
 import type { DeferredObjectiveStallClassificationReader } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { createDeferredObjectiveEndedBus } from '../../lib/objectives/deferredObjectives/endedEventBus';
@@ -19,6 +20,8 @@ export const noDeviceExclusion: ResolveObjectiveDeviceExclusion = () => null;
 export const noStallEvidence: DeferredObjectiveStallClassificationReader = () => undefined;
 
 /** No energy task has fed its device anything yet. */
+export const noDeliveryEvidence: TaskDeliveryReader = () => EMPTY_DELIVERY_EVIDENCE;
+
 export const noDeliveredEnergy: DeliveredEnergyReader = () => 0;
 
 /** An energy-delivery store held in memory, with the rows it was last given. */
@@ -48,10 +51,16 @@ export const createInertEnergyDelivery = (): EnergyTaskDeliveryTracker => (
  */
 export const inertPlanHistoryDeps = (): Pick<
   PlanHistoryPersistDeps,
-  'endedBus' | 'resolveHourPrice' | 'debugStructured' | 'getStallClassification'
+  'endedBus' | 'resolveHourPrice' | 'debugStructured' | 'getStallClassification' | 'getDeliveryControl' | 'isLiveMeasuredDraw' | 'getDeviceConstraint'
 > => ({
+  getDeviceConstraint: () => ({ kind: 'none' }),
+  getDeliveryControl: () => ({ kind: 'permitted' }),
+  isLiveMeasuredDraw: everyReadingLive,
   endedBus: createDeferredObjectiveEndedBus(),
   resolveHourPrice: () => null,
   debugStructured: () => undefined,
   getStallClassification: noStallEvidence,
 });
+
+/** No confirmed device-side cutoff suppresses a reservation. */
+export const noReservationSuppression = (): boolean => false;

@@ -80,10 +80,10 @@ describe('DeadlinePlanHistory', () => {
     const entry = buildEntry({ outcome: 'missed', metAtMs: null, finalProgressC: 58 });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     const reason = mount.querySelector('.plan-history-card__reason');
-    expect(reason?.textContent).toBe("Why: Didn't reach the target before the deadline.");
+    expect(reason?.textContent).toBe("Why: Delivery blockers were not recorded for this earlier task.");
   });
 
-  it('renders the budget-exhausted reason line on Missed list cards when the snapshot recorded the cap', () => {
+  it('renders the recorded budget blocker on Missed list cards', () => {
     const start = Date.UTC(2026, 4, 6, 0, 0, 0);
     const finalPlan = {
       hours: [{ startsAtMs: start, plannedKWh: 2 }],
@@ -92,17 +92,23 @@ describe('DeadlinePlanHistory', () => {
       revisedAtMs: start,
       dailyBudgetExhaustedBucketCount: 3,
     };
-    const entry = buildEntry({
-      outcome: 'missed',
-      metAtMs: null,
-      finalProgressC: 58,
-      finalPlan,
-      originalPlan: finalPlan,
-    });
+    const entry: ResolvedDeferredObjectivePlanHistoryEntry = {
+      ...buildEntry({
+        outcome: 'missed',
+        metAtMs: null,
+        finalProgressC: 58,
+        finalPlan,
+        originalPlan: finalPlan,
+      }),
+      deliveryExplanation: {
+        kind: 'recorded', primary: { kind: 'blocked', cause: 'budget_limited' },
+        contributors: [], intervals: [],
+      },
+    };
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     const reason = mount.querySelector('.plan-history-card__reason');
     expect(reason?.textContent)
-      .toBe('Why: Daily budget filled before the deadline.');
+      .toBe('Why: The daily budget held delivery back.');
   });
 
   it('does not render the reason line on Succeeded list cards', () => {

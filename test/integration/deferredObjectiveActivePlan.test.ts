@@ -1,3 +1,6 @@
+import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
+import { inactiveTaskEvaluation, type TaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
+import { effectivePlanStatusOf } from '../../lib/objectives/deferredObjectives/effectivePlanStatusEvents';
 import {
   DeferredObjectiveActivePlanRecorder,
   type ActivePlanFlowCardSeed,
@@ -124,15 +127,39 @@ const makeDiag = (overrides: Omit<Partial<DeferredObjectiveDiagnostic>, 'targetT
     ]),
     ...overrides,
   } as DeferredObjectiveDiagnostic;
-  // Keep the unit-agnostic pair consistent with whatever kind-split fields the
-  // override set, unless the override set the pair explicitly.
-  return {
-    ...diag,
-    currentValue: overrides.currentValue
-      ?? (diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent),
-    targetValue: overrides.targetValue
-      ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent ?? 0),
+  const reportedValue = diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent;
+  const currentValue = overrides.currentValue !== undefined ? overrides.currentValue : reportedValue;
+  const targetValue = overrides.targetValue
+    ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent ?? diag.targetValue);
+  const untrusted = ['objective_progress_stale', 'objective_missing_temperature', 'objective_invalid_session',
+    'objective_missing_device', 'objective_invalid_deadline'].includes(diag.reasonCode);
+  const progress: TaskEvaluation['progress'] = currentValue !== null
+    && diag.progressDirection !== 'unknown' && !untrusted
+    ? { kind: 'known', value: currentValue, direction: diag.progressDirection }
+    : { kind: 'unobserved' };
+  const completion = overrides.completion ?? (progress.kind === 'known'
+    ? resolveTaskCompletion({ currentValue: progress.value, requestedTarget: targetValue,
+      direction: progress.direction, thermalEvidence: { kind: 'none' } })
+    : { kind: 'inactive' as const });
+  const evaluation: TaskEvaluation = overrides.evaluation ?? {
+    ...inactiveTaskEvaluation(diag.deviceId, overrides.deadlineAtMs, targetValue),
+    progress, completion,
+    planning: diag.horizonPlan !== undefined && diag.trajectory.kind === 'resolved'
+      && diag.trajectory.status !== 'invalid'
+      ? { kind: 'allocated', plan: diag.horizonPlan }
+      : { kind: 'inactive' },
+    permissions: {
+      budgetExempt: diag.budgetExemptApplied === true,
+      limitLowerPriority: diag.limitLowerPriorityApplied === true,
+      pauseLowerPriority: diag.pauseLowerPriorityApplied === true,
+    },
+    targetControl: diag.objectiveKind === 'temperature'
+      ? { kind: 'temperature', value: targetValue }
+      : { kind: 'none' },
   };
+  return { ...diag, currentValue, targetValue,
+    reachableTargetValue: overrides.reachableTargetValue ?? targetValue,
+    completion: evaluation.completion, evaluation };
 };
 
 // Schedule-shape view of persisted hours: drops the derived `plannedUnitMilestone`
@@ -172,6 +199,93 @@ const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV1): {
 };
 
 describe('DeferredObjectiveActivePlanRecorder', () => {
+  it('reopens public completion immediately while keeping the settled revision immutable', () => {
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    recorder.observe([makeDiag({
+      deviceId: 'heater', deadlineAtMs: 6 * HOUR_MS, currentTemperatureC: 61,
+      trajectory: { kind: 'resolved', status: 'satisfied' }, reasonCode: 'objective_stalled_near_target', completion: { kind: 'accepted_near_target' },
+    })], HOUR_MS);
+    recorder.flushIfDirty();
+    const before = persist.saved()!.plansByDeviceId.heater!;
+    expect(effectivePlanStatusOf(before)).toBe('satisfied');
+    const immutableRevision = before.latest;
+    recorder.observe([makeDiag({
+      deviceId: 'heater', deadlineAtMs: 6 * HOUR_MS, currentTemperatureC: 55,
+      trajectory: { kind: 'resolved', status: 'on_track' },
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5)], { frozenRead: true }),
+    })], HOUR_MS + 10 * 60_000);
+    recorder.flushIfDirty();
+    const reopened = persist.saved()!.plansByDeviceId.heater!;
+    expect(reopened.latest).toBe(immutableRevision);
+    expect(reopened.latest!.planStatus).toBe('satisfied');
+    expect(reopened.liveCompletion).toEqual({ kind: 'unmet', status: 'on_track' });
+    expect(effectivePlanStatusOf(reopened)).toBe('on_track');
+  });
+
+  it('refreshes car-limit reporting without reallocating the requested-target commitment', () => {
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    const evDiagnostic = (reachableTargetValue: number) => makeDiag({
+      deviceId: 'ev', deadlineAtMs: 6 * HOUR_MS, objectiveKind: 'ev_soc',
+      objectiveId: 'ev:ev_soc', targetTemperatureC: null, currentTemperatureC: null,
+      targetPercent: 80, currentPercent: 60, targetValue: 80, reachableTargetValue,
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5, { plannedAdmissionPowerKw: 3 })]),
+    });
+    recorder.observe([evDiagnostic(70)], HOUR_MS);
+    recorder.flushIfDirty();
+    const original = persist.saved()!.plansByDeviceId.ev!;
+    expect(original.carChargeLimit).toEqual({ limitValue: 70, reached: false });
+    recorder.observe([evDiagnostic(75)], HOUR_MS + 10 * 60_000);
+    recorder.flushIfDirty();
+    const changedLimit = persist.saved()!.plansByDeviceId.ev!;
+    expect(changedLimit.carChargeLimit).toEqual({ limitValue: 75, reached: false });
+    expect(changedLimit.latest).toBe(original.latest);
+    expect(changedLimit.commitment).toBe(original.commitment);
+    recorder.observe([evDiagnostic(80)], HOUR_MS + 20 * 60_000);
+    recorder.flushIfDirty();
+    const clearedLimit = persist.saved()!.plansByDeviceId.ev!;
+    expect(clearedLimit.carChargeLimit).toBeUndefined();
+    expect(clearedLimit.latest).toBe(original.latest);
+    expect(clearedLimit.commitment).toBe(original.commitment);
+    expect(clearedLimit.latest!.revision).toBe(1);
+  });
+
+  it('persists a contributing budget verdict and restores it on the frozen horizon', () => {
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      trajectory: { kind: 'resolved', status: 'cannot_meet' },
+      reasonCode: 'target_cannot_be_met',
+      kwhPerUnitAcceptedSamples: 8,
+      kwhPerUnitLastAcceptedAtMs: HOUR_MS,
+      horizonPlan: makeHorizon([makeBucket(HOUR_MS, 0.5, { plannedAdmissionPowerKw: 3 })], {
+        status: 'cannot_meet', statusDetail: 'target_cannot_be_met',
+        energyNeededKWh: 4, unplannedUsefulEnergyKWh: 3.5,
+        budgetContributedToShortfall: true,
+      }),
+    })], HOUR_MS);
+    recorder.flushIfDirty();
+    const restored = normalizeDeferredObjectiveActivePlans(JSON.parse(JSON.stringify(persist.saved())));
+    expect(restored.plansByDeviceId.dev?.kwhPerUnitProvenance).toMatchObject({
+      source: 'learned', acceptedSamples: 8, lastAcceptedAtMs: HOUR_MS,
+    });
+    const latest = restored.plansByDeviceId.dev!.latest!;
+    expect(latest.budgetContributedToShortfall).toBe(true);
+    const frozen = buildFrozenHorizonPlan({
+      nowMs: HOUR_MS, objectiveId: 'dev:temperature', objectiveKind: 'temperature',
+      enforcement: 'soft', deadlineAtMs: 6 * HOUR_MS, deadlineMarginMs: 0,
+      committedHours: latest.hours, planStatus: latest.planStatus,
+      floorShortfallCause: latest.floorShortfallCause!,
+      budgetContributedToShortfall: latest.budgetContributedToShortfall === true,
+      energyNeededKWh: latest.energyNeededKWh, aheadOfHourMilestone: false,
+      steps: [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }], epsilonKWh: 0.001,
+    });
+    expect(frozen.budgetContributedToShortfall).toBe(true);
+    expect(frozen.status).toBe('cannot_meet');
+  });
+
   it('preserves a sub-Wh booking and its physical reservation across persistence and frozen serving', () => {
     const nowMs = 3 * HOUR_MS - 1000;
     const bookedKWh = 1.25 / 3600;
@@ -229,7 +343,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       } },
     }]) {
       const reservations = buildPriorityReservations({
-        diagnostic: activePlans ? { ...diagnostic, horizonPlan: frozen } : diagnostic,
+        evaluation: {
+          ...diagnostic.evaluation,
+          planning: { kind: 'allocated', plan: activePlans ? frozen : diagnostic.horizonPlan! },
+        },
         objective: {
           enabled: true, kind: 'temperature', enforcement: 'soft',
           targetTemperatureC: 65, deadlineAtMs: 6 * HOUR_MS,
@@ -328,7 +445,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       deadlineAtMs: 6 * HOUR_MS,
     };
     const freshReservations = buildPriorityReservations({
-      diagnostic,
+      evaluation: diagnostic.evaluation,
       objective,
       device: undefined,
       activePlans: null,
@@ -336,13 +453,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     });
     expect(freshReservations.map((reservation) => reservation.admissionPowerKw)).toEqual([1, 2]);
     const reservations = buildPriorityReservations({
-      diagnostic: makeDiag({
-        deviceId: 'dev',
-        deadlineAtMs: 6 * HOUR_MS,
-        trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_device' },
-        reasonCode: 'objective_missing_device',
-        horizonPlan: undefined,
-      }),
+      evaluation: inactiveTaskEvaluation('dev', 6 * HOUR_MS, 65),
       objective,
       device: undefined,
       activePlans: normalized,
@@ -353,6 +464,34 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       { startMs: splitMs, endMs: secondEndMs, plannedKWh: 0.5 },
     ]);
     expect(reservations.map((reservation) => reservation.admissionPowerKw)).toEqual([1, 2]);
+  });
+
+  it('uses operational completion and permissions independently of reporting metadata', () => {
+    const objective = {
+      enabled: true,
+      kind: 'temperature' as const,
+      enforcement: 'soft' as const,
+      targetTemperatureC: 65,
+      deadlineAtMs: 6 * HOUR_MS,
+    };
+    const evaluation = {
+      ...inactiveTaskEvaluation('dev', objective.deadlineAtMs, 65),
+      completion: { kind: 'unmet' as const },
+      planning: { kind: 'allocated' as const, plan: makeHorizon([makeBucket(2 * HOUR_MS, 1)]) },
+      permissions: { budgetExempt: true, limitLowerPriority: false, pauseLowerPriority: false },
+    };
+    const input = { evaluation, objective, device: undefined, activePlans: null, sustainableRateKw: 10 };
+    expect(buildPriorityReservations(input)).toMatchObject([{ plannedKWh: 1, exemptFromBudget: true }]);
+    for (const kind of ['target_reached', 'accepted_near_target'] as const) {
+      expect(buildPriorityReservations({
+        ...input,
+        evaluation: { ...evaluation, completion: { kind } },
+      })).toEqual([]);
+    }
+    expect(buildPriorityReservations({
+      ...input,
+      evaluation: { ...evaluation, planning: { kind: 'inactive' } },
+    })).toEqual([]);
   });
 
   it('persists a higher live admission step within the same committed hour', () => {
@@ -411,13 +550,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const normalized = normalizeDeferredObjectiveActivePlans(saved);
     expect(normalized.plansByDeviceId.dev).toBeDefined();
     const restartReservations = buildPriorityReservations({
-      diagnostic: makeDiag({
-        deviceId: 'dev',
-        deadlineAtMs: 6 * HOUR_MS,
-        trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_device' },
-        reasonCode: 'objective_missing_device',
-        horizonPlan: undefined,
-      }),
+      evaluation: inactiveTaskEvaluation('dev', 6 * HOUR_MS, 65),
       objective,
       device: undefined,
       activePlans: normalized,
@@ -782,9 +915,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
     // Diagnostic without `horizonPlan` (e.g. price horizon doesn't cover the deadline).
-    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_missing_price_horizon';
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_missing_price_horizon',
+    });
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -798,9 +931,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
-    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_device_in_sub_home';
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_device_in_sub_home',
+    });
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -815,9 +948,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
-    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_missing_temperature';
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_missing_temperature',
+    });
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -837,9 +970,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
-    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_missing_charge_rate';
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_missing_charge_rate',
+    });
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -864,9 +997,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       currentTemperatureC: null,
       currentPercent: 40,
       kWhPerUnitBanded: 0.5,
+      horizonPlan: undefined, reasonCode: 'objective_missing_charge_rate',
     });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_missing_charge_rate';
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -880,9 +1012,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
-    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_invalid_session';
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_invalid_session',
+    });
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -897,15 +1029,15 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
     // First cycle: device hasn't reported a temperature yet.
-    const tempMissing = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (tempMissing as { horizonPlan?: unknown }).horizonPlan;
-    tempMissing.reasonCode = 'objective_missing_temperature';
+    const tempMissing = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_missing_temperature',
+    });
     recorder.observe([tempMissing], HOUR_MS);
 
     // Next cycle: temperature arrived but price horizon does not yet cover the deadline.
-    const horizonMissing = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (horizonMissing as { horizonPlan?: unknown }).horizonPlan;
-    horizonMissing.reasonCode = 'objective_missing_price_horizon';
+    const horizonMissing = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_missing_price_horizon',
+    });
     recorder.observe([horizonMissing], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     recorder.flushIfDirty();
@@ -918,9 +1050,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
-    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_price_feature_disabled';
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_price_feature_disabled',
+    });
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -937,9 +1069,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Seed via flow card — no pendingReason yet (no diagnostic context).
     recorder.markPending(buildSeed(), 0);
 
-    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_price_feature_disabled';
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_price_feature_disabled',
+    });
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -953,9 +1085,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
-    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_invalid_session';
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_invalid_session',
+    });
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -971,18 +1103,18 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
     // First cycle: EV is unplugged → invalid session.
-    const invalidDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (invalidDiag as { horizonPlan?: unknown }).horizonPlan;
-    invalidDiag.reasonCode = 'objective_invalid_session';
+    const invalidDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_invalid_session',
+    });
     recorder.observe([invalidDiag], HOUR_MS);
     recorder.flushIfDirty();
 
     expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBe('objective_invalid_session');
 
     // Second cycle: price horizon not yet available (generic pending, no specific code).
-    const horizonMissingDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (horizonMissingDiag as { horizonPlan?: unknown }).horizonPlan;
-    horizonMissingDiag.reasonCode = 'objective_missing_price_horizon';
+    const horizonMissingDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_missing_price_horizon',
+    });
     recorder.observe([horizonMissingDiag], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     recorder.flushIfDirty();
 
@@ -995,9 +1127,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
-    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (diag as { horizonPlan?: unknown }).horizonPlan;
-    diag.reasonCode = 'objective_missing_temperature';
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_missing_temperature',
+    });
 
     recorder.observe([diag], HOUR_MS);
     recorder.flushIfDirty();
@@ -1013,9 +1145,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
     // First cycle: invalid session.
-    const invalidDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (invalidDiag as { horizonPlan?: unknown }).horizonPlan;
-    invalidDiag.reasonCode = 'objective_invalid_session';
+    const invalidDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_invalid_session',
+    });
     recorder.observe([invalidDiag], HOUR_MS);
     recorder.flushIfDirty();
     expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBe('objective_invalid_session');
@@ -1049,10 +1181,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Production routes a blocking `reasonCode` through `withUnavailableTrajectory`
     // (diagnosticsBridge.ts), which OMITS `horizonPlan`, so a real blocked
     // diag is horizon-less and is recorded via `ensurePendingRecord` (the
-    // `candidateHours === null` set path) — delete `horizonPlan` to match.
-    const unplugged = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (unplugged as { horizonPlan?: unknown }).horizonPlan;
-    unplugged.reasonCode = 'objective_invalid_session';
+    // `candidateHours === null` set path) — omit its allocation to match.
+    const unplugged = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_invalid_session',
+    });
     recorder.observe([unplugged], 2 * HOUR_MS + 10 * 60 * 1000);
     recorder.flushIfDirty();
     const paused = saved()!.plansByDeviceId.dev;
@@ -1084,10 +1216,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     // A real invalid-session diag is horizon-less (routed through `withUnavailableTrajectory`
     // in diagnosticsBridge.ts, which omits `horizonPlan`), so it's recorded via
-    // `ensurePendingRecord`, not the committed path — delete `horizonPlan` to match.
-    const unplugged = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (unplugged as { horizonPlan?: unknown }).horizonPlan;
-    unplugged.reasonCode = 'objective_invalid_session';
+    // `ensurePendingRecord`, not the committed path — omit its allocation to match.
+    const unplugged = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_invalid_session',
+    });
     recorder.observe([unplugged], 2 * HOUR_MS + 10 * 60 * 1000);
     recorder.flushIfDirty();
     expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBe('objective_invalid_session');
@@ -1111,9 +1243,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const committedRevision = saved()!.plansByDeviceId.dev.latest;
     expect(committedRevision).not.toBeNull();
 
-    const relocated = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-    delete (relocated as { horizonPlan?: unknown }).horizonPlan;
-    relocated.reasonCode = 'objective_device_in_sub_home';
+    const relocated = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: undefined, reasonCode: 'objective_device_in_sub_home',
+    });
     recorder.observe([relocated], 2 * HOUR_MS + 10 * 60 * 1000);
     recorder.flushIfDirty();
 
@@ -1985,6 +2117,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       version: 1,
       plansByDeviceId: {
         dev: {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'dev',
           deviceName: 'Water Heater',
           objectiveKind: 'temperature',
@@ -2227,20 +2360,21 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     }]);
   });
 
-  it('keeps mid-hour status drift live-only until the settle gate', () => {
-    // Mid-hour diagnostics still guide execution, but the active-plan revision
-    // is the public Flow/UI status source. A transient at-risk sample before
-    // :58 must not persist or fire the revision bus.
-    const events: Array<{ planStatus: string }> = [];
+  it('publishes mid-hour live status drift without rewriting the settled revision', () => {
+    const events: Array<{ effectivePlanStatus: string | undefined; allocationChanged: boolean }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({
       ...deps,
       onRevisionWritten: (event) => {
-        events.push({ planStatus: event.revision!.planStatus });
+        events.push({
+          effectivePlanStatus: event.effectivePlanStatus,
+          allocationChanged: event.allocationChanged,
+        });
       },
     });
 
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    const committed = recorder.getPlanForTests('dev')?.latest;
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
@@ -2252,9 +2386,12 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       ], { status: 'at_risk' }),
     })], 2 * HOUR_MS + 30 * 60 * 1000);
 
-    expect(events).toEqual([]);
-    expect(recorder.getPlanForTests('dev')?.latest?.planStatus).toBe('on_track');
-    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+    expect(events).toEqual([{ effectivePlanStatus: 'at_risk', allocationChanged: false }]);
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.liveCompletion).toEqual({ kind: 'unmet', status: 'at_risk' });
+    expect(plan?.latest).toBe(committed);
+    expect(plan?.latest?.planStatus).toBe('on_track');
+    expect(plan?.latest?.revision).toBe(1);
   });
 
   it('drops expired diagnostics without emitting a public status revision', () => {
@@ -2480,6 +2617,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
+      currentTemperatureC: 65,
+      currentValue: 65,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
@@ -2683,6 +2822,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       // Same horizon, same charging hours — only the daily-budget attribution
       // shifted. Triggers a metadata-only revision write.
       reasonCode: 'limited_by_daily_budget',
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5), makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5)], { statusDetail: 'limited_by_daily_budget' }),
     })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
@@ -2800,6 +2941,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
       kwhPerUnitSource: null,
+      currentTemperatureC: 65,
+      currentValue: 65,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
@@ -2851,7 +2994,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
         makeBucket(4 * HOUR_MS, 1.5),
-      ], { pricesAvailableUpToMs: 48 * HOUR_MS }),
+      ], { statusDetail: 'limited_by_daily_budget', pricesAvailableUpToMs: 48 * HOUR_MS }),
     })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
@@ -2889,7 +3032,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
         makeBucket(4 * HOUR_MS, 1.5),
-      ], { pricesAvailableUpToMs: 48 * HOUR_MS }),
+      ], { statusDetail: 'limited_by_daily_budget', pricesAvailableUpToMs: 48 * HOUR_MS }),
     })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
@@ -2931,7 +3074,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(3 * HOUR_MS, 1.5),
         makeBucket(4 * HOUR_MS, 1.5),
-      ]),
+      ], { statusDetail: 'limited_by_daily_budget' }),
     })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     expect(recorder.getPlanForTests('dev')?.latest?.computedFromPricesUpTo).toBe(24 * HOUR_MS);
 
@@ -3291,6 +3434,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       version: 1,
       plansByDeviceId: {
         dev: {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'dev',
           deviceName: 'Water Heater',
           objectiveKind: 'temperature',
@@ -3334,6 +3478,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       version: 1,
       plansByDeviceId: {
         dev: {
+          liveCompletion: { kind: 'unavailable' as const },
           deviceId: 'dev',
           deviceName: 'Water Heater',
           objectiveKind: 'temperature',
@@ -3502,6 +3647,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const basePlan = (
       revisionOverrides: Record<string, unknown> = {},
     ): Record<string, unknown> => ({
+      liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'dev',
       deviceName: 'Garage EV',
       objectiveKind: 'ev_soc',
@@ -3512,6 +3658,23 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       objectiveSignature: 'sig',
       original: { ...baseRevision, reason: 'flow_card', ...revisionOverrides },
       latest: { ...baseRevision, reason: 'flow_card', ...revisionOverrides },
+    });
+
+    it.each([true, false, undefined])('accepts the persisted budget contribution flag %s', (flag) => {
+      const normalized = normalizeDeferredObjectiveActivePlans({
+        version: 1,
+        plansByDeviceId: { dev: basePlan({ budgetContributedToShortfall: flag }) },
+      });
+      expect(normalized.plansByDeviceId.dev?.latest?.budgetContributedToShortfall).toBe(flag);
+      expect(normalized.plansByDeviceId.dev).toBeDefined();
+    });
+
+    it('rejects a malformed budget contribution flag', () => {
+      const normalized = normalizeDeferredObjectiveActivePlans({
+        version: 1,
+        plansByDeviceId: { dev: basePlan({ budgetContributedToShortfall: 'true' }) },
+      });
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
     });
 
     it('preserves a rate_refined revision through the validator', () => {
@@ -4285,9 +4448,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const deadlineAtMs = 6 * HOUR_MS;
       const { deps, events } = captureEvents();
       const recorder = new DeferredObjectiveActivePlanRecorder(deps);
-      const diag = makeDiag({ deviceId: 'dev', deadlineAtMs });
-      delete (diag as { horizonPlan?: unknown }).horizonPlan;
-      diag.reasonCode = 'objective_missing_price_horizon';
+      const diag = makeDiag({
+        deviceId: 'dev', deadlineAtMs,
+        horizonPlan: undefined, reasonCode: 'objective_missing_price_horizon',
+      });
       recorder.observe([diag], HOUR_MS);
 
       const pending = events.find((e) => e.event === 'active_plan_revision_pending');
@@ -4320,6 +4484,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         deviceId: 'dev',
         deadlineAtMs,
         reasonCode: 'limited_by_daily_budget',
+        horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5), makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5)], { statusDetail: 'limited_by_daily_budget' }),
       })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const writes = events.filter((e) => e.event === 'active_plan_revision_written');

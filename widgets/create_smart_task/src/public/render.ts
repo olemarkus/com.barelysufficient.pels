@@ -373,7 +373,11 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   const scheduled = hasScheduledHours(response);
   const estimated = response.estimate.status !== 'unavailable';
   const costLine = scheduled ? formatCostLine(response.estimate) : null;
-  const verdictLine = resolveSmartTaskPreviewStatusCopy(response.estimate.status, response.estimate.unavailableReason);
+  const verdictLine = resolveSmartTaskPreviewStatusCopy(
+      response.estimate.status,
+      response.estimate.unavailableReason,
+      response.estimate.budgetRole,
+    );
   setLine(targets.previewFeasibilityEl, estimated ? verdictLine : null);
   setLine(targets.previewCostEl, costLine);
   setLine(

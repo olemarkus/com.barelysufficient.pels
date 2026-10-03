@@ -1,3 +1,5 @@
+import { allocatedTaskPlan } from './taskEvaluation';
+import { resolveLiveCompletion, sameLiveCompletion } from './activePlanDiagnosticReason';
 /**
  * Persisted record-keeper for deferred-objective active plans — the slow clock
  * in this module's two-clock design (governed by
@@ -32,6 +34,7 @@ import {
 } from './activePlanDuration';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
 import {
+  refreshActivePlanLiveFacts,
   resolveDiagnosticReasonCode,
   resolveCarChargeLimitOverlay,
   sameCarChargeLimit,
@@ -210,7 +213,7 @@ export class DeferredObjectiveActivePlanRecorder {
       delete this.plans[diag.deviceId];
       this.lastScheduleSettledHourMs.delete(diag.deviceId);
     }
-    const candidateHours = buildHoursFromHorizonPlan(diag);
+    const candidateHours = buildHoursFromHorizonPlan(diag.evaluation);
     if (candidateHours === null) {
       // Diagnostic without horizonPlan (e.g. prices missing): can't compute a
       // revision. Auto-create a pending record so the UI knows the objective
@@ -255,7 +258,9 @@ export class DeferredObjectiveActivePlanRecorder {
     // doesn't starve a real change later in the same `:58` window.
     const objectiveChanged = compareObjectiveSignatures(backfilled.objectiveSignature, signature).changed;
     const allocationContextChanged = backfilled.latest?.allocationContextSignature !== diag.allocationContextSignature;
-    if (!this.isReplanDueThisCycle(diag, [objectiveChanged, allocationContextChanged].includes(true), nowMs)) {
+    if (!this.isReplanDueThisCycle(
+      diag, [objectiveChanged, allocationContextChanged].includes(true), nowMs,
+    )) {
       publishOverlayOnlyStatusChange(this.deps, this.plans[diag.deviceId] ?? backfilled, previousEffective);
       return;
     }
@@ -313,29 +318,13 @@ export class DeferredObjectiveActivePlanRecorder {
     return backfilled;
   }
 
-  // Keep a committed plan's `diagnosticReasonCode` in lock-step with the live
-  // diagnostic on EVERY cycle — not only when a replan is due. The list chip and
-  // device-card line read this field to surface "Paused — unplugged" /
-  // even on a plan with a cached `latest` revision. Without a
-  // per-cycle refresh, a charger that RECOVERS (re-plugged, or resume succeeds)
-  // while no replan is due — the `isReplanDueThisCycle` gate early-returns most
-  // cycles — would keep advertising the stale `objective_invalid_session`
-  // code until the next `:58` replan, so the chip lies "Paused — unplugged" on
-  // a healthy charger. `ensurePendingRecord` already
-  // refreshes this on the no-`horizonPlan` path; this mirrors it on the
-  // committed-plan path. Returns the (possibly updated) record so the caller
-  // feeds the corrected code into `maybeWriteReplanRevision`'s `...current`
-  // spread, which would otherwise carry the stale code across a replan write too.
+  // Refresh public live facts every cycle while preserving the settled revision.
   private refreshDiagnosticReasonCode(
     current: DeferredObjectiveActivePlanV1,
     diag: DeferredObjectiveDiagnostic,
   ): DeferredObjectiveActivePlanV1 {
-    const code = resolveDiagnosticReasonCode(diag, current.diagnosticReasonCode);
-    const carChargeLimit = resolveCarChargeLimitOverlay(diag, current.carChargeLimit);
-    if (current.diagnosticReasonCode === code && sameCarChargeLimit(current.carChargeLimit, carChargeLimit)) {
-      return current;
-    }
-    const refreshed = withCarChargeLimit(withDiagnosticReasonCode(current, code), carChargeLimit);
+    const refreshed = refreshActivePlanLiveFacts(current, diag);
+    if (refreshed === current) return current;
     this.plans[current.deviceId] = refreshed;
     this.dirty = true;
     return refreshed;
@@ -348,10 +337,7 @@ export class DeferredObjectiveActivePlanRecorder {
   ): void {
     const existing = this.plans[diag.deviceId];
     if (existing !== undefined) {
-      // Non-pending records (a persisted revision that's gone invalid mid-plan,
-      // e.g. EV unplugged) share the committed-plan refresh path: only the
-      // `diagnosticReasonCode` needs to track the live diagnostic — `pendingReason`
-      // is meaningless once a plan has executed.
+      // Settled records refresh live facts; pendingReason only applies before commitment.
       if (!existing.pending) {
         this.refreshDiagnosticReasonCode(existing, diag);
         return;
@@ -360,13 +346,15 @@ export class DeferredObjectiveActivePlanRecorder {
       const pendingReason = resolvePendingReason(diag);
       const diagnosticReasonCode = resolveDiagnosticReasonCode(diag, existing.diagnosticReasonCode);
       const carChargeLimit = resolveCarChargeLimitOverlay(diag, existing.carChargeLimit);
+      const liveCompletion = resolveLiveCompletion(diag);
       if (
         existing.pendingReason !== pendingReason
         || existing.diagnosticReasonCode !== diagnosticReasonCode
         || !sameCarChargeLimit(existing.carChargeLimit, carChargeLimit)
+        || !sameLiveCompletion(existing.liveCompletion, liveCompletion)
       ) {
         this.plans[diag.deviceId] = withCarChargeLimit(
-          withDiagnosticReasonCode({ ...existing, pendingReason }, diagnosticReasonCode),
+          withDiagnosticReasonCode({ ...existing, pendingReason, liveCompletion }, diagnosticReasonCode),
           carChargeLimit,
         );
         this.dirty = true;
@@ -414,6 +402,7 @@ export class DeferredObjectiveActivePlanRecorder {
       deadlineAtMs: diag.deadlineAtMs as number,
       startedAtMs,
       pending: false,
+      liveCompletion: resolveLiveCompletion(diag),
       objectiveSignature: signature,
       commitment: {
         committedAtMs: nowMs,
@@ -461,7 +450,9 @@ export class DeferredObjectiveActivePlanRecorder {
         progressDirection: diag.progressDirection,
         previousPlanStatus: null,
         previousWasPending: true,
-        effectivePlanStatus: resolveEffectivePlanStatus(revision.planStatus, firstDiagnosticReasonCode),
+        effectivePlanStatus: resolveEffectivePlanStatus(
+          revision.planStatus, firstDiagnosticReasonCode, resolveLiveCompletion(diag),
+        ),
         allocationChanged: false,
         projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
       });
@@ -519,7 +510,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // Caller (`observeDiagnostic`) already returns early when `current.latest`
     // is null, so we can dereference it directly here.
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
-    const horizonPlan = diag.horizonPlan as NonNullable<typeof diag.horizonPlan>;
+    const horizonPlan = allocatedTaskPlan(diag.evaluation);
     // `rescueOnly` routes to `flow_permission_changed` below so the history detail
     // names the Flow permission change, not a generic objective edit.
     const sigDiff = compareObjectiveSignatures(current.objectiveSignature, signature);
@@ -585,7 +576,7 @@ export class DeferredObjectiveActivePlanRecorder {
       rescuePermissionOnlyChanged: sigDiff.rescueOnly,
       sourceRefined,
       measuredDeviation,
-      pricesAdvanced: hasPriceHorizonAdvanced(latest, diag),
+      pricesAdvanced: hasPriceHorizonAdvanced(latest, diag.evaluation),
     });
     const revision = buildRevision({
       diag, hours: effectiveHours, revision: latest.revision + 1, reason, nowMs,
@@ -691,6 +682,7 @@ export class DeferredObjectiveActivePlanRecorder {
       effectivePlanStatus: resolveEffectivePlanStatus(
         revision.planStatus,
         this.plans[diag.deviceId]?.diagnosticReasonCode,
+        resolveLiveCompletion(diag),
       ),
     });
     return true;
@@ -747,13 +739,6 @@ export class DeferredObjectiveActivePlanRecorder {
   // Test seam: expose internals for assertions without going through save().
   getPlanForTests(deviceId: string): DeferredObjectiveActivePlanV1 | undefined {
     return this.plans[deviceId];
-  }
-
-  resetForTests(): void {
-    this.plans = {};
-    this.lastSeenAtMs.clear();
-    this.lastScheduleSettledHourMs.clear();
-    this.dirty = false;
   }
 
   private emit(payload: Record<string, unknown>): void {

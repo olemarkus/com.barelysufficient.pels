@@ -2,6 +2,7 @@ import type {
   DeferredObjectiveActivePlanCarChargeLimitV1,
   DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanV1,
+  DeferredObjectiveLiveCompletion,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { isCarLimitBinding } from './diagnosticTypes';
@@ -30,6 +31,9 @@ export const resolveDiagnosticReasonCode = (
   // on the persisted plan every cycle — which is what the settings UI and the
   // widget read — so the chip stops claiming "On track" the moment the device
   // goes off, and stops claiming risk the moment it is turned back on.
+  if (diag.reasonCode === 'objective_delivery_restricted') return diag.reasonCode;
+  if (diag.reasonCode === 'objective_not_accepting_energy') return diag.reasonCode;
+  if (diag.reasonCode === 'objective_device_limit') return diag.reasonCode;
   if (diag.externalOffHoldActive === true) return 'objective_device_left_off';
   return undefined;
 };
@@ -72,4 +76,38 @@ export const withDiagnosticReasonCode = (
 ): DeferredObjectiveActivePlanV1 => {
   const { diagnosticReasonCode: _drop, ...rest } = plan;
   return code === undefined ? rest : { ...rest, diagnosticReasonCode: code };
+};
+
+export const resolveLiveCompletion = (diagnostic: DeferredObjectiveDiagnostic): DeferredObjectiveLiveCompletion => {
+  const { completion, planning } = diagnostic.evaluation;
+  if (completion.kind === 'target_reached' || completion.kind === 'accepted_near_target') {
+    return { kind: 'satisfied' };
+  }
+  if (completion.kind === 'inactive' || planning.kind === 'inactive' || planning.plan.status === 'invalid') {
+    return { kind: 'unavailable' };
+  }
+  return { kind: 'unmet', status: planning.plan.status === 'satisfied' ? 'on_track' : planning.plan.status };
+};
+
+export const sameLiveCompletion = (
+  left: DeferredObjectiveLiveCompletion,
+  right: DeferredObjectiveLiveCompletion,
+): boolean => {
+  if (left.kind !== right.kind) return false;
+  return left.kind !== 'unmet' || (right.kind === 'unmet' && left.status === right.status);
+};
+
+/** Refresh current diagnostic facts without changing the committed revision. */
+export const refreshActivePlanLiveFacts = (
+  current: DeferredObjectiveActivePlanV1,
+  diagnostic: DeferredObjectiveDiagnostic,
+): DeferredObjectiveActivePlanV1 => {
+  const reasonCode = resolveDiagnosticReasonCode(diagnostic, current.diagnosticReasonCode);
+  const carChargeLimit = resolveCarChargeLimitOverlay(diagnostic, current.carChargeLimit);
+  const liveCompletion = resolveLiveCompletion(diagnostic);
+  if (current.diagnosticReasonCode === reasonCode
+    && sameCarChargeLimit(current.carChargeLimit, carChargeLimit)
+    && sameLiveCompletion(current.liveCompletion, liveCompletion)) return current;
+  const refreshed = withDiagnosticReasonCode({ ...current, liveCompletion }, reasonCode);
+  return withCarChargeLimit(refreshed, carChargeLimit);
 };

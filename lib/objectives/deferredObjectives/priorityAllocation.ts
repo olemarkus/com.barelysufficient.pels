@@ -10,7 +10,7 @@ import {
 } from '../../objectives/types';
 import { buildObjectiveSignatureForEntry } from './activePlanSignature';
 import { buildLiveReservationSegments } from './activePlanSchedule';
-import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
+import type { TaskEvaluation } from './taskEvaluation';
 import { resolveObjectiveSteps } from './objectiveSteps';
 import type {
   DeferredObjectivePriorityReservation,
@@ -314,17 +314,25 @@ const reservationsFromSegments = (params: {
 }));
 
 export const buildPriorityReservations = (params: {
-  diagnostic: DeferredObjectiveDiagnostic;
+  evaluation: TaskEvaluation;
   objective: DeferredObjectiveSettingsEntry;
   device: ObjectiveDeviceInput | undefined;
   activePlans: DeferredObjectiveActivePlansV1 | null | undefined;
   sustainableRateKw: number;
 }): DeferredObjectivePriorityReservation[] => {
+  const { evaluation } = params;
+  if (evaluation.completion.kind === 'target_reached'
+    || evaluation.completion.kind === 'accepted_near_target') return [];
   const activePlan = resolveActiveCommittedPlan({
     activePlans: params.activePlans,
-    deviceId: params.diagnostic.deviceId,
+    deviceId: evaluation.deviceId,
     objective: params.objective,
-    progressDirection: params.diagnostic.progressDirection,
+    progressDirection: evaluation.progress.kind === 'known'
+      ? evaluation.progress.direction
+      : resolveObjectiveProgressDirectionRead({
+        objectiveKind: params.objective.kind,
+        thermalDirection: params.device?.thermalDirection ?? 'unknown',
+      }),
   });
   const persistedHours = (activePlan?.latest.hours ?? []).flatMap((hour): ReservationHour[] => {
     const startMs = hour.coversFromMs ?? hour.startsAtMs;
@@ -339,31 +347,29 @@ export const buildPriorityReservations = (params: {
     }],
     }];
   });
-  const exemptFromBudget = params.objective.rescue?.exemptFromBudget === 'always';
-  const useFreshDiagnostic = params.diagnostic.horizonPlan !== undefined
-    && params.diagnostic.horizonPlan.frozenRead !== true;
-  if (useFreshDiagnostic) {
+  const exemptFromBudget = evaluation.permissions.budgetExempt;
+  if (evaluation.planning.kind === 'allocated' && evaluation.planning.plan.frozenRead !== true) {
     return reservationsFromSegments({
-      deviceId: params.diagnostic.deviceId,
-      segments: buildLiveReservationSegments(params.diagnostic),
+      deviceId: evaluation.deviceId,
+      segments: buildLiveReservationSegments(evaluation.planning.plan),
       exemptFromBudget,
     });
   }
   if (activePlan?.latest.reservationSegments !== undefined) {
     return reservationsFromSegments({
-      deviceId: params.diagnostic.deviceId,
+      deviceId: evaluation.deviceId,
       segments: activePlan.latest.reservationSegments,
       exemptFromBudget,
     });
   }
   return reservationsFromHours({
     // A fresh allocator result is authoritative even when it books nothing.
-    // Frozen diagnostics fabricate epoch-hour buckets for control only, and a
-    // missing-device diagnostic has no horizon at all; both reserve from the
+    // Frozen plans fabricate epoch-hour buckets for control only. An inactive
+    // evaluation may retain a missing device through grace; both reserve from the
     // settled latest revision (exact segments when available, clipped legacy
     // hours otherwise).
     hours: persistedHours,
-    deviceId: params.diagnostic.deviceId,
+    deviceId: evaluation.deviceId,
     device: params.device,
     sustainableRateKw: params.sustainableRateKw,
     exemptFromBudget,

@@ -1,9 +1,11 @@
+import type { TaskEvaluation } from './taskEvaluation';
 import type {
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanReservationSegmentV1,
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
+import type { DeferredObjectiveHorizonPlan } from './types';
 import { isMeaningfullyCheaper } from './bucketAllocation';
 import { roundKWh } from './activePlanMath';
 
@@ -15,10 +17,10 @@ const PLANNED_EPSILON_KWH = 0.001;
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const buildHoursFromHorizonPlan = (
-  diag: DeferredObjectiveDiagnostic,
+  evaluation: TaskEvaluation,
 ): DeferredObjectiveActivePlanHourV1[] | null => {
-  const horizonPlan = diag.horizonPlan;
-  if (!horizonPlan) return null;
+  if (evaluation.planning.kind === 'inactive') return null;
+  const horizonPlan = evaluation.planning.plan;
   // The horizon planner trims the current bucket's start to `nowMs` and may
   // split a single hour into two segments at `planningEndMs` (see
   // `bucketAllocation.ts`), so plannedBucket startMs values can be
@@ -77,9 +79,9 @@ const segmentHourStart = (segment: Pick<DeferredObjectiveActivePlanReservationSe
 );
 
 export const buildLiveReservationSegments = (
-  diag: DeferredObjectiveDiagnostic,
+  plan: DeferredObjectiveHorizonPlan,
 ): DeferredObjectiveActivePlanReservationSegmentV1[] => (
-  (diag.horizonPlan?.plannedBuckets ?? []).flatMap((bucket) => {
+  plan.plannedBuckets.flatMap((bucket) => {
     if (bucket.plannedUsefulEnergyKWh <= 0) return [];
     const durationHours = (bucket.endMs - bucket.startMs) / ONE_HOUR_MS;
     if (durationHours <= 0) return [];
@@ -178,7 +180,9 @@ export const buildReservationSegmentsFromHorizonPlan = (params: {
   effectiveHours: readonly DeferredObjectiveActivePlanHourV1[];
   previousSegments?: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
 }): DeferredObjectiveActivePlanReservationSegmentV1[] => {
-  const liveSegments = buildLiveReservationSegments(params.diag);
+  const liveSegments = params.diag.evaluation.planning.kind === 'allocated'
+    ? buildLiveReservationSegments(params.diag.evaluation.planning.plan)
+    : [];
   const previousSegments = params.previousSegments ?? [];
   return params.effectiveHours.flatMap((hour) => {
     if (hour.plannedKWh <= 0) return [];
@@ -294,7 +298,7 @@ export const stampCheaperHourAhead = (
   hours: DeferredObjectiveActivePlanHourV1[],
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanHourV1[] => {
-  const horizonPlan = diag.horizonPlan;
+  const horizonPlan = diag.evaluation.planning.kind === 'allocated' ? diag.evaluation.planning.plan : null;
   if (!horizonPlan) return hours;
   const buckets = horizonPlan.plannedBuckets;
   // Reference price per hour-aligned slot: the earliest covering bucket's price
@@ -323,7 +327,7 @@ export const stampCheaperHourAhead = (
 export const resolveProjectedFinishAtMs = (
   diag: DeferredObjectiveDiagnostic,
 ): number | null => {
-  const horizonPlan = diag.horizonPlan;
+  const horizonPlan = diag.evaluation.planning.kind === 'allocated' ? diag.evaluation.planning.plan : null;
   if (!horizonPlan) return null;
   // The last planned bucket may be only partially used; estimate finish time
   // from its fill ratio so the trigger token reflects realistic completion,

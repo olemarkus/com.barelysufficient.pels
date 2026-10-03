@@ -96,6 +96,7 @@ const buildCard = (params: {
     firstActionAtMs: firstHour,
     nowMs,
     carChargeLimitReached: plan.carChargeLimit?.reached === true,
+    liveCompletion: plan.liveCompletion,
   });
   const carChargeLimit = resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue);
   // Mirror the hero's chip-confidence chain (see `resolveEnergyNeededKWh` in

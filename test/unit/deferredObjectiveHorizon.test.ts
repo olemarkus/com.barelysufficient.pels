@@ -34,6 +34,8 @@ const bucket = (
 });
 
 const objective = (overrides: Partial<DeferredObjective> = {}): DeferredObjective => ({
+  fullyReserved: false,
+  deadlineMarginMs: 0,
   id: 'charger',
   kind: 'ev_soc',
   enforcement: 'soft',
@@ -65,15 +67,19 @@ describe('planDeferredObjectiveHorizon', () => {
     'keeps the heater claimed in the final second of an equally priced hour (%s allocation)',
     (allocationKind) => {
       const plan = planDeferredObjectiveHorizon({
+        aheadOfHourMilestone: false,
+        commitment: { kind: 'uncommitted' },
         nowMs: NOW_MS + HOUR_MS - 1000,
         objective: objective({ kind: 'temperature', energyNeededKWh: 0.6 }),
         steps: defaultSteps,
         buckets: [bucket(0), bucket(1), bucket(2)],
         ...(allocationKind === 'fresh' ? {} : {
-          committed: true,
-          committedHours: allocationKind === 'committed'
-            ? [{ startsAtMs: NOW_MS, plannedKWh: 0.6 }]
-            : [],
+          commitment: {
+            kind: 'committed' as const,
+            hours: allocationKind === 'committed'
+              ? [{ startsAtMs: NOW_MS, plannedKWh: 0.6 }]
+              : [],
+          },
         }),
       });
 
@@ -88,6 +94,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('waits through the current bucket when future preferred windows cover the objective', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective(),
       steps: defaultSteps,
@@ -111,6 +119,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // 2 kWh need across two preferred hours and a 1 kW low step, the plan must
     // schedule both hours instead of stuffing 2 kWh into one hour via 'high'.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -138,6 +148,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('requests the lowest current step that keeps the selected windows on track', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective(),
       steps: defaultSteps,
@@ -154,6 +166,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('keeps committed hours even when a fresh optimization would prefer another bucket', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -165,11 +178,13 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(1, 'preferred'),
         bucket(2, 'avoid'),
       ],
-      committed: true,
-      committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 1 },
-        { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
-      ],
+      commitment: {
+        kind: 'committed',
+        hours: [
+          { startsAtMs: NOW_MS, plannedKWh: 1 },
+          { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
+        ],
+      },
     });
 
     // Honours the committed hours (h0, h2) over the cheaper fresh-optimal h1; the
@@ -183,8 +198,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('recovers via expansion when committed plan is empty and feasible uncommitted buckets remain', () => {
     // Prod scenario (Connected 300, 2026-05-27 morning shower): a smart task
-    // created with current temp already above target gets `committed: true,
-    // committedHours: []` because there was nothing to plan. Then a hot-water
+    // created with current temp already above target gets a committed empty
+    // list because there was nothing to plan. Then a hot-water
     // draw crashes the tank below target mid-task → status flips cannot_meet
     // with a now-positive energyNeededKWh. The previous behaviour treated the
     // empty commitment as a "stale cannot_meet decision must not silently
@@ -200,6 +215,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // a single snapshot looks short) and from the filled current hour
     // self-committing for subsequent cycles.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -211,8 +227,7 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(1, 'preferred'),
         bucket(2, 'preferred'),
       ],
-      committed: true,
-      committedHours: [],
+      commitment: { kind: 'committed', hours: [] },
     });
 
     // Cheapest-first expansion (equal price → ascending time) fills h0 then h1.
@@ -232,6 +247,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // the floor step (delivering what it can) rather than idling — `cannot_meet`
     // drives the device, see `admission.PLANNABLE_STATUSES`.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 5,
@@ -241,8 +257,7 @@ describe('planDeferredObjectiveHorizon', () => {
       buckets: [
         bucket(0, 'preferred'),
       ],
-      committed: true,
-      committedHours: [],
+      commitment: { kind: 'committed', hours: [] },
     });
 
     expect(plan.status).toBe('cannot_meet');
@@ -265,6 +280,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // h2. Need exceeds the committed allocation, so expansion books the residual
     // into h0.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -276,10 +292,12 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(1, 'preferred'),
         bucket(2, 'preferred'),
       ],
-      committed: true,
-      committedHours: [
-        { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
-      ],
+      commitment: {
+        kind: 'committed',
+        hours: [
+          { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
+        ],
+      },
     });
 
     expect(plan.status).toBe('on_track');
@@ -297,6 +315,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // h1 is an uncommitted future hour. The residual beyond h0's floor capacity
     // spills into h1, never re-claiming h0 beyond its phase-1 fill.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -307,10 +326,12 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(0, 'preferred'),
         bucket(1, 'preferred'),
       ],
-      committed: true,
-      committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 1 },
-      ],
+      commitment: {
+        kind: 'committed',
+        hours: [
+          { startsAtMs: NOW_MS, plannedKWh: 1 },
+        ],
+      },
     });
 
     expect(plan.status).toBe('on_track');
@@ -337,6 +358,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // sort (preferred + earliest among ties), so it gets the expansion. Hour 2
     // stays unallocated because the need is already met.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -348,10 +370,12 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(1, 'preferred'),
         bucket(2, 'preferred'),
       ],
-      committed: true,
-      committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 1 },
-      ],
+      commitment: {
+        kind: 'committed',
+        hours: [
+          { startsAtMs: NOW_MS, plannedKWh: 1 },
+        ],
+      },
     });
 
     expect(plan.status).toBe('on_track');
@@ -369,6 +393,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // step capacity (1 kWh) and phase-2 spills the remaining 1 kWh into
     // h1 — h0 is never visited twice.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -380,10 +405,12 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(1, 'preferred'),
         bucket(2, 'preferred'),
       ],
-      committed: true,
-      committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 0.5 },
-      ],
+      commitment: {
+        kind: 'committed',
+        hours: [
+          { startsAtMs: NOW_MS, plannedKWh: 0.5 },
+        ],
+      },
     });
 
     // h0 fills to step capacity (1 kWh at low step), not its prior 0.5 floor.
@@ -405,6 +432,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // the hour set is unchanged, so the recorder's `sameHourSchedule` gate
     // suppresses revision writes for the drift entirely.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 0.9,
@@ -416,10 +444,12 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(1, 'preferred'),
         bucket(2, 'preferred'),
       ],
-      committed: true,
-      committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 0.5 },
-      ],
+      commitment: {
+        kind: 'committed',
+        hours: [
+          { startsAtMs: NOW_MS, plannedKWh: 0.5 },
+        ],
+      },
     });
 
     expect(plan.status).toBe('on_track');
@@ -438,6 +468,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('bounds an hour by its headroom ENERGY when nothing else is contending for it', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 1.5,
@@ -470,6 +502,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // zero. The allocator falls back to step capacity ∧ daily-budget,
     // identical to pre-headroom-cap behavior.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -492,6 +526,8 @@ describe('planDeferredObjectiveHorizon', () => {
   it('subtracts higher-priority energy after prorating a partial current hour', () => {
     const halfwayMs = NOW_MS + (HOUR_MS / 2);
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: halfwayMs,
       objective: objective({ energyNeededKWh: 0.5, deadlineAtMs: NOW_MS + HOUR_MS }),
       steps: defaultSteps,
@@ -510,15 +546,9 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(0.5);
   });
 
-  it('runs the fresh optimizer when committed is false regardless of committedHours', () => {
-    // Regression guard: an explicit `committed: false` must route to the fresh
-    // optimizer even when `committedHours` is non-empty (e.g. a stale legacy
-    // payload). Same buckets as the committed=true/empty case, but with a
-    // populated committedHours array pointing at a worse hour. The fresh
-    // optimizer would prefer all three `preferred` buckets, so an `on_track`
-    // result with the full energy planned proves the `committed: false` flag
-    // wins over the supplied committedHours data.
+  it('runs the fresh optimizer for an explicitly uncommitted horizon', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -530,11 +560,7 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(1, 'preferred'),
         bucket(2, 'preferred'),
       ],
-      committed: false,
-      committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 1 },
-        { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
-      ],
+      commitment: { kind: 'uncommitted' },
     });
 
     expect(plan.status).toBe('on_track');
@@ -549,6 +575,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // fit the full 2 kWh. That is reachable-by-climbing, not impossible, so the
     // verdict is at_risk rather than a flat cannot_meet false negative.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -572,6 +600,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // delivers only 3 kWh, so the target is physically unreachable — climbing
     // cannot rescue it and the verdict stays cannot_meet.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 10,
@@ -591,6 +621,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // A device with one usable step (e.g. an EV charger) has no higher step to
     // climb to, so a floor shortfall is a genuine miss, not feasible_above_floor.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -617,6 +649,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // (feasible_above_floor). Committed kWh is the floor (preserved by the
     // recorder's merge), not a per-hour ceiling on phase-1/climb fills.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
@@ -626,10 +659,12 @@ describe('planDeferredObjectiveHorizon', () => {
       buckets: [
         bucket(0, 'preferred'),
       ],
-      committed: true,
-      committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 1 },
-      ],
+      commitment: {
+        kind: 'committed',
+        hours: [
+          { startsAtMs: NOW_MS, plannedKWh: 1 },
+        ],
+      },
     });
 
     expect(plan.status).toBe('at_risk');
@@ -647,6 +682,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // stays cannot_meet. The single-bucket horizon isolates this from the
     // committed-plan-expansion path.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 4,
@@ -656,10 +692,12 @@ describe('planDeferredObjectiveHorizon', () => {
       buckets: [
         bucket(0, 'preferred'),
       ],
-      committed: true,
-      committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 1 },
-      ],
+      commitment: {
+        kind: 'committed',
+        hours: [
+          { startsAtMs: NOW_MS, plannedKWh: 1 },
+        ],
+      },
     });
 
     expect(plan.status).toBe('cannot_meet');
@@ -677,6 +715,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // The per-bucket cap of 0.5 kWh holds it to 2 kWh, so lifting the cap would
     // plan 10 kWh more: the budget is implicated without being the whole story.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 14,
@@ -700,6 +740,8 @@ describe('planDeferredObjectiveHorizon', () => {
   it('leaves the budget unimplicated when uncapping would change nothing', () => {
     // No per-bucket cap at all: the shortfall is purely the ladder against time.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 14,
@@ -713,6 +755,46 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.budgetContributedToShortfall).toBe(false);
   });
 
+  it.each([2, 3])('keeps a reservation-only shortfall out of the budget verdict (%s kWh need)', (needKWh) => {
+    const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: needKWh, deadlineAtMs: NOW_MS + HOUR_MS }),
+      steps: [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }],
+      buckets: [bucket(0, 'neutral', {
+        // The raw budget already exceeds the device's hourly capacity.
+        maxUsefulEnergyKWh: 5,
+        higherPriorityEnergyReservations: [{
+          startMs: NOW_MS, endMs: NOW_MS + HOUR_MS, plannedKWh: 4,
+        }],
+      })],
+    });
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+    expect(plan.budgetContributedToShortfall).toBe(false);
+    expect(plan.plannedUsefulEnergyKWh).toBe(1);
+  });
+
+  it('records budget contribution on a single-rung charger while retaining reservation claims', () => {
+    const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 4, deadlineAtMs: NOW_MS + HOUR_MS }),
+      steps: [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }],
+      buckets: [bucket(0, 'neutral', {
+        maxUsefulEnergyKWh: 1.5,
+        higherPriorityEnergyReservations: [{
+          startMs: NOW_MS, endMs: NOW_MS + HOUR_MS, plannedKWh: 1,
+        }],
+      })],
+    });
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.budgetContributedToShortfall).toBe(true);
+    expect(plan.plannedUsefulEnergyKWh).toBe(0.5);
+  });
+
   it('reports at_risk (limited_by_daily_budget) when the floor is short only because of the per-bucket budget cap', () => {
     // 3 kWh needed across four 1-hour buckets, each capped at 0.5 kWh by the
     // per-bucket daily-budget cap (`maxUsefulEnergyKWh`). The floor can place only
@@ -720,6 +802,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // equally. But with the cap lifted the device physically fits the full 3 kWh,
     // so the shortfall is budget-bound: at_risk, not a physical cannot_meet.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 3,
@@ -769,6 +853,8 @@ describe('planDeferredObjectiveHorizon', () => {
       reservedHeadroomKw: 2.5,
     });
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 6, deadlineAtMs: NOW_MS + (4 * HOUR_MS) }),
       steps,
@@ -790,6 +876,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // genuinely physical/time-bound, not budget-bound — so a budget cap must not
     // mask it as recoverable.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 20,
@@ -817,6 +905,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // only the conservative buffer pads us short. Soften to at_risk/
     // estimate_uncertain rather than declaring physical cannot_meet.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2.5,
@@ -842,6 +932,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // producer's `k·SE` margin (0.5 kWh) — the mean wouldn't fit either, so
     // this is a genuine cannot_meet; the variance buffer doesn't excuse it.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 3,
@@ -865,6 +957,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // `energyNeededKWh`) must produce the pre-Step-3 verdict. With no margin,
     // any unplanned > epsilon is `cannot_meet`.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2.5,
@@ -896,6 +990,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // on_track. (Without promotion, this is exactly the false `cannot_meet`
     // that motivates Slice 2.)
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 18,
@@ -915,6 +1011,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // headroom = 2.5 → fits medium step (2 kW) but not max (3 kW). Floor goes
     // to medium. Need 16 kWh in 8h → 8h × 2 kW = 16 kWh → fits.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 16,
@@ -931,6 +1029,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('still books a tight hour for its headroom energy when the floor rung exceeds the rate', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 4,
@@ -963,6 +1063,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // that pessimism.)
     const headrooms = [4, 4, 0.5, 4, 4, 4, 4, 4];
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 18,
@@ -989,6 +1091,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // floor capacity against 8 kWh need → 1 kWh shortfall. Climb probe
     // (uniform max=3) gets 3 × 3 = 9 kWh, fits → at_risk/feasible_above_floor.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 8,
@@ -1016,6 +1120,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // `fullyReserved: false` — the partial-rescue / no-rescue case. Floor must
     // stay at min step; we have no physical guarantee for the higher step.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 18,
@@ -1043,6 +1149,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // smallest step that fits the planned kWh — not the promoted ceiling.
     // Otherwise the executor would over-climb and trip the hard cap.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 0.3,
@@ -1068,6 +1176,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // Single-step EV-style device: the promotion path short-circuits — there is
     // no higher step to promote to. Behavior is identical to pre-Slice-2.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 1,
@@ -1084,6 +1194,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('preserves deadline margin before using a preferred bucket inside the reserve window', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         deadlineAtMs: NOW_MS + (3 * HOUR_MS),
@@ -1109,6 +1221,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('marks the plan at risk when it must use the deadline reserve', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2.5,
@@ -1147,12 +1261,20 @@ describe('planDeferredObjectiveHorizon', () => {
     };
 
     const softPlan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       ...common,
-      objective: objective({ energyNeededKWh: 2, enforcement: 'soft' }),
+      objective: objective({
+  fullyReserved: false,
+  deadlineMarginMs: 0, energyNeededKWh: 2, enforcement: 'soft' }),
     });
     const hardPlan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       ...common,
-      objective: objective({ energyNeededKWh: 2, enforcement: 'hard' }),
+      objective: objective({
+  fullyReserved: false,
+  deadlineMarginMs: 0, energyNeededKWh: 2, enforcement: 'hard' }),
     });
 
     expect(softPlan.status).toBe('on_track');
@@ -1163,6 +1285,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('uses current dearer capacity when the cheaper future hour cannot hold the whole need', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 1.2, deadlineAtMs: NOW_MS + (2 * HOUR_MS) }),
       steps: [
@@ -1184,6 +1308,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('scales capped capacity against the original bucket when now clips the current bucket', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS + (HOUR_MS / 2),
       objective: objective({
         energyNeededKWh: 1,
@@ -1211,6 +1337,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('scales split reserve segment capacity against the original bucket when now clips the bucket', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS + (HOUR_MS / 4),
       objective: objective({
         energyNeededKWh: 0.8,
@@ -1239,6 +1367,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('reports cannot_meet when all windows at the highest step still miss the target', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 3 }),
       steps: [
@@ -1258,6 +1388,8 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('does not request charging when the objective is already satisfied', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 0 }),
       steps: defaultSteps,
@@ -1273,13 +1405,14 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('does not report remaining useful energy for sub-epsilon satisfied objectives', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 0.0005 }),
       steps: defaultSteps,
       buckets: [
         bucket(0, 'preferred'),
       ],
-      epsilonKWh: 0.001,
     });
 
     expect(plan.status).toBe('satisfied');
@@ -1302,8 +1435,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }), // deadline NOW + 4h
       steps: defaultSteps,
       buckets: deferralBuckets([100, 90, 90, 90]),
-      committed: true,
-      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1317,8 +1449,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: [bucket(0, 'avoid'), bucket(1, 'preferred'), bucket(2, 'preferred')],
-      committed: true,
-      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1335,8 +1466,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: deferralBuckets([100, 50, 50, 50]),
-      committed: true,
-      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
       aheadOfHourMilestone: false,
     });
 
@@ -1351,8 +1481,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: deferralBuckets([100, 96, 98, 97]),
-      committed: true,
-      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1367,8 +1496,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2, deadlineMarginMs: HOUR_MS }),
       steps: defaultSteps,
       buckets: deferralBuckets([100, 100, 100, 50]),
-      committed: true,
-      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1382,8 +1510,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: deferralBuckets([0, -5, -5, -5]),
-      committed: true,
-      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1396,8 +1523,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: deferralBuckets([100, -2, 100, 100]),
-      committed: true,
-      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1419,8 +1545,7 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(2, 'neutral', { price: 100 }),
         bucket(3, 'neutral', { price: 100 }),
       ],
-      committed: true,
-      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1432,6 +1557,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // the preferred future hour and leaves the current hour at 0 kWh — it is
     // already idle, so there is nothing to defer.
     const plan = planDeferredObjectiveHorizon({
+      commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 1 }),
       steps: defaultSteps,
@@ -1454,11 +1580,12 @@ describe('planDeferredObjectiveHorizon', () => {
   // defaultSteps = off/low(1)/medium(2)/max(3); PRICE_BY_TIER avoid=100, preferred=10.
   it('flags coldStartReleaseEligible: expensive current hour, need fits the cheaper future at the climbed step', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5 }), // > floor capacity (4h × 1 kW), ≤ climb in 3 cheap hours (3 × 3)
       steps: defaultSteps,
       buckets: [bucket(0, 'avoid'), bucket(1, 'preferred'), bucket(2, 'preferred'), bucket(3, 'preferred')],
-      committed: false,
+      commitment: { kind: 'uncommitted' },
     });
 
     // The floor allocation DID spill onto the expensive current hour (the false premise)…
@@ -1469,12 +1596,13 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('does not flag coldStartReleaseEligible when no future hour is meaningfully cheaper than now', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5 }),
       steps: defaultSteps,
       // Current hour is the cheapest; later hours are dearer → nothing to defer toward.
       buckets: [bucket(0, 'preferred'), bucket(1, 'avoid'), bucket(2, 'avoid'), bucket(3, 'avoid')],
-      committed: false,
+      commitment: { kind: 'uncommitted' },
     });
 
     expect(plan.coldStartReleaseEligible ?? false).toBe(false);
@@ -1484,11 +1612,12 @@ describe('planDeferredObjectiveHorizon', () => {
     // Only one cheaper future hour (h1) at max 3 kW = 3 kWh < 5 kWh need → the
     // expensive current hour is genuinely needed, so do not release it.
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5, deadlineAtMs: NOW_MS + (2 * HOUR_MS) }),
       steps: defaultSteps,
       buckets: [bucket(0, 'avoid'), bucket(1, 'preferred')],
-      committed: false,
+      commitment: { kind: 'uncommitted' },
     });
 
     expect(plan.coldStartReleaseEligible ?? false).toBe(false);
@@ -1496,11 +1625,12 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('does not flag coldStartReleaseEligible for a single-step device (no climb capacity)', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5 }),
       steps: [{ id: 'off', usefulPowerKw: 0, admissionPowerKw: 0 }, { id: 'low', usefulPowerKw: 1, admissionPowerKw: 1 }],
       buckets: [bucket(0, 'avoid'), bucket(1, 'preferred'), bucket(2, 'preferred'), bucket(3, 'preferred')],
-      committed: false,
+      commitment: { kind: 'uncommitted' },
     });
 
     expect(plan.coldStartReleaseEligible ?? false).toBe(false);
@@ -1508,11 +1638,12 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('does not flag coldStartReleaseEligible when the current hour is free or negative', () => {
     const plan = planDeferredObjectiveHorizon({
+      aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5 }),
       steps: defaultSteps,
       buckets: [bucket(0, 'avoid', { price: 0 }), bucket(1, 'preferred'), bucket(2, 'preferred'), bucket(3, 'preferred')],
-      committed: false,
+      commitment: { kind: 'uncommitted' },
     });
 
     expect(plan.coldStartReleaseEligible ?? false).toBe(false);

@@ -1,5 +1,6 @@
+import type { TaskReservationReader } from './taskDeliveryState';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
-import { isDeferredObjectiveExpired, type DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
+import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
 import { resolveObjectiveDeviceInputs } from '../types';
 import type { ThermalDirection } from '../../../packages/contracts/src/types';
 import { resolveUsableCapacityKw } from '../../power/capacityModel';
@@ -22,8 +23,8 @@ import {
   buildDeferredReleaseIntents,
   type DeferredAdmissionDecision,
 } from './admission';
-import { buildDeferredObjectiveDiagnostics } from './diagnosticsBridge';
-import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import { buildDeferredObjectiveEvaluations } from './diagnosticsBridge';
+import type { TaskEvaluation } from './taskEvaluation';
 import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
 import type { DeliveredEnergyReader } from './energyDelivery';
@@ -59,6 +60,7 @@ export type DeferredObjectiveDecorationControllerDeps = {
   // Energy fed under each energy task so far; the lifecycle clock counts it, and
   // this path reads the same count so admission plans from the same progress.
   getDeliveredEnergyKWh: DeliveredEnergyReader;
+  isReservationSuppressed: TaskReservationReader;
 };
 
 /**
@@ -105,7 +107,7 @@ export class DeferredObjectiveDecorationController {
     devices: DeferredDecorationInput['devices'],
     dailyBudgetSnapshot: DailyBudgetUiPayload | null,
     nowTs: number,
-  ): DeferredObjectiveDiagnostic[] {
+  ): TaskEvaluation[] {
     // Mirrors the planner's `trackPlanStage` (duration + per-op RSS delta) so the
     // `evaluate_deferred_objectives_ms` telemetry is unchanged by the relocation;
     // per-op RSS attribution matters under PELS's tight memory ceiling.
@@ -116,7 +118,7 @@ export class DeferredObjectiveDecorationController {
       if (!settings) return [];
       // The lifecycle clock may not have disarmed an elapsed task yet. Its
       // terminal fallback belongs to that clock; it has no admission claims.
-      return buildDeferredObjectiveDiagnostics({
+      return buildDeferredObjectiveEvaluations({
         nowMs: nowTs,
         timeZone: this.deps.getTimeZone(),
         devices: resolveObjectiveDeviceInputs(devices, this.deps.getThermalDirection),
@@ -132,7 +134,8 @@ export class DeferredObjectiveDecorationController {
         resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
         getStallClassification: this.deps.getStallClassification,
         getDeliveredEnergyKWh: this.deps.getDeliveredEnergyKWh,
-      }).filter((diagnostic) => !isDeferredObjectiveExpired(diagnostic, nowTs));
+        isReservationSuppressed: this.deps.isReservationSuppressed,
+      }).filter((evaluation) => evaluation.deadlineAtMs > nowTs);
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);
       recordOpRssDelta('evaluate_deferred_objectives_ms', rssBefore, safeRss());

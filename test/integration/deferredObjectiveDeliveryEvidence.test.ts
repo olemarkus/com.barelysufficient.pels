@@ -1,0 +1,319 @@
+import { resolveTaskDeliveryControl } from '../../lib/plan/taskDeliveryControl';
+import { resolveDeviceExecutionState } from '../../lib/executor/deviceExecutionState';
+import { buildExecutableDeviceIntent, buildExecutableObservedDeviceStateFromSnapshot } from '../../lib/executor/executablePlanProjection';
+import { buildDriftObservedSnapshot } from '../../lib/executor/driftObservedDevice';
+import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
+// Multi-owner integration reproduction: relay on/off + measured watts, or EV SoC +
+// car charge limit, with real lifecycle, diagnostics, allocation, energy and
+// history recorders. No allocator milestone or internal status is supplied.
+import { describe, expect, it } from 'vitest';
+import { DeferredObjectiveLifecycleEmitter } from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
+import { DeferredObjectivePlanHistoryRecorder, type PlanHistoryLoadResult } from '../../lib/objectives/deferredObjectives/planHistory';
+import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
+import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
+import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
+import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
+import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
+import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { resolveDeferredPlanHistoryMissAttribution } from '../../packages/shared-domain/src/deferredPlanHistoryAttribution';
+import { type MeteredPlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import { buildPlanDevice, fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
+import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { createMemoryEnergyDeliveryStore, inertPlanHistoryDeps, noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
+
+const HOUR_MS = 3_600_000;
+const MIN_MS = 60_000;
+const START_MS = Date.UTC(2026, 0, 1, 17);
+const DEADLINE_MS = START_MS + 4 * HOUR_MS;
+const HIGH_ID = 'heater-relay';
+const LOW_ID = 'second-relay';
+
+type Device = MeteredPlanInputDevice & {
+  thermalDirection: 'heating'; stateOfCharge?: ReturnType<typeof stateOfChargeFixture>;
+};
+const relay = (id: string, drawKw: number, nowMs: number): Device => withBinaryDiscriminant(withFixtureResidualKw({
+  id, name: id, available: true, currentDrawKw: drawKw,
+  expectedPowerKw: 2, expectedPowerSource: 'measured-peak',
+  commandableNow: true, objectiveSessionInactive: false,
+  boostSupported: false, boostRequested: false,
+  hasStandingDemand: true, surplusTracking: false, confirmedNotDrawing: false,
+  targets: [], binaryCapabilityId: 'onoff', binaryControl: { on: true },
+  control: fixtureControlPosture({ controllable: true }),
+  deviceType: 'onoff', lastFreshDataMs: nowMs, thermalDirection: 'heating',
+})) as unknown as Device;
+
+const charger = (percent: number, limitPercent: number, drawKw: number, nowMs: number): Device => {
+  const snapshot = stateOfChargeFixture({ percent, observedAtMs: nowMs, carId: 'car' });
+  return {
+    ...relay(HIGH_ID, drawKw, nowMs),
+    isEvCharger: true,
+    stateOfCharge: {
+      ...snapshot,
+      source: { kind: 'car', carId: 'car', chargeLimitPercent: limitPercent },
+      level: { kind: 'known', percent, observedAtMs: nowMs, carChargeLimitPercent: limitPercent },
+    },
+  };
+};
+
+const prices: CombinedPricesV2 = {
+  version: 2,
+  days: {
+    '2026-01-01': {
+      hours: Array.from({ length: 24 }, (_, hour) => ({
+        startsAt: new Date(Date.UTC(2026, 0, 1, hour)).toISOString(),
+        total: 10, isCheap: false, isExpensive: false,
+      })),
+    },
+  },
+  avgPrice: 10, lowThreshold: 5, highThreshold: 15,
+  priceScheme: 'norway', priceUnit: 'øre/kWh',
+};
+const priceHorizon = (nowMs: number, deadlineMs: number) => buildPriceHorizonFromCombined(prices, nowMs, deadlineMs);
+const priorities = createFixturePriorityQuery([{ id: HIGH_ID, priority: 1 }, { id: LOW_ID, priority: 2 }]);
+
+const energySettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjectiveSettings({
+  version: 1,
+  objectivesByDeviceId: {
+    [HIGH_ID]: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs: DEADLINE_MS },
+    [LOW_ID]: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 4, deadlineAtMs: DEADLINE_MS },
+  },
+});
+const evSettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjectiveSettings({
+  version: 1,
+  objectivesByDeviceId: {
+    [HIGH_ID]: { enabled: true, kind: 'ev_soc', enforcement: 'soft', targetPercent: 80, deadlineAtMs: DEADLINE_MS },
+  },
+});
+
+// Stores are the external persistence seam. Restart constructs fresh owners
+// against the same durable rows; no observation/time anchor is injected.
+const createScenario = (settings: DeferredObjectiveSettingsV1) => {
+  const energyStore = createMemoryEnergyDeliveryStore();
+  let persistedHistory: PlanHistoryLoadResult = {
+    snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [],
+  };
+  let persistedActive: DeferredObjectiveActivePlansV1 | null = null;
+  let devices: Device[] = [];
+  let reported: DeferredObjectiveDiagnostic[] = [];
+  let active: DeferredObjectiveActivePlanRecorder;
+  let history: DeferredObjectivePlanHistoryRecorder;
+  let energy: EnergyTaskDeliveryTracker;
+  let lifecycle: DeferredObjectiveLifecycleEmitter;
+  const powerTracker = {
+    objectiveProfiles: {
+      [HIGH_ID]: {
+        updatedAtMs: START_MS,
+        lastSample: { observedAtMs: START_MS, value: 60 },
+        kwhPerUnit: { sampleCount: 8, mean: 0.2, m2: 0, min: 0.2, max: 0.2, confidence: 'high' as const, lastUpdatedMs: START_MS },
+        acceptedSamples: 8, rejectedSamples: 0,
+      },
+    },
+  };
+  const restart = () => {
+    energy = new EnergyTaskDeliveryTracker(energyStore, () => true);
+    active = new DeferredObjectiveActivePlanRecorder({ load: () => persistedActive, save: (value) => { persistedActive = value; return true; } });
+    history = new DeferredObjectivePlanHistoryRecorder({
+      ...inertPlanHistoryDeps(),
+      // The simulated relay/charger remains on at PELS' requested setting.
+      // Whole-home control is not imposing any lower setting in this case.
+      getDeliveryControl: (deviceId) => {
+        const device = devices.find((entry) => entry.id === deviceId);
+        if (!device) return { kind: 'no_decision' };
+        const planDevice = buildPlanDevice({
+          id: device.id, name: device.name, deviceType: 'onoff',
+          currentOn: true, currentState: 'on', plannedState: 'keep',
+          binaryCapabilityId: 'onoff', control: fixtureControlPosture({ controllable: true }),
+        });
+        const observed = buildExecutableObservedDeviceStateFromSnapshot(buildDriftObservedSnapshot({
+          id: device.id, name: device.name, available: true, isEvCharger: false,
+          targets: [], binaryControl: { on: true },
+        } as ExecutorDeviceRead, undefined));
+        return resolveTaskDeliveryControl(planDevice, resolveDeviceExecutionState(
+          buildExecutableDeviceIntent(planDevice), observed,
+          { binary: { kind: 'none' }, step: { kind: 'none' }, target: null }, false,
+        ));
+      },
+      // Device-owner semantic port; the car correlation and qualified-limit
+      // production path is covered by evCarLinkProducer.test.ts.
+      getDeviceConstraint: (deviceId) => {
+        const device = devices.find((entry) => entry.id === deviceId);
+        const level = device?.stateOfCharge?.level;
+        return device?.currentDrawKw === 0 && level?.kind === 'known'
+          && level.carChargeLimitPercent !== undefined && level.percent >= level.carChargeLimitPercent
+          ? { kind: 'limit_reached' } : { kind: 'none' };
+      },
+      load: () => persistedHistory,
+      save: (snapshot, meteredDeliveryStates) => {
+        persistedHistory = JSON.parse(JSON.stringify({ snapshot, meteredDeliveryStates, persistenceSafe: true }));
+        return true;
+      },
+    });
+    lifecycle = new DeferredObjectiveLifecycleEmitter({
+      getThermalDirection: () => 'heating',
+      getDeferredObjectiveSettings: () => settings,
+      getTimeZone: () => 'UTC', getDevices: () => devices,
+      getPowerTracker: () => powerTracker, getDailyBudgetSnapshot: () => null,
+      buildPriceHorizon: priceHorizon, getPriceOptimizationEnabled: () => true,
+      getDeferredObjectiveActivePlans: () => active.getActivePlansSnapshot(),
+      getCapacitySettings: () => ({ limitKw: 2, marginKw: 0, periodMinutes: 60 }),
+      getPrioritiesForDevices: priorities,
+      resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
+      energyDelivery: energy, isReservationSuppressed: history.isReservationSuppressed,
+      getDeliveryEvidence: history.getDeliveryEvidence,
+      observeDeferredObjectivePlanHistory: (diagnostics, nowMs, activePlans) => history.observe(diagnostics, nowMs, activePlans),
+      observeDeferredObjectiveActivePlans: (diagnostics, nowMs) => {
+        reported = diagnostics;
+        active.observe(diagnostics, nowMs);
+      },
+    });
+  };
+  restart();
+  const tick = (nowMs: number, observed: Device[]) => {
+    devices = observed;
+    lifecycle.tick(nowMs);
+    history.flushIfDirty();
+    active.flushIfDirty();
+    energy.flushIfDirty();
+    return reported;
+  };
+  const build = (nowMs: number) => buildDeferredObjectiveDiagnostics({
+    nowMs, timeZone: 'UTC', devices, settings, powerTracker,
+    dailyBudgetSnapshot: null, buildPriceHorizon: priceHorizon,
+    priceOptimizationEnabled: true, sustainableRateKw: 2,
+    activePlans: active.getActivePlansSnapshot(), getPrioritiesForDevices: priorities,
+    resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
+    getDeliveredEnergyKWh: energy.getDeliveredKWh, isReservationSuppressed: history.isReservationSuppressed,
+  });
+  return {
+    tick, build, restart,
+    evidence: () => history.getDeliveryEvidence(HIGH_ID, DEADLINE_MS),
+    delivered: () => energy.getDeliveredKWh(HIGH_ID, DEADLINE_MS),
+    archive: () => history.getHistorySnapshot(),
+    persisted: () => persistedHistory,
+  };
+};
+const task = (diagnostics: DeferredObjectiveDiagnostic[], id: string) => {
+  const diagnostic = diagnostics.find((entry) => entry.deviceId === id);
+  if (!diagnostic) throw new Error(`Missing diagnostic for ${id}`);
+  return diagnostic;
+};
+const plannedKWh = (diagnostic: DeferredObjectiveDiagnostic) => diagnostic.horizonPlan?.plannedUsefulEnergyKWh ?? 0;
+
+
+describe('task delivery evidence at the device boundary', () => {
+  it('keeps a relay energy task unmet at its mechanical cutoff, releases reservations, and recovers when drawing resumes', () => {
+    const scenario = createScenario(energySettings());
+    const observed = (atMs: number, highKw: number) => [relay(HIGH_ID, highKw, atMs), relay(LOW_ID, 0, atMs)];
+    for (let minutes = 0; minutes < 20; minutes += 5) {
+      scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 2));
+    }
+    const stoppedAt = START_MS + 20 * MIN_MS;
+    scenario.tick(stoppedAt, observed(stoppedAt, 0));
+    const before = plannedKWh(task(scenario.build(stoppedAt), LOW_ID));
+    const beforeCount = scenario.delivered();
+    expect(beforeCount).toBeGreaterThan(0);
+    expect(beforeCount).toBeLessThan(6);
+    for (let minutes = 25; minutes < 35; minutes += 5) {
+      scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 0));
+    }
+    expect(scenario.evidence().nonDelivery.kind).toBe('watching');
+    const confirmedAt = START_MS + 35 * MIN_MS;
+    const confirmed = task(scenario.tick(confirmedAt, observed(confirmedAt, 0)), HIGH_ID);
+    expect(confirmed.trajectory).toEqual({ kind: 'resolved', status: 'at_risk' });
+    expect(confirmed.reasonCode).toBe('objective_not_accepting_energy');
+    expect(confirmed.currentValue).toBeCloseTo(beforeCount);
+    expect(scenario.evidence().explanation).toMatchObject({
+      kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' },
+    });
+    expect(scenario.evidence().nonDelivery.kind).toBe('confirmed');
+    const decision = applyDeferredObjectiveAdmission((scenario.build(confirmedAt)).map((diagnostic) => diagnostic.evaluation), observed(confirmedAt, 0)).get(HIGH_ID);
+    expect(decision?.kind).toBe('planned');
+
+    // Lower tasks acquire the freed physical room at the ordinary :58 settle.
+    const settleAt = START_MS + 58 * MIN_MS;
+    scenario.tick(settleAt, observed(settleAt, 0));
+    const freed = plannedKWh(task(scenario.build(settleAt), LOW_ID));
+    expect(freed).toBeGreaterThan(before);
+
+    const resumedAt = START_MS + HOUR_MS;
+    scenario.tick(resumedAt, observed(resumedAt, 2));
+    expect(scenario.evidence().nonDelivery.kind).toBe('none');
+    expect(scenario.evidence().explanation).toMatchObject({ kind: 'recorded', primary: { kind: 'clear' } });
+    const nextSettle = START_MS + HOUR_MS + 58 * MIN_MS;
+    scenario.tick(nextSettle, observed(nextSettle, 2));
+    expect(scenario.delivered()).toBeGreaterThan(beforeCount);
+    expect(plannedKWh(task(scenario.build(nextSettle), LOW_ID))).toBeLessThan(freed);
+  });
+
+  it('persists a relay cutoff cause across restart and misses without inventing capacity pressure', () => {
+    const scenario = createScenario(energySettings());
+    for (let minutes = 0; minutes <= 20; minutes += 5) {
+      const atMs = START_MS + minutes * MIN_MS;
+      scenario.tick(atMs, [relay(HIGH_ID, 0, atMs), relay(LOW_ID, 0, atMs)]);
+    }
+    expect(scenario.evidence().nonDelivery.kind).toBe('confirmed');
+    expect(scenario.persisted().meteredDeliveryStates.find((row) => row.deviceId === HIGH_ID)?.deliveryEvidence.explanation)
+      .toMatchObject({ kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' } });
+    scenario.restart();
+    expect(scenario.evidence().nonDelivery.kind).toBe('none');
+    const restoredAt = START_MS + 25 * MIN_MS;
+    scenario.tick(restoredAt, [relay(HIGH_ID, 0, restoredAt), relay(LOW_ID, 0, restoredAt)]);
+    // Restart resumes fresh observation instead of billing or counting its gap.
+    expect(scenario.delivered()).toBe(0);
+    expect(scenario.evidence().nonDelivery.kind).toBe('watching');
+    for (let atMs = restoredAt + 5 * MIN_MS; atMs < DEADLINE_MS; atMs += 5 * MIN_MS) {
+      scenario.tick(atMs, [relay(HIGH_ID, 0, atMs), relay(LOW_ID, 0, atMs)]);
+    }
+    scenario.tick(DEADLINE_MS, [relay(HIGH_ID, 0, DEADLINE_MS), relay(LOW_ID, 0, DEADLINE_MS)]);
+    const archived = scenario.archive().entries.find((entry) => entry.deviceId === HIGH_ID);
+    expect(archived?.outcome).toBe('missed');
+    expect(archived?.deliveryExplanation).toMatchObject({
+      kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' },
+    });
+    expect(JSON.stringify(archived?.deliveryExplanation)).not.toContain('capacity_limited');
+    expect(archived && resolveDeferredPlanHistoryMissAttribution(archived)?.cause).toBe('device_not_accepting');
+  });
+
+  it('keeps the requested 80% unmet at the car’s 70% limit and clears the limit blocker when charging resumes', () => {
+    const scenario = createScenario(evSettings());
+    scenario.tick(START_MS, [charger(60, 70, 2, START_MS)]);
+    const stoppedAt = START_MS + 30 * MIN_MS;
+    const stopped = task(scenario.tick(stoppedAt, [charger(70, 70, 0, stoppedAt)]), HIGH_ID);
+    expect(stopped.targetValue).toBe(80);
+    expect(stopped.reachableTargetValue).toBe(70);
+    expect(stopped.trajectory).not.toEqual({ kind: 'resolved', status: 'satisfied' });
+    expect(stopped.reasonCode).toBe('objective_device_limit');
+    expect(scenario.evidence().explanation).toMatchObject({
+      kind: 'recorded', primary: { kind: 'blocked', cause: 'device_limit' },
+    });
+    const resumedAt = stoppedAt + 20 * MIN_MS;
+    scenario.tick(resumedAt, [charger(71, 80, 2, resumedAt)]);
+    expect(scenario.evidence().explanation).toMatchObject({ kind: 'recorded', primary: { kind: 'clear' } });
+    const doneAt = START_MS + 2 * HOUR_MS;
+    const done = task(scenario.tick(doneAt, [charger(80, 80, 0, doneAt)]), HIGH_ID);
+    expect(done.trajectory).toEqual({ kind: 'resolved', status: 'satisfied' });
+    scenario.tick(DEADLINE_MS, [charger(80, 80, 0, DEADLINE_MS)]);
+    expect(scenario.archive().entries.find((entry) => entry.deviceId === HIGH_ID)?.outcome).toBe('met');
+  });
+  it('archives the lower car limit as the cause when the requested EV target remains unmet', () => {
+    const scenario = createScenario(evSettings());
+    scenario.tick(START_MS, [charger(60, 70, 2, START_MS)]);
+    for (let atMs = START_MS + 30 * MIN_MS; atMs < DEADLINE_MS; atMs += 5 * MIN_MS) {
+      scenario.tick(atMs, [charger(70, 70, 0, atMs)]);
+    }
+    scenario.tick(DEADLINE_MS, [charger(70, 70, 0, DEADLINE_MS)]);
+    const archived = scenario.archive().entries.find((entry) => entry.deviceId === HIGH_ID);
+    expect(archived).toMatchObject({ outcome: 'missed', targetValue: 80, finalProgressValue: 70 });
+    expect(archived?.deliveryExplanation).toMatchObject({
+      kind: 'recorded', primary: { kind: 'blocked', cause: 'device_limit' },
+    });
+    expect(JSON.stringify(archived?.deliveryExplanation)).not.toContain('capacity_limited');
+    expect(archived && resolveDeferredPlanHistoryMissAttribution(archived).cause).toBe('device_limit');
+  });
+
+});

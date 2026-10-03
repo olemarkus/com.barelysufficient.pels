@@ -316,6 +316,9 @@ export type DeferredObjectiveActivePlanDiagnosticReason =
   // "Leave off until turned on again" is active on the task's device. Same
   // reason as the two above: the committed schedule keeps saying "On track"
   // until the next settle, so the live cause has to travel on the plan itself.
+  | 'objective_delivery_restricted'
+  | 'objective_not_accepting_energy'
+  | 'objective_device_limit'
   | 'objective_device_left_off'
   // The task's device is not managed by PELS. Same live-truth reason as
   // `objective_device_in_sub_home`: a committed plan keeps advertising its
@@ -329,7 +332,14 @@ export type DeferredObjectiveActivePlanCarChargeLimitV1 = {
   reached: boolean;
 };
 
+/** Current completion is independent of the immutable allocation revision. */
+export type DeferredObjectiveLiveCompletion =
+  | { kind: 'unavailable' }
+  | { kind: 'satisfied' }
+  | { kind: 'unmet'; status: 'on_track' | 'at_risk' | 'cannot_meet' };
+
 export type DeferredObjectiveActivePlanV1 = {
+  liveCompletion: DeferredObjectiveLiveCompletion;
   deviceId: string;
   deviceName: string | null;
   objectiveKind: DeferredObjectiveSettingsKind;
@@ -486,6 +496,7 @@ export type ResolvedDeferredObjectiveActivePlansV1 = {
 export type OverviewDeferredObjectiveActivePlan = Pick<
   DeferredObjectiveActivePlanV1,
   'latest' | 'diagnosticReasonCode' | 'pending' | 'pendingReason' | 'deviceName' | 'deadlineAtMs' | 'carChargeLimit'
+  | 'liveCompletion'
 >;
 
 export type OverviewDeferredObjectiveActivePlans = {

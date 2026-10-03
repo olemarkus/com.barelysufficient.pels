@@ -1,3 +1,4 @@
+import { readDeferredObjectiveLiveCompletion } from '../../../shared-domain/src/deferredObjectiveLiveCompletion';
 import type {
   OverviewDeferredObjectiveActivePlan,
   OverviewDeferredObjectiveActivePlans,
@@ -52,10 +53,18 @@ const isOverviewPlanShaped = (plan: unknown): plan is OverviewDeferredObjectiveA
 // `null` — both refuse the blob; only the per-surface empty value differs.
 export const coerceDeferredObjectiveActivePlans = (
   raw: unknown,
-): OverviewDeferredObjectiveActivePlans | null => normalizeDeferredObjectiveActivePlansShape(raw, {
-  isValidPlan: isOverviewPlanShaped,
-  empty: () => null,
-});
+): OverviewDeferredObjectiveActivePlans | null => {
+  const normalized = normalizeDeferredObjectiveActivePlansShape(raw, {
+    isValidPlan: isOverviewPlanShaped,
+    empty: () => null,
+  });
+  if (normalized === null) return null;
+  return { ...normalized, plansByDeviceId: Object.fromEntries(
+    Object.entries(normalized.plansByDeviceId).map(([deviceId, plan]) => [deviceId, {
+      ...plan, liveCompletion: readDeferredObjectiveLiveCompletion(plan.liveCompletion),
+    }]),
+  ) };
+};
 
 // Re-read the persisted active-plans setting into `state` and repaint the
 // overview plan surface. Wired into the `settings.set`/`settings.unset` realtime

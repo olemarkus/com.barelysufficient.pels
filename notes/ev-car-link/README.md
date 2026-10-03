@@ -4,7 +4,7 @@
 planning or actuation directly. What the probe resolves is now *used*: for a charger the user
 opted in, the associated car's `measure_battery` becomes that charger's `stateOfCharge`, which
 does reach anything that reads a charger's charge (EV boost, smart-task progress), and the car's
-qualified charge limit rides with it (`carChargeLimitPercent`), capping that charger's EV smart
+qualified charge limit rides with it (`carChargeLimitPercent`) as reporting evidence for that charger's EV smart
 task (`notes/deferred-load-objectives/README.md` § "The car's own charge limit"). What the
 probe resolves is also shown: when the user ticks a car for a charger, the association is
 served to the settings UI (see "Association and eligibility"). It began as a pure probe
@@ -454,10 +454,11 @@ Read `/tmp/pels` with the `pels-log-review` skill and check, in order:
 
 ## Out of scope for this slice
 
-- Suspending smart-task accounting on `ev_car_self_stopped` itself. The car's qualified limit now
-  caps the task through the car-sourced level, which is the seam; a single stop does not.
+- Completing a smart task on `ev_car_self_stopped` itself. The requested target remains the
+  obligation; the qualified car limit explains non-delivery rather than reducing requested work.
 - Manual car selection: the user picks which cars are *eligible*, never which one is
   associated. That stays the probe's call.
-- Suspending smart-task accounting on self-stop. The producer lives in `lib/device`, a peer
-  that may not reach `lib/objectives`, so tying `ev_car_self_stopped` to a running smart
-  task is a log-review exercise for now.
+- Directly changing smart-task accounting from the self-stop producer. It lives in
+  `lib/device` and publishes device evidence through its port. The task owner combines
+  that with generic claimed delivery, applied control and draw observations; confirmed
+  non-delivery can release reservations without changing the requested target.

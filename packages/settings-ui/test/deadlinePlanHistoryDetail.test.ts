@@ -389,10 +389,8 @@ describe('DeadlinePlanHistoryDetail', () => {
     }));
     const reason = root.querySelector('.plan-history-detail__missed-reason');
     expect(reason).not.toBeNull();
-    // v2.7.3 — blameless rewrite. The cannot_meet branch reads "Couldn't
-    // reserve enough cheap hours in time." with no recourse copy (the recourse
-    // button carries that signal).
-    expect(reason?.textContent).toMatch(/couldn.t reserve enough cheap hours/i);
+    // A legacy schedule verdict does not establish a delivery cause.
+    expect(reason?.textContent).toContain('Delivery blockers were not recorded for this earlier task.');
     // Recourse copy must not duplicate the recourse button.
     expect(reason?.textContent?.toLowerCase()).not.toContain('try lowering');
     expect(reason?.textContent?.toLowerCase()).not.toContain('moving the deadline');
@@ -526,18 +524,24 @@ describe('DeadlinePlanHistoryDetail', () => {
         planStatus: 'cannot_meet',
         dailyBudgetExhaustedBucketCount: 4,
       });
-      const root = await mount(buildEntry({
-        outcome: 'missed',
-        finalProgressC: 38,
-        targetTemperatureC: 65,
-        originalPlan: revision,
-        finalPlan: revision,
-      }));
+      const root = await mount({
+        ...buildEntry({
+          outcome: 'missed',
+          finalProgressC: 38,
+          targetTemperatureC: 65,
+          originalPlan: revision,
+          finalPlan: revision,
+        }),
+        deliveryExplanation: {
+          kind: 'recorded', primary: { kind: 'blocked', cause: 'budget_limited' },
+          contributors: [], intervals: [],
+        },
+      });
       const hero = root.querySelector<HTMLElement>('.plan-history-detail__hero');
       expect(hero?.dataset.tone).toBe('warn');
       // Outcome headline on Missed (promoted above chart card in PR10).
       expect(root.querySelector('.plan-history-detail__outcome-headline')?.textContent)
-        .toMatch(/daily energy budget/);
+        .toMatch(/daily budget held delivery back/);
       // "Why" line on Missed.
       expect(root.querySelector('.plan-history-detail__missed-reason')?.textContent)
         .toMatch(/daily/i);
@@ -549,6 +553,23 @@ describe('DeadlinePlanHistoryDetail', () => {
       // Missed → chart is rendered expanded; no toggle.
       expect(root.querySelector('.plan-history-detail__chart-toggle')).toBeNull();
       expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
+    });
+
+    it('keeps recourse on the final device blocker despite a budget-shaped snapshot and earlier budget restriction', async () => {
+      const revision = buildRevision({ planStatus: 'cannot_meet', dailyBudgetExhaustedBucketCount: 4 });
+      const root = await mount({
+        ...buildEntry({ outcome: 'missed', finalProgressC: 38, originalPlan: revision, finalPlan: revision }),
+        deliveryExplanation: {
+          kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' },
+          contributors: ['budget_limited'], intervals: [],
+        },
+      });
+      const button = root.querySelector<HTMLButtonElement>('.plan-history-detail__recourse button');
+      expect(button?.dataset.deadlineRecourseTab).toBe('overview');
+      expect(button?.dataset.deadlineRecourseDeviceId).toBe('dev_water_heater');
+      expect(button?.textContent).toBe('Review device');
+      expect(root.querySelector('.plan-history-detail__outcome-headline')?.textContent).not.toContain('budget');
+      expect(root.querySelector('.plan-history-detail__missed-reason')?.textContent).toContain('Earlier: The daily budget');
     });
 
     it('Missed-by-shortfall recourse opens device settings for the entry device, not a dead-end tab', async () => {

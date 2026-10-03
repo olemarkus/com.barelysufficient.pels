@@ -386,7 +386,8 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   // above, so a running task no longer stacks a reason paragraph. Null on
   // healthy / at-risk / queued heroes, except one capped at its car's own
   // charge limit, which says why its plan stops short of the target.
-  const metaLine = params.cannotMeet ? resolveCannotMeetMeta(params) : resolveCarLimitMeta(params.carChargeLimit);
+  const defaultMeta = params.cannotMeet ? resolveCannotMeetMeta(params) : resolveCarLimitMeta(params.carChargeLimit);
+  const metaLine = params.carChargeLimit?.reached === true ? resolveCarLimitMeta(params.carChargeLimit) : defaultMeta;
   const confidenceChipText = resolveLiveHeroConfidenceChipText({
     confidence: params.confidence,
     planStatus: params.planStatus,

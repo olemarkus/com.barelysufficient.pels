@@ -295,5 +295,11 @@ export function createDeferredObjectiveLifecycleEmitter(
     },
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
     energyDelivery: requireDeferredObjectiveEnergyDelivery(ctx),
+    isReservationSuppressed: (deviceId, deadlineAtMs) => (
+      requireDeferredObjectivePlanHistoryRecorder(ctx).isReservationSuppressed(deviceId, deadlineAtMs)
+    ),
+    getDeliveryEvidence: (deviceId, deadlineAtMs) => (
+      requireDeferredObjectivePlanHistoryRecorder(ctx).getDeliveryEvidence(deviceId, deadlineAtMs)
+    ),
   });
 }

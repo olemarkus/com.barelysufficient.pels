@@ -1,3 +1,4 @@
+import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { DeferredObjectiveDecorationController } from '../../lib/objectives/deferredObjectives';
@@ -56,6 +57,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     });
 
@@ -88,6 +90,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     });
 
@@ -96,7 +99,7 @@ describe('DeferredObjectiveDecorationController', () => {
     expect(getDeferredObjectiveSettings).toHaveBeenCalledTimes(1);
   });
 
-  it('consults the stall reader, so it allocates against the same reservation ledger as the lifecycle emitter', () => {
+  it('does not consume thermal completion evidence for a SoC task', () => {
     // A stalled higher task reserves nothing against the tasks behind it. The
     // lifecycle emitter commits the lower tasks' schedules against that ledger;
     // if this path allocated without the reader, it would re-apply the stalled
@@ -123,6 +126,7 @@ describe('DeferredObjectiveDecorationController', () => {
       buildPriceHorizon: () => [],
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
       getStallClassification,
+      isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
@@ -130,7 +134,7 @@ describe('DeferredObjectiveDecorationController', () => {
 
     controller.decorate({ devices: [buildDevice()], dailyBudgetSnapshot: null, nowTs: Date.now() });
 
-    expect(getStallClassification).toHaveBeenCalledWith('dev');
+    expect(getStallClassification).not.toHaveBeenCalled();
   });
 
   it('returns the identity bundle (devices untouched) when the settings read returns nothing', () => {
@@ -146,6 +150,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getTimeZone: () => 'UTC',
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     });
     const devices = [buildDevice()];

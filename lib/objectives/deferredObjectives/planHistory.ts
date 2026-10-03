@@ -1,17 +1,23 @@
+import { resolveTaskCompletionDiagnostic } from './diagnosticsBridge';
+import {
+  EMPTY_DELIVERY_EVIDENCE, activeDeliveryCause, observeTaskDelivery, resolveTaskDeliveryFacts,
+} from './deliveryEvidence';
+import type {
+  TaskDeviceConstraint, TaskDeliveryControl, TaskDeliveryEvidence,
+} from '../../../packages/contracts/src/taskDelivery';
 import type {
   DeferredObjectiveActivePlansV1,
   DeferredObjectiveActivePlanTrajectory,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryRecord,
-  DeferredObjectivePlanHistoryV5,
+  DeferredObjectivePlanHistoryV6,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
-import { stallEvidenceCoversTarget } from '../stallEvidence';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
 import {
   appendHourlyContribution,
@@ -33,7 +39,6 @@ import {
   promoteRecordToStalled,
   rawHorizonStatus,
   recordNonPlannableTick,
-  stallClassificationToMetReason,
   startRecord,
   toStoredPlanHistoryRecord,
 } from './planHistoryInProgressState';
@@ -59,13 +64,8 @@ type DeliveryTick = {
   drawKw: number;
 };
 
-// Stall promotion reads through the observer-layer idle classifier
-// (`DeferredObjectiveStallClassificationReader`). `near_target_idle` and
-// `capped_idle` both promote the run to satisfied (the run reflects "the
-// device went as far as it was going to go" — same outcome, two underlying
-// causes which the recorder distinguishes via `metReason`). `unresponsive` is
-// a hardware-fault signal and is deliberately ignored — we don't want to
-// silently call a tripped breaker "succeeded".
+// Completion promotion consumes the same operational verdict as the live task.
+// Only accepted thermal near-target evidence supplies the stalled met reason.
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;
@@ -78,6 +78,7 @@ const synthesizeBackfillEntry = (
   config: DeferredObjectiveBackfillConfig,
 ): DeferredObjectivePlanHistoryRecord => ({
   id: randomUUID(),
+  deliveryExplanation: { kind: 'legacy_unrecorded' },
   deviceId: config.deviceId,
   targetValue: config.targetValue,
   deadlineAtMs: config.deadlineAtMs,
@@ -106,7 +107,7 @@ export type PlanHistoryPersistDeps = {
   // so a later flush retries, and lets callers gate side-effects (like advancing the
   // observation watermark) on real persistence success.
   save: (
-    history: DeferredObjectivePlanHistoryV5,
+    history: DeferredObjectivePlanHistoryV6,
     meteredDeliveryStates: readonly PersistedMeteredDeliveryState[],
   ) => boolean;
   // Optional bus the recorder publishes ended events to as runs finalize. The
@@ -132,13 +133,20 @@ export type PlanHistoryPersistDeps = {
   debugStructured: StructuredDebugEmitter;
   // Idle-classifier reader for stall promotion (see `maybePromoteOnStall`).
   getStallClassification: DeferredObjectiveStallClassificationReader;
+  getDeviceConstraint: (deviceId: string) => TaskDeviceConstraint;
+  getDeliveryControl: (deviceId: string) => TaskDeliveryControl;
+  isLiveMeasuredDraw: (deviceId: string) => boolean;
 };
 
 export type PlanHistoryLoadResult = {
-  snapshot: DeferredObjectivePlanHistoryV5;
+  snapshot: DeferredObjectivePlanHistoryV6;
   persistenceSafe: boolean;
   meteredDeliveryStates: readonly PersistedMeteredDeliveryState[];
 };
+
+const operationalProgressValue = (diag: DeferredObjectiveDiagnostic): number | null => (
+  diag.evaluation.progress.kind === 'known' ? diag.evaluation.progress.value : null
+);
 
 export class DeferredObjectivePlanHistoryRecorder {
   private inProgress = new Map<InProgressKey, InProgressRecord>();
@@ -151,12 +159,19 @@ export class DeferredObjectivePlanHistoryRecorder {
 
   private persistenceSafe: boolean;
 
+  private restoreDeliveryState(state: PersistedMeteredDeliveryState): void {
+    const deliveryEvidence: TaskDeliveryEvidence = {
+      explanation: state.deliveryEvidence.explanation, nonDelivery: { kind: 'none' },
+    };
+    this.restoredMeteredDeliveryByKey.set(buildKey(state.deviceId, state.deadlineAtMs), { ...state, deliveryEvidence });
+  }
+
   constructor(private readonly deps: PlanHistoryPersistDeps) {
     const loaded = deps.load();
     this.entries = loaded.snapshot.entries.slice();
     this.persistenceSafe = loaded.persistenceSafe;
     for (const state of loaded.meteredDeliveryStates) {
-      this.restoredMeteredDeliveryByKey.set(buildKey(state.deviceId, state.deadlineAtMs), state);
+      this.restoreDeliveryState(state);
     }
     this.trimEntries();
   }
@@ -179,6 +194,15 @@ export class DeferredObjectivePlanHistoryRecorder {
     return null;
   }
 
+  isReservationSuppressed = (deviceId: string, deadlineAtMs: number): boolean =>
+    this.getDeliveryEvidence(deviceId, deadlineAtMs).nonDelivery.kind === 'confirmed';
+
+  getDeliveryEvidence = (deviceId: string, deadlineAtMs: number): TaskDeliveryEvidence => (
+    this.inProgress.get(buildKey(deviceId, deadlineAtMs))?.deliveryEvidence
+    ?? this.restoredMeteredDeliveryByKey.get(buildKey(deviceId, deadlineAtMs))?.deliveryEvidence
+    ?? EMPTY_DELIVERY_EVIDENCE
+  );
+
   observe(
     diagnostics: readonly DeferredObjectiveDiagnostic[],
     nowMs: number,
@@ -187,12 +211,33 @@ export class DeferredObjectivePlanHistoryRecorder {
     const seenKeys = new Set<InProgressKey>();
     for (const diag of diagnostics) {
       if (diag.deadlineAtMs === null) continue;
-      const key = buildKey(diag.deviceId, diag.deadlineAtMs);
+      const key = buildKey(diag.evaluation.deviceId, diag.evaluation.deadlineAtMs);
       seenKeys.add(key);
+      const previous = this.inProgress.get(key);
+      const previousAtMs = previous ? lastObservedAtMs(previous) : nowMs;
       this.observeDiagnostic(diag, key, nowMs, activePlans);
+      this.observeDeliveryEvidence(diag, key, nowMs, previousAtMs);
     }
     for (const diag of diagnostics) this.recordDeliveryTick(diag, nowMs);
     this.finalizeStaleRecords(seenKeys, nowMs);
+  }
+
+  private observeDeliveryEvidence(
+    diag: DeferredObjectiveDiagnostic, key: InProgressKey, nowMs: number, previousAtMs: number,
+  ): void {
+    const record = this.inProgress.get(key);
+      if (record) {
+        const facts = resolveTaskDeliveryFacts(diag, this.deps.getDeliveryControl(diag.deviceId),
+          this.deps.isLiveMeasuredDraw(diag.deviceId), this.deps.getDeviceConstraint(diag.deviceId), nowMs);
+        const deliveryEvidence = observeTaskDelivery(record.deliveryEvidence, facts, nowMs, nowMs - previousAtMs);
+        if (activeDeliveryCause(record.deliveryEvidence) !== activeDeliveryCause(deliveryEvidence)) {
+          this.deps.debugStructured({ event: 'smart_task_delivery_blocker_changed', deviceId: diag.deviceId,
+            deadlineAtMs: diag.deadlineAtMs, before: activeDeliveryCause(record.deliveryEvidence),
+            after: activeDeliveryCause(deliveryEvidence), facts });
+        }
+        this.inProgress.set(key, { ...record, deliveryEvidence });
+        this.dirty = true;
+      }
   }
 
   // Runs after merge/start so the freeze-on-met-time logic in `mergeRecord`
@@ -202,28 +247,24 @@ export class DeferredObjectivePlanHistoryRecorder {
     diag: DeferredObjectiveDiagnostic,
     nowMs: number,
   ): InProgressRecord {
-    const evidence = this.deps.getStallClassification(diag.deviceId);
-    // The verdict alone is not enough: a device idling at a setback setpoint
-    // PELS itself wrote is `near_target_idle` without having delivered this
-    // task's target. Only evidence measured against a setpoint that covers the
-    // target may promote. See `notes/deferred-load-objectives/README.md`
-    // § "Observer stall evidence".
-    const reason = stallEvidenceCoversTarget(evidence, diag.targetValue, diag.progressDirection)
-      ? stallClassificationToMetReason(evidence.classification)
-      : null;
+    const reason = diag.evaluation.completion.kind === 'accepted_near_target' ? 'stalled' : null;
     return reason === null
       ? record
       : promoteRecordToStalled(record, diag, nowMs, reason);
   }
 
   private observeDiagnostic(
-    diag: DeferredObjectiveDiagnostic,
+    rawDiagnostic: DeferredObjectiveDiagnostic,
     key: InProgressKey,
     nowMs: number,
     activePlans: DeferredObjectiveActivePlansV1 | null,
   ): void {
-    const plan = findPlanForRecord(activePlans, { deviceId: diag.deviceId, deadlineAtMs: diag.deadlineAtMs! });
     const existing = this.inProgress.get(key);
+    const diag = resolveTaskCompletionDiagnostic(rawDiagnostic,
+      this.deps.getStallClassification(rawDiagnostic.deviceId), existing !== undefined);
+    const plan = findPlanForRecord(activePlans, {
+      deviceId: diag.evaluation.deviceId, deadlineAtMs: diag.evaluation.deadlineAtMs,
+    });
     if (existing) {
       const horizonStatus = rawHorizonStatus(diag);
       const plannable = isPlannableStatus(horizonStatus) || isSatisfiedStatus(horizonStatus);
@@ -235,6 +276,14 @@ export class DeferredObjectivePlanHistoryRecorder {
         ? mergeRecord(existing, diag, nowMs, plan)
         : recordNonPlannableTick(existing, diag, nowMs, plan);
       const settled = this.maybePromoteOnStall(merged, diag, nowMs);
+      if (existing.satisfied !== settled.satisfied) {
+        this.deps.debugStructured({
+          event: settled.satisfied ? 'smart_task_completion_accepted' : 'smart_task_completion_reopened',
+          deviceId: diag.evaluation.deviceId,
+          currentValue: operationalProgressValue(diag),
+          targetValue: diag.evaluation.requestedTarget,
+          completion: diag.evaluation.completion.kind, evidence: this.deps.getStallClassification(diag.deviceId) });
+      }
       this.inProgress.set(key, settled);
       return;
     }
@@ -242,7 +291,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     // deadline event is the recorded thing; observation quality is captured separately via
     // observedIntervals + progress nullability. A stale deadline starts no new record, but a
     // restored metered run must be reconstructed and finalized so its saved delivery survives.
-    if (diag.deadlineAtMs! <= nowMs) {
+    if (diag.evaluation.deadlineAtMs <= nowMs) {
       const restored = this.restoredMeteredDeliveryByKey.get(key);
       if (restored === undefined) return;
       const recovered = startRecord(diag, nowMs, plan);
@@ -501,7 +550,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     return this.dirty;
   }
 
-  getHistorySnapshot(): DeferredObjectivePlanHistoryV5 {
+  getHistorySnapshot(): DeferredObjectivePlanHistoryV6 {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),
@@ -517,7 +566,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       const key = buildKey(state.deviceId, state.deadlineAtMs);
       const active = this.inProgress.get(key);
       if (active === undefined) {
-        this.restoredMeteredDeliveryByKey.set(key, state);
+        this.restoreDeliveryState(state);
       } else {
         this.inProgress.set(key, mergeMeteredDelivery(active, state));
       }
@@ -528,12 +577,11 @@ export class DeferredObjectivePlanHistoryRecorder {
 
   private buildMeteredDeliverySnapshot(): PersistedMeteredDeliveryState[] {
     const restored = [...this.restoredMeteredDeliveryByKey.values()];
-    const active = [...this.inProgress.values()].flatMap((record) => (
-      record.hasDeliveryContribution
-        ? [{
+    const active = [...this.inProgress.values()].map((record) => ({
           deviceId: record.deviceId,
           deadlineAtMs: record.deadlineAtMs,
           startedAtMs: record.startedAtMs,
+          deliveryEvidence: record.deliveryEvidence,
           commitment: record.commitment.kind === 'learning'
             ? { kind: 'unknown' as const }
             : record.commitment,
@@ -542,9 +590,7 @@ export class DeferredObjectivePlanHistoryRecorder {
           costDisplay: record.costDisplay,
           deliveryPriceComplete: record.deliveryPriceComplete,
           hourlyContributions: record.hourlyContributions.slice(),
-        }]
-        : []
-    ));
+        }));
     return [...restored, ...active];
   }
 
@@ -571,6 +617,7 @@ const mergeMeteredDelivery = (
   return {
     ...record,
     startedAtMs: Math.min(record.startedAtMs, state.startedAtMs),
+    deliveryEvidence: { ...state.deliveryEvidence, nonDelivery: { kind: 'none' } },
     commitment: state.commitment,
     deliveredKWh: state.deliveredKWh + record.deliveredKWh,
     totalCost: state.totalCost + record.totalCost,

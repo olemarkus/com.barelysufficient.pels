@@ -18,6 +18,7 @@
  */
 import {
   classifyIdleState,
+  nearTargetIdleStillApplies,
   pruneIdleDetectorState,
   IDLE_MEASURED_POWER_THRESHOLD_KW,
   type IdleClassification,
@@ -78,6 +79,7 @@ export type IdleClassifier = {
    * target, so the two travel together and cannot be read apart.
    */
   getStallEvidence: (deviceId: string) => StallEvidence | undefined;
+  getLiveStallEvidence: (device: IdleClassifierDeviceInput) => StallEvidence | undefined;
 };
 
 export type IdleClassifierDeps = {
@@ -238,9 +240,25 @@ const emitPowerEdge = (params: {
   });
 };
 
+/** Keep the accepted setpoint basis while fresh observations still support its hold. */
+const liveNearTargetEvidence = (
+  device: IdleClassifierDeviceInput,
+  evidence: StallEvidence | undefined,
+): StallEvidence | undefined => {
+  if (evidence === undefined) return undefined;
+  const current = { ...toDetectorInput(device, Date.now()),
+    targetTemperature: evidence.classifiedAgainstTargetValue };
+  if (!nearTargetIdleStillApplies(current) || device.temperature === undefined) return undefined;
+  return { ...evidence,
+    temperatureGapC: evidence.classifiedAgainstTargetValue - device.temperature.currentTemperature };
+};
+
 export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassifier {
   const state: IdleDetectorState = new Map();
   const lastResultById = new Map<string, IdleDetectorResult>();
+  // Current classification follows the latest plan posture; accepted warmth has
+  // its original basis until an actual draw or temperature exit withdraws it.
+  const acceptedNearTargetById = new Map<string, StallEvidence>();
   const lastDrawingById = new Map<string, boolean>();
   const debugLog: StructuredDebugEmitter = deps.debugStructured ?? (() => {});
 
@@ -254,12 +272,27 @@ export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassif
     for (const id of [...lastDrawingById.keys()]) {
       if (!liveSet.has(id)) lastDrawingById.delete(id);
     }
+    for (const id of [...acceptedNearTargetById.keys()]) {
+      if (!liveSet.has(id)) acceptedNearTargetById.delete(id);
+    }
     lastResultById.clear();
     for (const device of devices) {
+      const retained = liveNearTargetEvidence(device, acceptedNearTargetById.get(device.id));
       const result = classifyIdleState(toDetectorInput(device, now), state);
       emitTransitionLog({ device, result, logger: deps.structuredLog, debugLog });
       emitPowerEdge({ device, lastDrawingById, debugLog });
       lastResultById.set(device.id, result);
+      const fresh = getStallEvidence(device.id);
+      // A lower setback cannot erase acceptance against the original setpoint.
+      // A newly classified higher setpoint provides a stronger accepted basis.
+      if (fresh?.classification === 'near_target_idle'
+        && (retained === undefined || fresh.classifiedAgainstTargetValue >= retained.classifiedAgainstTargetValue)) {
+        acceptedNearTargetById.set(device.id, fresh);
+      } else if (retained !== undefined) {
+        acceptedNearTargetById.set(device.id, retained);
+      } else {
+        acceptedNearTargetById.delete(device.id);
+      }
     }
   };
 
@@ -287,5 +320,18 @@ export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassif
     return { classification: result.classification, classifiedAgainstTargetValue, temperatureGapC };
   };
 
-  return { classifyAll, getClassification, getStallEvidence };
+  const getLiveStallEvidence = (device: IdleClassifierDeviceInput): StallEvidence | undefined => {
+    const accepted = acceptedNearTargetById.get(device.id);
+    if (accepted === undefined) return getStallEvidence(device.id);
+    const current = liveNearTargetEvidence(device, accepted);
+    if (current === undefined) {
+      acceptedNearTargetById.delete(device.id);
+      lastResultById.delete(device.id);
+      state.delete(device.id);
+      return undefined;
+    }
+    return current;
+  };
+
+  return { classifyAll, getClassification, getStallEvidence, getLiveStallEvidence };
 }

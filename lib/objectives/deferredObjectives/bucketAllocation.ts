@@ -97,7 +97,9 @@ type NormalizedBucket = Omit<DeferredObjectivePlannedBucket,
 | 'plannedAdmissionPowerKw'
 | 'usefulEnergyCapacityKWh'
 > & {
-  usefulEnergyCapKWh: number;
+  dailyBudgetCapKWh: number;
+  budgetCapPolicy: 'enforced' | 'lifted';
+  higherPriorityReservedKWh: number;
   reservedHeadroomKw: number | undefined;
   higherPriorityAdmissionPowerKw: number | undefined;
 };
@@ -126,7 +128,9 @@ type BucketSegment = {
   price: number | null;
   reserve: boolean;
   current: boolean;
-  usefulEnergyCapKWh: number;
+  dailyBudgetCapKWh: number;
+  budgetCapPolicy: 'enforced' | 'lifted';
+  higherPriorityReservedKWh: number;
   // Concurrent draw already claimed by higher-priority tasks in this hour; see the
   // field doc on `DeferredObjectiveHorizonBucket`. Drives the RATE test below.
   higherPriorityAdmissionPowerKw: number | undefined;
@@ -519,7 +523,9 @@ const buildBucketSegment = (params: {
     price: normalizePrice(bucket.price),
     reserve,
     current: startMs <= nowMs && endMs > nowMs,
-    usefulEnergyCapKWh: Math.max(0, usefulEnergyCapKWh - higherPriorityReservedKWh),
+    dailyBudgetCapKWh: usefulEnergyCapKWh,
+    budgetCapPolicy: 'enforced',
+    higherPriorityReservedKWh,
     reservedHeadroomKw: normalizeReservedHeadroomKw(bucket.reservedHeadroomKw),
     higherPriorityAdmissionPowerKw: normalizeReservedHeadroomKw(bucket.higherPriorityAdmissionPowerKw),
   };
@@ -647,7 +653,7 @@ const comparePrice = (
 
 // Per-hour kWh ceiling. Three caps stacked via Math.min:
 //   - `step.usefulPowerKw × durationHours`: device-side step capacity.
-//   - `bucket.usefulEnergyCapKWh`: daily-budget per-bucket pacing slice
+//   - `bucket.dailyBudgetCapKWh`: daily-budget per-bucket pacing slice
 //     (Infinity for `exemptFromBudget` tasks).
 //   - `bucket.reservedHeadroomKw × durationHours`: physical headroom
 //     forecast (hard-cap minus uncontrolled background, divided across
@@ -684,7 +690,14 @@ const resolveBucketStepCapacityKWh = (
   const headroomCapKWh = bucket.reservedHeadroomKw === undefined
     ? Number.POSITIVE_INFINITY
     : bucket.reservedHeadroomKw * bucket.durationHours;
-  return Math.max(0, Math.min(stepCapacityKWh, bucket.usefulEnergyCapKWh, headroomCapKWh));
+  // Lift only the raw budget slice, retaining the reservation subtraction.
+  // A slice already large enough for this rung was not budget-bound; making
+  // that slice infinite would wrongly erase another task's claim as well.
+  const dailyBudgetCapKWh = bucket.budgetCapPolicy === 'lifted'
+    ? Math.max(bucket.dailyBudgetCapKWh, stepCapacityKWh)
+    : bucket.dailyBudgetCapKWh;
+  const energyAfterReservationsKWh = Math.max(0, dailyBudgetCapKWh - bucket.higherPriorityReservedKWh);
+  return Math.max(0, Math.min(stepCapacityKWh, energyAfterReservationsKWh, headroomCapKWh));
 };
 
 const buildPlannedBuckets = (params: {

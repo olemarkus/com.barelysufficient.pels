@@ -42,7 +42,7 @@ export const resolveHorizonPlanWithRescue = (params: {
   // when the measured value is already at/above the committed plan's
   // end-of-this-hour milestone (`isAheadOfHourMilestone`). Forwarded verbatim to
   // the planner, which combines it with the relative-price test.
-  aheadOfHourMilestone?: boolean;
+  aheadOfHourMilestone: boolean;
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   priceOptimizationEnabled: boolean;
   // Price-layer horizon (price + grid) forwarded to the exempt rebuild so it
@@ -112,8 +112,9 @@ export const resolveHorizonPlanWithRescue = (params: {
     },
     steps,
     buckets,
-    committed: commitment !== undefined,
-    committedHours: commitment,
+    commitment: commitment === undefined
+      ? { kind: 'uncommitted' }
+      : { kind: 'committed', hours: commitment },
     aheadOfHourMilestone: params.aheadOfHourMilestone,
   });
 

@@ -156,6 +156,7 @@ const runScenario = (tankFullAfterKWh: number, meterOnlyHourOfDay: number | null
     const [diag] = buildDeferredObjectiveDiagnostics({
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      isReservationSuppressed: () => false,
       getDeliveredEnergyKWh: tracker.getDeliveredKWh,
       getPrioritiesForDevices: createFixturePriorityQuery([device]),
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
@@ -170,7 +171,7 @@ const runScenario = (tankFullAfterKWh: number, meterOnlyHourOfDay: number | null
       activePlans: recorder.getActivePlansSnapshot(),
     });
     recorder.observe(diag ? [diag] : [], nowMs);
-    const decision = diag ? applyDeferredObjectiveAdmission([diag], [device]).get(DEVICE_ID) : undefined;
+    const decision = diag ? applyDeferredObjectiveAdmission([diag.evaluation], [device]).get(DEVICE_ID) : undefined;
     relayOn = decision?.kind === 'planned';
     finalStatus = diag?.horizonPlan?.status;
 

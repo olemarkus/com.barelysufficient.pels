@@ -1,3 +1,4 @@
+import { requireDeferredObjectivePlanHistoryRecorder } from '../appInit/deferredRecorders';
 /**
  * Per-home closure bundle for the plan factories
  * (`setup/appInit/createPlanEngine.ts`, `setup/appInit/createPlanService.ts`)
@@ -244,6 +245,9 @@ export function buildMainHomeScope(
     resolveDeviceExclusion: (deviceId) => resolveSmartTaskDeviceExclusion(ctx, deviceId),
     // The same idle-classifier reader the lifecycle emitter gets, so both lanes
     // allocate lower-priority tasks against the same reservation ledger.
+    isReservationSuppressed: (deviceId, deadlineAtMs) => (
+      requireDeferredObjectivePlanHistoryRecorder(ctx).isReservationSuppressed(deviceId, deadlineAtMs)
+    ),
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
     // The count the lifecycle clock books, read lazily: the tracker is built
     // with the plan runtime, after this scope.

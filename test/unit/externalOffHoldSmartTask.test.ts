@@ -81,7 +81,7 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
     // A budget-bound at-risk task whose device is then switched off must stop
     // blaming the budget: the status stays At risk, but the recourse changes
     // completely, and admission has already dropped its rescue claims.
-    expect(resolveEffectivePlanStatus('at_risk', 'objective_device_left_off')).toBe('at_risk');
+    expect(resolveEffectivePlanStatus('at_risk', 'objective_device_left_off', { kind: 'unavailable' })).toBe('at_risk');
     expect(resolveSmartTaskWidgetDetailCopy({
       statusId: 'at_risk',
       diagnosticReasonCode: 'objective_device_left_off',
@@ -93,14 +93,15 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
     // `resolveEffectivePlanStatus` overlays; it never rewrites. The persisted
     // `planStatus` stays the trajectory truth, which is what makes recovery
     // immediate instead of stranded until the next settle.
-    expect(resolveEffectivePlanStatus('on_track', 'objective_device_left_off')).toBe('at_risk');
-    expect(resolveEffectivePlanStatus('on_track', undefined)).toBe('on_track');
-    expect(resolveEffectivePlanStatus('satisfied', 'objective_device_left_off')).toBe('satisfied');
-    expect(resolveEffectivePlanStatus('cannot_meet', 'objective_device_left_off')).toBe('cannot_meet');
+    expect(resolveEffectivePlanStatus('on_track', 'objective_device_left_off', { kind: 'unavailable' })).toBe('at_risk');
+    expect(resolveEffectivePlanStatus('on_track', undefined, { kind: 'unavailable' })).toBe('on_track');
+    expect(resolveEffectivePlanStatus('satisfied', 'objective_device_left_off', { kind: 'unavailable' })).toBe('satisfied');
+    expect(resolveEffectivePlanStatus('cannot_meet', 'objective_device_left_off', { kind: 'unavailable' })).toBe('cannot_meet');
   });
 
   it('overrides a cached on-track verdict rather than waiting for the settle', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       ...cachedOnTrackPlan,
       diagnosticReasonCode: 'objective_device_left_off',
     })).toBe('at_risk');
@@ -110,6 +111,7 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
     // The recorder clears the code on the same per-cycle refresh, so the chip
     // recovers without waiting for a replan.
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       ...cachedOnTrackPlan,
       diagnosticReasonCode: undefined,
     })).toBe('on_track');
@@ -117,11 +119,13 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
 
   it('leaves a finished or already-failed task alone', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       ...cachedOnTrackPlan,
       planStatus: 'satisfied',
       diagnosticReasonCode: 'objective_device_left_off',
     })).toBe('satisfied');
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       ...cachedOnTrackPlan,
       planStatus: 'cannot_meet',
       diagnosticReasonCode: 'objective_device_left_off',
@@ -130,6 +134,7 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
 
   it('keeps unplugged as the more immediate state for an EV', () => {
     expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' },
       ...cachedOnTrackPlan,
       diagnosticReasonCode: 'objective_invalid_session',
     })).toBe('paused_unplugged');
