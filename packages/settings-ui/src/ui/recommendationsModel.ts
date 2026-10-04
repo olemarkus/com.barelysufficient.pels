@@ -3,6 +3,7 @@ import type {
   SettingsUiEvSocFlowReporter,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
+import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import {
   resolveDeviceStartPolicy,
   type DeviceStartPolicy,
@@ -14,6 +15,7 @@ import {
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from './deviceUtils.ts';
+import { hasMatchedAnotherCurrentCharger, REMOVED_CAR_LABEL } from './carAssociationCandidates.ts';
 
 export type RecommendationDismissals = Record<string, number>;
 
@@ -89,7 +91,7 @@ export const resolveNativeControlRecommendations = (
         id: recommendationId('flow-conflict', device.id),
         version: RECOMMENDATION_VERSION,
         category: 'recommendation',
-        title: `Remove conflicting Flow control for ${device.name}`,
+        title: `Remove conflicting Flow control for ${formatDisplayDeviceName(device.name)}`,
         body: `Built-in device control is on, but ${flowReference} can still change the same setting. `
           + 'Disable the Flow, or delete its device-control action, so it cannot override PELS.',
         actionLabel: 'Check again',
@@ -109,7 +111,7 @@ export const resolveNativeControlRecommendations = (
       id: recommendationId('built-in-control', device.id),
       version: RECOMMENDATION_VERSION,
       category: 'recommendation',
-      title: `Use built-in device control for ${device.name}`,
+      title: `Use built-in device control for ${formatDisplayDeviceName(device.name)}`,
       body,
       ...nativeControlRecommendationAction(device.id, hasConflict),
     }];
@@ -145,12 +147,15 @@ export const resolveCarAssociationRecommendations = (
     const match = car.matchHistory.chargerMatches.find(({ chargerId }) => chargersById.has(chargerId));
     const charger = match ? chargersById.get(match.chargerId) : undefined;
     if (!charger) return [];
+    // The same names the charger's car picker shows.
+    const carName = formatDisplayDeviceName(car.name);
+    const chargerName = formatDisplayDeviceName(charger.name);
     return [{
       id: recommendationId('charger-car', car.id),
       version: RECOMMENDATION_VERSION,
       category: 'optional' as const,
-      title: `Select ${car.name} on ${charger.name}`,
-      body: `PELS has matched ${car.name} to ${charger.name}. Select the car in its Car section so `
+      title: `Select ${carName} on ${chargerName}`,
+      body: `PELS has matched ${carName} to ${chargerName}. Select the car in its Car section so `
         + 'PELS can read its battery level while it charges.',
       actionLabel: 'Open charger',
       target: { kind: 'device' as const, deviceId: charger.id },
@@ -178,12 +183,42 @@ const resolveSelectedCarMatch = (
   return selected.some(({ matchHistory }) => matchHistory.state === 'unavailable') ? 'unknown' : 'unmatched';
 };
 
-const selectedCarLabel = (
+/**
+ * Why a charger whose selected cars have not matched it has no battery level,
+ * and the way back to the Flow PELS now ignores. A selected car removed from
+ * Homey can never match, so clearing it is the only remedy. A car matched to
+ * another of this home's chargers gets no "yet" and no promise to select it once
+ * it matches: it is not about to match here. A removed car selected beside a
+ * car still in Homey is named too, since it has to be cleared either way.
+ */
+const unmatchedSelectionBody = (
+  charger: SettingsUiDeviceDetailItem,
   selectedCarIds: readonly string[],
   cars: readonly SettingsUiRecommendationCar[],
+  currentChargerIds: ReadonlySet<string>,
+  ignoredFlow: string,
 ): string => {
-  const names = cars.filter((car) => selectedCarIds.includes(car.id)).map((car) => car.name);
-  return names.length === 1 ? names[0]! : 'the selected cars';
+  const lead = `A car is selected for this charger, so PELS ignores ${ignoredFlow}. `;
+  const selected = cars.filter((car) => selectedCarIds.includes(car.id));
+  if (selected.length === 0) {
+    const removed = selectedCarIds.length === 1 ? 'The selected car was' : 'The selected cars were';
+    return `${lead}${removed} removed from Homey, so the charger has no battery level. `
+      + `Clear the “${REMOVED_CAR_LABEL}” selection in the charger’s Car section to use the Flow again.`;
+  }
+  const label = selected.length === 1 ? formatDisplayDeviceName(selected[0]!.name) : 'the selected cars';
+  const removedNote = selectedCarIds.length > selected.length
+    ? ` A selected “${REMOVED_CAR_LABEL}” was removed from Homey and can never match, so clear it too.`
+    : '';
+  const chargesElsewhere = selected.every(({ matchHistory }) => (
+    matchHistory.state === 'resolved'
+    && hasMatchedAnotherCurrentCharger(matchHistory, charger.id, currentChargerIds)
+  ));
+  if (chargesElsewhere) {
+    return `${lead}PELS has not matched ${label} to this charger, so the charger has no battery level. `
+      + `Clear the car selection to use the Flow again.${removedNote}`;
+  }
+  return `${lead}PELS has not matched ${label} to this charger yet, so the charger has no battery level. `
+    + `Clear the car selection to use the Flow again, and select the car once it shows as matched.${removedNote}`;
 };
 
 const flowReference = (reporter: SettingsUiEvSocFlowReporter): string => (
@@ -210,16 +245,20 @@ export const resolveEvSocFlowConflictRecommendations = (
     const match = resolveSelectedCarMatch(charger, selectedCarIds, cars);
     // Neither "remove it" nor "you need it" is honest without the history.
     if (match === 'unknown') return [];
+    const chargerName = formatDisplayDeviceName(charger.name);
     if (match === 'unmatched') {
       return [{
         id: recommendationId('ev-soc-flow-unmatched', charger.id),
         version: RECOMMENDATION_VERSION,
         category: 'recommendation' as const,
-        title: `${charger.name} has no battery level`,
-        body: `A car is selected for this charger, so PELS ignores ${flowReference(reporter)}. `
-          + `PELS has not matched ${selectedCarLabel(selectedCarIds, cars)} to this charger yet, so the `
-          + 'charger has no battery level. Clear the car selection to use the Flow again, and select '
-          + 'the car once it shows as matched.',
+        title: `${chargerName} has no battery level`,
+        body: unmatchedSelectionBody(
+          charger,
+          selectedCarIds,
+          cars,
+          new Set(chargersById.keys()),
+          flowReference(reporter),
+        ),
         actionLabel: 'Open charger',
         target: { kind: 'device' as const, deviceId: charger.id },
       }];
@@ -233,7 +272,7 @@ export const resolveEvSocFlowConflictRecommendations = (
       id: recommendationId('ev-soc-flow-conflict', charger.id),
       version: RECOMMENDATION_VERSION,
       category: 'recommendation' as const,
-      title: `Remove unused battery reporting for ${charger.name}`,
+      title: `Remove unused battery reporting for ${chargerName}`,
       body,
       actionLabel: 'Check again',
       target: { kind: 'ev-soc-flow-conflict-check' as const, deviceId: charger.id },
@@ -259,7 +298,7 @@ export const resolveSmartTaskStartPolicyRecommendations = (
     id: recommendationId('smart-task-start-policy', device.id),
     version: RECOMMENDATION_VERSION,
     category: 'optional',
-    title: `Keep ${device.name} within Smart tasks`,
+    title: `Keep ${formatDisplayDeviceName(device.name)} within Smart tasks`,
     body: 'Turn on “Only PELS starts this device” to keep it within Smart tasks. '
       + 'PELS turns it off if it is turned on outside a Smart task. Without a Smart task, it stays off.',
     actionLabel: 'Review device',

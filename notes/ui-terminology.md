@@ -1837,6 +1837,10 @@ device-neutral.
 
 ### Car battery recommendations
 
+- The charger's Car section opens with `Select the cars that charge here. Once
+  PELS matches one to this charger, it reads the battery level from the car, so
+  Charge boost and Smart tasks know how full it is without a Flow.` Selecting a
+  car alone gives no battery level; the reading follows the match.
 - A supported car with no charger selection is **Optional**, not Recommended.
   Basic capacity control works without a car battery level, so `Select <car>
   on <charger>` must never imply that the setup is wrong. It is offered only
@@ -1856,12 +1860,24 @@ device-neutral.
   then the Flow is the owner's only working source, and the recommendation is
   `<charger> has no battery level` instead: it says the selected car is why PELS
   ignores the Flow, that PELS has not matched the car yet, and suggests clearing
-  the car selection and selecting the car again once it shows as matched.
-  Action `Open charger`.
+  the car selection and selecting the car again once it shows as matched. As in
+  the car picker, "yet" is dropped when every selected car has matched another
+  of the home's chargers that is still in the device list; that body then ends at
+  `Clear the car selection to use the Flow again.`, because a car charging
+  elsewhere is not about to show as matched here. When every selected car has been removed from Homey,
+  the body says `The selected car was removed from Homey` and its only remedy is
+  `Clear the “Removed car” selection in the charger’s Car section`, naming the
+  picker's row label; it never asks to select a car that no longer exists. A
+  removed car selected beside a car still in Homey adds `A selected “Removed
+  car” was removed from Homey and can never match, so clear it too.`
+  Action `Open charger`. Car and charger names in titles and bodies use the same
+  display formatting as the car picker.
 - Each car row in the charger's car picker carries a hint:
   `Last matched to this charger on 3 Oct`; `Not matched to this charger` when
-  the car has matched a different charger (no "yet": it is not about to match
-  here); otherwise `Not matched to this charger yet`. No hint while the match
+  the car has matched a different charger that is still in the device list (no
+  "yet": it is not about to match here); otherwise `Not matched to this charger
+  yet`. Match history is kept for 90 days, so a match to a charger since
+  removed or replaced does not count as charging elsewhere. No hint while the match
   history is unreadable or the list failed to refresh. No count: a session
   usually casts one vote on plug-in and another on unplug.
 - While a selected car has never matched this charger, the charger-page Flow

@@ -3,7 +3,11 @@ import {
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   type SettingsUiRecommendationCar,
 } from '../../../../contracts/src/settingsUiApi.ts';
-import { parseCarAssociationCandidatesRead } from '../carAssociationCandidates.ts';
+import {
+  hasMatchedAnotherCurrentCharger,
+  parseCarAssociationCandidatesRead,
+  REMOVED_CAR_LABEL,
+} from '../carAssociationCandidates.ts';
 import { isEvChargerDevice } from '../deviceKind.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
@@ -146,7 +150,7 @@ const ensureCarsLoaded = async (render: () => void): Promise<void> => {
  */
 const orphanedCarIds = (ticked: readonly string[], known: CarOption[]): CarOption[] => ticked
   .filter((carId) => !known.some((car) => car.id === carId))
-  .map((carId) => ({ id: carId, name: 'Removed car', matchHistory: { state: 'resolved', chargerMatches: [] } }));
+  .map((carId) => ({ id: carId, name: REMOVED_CAR_LABEL, matchHistory: { state: 'resolved', chargerMatches: [] } }));
 
 const tickedCarIds = (deviceId: string): readonly string[] => (
   state.evCarAssociations[deviceId]?.carIds ?? []
@@ -250,6 +254,11 @@ const formatMatchDate = (ms: number): string => new Intl.DateTimeFormat('en-GB',
   month: 'short',
 }).format(new Date(ms));
 
+/** The chargers in the device list; a match to any other is to a retired charger. */
+const currentChargerIds = (): ReadonlySet<string> => new Set(
+  state.latestDevices.filter(isEvChargerDevice).map((device) => device.id),
+);
+
 /**
  * No hint while the history is unreadable or the list awaits its re-read:
  * silence beats a wrong "not matched".
@@ -259,7 +268,7 @@ const matchHint = (car: CarOption, chargerId: string): string | null => {
   const lastMatchedAtMs = lastMatchToCharger(car.matchHistory, chargerId);
   if (lastMatchedAtMs !== undefined) return `Last matched to this charger on ${formatMatchDate(lastMatchedAtMs)}`;
   // "yet" promises a match that a car charging on another charger will not bring.
-  return car.matchHistory.chargerMatches.length > 0
+  return hasMatchedAnotherCurrentCharger(car.matchHistory, chargerId, currentChargerIds())
     ? 'Not matched to this charger'
     : 'Not matched to this charger yet';
 };
