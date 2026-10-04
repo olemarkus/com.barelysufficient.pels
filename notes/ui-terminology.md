@@ -750,16 +750,19 @@ lives in the car, never PELS or the charger:
 | Smart-task list card, beside `Target 80%` | `Car stops at 70%` / `Car stopped at its limit of 70%` |
 | Past-task sentence (`met-at-car-limit`, legacy rows only) | `Your car stopped at its own charge limit of 70 %, below this smart task's 80 % target. PELS counted the run as done.` |
 
-The status comes from `resolveEffectivePlanStatus` on the list chip, the widget row, the detail
-hero and the Flow status alike. Once the car has REACHED its limit it applies ahead of `Paused —
+The health verdict comes from `resolveEffectivePlanStatus`; the list, widget and detail also
+apply the session-pause presentation. Once the car has REACHED its limit it applies ahead of `Paused —
 unplugged`: an Easee ends the session at the car's limit and reports unplugged with the car still
-in, and telling that owner to plug in would be wrong (the detail page and the Flow do not pause on
-an unplugged session either). A car unplugged on its way to the limit reads `Paused — unplugged`.
+in, and telling that owner to plug in would be wrong. A car unplugged on its way to the limit
+reads `Paused — unplugged` on the list, widget and detail page, including after a schedule was
+committed. The detail uses the unplugged hero instead of a retained car-limit reason; the
+committed schedule and car-limit observation stay retained for reconnection. Flow statuses keep
+their existing contract.
 Durable exclusions (`Paused — not managed`, a separate meter) and a pending plan outrank it. The
 list card's car line shows only beside `At risk` / `Cannot finish`, never beside a pending, paused,
-unavailable or satisfied chip. With
-no current reading the detail page still shows the `At risk` chip and the car-limit line; only the
-progress content is left out. The hero offers no settings button: the fix is in the car. Progress
+unavailable or satisfied chip. With no current reading after a reached car limit the detail page
+still shows the `At risk` chip and the car-limit line; only the progress content is left out.
+The hero offers no settings button: the fix is in the car. Progress
 on the detail page counts to the owner's target (`now 70% of 80% target`). A run that ends there is
 missed, with the car's limit as its cause and no recourse button; `met-at-car-limit` survives only
 for runs archived before this rule. The words come from `deadlineLabels.ts` /
@@ -1114,7 +1117,7 @@ The live smart-task detail page renders two question-titled chart cards. All str
 
 **Trajectory stateline** (under the trajectory chart), two variants:
 
-- On-track: `{X} now · on track — projected ready ≈ {T}, {N} hours before the deadline` (full word `hours`, singular-aware `1 hour`; `just before the deadline` under one hour). The status word is the lowercase mid-sentence form of the chip vocabulary (`on track` / `at risk`); plan status `invalid` renders no status word at all.
+- On-track: `{X} now · on track — projected ready ≈ {T}, {N} hours before the deadline` (full word `hours`, singular-aware `1 hour`; `just before the deadline` under one hour). Whole hours round down so the safety margin never overstates the available time: 1 hour 40 minutes reads `1 hour before the deadline`. The status word is the lowercase mid-sentence form of the chip vocabulary (`on track` / `at risk`); plan status `invalid` renders no status word at all.
 - Danger: `Projected {X} at the deadline · {Y} short` (e.g. `Projected 58.0 °C at the deadline · 7 °C short`). The shortfall amount label (`7 °C short` / `12% short`) is shared with the on-chart gap annotation.
 
 **Picked hours / run band**: the schedule chart encodes picked hours directly in its bars — filled mint = picked, the same hue dimmed/outlined = eligible but not picked — decoded by the one-line caption key `SMART_TASK_SCHEDULE_CHART_KEY` (`Filled bars are the picked hours · dimmed bars were not picked`); it carries no band. The trajectory chart keeps its labelled run band with the kind verb — `Heating`, `Cooling`, or `Charging` (`deviceSeriesName`); never a different word (the old trajectory `runs` label is retired). Only the first contiguous band carries the label.

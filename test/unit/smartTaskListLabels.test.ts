@@ -279,6 +279,19 @@ describe('live-page two-chart split copy', () => {
     }).verdict?.supporting).toBe('projected ready ≈ Mon 05:00, 1 hour before the deadline');
   });
 
+  it.each([
+    [1 + 40 / 60, '1 hour before the deadline'],
+    [2.9, '2 hours before the deadline'],
+    [0.99, 'just before the deadline'],
+  ])('does not overstate a %s-hour projected safety margin', (hoursBeforeDeadline, margin) => {
+    expect(formatSmartTaskTrajectoryStatelineReady({
+      currentValuePhrase: '45% now',
+      statusWord: 'on track',
+      readyTimeLabel: 'Mon 18:00',
+      hoursBeforeDeadline,
+    }).verdict?.supporting).toBe(`projected ready ≈ Mon 18:00, ${margin}`);
+  });
+
   it('reads an amount of energy as delivered and a level as now', () => {
     expect(formatSmartTaskCurrentValuePhrase('2.0 kWh', 'kWh')).toBe('2.0 kWh delivered');
     expect(formatSmartTaskCurrentValuePhrase('51.1 °C', '°C')).toBe('51.1 °C now');

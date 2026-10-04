@@ -3048,7 +3048,8 @@ export const SMART_TASK_STATELINE_AT_RISK_WORD = 'at risk';
 // stateline is a sentence, not a chip, so "7 hours" beats "7 h".
 const formatHoursBeforeDeadline = (hoursBefore: number): string => {
   if (hoursBefore < 1) return 'just before the deadline';
-  const rounded = Math.round(hoursBefore);
+  // A ready-by safety margin must never promise more time than the projection.
+  const rounded = Math.floor(hoursBefore);
   return `${rounded} ${rounded === 1 ? 'hour' : 'hours'} before the deadline`;
 };
 
