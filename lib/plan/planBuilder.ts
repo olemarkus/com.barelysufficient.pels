@@ -419,7 +419,7 @@ export class PlanBuilder {
     devices: PlanInputDevice[],
     nowTs: number,
   ): DailySoftLimitResolution | null {
-    const bucket = resolveDailySoftLimitBucket(snapshot, this.powerTracker);
+    const bucket = resolveDailySoftLimitBucket(snapshot, this.powerTracker, nowTs);
     if (!bucket) return null;
     // No `?? 0` here any more. The sum used to return `null` when exempt devices
     // existed but none reported power, and defaulting that to 0 shortened the

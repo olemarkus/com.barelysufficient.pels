@@ -6,7 +6,7 @@
     "en": "Price level !{{changes|does not change}} to [[level]] within [[hours]] h"
   },
   "hint": {
-    "en": "True when a coming price period switches to the chosen level within this many hours. If the price is already at that level, it has to leave it and come back to count. The first period after missing prices counts as a change too. Uses the prices PELS has now, so the answer can change when tomorrow's prices arrive."
+    "en": "True when a coming price period switches to the chosen level within this many hours. If the price is already at that level, it has to leave it and come back to count. The first period after missing prices counts as a change too. Uses the prices PELS has now, so the answer can change when tomorrow's prices arrive or a new day starts. If PELS has no price for the current period, the Flow fails instead of answering."
   },
   "args": [
     {

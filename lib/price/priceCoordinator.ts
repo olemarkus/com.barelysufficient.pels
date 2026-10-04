@@ -381,11 +381,12 @@ export class PriceCoordinator {
    * The levels the price changes to inside `window` — see
    * `PriceService.getPriceLevelChangesWithin`. Unlike the current level there
    * is no last good answer to carry forward: an older look-ahead describes a
-   * window that has since moved. A failed build is `unavailable`.
+   * window that has since moved. A failed build is `unavailable`, as is a
+   * series with no price for the period in force.
    */
   getPriceLevelChangesWithin(window: PriceLevelLookahead): PriceLevelChangesRead {
     try {
-      return { state: 'resolved', levels: this.priceService.getPriceLevelChangesWithin(window) };
+      return this.priceService.getPriceLevelChangesWithin(window);
     } catch (error) {
       moduleLogger.warn({ event: 'price_level_lookahead_read_failed', err: normalizeError(error) });
       return { state: 'unavailable' };

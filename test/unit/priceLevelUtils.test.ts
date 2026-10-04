@@ -91,30 +91,31 @@ describe('resolvePriceLevelChangesWithin', () => {
       horizonMs: horizonHours * HOUR_MS,
     })
   );
+  const resolved = (levels: PriceLevel[]) => ({ state: 'resolved', levels });
 
   it('reports each change in time order', () => {
-    expect(changes(day, 0.5, 6)).toEqual([PriceLevel.EXPENSIVE, PriceLevel.NORMAL, PriceLevel.CHEAP]);
+    expect(changes(day, 0.5, 6)).toEqual(resolved([PriceLevel.EXPENSIVE, PriceLevel.NORMAL, PriceLevel.CHEAP]));
   });
 
   it('does not count the period in force, nor a following period at the same level', () => {
     // In hour 2 (expensive): hour 3 is expensive too, so it is no change.
-    expect(changes(day, 2.5, 1)).toEqual([]);
-    expect(changes(day, 2.5, 2)).toEqual([PriceLevel.NORMAL]);
+    expect(changes(day, 2.5, 1)).toEqual(resolved([]));
+    expect(changes(day, 2.5, 2)).toEqual(resolved([PriceLevel.NORMAL]));
   });
 
   it('includes a change starting exactly at the end of the window and excludes one starting now', () => {
-    expect(changes(day, 1, 1)).toEqual([PriceLevel.EXPENSIVE]);
-    expect(changes(day, 2, 1)).toEqual([]);
+    expect(changes(day, 1, 1)).toEqual(resolved([PriceLevel.EXPENSIVE]));
+    expect(changes(day, 2, 1)).toEqual(resolved([]));
   });
 
   it('reports nothing past the last known price', () => {
-    expect(changes(day, 7.5, 24)).toEqual([]);
+    expect(changes(day, 7.5, 24)).toEqual(resolved([]));
   });
 
   it('counts a period after a gap in the prices as a change', () => {
     const withGap = day.filter((_, hour) => hour !== 4);
     // Hour 5 has no predecessor, so it is a change to cheap; hour 6 continues it.
-    expect(changes(withGap, 3.5, 3)).toEqual([PriceLevel.CHEAP]);
+    expect(changes(withGap, 3.5, 3)).toEqual(resolved([PriceLevel.CHEAP]));
   });
 
   it('follows quarter-hour periods', () => {
@@ -123,7 +124,15 @@ describe('resolvePriceLevelChangesWithin', () => {
       totalPrice: total,
       durationMinutes: 15,
     }));
-    expect(changes(quarters, 0.1, 1)).toEqual([PriceLevel.EXPENSIVE, PriceLevel.NORMAL, PriceLevel.CHEAP]);
+    expect(changes(quarters, 0.1, 1)).toEqual(resolved([PriceLevel.EXPENSIVE, PriceLevel.NORMAL, PriceLevel.CHEAP]));
+  });
+
+  it('is unavailable when no price period is in force now', () => {
+    // A source that cannot price this period yields no periods, not an error;
+    // that must not read as "no change is coming".
+    expect(changes([], 0.5, 6)).toEqual({ state: 'unavailable' });
+    expect(changes(day.slice(2), 0.5, 6)).toEqual({ state: 'unavailable' });
+    expect(changes(day, 8.5, 6)).toEqual({ state: 'unavailable' });
   });
 
   it('reads the series in time order whatever order it arrives in', () => {
@@ -136,7 +145,7 @@ describe('resolvePriceLevelChangesWithin', () => {
       const reported = changes(day, hour - 0.5, 0.5);
       const before = resolveCurrentPricePeriodLevel(day, BAND, startMs - 1);
       const after = resolveCurrentPricePeriodLevel(day, BAND, startMs);
-      expect(reported).toEqual(before === after ? [] : [after]);
+      expect(reported).toEqual(resolved(before === after ? [] : [after]));
     }
   });
 });

@@ -47,7 +47,7 @@ export function registerPriceLevelCards(deps: FlowCardDeps): void {
       nowMs: deps.getNow().getTime(),
       horizonMs: hours * HOUR_MS,
     });
-    if (read.state === 'unavailable') throw new Error('PELS could not read prices. Try again shortly.');
+    if (read.state === 'unavailable') throw new Error('PELS has no price for the current period.');
     const matches = read.levels.includes(chosenLevel);
     deps.debugStructured({
       event: 'price_level_lookahead_evaluated',

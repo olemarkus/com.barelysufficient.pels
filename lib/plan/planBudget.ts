@@ -135,8 +135,7 @@ export function computeDailyUsageSoftLimit(bucket: DailySoftLimitBucket, nowMs: 
   } = bucket;
   if (!Number.isFinite(plannedKWh) || plannedKWh <= 0) return 0;
   if (!Number.isFinite(bucketStartMs) || !Number.isFinite(bucketEndMs) || bucketEndMs <= bucketStartMs) return 0;
-  const boundedNowMs = Math.min(Math.max(nowMs, bucketStartMs), bucketEndMs);
-  const remainingMs = Math.max(0, bucketEndMs - boundedNowMs);
+  const remainingMs = bucketEndMs - Math.max(nowMs, bucketStartMs);
   const remainingHours = Math.max(remainingMs / 3600000, BURST_RATE_MIN_REMAINING_HOURS);
   const safeUsed = Number.isFinite(usedKWh) ? Math.max(0, usedKWh) : 0;
   const remainingKWh = Math.max(0, plannedKWh - safeUsed);

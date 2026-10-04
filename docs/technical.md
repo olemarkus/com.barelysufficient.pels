@@ -307,7 +307,7 @@ Supporting a device and limiting it are two different things. Energy settings an
 
 Devices ship **disabled by default**, so you stay in control of what PELS touches — enable management and control device-by-device from the Devices tab. Devices without a usable estimate are listed for visibility and can still run mode/price control on temperature devices. Add an Energy value in Homey, enable **Power-limit control** on the device, and PELS picks it up on the next planning cycle.
 
-For a temperature device that another app or Flow controls, enable **Disable temperature control**. The setting covers one thing: the device's temperature target. PELS continues reading and displaying its measured temperature and target, but does not change the target for modes, prices, Smart tasks, boosts, or power limiting. Every other control the device exposes still works — PELS can turn it off and on, and a device with power levels is still lowered a level at a time rather than only switched off.
+For a temperature device that another app or Flow controls, set **When the temperature changes outside PELS** to **Keep the new temperature**. The choice covers one thing: the device's temperature target. PELS continues reading and displaying its measured temperature and target, but does not change the target for modes, prices, Smart tasks, boosts, or power limiting. Every other control the device exposes still works: PELS can turn it off and on, and a device with power levels is still lowered a level at a time rather than only switched off.
 
 ### Limited temperature for a heating and cooling device
 

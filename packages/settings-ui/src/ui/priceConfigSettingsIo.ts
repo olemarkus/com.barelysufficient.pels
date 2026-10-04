@@ -1,4 +1,4 @@
-import { getSetting, setSetting } from './homey.ts';
+import { getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { state } from './state.ts';
 import {
   readCurrentPriceSettings,
@@ -10,6 +10,7 @@ import {
 import { readExportPriceSettings } from './exportPriceSettings.ts';
 import {
   PRICE_OPTIMIZATION_ENABLED,
+  PRICE_OPTIMIZATION_SETTINGS,
   POWERHOUR_DEVICE_ID,
   PRICE_SCHEME,
   PV_FORECAST_SOURCE,
@@ -26,6 +27,40 @@ import { classifyPriceOptimizationConfigMap } from './priceOptimizationConfig.ts
  * controller (state, render props, handlers) and this one owns the store shapes,
  * defaults, and validation bounds.
  */
+
+// Every page write of `price_optimization_settings` stores the page's whole
+// map, so the map has to follow writes made outside the page, such as a Flow
+// card's, or the page's next edit puts the old values back.
+let priceOptimizationWritesStarted = 0;
+let priceOptimizationWritesSettled: Promise<unknown> = Promise.resolve();
+
+/** Stores the page's price-optimization map. Every edit on the page writes the key through here. */
+export const writePriceOptimizationSettings = (): Promise<void> => {
+  priceOptimizationWritesStarted += 1;
+  const write = setSetting(PRICE_OPTIMIZATION_SETTINGS, state.priceOptimizationSettings);
+  priceOptimizationWritesSettled = Promise.allSettled([priceOptimizationWritesSettled, write]);
+  return write;
+};
+
+/**
+ * Re-reads the map after a write to the key, and answers whether it differed
+ * from the page's. The read waits for the page's own writes to land: read
+ * midway, the store would undo an edit still on its way, such as one of
+ * several quick +/- taps. A page write that starts during the read voids it;
+ * that write's own change notification reads again.
+ */
+export const reloadPriceOptimizationSettings = async (): Promise<boolean> => {
+  let started: number;
+  do {
+    started = priceOptimizationWritesStarted;
+    await priceOptimizationWritesSettled;
+  } while (started !== priceOptimizationWritesStarted);
+  const read = classifyPriceOptimizationConfigMap(await getSettingFresh(PRICE_OPTIMIZATION_SETTINGS));
+  if (read.state !== 'resolved' || started !== priceOptimizationWritesStarted) return false;
+  if (JSON.stringify(read.settings) === JSON.stringify(state.priceOptimizationSettings)) return false;
+  state.priceOptimizationSettings = read.settings;
+  return true;
+};
 
 const stringSetting = (value: unknown, fallback: string): string => (
   typeof value === 'string' && value ? value : fallback

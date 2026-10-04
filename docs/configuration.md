@@ -114,7 +114,7 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 | **Solar surplus** (prosumer) | Homes with solar | **Use solar surplus** lifts a device's target while your panels are exporting, and **Run on solar surplus** runs an on/off device only while there is surplus. See [Solar and Self-Consumption](/solar). |
 | **Stepped load profile** | Stepped loads | Step names, planning power values, target-power range, and temperature boost. Hidden for EV chargers using an EV preset — the preset owns the steps. |
 | **Power limiting** | All devices PELS can limit | How far PELS may go when limiting this device — off, a limited temperature, or a lowest step — when there is a real choice; a device with only one possible limit gets a statement of what PELS does instead of a one-button choice. PELS goes only as deep as it needs. A device that reports whether it is heating or cooling gets a second limit, **Limited temperature when cooling**; see [Limited temperature for a heating and cooling device](/technical#limited-temperature-for-a-heating-and-cooling-device). |
-| **Setup** | All devices | Managed by PELS, power-limit control, disable temperature control, leave off until turned on again, price-based control, budget exemption, built-in device control, control model, and **Power when running**. Opens automatically for devices that are not set up yet. |
+| **Setup** | All devices | Managed by PELS, power-limit control, **When the temperature changes outside PELS**, leave off until turned on again, price-based control, budget exemption, built-in device control, control model, and **Power when running**. Opens automatically for devices that are not set up yet. |
 | **Activity log** | All devices | Recent state changes PELS recorded for this device. |
 | **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |
 
@@ -136,7 +136,7 @@ Notes:
 
 - Power-limit control needs a power reading for the device: its own power meter, or the live value Homey Energy shows for it. Until the first reading arrives, PELS does not limit the device.
 - Temperature devices can still be managed for mode and price behavior even when power-limit control is unavailable.
-- Turn on **Disable temperature control** when another app or Flow owns a thermostat's target. PELS keeps showing the measured temperature and target, and never writes the target itself. It still manages capacity with the device's other controls: turning it off and on, and — for a device with power levels, such as a compatible water heater — lowering it a level at a time. Saved temperature settings remain available when temperature control is enabled again.
+- Set **When the temperature changes outside PELS** to **Keep the new temperature** when another app or Flow owns a thermostat's target. PELS keeps showing the measured temperature and target, and never writes the target itself. It still manages capacity with the device's other controls: turning it off and on, and, for a device with power levels such as a compatible water heater, lowering it a level at a time. Saved temperature settings are kept and apply again when you switch back to **Return to mode target**.
 - **Built-in device control** lets PELS adjust a supported device, including compatible water heaters and Easee chargers, without a current-control Flow. When an existing Flow already writes the same setting, PELS keeps that working setup and leaves built-in control off. **Setup & recommendations** offers an optional migration: disable only the Flow action that controls the device, then turn on **Use built-in device control**. A Flow that only reads the device, reports battery level, or adjusts an unrelated setting is not a built-in-control conflict. Battery reporting should remain only when no car is selected for that charger; otherwise PELS flags the ignored action separately.
 - Only managed devices appear in **Settings > Modes**. Only managed temperature devices with **Price** enabled appear in **Settings > Price-aware devices**.
 - **Power when running** is how much PELS assumes the device draws while it runs, and it decides how much power PELS frees up before resuming it. The field shows the figure PELS is using now and says where it came from — measured by PELS, read from the device, from Homey, or a rough estimate when PELS has no reading yet. Type a value in watts to correct it, or leave it empty to let PELS work it out. It is not shown for stepped loads, which are sized per configured step. If the figure looks wrong and you would rather fix it at the source, check **Device -> Advanced Settings -> Energy** in Homey and verify the configured power usage values.
@@ -259,8 +259,8 @@ This page adjusts devices that already have price response enabled. To add a dev
 | Setting | What it does |
 | --- | --- |
 | **Respond to prices** | Enables or disables price response globally. |
-| **Cheap-hour boost (°C)** | Temperature boost while power is cheap. |
-| **Expensive-hour reduction (°C)** | Temperature reduction while power is expensive. |
+| **Cheap** (°C) | The device's cheap-hour boost: how far its temperature goes up while power is cheap. |
+| **Expensive** (°C) | The device's expensive-hour reduction: how far its temperature goes down while power is expensive. |
 
 Water heaters and similar thermal loads are usually the best first candidates.
 

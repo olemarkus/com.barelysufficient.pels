@@ -26,6 +26,7 @@ import { state } from './state.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 import { logSettingsError } from './logging.ts';
+import { reloadPriceOptimizationSettings } from './priceConfigSettingsIo.ts';
 
 /**
  * The refresh actions the settings-UI shell's three drivers — the realtime
@@ -267,6 +268,17 @@ export const refreshHomeBadgesForUi = (context: string) => {
     if (!state.devicesLoaded) return;
     renderLatestDevices(state.latestDevices);
   }), 'Failed to refresh meter area badges', context);
+};
+
+/** A write to `price_optimization_settings`: re-read it and repaint what shows it, an open device page included. */
+export const refreshPriceOptimizationSettings = () => {
+  reloadPriceOptimizationSettings()
+    .then((changed) => {
+      if (changed && state.devicesLoaded) renderLatestDevices(state.latestDevices);
+    })
+    .catch((error) => {
+      void logSettingsError('Failed to reload price settings', error, 'settings.set');
+    });
 };
 
 export const refreshModeAndDeviceControls = () => {

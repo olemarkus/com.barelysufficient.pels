@@ -67,14 +67,23 @@ export function getHourUsageSplit(powerTracker: PowerTrackerState, bucketKey: st
   });
 }
 
+/**
+ * The bucket the snapshot calls current, while it still is. A rebuild no
+ * reading drove (a settings change, a Flow card) runs against the snapshot the
+ * last reading computed, which in the first moments of a new bucket still
+ * names the bucket just ended. Pacing the new bucket from that one's leftover
+ * would apply an arbitrary limit, so an ended bucket paces nothing; the first
+ * reading in the new bucket recomputes the snapshot.
+ */
 export function resolveDailySoftLimitBucket(
   snapshot: DailyBudgetUiPayload | null,
   powerTracker: PowerTrackerState,
+  nowMs: number,
 ): DailySoftLimitBucket | null {
   const input = resolveDailySoftLimitInput(snapshot);
   if (!input) return null;
   const window = resolveDailySoftLimitWindow(input);
-  if (!window) return null;
+  if (!window || nowMs >= window.bucketEndMs) return null;
   // Floor metered usage (a persisted solar-export hour can be negative) and clamp exempt to
   // it — exempt is grossed up at the tracker, so bound it by the net metered total here, matching
   // the other budget-control consumers (dailyBudgetState/Learning/ObservedStats).
