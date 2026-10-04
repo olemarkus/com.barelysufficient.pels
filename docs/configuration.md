@@ -121,8 +121,13 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 Selecting a car chooses its matched battery reading as the charger's battery source.
 While any car is selected, PELS ignores both the charger's own battery reading and
 the **Report battery level for charger** Flow card. Until a car is matched, the charger
-has no battery level. **Setup & recommendations** flags an enabled Flow that still reports
-battery level for this charger, because that action is ignored while a car is selected.
+has no battery level. Once a selected car has been matched to the charger,
+**Setup & recommendations** flags an enabled Flow that still reports battery level for this
+charger, because that action is ignored while a car is selected. While no selected car has
+been matched to the charger, it instead warns that the charger has no battery level and
+suggests clearing the car selection so the Flow keeps working until the car shows as matched.
+If the selected car was removed from Homey, it can never be matched, so Setup says to clear
+that selection.
 Clear the car selection to use native or Flow battery reporting again.
 
 When a selected car is unavailable in Homey, PELS temporarily removes its association and

@@ -97,7 +97,7 @@ Open the charger's **Car** section in **More -> Apps -> PELS -> Settings -> Devi
 
 Selecting a car does not itself establish a match. While the page says **Waiting to match a car**, this charger has no battery level. While any car is selected, PELS ignores both the charger's own reading and the **Report battery level for charger** Flow card, including before a match. Clear the selection if you want to use either of those sources instead.
 
-PELS matches cars to chargers whether or not they are selected. Under each car, the **Car** section shows `Last matched to this charger on <date>` or `Not matched to this charger yet`. If you already report the battery level through a Flow, wait until the car shows as matched before you select it.
+PELS matches cars to chargers whether or not they are selected. Under each car, the **Car** section shows `Last matched to this charger on <date>`, `Not matched to this charger` when the car has matched a different charger that is still in Homey, or `Not matched to this charger yet`. If you already report the battery level through a Flow, wait until the car shows as matched before you select it.
 
 ### Path B: The Charger Reports Battery Percentage
 
@@ -181,7 +181,7 @@ Typical repeating Flow:
 
 Use the same target and ready-by time you tested in the widget, for example `80%` by `07:00`.
 
-Keep the battery-reporting Flow from Step 2 running. The charging task is only as good as the battery percentage PELS receives.
+Keep the battery source you set up in Step 2 working: the selected car, the charger's own reading, or the battery-reporting Flow. The charging task is only as good as the battery percentage PELS receives.
 
 ## When To Use Flow-Booked Cheap Hours Instead
 
@@ -198,7 +198,7 @@ Use deadline charging when the car's final battery level matters.
 | Problem | What to check |
 | --- | --- |
 | The charger is not offered in **New smart task** | Confirm it is paired in Homey, visible in PELS, **Managed by PELS**, and configured as **EV 1-phase** or **EV 3-phase**. |
-| Battery percentage does not appear | Check whether the value is on the charger or on a separate car device. If it is on the car device, use **Report battery level for charger**. |
+| Battery percentage does not appear | Check whether the value is on the charger or on a separate car device. If it is on the car device, select the car in the charger's **Car** section (Path A) and wait for PELS to match it. If the car is not listed there, report its battery percentage with **Report battery level for charger** (Path C). |
 | The task stays at **Building plan…** | Check that price data is available through the ready-by time. Tomorrow's prices may not be published yet. |
 | The charger starts in an hour outside the plotted task plan | The task may still need an unbooked hour, which remains eligible through live planner admission. A deferred hour is held off. Turn **Power-limit control** off to prevent normal run-when-power-is-available behavior when no active task controls the charger. |
 | The task is **At risk** | Check that the car is plugged in, the charger current is correct, and the target is realistic for the time left. If other devices take the room, grant the task permission to limit lower-priority devices. If the reason names the car's own schedule or smart charging, turn that off in the car. |

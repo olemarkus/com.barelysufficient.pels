@@ -259,8 +259,83 @@ describe('setup recommendations', () => {
     // The selection, not the missing match, is why the Flow is ignored.
     expect(recommendations[0]?.body).toContain('A car is selected for this charger, so PELS ignores');
     expect(recommendations[0]?.body).toContain('Report car battery');
+    // Its only other match is to a charger no longer in Homey, so it may still match here.
     expect(recommendations[0]?.body).toContain('has not matched Kia EV6 to this charger yet');
-    expect(recommendations[0]?.body).toContain('Clear the car selection to use the Flow again');
+    expect(recommendations[0]?.body).toContain(
+      'Clear the car selection to use the Flow again, and select the car once it shows as matched.',
+    );
+  });
+
+  it('drops "yet" for a selected car that has matched another of the home\'s chargers', () => {
+    const recommendations = resolve(
+      [
+        device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true }),
+        device({ id: 'charger-2', name: 'Zaptec', deviceClass: 'evcharger', isEvCharger: true }),
+      ],
+      [car('car-1', 'Kia EV6', [{ chargerId: 'charger-2', lastMatchedAtMs: 1_000 }])],
+      { 'charger-1': { carIds: ['car-1'] } },
+      {},
+      [{ chargerDeviceId: 'charger-1', flowName: 'Report car battery' }],
+    );
+
+    expect(recommendations.map(({ id }) => id)).toEqual(['ev-soc-flow-unmatched:charger-1']);
+    // It charges on another charger, so it is not about to match here.
+    expect(recommendations[0]?.body).toContain('PELS has not matched Kia EV6 to this charger, so');
+    expect(recommendations[0]?.body).not.toContain('yet');
+    // Nor does it promise the match the dropped "yet" denies.
+    expect(recommendations[0]?.body).toMatch(/Clear the car selection to use the Flow again\.$/);
+    expect(recommendations[0]?.body).not.toContain('once it shows as matched');
+  });
+
+  it('asks to clear a selected car that was removed from Homey', () => {
+    const recommendations = resolve(
+      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
+      [car('car-2', 'Polestar 3')],
+      { 'charger-1': { carIds: ['removed-car'] } },
+      {},
+      [{ chargerDeviceId: 'charger-1', flowName: 'Report car battery' }],
+    );
+
+    expect(recommendations).toEqual([expect.objectContaining({
+      id: 'ev-soc-flow-unmatched:charger-1',
+      title: 'Easee has no battery level',
+      actionLabel: 'Open charger',
+      target: { kind: 'device', deviceId: 'charger-1' },
+    })]);
+    const body = recommendations[0]?.body ?? '';
+    expect(body).toContain('The selected car was removed from Homey, so the charger has no battery level.');
+    // The picker labels its row "Removed car"; a car that no longer exists
+    // cannot match, so there is nothing to select again.
+    expect(body).toContain('Clear the “Removed car” selection in the charger’s Car section');
+    expect(body).not.toContain('selected cars');
+    expect(body).not.toContain('once it shows as matched');
+  });
+
+  it('names a removed car selected beside one still in Homey', () => {
+    const recommendations = resolve(
+      [
+        device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true }),
+        device({ id: 'charger-2', name: 'Zaptec', deviceClass: 'evcharger', isEvCharger: true }),
+      ],
+      [car('car-1', 'Kia EV6', [{ chargerId: 'charger-2', lastMatchedAtMs: 1_000 }])],
+      { 'charger-1': { carIds: ['car-1', 'removed-car'] } },
+      {},
+      [{ chargerDeviceId: 'charger-1', flowName: 'Report car battery' }],
+    );
+
+    const body = recommendations[0]?.body ?? '';
+    expect(body).toContain('PELS has not matched Kia EV6 to this charger, so');
+    expect(body).toContain('A selected “Removed car” was removed from Homey and can never match, so clear it too.');
+  });
+
+  it('names cars and chargers in titles the way the car picker shows them', () => {
+    const recommendations = resolve(
+      [device({ id: 'charger-1', name: ' Easee ', deviceClass: 'evcharger', isEvCharger: true })],
+      [car('car-1', 'Polestar 3 (null)', [{ chargerId: 'charger-1', lastMatchedAtMs: 1_000 }])],
+    );
+
+    expect(recommendations[0]?.title).toBe('Select Polestar 3 on Easee');
+    expect(recommendations[0]?.body).toContain('PELS has matched Polestar 3 to Easee.');
   });
 
   it('gives no battery-reporting advice while the selected car\'s match history is unreadable', () => {
