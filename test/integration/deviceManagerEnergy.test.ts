@@ -24,7 +24,6 @@ import { createRootLogger } from '../../lib/logging/logger';
 // required, so a fixture without one crashes where production cannot.
 const makeLogger = (): Logger => ({
   log: vi.fn(),
-  debug: vi.fn(),
   error: vi.fn(),
   structuredLog: createRootLogger(new PassThrough()),
 });

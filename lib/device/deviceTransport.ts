@@ -225,9 +225,7 @@ export class DeviceTransport {
         };
         // The measured-power resolver, built with what it retains restored from the
         // store before the first read (`retainedPowerPersistence.ts`).
-        this.retainedPower = new RetainedPowerPersistence(
-            options.retainedPowerStore, this.logger,
-        );
+        this.retainedPower = new RetainedPowerPersistence(options.retainedPowerStore);
         this.binaryEvidence = new BinarySettleEvidenceService(
             this.snapshotStore,
             this.observationBridge.state,

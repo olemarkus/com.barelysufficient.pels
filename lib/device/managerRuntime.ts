@@ -1,7 +1,8 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import { resolveBinaryOn } from '../utils/binaryControl';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import type { HomeyDeviceLike, Logger } from '../utils/types';
+import type { HomeyDeviceLike } from '../utils/types';
+import { getDebugEmitter } from '../logging/logger';
 import {
   formatBinaryState,
   formatTargetValue,
@@ -16,6 +17,8 @@ import {
 } from './transport/managerExplicitBinaryObservation';
 import { preserveNewerReportedStepObservation } from './transport/reportedStepObservation';
 import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
 type RealtimeControlCapabilityId = NonNullable<TransportDeviceSnapshot['binaryCapabilityId']>;
@@ -48,7 +51,6 @@ export function updateLastKnownPower(params: {
     lastKnownPowerKw: LearnedPeaksByDeviceId;
     lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
   };
-  logger: Logger;
   deviceId: string;
   measuredKw: number;
   deviceLabel: string;
@@ -65,7 +67,6 @@ export function updateLastKnownPower(params: {
 }): void {
   const {
     state,
-    logger,
     deviceId,
     measuredKw,
     deviceLabel,
@@ -92,7 +93,7 @@ export function updateLastKnownPower(params: {
   })) {
     return;
   }
-  logger.structuredLog.debug({
+  emitDeviceDebug({
     event: 'power_estimate_peak_updated',
     deviceId,
     deviceName: deviceLabel,

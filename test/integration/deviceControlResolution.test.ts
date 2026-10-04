@@ -46,7 +46,6 @@ const heater = (): HomeyDeviceLike => ({
 
 const logger: Logger = {
   log: vi.fn(),
-  debug: vi.fn(),
   error: vi.fn(),
   structuredLog: getLogger('devices'),
 };

@@ -38,6 +38,7 @@ import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { isHomeyDeviceLike } from '../utils/types';
 import { resolveHomeyInstance } from './transport/managerHomeyApi';
 import { normalizeError } from '../utils/errorUtils';
+import { getDebugEmitter } from '../logging/logger';
 
 const DEVICES_URI = 'homey:manager:devices';
 const DEVICE_UPDATE_EVENT = 'device.update';
@@ -49,6 +50,8 @@ const RECONNECT_DELAY_MS = 5_000;
 const RECONNECT_DELAY_MAX_MS = 60_000;
 const QUIET_FEED_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 const QUIET_CHECK_INTERVAL_MS = 60 * 1000;
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 export type LiveFeedHealth = {
   subscriptionState: 'disconnected' | 'connecting' | 'connected' | 'subscribed';
@@ -383,31 +386,26 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       // Liveness counts every frame, whatever it carries.
       this.health.lastLiveEventMs = Date.now();
       this.quietEmittedAt = null;
-      // Cheapest discriminator first. `extractDeviceId` used to run on every
-      // frame, including the ones this branch is about to discard.
+      // Cheapest discriminator first.
       if (eventName !== DEVICE_UPDATE_EVENT) {
         this.health.ignoredLiveEventCount += 1;
-        // DEBUG, not info. The feed emits a `capability.create`/`capability.delete`
+        // `devices`-topic DEBUG, not info. The feed emits a `capability.create`/`capability.delete`
         // pair per refresh by design — 548 of each in a 12 h window — so this is
-        // the routine case, and it was the only line on this handler reaching the
-        // log while the one that names the changed device sat below it at debug.
+        // the routine case.
         // The two ignore reasons underneath stay at info: those are payloads that
         // claimed to be a device update and were not, which is a contract
         // violation at the seam rather than ordinary feed traffic.
-        this.logger.structuredLog.debug({
-          component: 'devices', source: 'web_api_subscription',
+        emitDeviceDebug({
+          source: 'web_api_subscription',
           event: 'device_live_feed_event_ignored',
           eventName, ignoreReason: 'not_device_update',
           ignoredLiveEventCount: this.health.ignoredLiveEventCount,
         });
         return;
       }
-      this.logger.structuredLog.debug({
-        component: 'devices', source: 'web_api_subscription',
-        event: 'device_live_feed_event_received',
-        eventName, deviceId: extractDeviceId(data),
-        subscriptionState: this.health.subscriptionState,
-      });
+      // No per-frame line: the feed carries every device on the Homey, and with the
+      // `devices` topic on that is thousands of lines an hour. The managed device's
+      // update is logged where it is processed (`device_update_processed`).
       if (!data || typeof data !== 'object') {
         this.health.ignoredLiveEventCount += 1;
         this.logger.structuredLog.info({
@@ -518,11 +516,4 @@ export function createDeviceLiveFeed(params: {
   };
 }): DeviceLiveFeed {
   return new DeviceLiveFeedImpl(params);
-}
-
-function extractDeviceId(data: unknown): string | undefined {
-  if (!data || typeof data !== 'object') return undefined;
-  const record = data as Record<string, unknown>;
-  if (typeof record.id === 'string') return record.id;
-  return undefined;
 }

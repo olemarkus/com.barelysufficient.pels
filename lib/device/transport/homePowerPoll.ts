@@ -1,9 +1,12 @@
 import { normalizeError } from '../../utils/errorUtils';
+import { getDebugEmitter } from '../../logging/logger';
 import { updateHomePowerFromReport, type HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
 import { fetchLivePowerReport } from './livePowerReport';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { Logger } from '../../utils/types';
 import type { DeviceTransportParseProviders } from './managerParseDevice';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 /**
  * Read Main and area meters from one report. Area fan-out shares the poll
@@ -27,7 +30,7 @@ export async function pollHomePowerWithMeterFanOut(
     try {
       onAdditionalMeterReadings(report.additionalMeterPowerW, Date.now());
     } catch (error) {
-      logger.debug({
+      emitDeviceDebug({
         event: 'additional_meter_readings_dispatch_failed',
         error: normalizeError(error).message,
       });

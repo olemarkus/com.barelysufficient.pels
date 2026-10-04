@@ -23,7 +23,7 @@
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import type { HomeyRuntime } from '../ports/homeyRuntime';
 import { EV_CAR_LINK_STATE, EV_CAR_LINK_STATE_INITIALIZED } from '../utils/settingsKeys';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 import {
     createEmptyEvCarLinkSnapshot,
@@ -34,6 +34,7 @@ import {
 } from './evCarLinkSnapshot';
 
 const moduleLogger = getLogger('device/ev-car-link-store');
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 const DEFAULT_PERSIST_DEBOUNCE_MS = 60_000;
 const DEFAULT_LOAD_GRACE_MS = 5 * 60 * 1000;
@@ -310,7 +311,7 @@ const writeInitMarkerBestEffort = (homey: HomeyRuntime): void => {
     try {
         homey.settings.set(EV_CAR_LINK_STATE_INITIALIZED, true);
     } catch (error) {
-        moduleLogger.debug({ event: 'ev_car_link_init_marker_write_failed', err: normalizeError(error) });
+        emitDeviceDebug({ event: 'ev_car_link_init_marker_write_failed', err: normalizeError(error) });
     }
 };
 

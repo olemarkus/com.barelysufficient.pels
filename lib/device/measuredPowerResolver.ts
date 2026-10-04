@@ -1,5 +1,5 @@
 import { shouldEmitOnChange } from '../logging/logDedupe';
-import type { Logger } from '../utils/types';
+import { getDebugEmitter } from '../logging/logger';
 import type {
   DeviceMeasuredPowerObservation,
   DirectPowerReading,
@@ -7,6 +7,8 @@ import type {
 } from './measuredPowerReader';
 import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type { MeasuredPowerSource, MeteredPowerReading } from './transportDeviceSnapshot';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 // Require at least 1 second of OBSERVED time between the two readings a rate is
 // derived from, so a pair stamped inside the same second cannot divide by a
@@ -41,9 +43,8 @@ export class DeviceMeasuredPowerResolver {
   private readonly lastResolvedSourceByDevice = new Map<string, { signature: string; emittedAt: number }>();
 
   constructor(private readonly deps: {
-    logger: Logger;
     getNow?: () => number;
-  }) {}
+  } = {}) {}
 
   /**
    * The meter anchors a restart would otherwise lose, restored from the
@@ -173,7 +174,7 @@ export class DeviceMeasuredPowerResolver {
       return { observedAtMs };
     }
     if (kwh < previous.kwh) {
-      this.deps.logger.debug({
+      emitDeviceDebug({
         event: 'power_estimate_meter_reset',
         deviceId,
         deviceLabel,
@@ -236,7 +237,7 @@ export class DeviceMeasuredPowerResolver {
       return;
     }
 
-    this.deps.logger.structuredLog.debug({
+    emitDeviceDebug({
       event: 'device_measured_power_source_changed',
       deviceId,
       deviceName: deviceLabel,

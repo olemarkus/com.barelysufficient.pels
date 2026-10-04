@@ -570,7 +570,6 @@ describe('external-off hold — real configuration and Observer reads', () => {
   const noop = (): void => undefined;
   const loggerMock: Logger = {
     log: noop,
-    debug: noop,
     error: noop,
     structuredLog: { info: noop, error: noop, debug: noop, warn: noop } as unknown as Logger['structuredLog'],
   };

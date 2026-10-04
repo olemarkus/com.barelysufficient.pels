@@ -1,8 +1,11 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import { resolveLearnedPeakKw, type LearnedPeaksByDeviceId } from './devicePowerPeak';
 import type { BinaryControlCapabilityId, ExpectedPowerSource } from '../../packages/contracts/src/types';
-import type { HomeyDeviceLike, Logger } from '../utils/types';
+import type { HomeyDeviceLike } from '../utils/types';
+import { getDebugEmitter } from '../logging/logger';
 import { resolveSettingsEnergyWatts } from './managerEnergy';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 /**
  * What PELS assumes a device draws while running when no source describes it.
@@ -54,7 +57,6 @@ export function estimatePower(params: {
   measuredPowerKw?: number;
   now: number;
   state: Required<PowerEstimateState>;
-  logger: Logger;
 }): PowerEstimateResult {
   const {
     device,
@@ -64,7 +66,6 @@ export function estimatePower(params: {
     measuredPowerKw,
     now,
     state,
-    logger,
   } = params;
 
   const loadW = getLoadSettingWatts(device);
@@ -88,7 +89,6 @@ export function estimatePower(params: {
     measuredPowerKw,
     loadKw: loadW === null ? undefined : loadW / 1000,
     state,
-    logger,
     now,
   });
   return result;
@@ -220,15 +220,15 @@ function emitEstimateDecisionLog(params: {
   measuredPowerKw?: number;
   loadKw?: number;
   state: Required<PowerEstimateState>;
-  logger: Logger;
   now: number;
 }): void {
-  const { deviceId, deviceLabel, state, logger, now } = params;
+  const { deviceId, deviceLabel, state, now } = params;
   const decision = buildEstimateDecisionLogFields(params);
+  // The live reading rides in the payload but not the signature: it moves on
+  // every sample, and keying on it logged each 10 W wobble as an estimate change.
   const signature = JSON.stringify({
     source: decision.source,
     estimatedKw: decision.estimatedKw,
-    measuredPowerKw: decision.measuredPowerKw,
     loadKw: decision.loadKw,
     peakMeasuredKw: decision.peakMeasuredKw,
   });
@@ -240,7 +240,7 @@ function emitEstimateDecisionLog(params: {
   })) {
     return;
   }
-  logger.structuredLog.debug({
+  emitDeviceDebug({
     event: 'power_estimate_source_changed',
     deviceId,
     deviceName: deviceLabel,

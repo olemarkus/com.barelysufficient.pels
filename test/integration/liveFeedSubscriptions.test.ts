@@ -22,7 +22,7 @@ describe('device live feed subscriptions', () => {
     vi.mocked(io).mockReturnValue(sockets.root);
     feed = createDeviceLiveFeed({
       homey: new Homey.App(),
-      logger: { log: vi.fn(), debug: vi.fn(), error: vi.fn(), structuredLog: getLogger('live-feed-test') },
+      logger: { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('live-feed-test') },
       callbacks: { onDeviceUpdate: vi.fn(), onCapabilityUpdate },
     });
     await feed.start();

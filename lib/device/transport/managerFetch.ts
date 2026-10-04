@@ -51,7 +51,7 @@ export async function fetchDevicesWithFallback(params: {
       const devices = await getRawDevices(DEVICES_API_PATH);
       const rawList = Array.isArray(devices) ? devices : Object.values(devices || {});
       const list = rawList.filter(isHomeyDeviceLike);
-      logger.debug({
+      emitDeviceDebug({
         event: 'manager_api_devices_returned',
         validDevices: list.length,
         invalidEntries: rawList.length - list.length,
@@ -65,7 +65,7 @@ export async function fetchDevicesWithFallback(params: {
       lastError = error;
       if (attempt < DEVICE_FETCH_RETRY_DELAYS_MS.length) {
         const delay = DEVICE_FETCH_RETRY_DELAYS_MS[attempt];
-        logger.debug({ event: 'device_fetch_retry', attempt: attempt + 1, retryDelayMs: delay });
+        emitDeviceDebug({ event: 'device_fetch_retry', attempt: attempt + 1, retryDelayMs: delay });
         await new Promise((resolve) => { setTimeout(resolve, delay); });
       }
     }
@@ -106,12 +106,12 @@ export async function fetchDevicesByIds(params: {
         devices.push(result.value);
       } else {
         failedIds.push(deviceId);
-        logger.debug({ event: 'targeted_device_fetch_invalid_payload', deviceId });
+        emitDeviceDebug({ event: 'targeted_device_fetch_invalid_payload', deviceId });
       }
     } else {
       failedIds.push(deviceId);
       const err = result.reason as Error | undefined;
-      logger.debug({
+      emitDeviceDebug({
         event: 'targeted_device_fetch_failed',
         deviceId,
         error: err?.message || 'unknown error',
@@ -132,7 +132,7 @@ export async function fetchDevicesByIds(params: {
   // EVERY requested id failed (`devices` is empty) — there is nothing to commit,
   // so a genuine recovery path is warranted.
   if (devices.length === 0 && failedIds.length > 0) {
-    logger.debug({
+    emitDeviceDebug({
       event: 'targeted_fetch_fallback_to_full',
       failures: failedIds.length,
     });

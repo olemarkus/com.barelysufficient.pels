@@ -2,7 +2,6 @@ import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measu
 import { getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
-import type { Logger } from '../utils/types';
 import type { RetainedPowerReading, RetainedPowerState, RetainedPowerStore } from './retainedPowerStore';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 
@@ -32,11 +31,8 @@ export class RetainedPowerPersistence {
   private readonly restored: Map<string, RetainedPowerReading>;
   private lastSaveMs = Number.NEGATIVE_INFINITY;
 
-  constructor(
-    private readonly store: RetainedPowerStore,
-    logger: Logger,
-  ) {
-    this.resolver = new DeviceMeasuredPowerResolver({ logger });
+  constructor(private readonly store: RetainedPowerStore) {
+    this.resolver = new DeviceMeasuredPowerResolver();
     const state = loadOrStartEmpty(store);
     this.restored = new Map(state.readings);
     this.resolver.seedMeterAnchors(state.meterAnchors);

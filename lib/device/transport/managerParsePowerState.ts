@@ -2,7 +2,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { estimatePower } from '../devicePowerEstimate';
 import { resolveMeasuredPowerKw } from '../managerMeasuredPower';
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
-import type { HomeyDeviceLike, Logger } from '../../utils/types';
+import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceCapabilityMap } from '../managerControl';
 import { getCurrentTemperature } from './managerParse';
 import type { LiveDevicePowerWatts } from '../managerEnergy';
@@ -19,7 +19,6 @@ export function resolveDevicePowerState(params: {
   now: number;
   measuredPowerResolver: DeviceMeasuredPowerResolver;
   powerState: ResolvedTransportPowerState;
-  logger: Logger;
 }): {
   currentTemperature: number | undefined;
   measuredPower: ReturnType<typeof resolveMeasuredPowerKw>;
@@ -27,12 +26,12 @@ export function resolveDevicePowerState(params: {
 } {
   const {
     device, deviceId, deviceLabel, binaryCapabilityId, capabilities, capabilityObj,
-    livePowerWByDeviceId, now, measuredPowerResolver, powerState, logger,
+    livePowerWByDeviceId, now, measuredPowerResolver, powerState,
   } = params;
   const currentTemperature = getCurrentTemperature(capabilityObj);
   const measuredPower = resolveMeasuredPowerKw({
     deviceId, deviceLabel, capabilities, capabilityObj, livePowerWByDeviceId, now,
-    measuredPowerResolver, powerState, logger,
+    measuredPowerResolver, powerState,
   });
   const powerEstimate = estimatePower({
     device,
@@ -42,7 +41,6 @@ export function resolveDevicePowerState(params: {
     measuredPowerKw: measuredPower.measuredPowerKw,
     now,
     state: powerState,
-    logger,
   });
   return { currentTemperature, measuredPower, powerEstimate };
 }

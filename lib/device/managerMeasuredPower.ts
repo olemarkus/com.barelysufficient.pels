@@ -1,4 +1,3 @@
-import type { Logger } from '../utils/types';
 import type { LiveDevicePowerWatts } from './managerEnergy';
 import type { DeviceCapabilityMap } from './managerControl';
 import { updateLastKnownPower } from './managerRuntime';
@@ -23,7 +22,6 @@ export function resolveMeasuredPowerKw(params: {
   now: number;
   measuredPowerResolver: DeviceMeasuredPowerResolver;
   powerState: ResolvedTransportPowerState;
-  logger: Logger;
 }): DeviceMeasuredPowerResolution {
   const {
     deviceId,
@@ -34,7 +32,6 @@ export function resolveMeasuredPowerKw(params: {
     now,
     measuredPowerResolver,
     powerState,
-    logger,
   } = params;
   const measuredPower = measuredPowerResolver.resolve({
     deviceId,
@@ -63,7 +60,6 @@ export function resolveMeasuredPowerKw(params: {
   ) {
     updateLastKnownPower({
       state: powerState,
-      logger,
       deviceId,
       measuredKw: measuredPower.measuredPowerKw,
       deviceLabel,
