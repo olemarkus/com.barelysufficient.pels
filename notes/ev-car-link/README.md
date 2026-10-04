@@ -109,6 +109,17 @@ the realtime feed within seconds of a plug edge, while snapshots are rebuilt onl
 of the time and up to half an hour stale after unplugging. `DeviceTransport.getAssociatedCar`
 resolves it per call; the settings-UI devices composer decorates its payload with it.
 
+**Match history is served alongside the car candidates.** The probe votes whether or not a
+car is ticked, so the persisted `pairs` already record which charger each car has matched.
+`ui_recommendation_cars` gives every candidate its `matchHistory` (charger id and latest
+vote time per matched charger), and the UI uses it to show a match before the owner ticks the
+car and gives up a working Flow-reported level. It carries no count: a session usually casts
+one vote on plug-in and another on unplug. The history covers the prune window (90 days). It
+is read per candidate, so a home without cars never loads the link store. While a suspect
+boot read awaits recovery (`EvCarLinkStore.hasResolvedHistory`), the history is
+`unavailable` rather than empty, and the UI gives no match-based advice: an empty snapshot
+standing in for an unreadable one must not read as "never matched".
+
 **The charge reading is served with its timestamp and is not gated on the session start.**
 Cars publish `measure_battery` on change, so a session normally opens with the last pre-plug
 reading and nothing new arrives until the level rises. That reading is the car's real charge.

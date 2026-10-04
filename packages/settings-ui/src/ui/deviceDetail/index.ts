@@ -79,6 +79,7 @@ import {
 import {
   clearEvCarAssociations,
   loadEvCarAssociations,
+  invalidateCarOptions,
   renderCarAssociation,
 } from './carAssociation.ts';
 import {
@@ -384,6 +385,7 @@ export const openDeviceDetail = (deviceId: string) => {
   renderExpectedPowerField(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
+  invalidateCarOptions();
   renderCarAssociation(device);
   renderDeviceDetailModes(device);
   setDeviceDetailDeltaValues(deviceId);

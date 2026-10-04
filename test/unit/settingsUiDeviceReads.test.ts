@@ -1,8 +1,12 @@
 import {
   readCarAssociationCandidatesFromHomey,
   readChargerPhasePresetsFromHomey,
+  resolveCarAssociationCandidatesRead,
   SettingsUiDeviceReads,
 } from '../../lib/device/settingsUiDeviceReads';
+import type { EvCarLinkProducer } from '../../lib/device/evCarLinkProducer';
+import type { EvCarChargerMatchHistory } from '../../packages/contracts/src/evCarLink';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
 
 describe('SettingsUiDeviceReads', () => {
   it('keeps an unwired transport behind tagged unavailable reads', () => {
@@ -14,7 +18,11 @@ describe('SettingsUiDeviceReads', () => {
 
   it('delegates to the wired tagged-read producer without reclassifying its result', () => {
     const chargerRead = { state: 'resolved' as const, presets: { 'charger-1': 'ev_charger_3_phase' as const } };
-    const carRead = { state: 'resolved' as const, cars: [{ id: 'car-1', name: 'Polestar 3' }] };
+    const carRead = { state: 'resolved' as const, cars: [{
+      id: 'car-1',
+      name: 'Polestar 3',
+      matchHistory: { state: 'resolved' as const, chargerMatches: [] },
+    }] };
     const reads = new SettingsUiDeviceReads();
     reads.connect({
       readChargerPhasePresets: () => chargerRead,
@@ -52,5 +60,51 @@ describe('Homey settings-UI device-read boundary', () => {
     expect(readCarAssociationCandidatesFromHomey({
       app: { settingsUiDeviceReads: reads },
     })).toBe(carRead);
+  });
+});
+
+describe('resolveCarAssociationCandidatesRead', () => {
+  const car = {
+    id: 'car-1',
+    name: 'Kia EV6',
+    class: 'vehicle',
+    capabilities: ['ev_charging_state', 'measure_battery'],
+  } as unknown as HomeyDeviceLike;
+
+  const producerReading = (history: EvCarChargerMatchHistory) => {
+    const readChargerMatchesForCar = vi.fn(() => history);
+    // Only the history read is exercised; the producer's correlation is not.
+    return { readChargerMatchesForCar, producer: { readChargerMatchesForCar } as unknown as EvCarLinkProducer };
+  };
+
+  it('adds each candidate\'s match history from the link producer', () => {
+    const history = {
+      state: 'resolved' as const,
+      chargerMatches: [{ chargerId: 'charger-1', lastMatchedAtMs: 1_000 }],
+    };
+    const { readChargerMatchesForCar, producer } = producerReading(history);
+
+    expect(resolveCarAssociationCandidatesRead(true, [car], producer)).toEqual({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Kia EV6', matchHistory: history }],
+    });
+    expect(readChargerMatchesForCar).toHaveBeenCalledWith('car-1');
+  });
+
+  it('passes an unreadable history through rather than calling it no matches', () => {
+    const { producer } = producerReading({ state: 'unavailable' });
+
+    expect(resolveCarAssociationCandidatesRead(true, [car], producer)).toEqual({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Kia EV6', matchHistory: { state: 'unavailable' } }],
+    });
+  });
+
+  it('never reads link history for a home without cars or before the first trusted read', () => {
+    const { readChargerMatchesForCar, producer } = producerReading({ state: 'resolved', chargerMatches: [] });
+
+    expect(resolveCarAssociationCandidatesRead(true, [], producer)).toEqual({ state: 'resolved', cars: [] });
+    expect(resolveCarAssociationCandidatesRead(false, [car], producer)).toEqual({ state: 'unavailable' });
+    expect(readChargerMatchesForCar).not.toHaveBeenCalled();
   });
 });

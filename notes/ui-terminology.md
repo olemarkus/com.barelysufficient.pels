@@ -1782,13 +1782,42 @@ device-neutral.
 ### Car battery recommendations
 
 - A supported car with no charger selection is **Optional**, not Recommended.
-  Basic capacity control works without a car battery level, so `Choose a
-  charger for <car>` must never imply that the setup is wrong.
+  Basic capacity control works without a car battery level, so `Select <car>
+  on <charger>` must never imply that the setup is wrong. It is offered only
+  for a car PELS has already matched to one of the home's chargers, names the
+  charger it was matched to most recently, and its `Open charger` action opens
+  that charger. The body names the match:
+  `PELS has matched <car> to <charger>. Select the car in its Car section so PELS can read its battery level while it charges.`
+  Selecting a car switches off the charger's other battery sources until a
+  match, so recommending a car that has never matched would steer a working
+  Flow-reported level into no level at all.
 - An enabled **Report battery level for charger** Flow action becomes a real
   recommendation only when its target charger has a selected car. PELS ignores
   that action in this state, so the recommendation names the charger, names the
   single Flow when possible, and asks the owner to remove the action or disable
-  the Flow if it is no longer needed.
+  the Flow if it is no longer needed. That removal advice needs a selected car
+  that has been matched to this charger (now or in the retained history). Until
+  then the Flow is the owner's only working source, and the recommendation is
+  `<charger> has no battery level` instead: it says the selected car is why PELS
+  ignores the Flow, that PELS has not matched the car yet, and suggests clearing
+  the car selection and selecting the car again once it shows as matched.
+  Action `Open charger`.
+- Each car row in the charger's car picker carries a hint:
+  `Last matched to this charger on 3 Oct`; `Not matched to this charger` when
+  the car has matched a different charger (no "yet": it is not about to match
+  here); otherwise `Not matched to this charger yet`. No hint while the match
+  history is unreadable or the list failed to refresh. No count: a session
+  usually casts one vote on plug-in and another on unplug.
+- While a selected car has never matched this charger, the charger-page Flow
+  note reads `This charger has no battery level until PELS matches a selected
+  car. If a Flow card or the charger itself reported the level before, clear
+  the selection to keep using it, and select the car again once it shows as
+  matched.` Otherwise, before a match, it reads `Until a car is matched, this
+  charger has no battery level. While a car is selected, PELS ignores both the
+  Flow card that reports it and the charger's own reading.`
+- Flow advice (removal or the no-battery-level warning) needs a car list that
+  refreshed successfully and readable match history; otherwise Setup gives
+  neither and reports that some checks could not be refreshed.
 - A selected and matched car that has not reported a finite battery level is a
   local warning on the charger page. An unmatched car keeps the more specific
   `Waiting to match a car` state; it is expected matching latency, not the same

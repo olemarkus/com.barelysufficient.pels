@@ -459,6 +459,19 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     // The probe has matched the pair, but the user has ticked nothing: the
     // default for every existing install must stay invisible.
     expect((await chargerFromUi()).associatedCar).toBeUndefined();
+    // The match itself is still offered, so the owner can see it before
+    // selecting the car and giving up a working battery-level Flow.
+    expect(await api.ui_recommendation_cars({ homey: mockHomeyInstance as never })).toEqual({
+      state: 'resolved',
+      cars: [{
+        id: CAR_ID,
+        name: 'Polestar',
+        matchHistory: {
+          state: 'resolved',
+          chargerMatches: [{ chargerId: CHARGER_ID, lastMatchedAtMs: expect.any(Number) }],
+        },
+      }],
+    });
 
     // Tick the car for this charger.
     mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });

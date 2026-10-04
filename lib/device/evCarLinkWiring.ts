@@ -89,6 +89,8 @@ export const buildEvCarLinkChargerViews = (
 export type EvCarLinkSnapshotAccess = {
     get: () => EvCarLinkSnapshot;
     set: (snapshot: EvCarLinkSnapshot) => void;
+    /** Whether `get` holds the persisted history, not an empty stand-in for an unreadable one. */
+    historyResolved: () => boolean;
     /**
      * Durable-write hook invoked when the transport is destroyed. Normal writes
      * are debounced, so without this the votes and observed-stop samples accepted
@@ -108,6 +110,7 @@ export const createEvCarLinkProducer = (params: {
     const access: EvCarLinkSnapshotAccess = params.snapshotAccess ?? {
         get: () => inMemory,
         set: (snapshot) => { inMemory = snapshot; },
+        historyResolved: () => true,
         flush: () => {},
     };
     return new EvCarLinkProducer({
@@ -115,6 +118,7 @@ export const createEvCarLinkProducer = (params: {
         getChargers: () => buildEvCarLinkChargerViews(params.getSnapshots()),
         getSnapshot: access.get,
         setSnapshot: access.set,
+        isHistoryResolved: access.historyResolved,
         onAssociatedCarStateOfCharge: params.onAssociatedCarStateOfCharge,
         onAssociationEnded: params.onAssociationEnded,
     });

@@ -27,7 +27,7 @@
  */
 import type { AssociatedCarSnapshot, EvChargingState } from '../../packages/contracts/src/types';
 import type { EvCarLinkEvent } from './evCarLinkEvents';
-import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
+import type { EvCarChargerMatchHistory, EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceListRead } from './deviceListRead';
 import {
@@ -38,6 +38,7 @@ import {
 } from './evCarLinkReadModel';
 import { resolveResumableSessions } from './evCarLinkSessionResume';
 import { EvCarSelfStopWatcher } from './evCarLinkSelfStop';
+import { EvCarLinkReportKeys } from './evCarLinkReportKeys';
 import { hasSessionPowerEvidence, type EvCarLinkChargerView } from './evCarLinkChargerView';
 import {
     applyCarCapability,
@@ -67,6 +68,7 @@ import {
     recordEvCarLinkSession,
     recordEvCarLinkVote,
     resolveEvCarChargeLimit,
+    resolveEvCarChargerMatches,
 } from './evCarLinkSnapshot';
 
 /**
@@ -85,9 +87,6 @@ const EDGE_RETENTION_MS = EV_CAR_LINK_COINCIDENCE_WINDOW_MS * 3;
  */
 const EV_CAR_LINK_TARGETED_MISS_GRACE = 3;
 
-/** Bound on the one-shot report-dedupe ring (see `claimReportKey`). */
-const MAX_REPORTED_KEYS = 200;
-
 export type { EvCarLinkEvent } from './evCarLinkEvents';
 export type EvCarLinkEventEmitter = (payload: EvCarLinkEvent) => void;
 
@@ -105,6 +104,8 @@ export type EvCarLinkProducerDeps = {
     getChargers: () => readonly EvCarLinkChargerView[];
     getSnapshot: () => EvCarLinkSnapshot;
     setSnapshot: (snapshot: EvCarLinkSnapshot) => void;
+    /** Whether `getSnapshot` holds the persisted history (see `EvCarLinkSnapshotAccess`). */
+    isHistoryResolved: () => boolean;
     /**
      * A fresh battery level from the car associated with `chargerId`. Fired
      * wherever the probe already computes `wouldAdopt`, so the probe still
@@ -137,14 +138,8 @@ export class EvCarLinkProducer {
         string,
         { previousSocPct?: number; socPct: number; socAtMs: number }
     >();
-    /**
-     * One-shot dedupe for events derived from retained edges, which are re-matched
-     * on every correlation pass. Bounded by `MAX_REPORTED_KEYS`: edges expire long
-     * before the cap, so eviction only ever discards keys whose edges are gone —
-     * it cannot resurrect a duplicate for a live edge.
-     */
-    private reportedKeys: string[] = [];
-    private readonly reportedKeySet = new Set<string>();
+    /** One-shot dedupe for events re-derived on every correlation pass. */
+    private readonly reportKeys = new EvCarLinkReportKeys();
 
     private readonly selfStop: EvCarSelfStopWatcher;
 
@@ -157,19 +152,6 @@ export class EvCarLinkProducer {
         });
     }
 
-    /** Returns `false` when this key was already reported; records it otherwise. */
-    private claimReportKey(key: string): boolean {
-        if (this.reportedKeySet.has(key)) return false;
-        this.reportedKeySet.add(key);
-        this.reportedKeys = [...this.reportedKeys, key];
-        if (this.reportedKeys.length > MAX_REPORTED_KEYS) {
-            const [evicted, ...rest] = this.reportedKeys;
-            this.reportedKeys = rest;
-            if (evicted !== undefined) this.reportedKeySet.delete(evicted); // Length-checked above.
-        }
-        return true;
-    }
-
     /** Whether `deviceId` is a currently-tracked car. */
     isCarDevice(deviceId: string): boolean {
         return this.cars.has(deviceId) || this.unavailableCars.has(deviceId);
@@ -178,6 +160,12 @@ export class EvCarLinkProducer {
     /** This charger's car for the CURRENT session; rules in `evCarLinkReadModel.ts`. */
     getAssociatedCarForCharger(chargerId: string): AssociatedCarSnapshot | undefined {
         return resolveAssociatedCarSnapshot({ cars: this.cars, links: this.activeLinks, chargerId });
+    }
+
+    /** Chargers this car has matched, from the persisted votes; selection plays no part. */
+    readChargerMatchesForCar(carId: string): EvCarChargerMatchHistory {
+        if (!this.deps.isHistoryResolved()) return { state: 'unavailable' };
+        return { state: 'resolved', chargerMatches: resolveEvCarChargerMatches(this.deps.getSnapshot(), carId) };
     }
 
     /**
@@ -478,7 +466,7 @@ export class EvCarLinkProducer {
             // second session's plug-in reuses the first session's key and is
             // skipped, so votes could never accumulate past one per direction.
             const key = `${coincidence.carId}|${coincidence.chargerId}|${coincidence.kind}|${coincidence.atMs}`;
-            if (!this.claimReportKey(key)) continue;
+            if (!this.reportKeys.claim(key)) continue;
 
             const voted = recordEvCarLinkVote({
                 snapshot: this.deps.getSnapshot(),
@@ -691,7 +679,7 @@ export class EvCarLinkProducer {
     ): void {
         for (const ambiguity of ambiguities) {
             const key = `ambiguous|${ambiguity.chargerId}|${ambiguity.kind}|${ambiguity.atMs}`;
-            if (!this.claimReportKey(key)) continue;
+            if (!this.reportKeys.claim(key)) continue;
             this.deps.emit({
                 component: 'devices',
                 event: 'ev_car_link_ambiguous',
@@ -713,7 +701,7 @@ export class EvCarLinkProducer {
             if (edge.kind !== 'connect') continue;
             if (nowMs - edge.atMs <= EV_CAR_LINK_AWAY_VERDICT_MS) continue;
             const key = `elsewhere|${edge.deviceId}|${edge.atMs}`;
-            if (!this.claimReportKey(key)) continue;
+            if (!this.reportKeys.claim(key)) continue;
             this.deps.emit({
                 component: 'devices',
                 event: 'ev_car_session_elsewhere',

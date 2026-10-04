@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadEvCarLinkStore, persistEvCarLinkFlush } from '../../lib/device/evCarLinkStore';
+import { loadEvCarLinkStore, persistEvCarLinkFlush, persistEvCarLinkIfDue } from '../../lib/device/evCarLinkStore';
 import {
   EV_CAR_LINK_PRUNE_MAX_AGE_MS,
   EV_CAR_LINK_VERSION,
@@ -44,6 +44,36 @@ describe('loadEvCarLinkStore', () => {
     });
     expect(Object.keys(store.getSnapshot().pairs)).toEqual(['live|charger']);
     expect(store.getSnapshot().cars).toEqual({});
+  });
+
+  it('reports its history as unresolved after a suspect boot read, and resolved after a plausible one', () => {
+    // An empty snapshot standing in for an unreadable one must not read as
+    // "this car never matched": the settings UI would tell the owner to clear
+    // a car selection that may have matched many times.
+    const throwing: HomeyRuntime = {
+      settings: {
+        get: () => { throw new Error('settings unavailable'); },
+        set: () => {},
+        unset: () => {},
+        getKeys: () => [],
+      },
+    };
+    expect(loadEvCarLinkStore({ homey: throwing, options: { nowMs: NOW } }).hasResolvedHistory()).toBe(false);
+
+    const plausible = loadEvCarLinkStore({
+      homey: runtime({
+        [EV_CAR_LINK_STATE]: {
+          version: EV_CAR_LINK_VERSION,
+          pairs: { 'car|charger': { votes: 2, lastVotedAtMs: NOW - 1_000 } },
+          cars: {},
+        },
+        [EV_CAR_LINK_STATE_INITIALIZED]: true,
+      }),
+      options: { nowMs: NOW },
+    });
+    expect(plausible.hasResolvedHistory()).toBe(true);
+    // A fresh install has no history to lose.
+    expect(loadEvCarLinkStore({ homey: runtime({}), options: { nowMs: NOW } }).hasResolvedHistory()).toBe(true);
   });
 
   it('engages the load grace when a persisted stop array is only partly valid', () => {
@@ -153,6 +183,50 @@ describe('first-write recovery re-read', () => {
     expect(written.pairs['car|charger'].votes).toBe(1);
     expect(written.pairs['other|charger2'].votes).toBe(6);
     expect(written.cars.other.stopSocPct).toEqual([80]);
+  });
+
+  it('recovers the history on the persist guard without waiting for a new vote', () => {
+    // Match history is served as unavailable until recovery settles, and the
+    // recovery re-read runs only on the write path. A home that sees no plug-in
+    // must still get its history back from the heartbeat.
+    const homey = runtime({ [EV_CAR_LINK_STATE_INITIALIZED]: true });
+    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
+    expect(store.hasResolvedHistory()).toBe(false);
+    expect(store.isDirty()).toBe(false);
+
+    homey.settings.set(EV_CAR_LINK_STATE, historicBlob);
+    expect(persistEvCarLinkIfDue({ homey, store, nowMs: GRACE_END + 1_000 })).toBe(true);
+
+    expect(store.hasResolvedHistory()).toBe(true);
+    expect(store.getSnapshot().pairs['other|charger2'].votes).toBe(6);
+    expect((homey.settings.get(EV_CAR_LINK_STATE) as EvCarLinkSnapshot).pairs['other|charger2'].votes).toBe(6);
+  });
+
+  it('writes nothing when a guard-driven recovery of a clean store finds nothing', () => {
+    // Boot read threw with no marker yet (an upgrading install); the re-read
+    // then finds the key absent. Recovery settles, but the empty boot stand-in
+    // must not be written over a value the re-read may only have missed.
+    let bootRead = true;
+    const values = new Map<string, unknown>();
+    const homey: HomeyRuntime = {
+      settings: {
+        get: (key: string) => {
+          if (bootRead && key === EV_CAR_LINK_STATE) throw new Error('SDK unavailable');
+          return values.get(key);
+        },
+        set: (key: string, value: unknown) => { values.set(key, value); },
+        unset: (key: string) => { values.delete(key); },
+        getKeys: () => [...values.keys()],
+      },
+    };
+    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
+    bootRead = false;
+    expect(store.hasResolvedHistory()).toBe(false);
+
+    expect(persistEvCarLinkIfDue({ homey, store, nowMs: GRACE_END + 1_000 })).toBe(false);
+
+    expect(store.hasResolvedHistory()).toBe(true);
+    expect(values.has(EV_CAR_LINK_STATE)).toBe(false);
   });
 
   it('arms the transient-miss deadline at the first deferred attempt, then writes past it', () => {
