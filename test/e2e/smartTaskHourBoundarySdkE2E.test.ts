@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import api from '../../api';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
@@ -113,7 +114,7 @@ const bootHeater = async (nowMs: number, cheaperAhead = false) => {
     return originalLog(...args);
   };
   await app.onInit();
-  return { heater, writes, plans, pollTimes };
+  return { app, heater, writes, plans, pollTimes };
 };
 
 describe('smart-task hour boundary (SDK-boundary e2e)', () => {
@@ -159,6 +160,54 @@ describe('smart-task hour boundary (SDK-boundary e2e)', () => {
     await drainPending();
     expect(plans.some((plan) => plan.currentHourClaim === 'released')).toBe(true);
     expect(writes).toHaveBeenCalledWith(cap('onoff'), { value: false });
+  });
+
+  it.each([
+    { temperature: 65, outcome: 'met' },
+    { temperature: 63.5, outcome: 'met' },
+    { temperature: 55, outcome: 'replaced' },
+  ] as const)('uses current observed $temperature °C at replacement → $outcome', async (scenario) => {
+    const nowMs = DAY_MS + 20 * 60_000 + 9000;
+    vi.setSystemTime(nowMs);
+    const { app, heater, plans } = await bootHeater(nowMs);
+    // Establish real observer acceptance, without mocking completion milestones.
+    await vi.advanceTimersByTimeAsync(6 * 60_000);
+    await drainPending();
+    const published = app.deferredObjectiveStatusBus.getCurrent(HEATER_ID);
+    expect(published?.status).toBe('satisfied');
+    mockHomeyInstance.flow._triggerCardTriggers.deadline_ended = [];
+    const beforeEdit = Date.now();
+    await heater.setCapabilityValue('measure_temperature', scenario.temperature);
+    await api.ui_refresh_devices({ homey: mockHomeyInstance as never });
+    await drainPending();
+    // Do not advance timers: the edit falls between lifecycle ticks.
+    expect(Date.now()).toBe(beforeEdit);
+    const result = app.createDeferredObjective(HEATER_ID, {
+      kind: 'temperature', enforcement: 'soft', targetTemperatureC: 75,
+      deadlineAtMs: DAY_MS + 5 * HOUR_MS,
+    });
+    expect(result).toMatchObject({ ok: true });
+    await drainPending();
+    expect(plans).toContainEqual(expect.objectContaining({
+      event: 'deferred_objective_history_finalized', outcome: scenario.outcome,
+    }));
+    const history = app.deferredObjectivePlanHistoryRecorder!.getHistorySnapshot();
+    const entry = history.entries.at(-1)!;
+    expect(entry.outcome).toBe(scenario.outcome);
+    const ended = mockHomeyInstance.flow._triggerCardTriggers.deadline_ended;
+    if (scenario.outcome === 'replaced') {
+      expect(entry.finalProgressValue).toBe(55);
+      expect(entry.metAtMs).toBeNull();
+      expect(entry.metReason).toBeUndefined();
+      expect(ended).toEqual([]);
+    } else {
+      expect(ended).toHaveLength(1);
+      expect(ended![0]!.tokens).toMatchObject({ outcome: 'succeeded' });
+    }
+    // The new task cannot reuse acceptance against the old 65 °C goal.
+    await vi.advanceTimersByTimeAsync(31_000);
+    await drainPending();
+    expect(app.deferredObjectiveStatusBus.getCurrent(HEATER_ID)?.status).not.toBe('satisfied');
   });
 
   it('returns an expired task to normal control without shedding or publishing a live failure after met', async () => {

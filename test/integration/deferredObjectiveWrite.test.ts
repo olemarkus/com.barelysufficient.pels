@@ -1,3 +1,6 @@
+import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
+import { createCurrentTaskEvaluationReader } from '../../lib/objectives/deferredObjectives/currentTaskEvaluation';
+import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/deferredObjectiveValues';
 import { describe, expect, it, vi } from 'vitest';
 import {
   clearObjectiveForDevice,
@@ -69,6 +72,9 @@ describe('device-scoped objective ops (per-device-key)', () => {
       activePlanRecorder,
       planHistoryRecorder,
       nowMs: NOW_MS,
+      readCurrentTaskEvaluation: (deviceId, objective) => inactiveTaskEvaluation(
+        deviceId, objective.deadlineAtMs, resolveObjectiveTargetValue(objective),
+      ),
       debugStructured,
     };
     return { deps, activePlanRecorder, planHistoryRecorder, debugStructured };
@@ -103,7 +109,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     expect(readObjectiveForDevice(store, 'ev-1')).toBeUndefined();
     // Sibling key survives the clear.
     expect(readObjectiveForDevice(store, 'ev-2')).toEqual({ ...evEntry, targetPercent: 50 });
-    expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'abandoned');
+    expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'abandoned', expect.objectContaining({ completion: { kind: 'inactive' } }));
     expect(h.activePlanRecorder.clearForDevice).toHaveBeenCalledWith('ev-1');
     expect(h.activePlanRecorder.flushIfDirty).toHaveBeenCalledOnce();
   });
@@ -149,11 +155,63 @@ describe('device-scoped objective ops (per-device-key)', () => {
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
   });
 
+  it('captures old-task completion before persisting the new target', () => {
+    const store = buildStore({ 'ev-1': evEntry });
+    const h = buildDeviceDeps(store);
+    const evaluation = { ...inactiveTaskEvaluation('ev-1', DEADLINE_MS, 80),
+      progress: { kind: 'known' as const, value: 70, direction: 'increasing' as const },
+      completion: { kind: 'unmet' as const },
+    };
+    const readCurrentTaskEvaluation = vi.fn((deviceId: string, objective: DeferredObjectiveSettingsEntry) => {
+      expect(readObjectiveForDevice(store, deviceId)).toEqual(evEntry);
+      expect(objective).toEqual(evEntry);
+      return evaluation;
+    });
+    upsertObjectiveForDevice({ ...h.deps, readCurrentTaskEvaluation }, {
+      deviceId: 'ev-1', deviceName: 'Driveway', entry: { ...evEntry, targetPercent: 90 },
+    });
+    expect(readCurrentTaskEvaluation).toHaveBeenCalledOnce();
+    expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith(
+      'ev-1', NOW_MS, 'replaced', evaluation,
+    );
+  });
+
+  it('does not refresh retained history using a goal that has no exact observed obligation', () => {
+    const store = buildStore({ 'ev-1': evEntry });
+    const h = buildDeviceDeps(store);
+    const hasObservedTask = vi.fn(() => false);
+    const getDevices = vi.fn(() => { throw new Error('must not read facts for a different obligation'); });
+    const readCurrentTaskEvaluation = createCurrentTaskEvaluationReader({
+      getDevices,
+      getThermalDirection: () => 'heating',
+      getDeliveredEnergyKWh: () => 0,
+      getStallClassification: () => undefined,
+      hasObservedTask,
+    });
+    upsertObjectiveForDevice({ ...h.deps, readCurrentTaskEvaluation }, {
+      deviceId: 'ev-1', deviceName: 'Driveway', entry: { ...evEntry, targetPercent: 90 },
+    });
+    expect(hasObservedTask).toHaveBeenCalledWith('ev-1', evEntry);
+    expect(getDevices).not.toHaveBeenCalled();
+    expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'replaced', undefined);
+  });
+
+  it('does not finalize history when persisting the edit throws', () => {
+    const store = buildStore({ 'ev-1': evEntry });
+    const h = buildDeviceDeps(store);
+    store.raw.set('deferred_objectives_perkey_migrated', true);
+    const set = vi.fn(() => { throw new Error('write failed'); });
+    expect(() => upsertObjectiveForDevice({ ...h.deps, store: { ...store, set } }, {
+      deviceId: 'ev-1', deviceName: 'Driveway', entry: { ...evEntry, targetPercent: 90 },
+    })).toThrow('write failed');
+    expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
+  });
+
   it('upsert finalizes the prior run as replaced when overwriting an active objective', () => {
     const store = buildStore({ 'ev-1': { ...evEntry, targetPercent: 50 } });
     const h = buildDeviceDeps(store);
     upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
-    expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'replaced');
+    expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'replaced', expect.objectContaining({ completion: { kind: 'inactive' } }));
     expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
   });
 
@@ -237,4 +295,3 @@ describe('device-scoped objective ops (per-device-key)', () => {
     expect(h.debugStructured).not.toHaveBeenCalled();
   });
 });
-

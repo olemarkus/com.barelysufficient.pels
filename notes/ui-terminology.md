@@ -912,27 +912,27 @@ closed adjective set to label how a finished run ended. Source: `OUTCOME_LABELS`
 | `met` | `Succeeded` | ok |
 | `missed` | `Missed` | warn |
 | `abandoned` | `Abandoned` | muted |
-| `replaced` | `Abandoned` | muted |
+| `replaced` | `Replaced` | muted |
 | `unknown` | `Unknown` | muted |
 
-`Abandoned` is the canonical word for a run that stopped before the deadline
-without succeeding or missing — e.g. the user cleared the smart task, replaced
-it with a fresh one, or the diagnostic stream stopped (EV unplugged) before the
-deadline. Both the `abandoned` and `replaced` underlying outcomes render the
-same `Abandoned` chip; the distinction lives in the postmortem body, not the
-chip. Do **not** drift to `Cancelled`, `Aborted`, `Skipped`, `Ended`, or
-`Stopped` in user-facing copy — the chip word is `Abandoned`.
+`Abandoned` describes an unfinished run that was cleared or stopped being
+observed before the deadline. `Replaced` describes an unfinished run whose
+target or deadline was changed before its deadline. A task still satisfied at
+replacement records `Succeeded`; an earlier satisfaction that was reopened by
+a trusted observation does not count as success. Forecasts (`on_track`,
+`at_risk`, `cannot_meet`) do not determine a replacement's terminal outcome.
+Use the distinct `Abandoned` and `Replaced` chips and summary counts, both muted.
 
 #### Chip adjectives vs divider verbs
 
-The chip set is adjective-shaped (`Succeeded` / `Missed` / `Abandoned`). The
+The chip set is adjective-shaped (`Succeeded` / `Missed` / `Abandoned` / `Replaced`). The
 past-tasks week-divider heading previously used a verb form — `Week 20 · 4
 deadlines met · ≈ 41 kr` — which didn't line up with the chip vocabulary the
 rows underneath it carry. The chip set is the canonical one, and summary copy
 now aligns to the chip adjectives (`3 succeeded`, not `3 met`) so the divider
 and the rows speak the same language. Shipped in PR #1243: the divider lead
 label is now relative (`This week` / `Last week` / `Week of 12 May`) and the
-outcome counts use the chip vocabulary (`N succeeded · N missed · N abandoned`,
+outcome counts use the chip vocabulary (`N succeeded · N missed · N abandoned · N replaced`,
 non-zero counts only).
 
 #### 7-day hit-rate strip

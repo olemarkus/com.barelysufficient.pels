@@ -4,6 +4,7 @@ import type {
 } from './activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from './planHistory';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type { TaskEvaluation } from './taskEvaluation';
 import { resolveObjectiveTargetValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 
 export type DeferredObjectiveChangeInput = {
@@ -12,6 +13,7 @@ export type DeferredObjectiveChangeInput = {
   prevEntry: DeferredObjectiveSettingsEntry | undefined;
   nextEntry: DeferredObjectiveSettingsEntry | undefined;
   nowMs: number;
+  previousEvaluation?: TaskEvaluation;
 };
 
 const isActive = (entry: DeferredObjectiveSettingsEntry | undefined): entry is DeferredObjectiveSettingsEntry => (
@@ -55,9 +57,9 @@ const seedFromEntry = (
  * the active-plan hero and the plan-history audit trail stay consistent with intent:
  *
  * - Replace (different deadline OR same deadline + different target/enforcement): finalize the
- *   prior history run as `'replaced'` (only when the prior deadline is still in the future —
+ *   prior history run as `met` if still satisfied, otherwise `'replaced'` (only before the deadline —
  *   see the deadline-passed gate below), seed a fresh pending active plan.
- * - Clear: finalize the prior history run as `'abandoned'` (same gate), drop the active plan.
+ * - Clear: retain success only if still satisfied, otherwise record `'abandoned'` (same gate); drop the active plan.
  * - New: just seed the active plan; nothing to finalize.
  *
  * Same-deadline target changes are deliberately treated as two separate runs: the prior
@@ -94,6 +96,7 @@ export const applyDeferredObjectiveChange = (
     nowMs,
     planHistoryRecorder,
     activePlanRecorder,
+    previousEvaluation,
   } = params;
 
   const prevActive = isActive(prevEntry);
@@ -102,7 +105,7 @@ export const applyDeferredObjectiveChange = (
 
   if (prevActive && !nextActive) {
     if (prevDeadlineFuture) {
-      planHistoryRecorder.finalizeForUserChange(deviceId, nowMs, 'abandoned');
+      planHistoryRecorder.finalizeForUserChange(deviceId, nowMs, 'abandoned', previousEvaluation);
     } else {
       planHistoryRecorder.finalizeElapsedDeadline(deviceId, nowMs);
     }
@@ -111,7 +114,7 @@ export const applyDeferredObjectiveChange = (
   }
   if (prevActive && nextActive && !objectivesMatch(prevEntry, nextEntry)) {
     if (prevDeadlineFuture) {
-      planHistoryRecorder.finalizeForUserChange(deviceId, nowMs, 'replaced');
+      planHistoryRecorder.finalizeForUserChange(deviceId, nowMs, 'replaced', previousEvaluation);
     } else {
       planHistoryRecorder.finalizeElapsedDeadline(deviceId, nowMs);
     }
