@@ -12,11 +12,12 @@ import {
   formatEnergyEstimateKWh,
   formatEstimatedCostStatValue,
   SMART_TASK_HERO_STAT_LABELS,
-  WHY_AT_RISK_DEVICE_LEFT_OFF,
+  resolveSmartTaskAtRiskWhy,
   type DeadlineCannotMeetRecourse,
   type DeadlineBudgetRole,
   type DeadlineLabels,
   type SmartTaskCarChargeLimit,
+  type SmartTaskLiveCause,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import type { HorizonHour } from './deadlinePlanData.ts';
@@ -121,13 +122,21 @@ export const resolveDeadlineHeroTone = (
 // at-risk plan has no floor-planned hour, so there is nothing live to
 // announce — its headline is suppressed like `alert`, leaving the chip +
 // meta line to carry the warning rather than a contradictory "On track".
+//
+// On an at-risk hero a live cause (device left off, a confirmed device-side
+// stop, the car's own limit or schedule) also suppresses it: "Charging now" from
+// the booked hour would contradict the reason line saying the device is not
+// taking power. A satisfied or healthy hero carrying a stale cause keeps it.
 export const resolveHeroHeadline = (params: {
   labels: DeadlineLabels;
   firstChargingHour: HorizonHour | undefined;
   nowMs: number;
   tone: DeadlinePlanHeroTone;
+  liveCause: SmartTaskLiveCause | null;
 }): string | null => {
-  if (params.tone === 'alert') return null;
+  // `warn` is the at-risk tone: a live cause explains that status, so the booked
+  // hour's live state would contradict it. A satisfied or healthy hero keeps it.
+  if (params.tone === 'alert' || (params.tone === 'warn' && params.liveCause !== null)) return null;
   if (!params.firstChargingHour) {
     // Only a genuinely on-track plan (`good`) earns the reassuring sentinel;
     // an at-risk (`warn`) plan with no scheduled hour stays headless so it
@@ -183,13 +192,21 @@ export const resolveQueuedHeadlineReason = (params: {
 // dead-end on plans the planner had already classified as cannot-meet.
 export const resolveCannotMeetMeta = (params: {
   labels: DeadlineLabels;
+  planStatus: DeferredObjectiveActivePlanStatusV1;
   budgetRole: DeadlineBudgetRole;
-  deviceLeftOff: boolean;
+  liveCause: SmartTaskLiveCause | null;
 }): string => {
-  // The device being off outranks both cost causes: the plan itself is fine and
-  // neither the target nor the deadline is what needs changing. Same sentence the
-  // Smart-task list and the widget use, so the three surfaces cannot diverge.
-  if (params.deviceLeftOff) return WHY_AT_RISK_DEVICE_LEFT_OFF;
+  // A live cause (the device left off, a confirmed device-side stop, the car's
+  // own charge limit) outranks both cost causes: neither the target nor the
+  // deadline is what needs changing. From the same shared resolver the Smart
+  // tasks widget uses, so the surfaces cannot diverge.
+  if (params.liveCause !== null) return params.liveCause.reason;
+  // A time-only at-risk task is hedged: it can still land, so "Not enough time …
+  // Lower the target" would overstate it. The widget's at-risk line, word for
+  // word. A budget cause keeps its own sentence below, which names the remedy.
+  if (params.planStatus === 'at_risk' && params.budgetRole === 'none') {
+    return resolveSmartTaskAtRiskWhy(params.budgetRole);
+  }
   if (params.budgetRole === 'sole') return params.labels.cannotMeetDailyBudgetExhausted;
   // Named but not promised: lifting the budget would plan more energy and still
   // miss, so this says so rather than sending the owner to the Budget tab.
@@ -197,7 +214,7 @@ export const resolveCannotMeetMeta = (params: {
   return params.labels.cannotMeetShortfall();
 };
 
-// The reason line for a task capped at its car's own charge limit; null otherwise.
+// The reason line for a task whose car's own charge limit sits below its target; null otherwise.
 const resolveCarLimitMeta = (carChargeLimit: SmartTaskCarChargeLimit | null): string | null => (
   carChargeLimit === null ? null : formatSmartTaskCarLimitReason(carChargeLimit)
 );
@@ -222,17 +239,21 @@ const resolveCarLimitMeta = (carChargeLimit: SmartTaskCarChargeLimit | null): st
 export const resolveCannotMeetRecourse = (params: {
   labels: DeadlineLabels;
   cannotMeet: boolean;
+  planStatus: DeferredObjectiveActivePlanStatusV1;
   budgetRole: DeadlineBudgetRole;
-  deviceLeftOff: boolean;
+  liveCause: SmartTaskLiveCause | null;
   deviceId: string;
 }): DeadlineCannotMeetRecourse | null => {
   if (!params.cannotMeet) return null;
-  // No recourse for a device the user turned off: the reason sentence already
-  // names the only action ("until turned on again"), and neither the budget
-  // surface nor the device settings hold the fix.
-  if (params.deviceLeftOff) return null;
+  // No recourse for a live cause: the reason sentence already names the action
+  // (turn the device on, check the device, raise the car's own limit), and
+  // neither the budget surface nor PELS's device settings hold the fix.
+  if (params.liveCause !== null) return null;
   // Only the sole case routes to the Budget tab.
   if (params.budgetRole === 'sole') return params.labels.cannotMeetRecourse.openBudget;
+  // A time-only at-risk task has no device setting to fix: the widget offers
+  // none either. The device button is for a task that cannot finish.
+  if (params.planStatus === 'at_risk') return null;
   // The contributing case gets NO recourse, for the same reason a device the user
   // turned off gets none: the sentence already names the only action, and it is a
   // toggle in this very panel. The device overlay this would otherwise open holds
@@ -265,12 +286,14 @@ export type BuildHeroInput = {
   nowMs: number;
   cannotMeet: boolean;
   budgetRole: DeadlineBudgetRole;
-  // "Leave off until turned on again" is live on this device. Drives the reason
-  // sentence and suppresses the recourse, so an at-risk hero reached through the
-  // overlay never explains itself with the target, the deadline, or the budget.
-  deviceLeftOff: boolean;
-  // The car's own charge limit, when it caps an EV task below its target.
-  // Explains a plan that stops short of the target it shows.
+  // The task's live cause from `resolveSmartTaskLiveCause` ("Leave off until
+  // turned on again", a confirmed device-side stop, the car stopped at its own
+  // charge limit). Drives the reason sentence and suppresses the recourse, so an
+  // at-risk hero reached through the overlay never explains itself with the
+  // target, the deadline, or the budget.
+  liveCause: SmartTaskLiveCause | null;
+  // The car's own charge limit, when it sits below an EV task's target.
+  // Explains, before the car gets there, why delivery will stop short.
   carChargeLimit: SmartTaskCarChargeLimit | null;
   // Planner's `computedFromPricesUpTo` carried verbatim so the producer can
   // resolve the "prices not through deadline yet" headline-reason branch.
@@ -384,10 +407,10 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   // time for this target. …" / "Today's daily budget is fully booked. …") —
   // the "how bad is this?" context ("needs 17 kWh") lives in the stat pairs
   // above, so a running task no longer stacks a reason paragraph. Null on
-  // healthy / at-risk / queued heroes, except one capped at its car's own
-  // charge limit, which says why its plan stops short of the target.
-  const defaultMeta = params.cannotMeet ? resolveCannotMeetMeta(params) : resolveCarLimitMeta(params.carChargeLimit);
-  const metaLine = params.carChargeLimit?.reached === true ? resolveCarLimitMeta(params.carChargeLimit) : defaultMeta;
+  // healthy / queued heroes, except one whose car's own charge limit sits below
+  // the target, which says why delivery will stop short. A car that has stopped
+  // there makes the task at risk, and the live cause explains it.
+  const metaLine = params.cannotMeet ? resolveCannotMeetMeta(params) : resolveCarLimitMeta(params.carChargeLimit);
   const confidenceChipText = resolveLiveHeroConfidenceChipText({
     confidence: params.confidence,
     planStatus: params.planStatus,

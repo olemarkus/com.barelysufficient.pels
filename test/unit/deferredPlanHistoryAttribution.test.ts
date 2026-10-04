@@ -21,7 +21,40 @@ describe('recorded smart-task miss attribution', () => {
   it('explains a final device cutoff alongside earlier capacity pressure', () => {
     const run = entry(blocked('device_limit', ['capacity_limited', 'device_limit']));
     expect(resolveDeferredPlanHistoryMissAttribution(run).cause).toBe('device_limit');
-    expect(formatRefinedMissCause(run)).toBe('The device has its own limit below the requested target. Earlier: Power-limit control held delivery back.');
+    expect(formatRefinedMissCause(run)).toBe('The car stopped at its own charge limit, below this smart task’s target. Earlier: Not enough available power held delivery back.');
+  });
+  it('names only the earlier contributor that held delivery back longest', () => {
+    const MIN = 60_000;
+    const run = entry({
+      kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' },
+      contributors: ['priority_limited', 'budget_limited', 'capacity_limited', 'device_not_accepting'],
+      intervals: [
+        { fromMs: 0, toMs: 2 * MIN, cause: 'priority_limited' },
+        { fromMs: 2 * MIN, toMs: 12 * MIN, cause: 'capacity_limited' },
+        { fromMs: 12 * MIN, toMs: 17 * MIN, cause: 'budget_limited' },
+        { fromMs: 17 * MIN, toMs: 30 * MIN, cause: 'capacity_limited' },
+      ],
+    });
+    expect(formatRefinedMissCause(run)).toBe('The device stopped taking power before reaching the target.'
+      + ' Earlier: Not enough available power held delivery back.');
+  });
+  it('drops momentary settles from the earlier contributors', () => {
+    // Production: "Earlier: PELS could not confirm the requested device setting.
+    // Delivery was waiting for device control to settle." for a run whose holds
+    // were capacity sheds and their settles.
+    const run = entry({
+      kind: 'recorded', primary: { kind: 'blocked', cause: 'device_limit' },
+      contributors: ['control_pending', 'capacity_limited'],
+      intervals: [
+        { fromMs: 0, toMs: 600_000, cause: 'control_pending' },
+        { fromMs: 600_000, toMs: 660_000, cause: 'capacity_limited' },
+      ],
+    });
+    expect(formatRefinedMissCause(run)).toBe('The car stopped at its own charge limit, below this smart task’s target.'
+      + ' Earlier: Not enough available power held delivery back.');
+    // The final blocker keeps its own sentence even when it is a settle.
+    expect(formatRefinedMissCause(entry(blocked('control_pending', ['control_pending']))))
+      .toBe('Delivery was waiting for device control to settle.');
   });
   it('marks older runs as missing evidence rather than reattributing their measurements', () => {
     expect(resolveDeferredPlanHistoryMissAttribution(entry({ kind: 'legacy_unrecorded' }, 19)).cause).toBe('legacy_unrecorded');

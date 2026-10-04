@@ -71,7 +71,7 @@ describe('setup recommendations', () => {
     expect(recommendations[0]).toMatchObject({
       id: 'smart-task-start-policy:eligible',
       category: 'optional',
-      target: { kind: 'device', deviceId: 'eligible' },
+      target: { kind: 'device-start-policy', deviceId: 'eligible' },
     });
     expect(groupSetupRecommendations(recommendations, { 'smart-task-start-policy:eligible': 1 }))
       .toEqual({ active: [], dismissed: recommendations });

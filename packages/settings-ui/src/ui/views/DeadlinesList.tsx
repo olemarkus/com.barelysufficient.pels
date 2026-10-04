@@ -52,8 +52,10 @@ export type DeadlinesListCard = {
   // the device's current value is unknown. Resolved at the producer so the
   // view layer never branches on the device kind for unit formatting.
   currentValueLine: string | null;
-  // "Car stops at 70%": why the task's target is above what it will reach.
-  carLimitLine: string | null;
+  // The task's live cause beside the target, short form ("Car stops at 70%",
+  // "Device stopped taking power."): the same cause the widget and the detail
+  // hero name, from `resolveSmartTaskLiveCause`.
+  liveCauseLine: string | null;
 };
 
 export type DeadlinesListState =
@@ -178,8 +180,8 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
         {card.currentValueLine !== null && (
           <span class="deadline-list-card__current">{card.currentValueLine}</span>
         )}
-        {card.carLimitLine !== null && (
-          <span class="deadline-list-card__current">{card.carLimitLine}</span>
+        {card.liveCauseLine !== null && (
+          <span class="deadline-list-card__current">{card.liveCauseLine}</span>
         )}
       </div>
       <dl class="deadline-list-card__when">

@@ -242,7 +242,7 @@ describe('DeadlinesList header consumes the shared hero primitive', () => {
         learning: false,
         extraPermissionsValue: null,
         currentValueLine: null,
-        carLimitLine: null,
+        liveCauseLine: null,
       }],
     });
     const hero = mount.querySelector('.plan-hero.pels-hero.deadlines-list-hero');

@@ -537,6 +537,7 @@ describe('Overview under a selected meter area', () => {
           pending: false,
           deviceName: 'Main Heater',
           deadlineAtMs,
+          targetValue: 22,
           latest: {
             revision: 1,
             revisedAtMs: Date.now(),

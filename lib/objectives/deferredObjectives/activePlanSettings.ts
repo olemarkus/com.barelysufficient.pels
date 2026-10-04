@@ -373,6 +373,21 @@ const stripRetiredRevisionFields = (
   return rest;
 };
 
+// `objective_delivery_restricted` was written by v3.9.3 whenever PELS's own
+// capacity, budget or priority limiting held a task's device back. Those
+// decisions no longer change a task's status, and nothing writes the code.
+// Dropped here, like `devicePriority` above, so a stored plan keeps its
+// commitment while the retired code never reaches a resolver and is not
+// written back; the next diagnostic sets whatever live code applies.
+const RETIRED_DIAGNOSTIC_REASON_CODES: ReadonlySet<string> = new Set(['objective_delivery_restricted']);
+const stripRetiredDiagnosticReasonCode = <T extends { diagnosticReasonCode?: unknown }>(plan: T): T => {
+  if (typeof plan.diagnosticReasonCode !== 'string'
+    || !RETIRED_DIAGNOSTIC_REASON_CODES.has(plan.diagnosticReasonCode)) return plan;
+  const { diagnosticReasonCode: _retired, ...rest } = plan;
+  void _retired;
+  return rest as T;
+};
+
 // A plan with no readable target has nothing to plan toward: dropped like any
 // other malformed plan.
 const toLoadedPlan = (plan: StoredActivePlan): DeferredObjectiveActivePlanV1 | undefined => {
@@ -380,7 +395,7 @@ const toLoadedPlan = (plan: StoredActivePlan): DeferredObjectiveActivePlanV1 | u
   const targetValue = readStoredTargetValue(plan);
   if (targetValue === undefined) return undefined;
   return {
-    ...current,
+    ...stripRetiredDiagnosticReasonCode(current),
     liveCompletion: plan.liveCompletion ?? { kind: 'unavailable' },
     targetValue,
     latest: plan.latest === null ? null : stripRetiredRevisionFields(plan.latest),

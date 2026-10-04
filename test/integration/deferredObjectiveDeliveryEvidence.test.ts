@@ -18,6 +18,14 @@ import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectivePlanRevisionEvent } from '../../lib/objectives/deferredObjectives/planRevisionBus';
+import type { TaskDeliveryControl } from '../../packages/contracts/src/taskDelivery';
+import { effectivePlanStatusOf } from '../../lib/objectives/deferredObjectives/effectivePlanStatusEvents';
+import {
+  resolveSmartTaskCarChargeLimit,
+  resolveSmartTaskListStatus,
+  resolveSmartTaskWidgetDetailCopy,
+} from '../../packages/shared-domain/src/deadlineLabels';
 import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { resolveDeferredPlanHistoryMissAttribution } from '../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import { type MeteredPlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
@@ -83,6 +91,14 @@ const energySettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjec
     [LOW_ID]: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 4, deadlineAtMs: DEADLINE_MS },
   },
 });
+// One task, half the window's room: the earliest hours are claimed (flat
+// prices tie-break earlier first) and the plan has margin.
+const claimedEnergySettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjectiveSettings({
+  version: 1,
+  objectivesByDeviceId: {
+    [HIGH_ID]: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 4, deadlineAtMs: DEADLINE_MS },
+  },
+});
 const evSettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjectiveSettings({
   version: 1,
   objectivesByDeviceId: {
@@ -104,6 +120,11 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
   let history: DeferredObjectivePlanHistoryRecorder;
   let energy: EnergyTaskDeliveryTracker;
   let lifecycle: DeferredObjectiveLifecycleEmitter;
+  // The plan owner's decision for the task's device, when a case drives one
+  // (a capacity shed, a settle). Absent, the device runs at PELS' requested
+  // setting, resolved through the real control resolver below.
+  let planDecision: TaskDeliveryControl | null = null;
+  const revisionEvents: DeferredObjectivePlanRevisionEvent[] = [];
   const powerTracker = {
     objectiveProfiles: {
       [HIGH_ID]: {
@@ -116,7 +137,10 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
   };
   const restart = () => {
     energy = new EnergyTaskDeliveryTracker(energyStore, () => true);
-    active = new DeferredObjectiveActivePlanRecorder({ load: () => persistedActive, save: (value) => { persistedActive = value; return true; } });
+    active = new DeferredObjectiveActivePlanRecorder({
+      load: () => persistedActive, save: (value) => { persistedActive = value; return true; },
+      onRevisionWritten: (event) => { revisionEvents.push(event); },
+    });
     history = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
       // The simulated relay/charger remains on at PELS' requested setting.
@@ -124,6 +148,7 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
       getDeliveryControl: (deviceId) => {
         const device = devices.find((entry) => entry.id === deviceId);
         if (!device) return { kind: 'no_decision' };
+        if (planDecision !== null && deviceId === HIGH_ID) return planDecision;
         const planDevice = buildPlanDevice({
           id: device.id, name: device.name, deviceType: 'onoff',
           currentOn: true, currentState: 'on', plannedState: 'keep',
@@ -191,6 +216,13 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
   });
   return {
     tick, build, restart,
+    setPlanDecision: (control: TaskDeliveryControl | null) => { planDecision = control; },
+    revisionEvents: () => [...revisionEvents],
+    activePlan: () => {
+      const plan = active.getActivePlansSnapshot()?.plansByDeviceId[HIGH_ID];
+      if (!plan) throw new Error('Missing active plan');
+      return plan;
+    },
     evidence: () => history.getDeliveryEvidence(HIGH_ID, DEADLINE_MS),
     delivered: () => energy.getDeliveredKWh(HIGH_ID, DEADLINE_MS),
     archive: () => history.getHistorySnapshot(),
@@ -226,6 +258,20 @@ describe('task delivery evidence at the device boundary', () => {
     const confirmed = task(scenario.tick(confirmedAt, observed(confirmedAt, 0)), HIGH_ID);
     expect(confirmed.trajectory).toEqual({ kind: 'resolved', status: 'at_risk' });
     expect(confirmed.reasonCode).toBe('objective_not_accepting_energy');
+    // The persisted plan every surface reads carries the confirmed cause, and the
+    // list chip and widget row say what the device needs, not "limited time".
+    const plan = scenario.activePlan();
+    expect(plan.diagnosticReasonCode).toBe('objective_not_accepting_energy');
+    const statusId = resolveSmartTaskListStatus({
+      pending: plan.pending, pendingReason: plan.pendingReason, diagnosticReasonCode: plan.diagnosticReasonCode,
+      planStatus: plan.latest?.planStatus, firstActionAtMs: null, nowMs: confirmedAt,
+      carChargeLimit: resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue),
+      liveCompletion: plan.liveCompletion,
+    });
+    expect(statusId).toBe('at_risk');
+    expect(effectivePlanStatusOf(plan)).toBe('at_risk');
+    expect(resolveSmartTaskWidgetDetailCopy({ statusId, diagnosticReasonCode: plan.diagnosticReasonCode }))
+      .toEqual({ whyLabel: 'Device stopped taking power.', recourseHint: null });
     expect(confirmed.currentValue).toBeCloseTo(beforeCount);
     expect(scenario.evidence().explanation).toMatchObject({
       kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' },
@@ -248,6 +294,65 @@ describe('task delivery evidence at the device boundary', () => {
     scenario.tick(nextSettle, observed(nextSettle, 2));
     expect(scenario.delivered()).toBeGreaterThan(beforeCount);
     expect(plannedKWh(task(scenario.build(nextSettle), LOW_ID))).toBeLessThan(freed);
+  });
+
+  it('keeps a claimed hour on track through capacity shed and settle cycles, with no status event', () => {
+    // Production: an EV task 3 h from its deadline, shed by the house capacity
+    // limit in its claimed hour, flipped At risk <-> On track on every
+    // shed/cooldown cycle and fired the status Flow trigger each time. Capacity
+    // limiting and settles are PELS' own decisions, which the plan prices in.
+    const scenario = createScenario(claimedEnergySettings());
+    const observed = (atMs: number, kw: number) => [relay(HIGH_ID, kw, atMs)];
+    const first = task(scenario.tick(START_MS, observed(START_MS, 2)), HIGH_ID);
+    expect(first.trajectory).toEqual({ kind: 'resolved', status: 'on_track' });
+    expect(first.evaluation.planning.kind === 'allocated'
+      && first.evaluation.planning.plan.currentHourClaim).toBe('claimed');
+    const eventsBefore = scenario.revisionEvents().length;
+    const cycle: { control: TaskDeliveryControl; kw: number }[] = [
+      { control: { kind: 'restricted', cause: 'capacity_limited' }, kw: 0 },
+      { control: { kind: 'pending' }, kw: 0 },
+      { control: { kind: 'restricted', cause: 'budget_limited' }, kw: 0 },
+      { control: { kind: 'restricted', cause: 'priority_limited' }, kw: 0 },
+      { control: { kind: 'failed' }, kw: 0 },
+      { control: { kind: 'permitted' }, kw: 2 },
+    ];
+    // Stays inside the hour: the :58 settle is the plan's own chance to re-plan.
+    for (let step = 1; step <= 24; step += 1) {
+      const atMs = START_MS + step * 2 * MIN_MS;
+      const decision = cycle[step % cycle.length];
+      if (!decision) throw new Error('Missing cycle step');
+      const { control, kw } = decision;
+      scenario.setPlanDecision(control);
+      const diagnostic = task(scenario.tick(atMs, observed(atMs, kw)), HIGH_ID);
+      expect(diagnostic.trajectory).toEqual({ kind: 'resolved', status: 'on_track' });
+      expect(scenario.activePlan().diagnosticReasonCode).toBeUndefined();
+      expect(effectivePlanStatusOf(scenario.activePlan())).toBe('on_track');
+    }
+    // No status change reaches the "Smart task status changed" Flow trigger.
+    expect(scenario.revisionEvents().slice(eventsBefore).filter((event) => event.eventType === 'revision_written'
+      && event.effectivePlanStatus !== undefined && event.effectivePlanStatus !== event.previousPlanStatus)).toEqual([]);
+    // The holds still count as delivery evidence for the past-task explanation.
+    expect(scenario.evidence().explanation).toMatchObject({
+      kind: 'recorded', contributors: expect.arrayContaining(['capacity_limited', 'control_pending']),
+    });
+  });
+
+  it('names the owner\'s off action for a device held off in its claimed hour', () => {
+    // "Leave off until turned on again" reaches the delivery owner as
+    // `uncontrolled`. The surfaces must still say the device is being left off,
+    // not report a generic delivery restriction or limited time.
+    const scenario = createScenario(claimedEnergySettings());
+    scenario.tick(START_MS, [relay(HIGH_ID, 2, START_MS)]);
+    scenario.setPlanDecision({ kind: 'uncontrolled' });
+    for (let minutes = 5; minutes <= 30; minutes += 5) {
+      const atMs = START_MS + minutes * MIN_MS;
+      scenario.tick(atMs, [{ ...relay(HIGH_ID, 0, atMs), externalOffHoldActive: true as const }]);
+    }
+    const plan = scenario.activePlan();
+    expect(plan.diagnosticReasonCode).toBe('objective_device_left_off');
+    expect(effectivePlanStatusOf(plan)).toBe('at_risk');
+    expect(resolveSmartTaskWidgetDetailCopy({ statusId: 'at_risk', diagnosticReasonCode: plan.diagnosticReasonCode }))
+      .toEqual({ whyLabel: 'Device is staying off until turned on again.', recourseHint: null });
   });
 
   it('persists a relay cutoff cause across restart and misses without inventing capacity pressure', () => {

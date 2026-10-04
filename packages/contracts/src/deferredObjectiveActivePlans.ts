@@ -313,12 +313,17 @@ export type DeferredObjectiveActivePlanDiagnosticReason =
   // Live home-scope truth. Kept on committed plans with a cached revision so
   // consumers can override that stale schedule while the task is out of scope.
   | 'objective_device_in_sub_home'
+  // Confirmed device-side delivery causes the committed schedule cannot see:
+  // the device stopped accepting energy, stopped at its own limit (an EV's
+  // charge limit), or is held by its own schedule. Planner decisions (capacity,
+  // budget, priority limiting, settles) never travel here; the committed
+  // verdict already prices them in.
+  | 'objective_not_accepting_energy'
+  | 'objective_device_limit'
+  | 'objective_device_schedule'
   // "Leave off until turned on again" is active on the task's device. Same
   // reason as the two above: the committed schedule keeps saying "On track"
   // until the next settle, so the live cause has to travel on the plan itself.
-  | 'objective_delivery_restricted'
-  | 'objective_not_accepting_energy'
-  | 'objective_device_limit'
   | 'objective_device_left_off'
   // The task's device is not managed by PELS. Same live-truth reason as
   // `objective_device_in_sub_home`: a committed plan keeps advertising its
@@ -364,12 +369,13 @@ export type DeferredObjectiveActivePlanV1 = {
   // present on a committed record with a cached revision so consumers do not
   // advertise that stale schedule. Optional for backward compatibility.
   diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
-  // Present only while the car's own charge limit holds an EV task short of its
-  // target (owner ruling 2026-09-26): the limit the task plans to, and whether
-  // the car has reached it. Refreshed every cycle the device reports a level,
-  // held while it reports none (a charger that ended the session at the limit
-  // reads unplugged), so every surface can say why the task stops short, and a
-  // task done at the limit is not mistaken for an unplugged one.
+  // Present only while the car's own charge limit sits below an EV task's
+  // target: the car's limit, and whether the car has reached it. The requested
+  // target stays the task's target; the limit only explains why delivery stops
+  // short of it, and the surfaces suggest raising the car's limit. Refreshed
+  // every cycle the device reports a level, held while it reports none (a
+  // charger that ended the session at the limit reads unplugged), so a task
+  // whose car stopped at its limit is not mistaken for an unplugged one.
   carChargeLimit?: DeferredObjectiveActivePlanCarChargeLimitV1;
   // The signature of the objective settings that produced `latest`. Used to
   // detect `objective_changed` replans without re-deriving the hash on every
@@ -496,7 +502,7 @@ export type ResolvedDeferredObjectiveActivePlansV1 = {
 export type OverviewDeferredObjectiveActivePlan = Pick<
   DeferredObjectiveActivePlanV1,
   'latest' | 'diagnosticReasonCode' | 'pending' | 'pendingReason' | 'deviceName' | 'deadlineAtMs' | 'carChargeLimit'
-  | 'liveCompletion'
+  | 'liveCompletion' | 'targetValue'
 >;
 
 export type OverviewDeferredObjectiveActivePlans = {

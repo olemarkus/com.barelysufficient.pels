@@ -426,10 +426,11 @@ export class DeferredObjectiveActivePlanRecorder {
     // left off — the Flow would report Waiting -> On track, the UI would show
     // that false status until the next cycle, and that cycle would then fire a
     // second transition to At risk.
-    this.plans[diag.deviceId] = withCarChargeLimit(
+    const written = withCarChargeLimit(
       withDiagnosticReasonCode(firstRecord, firstDiagnosticReasonCode),
       resolveCarChargeLimitOverlay(diag, firstRecord.carChargeLimit),
     );
+    this.plans[diag.deviceId] = written;
     this.dirty = true;
     this.emit({
       event: 'active_plan_revision_written',
@@ -450,9 +451,7 @@ export class DeferredObjectiveActivePlanRecorder {
         progressDirection: diag.progressDirection,
         previousPlanStatus: null,
         previousWasPending: true,
-        effectivePlanStatus: resolveEffectivePlanStatus(
-          revision.planStatus, firstDiagnosticReasonCode, resolveLiveCompletion(diag),
-        ),
+        effectivePlanStatus: resolveEffectivePlanStatus(revision.planStatus, written),
         allocationChanged: false,
         projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
       });
@@ -678,12 +677,11 @@ export class DeferredObjectiveActivePlanRecorder {
       allocationChanged,
       previousEffectivePlanStatus: previousEffective ?? latest.planStatus,
       // The overlay is refreshed before the settle, so the plan on record already
-      // carries this cycle's live cause.
-      effectivePlanStatus: resolveEffectivePlanStatus(
-        revision.planStatus,
-        this.plans[diag.deviceId]?.diagnosticReasonCode,
-        resolveLiveCompletion(diag),
-      ),
+      // carries this cycle's live causes. Read the plan just WRITTEN, not
+      // `current`: an objective edit changes `targetValue`, and the car-limit
+      // overlay compares the car's limit against it, so the pre-edit plan would
+      // publish a status the list, the hero and the Flow condition never show.
+      effectivePlanStatus: resolveEffectivePlanStatus(revision.planStatus, this.plans[diag.deviceId] ?? current),
     });
     return true;
   }

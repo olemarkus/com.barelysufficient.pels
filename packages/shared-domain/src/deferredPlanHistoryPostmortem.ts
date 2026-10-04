@@ -57,11 +57,12 @@ export type DeferredPlanHistoryPostmortemVariant =
   // sentence names the device's own setpoint cap (not the PELS hard cap,
   // per `feedback_hard_cap_is_physical.md`) as the cause.
   | 'met-by-device-cap'
-  // An EV task whose car stops charging on its own below the task's target:
-  // the car's charge limit, learned from where it repeatedly stops, capped
-  // what any plan could reach, and PELS counted the run done there (owner
-  // ruling 2026-09-26). The sentence names the car as the cause, since the
-  // setting that would change it lives in the car.
+  // An EV task whose car stopped charging on its own below the task's target,
+  // archived while PELS counted such a run done at the car's limit
+  // (`metReason: 'observed_limit'`). Legacy rows only: the requested target now
+  // stays the target, so a run held there is missed with the car's limit as
+  // its cause. The sentence names the car as the cause, since the setting that
+  // would change it lives in the car.
   | 'met-at-car-limit'
   | 'missed-by-shortfall'
   | 'missed-by-budget-exhaustion'

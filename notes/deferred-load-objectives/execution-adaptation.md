@@ -139,7 +139,7 @@ physical unit**, so it self-corrects for rate error in both directions. Shipped 
 producer-resolved flag + the same per-cycle admission release:
 
 - The producer resolves a trajectory gate `aheadOfHourMilestone` (`isAheadOfHourMilestone`,
-  `trajectoryMilestone.ts`), computed in `diagnosticsBridge.ts` where the RAW measured value and
+  `trajectoryMilestone.ts`), computed in `taskEvaluationCoordinator.ts` where the RAW measured value and
   the committed rate live (the planner sees neither).
 - The horizon planner combines it with a relative raw-price test to set `priceDeferralEligible`
   (`resolvePriceDeferralEligible`, `horizonPlanner.ts`).
@@ -292,10 +292,10 @@ internal thermostat prevents overshoot, so leaving the objective nominally "on" 
 draw **real power** in an expensive hour — which work item 2 already covers. A satiation-based
 release would add control churn for no benefit and is not pursued.
 
-(The strict `>= target` satiation check in `planHistoryInProgressState.diagnosticProgressAtTarget`
-stays as-is. `near_target_idle → 'stalled' → met` additionally requires the observer's
-classification target to be at least the smart-task target, so an ordinary-mode setback cannot
-complete a higher target.)
+(Completion is resolved once, by `resolveTaskCompletion` in `taskCompletion.ts`: `target_reached`
+on a strict `>= target` reading, or `accepted_near_target` when the observer's `near_target_idle`
+stall evidence covers the task's target (`stallEvidenceCoversTarget`), so an ordinary-mode setback
+cannot complete a higher target.)
 
 ## Work item 4 — Cold-start release (don't dump the catch-up into an expensive hour) — DONE
 

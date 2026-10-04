@@ -59,16 +59,17 @@ export type DeferredObjectiveDiagnosticReasonCode =
   | 'objective_missing_device'
   | 'objective_missing_temperature'
   | 'objective_progress_stale'
+  // Confirmed device-side delivery causes the horizon plan cannot see, set by
+  // the live overlay in `deliveryEvidence.ts:reportTaskDeliveryStatus`: the
+  // device stopped accepting energy, stopped at its own limit, or is held by
+  // its own schedule.
+  | 'objective_not_accepting_energy'
+  | 'objective_device_limit'
+  | 'objective_device_schedule'
   // Live status resolved to `satisfied` because the device parked in a stall
   // classification (see `withStallSatisfiedStatus`). `near_target` = inside
   // the hysteresis band; `device_capped` = at the device's own internal cap.
-  | 'objective_delivery_restricted'
-  | 'objective_not_accepting_energy'
-  | 'objective_device_limit'
   | 'objective_stalled_near_target'
-  // The device is being left off because it was turned off outside PELS. An
-  // explicit off action beats the task, but the deadline consequence must still
-  // be visible — the task reports risk rather than claiming it is on track.
   | 'objective_stalled_device_capped';
 
 type BaseDeferredObjectiveDiagnostic = {

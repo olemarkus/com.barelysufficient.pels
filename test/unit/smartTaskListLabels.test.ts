@@ -565,7 +565,7 @@ describe('temperature labels follow the resolved progress direction', () => {
 // never produced by any runtime path). These cases are about the surrounding
 // precedence rules, not that lane.
 describe('resolveSmartTaskListStatus — blocked charger and plan-verdict precedence', () => {
-  const base = { pending: false, pendingReason: undefined, firstActionAtMs: null, nowMs: 0, carChargeLimitReached: false } as const;
+  const base = { pending: false, pendingReason: undefined, firstActionAtMs: null, nowMs: 0, carChargeLimit: null } as const;
 
   it('maps objective_invalid_session to paused_unplugged, overriding an on_track plan', () => {
     expect(resolveSmartTaskListStatus({

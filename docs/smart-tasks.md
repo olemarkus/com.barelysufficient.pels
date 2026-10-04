@@ -159,7 +159,7 @@ Which devices can take one: on/off devices only, so not EV chargers, thermostats
 
 A task starts when it is created, so the window runs from the moment the Flow fires until the ready-by time. To heat a water heater every night between 22:00 and 06:00, run **Add energy task** from a Flow that fires at 22:00 with ready-by `06:00`. Running the card again for the same ready-by time keeps the energy already delivered; a new night starts from zero.
 
-A device that switches itself off when it is done stops taking energy. A water heater's own thermostat does this once the tank is hot, and the task can then show **Cannot finish** and end as missed even though the tank is full. Pick an amount the heater actually takes on a normal night, or treat that outcome as "the tank was already hot". Until the ready-by time, a task in that state keeps its scheduled hours, so other Smart tasks that want the same hours still plan around it.
+A device that switches itself off when it is done stops taking energy. A water heater's own thermostat does this once the tank is hot. When the device takes no power for about 15 minutes of a scheduled hour in which PELS lets it run, the task shows **At risk** with the reason "Device stopped taking power", and it can end as missed even though the tank is full. Pick an amount the heater actually takes on a normal night, or treat that outcome as "the tank was already hot". From then on the task stops holding its scheduled hours for itself, so other Smart tasks can take them at the next hourly re-plan; it holds them again as soon as the device draws power.
 
 ## Status and History
 
@@ -171,9 +171,11 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 | **Paused — unplugged** | EV only: the charging task is paused because the car is unplugged or the session ended. The plan resumes when the car is plugged back in. |
 | **Paused — not managed** | **Managed by PELS** is off for the device, so PELS is not planning anything for it. The task is kept, not deleted: turn **Managed by PELS** back on and the plan resumes on the next cycle. |
 | **On track** | PELS currently expects the task to reach the target — including when the plan is ready but the first scheduled hour is still in the future. |
-| **At risk** | PELS has a plan, but there is limited time or room left. |
+| **At risk** | PELS has a plan, but there is limited time or room left, or the device itself is holding delivery back: it is being left off until turned on again, it stopped taking power while PELS let it run, or (EV) the car's own charge limit is below the target, or the car is delaying charging on its own schedule. PELS limiting the device for the hard cap, the daily budget or a higher-priority device does not change the status on its own: the plan already accounts for it. |
 | **Cannot finish** | PELS does not currently see enough usable time or energy delivery before the ready-by time. |
 | **Satisfied** | The observed target is already met. For a heating or charging task, if a later reading drops below the target before the ready-by time, PELS returns to tracking it; delivered energy only ever goes up. |
+
+An EV task keeps the target you set even when the car's own charge limit is lower. As soon as PELS knows the car's limit is below the target, the task reads **At risk** (or **Cannot finish**) with the limit as the reason, because the car will stop short. Raise the limit in the car, or set the task's target to the car's limit.
 
 If no active task is stored for a device, that device simply has no Smart task status.
 
@@ -186,7 +188,7 @@ The **Smart task ended** trigger fires once when a task run concludes, with an *
 | Outcome | What it means |
 | --- | --- |
 | **succeeded** | The task reached its target by the ready-by time. |
-| **missed** | PELS ran the planned hours but did not reach the target by the ready-by time. |
+| **missed** | The target was not reached by the ready-by time. The cause can be on PELS's side (not enough time, power or budget) or on the device's side (it stopped taking power, or the car stopped at its own charge limit). The history entry names it. |
 | **abandoned** | The task was finalized before it could complete — either because **Clear smart task** ran (manually or from another Flow), or because the device stopped reporting for about an hour while the deadline was still in the future. |
 
 Filter on the tag when only some outcomes should notify, for example `Outcome = missed` for a "did not reach target" alert. An **abandoned** outcome is usually not a planning failure — it means the situation changed before the task could complete.
@@ -199,12 +201,13 @@ Three things that look like an abandonment but aren't:
 
 ## If a Task Missed
 
-When the **History** view shows a missed entry, PELS surfaces one of two recourse buttons. The split tells you what to investigate.
+When the **History** view shows a missed entry, PELS surfaces at most one recourse button. The button reads **Review device** unless the daily budget was the last thing holding the task back, or the car itself was: a car that stopped at its own charge limit or delayed charging on its own schedule gets no button, because no PELS setting changes the car. The cause sentence names that last blocker, plus the earlier one that held delivery back longest.
 
 | Recourse button | What happened | What to do |
 | --- | --- | --- |
 | **Lower daily budget** | The daily energy budget ran out before the ready-by time. PELS had hours scheduled but the budget cap closed those hours down. | Lower the daily budget so future days reserve usable power earlier — in the **Budget** tab or via the **Set daily budget** Flow card. Raising the **hard cap** is not the right answer: the hard cap reflects your grid tariff step, not a tuning knob. |
-| **Review device** | The task ran its planned hours but the device couldn't deliver enough, capacity pressure shortened the available hours, or a replan (e.g. new prices arriving, schedule revised) reduced the planned window. | The button deep-links you to the device-settings overlay. Check stepped-load planning power, target temperature, priority, **When limiting** behavior, and the Flow wiring that reports state back to PELS. |
+| **Review device** | Any other last blocker: the device stopped taking power, not enough available power was left, a higher-priority device took the room, or the plan did not leave enough time. | The button deep-links you to the device-settings overlay. Check stepped-load planning power, target temperature, priority, **When limiting** behavior, and the Flow wiring that reports state back to PELS. |
+| (no button) | The car stopped at its own charge limit, or delayed charging on its own schedule or smart charging. | Raise the car's charge limit, or turn off its own charging schedule, in the car. |
 
 If the same device misses repeatedly, treat it as a tuning loop:
 

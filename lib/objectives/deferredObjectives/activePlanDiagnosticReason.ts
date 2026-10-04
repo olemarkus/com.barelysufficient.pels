@@ -25,16 +25,19 @@ export const resolveDiagnosticReasonCode = (
   if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';
   if (diag.reasonCode === 'objective_device_in_sub_home') return 'objective_device_in_sub_home';
   if (diag.reasonCode === 'objective_device_unmanaged') return 'objective_device_unmanaged';
-  // "Leave off until turned on again". The status downgrade in `diagnosticsBridge`
-  // only reaches the LIVE diagnostic; `planStatus` / `floorShortfallCause` are not
-  // rewritten until the next `:58` settle. Routing the cause through here puts it
-  // on the persisted plan every cycle — which is what the settings UI and the
-  // widget read — so the chip stops claiming "On track" the moment the device
-  // goes off, and stops claiming risk the moment it is turned back on.
-  if (diag.reasonCode === 'objective_delivery_restricted') return diag.reasonCode;
+  // "Leave off until turned on again". `planStatus` / `floorShortfallCause` are
+  // not rewritten until the next `:58` settle. Routing the cause through here
+  // puts it on the persisted plan every cycle — which is what the settings UI
+  // and the widget read — so the chip stops claiming "On track" the moment the
+  // device goes off, and stops claiming risk the moment it is turned back on.
+  // Ahead of the delivery causes below: the owner's own off action is the cause
+  // to name, whatever the device-side evidence says while it is held off.
+  if (diag.externalOffHoldActive === true) return 'objective_device_left_off';
+  // Confirmed device-side delivery causes from the live overlay
+  // (`deliveryEvidence.ts:reportTaskDeliveryStatus`).
   if (diag.reasonCode === 'objective_not_accepting_energy') return diag.reasonCode;
   if (diag.reasonCode === 'objective_device_limit') return diag.reasonCode;
-  if (diag.externalOffHoldActive === true) return 'objective_device_left_off';
+  if (diag.reasonCode === 'objective_device_schedule') return diag.reasonCode;
   return undefined;
 };
 

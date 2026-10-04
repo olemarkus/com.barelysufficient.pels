@@ -19,6 +19,8 @@ export type RecommendationDismissals = Record<string, number>;
 
 export type RecommendationTarget =
   | { kind: 'device'; deviceId: string }
+  // The device page with Setup open on "Only PELS starts this device".
+  | { kind: 'device-start-policy'; deviceId: string }
   | { kind: 'flow-conflict-check'; deviceId: string }
   | { kind: 'ev-soc-flow-conflict-check'; deviceId: string }
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
@@ -259,9 +261,9 @@ export const resolveSmartTaskStartPolicyRecommendations = (
     category: 'optional',
     title: `Keep ${device.name} within Smart tasks`,
     body: 'Turn on “Only PELS starts this device” to keep it within Smart tasks. '
-      + 'PELS turns it off if turned on outside a Smart task. Without a Smart task, it stays off.',
+      + 'PELS turns it off if it is turned on outside a Smart task. Without a Smart task, it stays off.',
     actionLabel: 'Review device',
-    target: { kind: 'device', deviceId: device.id },
+    target: { kind: 'device-start-policy', deviceId: device.id },
   }];
 });
 

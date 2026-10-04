@@ -92,11 +92,16 @@ buttons that tell you what to investigate:
   time and closed down hours PELS had scheduled. Lower the daily budget so future
   days reserve power earlier. (Raising the hard cap is *not* the fix — it just
   costs you a higher tariff step.)
-- **Review device** — the device couldn't deliver enough, capacity pressure
-  shortened the usable hours, or a replan reduced the window. The button deep-links
-  to the device settings; check stepped-load planning power, target temperature,
-  priority, **When limiting** behaviour, and the Flow that reports state back to
-  PELS.
+- **Review device** — any other last blocker: the device stopped taking power,
+  not enough available power was left, a higher-priority device took the room, or
+  the plan did not leave enough time. The cause sentence on the entry names it.
+  The button deep-links to the device settings; check stepped-load planning power,
+  target temperature, priority, **When limiting** behaviour, and the Flow that
+  reports state back to PELS. A device that stopped taking power may also have
+  switched itself off, which no PELS setting changes.
+- **No button** — the car itself held the run back: it stopped at its own charge
+  limit, or delayed charging on its own schedule or smart charging. The fix is in
+  the car: raise its charge limit, or turn off its own schedule.
 
 If a task is **At risk** before the deadline and the timing matters, grant it
 extra leeway with **Set what a smart task may do** — *go over today's budget*,

@@ -10,8 +10,8 @@ import {
   type DeadlineBudgetRole,
   isDeviceExclusionPaused,
   resolveEffectivePlanStatus,
-  formatSmartTaskCarLimitReason,
   resolveSmartTaskCarChargeLimit,
+  resolveSmartTaskLiveCause,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
   type DeadlinePendingContext,
   type DeadlinePlanPendingReason,
@@ -20,8 +20,14 @@ import {
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
 import { buildTrajectory } from './deadlinePlanTrajectory.ts';
 import { buildTimeline, resolveActualDeviceKwh } from './deadlinePlanTimeline.ts';
-import { buildHero, resolveDeadlineHeroTone } from './deadlinePlanHero.ts';
+import {
+  buildHero,
+  resolveDeadlineHeroTone,
+  resolveHeroStatusChip,
+  type DeadlineHeroStatusChip,
+} from './deadlinePlanHero.ts';
 import { formatHourLabel } from './deadlinePlanFormatters.ts';
+import { buildChargeByStartMs, buildCoverStartByStartMs } from './deadlinePlanHourMaps.ts';
 import {
   buildPendingHero,
   resolvePendingPriceContext,
@@ -132,44 +138,15 @@ const buildPendingPayload = (
   };
 };
 
-// Single planned-hour predicate: an hour is planned iff it appears in this
-// map. Zero/non-positive allocations are dropped at construction so `has`
-// (hero `firstChargingHour`) and `(get(...) ?? 0) > 0` (timeline bars,
-// trajectory bands/staircase) can never disagree about whether an hour runs.
-const buildChargeByStartMs = (
-  revision: DeferredObjectiveActivePlanRevisionV1 | null,
-): Map<number, number> => {
-  const out = new Map<number, number>();
-  if (!revision) return out;
-  for (const hour of revision.hours) {
-    if (hour.plannedKWh > 0) out.set(hour.startsAtMs, hour.plannedKWh);
-  }
-  return out;
-};
-
-// Coverage starts (`coversFromMs`) for the booked hours, keyed like
-// `buildChargeByStartMs`. Present only for buckets the planner already
-// trimmed at a mid-hour revision (absence ⇒ the energy covers the full
-// hour). The trajectory staircase needs this to prorate the in-progress
-// hour without double-trimming an already-trimmed bucket.
-const buildCoverStartByStartMs = (
-  revision: DeferredObjectiveActivePlanRevisionV1 | null,
-): Map<number, number> => {
-  const out = new Map<number, number>();
-  if (!revision) return out;
-  for (const hour of revision.hours) {
-    if (hour.plannedKWh > 0 && typeof hour.coversFromMs === 'number') {
-      out.set(hour.startsAtMs, hour.coversFromMs);
-    }
-  }
-  return out;
-};
-
 type ObjectivePayloadResult =
   | { kind: 'ok'; payload: DeadlinePlanPayload }
-  // `body` replaces the reason's fixed copy when that would be false: a task done
-  // at its car's own charge limit is not "at or above the smart task target".
-  | { kind: 'unavailable'; reason: DeadlinePlanUnavailableReason; body?: string }
+  // `body` replaces the reason's fixed copy with the task's live cause (the car
+  // stopped at its own charge limit, the device left off). `statusChip` carries
+  // the shared effective status when it is at risk or cannot finish, so a task
+  // the list reports At risk is not a neutral waiting card here.
+  | {
+    kind: 'unavailable'; reason: DeadlinePlanUnavailableReason; body?: string; statusChip?: DeadlineHeroStatusChip;
+  }
   // Active plan exists but the UI lacks prices to render a timeline. The
   // caller routes this to the pending hero so the user sees the same "waiting
   // for prices" copy regardless of whether the recorder or the prices fetch
@@ -204,6 +181,29 @@ const resolveDirectionUnavailable = (
 };
 
 
+// No current reading (a charger that ended the session at the car's limit takes
+// the car's level with it): progress-dependent content, the trajectory and the
+// delivered-so-far line, has nothing to stand on. The task's status does not
+// depend on it, so the shared effective status and live cause still apply.
+const resolveNoReadingResult = (
+  objectiveKind: DeferredObjectiveSettingsEntry['kind'],
+  activePlan: ResolvedDeferredObjectiveActivePlanV1,
+  latest: NonNullable<ResolvedDeferredObjectiveActivePlanV1['latest']>,
+): ObjectivePayloadResult => {
+  const carLimit = resolveSmartTaskCarChargeLimit(activePlan.carChargeLimit, activePlan.targetValue);
+  const liveCause = resolveSmartTaskLiveCause(activePlan.diagnosticReasonCode, carLimit);
+  const statusChip = resolveHeroStatusChip({
+    labels: deadlineLabels(objectiveKind, activePlan.progressDirection),
+    planStatus: resolveEffectivePlanStatus(latest.planStatus, activePlan),
+  });
+  return {
+    kind: 'unavailable',
+    reason: 'no_current_reading',
+    ...(liveCause === null ? {} : { body: liveCause.reason }),
+    ...(statusChip === null ? {} : { statusChip }),
+  };
+};
+
 const prepareObjectivePayload = (
   params: ObjectivePlanInput,
 ): ObjectivePayloadReady | ObjectivePayloadResult | null => {
@@ -220,12 +220,7 @@ const prepareObjectivePayload = (
   const directionUnavailable = resolveDirectionUnavailable(ctx.objective.kind, progressDirection);
   if (directionUnavailable !== null) return directionUnavailable;
   const progress = resolveTaskProgress(ctx.device, ctx.objective, ctx.activePlan);
-  if (!progress) {
-    const carLimit = resolveSmartTaskCarChargeLimit(ctx.activePlan.carChargeLimit,
-      ctx.objective.kind === 'ev_soc' ? ctx.objective.targetPercent : null);
-    return { kind: 'unavailable', reason: 'no_current_reading',
-      ...(carLimit === null ? {} : { body: formatSmartTaskCarLimitReason(carLimit) }) };
-  }
+  if (!progress) return resolveNoReadingResult(ctx.objective.kind, ctx.activePlan, ctx.activePlan.latest);
   if (progress.remainingUnits <= 0) {
     return alreadySatisfiedResult(ctx.objective.kind, progressDirection);
   }
@@ -409,17 +404,15 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const currentChargeByStartMs = buildChargeByStartMs(latest);
   const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
   // The status this page REPORTS: the committed verdict, overlaid with the live
-  // per-cycle cause. Without the overlay a row the list marks `At risk` opens on
-  // a green on-track hero until the next settle. `latest.planStatus` stays the
-  // committed trajectory and is still what the budget-cause derivation below
-  // reads — a device left off is not a budget shortfall.
-  const effectivePlanStatus = resolveEffectivePlanStatus(
-    latest.planStatus, activePlan!.diagnosticReasonCode, activePlan!.liveCompletion,
-  );
-  const reportedPlanStatus = activePlan!.carChargeLimit?.reached === true && effectivePlanStatus !== 'cannot_meet'
-    ? 'at_risk'
-    : effectivePlanStatus;
-  const deviceLeftOff = activePlan!.diagnosticReasonCode === 'objective_device_left_off';
+  // per-cycle causes (including a car stopped at its own charge limit). Without
+  // the overlay a row the list marks `At risk` opens on a green on-track hero
+  // until the next settle. `latest.planStatus` stays the committed trajectory
+  // and is still what the budget-cause derivation below reads — a device left
+  // off is not a budget shortfall.
+  const reportedPlanStatus = resolveEffectivePlanStatus(latest.planStatus, activePlan!);
+  const carChargeLimit = resolveSmartTaskCarChargeLimit(activePlan!.carChargeLimit, activePlan!.targetValue);
+  // The same live cause the Smart tasks widget explains, from the same resolver.
+  const liveCause = resolveSmartTaskLiveCause(activePlan!.diagnosticReasonCode, carChargeLimit);
   const cannotMeet = reportedPlanStatus === 'cannot_meet' || reportedPlanStatus === 'at_risk';
   const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
   const costAndDelivery = resolveLiveCostAndDelivery({
@@ -490,8 +483,8 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       nowMs,
       cannotMeet,
       budgetRole,
-      deviceLeftOff,
-      carChargeLimit: resolveSmartTaskCarChargeLimit(activePlan!.carChargeLimit, progress.targetValue),
+      liveCause,
+      carChargeLimit,
       // Latest revision's `computedFromPricesUpTo` is carried verbatim so the
       // hero's headline-reason resolver can branch on "prices not through
       // deadline yet" without re-deriving the comparison at the view layer.
@@ -575,6 +568,7 @@ export type DeadlineRenderInput =
     kind: DeferredObjectiveSettingsEntry['kind'];
     reason: DeadlinePlanUnavailableReason;
     body?: string;
+    statusChip?: DeadlineHeroStatusChip;
   }
   | { status: 'completed'; kind: DeferredObjectiveSettingsEntry['kind'] }
   | { status: 'absent' };
@@ -606,6 +600,7 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
       kind: ctx.objective.kind,
       reason: result.reason,
       ...(result.body === undefined ? {} : { body: result.body }),
+      ...(result.statusChip === undefined ? {} : { statusChip: result.statusChip }),
     };
   }
   if (result.kind === 'awaiting_prices') {
@@ -642,6 +637,7 @@ export const resolveDeadlinePlanLoadState = (
       objectiveKind: renderInput.kind,
       reason: renderInput.reason,
       ...(renderInput.body === undefined ? {} : { body: renderInput.body }),
+      ...(renderInput.statusChip === undefined ? {} : { statusChip: renderInput.statusChip }),
       history,
     };
   }
