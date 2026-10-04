@@ -1,6 +1,6 @@
 import {
   resolvePlanStateKind,
-  resolvePlanStateTone,
+  PLAN_STATE_TONE,
 } from '../../packages/shared-domain/src/planStateLabels';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { steppedProfile } from '../utils/planTestUtils';
@@ -40,7 +40,7 @@ describe('planStateLabels', () => {
       ...baseDevice,
       currentState: '   ',
     })).toBe('unknown');
-    expect(resolvePlanStateTone(baseDevice)).toBe('neutral');
+    expect(PLAN_STATE_TONE[resolvePlanStateKind(baseDevice)]).toBe('neutral');
   });
 
   it('uses idle as the default for enabled off devices', () => {

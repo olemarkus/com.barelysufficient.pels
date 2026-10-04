@@ -63,6 +63,27 @@ const installHomeyClient = async (tracker: unknown, timeZone = 'UTC') => {
   });
 };
 
+// Observe the stats through the production renderer and its chart seams.
+const captureRenderedPowerStats = async () => {
+  type Charts = typeof import('../src/ui/usageStatsChartsEcharts.ts');
+  const dailyHistory = vi.fn<Charts['renderDailyHistoryChartEcharts']>(() => true);
+  const hourlyPattern = vi.fn<Charts['renderHourlyPatternChartEcharts']>(() => true);
+  vi.doMock('../src/ui/usageStatsChartsEcharts.ts', () => ({
+    renderDailyHistoryChartEcharts: dailyHistory,
+    renderHourlyPatternChartEcharts: hourlyPattern,
+  }));
+  try {
+    const { renderPowerStats } = await import('../src/ui/power.ts');
+    await renderPowerStats();
+    return {
+      dailyHistory: dailyHistory.mock.calls.at(-1)?.[0].points ?? [],
+      hourlyPattern: hourlyPattern.mock.calls.at(-1)?.[0].points ?? [],
+    };
+  } finally {
+    vi.doUnmock('../src/ui/usageStatsChartsEcharts.ts');
+  }
+};
+
 const buildBuckets = (startIso: string, hours: number, kWh: number) => {
   const buckets: Record<string, number> = {};
   const start = new Date(startIso).getTime();
@@ -206,16 +227,15 @@ describe('power page stats (buckets-only)', () => {
       },
     });
 
-    const { getPowerStats } = await import('../src/ui/power.ts');
-    const { stats } = await getPowerStats();
+    const charts = await captureRenderedPowerStats();
 
-    expect(stats.week).toBe(0);
-    expect(stats.month).toBe(0);
-    expect(stats.dailyHistory).toEqual([
+    expect(document.querySelector('#usage-week')?.textContent).toBe('0.0 kWh');
+    expect(document.querySelector('#usage-month')?.textContent).toBe('0.0 kWh');
+    expect(charts.dailyHistory).toEqual([
       { date: '2026-01-15', kWh: 0 },
       { date: '2026-01-14', kWh: 0 },
     ]);
-    expect(stats.hourlyPatternAll).toEqual([
+    expect(charts.hourlyPattern).toEqual([
       { hour: 9, avg: 0 },
       { hour: 12, avg: 0 },
     ]);
@@ -226,7 +246,7 @@ describe('power page stats (buckets-only)', () => {
   // moves buckets older than 30 days into `dailyTotals`. When both maps are
   // populated, the Daily-usage chart used to read from `dailyTotals` alone,
   // making it show the 14 days right before the 30-day cliff (e.g. 3–15 Apr on
-  // 16 May). The merge in `getPowerStats` must fold recent bucket-derived days
+  // 16 May). The merge in `renderPowerStats` must fold recent bucket-derived days
   // into the chart so the window advances forward to "today − 1".
   it('advances daily history window past stale dailyTotals using recent buckets', async () => {
     vi.useFakeTimers();
@@ -245,11 +265,10 @@ describe('power page stats (buckets-only)', () => {
 
     await installHomeyClient({ dailyTotals, buckets });
 
-    const { getPowerStats } = await import('../src/ui/power.ts');
-    const { stats } = await getPowerStats();
+    const charts = await captureRenderedPowerStats();
 
     // The chart slices to DAILY_HISTORY_DAYS = 14 newest entries excluding today.
-    const dates = stats.dailyHistory.map((point) => point.date);
+    const dates = charts.dailyHistory.map((point) => point.date);
     expect(dates.length).toBe(14);
     expect(dates[0]).toBe('2026-05-15'); // today − 1, sorted newest first
     expect(dates[dates.length - 1]).toBe('2026-05-02'); // today − 14
@@ -265,7 +284,7 @@ describe('power page stats (buckets-only)', () => {
 
   // Regression: `aggregateAndPruneHistory` folds only >30-day-old hours into
   // persisted `hourlyAverages`; the most-recent-30-days stay in `tracker.buckets`.
-  // `getPowerStats` used to read persisted `hourlyAverages` outright once non-empty,
+  // `renderPowerStats` used to read persisted `hourlyAverages` outright once non-empty,
   // dropping every recent hour from the Typical-day chart. The merge must fold
   // bucket-derived recent hours in additively.
   it('collapses a DST fall-back duplicated hour into one sample', async () => {
@@ -298,10 +317,9 @@ describe('power page stats (buckets-only)', () => {
 
     await installHomeyClient({ hourlyAverages, buckets });
 
-    const { getPowerStats } = await import('../src/ui/power.ts');
-    const { stats } = await getPowerStats();
+    const charts = await captureRenderedPowerStats();
 
-    const mondayHour8 = stats.hourlyPatternWeekday.find((point) => point.hour === 8);
+    const mondayHour8 = charts.hourlyPattern.find((point) => point.hour === 8);
     expect(mondayHour8).toBeDefined();
     // Merged: (5 + 1) / (1 + 1) = 3. The persisted-only path would have shown 5/1 = 5,
     // ignoring the recent bucket entirely.
@@ -1050,7 +1068,6 @@ describe('power page stats (buckets-only)', () => {
   it('matches daily budget today usage with the power summary total', async () => {
     const { buildDayContext } = await import('../../shared-domain/src/dailyBudget/dayContext.ts');
     const { getDateKeyInTimeZone, getDateKeyStartMs } = await import('../../shared-domain/src/utils/dateUtils.ts');
-    const { getPowerStats } = await import('../src/ui/power.ts');
 
     const timeZone = 'Europe/Oslo';
     const nowMs = Date.UTC(2025, 0, 15, 12, 0, 0);
@@ -1063,9 +1080,9 @@ describe('power page stats (buckets-only)', () => {
     await installHomeyClient({ buckets }, timeZone);
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker: { buckets } });
-    const { stats } = await getPowerStats();
+    await captureRenderedPowerStats();
 
-    expect(stats.today).toBeCloseTo(context.usedNowKWh, 6);
+    expect(document.querySelector('#usage-today')?.textContent).toBe(`${context.usedNowKWh.toFixed(1)} kWh`);
     vi.useRealTimers();
   });
 });

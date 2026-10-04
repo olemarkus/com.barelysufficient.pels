@@ -137,7 +137,6 @@ const buildPendingPayload = (
 };
 
 type ObjectivePayloadResult =
-  | { kind: 'ok'; payload: DeadlinePlanPayload }
   // `headline` and `body` replace the reason's fixed copy with the task's live
   // cause (the car stopped at its own charge limit, the device left off): the
   // fixed "Waiting for the first … reading" would contradict a cause the card
@@ -158,7 +157,11 @@ type ObjectivePayloadResult =
   | { kind: 'awaiting_prices' };
 
 type ObjectivePayloadReady = {
-  ctx: ResolvedObjectiveContext;
+  ctx: ResolvedObjectiveContext & {
+    activePlan: ResolvedDeferredObjectiveActivePlanV1 & {
+      latest: NonNullable<ResolvedDeferredObjectiveActivePlanV1['latest']>;
+    };
+  };
   bootstrap: SettingsUiBootstrap;
   profile: ReturnType<typeof resolveProfile>;
   progress: NonNullable<ReturnType<typeof resolveTaskProgress>>;
@@ -218,17 +221,14 @@ const resolveNoReadingResult = (
   };
 };
 
-const prepareObjectivePayload = (
-  params: ObjectivePlanInput,
-): ObjectivePayloadReady | ObjectivePayloadResult | null => {
-  const ctxResult = resolveObjectiveContext(params);
-  if (ctxResult.kind !== 'active') return null;
-  const ctx = ctxResult.context;
-  // `resolveRenderInput` filters this out as `pending` before reaching here.
-  // Reachable only via direct test calls to `buildObjectivePayload`; signal
-  // "not renderable" rather than misleading `already_satisfied`.
-  if (!ctx.activePlan?.latest) return null;
+const hasActivePlanRevision = (
+  ctx: ResolvedObjectiveContext,
+): ctx is ObjectivePayloadReady['ctx'] => Boolean(ctx.activePlan?.latest);
 
+const prepareObjectivePayload = (
+  ctx: ObjectivePayloadReady['ctx'],
+  params: ObjectivePlanInput,
+): ObjectivePayloadReady | ObjectivePayloadResult => {
   const profile = resolveProfile(params.bootstrap.power.tracker, ctx.deviceId);
   const progressDirection = ctx.activePlan.progressDirection;
   const directionUnavailable = resolveDirectionUnavailable(ctx.objective.kind, progressDirection);
@@ -395,11 +395,11 @@ const resolveHeroEnergyFields = (
 const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload => {
   const { ctx, bootstrap, profile, progress, hours, energy } = input;
   const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
-  const latest = activePlan!.latest!;
+  const latest = activePlan.latest;
   const labels = deadlineLabels(objective.kind, progress.progressDirection);
   const energyNeededKWh = energy?.energyNeededKWh ?? 0;
   const heroEnergy = resolveHeroEnergyFields(energy, energyNeededKWh);
-  const originalChargeByStartMs = buildChargeByStartMs(activePlan!.original ?? latest);
+  const originalChargeByStartMs = buildChargeByStartMs(activePlan.original ?? latest);
   const currentChargeByStartMs = buildChargeByStartMs(latest);
   const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
   // The status this page REPORTS: the committed verdict, overlaid with the live
@@ -408,8 +408,8 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   // until the next settle. `latest.planStatus` stays the committed trajectory
   // and is still what the budget-cause derivation below reads — a device left
   // off is not a budget shortfall.
-  const reportedPlanStatus = resolveEffectivePlanStatus(latest.planStatus, activePlan!);
-  const carChargeLimit = resolveReportedCarChargeLimit(activePlan!);
+  const reportedPlanStatus = resolveEffectivePlanStatus(latest.planStatus, activePlan);
+  const carChargeLimit = resolveReportedCarChargeLimit(activePlan);
   // The cannot-meet body copy + recourse fire on a budget-bound verdict. The
   // producer-resolved `latest.floorShortfallCause === 'budget'` is the only
   // signal — it covers the per-bucket background-squeeze case (prod Connected
@@ -427,41 +427,20 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   // limit only supplies when the budget is uninvolved.
   const budgetRole = resolveSmartTaskBudgetRole(latest);
   // The same live cause the Smart tasks widget explains, from the same resolver.
-  const liveCause = resolveSmartTaskLiveCause(activePlan!.diagnosticReasonCode, carChargeLimit, budgetRole);
+  const liveCause = resolveSmartTaskLiveCause(activePlan.diagnosticReasonCode, carChargeLimit, budgetRole);
   const cannotMeet = reportedPlanStatus === 'cannot_meet' || reportedPlanStatus === 'at_risk';
   const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
   const costAndDelivery = resolveLiveCostAndDelivery({
     bootstrap, deviceId, hours, currentChargeByStartMs, costDisplay: input.costDisplay,
-    startedAtMs: activePlan!.startedAtMs,
+    startedAtMs: activePlan.startedAtMs,
     nowMs,
   });
-  // Back-calculate `startProgress` from current − delivered × progressPerKWh
-  // when both signals are available. `progressPerKWh = remainingUnits /
-  // energyNeededKWh` simplifies to `1 / kWhPerUnit` (the inverse of the
-  // learned/bootstrap rate), so this is the planner's view of progress made
-  // per kWh delivered. Null when `progressPerKWh` is zero (no allocation /
-  // already-satisfied path is gated earlier), no delivery has been observed,
-  // or the back-calc lands negative (conservative rate over-counted progress)
-  // — in any of those the delivered-so-far line falls back to the `now …`
-  // phrasing rather than fabricating a `0 °C → current` arrow. Exactly zero
-  // is preserved because `0 %` is a legitimate start for an empty EV battery
-  // and `0 °C` is a real (if unusual) heater start; the bot's spurious-zero
-  // case is already gated by `deliveredKWh <= 0`.
-  const startProgress = (() => {
-    if (progressPerKWh <= 0 || costAndDelivery.deliveredKWh <= 0) return null;
-    const deliveredProgress = costAndDelivery.deliveredKWh * progressPerKWh;
-    const candidate = progress.progressDirection === 'increasing'
-      ? progress.currentValue - deliveredProgress
-      : progress.currentValue + deliveredProgress;
-    if (!Number.isFinite(candidate) || (progress.unit === '%' && candidate < 0)) return null;
-    return candidate;
-  })();
-  const planningSpeedKw = resolvePositiveNumber(activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw);
+  const planningSpeedKw = resolvePositiveNumber(activePlan.initialPlanningSpeedKw ?? latest.planningSpeedKw);
   const displayRate = resolveDisplayRateAndSpeedMode({ latest, profile, objectiveKind: objective.kind });
 
   const revisionPanelFeed = buildRevisionPanelFeed({
     latest,
-    history: activePlan?.history,
+    history: activePlan.history,
     kind: objective.kind,
   });
 
@@ -501,7 +480,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       deliveredKWh: costAndDelivery.deliveredKWh,
       plannedTotalKWh: energyNeededKWh,
       currentProgress: progress.currentValue,
-      startProgress,
+      startProgress: activePlan.startProgressValue ?? null,
       targetValue: progress.targetValue,
       targetUnit: progress.unit,
     }),
@@ -517,7 +496,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     }),
     trajectory: buildTrajectory({
       device,
-      activePlan: activePlan!,
+      activePlan,
       planStatus: reportedPlanStatus,
       hours,
       currentChargeByStartMs,
@@ -536,7 +515,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     planInputs: buildPlanInputs({
       labels,
       device,
-      provenance: activePlan!.kwhPerUnitProvenance,
+      provenance: activePlan.kwhPerUnitProvenance,
       objective,
       planningSpeedKw,
       nowMs,
@@ -552,13 +531,6 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     revisionLog: revisionPanelFeed.rows,
     revisionSummary: revisionPanelFeed.summary,
   };
-};
-
-const buildObjectivePayload = (params: ObjectivePlanInput): ObjectivePayloadResult | null => {
-  const prepared = prepareObjectivePayload(params);
-  if (prepared === null) return null;
-  if ('kind' in prepared) return prepared;
-  return { kind: 'ok', payload: buildReadyPayload(prepared) };
 };
 
 export type DeadlineRenderInput =
@@ -587,9 +559,8 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   // `latest` revision because that schedule stopped governing the moment the
   // device left the planned set.
   if (
-    !ctx.activePlan
+    !hasActivePlanRevision(ctx)
       || ctx.activePlan.pending
-      || !ctx.activePlan.latest
       || isDeviceExclusionPaused(ctx.activePlan)
   ) {
     return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
@@ -601,9 +572,8 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
     && resolveReportedCarChargeLimit(ctx.activePlan) === null) {
     return { status: 'pending', pending: buildPendingPayload(ctx, priceContext, 'invalid_session') };
   }
-  const result = buildObjectivePayload(params);
-  if (!result) return { status: 'absent' };
-  if (result.kind === 'unavailable') {
+  const result = prepareObjectivePayload(ctx, params);
+  if ('kind' in result && result.kind === 'unavailable') {
     return {
       status: 'unavailable',
       kind: ctx.objective.kind,
@@ -613,13 +583,13 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
       ...(result.statusChip === undefined ? {} : { statusChip: result.statusChip }),
     };
   }
-  if (result.kind === 'awaiting_prices') {
+  if ('kind' in result && result.kind === 'awaiting_prices') {
     return {
       status: 'pending',
       pending: buildPendingPayload(ctx, priceContext, 'awaiting_horizon_plan'),
     };
   }
-  return { status: 'ready', payload: result.payload };
+  return { status: 'ready', payload: buildReadyPayload(result) };
 };
 
 
@@ -653,10 +623,4 @@ export const resolveDeadlinePlanLoadState = (
     };
   }
   return { status: 'pending', pending: renderInput.pending, history };
-};
-
-export const testExports = {
-  buildObjectivePayload,
-  buildPendingPayload,
-  resolveRenderInput,
 };

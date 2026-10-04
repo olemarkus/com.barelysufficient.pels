@@ -327,9 +327,8 @@ export type BuildHeroInput = {
   // Current device reading on the objective unit (°C / %). Null when the
   // device hasn't reported yet — the delivered-so-far line suppresses.
   currentProgress: number | null;
-  // Back-calculated start-of-run progress when the kWh-per-unit rate is
-  // known: `current − delivered × kWhPerUnit`. Null otherwise — the line
-  // collapses to `now …` rather than inventing a starting value.
+  // First trustworthy progress reading recorded for the run. Null when the
+  // recorder has no starting observation — the line uses `now …` wording.
   startProgress: number | null;
   targetValue: number | null;
   targetUnit: DeferredObjectiveUnit;
