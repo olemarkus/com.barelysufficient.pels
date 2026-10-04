@@ -1855,7 +1855,12 @@
         { id: 'dev_evcharger', name: 'Generic EV Charger', class: 'evcharger', hasTemperature: false, hasPower: true },
       ];
     },
-    'GET /ui_recommendation_cars': () => ({ state: 'resolved', cars: [] }),
+    // A spec seeds car candidates, with their match history, through
+    // `window.__PELS_HOMEY_STUB__.recommendationCars`.
+    'GET /ui_recommendation_cars': () => ({
+      state: 'resolved',
+      cars: Array.isArray(initialOverrides.recommendationCars) ? initialOverrides.recommendationCars : [],
+    }),
     // Mirrors `readHubMarket` (lib/home/hubMarket.ts): an ISO country the
     // runtime resolved from the hub's location, or `unavailable`. The baseline
     // is `unavailable`, the market-neutral copy every other spec expects; a

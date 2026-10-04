@@ -336,6 +336,11 @@ const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
   [DEVICE_CONTROL_PROFILES, 'device_control_profile_change'],
   [DEVICE_TARGET_POWER_CONFIGS, 'device_target_power_change'],
   [DEVICE_TARGET_POWER_REACHABILITY, 'device_target_power_reachability_change'],
+  // A charger's battery-level source is chosen at parse: once a car is
+  // selected, the charger's own reading and the Flow card are ignored. Without
+  // a re-parse the dropped source kept feeding boost and Smart tasks until the
+  // next scheduled refresh.
+  [EV_CAR_ASSOCIATIONS, 'ev_car_associations_change'],
 ];
 
 function buildSnapshotReparseHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
@@ -364,10 +369,6 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.rebuildHomeRuntimePlansForModeChange?.();
     },
     ...buildSnapshotReparseHandlers(deps),
-    // Reload only. The car eligibility set is read at the association's read
-    // boundary (`lib/device/transport/carAssociation.ts`), so nothing needs
-    // re-parsing or replanning — the next read resolves against the new set.
-    [EV_CAR_ASSOCIATIONS]: async () => { deps.loadCapacitySettings(); },
     [TEMPERATURE_CONTROL_MODES]: async () => {
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'temperature_control_mode_change');

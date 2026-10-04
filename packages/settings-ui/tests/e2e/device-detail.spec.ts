@@ -335,6 +335,30 @@ test.describe('Device detail panel', () => {
     ]);
   });
 
+  test('Car picker shows each car name above its match hint', async ({ page }) => {
+    // The hint sits in the row's content column after the name. A row-level
+    // `order` on the name once survived the move into that column and drew the
+    // hint first, which only a rendered layout shows.
+    await page.addInitScript(() => {
+      (window as typeof window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+        recommendationCars: [{
+          id: 'car_kia',
+          name: 'Kia EV6',
+          matchHistory: { state: 'resolved', chargerMatches: [] },
+        }],
+      };
+    });
+    await openDeviceDetail(page, 'dev_evcharger');
+    const row = page.locator('#device-detail-car-list .detail-car-row').first();
+    const name = row.locator('.md-switch-row__label');
+    const hint = row.locator('.field__hint');
+    await expect(name).toHaveText('Kia EV6');
+    await expect(hint).toHaveText('Not matched to this charger yet');
+    const nameBox = await name.boundingBox();
+    const hintBox = await hint.boundingBox();
+    expect(nameBox && hintBox && nameBox.y < hintBox.y).toBe(true);
+  });
+
   test('Limiting card renders a statement, not a radiogroup, when there is nothing to choose', async ({ page }) => {
     await openDeviceDetail(page, 'dev_evcharger');
 
