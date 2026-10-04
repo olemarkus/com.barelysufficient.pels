@@ -9,6 +9,7 @@ import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { syncRespectExternalOffRow } from './respectExternalOff.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { deviceDetailSetupDisclosure } from '../dom.ts';
 
 /**
  * "Only PELS starts this device" — the per-device opt-in that gives a device a
@@ -90,6 +91,19 @@ const shouldShowStartPolicyRow = (
   (!isPowerLimitControlOn(deviceId) && isManaged && device?.binaryControllable === true)
   || isPelsOnly(deviceId)
 );
+
+/**
+ * Land on this row: Setup expanded and the row centred. The "Keep {device}
+ * within Smart tasks" suggestion names this setting, so opening the device with
+ * Setup collapsed would leave the owner hunting for it.
+ */
+export const revealStartPolicyRow = (): void => {
+  if (deviceDetailSetupDisclosure && !deviceDetailSetupDisclosure.open) {
+    deviceDetailSetupDisclosure.open = true;
+  }
+  if (!rowEl || rowEl.hidden) return;
+  rowEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+};
 
 /** Sync the row for the open device. */
 export const syncStartPolicyRow = (params: {

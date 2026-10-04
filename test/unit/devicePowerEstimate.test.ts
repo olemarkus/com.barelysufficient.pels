@@ -1,16 +1,8 @@
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import type { PowerEstimateState } from '../../lib/device/devicePowerEstimate';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
-import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-
-const logger = {
-  log: vi.fn(),
-  debug: vi.fn(),
-  error: vi.fn(),
-  structuredLog: {
-    debug: vi.fn(),
-  },
-} as unknown as Logger;
+import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 const buildState = (): Required<PowerEstimateState> => ({
   expectedPowerKwOverrides: {} as Record<string, { kw: number; ts: number }>,
@@ -48,8 +40,16 @@ const buildSocketDevice = (params?: {
 });
 
 describe('estimatePower', () => {
+  // The decision log is a `devices`-topic debug event, read back from the
+  // structured capture rather than an injected logger.
+  let logCapture: LoggerCapture;
+
   beforeEach(() => {
-    vi.clearAllMocks();
+    logCapture = captureLogger();
+  });
+
+  afterEach(() => {
+    logCapture.restore();
   });
 
   it('dedupes unchanged estimate decisions across repeated reads', () => {
@@ -61,7 +61,6 @@ describe('estimatePower', () => {
       deviceLabel: 'Device 1',
       now: Date.now(),
       state,
-      logger,
     });
 
     estimatePower({
@@ -70,15 +69,36 @@ describe('estimatePower', () => {
       deviceLabel: 'Device 1',
       now: Date.now() + 1000,
       state,
-      logger,
     });
 
-    expect(logger.structuredLog.debug).toHaveBeenCalledTimes(1);
-    expect(logger.structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'power_estimate_source_changed',
+    const decisions = logCapture.findEvents('power_estimate_source_changed');
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]).toMatchObject({
+      component: 'devices',
+      debugTopic: 'devices',
       source: 'load-setting',
       estimatedKw: 0.65,
-    }));
+    });
+  });
+
+  it('does not log again when only the live reading moves', () => {
+    // A load-setting estimate with a reading that wobbles sample to sample: the
+    // estimate did not change, so neither does the log.
+    const state = buildState();
+    for (const [offsetMs, measuredPowerKw] of [[0, 0.6], [1000, 0.63], [2000, 0.58]] as const) {
+      estimatePower({
+        device: buildDevice(650),
+        deviceId: 'dev-1',
+        deviceLabel: 'Device 1',
+        measuredPowerKw,
+        now: Date.now() + offsetMs,
+        state,
+      });
+    }
+
+    const decisions = logCapture.findEvents('power_estimate_source_changed');
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]).toMatchObject({ source: 'load-setting', estimatedKw: 0.65, measuredPowerKw: 0.6 });
   });
 
   it('logs again when the estimate source materially changes', () => {
@@ -90,7 +110,6 @@ describe('estimatePower', () => {
       deviceLabel: 'Device 1',
       now: Date.now(),
       state,
-      logger,
     });
 
     estimatePower({
@@ -99,19 +118,12 @@ describe('estimatePower', () => {
       deviceLabel: 'Device 1',
       now: Date.now() + 1000,
       state,
-      logger,
     });
 
-    expect(logger.structuredLog.debug).toHaveBeenCalledTimes(2);
-    expect(logger.structuredLog.debug).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      event: 'power_estimate_source_changed',
-      source: 'default',
-    }));
-    expect(logger.structuredLog.debug).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      event: 'power_estimate_source_changed',
-      source: 'load-setting',
-      estimatedKw: 0.65,
-    }));
+    const decisions = logCapture.findEvents('power_estimate_source_changed');
+    expect(decisions).toHaveLength(2);
+    expect(decisions[0]).toMatchObject({ source: 'default' });
+    expect(decisions[1]).toMatchObject({ source: 'load-setting', estimatedKw: 0.65 });
   });
 
   it('treats settings.load=0 as unset', () => {
@@ -121,7 +133,6 @@ describe('estimatePower', () => {
       deviceLabel: 'Device 1',
       now: Date.now(),
       state: buildState(),
-      logger,
     });
     expect(result.expectedPowerSource).toBe('default');
     expect(result.expectedPowerKw).toBe(1);
@@ -137,7 +148,6 @@ describe('estimatePower', () => {
       deviceLabel: 'Device 1',
       now: Date.now(),
       state: buildState(),
-      logger,
     });
     expect(result.expectedPowerSource).toBe('load-setting');
     expect(result.expectedPowerKw).toBeCloseTo(0.65, 3);
@@ -151,7 +161,6 @@ describe('estimatePower', () => {
       measuredPowerKw: 0.125,
       now: Date.now(),
       state: buildState(),
-      logger,
     });
 
     expect(result.expectedPowerSource).toBe('load-setting');
@@ -173,7 +182,6 @@ describe('estimatePower', () => {
       deviceLabel: 'Socket 1',
       now: Date.now(),
       state: buildState(),
-      logger,
     });
 
     expect(result.expectedPowerSource).toBe('homey-energy');
@@ -200,7 +208,6 @@ describe('estimatePower', () => {
       deviceLabel: 'Socket 1',
       now: Date.now(),
       state: buildState(),
-      logger,
     });
 
     expect(result.expectedPowerSource).toBe('homey-energy');
@@ -222,7 +229,6 @@ describe('estimatePower', () => {
       deviceLabel: 'Socket 1',
       now: Date.now(),
       state: buildState(),
-      logger,
     });
 
     expect(result.expectedPowerSource).toBe('default');
@@ -239,7 +245,6 @@ describe('estimatePower', () => {
       deviceLabel: 'Socket 1',
       now: Date.now(),
       state: buildState(),
-      logger,
     });
 
     expect(result.expectedPowerSource).toBe('homey-energy');
@@ -257,7 +262,6 @@ describe('estimatePower', () => {
       deviceLabel: 'Socket 1',
       now: Date.now(),
       state: buildState(),
-      logger,
     });
 
     expect(result.expectedPowerSource).toBe('default');
@@ -271,18 +275,17 @@ describe('estimatePower', () => {
     const state = buildState();
     const result = estimatePower({
       device: buildDevice(650), deviceId: 'dev-1', deviceLabel: 'Device 1',
-      measuredPowerKw: 2.1, now: Date.now(), state, logger,
+      measuredPowerKw: 2.1, now: Date.now(), state,
     });
 
     expect(result).not.toHaveProperty('measuredPowerKw');
     expect(result).not.toHaveProperty('loadKw');
-    expect(logger.structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'power_estimate_source_changed',
+    expect(logCapture.findEvent('power_estimate_source_changed')).toMatchObject({
       source: 'load-setting',
       estimatedKw: 0.65,
       measuredPowerKw: 2.1,
       loadKw: 0.65,
-    }));
+    });
   });
 
   // ── The one ordered ladder ──────────────────────────────────────────────────
@@ -295,7 +298,7 @@ describe('estimatePower', () => {
     state.lastKnownPowerKw['dev-1'] = { kw: 3.1, observedAtMs: Date.now() };
     const result = estimatePower({
       device: buildDevice(650), deviceId: 'dev-1', deviceLabel: 'Device 1',
-      now: Date.now(), state, logger,
+      now: Date.now(), state,
     });
     expect(result.expectedPowerSource).toBe('manual');
     expect(result.expectedPowerKw).toBeCloseTo(2.4, 6);
@@ -311,7 +314,7 @@ describe('estimatePower', () => {
     state.expectedPowerKwOverrides['dev-1'] = { kw: 2.4, ts: 0 };
     const result = estimatePower({
       device: buildDevice(), deviceId: 'dev-1', deviceLabel: 'Device 1',
-      measuredPowerKw: 5, now: Date.now(), state, logger,
+      measuredPowerKw: 5, now: Date.now(), state,
     });
     expect(result.expectedPowerSource).toBe('manual');
     expect(result.expectedPowerKw).toBeCloseTo(2.4, 6);
@@ -325,7 +328,7 @@ describe('estimatePower', () => {
     state.expectedPowerKwOverrides['dev-1'] = { kw: 0, ts: 0 };
     const result = estimatePower({
       device: buildDevice(900), deviceId: 'dev-1', deviceLabel: 'Device 1',
-      now: Date.now(), state, logger,
+      now: Date.now(), state,
     });
     expect(result.expectedPowerSource).toBe('load-setting');
     expect(result.expectedPowerKw).toBeCloseTo(0.9, 6);
@@ -338,7 +341,7 @@ describe('estimatePower', () => {
     state.lastKnownPowerKw['dev-1'] = { kw: 3.1, observedAtMs: Date.now() };
     const result = estimatePower({
       device: buildDevice(900), deviceId: 'dev-1', deviceLabel: 'Device 1',
-      now: Date.now(), state, logger,
+      now: Date.now(), state,
     });
     expect(result.expectedPowerSource).toBe('load-setting');
     expect(result.expectedPowerKw).toBeCloseTo(0.9, 6);
@@ -349,7 +352,7 @@ describe('estimatePower', () => {
     state.lastKnownPowerKw['dev-1'] = { kw: 3.1, observedAtMs: Date.now() };
     const result = estimatePower({
       device: buildDevice(), deviceId: 'dev-1', deviceLabel: 'Device 1',
-      now: Date.now(), state, logger,
+      now: Date.now(), state,
     });
     expect(result.expectedPowerSource).toBe('measured-peak');
     expect(result.expectedPowerKw).toBeCloseTo(3.1, 6);
@@ -358,7 +361,7 @@ describe('estimatePower', () => {
   it('rung 5 — a device nothing is known about resolves to the 1 kW default, not to absence', () => {
     const result = estimatePower({
       device: buildDevice(), deviceId: 'dev-1', deviceLabel: 'Device 1',
-      now: Date.now(), state: buildState(), logger,
+      now: Date.now(), state: buildState(),
     });
     expect(result.expectedPowerSource).toBe('default');
     expect(result.expectedPowerKw).toBe(1);
@@ -372,7 +375,7 @@ describe('estimatePower', () => {
     const result = estimatePower({
       device: buildDevice(), deviceId: 'dev-ev', deviceLabel: 'Charger',
       binaryCapabilityId: 'evcharger_charging',
-      now: Date.now(), state: buildState(), logger,
+      now: Date.now(), state: buildState(),
     });
     expect(result.expectedPowerSource).toBe('default');
     expect(result.expectedPowerKw).toBeCloseTo(1.38, 6);

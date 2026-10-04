@@ -178,23 +178,28 @@ export function normalizeSuppression(raw: unknown): WeatherDaySuppression | unde
 }
 
 /**
- * Cleans the optional suppression/kwhUncontrolled layer on an already-core-valid
+ * Cleans the optional suppression/kwhUncontrolled/budget layer on an already-core-valid
  * record: a malformed value is dropped, the record (and its temperature) kept.
  */
 export function sanitizeRecordOptionalFields(record: WeatherDailyRecord): WeatherDailyRecord {
   const suppression = normalizeSuppression(record.suppression);
   const kwhUncontrolled = isFiniteNumber(record.kwhUncontrolled) ? record.kwhUncontrolled : undefined;
   const appliedBudgetKwh = isPositiveFinite(record.appliedBudgetKwh) ? record.appliedBudgetKwh : undefined;
+  // Paired by contract: budget-counted usage means nothing without the budget it was counted against.
+  const kwhBudgetCounted = appliedBudgetKwh !== undefined && isNonNegativeFinite(record.kwhBudgetCounted)
+    ? record.kwhBudgetCounted : undefined;
   const {
     suppression: _suppression,
     kwhUncontrolled: _kwhUncontrolled,
     appliedBudgetKwh: _appliedBudgetKwh,
+    kwhBudgetCounted: _kwhBudgetCounted,
     ...rest
   } = record;
   return {
     ...rest,
     ...(kwhUncontrolled !== undefined ? { kwhUncontrolled } : {}),
     ...(appliedBudgetKwh !== undefined ? { appliedBudgetKwh } : {}),
+    ...(kwhBudgetCounted !== undefined ? { kwhBudgetCounted } : {}),
     ...(suppression !== undefined ? { suppression } : {}),
   };
 }

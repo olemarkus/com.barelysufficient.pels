@@ -1,4 +1,4 @@
-import { isTaskDeliveryExplanation } from '../../../packages/shared-domain/src/taskDeliveryValidation';
+import { isTaskDeliveryExplanation } from './taskDeliveryValidation';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanHourV1,

@@ -8,7 +8,8 @@ so measured occupancy/load changes can widen allowance without device-denial
 estimates. Proven unresolved budget shortfall selects q90 instead. The displayed
 upper prediction bound also retains the wider recent q90.
 
-Budget feedback uses observed actual overshoot, pending heater demand attributed
+Budget feedback uses observed overshoot of budget-counted usage (metered less
+budget-exempt), pending heater demand attributed
 to daily pace after physical recovery accounting, or priced terminal
 budget-exhausted task misses. Unused allowance absorbs pending heater demand.
 Capacity/cooldown holds and recovered intervals cannot raise the damage signal.
@@ -47,6 +48,9 @@ and capacity must match the home under evaluation. For each target day:
    Compute allowances on target days excluded from signature fitting too;
    incomplete temperature coverage does not invalidate their energy balance.
    The signature-quality gate limits the reported comparison rows.
+   A record exported before `kwhBudgetCounted` existed carries only whole-home
+   kWh; the replay folds it as if no load was budget-exempt, which overstates
+   overshoot on a home with exempt devices (stated in the report methodology).
 4. Run a second conservative replay that treats every historical cumulative
    hold as unresolved budget-attributed denial. This deliberately overstates
    the new feedback evidence; historical rows cannot establish recovery/cause.

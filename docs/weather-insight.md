@@ -55,6 +55,17 @@ The **verdict line** is the headline. It says, in plain words, how your current 
 
 A **Rough estimate** chip appears when tomorrow is colder than anything PELS has measured, or when recent days have drifted from the usual pattern — its companion line explains why the range is wider than usual.
 
+### When the suggestion is raised
+
+The suggestion follows the forecast, but it also learns from how recent days went against your budget. When recent days show your budget was set too low, PELS adds a correction on top of the forecast and says why in a line under the suggestion:
+
+- *"Your budget has recently been limiting your devices, so the suggestion is raised to match."* PELS held devices back for the budget and they did not catch up later the same day, or a smart task missed its deadline because the budget ran out.
+- *"Recent usage went over your budget, so the suggestion includes extra room."* Usage counted toward the budget ended a day above it, even though no device was proven held back.
+
+When the correction is at least 1 kWh, the line names it: *"… 6.0 kWh of the suggestion covers recent demand beyond your budget."*, or for the second case *"Recent usage went over your budget, so the suggestion includes 6.0 kWh of extra room."* The number is the part of the suggestion the correction accounts for, not the whole difference from your current budget, since the suggestion also includes ordinary headroom.
+
+For the second line, only usage counted toward your daily budget can count as going over it. Energy used by devices allowed beyond today's budget still shows in your real usage, but it never counts as going over the budget. The correction grows by at most 10 kWh per day and never goes past what your hard cap can deliver in a day. It fades on days that bring no new evidence, and fades faster when usage stays under the budget.
+
 ## What PELS learned about your home
 
 Tap **Weather details** on the Tomorrow card to see what PELS learned behind the prediction. This is the page to open when you want to check that PELS actually understands your home.
@@ -76,10 +87,10 @@ Below that, a chart plots every day of the last year so you can see the pattern 
 
 If tomorrow's expected usage is more than your [hard cap](getting-started.md#terminology-and-units) could deliver across a whole day, the Tomorrow card replaces the calm verdict with a warning.
 
-![PELS Tomorrow card with a warning banner: "Tomorrow may need more than your hard cap allows — Tomorrow's expected usage is higher than your hard cap can deliver in a day. PELS will hold the cap, so some managed usage may be limited on the coldest hours."](screenshots/weather-insight/over-cap-warning.png)
-*Figure 6. When the suggestion bumps against the hard cap, PELS warns you plainly and tells you what will happen: it holds the cap and limits some managed usage on the coldest hours.*
+![PELS Tomorrow card with a warning banner: "Tomorrow may need more than your hard cap allows — Tomorrow's expected usage is higher than your hard cap can deliver in a day. PELS will hold the cap, so some managed usage may be limited in the coldest hours."](screenshots/weather-insight/over-cap-warning.png)
+*Figure 6. When the suggestion bumps against the hard cap, PELS warns you plainly and tells you what will happen: it holds the cap and limits some managed usage in the coldest hours.*
 
-The hard cap is your **grid tariff step** (effekttrinn) — not a budget you can nudge up to make the warning go away. Raising it to fit a cold day would defeat its purpose. The honest response to this warning is to expect that managed devices (water heater, floor heating, EV charging) will be paced harder on the coldest hours, and to plan flexible load accordingly.
+The hard cap is your **grid tariff step** (effekttrinn) — not a budget you can nudge up to make the warning go away. Raising it to fit a cold day would defeat its purpose. The honest response to this warning is to expect that managed devices (water heater, floor heating, EV charging) will be paced harder in the coldest hours, and to plan flexible load accordingly.
 
 ## When the forecast isn't available
 
@@ -112,5 +123,5 @@ So the chain is: weather insight suggests a number → the [daily budget](daily-
 Shared capacity terminology and units are defined in [Getting Started: Terminology and Units](getting-started.md#terminology-and-units). Weather-insight-specific terms:
 
 - **Balance point** ("Heating kicks in below") — the outdoor temperature where your home starts spending extra energy on heating. Above it, usage is roughly flat; below it, usage climbs with the cold.
-- **Warm-day usage** — the roughly flat daily energy your home uses when it isn't heating: lights, appliances, hot water, standby. Distinct from "background usage" in the daily budget, which is about devices PELS doesn't manage.
+- **Warm-day usage** — the roughly flat daily energy your home uses when it isn't heating: lights, appliances, hot water, standby. Distinct from "background usage" in the daily budget, which is about devices PELS doesn't manage. Once PELS has seen both summer and winter, it also learns whether your home uses more in the dark half of the year at the same temperature (more lighting, more time indoors, less sun through the windows). If it does, warm-day usage and the estimate line are shown for tomorrow's time of year.
 - **Expected usage range** — the spread PELS expects tomorrow's total to fall within. It widens when the forecast is colder than anything measured, or when recent days have drifted from the pattern.

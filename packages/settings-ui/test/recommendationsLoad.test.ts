@@ -101,10 +101,21 @@ const loadSubject = async (devices: SettingsUiDeviceDetailItem[]) => {
   return recommendations;
 };
 
+// Every fixture car has been matched to the fixture chargers: Setup offers a
+// car, and calls a battery-reporting Flow a leftover, only after a match.
+const MATCHED_TO_FIXTURE_CHARGERS = ['device-1', 'charger-1']
+  .map((chargerId) => ({ chargerId, lastMatchedAtMs: 1_000 }));
+
 const resolvedCars = (cars: Array<{ id: string; name: string }> = []) => ({
   state: 'resolved' as const,
-  cars,
+  cars: cars.map((car) => ({
+    ...car,
+    matchHistory: { state: 'resolved' as const, chargerMatches: MATCHED_TO_FIXTURE_CHARGERS },
+  })),
 });
+
+// The car the Flow-conflict specs select for `charger-1`.
+const SELECTED_CAR = [{ id: 'car-1', name: 'Polestar 3' }];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -208,7 +219,7 @@ describe('recommendation loading', () => {
       await recommendations.loadRecommendationData();
       const surface = document.getElementById('setup-recommendations-root');
       expect(surface?.textContent).toContain('Keep Connected 300 within Smart tasks');
-      expect(surface?.textContent).toContain('PELS turns it off if turned on outside a Smart task');
+      expect(surface?.textContent).toContain('PELS turns it off if it is turned on outside a Smart task');
 
       state.controllableMap = { 'device-1': true };
       recommendations.refreshRecommendationSurfaces();
@@ -239,7 +250,8 @@ describe('recommendation loading', () => {
     try {
       await recommendations.loadRecommendationData();
       document.querySelector('md-filled-tonal-button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      expect(openDevice).toHaveBeenCalledWith('device-1');
+      // Lands on the setting the suggestion names, not the collapsed page top.
+      expect(openDevice).toHaveBeenCalledWith('device-1', 'start-policy');
       const dismiss = [...document.querySelectorAll('md-text-button')]
         .find((button) => button.textContent?.trim() === 'Dismiss');
       dismiss?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -335,7 +347,7 @@ describe('recommendation loading', () => {
     expect(document.getElementById('setup-recommendations-banner-root')?.textContent)
       .not.toContain('2 recommendations');
     expect(document.getElementById('setup-recommendations-root')?.textContent)
-      .toContain('Choose a charger for Polestar 3');
+      .toContain('Select Polestar 3 on ');
   });
 
   it('shows the built-in-control migration while optional car inventory is unavailable', async () => {
@@ -471,7 +483,7 @@ describe('recommendation loading', () => {
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
     getSetting.mockResolvedValue({});
-    callApi.mockResolvedValue(resolvedCars());
+    callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
     refreshFlowConflictsApi.mockResolvedValue({
       devices: [{ id: charger.id }],
       evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Report car battery' }],
@@ -490,13 +502,39 @@ describe('recommendation loading', () => {
     expect(surface?.textContent).toContain('Some recommendation checks couldn’t be refreshed right now');
   });
 
+  it('withdraws the unmatched-car warning when the car list fails to refresh', async () => {
+    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
+    const recommendations = await loadSubject([charger]);
+    const { state } = await import('../src/ui/state.ts');
+    state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Kia EV6', matchHistory: { state: 'resolved', chargerMatches: [] } }],
+    });
+    refreshFlowConflictsApi.mockResolvedValue({
+      devices: [{ id: charger.id }],
+      evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Report car battery' }],
+    });
+
+    await recommendations.loadRecommendationData();
+    const surface = document.getElementById('setup-recommendations-root');
+    expect(surface?.textContent).toContain('Easee has no battery level');
+
+    // "Not matched yet" may no longer hold, so a stale list advises nothing.
+    callApi.mockResolvedValue({ state: 'unavailable' });
+    await recommendations.loadRecommendationData();
+    expect(surface?.textContent).not.toContain('Easee has no battery level');
+    expect(surface?.textContent).not.toContain('Remove unused battery reporting for Easee');
+  });
+
   it('offers a retry when the selected-car Flow inventory is unavailable', async () => {
     const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
     const recommendations = await loadSubject([charger]);
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
     getSetting.mockResolvedValue({});
-    callApi.mockResolvedValue(resolvedCars());
+    callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
     refreshFlowConflictsApi
       .mockRejectedValueOnce(new Error('Flow API unavailable'))
       .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [] });
@@ -521,7 +559,7 @@ describe('recommendation loading', () => {
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
     getSetting.mockResolvedValue({});
-    callApi.mockResolvedValue(resolvedCars());
+    callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
     let releaseAdvisory: () => void = () => {};
     const advisoryGate = new Promise<void>((resolve) => { releaseAdvisory = resolve; });
     refreshFlowConflictsApi
@@ -573,7 +611,7 @@ describe('recommendation loading', () => {
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
     getSetting.mockResolvedValue({});
-    callApi.mockResolvedValue(resolvedCars());
+    callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
     refreshFlowConflictsApi
       .mockResolvedValueOnce({ devices: [{ id: charger.id }], evSocReporters: [] })
       .mockResolvedValue({
@@ -608,7 +646,7 @@ describe('recommendation loading', () => {
     const { state } = await import('../src/ui/state.ts');
     state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
     getSetting.mockResolvedValue({});
-    callApi.mockResolvedValue(resolvedCars());
+    callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
     refreshFlowConflictsApi.mockResolvedValueOnce({
       devices: [{ id: charger.id }],
       evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Report car battery' }],
@@ -696,7 +734,7 @@ describe('recommendation loading', () => {
     let releaseRefresh: () => void = () => {};
     const refreshGate = new Promise<void>((resolve) => { releaseRefresh = resolve; });
     let refreshAttempts = 0;
-    callApi.mockResolvedValue(resolvedCars());
+    callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
     refreshFlowConflictsApi.mockResolvedValueOnce({
       devices: [firstDevice, secondDevice].map((entry) => ({
         id: entry.id,
@@ -909,7 +947,7 @@ describe('recommendation loading', () => {
     try {
       callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Polestar' }]));
       document.dispatchEvent(new Event('devices-updated'));
-      await vi.waitFor(() => { expect(surface?.textContent).toContain('Choose a charger for Polestar'); });
+      await vi.waitFor(() => { expect(surface?.textContent).toContain('Select Polestar on '); });
 
       let resolveOldCars!: (value: ReturnType<typeof resolvedCars>) => void;
       callApi.mockReturnValueOnce(new Promise((resolve) => { resolveOldCars = resolve; }));
@@ -921,13 +959,13 @@ describe('recommendation loading', () => {
       document.dispatchEvent(new Event('devices-updated'));
       callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Current car' }]));
       resolveOldCars(resolvedCars([{ id: 'car-1', name: 'Obsolete car' }]));
-      await vi.waitFor(() => { expect(surface?.textContent).toContain('Choose a charger for Current car'); });
+      await vi.waitFor(() => { expect(surface?.textContent).toContain('Select Current car on '); });
       expect(surface?.textContent).not.toContain('Obsolete car');
       expect(callApi).toHaveBeenCalledTimes(callsBeforeRefresh + 2);
 
       callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Renamed car' }]));
       document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
-      await vi.waitFor(() => { expect(surface?.textContent).toContain('Choose a charger for Renamed car'); });
+      await vi.waitFor(() => { expect(surface?.textContent).toContain('Select Renamed car on '); });
       expect(surface?.textContent).not.toContain('Polestar');
 
       callApi.mockResolvedValue(resolvedCars());
@@ -953,7 +991,7 @@ describe('recommendation loading', () => {
     try {
       await vi.waitFor(() => {
         expect(document.getElementById('setup-recommendations-root')?.textContent)
-          .toContain('Choose a charger for Polestar');
+          .toContain('Select Polestar on ');
       });
       expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
     } finally {
@@ -1067,13 +1105,13 @@ describe('recommendation loading', () => {
 
     await recommendations.loadRecommendationData();
     expect(document.getElementById('setup-recommendations-root')?.textContent)
-      .toContain('Choose a charger for Polestar 3');
+      .toContain('Select Polestar 3 on ');
 
     callApi.mockResolvedValue({ state: 'unavailable' });
     await recommendations.loadRecommendationData();
     expect(callApi).toHaveBeenCalledTimes(4);
     expect(document.getElementById('setup-recommendations-root')?.textContent)
-      .toContain('Choose a charger for Polestar 3');
+      .toContain('Select Polestar 3 on ');
     expect(document.getElementById('setup-recommendations-root')?.textContent)
       .toContain('Some recommendation checks couldn’t be refreshed right now');
 
@@ -1081,6 +1119,21 @@ describe('recommendation loading', () => {
     await recommendations.loadRecommendationData();
     expect(document.getElementById('setup-recommendations-root')?.textContent)
       .toContain('No setup suggestions right now');
+  });
+
+  it('does not claim an all-clear while a car\'s match history is unreadable', async () => {
+    const recommendations = await loadSubject([device({ id: 'charger-1', deviceClass: 'evcharger', isEvCharger: true })]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: { state: 'unavailable' } }],
+    });
+
+    await recommendations.loadRecommendationData();
+
+    const text = document.getElementById('setup-recommendations-root')?.textContent;
+    expect(text).not.toContain('No setup suggestions right now');
+    expect(text).toContain('Some recommendation checks couldn’t be refreshed right now');
   });
 
   it('does not claim an all-clear when a last-good empty car inventory becomes unavailable', async () => {

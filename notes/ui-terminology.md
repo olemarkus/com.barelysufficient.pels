@@ -731,29 +731,68 @@ itself signals approximation — no narrating sentence sits beneath it.
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text.
 
-### A smart task capped at the car's own charge limit
+### A smart task held below its target by the car's own charge limit
 
-An EV task whose car stops charging on its own below the task's target plans to the car's limit
-and is met there (owner ruling 2026-09-26). Every surface names the **car's own limit** as the
-cause, since the setting that would change it lives in the car, never PELS or the charger:
+An EV task whose car's own charge limit sits below the task's target keeps the owner's target: the
+car's limit only explains why delivery stops short, and the surfaces suggest raising it. As soon as
+PELS knows the limit is below the target (`resolveSmartTaskCarChargeLimit`: `limitValue <
+targetValue`, the same rule for status and copy) the task reads **`At risk`**, or keeps **`Cannot
+finish`** (owner decision): "On track" promises the target, and the car will stop short of it.
+Every surface names the **car's own limit** as the cause, since the setting that would change it
+lives in the car, never PELS or the charger:
 
 | Surface | Copy |
 |---|---|
-| Detail hero reason line (not cannot-finish) | `Your car stops at its own charge limit of 70%, below this smart task's 80% target. PELS charges to 70% and counts the task as done there.` |
-| Detail page once the car stopped there (`Satisfied`) | `Your car stopped at its own charge limit of 70%, below this smart task's 80% target. PELS counted the task as done.` |
-| Widget why-line (on track / scheduled / done) | `Your car stops at its own charge limit of 70%, below the 80% target.` (`stopped` once done; a scheduled task keeps `Cheaper hours start at 02:00.` ahead of it) |
+| Detail hero reason line, before the car gets there | `Your car stops at its own charge limit of 70%, below this smart task’s 80% target. Raise the car’s charge limit to allow this task to reach its target.` |
+| Detail hero reason line, once the car stopped there | `Your car stopped at its own charge limit of 70%, below this smart task’s 80% target. Raise the car’s charge limit to let it continue.` |
+| Widget why-line | `Your car stops at its own charge limit of 70%, below the 80% target.` (`stopped` once the car stopped there) |
+| Widget recourse | `Raise the car’s charge limit to reach the target.` |
 | Smart-task list card, beside `Target 80%` | `Car stops at 70%` / `Car stopped at its limit of 70%` |
-| Past-task sentence (`met-at-car-limit`) | `Your car stopped at its own charge limit of 70 %, below this smart task's 80 % target. PELS counted the run as done.` |
-| Past-task row time | `done at 05:10` (not `reached at`, as for every run met short of its target) |
+| Past-task sentence (`met-at-car-limit`, legacy rows only) | `Your car stopped at its own charge limit of 70 %, below this smart task's 80 % target. PELS counted the run as done.` |
 
-A task with a problem (at risk, cannot finish) keeps its own diagnosis on the widget: that is what
-needs attention. Progress on the detail page (the trajectory, `now 40% of 70% target`) counts to the
-limit, the plan's own target; the subline keeps the owner's `Target 80%`.
-
-Once the car stops at its limit the task reads **`Satisfied`**, ahead of `Paused — unplugged`: an
-Easee ends the session at the car's limit and reports unplugged with the car still in, and telling
-that owner to plug in would be wrong. The words come from `deadlineLabels.ts` /
+The status comes from `resolveEffectivePlanStatus` on the list chip, the widget row, the detail
+hero and the Flow status alike. Once the car has REACHED its limit it applies ahead of `Paused —
+unplugged`: an Easee ends the session at the car's limit and reports unplugged with the car still
+in, and telling that owner to plug in would be wrong (the detail page and the Flow do not pause on
+an unplugged session either). A car unplugged on its way to the limit reads `Paused — unplugged`.
+Durable exclusions (`Paused — not managed`, a separate meter) and a pending plan outrank it. The
+list card's car line shows only beside `At risk` / `Cannot finish`, never beside a pending, paused,
+unavailable or satisfied chip. With
+no current reading the detail page still shows the `At risk` chip and the car-limit line; only the
+progress content is left out. The hero offers no settings button: the fix is in the car. Progress
+on the detail page counts to the owner's target (`now 70% of 80% target`). A run that ends there is
+missed, with the car's limit as its cause and no recourse button; `met-at-car-limit` survives only
+for runs archived before this rule. The words come from `deadlineLabels.ts` /
 `deferredPlanHistoryPostmortem.ts`.
+
+### Live causes on an at-risk or cannot-finish task
+
+A task whose plan is healthy can still be held back by something outside the plan. Only these
+causes downgrade its status, and each one has its own copy on every surface through one resolver,
+`resolveSmartTaskLiveCause` in `deadlineLabels.ts` (the hero reason line, the list card's line
+beside the target, the widget why-line and recourse). The hero offers no settings button for any of
+them, and on an at-risk hero its live-state headline (`Charging now`) is suppressed: the fix is on
+the device or in the car.
+
+| Cause (reason code) | Widget why-line | List card line | Hero reason line | Widget recourse |
+|---|---|---|---|---|
+| Leave off until turned on again (`objective_device_left_off`) | `Device is staying off until turned on again.` | same | same | none |
+| Car's known charge limit below the target | see the section above | see above | see above | `Raise the car’s charge limit to reach the target.` |
+| Car stopped at its own limit, value unknown (`objective_device_limit`) | `Your car stopped at its own charge limit.` | `Car stopped at its own limit` | `Your car stopped at its own charge limit, below this smart task’s target. Raise the car’s charge limit to let it continue.` | `Raise the car’s charge limit to reach the target.` |
+| Car delaying charging (`objective_device_schedule`) | `Your car is delaying charging on its own schedule.` | `Car is delaying charging` | `Your car is delaying charging, for example on its own charging schedule or smart charging. Turn that off in the car so PELS can charge it before the deadline.` | `Turn off the car’s own charging schedule or smart charging.` |
+| Device took no power through 15 minutes of permitted delivery (`objective_not_accepting_energy`) | `Device stopped taking power.` | same | `The device stopped taking power while PELS allowed it to run. Check whether it switched itself off.` | none |
+
+Precedence: the off action first, then the car stopped at its limit, then the confirmed device-side
+stops, then a car limit the car has not reached yet. The car rows come only from the EV car link,
+whatever the task's kind; the not-accepting row is device-neutral and never says *charge*. PELS's
+own decisions never downgrade a status: limiting for the hard cap, the daily budget or a
+higher-priority device, and the settle after a command, are already in the plan, and treating them
+as live risk flipped the chip (and the status Flow) on every shed cycle. They still appear in the
+past-task explanation.
+
+An at-risk task with no live cause uses the widget's hedged line on the detail hero too
+(`Limited time left before the deadline.`, or the budget variants), with no device button; the
+`Not enough time … Lower the target` sentence and `Adjust device` belong to `Cannot finish`.
 
 ### Smart task list status chips
 
@@ -765,7 +804,7 @@ The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABE
 | `Paused — unplugged` | EV: charging task is paused because the car is unplugged or the session ended. |
 | `Paused — not managed` | "Managed by PELS" is off for the device, so PELS plans nothing for it. The task is **paused, not ended** — it resumes on the next cycle after the device is managed again, and nothing about it is deleted. Both kinds can reach this state. |
 | `On track` | PELS currently expects the task to reach the target — including when the plan is allocated and healthy but its first hour is still in the future. |
-| `At risk` | Plan exists but there is limited time or room left. |
+| `At risk` | Plan exists but there is limited time or room left, or a live cause outside the plan holds the device back (see "Live causes on an at-risk or cannot-finish task"). |
 | `Cannot finish` | Not enough usable time or energy delivery before the deadline. |
 | `Satisfied` | The observed target is met. PELS resumes tracking if a later reading drops below it. |
 
@@ -839,10 +878,9 @@ An energy task never gets `energy_underestimate` or `low_confidence`: its requir
 target and its rate is exact, so nothing was estimated or learned, and those misses read as
 `capacity_shortfall`.
 
-Keep them fragment-shaped, blameless, and ≤ ~48 characters so they fit one row at
-320 px. None of them may name a remedy — the recourse button owns that — and per
-`feedback_hard_cap_is_physical` none may suggest raising the hard cap or the
-daily budget.
+The residual sentences in the table above stay fragment-shaped, blameless, and ≤ ~48 characters
+so they fit one row at 320 px. None of them may name a remedy — the recourse button owns that — and
+per `feedback_hard_cap_is_physical` none may suggest raising the hard cap or the daily budget.
 
 `capacity_shortfall` names **power or time** deliberately: its producer cause
 `time_capacity` is defined as "physical/time even uncapped" and is fed by both
@@ -850,6 +888,18 @@ daily budget.
 was simply too soon lands in the same bucket as a power-starved run and the
 persisted data cannot separate them. A power-only sentence would send an owner
 hunting for power they never needed.
+
+A run with recorded delivery evidence names its last blocker instead, as a full sentence from
+`CAUSE_COPY` in `deferredPlanHistoryAttribution.ts`, then `Earlier:` with at most ONE earlier
+blocker: the one that held delivery back longest. Two sentences already wrap to about three lines
+on a 320 px widget row. A momentary settle (`control_pending`, `Delivery was waiting for device
+control to settle.`) is never the earlier blocker; it echoes the hold around it. House capacity
+limiting reads `Not enough available power held delivery back.`, never the per-device
+`Power-limit control` toggle's name. The car causes name the car, as the live copy does: `The car
+stopped at its own charge limit, below this smart task’s target.` and `The car delayed charging on
+its own schedule or smart charging.`; a device that stopped reads `The device stopped taking power
+before reaching the target.` These sentences are not bound by the 48-character rule, and they name
+no remedy either.
 
 ### Past-task outcome chips
 
@@ -862,27 +912,27 @@ closed adjective set to label how a finished run ended. Source: `OUTCOME_LABELS`
 | `met` | `Succeeded` | ok |
 | `missed` | `Missed` | warn |
 | `abandoned` | `Abandoned` | muted |
-| `replaced` | `Abandoned` | muted |
+| `replaced` | `Replaced` | muted |
 | `unknown` | `Unknown` | muted |
 
-`Abandoned` is the canonical word for a run that stopped before the deadline
-without succeeding or missing — e.g. the user cleared the smart task, replaced
-it with a fresh one, or the diagnostic stream stopped (EV unplugged) before the
-deadline. Both the `abandoned` and `replaced` underlying outcomes render the
-same `Abandoned` chip; the distinction lives in the postmortem body, not the
-chip. Do **not** drift to `Cancelled`, `Aborted`, `Skipped`, `Ended`, or
-`Stopped` in user-facing copy — the chip word is `Abandoned`.
+`Abandoned` describes an unfinished run that was cleared or stopped being
+observed before the deadline. `Replaced` describes an unfinished run whose
+target or deadline was changed before its deadline. A task still satisfied at
+replacement records `Succeeded`; an earlier satisfaction that was reopened by
+a trusted observation does not count as success. Forecasts (`on_track`,
+`at_risk`, `cannot_meet`) do not determine a replacement's terminal outcome.
+Use the distinct `Abandoned` and `Replaced` chips and summary counts, both muted.
 
 #### Chip adjectives vs divider verbs
 
-The chip set is adjective-shaped (`Succeeded` / `Missed` / `Abandoned`). The
+The chip set is adjective-shaped (`Succeeded` / `Missed` / `Abandoned` / `Replaced`). The
 past-tasks week-divider heading previously used a verb form — `Week 20 · 4
 deadlines met · ≈ 41 kr` — which didn't line up with the chip vocabulary the
 rows underneath it carry. The chip set is the canonical one, and summary copy
 now aligns to the chip adjectives (`3 succeeded`, not `3 met`) so the divider
 and the rows speak the same language. Shipped in PR #1243: the divider lead
 label is now relative (`This week` / `Last week` / `Week of 12 May`) and the
-outcome counts use the chip vocabulary (`N succeeded · N missed · N abandoned`,
+outcome counts use the chip vocabulary (`N succeeded · N missed · N abandoned · N replaced`,
 non-zero counts only).
 
 #### 7-day hit-rate strip
@@ -913,14 +963,15 @@ Smart-task heroes render at most one recourse button. The label is action-orient
 | Label | When | Lands on |
 |---|---|---|
 | `Open Budget` | Daily energy budget is exhausted before the deadline. | Budget tab. |
-| `Adjust device` | Any other cannot-finish cause (shortfall, capacity pressure). | Overview tab + opens the device-settings overlay for the affected device. |
+| `Adjust device` | Any other cannot-finish cause (shortfall, capacity pressure). An at-risk task without a budget cause gets no button, and neither does a live cause (device left off, a confirmed device-side stop, the car's own limit or schedule). | Overview tab + opens the device-settings overlay for the affected device. |
 
 **History-detail "missed"** (`resolveMissedHistoryRecourse`):
 
 | Label | When | Lands on |
 |---|---|---|
 | `Lower daily budget` | Missed run because the day's energy budget was exhausted before the deadline. | Budget tab. |
-| `Review device` | Missed run because the device couldn't deliver enough (shortfall, capacity pressure, plan invalidation). | Overview tab + opens the device-settings overlay for the entry's device. |
+| `Review device` | Missed run whose last recorded blocker was anything but the daily budget or the car (the device stopped taking power, capacity pressure, priority, too little time). | Overview tab + opens the device-settings overlay for the entry's device. |
+| (none) | Missed run the car held back: its own charge limit (`device_limit`) or schedule (`device_schedule`). No PELS setting changes the car; the widget shows the car-side action (`resolveMissedHistoryCarHint`) instead. | — |
 
 The prior "Move deadline later" copy promised an action neither destination offered (deadlines are configured via Flow cards, not the device-settings overlay) and was replaced 2026-05-17. The overlay is honest about scope: shed behaviour, target power, boost, modes, priority, and deltas — i.e. settings the user can audit when a run misses.
 
@@ -1773,8 +1824,10 @@ off. This applies to charging, heating, and energy tasks; the copy stays
 device-neutral.
 
 - Title: `Keep {device name} within Smart tasks`.
-- Body: `Turn on “Only PELS starts this device” to keep it within Smart tasks. PELS turns it off if turned on outside a Smart task. Without a Smart task, it stays off.`
-- Action: `Review device`, opening that device's settings.
+- Body: `Turn on “Only PELS starts this device” to keep it within Smart tasks. PELS turns it off if it is turned on outside a Smart task. Without a Smart task, it stays off.`
+- Action: `Review device`, opening that device's settings with Setup expanded
+  and `Only PELS starts this device` scrolled into view (the setting the body
+  names lives inside the collapsed Setup section).
 - Dismissal is remembered per device and suggestion type. Enabling the policy
   removes the suggestion; disabling it brings the suggestion back unless it
   was dismissed. Toggling the policy does not clear a dismissal.
@@ -1782,13 +1835,42 @@ device-neutral.
 ### Car battery recommendations
 
 - A supported car with no charger selection is **Optional**, not Recommended.
-  Basic capacity control works without a car battery level, so `Choose a
-  charger for <car>` must never imply that the setup is wrong.
+  Basic capacity control works without a car battery level, so `Select <car>
+  on <charger>` must never imply that the setup is wrong. It is offered only
+  for a car PELS has already matched to one of the home's chargers, names the
+  charger it was matched to most recently, and its `Open charger` action opens
+  that charger. The body names the match:
+  `PELS has matched <car> to <charger>. Select the car in its Car section so PELS can read its battery level while it charges.`
+  Selecting a car switches off the charger's other battery sources until a
+  match, so recommending a car that has never matched would steer a working
+  Flow-reported level into no level at all.
 - An enabled **Report battery level for charger** Flow action becomes a real
   recommendation only when its target charger has a selected car. PELS ignores
   that action in this state, so the recommendation names the charger, names the
   single Flow when possible, and asks the owner to remove the action or disable
-  the Flow if it is no longer needed.
+  the Flow if it is no longer needed. That removal advice needs a selected car
+  that has been matched to this charger (now or in the retained history). Until
+  then the Flow is the owner's only working source, and the recommendation is
+  `<charger> has no battery level` instead: it says the selected car is why PELS
+  ignores the Flow, that PELS has not matched the car yet, and suggests clearing
+  the car selection and selecting the car again once it shows as matched.
+  Action `Open charger`.
+- Each car row in the charger's car picker carries a hint:
+  `Last matched to this charger on 3 Oct`; `Not matched to this charger` when
+  the car has matched a different charger (no "yet": it is not about to match
+  here); otherwise `Not matched to this charger yet`. No hint while the match
+  history is unreadable or the list failed to refresh. No count: a session
+  usually casts one vote on plug-in and another on unplug.
+- While a selected car has never matched this charger, the charger-page Flow
+  note reads `This charger has no battery level until PELS matches a selected
+  car. If a Flow card or the charger itself reported the level before, clear
+  the selection to keep using it, and select the car again once it shows as
+  matched.` Otherwise, before a match, it reads `Until a car is matched, this
+  charger has no battery level. While a car is selected, PELS ignores both the
+  Flow card that reports it and the charger's own reading.`
+- Flow advice (removal or the no-battery-level warning) needs a car list that
+  refreshed successfully and readable match history; otherwise Setup gives
+  neither and reports that some checks could not be refreshed.
 - A selected and matched car that has not reported a finite battery level is a
   local warning on the charger page. An unmatched car keeps the more specific
   `Waiting to match a car` state; it is expected matching latency, not the same

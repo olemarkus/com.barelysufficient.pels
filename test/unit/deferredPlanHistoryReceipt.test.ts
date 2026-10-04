@@ -406,8 +406,7 @@ describe('groupPlanHistoryByIsoWeek', () => {
 
   it('uses chip-vocabulary outcome counts and surfaces misses + abandons (PR-11)', () => {
     // Mixed week: 2 succeeded, 1 missed, 1 abandoned, 1 replaced. The
-    // divider should surface the non-zero outcome counts and roll abandoned
-    // + replaced into a single `abandoned` figure per ui-terminology.md.
+    // divider should surface distinct non-zero counts for each outcome.
     const entries = [
       buildEntry({ id: 'a', outcome: 'met', deadlineAtMs: DEADLINE_MS, totalCost: 10 }),
       buildEntry({ id: 'b', outcome: 'met', deadlineAtMs: DEADLINE_MS - HOUR_MS, totalCost: 8 }),
@@ -420,8 +419,8 @@ describe('groupPlanHistoryByIsoWeek', () => {
     const heading = groups[0]!.heading;
     expect(heading).toContain('2 succeeded');
     expect(heading).toContain('1 missed');
-    // abandoned + replaced both collapse into the `abandoned` chip noun.
-    expect(heading).toContain('2 abandoned');
+    expect(heading).toContain('1 abandoned');
+    expect(heading).toContain('1 replaced');
     // Engineer-facing "Week 20" copy is gone — relative phrasing leads.
     expect(heading).not.toMatch(/Week \d/);
     // Chip vocabulary, not the legacy verb "N deadlines met".
@@ -701,9 +700,8 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
     expect(strip!.text).toBe('Last 7 days, all devices · 8 succeeded · 3 missed · 1 abandoned · 73% of 11 finished');
   });
 
-  it('collapses replaced into abandoned for the chip count', () => {
-    // `replaced` is the user-swapped path; it should fold into the same
-    // chip-vocabulary `abandoned` bucket as the week-divider grouping does.
+  it('counts replaced separately without changing the finished denominator', () => {
+    // User-swapped runs have a distinct count and remain outside the hit rate.
     const strip = resolvePlanHistory7DayHitRateStrip(
       [
         buildEntry({ id: 'a', outcome: 'met' }),
@@ -714,9 +712,11 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
       'UTC',
     );
     expect(strip).not.toBeNull();
-    expect(strip!.abandoned).toBe(2);
+    expect(strip!.abandoned).toBe(1);
+    expect(strip!.replaced).toBe(1);
     expect(strip!.succeeded).toBe(1);
-    expect(strip!.text).toContain('2 abandoned');
+    expect(strip!.hitRatePercent).toBe(100);
+    expect(strip!.text).toContain('1 abandoned · 1 replaced');
   });
 
   it('returns a null hit rate when only abandoned entries land in the window', () => {
@@ -732,7 +732,7 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
     );
     expect(strip).not.toBeNull();
     expect(strip!.hitRatePercent).toBeNull();
-    expect(strip!.text).toBe('Last 7 days, all devices · 2 abandoned');
+    expect(strip!.text).toBe('Last 7 days, all devices · 1 abandoned · 1 replaced');
   });
 
   it('includes entries on the 7-day boundary and excludes those just outside it', () => {

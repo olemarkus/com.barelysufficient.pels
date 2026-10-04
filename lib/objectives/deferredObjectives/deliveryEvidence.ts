@@ -99,14 +99,31 @@ const resolveBlocker = (facts: TaskDeliveryFacts, confirmed: boolean): TaskDeliv
   }
   return { kind: 'clear' };
 };
+/**
+ * Newest intervals kept per task. Every blocked tick extends or appends one
+ * interval, and the evidence is persisted every tick and copied into history,
+ * so an unbounded list grows with every flip between causes (a capacity
+ * shed/settle cycle appends two per cycle). The list is a recent window: the
+ * durations it carries rank contributors for the past-task explanation, and
+ * the first-seen `contributors` list keeps every cause that ever blocked
+ * delivery, so dropping old intervals loses no cause. Older persisted rows with
+ * a longer list stay valid and are trimmed on their next append.
+ *
+ * The window is sized so an ordinary run never fills it. A reader that needs
+ * every interval of a run must treat a full list as possibly truncated: the
+ * daily-budget miss attribution (`lib/weather/deadlineMissBudgetDay.ts`) does,
+ * and mirrors this value as `DELIVERY_INTERVAL_WINDOW` because `lib/weather`
+ * may not import `lib/objectives`. Keep both in sync.
+ */
+export const MAX_DELIVERY_INTERVALS = 120;
 const appendInterval = (
   intervals: TaskDeliveryInterval[], cause: TaskDeliveryCause, fromMs: number, toMs: number,
 ): TaskDeliveryInterval[] => {
   const tail = intervals.at(-1);
-  if (tail && tail.cause === cause && tail.toMs === fromMs) {
-    return [...intervals.slice(0, -1), { ...tail, toMs }];
-  }
-  return [...intervals, { fromMs, toMs, cause }];
+  const next = tail && tail.cause === cause && tail.toMs === fromMs
+    ? [...intervals.slice(0, -1), { ...tail, toMs }]
+    : [...intervals, { fromMs, toMs, cause }];
+  return next.length > MAX_DELIVERY_INTERVALS ? next.slice(-MAX_DELIVERY_INTERVALS) : next;
 };
 /** One transition per lifecycle tick; a cleared cause survives only as a contributor. */
 export const observeTaskDelivery = (
@@ -141,14 +158,44 @@ export const activeDeliveryCause = (evidence: TaskDeliveryEvidence): TaskDeliver
     ? evidence.explanation.primary.cause : 'clear'
 );
 
-const DELIVERY_RISK_CAUSES: ReadonlySet<TaskDeliveryCause | 'clear'> = new Set([
-  'device_not_accepting', 'device_limit', 'device_schedule', 'capacity_limited', 'budget_limited',
-  'priority_limited', 'control_failed', 'uncontrolled',
-]);
-const DELIVERY_REASON = {
-  device_limit: 'objective_device_limit',
+/**
+ * Live causes that may downgrade a healthy reported status, and the reason code
+ * each one carries to every surface.
+ *
+ * Only DEVICE-SIDE causes the horizon plan cannot see, and only once they are
+ * confirmed, qualify:
+ *  - `device_not_accepting`: the device took no energy through
+ *    `NON_DELIVERY_HOLD_MS` of claimed, permitted delivery, or the car link
+ *    confirmed a self-stop episode.
+ *  - `device_limit`: the car stopped at its qualified own charge limit.
+ *  - `device_schedule`: the car link confirmed a self-stop held by the car's
+ *    own schedule.
+ *
+ * Deliberately excluded, and recorded only as delivery evidence for history:
+ *  - `capacity_limited`, `budget_limited`, `priority_limited`: PELS's own
+ *    per-cycle planning decisions. The horizon plan already prices them in, so
+ *    a shed in a claimed hour is not new risk, and overlaying it flipped the
+ *    status (and fired the status Flow trigger) on every shed/settle cycle.
+ *  - `control_pending`: a settle in progress (cooldowns, restore throttles).
+ *  - `control_failed`: a per-tick executor convergence fact with no hold
+ *    (one unmet axis, an activation backoff, a momentarily unavailable device).
+ *    A failure that persists shows up as lost progress, which the next settle
+ *    re-plans against; a device that stays unavailable leaves the plan through
+ *    its own inactive path.
+ *  - `uncontrolled`: either the owner's "Leave off until turned on again",
+ *    which `resolveDiagnosticReasonCode` reports as `objective_device_left_off`
+ *    from the diagnostic itself, or a PELS policy hold (start policy, solar
+ *    surplus, the task's own avoided hour, no command authority) that the plan
+ *    owns. Neither is device-side evidence that delivery failed.
+ */
+const DELIVERY_RISK_REASON = {
   device_not_accepting: 'objective_not_accepting_energy',
-} as const;
+  device_limit: 'objective_device_limit',
+  device_schedule: 'objective_device_schedule',
+} as const satisfies Partial<Record<TaskDeliveryCause, DeferredObjectiveDiagnostic['reasonCode']>>;
+const isDeliveryRiskCause = (cause: TaskDeliveryCause | 'clear'): cause is keyof typeof DELIVERY_RISK_REASON => (
+  Object.hasOwn(DELIVERY_RISK_REASON, cause)
+);
 /** A live overlay; the settled allocation continues to own admission and revision metadata. */
 export const reportTaskDeliveryStatus = (
   diagnostic: DeferredObjectiveDiagnostic, read: TaskDeliveryReader,
@@ -156,14 +203,12 @@ export const reportTaskDeliveryStatus = (
   if (diagnostic.deadlineAtMs === null || diagnostic.trajectory.kind !== 'resolved') return diagnostic;
   if (diagnostic.trajectory.status === 'satisfied' || diagnostic.trajectory.status === 'invalid') return diagnostic;
   const cause = activeDeliveryCause(read(diagnostic.deviceId, diagnostic.deadlineAtMs));
-  if (!DELIVERY_RISK_CAUSES.has(cause)) return diagnostic;
-  const reasonCode = cause === 'device_limit' || cause === 'device_not_accepting'
-    ? DELIVERY_REASON[cause] : 'objective_delivery_restricted';
+  if (!isDeliveryRiskCause(cause)) return diagnostic;
   return {
     ...diagnostic,
     trajectory: {
       kind: 'resolved', status: diagnostic.trajectory.status === 'cannot_meet' ? 'cannot_meet' : 'at_risk',
     },
-    reasonCode,
+    reasonCode: DELIVERY_RISK_REASON[cause],
   };
 };

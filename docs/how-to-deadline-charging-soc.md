@@ -97,6 +97,8 @@ Open the charger's **Car** section in **More -> Apps -> PELS -> Settings -> Devi
 
 Selecting a car does not itself establish a match. While the page says **Waiting to match a car**, this charger has no battery level. While any car is selected, PELS ignores both the charger's own reading and the **Report battery level for charger** Flow card, including before a match. Clear the selection if you want to use either of those sources instead.
 
+PELS matches cars to chargers whether or not they are selected. Under each car, the **Car** section shows `Last matched to this charger on <date>` or `Not matched to this charger yet`. If you already report the battery level through a Flow, wait until the car shows as matched before you select it.
+
 ### Path B: The Charger Reports Battery Percentage
 
 Leave the charger's car selection empty. Some charger integrations expose battery level on the charger device itself. If Homey exposes that as a supported battery percentage capability, PELS can read it directly.
@@ -199,7 +201,8 @@ Use deadline charging when the car's final battery level matters.
 | Battery percentage does not appear | Check whether the value is on the charger or on a separate car device. If it is on the car device, use **Report battery level for charger**. |
 | The task stays at **Building plan…** | Check that price data is available through the ready-by time. Tomorrow's prices may not be published yet. |
 | The charger starts in an hour outside the plotted task plan | The task may still need an unbooked hour, which remains eligible through live planner admission. A deferred hour is held off. Turn **Power-limit control** off to prevent normal run-when-power-is-available behavior when no active task controls the charger. |
-| The task is **At risk** | Check that the car is plugged in, the charger current is correct, the hard cap leaves enough room, and the target is realistic for the time left. |
+| The task is **At risk** | Check that the car is plugged in, the charger current is correct, and the target is realistic for the time left. If other devices take the room, grant the task permission to limit lower-priority devices. If the reason names the car's own schedule or smart charging, turn that off in the car. |
+| The car's own charge limit is below the target | The task keeps your target. As soon as PELS knows the car's limit is lower, the task shows **At risk** (or **Cannot finish**) with the limit as the reason, and it ends as missed if the car stops there. Raise the charge limit in the car, or lower the task's target to the car's limit. |
 | The task is **Cannot finish** | Lower the target, move the ready-by time later, plug in earlier, reduce competing load, or review the charger setup. Raising the hard cap is only correct if your grid tariff step is actually higher. |
 | Charging current does not change | For Easee, check the path you chose: **Use built-in device control**, or the existing current-control Flow. For other chargers, recheck the Flow from [Configure an EV Charger](/ev-charger) and use **EV charger current (A)**. |
 

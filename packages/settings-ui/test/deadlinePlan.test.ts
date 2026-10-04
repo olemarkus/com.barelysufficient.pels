@@ -12,6 +12,7 @@ import type {
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   deadlineLabels,
+  resolveSmartTaskLiveCause,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
 } from '../../shared-domain/src/deadlineLabels.ts';
 import { toResolvedActivePlan } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
@@ -1348,12 +1349,11 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.recourse?.deviceId).toBeUndefined();
   });
 
-  it('keeps device-side routing when floorShortfallCause is step_power', () => {
+  it('keeps the budget out of an at-risk step_power hero', () => {
     // Step-power undercount means the floor was short because climbing a
     // higher step (within budget) would help — the cause is device-side, not
-    // budget, so the budget recourse must stay silent. The hero copy stays on
-    // the device-side `Adjust device` button as expected for step-bound
-    // floors.
+    // budget, so the budget recourse must stay silent. The task is only at
+    // risk, so it reads the widget's hedged line with no button.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
     const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -1418,9 +1418,8 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.hero.recourse?.targetTab).toBe('overview');
-    expect(payload.hero.recourse?.label).toBe('Adjust device');
-    expect(payload.hero.metaLine).not.toMatch(/today's daily budget is fully booked/i);
+    expect(payload.hero.recourse).toBeNull();
+    expect(payload.hero.metaLine).toBe('Limited time left before the deadline.');
   });
 
   // Headline-qualifier decision (2026-05-23):
@@ -2303,11 +2302,12 @@ describe('deadline plan page payload', () => {
     expect(payload.planInputs.perUnitRateNote).toBe('Estimated — refining as PELS observes charging.');
   });
 
-  // Owner ruling 2026-09-26: an 80 % task on a car that stops at 70 % plans to
-  // 70 %, and the page says why its plan stops short of the target it shows.
+  // An 80 % task on a car that stops at 70 % keeps its 80 % target: the page
+  // says the car's own limit is why delivery stops short, and suggests raising it.
   const carCapPlanInput = (
     carChargeLimit: NonNullable<DeferredObjectiveActivePlanV1['carChargeLimit']>,
     percent: number | null,
+    live: Pick<DeferredObjectiveActivePlanV1, 'diagnosticReasonCode'> = {},
   ) => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
@@ -2365,6 +2365,7 @@ describe('deadline plan page payload', () => {
       pending: false,
       objectiveSignature: 'sig',
       carChargeLimit,
+      ...live,
       original: bootstrapRevision,
       latest: bootstrapRevision,
     };
@@ -2393,29 +2394,51 @@ describe('deadline plan page payload', () => {
     const payload = expectOk(testExports.buildObjectivePayload(carCapPlanInput({ limitValue: 70, reached: false }, 40)));
 
     expect(payload.hero.metaLine).toBe(
-      "Your car stops at its own charge limit of 70%, below this smart task's 80% target."
+      "Your car stops at its own charge limit of 70%, below this smart task’s 80% target."
         + ' Raise the car’s charge limit to allow this task to reach its target.',
     );
     expect(payload.hero.deliveredSoFarLine).toContain('now 40% of 80% target');
+    // Owner decision: a known lower car limit means the car will stop short, so
+    // the task is at risk before it gets there, with no settings button.
+    expect(payload.hero.chips).toContainEqual({ text: 'At risk', tone: 'warn' });
+    expect(payload.hero.recourse).toBeNull();
   });
 
   it('keeps the requested target unmet when a stopped car has no reading', () => {
     // The charger ends the session at the limit and takes the car's level with it.
     const renderInput = testExports.resolveRenderInput(carCapPlanInput({ limitValue: 70, reached: true }, null));
 
+    // The status does not depend on the reading: the card reports the same
+    // At risk the list and the widget do, and leaves out only the progress.
     expect(renderInput).toMatchObject({
       status: 'unavailable',
       reason: 'no_current_reading',
-      body: "Your car stopped at its own charge limit of 70%, below this smart task's 80% target."
-        + ' The requested target is still unmet.',
+      body: "Your car stopped at its own charge limit of 70%, below this smart task’s 80% target."
+        + ' Raise the car’s charge limit to let it continue.',
+      statusChip: { text: 'At risk', tone: 'warn' },
     });
+  });
+
+  it('reports a confirmed stop as at risk with the device-side reason, matching the list and widget', () => {
+    // The car's limit (90 %) is above the target, so only the device-side cause explains the risk.
+    const payload = expectOk(testExports.buildObjectivePayload(carCapPlanInput(
+      { limitValue: 90, reached: false }, 60, { diagnosticReasonCode: 'objective_not_accepting_energy' },
+    )));
+    expect(payload.hero.chips).toContainEqual({ text: 'At risk', tone: 'warn' });
+    expect(payload.hero.metaLine).toBe(
+      'The device stopped taking power while PELS allowed it to run. Check whether it switched itself off.',
+    );
+    expect(payload.hero.recourse).toBeNull();
   });
 
   it('does not report completion at a lower car limit while the reading is available', () => {
     const payload = expectOk(testExports.buildObjectivePayload(carCapPlanInput({ limitValue: 70, reached: true }, 70)));
     expect(payload.hero.deliveredSoFarLine).toContain('now 70% of 80% target');
-    expect(payload.hero.metaLine).toContain('The requested target is still unmet.');
+    expect(payload.hero.metaLine).toBe("Your car stopped at its own charge limit of 70%, below this smart task’s 80% target."
+      + ' Raise the car’s charge limit to let it continue.');
     expect(payload.hero.chips).toContainEqual({ text: 'At risk', tone: 'warn' });
+    // The fix is in the car, never a PELS setting: no device button.
+    expect(payload.hero.recourse).toBeNull();
   });
 
   it('omits the bootstrap note once the revision has been refined to learned data', () => {
@@ -4961,6 +4984,7 @@ describe('resolveHeroHeadline', () => {
       labels,
       firstChargingHour: queuedHour,
       nowMs: queuedHour.startsAtMs - 60_000,
+      liveCause: null,
       tone: 'alert',
     })).toBeNull();
   });
@@ -4971,6 +4995,7 @@ describe('resolveHeroHeadline', () => {
       labels,
       firstChargingHour: queuedHour,
       nowMs: queuedHour.startsAtMs - 60_000,
+      liveCause: null,
       tone: 'warn',
     })).toBe('Heating from 16:00');
   });
@@ -4981,6 +5006,7 @@ describe('resolveHeroHeadline', () => {
       labels,
       firstChargingHour: queuedHour,
       nowMs: queuedHour.startsAtMs + 60_000,
+      liveCause: null,
       tone: 'good',
     })).toBe('Heating now');
   });
@@ -4991,6 +5017,7 @@ describe('resolveHeroHeadline', () => {
       labels,
       firstChargingHour: undefined,
       nowMs: queuedHour.startsAtMs,
+      liveCause: null,
       tone: 'good',
     })).toBe('On track — no action needed yet');
   });
@@ -5004,8 +5031,36 @@ describe('resolveHeroHeadline', () => {
       labels,
       firstChargingHour: undefined,
       nowMs: queuedHour.startsAtMs,
+      liveCause: null,
       tone: 'warn',
     })).toBeNull();
+  });
+
+  // "Heating now" from the booked hour would contradict a reason line saying the
+  // device is being left off or has stopped taking power.
+  it.each(['objective_device_left_off', 'objective_not_accepting_energy'] as const)(
+    'suppresses the live-state headline under a %s live cause',
+    async (code) => {
+      const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
+      expect(resolveHeroHeadline({
+        labels,
+        firstChargingHour: queuedHour,
+        nowMs: queuedHour.startsAtMs + 60_000,
+        liveCause: resolveSmartTaskLiveCause(code, null),
+        tone: 'warn',
+      })).toBeNull();
+    },
+  );
+
+  it('keeps the live-state headline on a satisfied or healthy hero with a stale cause', async () => {
+    const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroHeadline({
+      labels,
+      firstChargingHour: queuedHour,
+      nowMs: queuedHour.startsAtMs + 60_000,
+      liveCause: resolveSmartTaskLiveCause('objective_device_left_off', null),
+      tone: 'good',
+    })).toBe('Heating now');
   });
 });
 
@@ -5108,14 +5163,16 @@ describe('resolveQueuedHeadlineReason', () => {
 // view never branches on raw cause codes.
 describe('resolveCannotMeetRecourse', () => {
   const labels = deadlineLabels('temperature');
+  const leftOff = resolveSmartTaskLiveCause('objective_device_left_off', null);
 
   it('returns null when the hero is not cannot-meet', async () => {
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
     expect(resolveCannotMeetRecourse({
       labels,
       cannotMeet: false,
+      planStatus: 'cannot_meet' as const,
       budgetRole: 'none' as const,
-      deviceLeftOff: false,
+      liveCause: null,
       deviceId: 'heater',
     })).toBeNull();
   });
@@ -5125,8 +5182,9 @@ describe('resolveCannotMeetRecourse', () => {
     const out = resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
+      planStatus: 'cannot_meet' as const,
       budgetRole: 'sole' as const,
-      deviceLeftOff: false,
+      liveCause: null,
       deviceId: 'heater',
     });
     expect(out?.label).toBe('Open Budget');
@@ -5141,8 +5199,9 @@ describe('resolveCannotMeetRecourse', () => {
     const out = resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
+      planStatus: 'cannot_meet' as const,
       budgetRole: 'none' as const,
-      deviceLeftOff: false,
+      liveCause: null,
       deviceId: 'heater',
     });
     expect(out?.label).toBe('Adjust device');
@@ -5161,15 +5220,17 @@ describe('resolveCannotMeetRecourse', () => {
     expect(resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
+      planStatus: 'cannot_meet' as const,
       budgetRole: 'contributing' as const,
-      deviceLeftOff: false,
+      liveCause: null,
       deviceId: 'heater',
     })).toBeNull();
 
     const meta = resolveCannotMeetMeta({
       labels,
+      planStatus: 'cannot_meet' as const,
       budgetRole: 'contributing' as const,
-      deviceLeftOff: false,
+      liveCause: null,
     });
     expect(meta).toBe(labels.cannotMeetDailyBudgetContributed);
     // Distinct from the sole-cause line, which promises a fix this case lacks.
@@ -5189,21 +5250,51 @@ describe('resolveCannotMeetRecourse', () => {
     expect(resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
+      planStatus: 'cannot_meet' as const,
       budgetRole: 'sole' as const,
-      deviceLeftOff: true,
+      liveCause: leftOff,
       deviceId: 'heater',
     })).toBeNull();
   });
 
   it('explains an at-risk hero with the device, not the target or the budget', async () => {
     const { resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetMeta({ labels, budgetRole: 'sole' as const, deviceLeftOff: true }))
+    expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'sole' as const, liveCause: leftOff }))
       .toBe('Device is staying off until turned on again.');
     // Unheld tasks keep their existing diagnosis.
-    expect(resolveCannotMeetMeta({ labels, budgetRole: 'none' as const, deviceLeftOff: false }))
+    expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'none' as const, liveCause: null }))
       .toContain('Not enough time');
-    expect(resolveCannotMeetMeta({ labels, budgetRole: 'sole' as const, deviceLeftOff: false }))
+    expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'sole' as const, liveCause: null }))
       .toContain('daily budget');
+  });
+
+  it.each([
+    ['objective_not_accepting_energy', 'The device stopped taking power while PELS allowed it to run.'],
+    ['objective_device_limit', 'Your car stopped at its own charge limit'],
+    ['objective_device_schedule', 'Your car is delaying charging'],
+  ] as const)('explains a confirmed %s with its own reason and no settings button', async (code, reason) => {
+    const { resolveCannotMeetRecourse, resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
+    const liveCause = resolveSmartTaskLiveCause(code, null);
+    expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'sole' as const, liveCause })).toContain(reason);
+    expect(resolveCannotMeetRecourse({
+      labels, cannotMeet: true, planStatus: 'at_risk' as const, budgetRole: 'none' as const, liveCause,
+      deviceId: 'heater',
+    })).toBeNull();
+  });
+
+  // A time-only at-risk task is hedged and matches the widget row: no "Lower the
+  // target" sentence and no device button for a task that can still land. A
+  // budget cause keeps its own sentence and the Open Budget button.
+  it('explains a time-only at-risk hero with the widget\'s hedged line and no button', async () => {
+    const { resolveCannotMeetRecourse, resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveCannotMeetMeta({ labels, planStatus: 'at_risk', budgetRole: 'none', liveCause: null }))
+      .toBe('Limited time left before the deadline.');
+    expect(resolveCannotMeetRecourse({
+      labels, cannotMeet: true, planStatus: 'at_risk', budgetRole: 'none', liveCause: null, deviceId: 'heater',
+    })).toBeNull();
+    expect(resolveCannotMeetRecourse({
+      labels, cannotMeet: true, planStatus: 'at_risk', budgetRole: 'sole', liveCause: null, deviceId: 'heater',
+    })?.label).toBe('Open Budget');
   });
 
   it('emits an empty deviceId when none is available (cold-start / history-detail-only state)', async () => {
@@ -5215,8 +5306,9 @@ describe('resolveCannotMeetRecourse', () => {
     const out = resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
+      planStatus: 'cannot_meet' as const,
       budgetRole: 'none' as const,
-      deviceLeftOff: false,
+      liveCause: null,
       deviceId: '',
     });
     expect(out?.label).toBe('Adjust device');
@@ -5730,13 +5822,10 @@ describe('cost + delivered-so-far hero lines', () => {
     expect(payload.hero.headline).toBe('Heating from 16:00');
   });
 
-  it('at-risk: "Adjust device" recourse threads the active task deviceId for the deep-link', () => {
-    // Regression for the at-risk hero's "Adjust device" recourse landing on
-    // Overview without a deviceId — the dispatcher then had no overlay to
-    // open and the user dead-ended on the tab. Producer must thread the
-    // active task's deviceId onto the device-side recourse payload so the
-    // click closes the panel AND opens the device-settings overlay in one
-    // pass (mirrors the history-detail "Review device" pattern).
+  it('at-risk: a time-only at-risk hero hedges like the widget and offers no device button', () => {
+    // An at-risk task can still land: "Not enough time … Lower the target" and
+    // "Adjust device" belong to Cannot finish. The hero says what the widget
+    // row says for the same task.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 4);
     const prices = buildStubPrices(now, 4, 100);
@@ -5756,12 +5845,8 @@ describe('cost + delivered-so-far hero lines', () => {
       prices,
       nowMs: now.getTime(),
     }));
-    // Device-side branch: the "Adjust device" recourse carries the active
-    // task's deviceId so the click dispatcher can deep-link the overlay.
-    expect(payload.hero.recourse).not.toBeNull();
-    expect(payload.hero.recourse?.label).toBe('Adjust device');
-    expect(payload.hero.recourse?.targetTab).toBe('overview');
-    expect(payload.hero.recourse?.deviceId).toBe('heater');
+    expect(payload.hero.recourse).toBeNull();
+    expect(payload.hero.metaLine).toBe('Limited time left before the deadline.');
   });
 
   it('cannot-meet: delivered line uses the magnitude-only `still …` stem (no verdict restatement)', () => {

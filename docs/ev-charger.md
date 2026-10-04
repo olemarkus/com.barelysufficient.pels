@@ -98,7 +98,7 @@ This step is optional. Basic capacity control does not need battery reporting.
 
 Choose one of these battery-reporting paths for boost mode and Smart tasks:
 
-- **Selected car:** open the charger's **Car** section and select the supported cars that charge there. PELS uses the battery level of the car it matches to the charger. Selecting a car alone does not establish a match; while the page says **Waiting to match a car**, the charger has no battery level.
+- **Selected car:** open the charger's **Car** section and select the supported cars that charge there. PELS uses the battery level of the car it matches to the charger. Selecting a car alone does not establish a match; while the page says **Waiting to match a car**, the charger has no battery level. PELS matches cars whether or not they are selected, and each car in the list says whether it has been matched to this charger, so you can check that matching works before you rely on it.
 - **Charger reading:** leave the car selection empty. If the charger exposes a supported battery-percentage capability, PELS reads it directly.
 - **Flow reporting:** leave the car selection empty and report a battery-percentage tag from the car or charger app using the Flow below.
 
@@ -109,7 +109,7 @@ several cars or chargers could match, PELS leaves the car unmatched. Selecting a
 does not force a match, and updates delayed beyond 20 minutes may not match at all.
 
 While any car is selected, PELS ignores both the battery-reporting Flow and the charger's own reading, even before a match is available. They do not provide fallback readings. Clear the car selection to return to those sources.
-**Setup & recommendations** flags an enabled **Report battery level for charger** action for a charger with a selected car, so the ignored action can be removed or its Flow disabled when it is no longer needed.
+**Setup & recommendations** flags an enabled **Report battery level for charger** action for a charger with a selected car, so the ignored action can be removed or its Flow disabled when it is no longer needed. If no selected car has been matched to that charger yet, it instead suggests clearing the car selection so the Flow keeps working until the car shows as matched.
 
 Use this Flow shape for boost mode:
 

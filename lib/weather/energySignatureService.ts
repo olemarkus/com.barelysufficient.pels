@@ -95,6 +95,7 @@ export function computeEnergySignatureUpdate(
     slopeCi: fit.slopeCiLow !== undefined ? [round2(fit.slopeCiLow), round2(fit.slopeCiHigh ?? 0)] : null,
     balancePointC: fit.balancePointC ?? null,
     baseLoadKwhPerDay: fit.baseLoadKwhPerDay !== undefined ? round2(fit.baseLoadKwhPerDay) : null,
+    seasonKwh: fit.seasonKwh !== undefined ? round2(fit.seasonKwh) : null,
     pseudoR2: round2(fit.pseudoR2),
     heatLossWPerK: fit.heatLossWPerK !== undefined ? Math.round(fit.heatLossWPerK) : null,
     curvatureSteeperWhenCold: fit.curvatureSteeperWhenCold,
@@ -149,6 +150,7 @@ function buildSuggestion(params: {
     forecastSource: forecast.source,
     ...suggestDailyBudgetKwh({
       fit,
+      targetDateKey: forecast.targetDateKey,
       forecastMeanTempC: forecast.meanTempC,
       capacityLimitKw,
       capacityDayHours,

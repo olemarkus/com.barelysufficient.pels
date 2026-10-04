@@ -33,6 +33,7 @@ import {
   formatSmartTaskListConfidenceChipLabel,
   RECOURSE_CANNOT_MEET_BUDGET,
   RECOURSE_CANNOT_MEET_DEVICE,
+  resolveMissedHistoryCarHint,
   resolveMissedHistoryRecourse,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
@@ -344,7 +345,7 @@ const resolveStatusId = (
     planStatus: plan.latest?.planStatus,
     firstActionAtMs: plan.latest?.hours[0]?.startsAtMs ?? null,
     nowMs,
-    carChargeLimitReached: plan.carChargeLimit?.reached === true,
+    carChargeLimit: resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue),
     liveCompletion: plan.liveCompletion,
   })
 );
@@ -476,10 +477,11 @@ const resolveEndedTarget = (entry: ResolvedDeferredObjectivePlanHistoryEntry): n
   isFiniteNumber(entry.targetValue) ? entry.targetValue : null
 );
 
-// Use the shared recorded-cause recourse; the widget adds its compact hint.
+// Use the shared recorded-cause recourse; the widget adds its compact hint. A
+// run the car held back has no PELS recourse, only the car-side action.
 const resolveEndedRecourse = (entry: ResolvedDeferredObjectivePlanHistoryEntry): string | null => {
   const recourse = resolveMissedHistoryRecourse(entry);
-  if (recourse === null) return null;
+  if (recourse === null) return resolveMissedHistoryCarHint(entry);
   return recourse.targetTab === 'budget' ? RECOURSE_CANNOT_MEET_BUDGET : RECOURSE_CANNOT_MEET_DEVICE;
 };
 

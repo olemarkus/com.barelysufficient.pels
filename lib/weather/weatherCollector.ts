@@ -23,9 +23,9 @@ import {
 import { readMeterScopeDailyKwh } from './weatherMeterScope';
 import { WeatherBackfillChain } from './weatherBackfillChain';
 import { performBudgetAutoApply } from './weatherAutoApply';
-import {
-  foldBudgetPressureDay,
-} from '../../packages/shared-domain/src/energySignature/budgetPressure';
+import { budgetEvidenceLogFields } from './weatherRollupLog';
+import { foldBudgetPressureDay } from '../../packages/shared-domain/src/energySignature/budgetPressure';
+import { type BudgetHistoryReader, createBudgetHistoryReader } from './budgetDiagnosticsHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
 const HOURLY_SAMPLE_OFFSET_MS = 90 * 1000;
@@ -108,8 +108,11 @@ export class WeatherCollector {
    * switched devices mid-read.
    */
   private runGeneration = 0;
+  /** Budget diagnostics over this collector's own store instances; see `createBudgetHistoryReader`. */
+  readonly budgetHistory: BudgetHistoryReader;
 
   constructor(private readonly deps: WeatherCollectorDeps) {
+    this.budgetHistory = createBudgetHistoryReader(deps);
     this.backfillChain = new WeatherBackfillChain({
       deps,
       getState: () => this.state,
@@ -692,6 +695,7 @@ export class WeatherCollector {
     const kwh = this.meterScopeResolved
       ? readMeterScopeDailyKwh(this.state, dateKey, this.deps.getDailyKwh)
       : {};
+    const appliedBudgetKwh = this.resolveAppliedBudgetKwh(dateKey);
     this.state = rollupDay(this.state, {
       dateKey,
       dayLengthHours: Math.round((nextDayStartMs - dayStartMs) / HOUR_MS),
@@ -700,7 +704,12 @@ export class WeatherCollector {
       kwhUncontrolled: kwh.uncontrolled,
       unreliablePower: periodsOverlapWindow(this.deps.getUnreliablePeriods(), dayStartMs, nextDayStartMs),
       suppression: this.deps.getDaySuppression(dateKey),
-      appliedBudgetKwh: this.resolveAppliedBudgetKwh(dateKey),
+      appliedBudgetKwh,
+      // Read under the same meter-scope gate as the total: a day the scope
+      // does not vouch for has no measured usage on either axis.
+      kwhBudgetCounted: appliedBudgetKwh !== undefined && kwh.total !== undefined
+        ? this.deps.getBudgetCountedKwh(dateKey)
+        : undefined,
     });
     const record = this.state.records.find((entry) => entry.dateKey === dateKey);
     if (record) this.foldClosedDayIntoBudgetPressure(record);
@@ -712,25 +721,9 @@ export class WeatherCollector {
       tempSampleCount: record?.tempSampleCount,
       kwhTotal: record?.kwhTotal,
       quality: record?.quality,
-      appliedBudgetKwh: record?.appliedBudgetKwh ?? null,
-      ...damageVerdictLogFields(record),
+      ...budgetEvidenceLogFields(record),
       budgetPressureKwh: this.state.budgetPressure?.kwh ?? 0,
       recordCount: this.state.records.length,
     });
   }
 }
-
-/**
- * The two denial signals as the rollup log reports them. Both resolve absence
- * to `null` rather than fabricating zero.
- *
- * Split out of `rollup` to keep that method under the complexity cap.
- */
-const damageVerdictLogFields = (
-  record: WeatherDailyRecord | undefined,
-): { budgetDeniedKwh: number | null; deadlineMissDeniedKwh: number | null } => ({
-  // Cause-independent denied energy integrated across observed demand spans.
-  budgetDeniedKwh: record?.suppression?.budgetDeniedKwh ?? null,
-  // Denied energy attached to budget-bound smart-task deadline misses.
-  deadlineMissDeniedKwh: record?.suppression?.deadlineMissDeniedKwh ?? null,
-});

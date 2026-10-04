@@ -31,7 +31,7 @@ const shedState = (overrides: {
     ? null
     : {
       powerW: READING_W,
-      decisions: new Map([['vvb', { decidedAtMs: NOW - 10_000, creditedKw: 2 }]]),
+      decisions: new Map([['vvb', [{ decidedAtMs: NOW - 10_000, creditedKw: 2 }]]]),
       stepTargets: new Map(),
       ...overrides.latch,
     };
@@ -47,7 +47,7 @@ const shedState = (overrides: {
 };
 
 const decidedAt = (decidedAtMs: number): Partial<ShedPlanLatch> => ({
-  decisions: new Map([['vvb', { decidedAtMs, creditedKw: 2 }]]),
+  decisions: new Map([['vvb', [{ decidedAtMs, creditedKw: 2 }]]]),
 });
 
 const decide = (state: ReturnType<typeof shedState>, measurementTs: number, powerW: number | null) => (

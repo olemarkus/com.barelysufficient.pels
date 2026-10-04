@@ -11,7 +11,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/planHistoryV4Helpers';
 import {
   mergeRecord,
-  promoteRecordToStalled,
+  refreshRecordCompletion,
   startRecord,
 } from '../../lib/objectives/deferredObjectives/planHistoryInProgressState';
 
@@ -88,9 +88,9 @@ describe('progressSampleBucketMs', () => {
 describe('recordProgressSample (15-minute grid)', () => {
   it('keeps one sample per quarter-hour bucket, separating readings an hour grid would merge', () => {
     let ring = seedProgressSamples(tempDiag(50), 0);
-    ring = recordProgressSample(ring, tempDiag(51), 20 * 60 * 1000);
-    ring = recordProgressSample(ring, tempDiag(52), 40 * 60 * 1000);
-    ring = recordProgressSample(ring, tempDiag(53), 50 * 60 * 1000);
+    ring = recordProgressSample(ring, tempDiag(51).evaluation, 20 * 60 * 1000);
+    ring = recordProgressSample(ring, tempDiag(52).evaluation, 40 * 60 * 1000);
+    ring = recordProgressSample(ring, tempDiag(53).evaluation, 50 * 60 * 1000);
     // 0:00 / 0:20 / 0:40 / 0:50 are four distinct 15-minute buckets — the
     // old hourly grid would have collapsed them into a single sample.
     expect(drainProgressSamples(ring).map((s) => s.value)).toEqual([50, 51, 52, 53]);
@@ -98,8 +98,8 @@ describe('recordProgressSample (15-minute grid)', () => {
 
   it('upserts within a bucket: latest reading wins and keeps its real timestamp', () => {
     let ring = seedProgressSamples(tempDiag(50), 0);
-    ring = recordProgressSample(ring, tempDiag(50.4), 5 * 60 * 1000);
-    ring = recordProgressSample(ring, tempDiag(50.9), 14 * 60 * 1000);
+    ring = recordProgressSample(ring, tempDiag(50.4).evaluation, 5 * 60 * 1000);
+    ring = recordProgressSample(ring, tempDiag(50.9).evaluation, 14 * 60 * 1000);
     const drained = drainProgressSamples(ring);
     expect(drained).toHaveLength(1);
     expect(drained[0]!.value).toBe(50.9);
@@ -113,7 +113,7 @@ describe('recordProgressSample (15-minute grid)', () => {
     const misleadingReport: DeferredObjectiveDiagnostic = {
       ...trusted, currentValue: 99, reasonCode: 'objective_progress_stale',
     };
-    const ring = recordProgressSample(seedProgressSamples(initial, 0), misleadingReport, QUARTER_MS);
+    const ring = recordProgressSample(seedProgressSamples(initial, 0), misleadingReport.evaluation, QUARTER_MS);
     expect(drainProgressSamples(ring).at(-1)?.value).toBe(55);
     const record = startRecord(initial, 0, undefined)!;
     expect(mergeRecord(record, misleadingReport, QUARTER_MS, undefined).finalProgressValue).toBe(55);
@@ -127,7 +127,7 @@ describe('recordProgressSample (15-minute grid)', () => {
         currentTemperatureC: 99,
         currentValue: 99,
         reasonCode: 'objective_progress_stale',
-      }),
+      }).evaluation,
       QUARTER_MS,
     );
     expect(next).toBe(ring);
@@ -136,7 +136,7 @@ describe('recordProgressSample (15-minute grid)', () => {
   it('re-buckets onto a coarser grid when an upsert exceeds the cap', () => {
     let ring = new Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>();
     for (let i = 0; i <= PROGRESS_SAMPLES_PER_ENTRY_CAP; i += 1) {
-      ring = recordProgressSample(ring, tempDiag(20 + i * 0.1), i * QUARTER_MS);
+      ring = recordProgressSample(ring, tempDiag(20 + i * 0.1).evaluation, i * QUARTER_MS);
     }
     // The insert that crossed the cap collapsed the ring onto the 30-minute
     // grid (one kept sample per pair of quarter-hour buckets) instead of
@@ -214,7 +214,10 @@ describe('mergeRecord with accepted near-target progress', () => {
   it('keeps recording post-stall samples while finalProgress stays frozen at the plateau', () => {
     const record = startRecord(tempDiag(60.9), 0, undefined);
     expect(record).not.toBeNull();
-    const stalled = promoteRecordToStalled(record!, tempDiag(61.8), 3 * HOUR_MS, 'stalled');
+    const plateau = tempDiag(61.8);
+    const stalled = refreshRecordCompletion(record!, {
+      ...plateau.evaluation, completion: { kind: 'accepted_near_target' },
+    }, 3 * HOUR_MS);
     // Post-stall cooling tick a quarter-hour later: the sample ring is
     // deliberately NOT frozen (the coast is what the trajectory chart should
     // show) but the headline plateau values are.
@@ -228,8 +231,8 @@ describe('mergeRecord with accepted near-target progress', () => {
     expect(merged.metAtMs).toBe(3 * HOUR_MS);
     expect(merged.finalProgressValue).toBeCloseTo(61.8, 5);
     const drained = drainProgressSamples(merged.progressSamples);
-    expect(drained.map((s) => s.value)).toEqual([60.9, 61.5]);
-    expect(drained.map((s) => s.atMs)).toEqual([0, 3 * HOUR_MS + QUARTER_MS]);
+    expect(drained.map((s) => s.value)).toEqual([60.9, 61.8, 61.5]);
+    expect(drained.map((s) => s.atMs)).toEqual([0, 3 * HOUR_MS, 3 * HOUR_MS + QUARTER_MS]);
     const reopened = mergeRecord(merged, tempDiag(55), 4 * HOUR_MS, undefined);
     expect(reopened.satisfied).toBe(false);
     expect(reopened.metAtMs).toBeNull();

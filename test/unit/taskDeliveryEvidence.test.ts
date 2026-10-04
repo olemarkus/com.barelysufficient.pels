@@ -3,7 +3,11 @@ import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredO
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import type { DeferredObjectiveHorizonPlan } from '../../lib/objectives/deferredObjectives/types';
 import { partialDouble } from '../helpers/partialDouble';
-import { EMPTY_DELIVERY_EVIDENCE, activeDeliveryCause, observeTaskDelivery, suppressTaskDeliveryReservation, resolveTaskDeliveryFacts, type TaskDeliveryFacts } from '../../lib/objectives/deferredObjectives/deliveryEvidence';
+import {
+  EMPTY_DELIVERY_EVIDENCE, MAX_DELIVERY_INTERVALS, activeDeliveryCause, observeTaskDelivery, reportTaskDeliveryStatus,
+  suppressTaskDeliveryReservation, resolveTaskDeliveryFacts, type TaskDeliveryFacts,
+} from '../../lib/objectives/deferredObjectives/deliveryEvidence';
+import type { TaskDeliveryCause, TaskDeliveryEvidence } from '../../packages/contracts/src/taskDelivery';
 const MINUTE = 60000;
 const permitted: TaskDeliveryFacts = {
   obligation: 'claimed', control: { kind: 'permitted' }, observation: { kind: 'not_drawing' },
@@ -93,3 +97,64 @@ it.each(['planned_with_margin', 'target_cannot_be_met', 'estimate_uncertain'] as
       { ...facts, deviceConstraint: { kind: 'limit_reached' } }, 0, 0))).toBe('device_limit');
   },
 );
+
+describe('bounded delivery intervals', () => {
+  it('keeps only the newest intervals while every cause stays a contributor', () => {
+    const causes: TaskDeliveryCause[] = ['capacity_limited', 'control_pending'];
+    let state: TaskDeliveryEvidence = EMPTY_DELIVERY_EVIDENCE;
+    // A shed/settle flip every minute for five hours: one interval per flip.
+    for (let minute = 0; minute <= 300; minute += 1) {
+      const cause = causes[minute % 2]!;
+      state = observeTaskDelivery(state, { ...permitted, control: { kind: 'restricted', cause } }, minute * MINUTE, MINUTE);
+    }
+    expect(state.explanation.kind).toBe('recorded');
+    if (state.explanation.kind !== 'recorded') return;
+    expect(state.explanation.intervals).toHaveLength(MAX_DELIVERY_INTERVALS);
+    expect(state.explanation.intervals.at(-1)).toMatchObject({ toMs: 300 * MINUTE });
+    expect(state.explanation.contributors).toEqual(['capacity_limited', 'control_pending']);
+  });
+
+  it('trims an older, longer persisted list on its next append', () => {
+    const legacy: TaskDeliveryEvidence = {
+      explanation: {
+        kind: 'recorded', primary: { kind: 'blocked', cause: 'budget_limited' }, contributors: ['budget_limited'],
+        intervals: Array.from({ length: MAX_DELIVERY_INTERVALS * 3 }, (_, index) => ({
+          fromMs: index * 2 * MINUTE, toMs: (index * 2 + 1) * MINUTE, cause: 'budget_limited' as const,
+        })),
+      },
+      nonDelivery: { kind: 'none' },
+    };
+    const next = observeTaskDelivery(legacy, permitted, 1000 * MINUTE, MINUTE);
+    expect(next.explanation.kind === 'recorded' && next.explanation.intervals.length).toBe(MAX_DELIVERY_INTERVALS);
+  });
+});
+
+describe('live status overlay', () => {
+  const diagnostic = partialDouble<DeferredObjectiveDiagnostic>({
+    deviceId: 'dev', deadlineAtMs: 3_600_000, reasonCode: 'planned_with_margin',
+    trajectory: { kind: 'resolved', status: 'on_track' },
+  });
+  const blocked = (cause: TaskDeliveryCause): TaskDeliveryEvidence => ({
+    explanation: { kind: 'recorded', primary: { kind: 'blocked', cause }, contributors: [], intervals: [] },
+    nonDelivery: { kind: 'none' },
+  });
+
+  // Planner decisions and transient executor facts: the horizon plan owns them,
+  // and overlaying them flipped the status on every shed/settle cycle.
+  it.each([
+    'capacity_limited', 'budget_limited', 'priority_limited', 'control_pending', 'control_failed', 'uncontrolled',
+    'observation_unavailable', 'rate_insufficient',
+  ] as const)('leaves an on-track task alone while %s holds delivery', (cause) => {
+    expect(reportTaskDeliveryStatus(diagnostic, () => blocked(cause))).toBe(diagnostic);
+  });
+
+  it.each([
+    ['device_not_accepting', 'objective_not_accepting_energy'],
+    ['device_limit', 'objective_device_limit'],
+    ['device_schedule', 'objective_device_schedule'],
+  ] as const)('downgrades on a confirmed device-side %s with its own reason', (cause, reasonCode) => {
+    expect(reportTaskDeliveryStatus(diagnostic, () => blocked(cause))).toMatchObject({
+      trajectory: { kind: 'resolved', status: 'at_risk' }, reasonCode,
+    });
+  });
+});

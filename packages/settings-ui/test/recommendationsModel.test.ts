@@ -22,6 +22,18 @@ const device = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnap
   ...overrides,
 } as TargetDeviceSnapshot);
 
+type ChargerMatches = Extract<SettingsUiRecommendationCar['matchHistory'], { state: 'resolved' }>['chargerMatches'];
+
+const car = (
+  id: string,
+  name: string,
+  chargerMatches: ChargerMatches = [],
+): SettingsUiRecommendationCar => ({ id, name, matchHistory: { state: 'resolved', chargerMatches } });
+
+const carWithUnreadableHistory = (id: string, name: string): SettingsUiRecommendationCar => ({
+  id, name, matchHistory: { state: 'unavailable' },
+});
+
 const resolve = (
   devices: readonly TargetDeviceSnapshot[] = [],
   cars: readonly SettingsUiRecommendationCar[] = [],
@@ -59,7 +71,7 @@ describe('setup recommendations', () => {
     expect(recommendations[0]).toMatchObject({
       id: 'smart-task-start-policy:eligible',
       category: 'optional',
-      target: { kind: 'device', deviceId: 'eligible' },
+      target: { kind: 'device-start-policy', deviceId: 'eligible' },
     });
     expect(groupSetupRecommendations(recommendations, { 'smart-task-start-policy:eligible': 1 }))
       .toEqual({ active: [], dismissed: recommendations });
@@ -149,26 +161,48 @@ describe('setup recommendations', () => {
     expect(recommendations[0]?.body).toContain('cannot override PELS');
   });
 
-  it('recommends connecting each supported, unconfigured car to an available charger', () => {
+  it('recommends choosing a car only once PELS has matched it to a charger', () => {
     const recommendations = resolve(
       [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
-      [{ id: 'car-1', name: 'Polestar 3' }, { id: 'car-2', name: 'ID.4' }],
+      [
+        car('car-1', 'Polestar 3', [{ chargerId: 'charger-1', lastMatchedAtMs: 1_000 }]),
+        car('car-2', 'ID.4', [{ chargerId: 'charger-1', lastMatchedAtMs: 2_000 }]),
+        car('car-3', 'Kia EV6'),
+      ],
       { 'charger-1': { carIds: ['car-2'] } },
     );
 
     expect(recommendations).toHaveLength(1);
     expect(recommendations[0]).toMatchObject({
+      id: 'charger-car:car-1',
       category: 'optional',
-      title: 'Choose a charger for Polestar 3',
-      actionLabel: 'Choose charger',
+      title: 'Select Polestar 3 on Easee',
+      actionLabel: 'Open charger',
       target: { kind: 'device', deviceId: 'charger-1' },
     });
+    expect(recommendations[0]?.body).toContain('PELS has matched Polestar 3 to Easee');
   });
 
-  it('warns when an enabled Flow still reports battery level for a charger with a selected car', () => {
+  it('sends a matched car to the charger it was matched to most recently', () => {
+    const recommendations = resolve(
+      [
+        device({ id: 'charger-1', deviceClass: 'evcharger', isEvCharger: true }),
+        device({ id: 'charger-2', deviceClass: 'evcharger', isEvCharger: true }),
+      ],
+      [car('car-1', 'Polestar 3', [
+        { chargerId: 'removed-charger', lastMatchedAtMs: 3_000 },
+        { chargerId: 'charger-2', lastMatchedAtMs: 2_000 },
+        { chargerId: 'charger-1', lastMatchedAtMs: 1_000 },
+      ])],
+    );
+
+    expect(recommendations[0]?.target).toEqual({ kind: 'device', deviceId: 'charger-2' });
+  });
+
+  it('asks to remove battery reporting once a selected car has been matched to that charger', () => {
     const recommendations = resolve(
       [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
-      [],
+      [car('car-1', 'Polestar 3', [{ chargerId: 'charger-1', lastMatchedAtMs: 1_000 }])],
       { 'charger-1': { carIds: ['car-1'] } },
       {},
       [{ chargerDeviceId: 'charger-1', flowName: 'Report car battery' }],
@@ -182,6 +216,70 @@ describe('setup recommendations', () => {
     })]);
     expect(recommendations[0]?.body).toContain('Report car battery');
     expect(recommendations[0]?.body).toContain('ignores');
+  });
+
+  it('treats a live match as a match even before the history has it', () => {
+    // The live association is a settings-UI decoration on top of the snapshot.
+    const charger = {
+      ...device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true }),
+      associatedCar: {
+        carId: 'car-1',
+        carName: 'Polestar 3',
+        chargingState: 'plugged_in_charging' as const,
+        chargingStateObservedAtMs: 1_000,
+      },
+    };
+    const recommendations = resolve(
+      [charger],
+      [car('car-1', 'Polestar 3')],
+      { 'charger-1': { carIds: ['car-1'] } },
+      {},
+      [{ chargerDeviceId: 'charger-1' }],
+    );
+
+    expect(recommendations[0]?.id).toBe('ev-soc-flow-conflict:charger-1');
+  });
+
+  it('warns instead of asking to remove battery reporting while no selected car has been matched', () => {
+    const recommendations = resolve(
+      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
+      [car('car-1', 'Kia EV6', [{ chargerId: 'charger-2', lastMatchedAtMs: 1_000 }])],
+      { 'charger-1': { carIds: ['car-1'] } },
+      {},
+      [{ chargerDeviceId: 'charger-1', flowName: 'Report car battery' }],
+    );
+
+    expect(recommendations).toEqual([expect.objectContaining({
+      id: 'ev-soc-flow-unmatched:charger-1',
+      category: 'recommendation',
+      title: 'Easee has no battery level',
+      actionLabel: 'Open charger',
+      target: { kind: 'device', deviceId: 'charger-1' },
+    })]);
+    // The selection, not the missing match, is why the Flow is ignored.
+    expect(recommendations[0]?.body).toContain('A car is selected for this charger, so PELS ignores');
+    expect(recommendations[0]?.body).toContain('Report car battery');
+    expect(recommendations[0]?.body).toContain('has not matched Kia EV6 to this charger yet');
+    expect(recommendations[0]?.body).toContain('Clear the car selection to use the Flow again');
+  });
+
+  it('gives no battery-reporting advice while the selected car\'s match history is unreadable', () => {
+    const recommendations = resolve(
+      [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
+      [carWithUnreadableHistory('car-1', 'Kia EV6')],
+      { 'charger-1': { carIds: ['car-1'] } },
+      {},
+      [{ chargerDeviceId: 'charger-1', flowName: 'Report car battery' }],
+    );
+
+    expect(recommendations).toEqual([]);
+  });
+
+  it('does not offer a car whose match history is unreadable', () => {
+    expect(resolve(
+      [device({ id: 'charger-1', deviceClass: 'evcharger', isEvCharger: true })],
+      [carWithUnreadableHistory('car-1', 'Polestar 3')],
+    )).toEqual([]);
   });
 
   it('does not call battery reporting a conflict until a car is selected for that charger', () => {
@@ -202,7 +300,7 @@ describe('setup recommendations', () => {
   it('uses plural cleanup copy when several or unnamed reporting Flows are involved', () => {
     const recommendations = resolve(
       [device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true })],
-      [],
+      [car('car-1', 'Polestar 3', [{ chargerId: 'charger-1', lastMatchedAtMs: 1_000 }])],
       { 'charger-1': { carIds: ['car-1'] } },
       {},
       [{ chargerDeviceId: 'charger-1' }],
@@ -212,20 +310,10 @@ describe('setup recommendations', () => {
     expect(recommendations[0]?.body).toContain('Remove those actions');
   });
 
-  it('routes an unconfigured car to the device list when several chargers are available', () => {
-    const recommendations = resolve(
-      [
-        device({ id: 'charger-1', deviceClass: 'evcharger', isEvCharger: true }),
-        device({ id: 'charger-2', deviceClass: 'evcharger', isEvCharger: true }),
-      ],
-      [{ id: 'car-1', name: 'Polestar 3' }],
-    );
-
-    expect(recommendations[0]?.target).toEqual({ kind: 'devices' });
-  });
-
   it('does not recommend a car association without an actionable charger destination', () => {
-    const recommendations = resolve([], [{ id: 'car-1', name: 'Polestar 3' }]);
+    const recommendations = resolve([], [
+      car('car-1', 'Polestar 3', [{ chargerId: 'charger-1', lastMatchedAtMs: 1_000 }]),
+    ]);
 
     expect(recommendations).toEqual([]);
   });
@@ -252,23 +340,36 @@ describe('setup recommendations', () => {
   it('validates acknowledgements and Homey car entries at their input boundaries', () => {
     expect(normalizeRecommendationDismissals({ good: 2, zero: 0, float: 1.5, text: '1' }))
       .toEqual({ good: 2 });
-    expect(parseCarAssociationCandidatesRead({
-      state: 'resolved',
-      cars: [{ id: 'car-1', name: 'Polestar 3' }],
-    })).toEqual({ state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3' }] });
+    const matched = car('car-1', 'Polestar 3', [{ chargerId: 'charger-1', lastMatchedAtMs: 1_000 }]);
+    expect(parseCarAssociationCandidatesRead({ state: 'resolved', cars: [matched] }))
+      .toEqual({ state: 'resolved', cars: [matched] });
     expect(parseCarAssociationCandidatesRead({ state: 'unavailable' })).toEqual({ state: 'unavailable' });
     expect(parseCarAssociationCandidatesRead({ state: 'resolved', cars: [{ id: 'car-1' }] }))
       .toEqual({ state: 'unavailable' });
+    expect(parseCarAssociationCandidatesRead({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Polestar 3' }],
+    })).toEqual({ state: 'unavailable' });
+    expect(parseCarAssociationCandidatesRead({
+      state: 'resolved',
+      cars: [{
+        ...matched,
+        matchHistory: { state: 'resolved', chargerMatches: [{ chargerId: 'charger-1', lastMatchedAtMs: Number.NaN }] },
+      }],
+    })).toEqual({ state: 'unavailable' });
+    const unreadable = carWithUnreadableHistory('car-1', 'Polestar 3');
+    expect(parseCarAssociationCandidatesRead({ state: 'resolved', cars: [unreadable] }))
+      .toEqual({ state: 'resolved', cars: [unreadable] });
     expect(parseCarAssociationCandidatesRead({})).toEqual({ state: 'unavailable' });
   });
 
   it('ignores associations belonging to chargers that are no longer present', () => {
     const recommendations = resolve(
       [device({ id: 'charger-2', deviceClass: 'evcharger', isEvCharger: true })],
-      [{ id: 'car-1', name: 'Polestar 3' }],
+      [car('car-1', 'Polestar 3', [{ chargerId: 'charger-2', lastMatchedAtMs: 1_000 }])],
       { 'removed-charger': { carIds: ['car-1'] } },
     );
 
-    expect(recommendations[0]?.title).toBe('Choose a charger for Polestar 3');
+    expect(recommendations[0]?.title).toBe('Select Polestar 3 on Connected 300');
   });
 });

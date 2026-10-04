@@ -1,23 +1,8 @@
 import { DeviceMeasuredPowerResolver } from '../../lib/device/measuredPowerResolver';
-import type { Logger } from '../../lib/utils/types';
-
-const logger = {
-  log: vi.fn(),
-  debug: vi.fn(),
-  error: vi.fn(),
-  structuredLog: {
-    debug: vi.fn(),
-  },
-} as unknown as Logger;
 
 describe('DeviceMeasuredPowerResolver', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it('prefers measure_power over Homey Energy live watts', () => {
     const resolver = new DeviceMeasuredPowerResolver({
-      logger,
       getNow: () => 1000,
     });
 
@@ -38,7 +23,6 @@ describe('DeviceMeasuredPowerResolver', () => {
   it('uses meter_power when measure_power is absent and does not fall through to Homey Energy first', () => {
     let now = 0;
     const resolver = new DeviceMeasuredPowerResolver({
-      logger,
       getNow: () => now,
     });
 
@@ -85,7 +69,6 @@ describe('DeviceMeasuredPowerResolver', () => {
   it('derives the rate from observation time, not from how often it is asked', () => {
     let now = Date.parse('2026-01-01T00:00:00.000Z');
     const resolver = new DeviceMeasuredPowerResolver({
-      logger,
       getNow: () => now,
     });
 
@@ -116,7 +99,6 @@ describe('DeviceMeasuredPowerResolver', () => {
   it('reports absence, not a measured zero, when the meter has not been re-observed', () => {
     let now = Date.parse('2026-01-01T00:00:00.000Z');
     const resolver = new DeviceMeasuredPowerResolver({
-      logger,
       getNow: () => now,
     });
 
@@ -143,7 +125,6 @@ describe('DeviceMeasuredPowerResolver', () => {
   // That IS a measured zero and must be reported as one.
   it('reports a true zero when an unchanged meter is re-published', () => {
     const resolver = new DeviceMeasuredPowerResolver({
-      logger,
       getNow: () => 0,
     });
 
@@ -176,7 +157,6 @@ describe('DeviceMeasuredPowerResolver', () => {
   // span it accrued over.
   it('leaves the anchor standing across an observation with no meter reading', () => {
     const resolver = new DeviceMeasuredPowerResolver({
-      logger,
       getNow: () => 0,
     });
 
@@ -213,7 +193,6 @@ describe('DeviceMeasuredPowerResolver', () => {
   // skip would drop that interval's energy for good.
   it('carries energy forward when two observations land inside the same second', () => {
     const resolver = new DeviceMeasuredPowerResolver({
-      logger,
       getNow: () => 0,
     });
 
@@ -250,7 +229,6 @@ describe('DeviceMeasuredPowerResolver', () => {
 
   it('falls back to Homey Energy live watts when no direct capabilities are available', () => {
     const resolver = new DeviceMeasuredPowerResolver({
-      logger,
       getNow: () => 2000,
     });
 
@@ -269,7 +247,6 @@ describe('DeviceMeasuredPowerResolver', () => {
 
   it('reports a few watts of standby as its own value instead of dropping it', () => {
     const resolver = new DeviceMeasuredPowerResolver({
-      logger,
       getNow: () => 5000,
     });
 
@@ -294,7 +271,7 @@ describe('DeviceMeasuredPowerResolver', () => {
   });
 
   it('reports a measured zero as a reading, not as absence', () => {
-    const resolver = new DeviceMeasuredPowerResolver({ logger });
+    const resolver = new DeviceMeasuredPowerResolver();
 
     const measuredPower = resolver.resolve({
       deviceId: 'dev-1',
@@ -312,7 +289,7 @@ describe('DeviceMeasuredPowerResolver', () => {
   });
 
   it('drops a negative measure_power reading rather than reporting it as a draw', () => {
-    const resolver = new DeviceMeasuredPowerResolver({ logger });
+    const resolver = new DeviceMeasuredPowerResolver();
 
     const measuredPower = resolver.resolve({
       deviceId: 'dev-1',

@@ -6,6 +6,8 @@ import {
   composeTomorrowLowHigh,
   WEATHER_ATTRIBUTION_MET,
   WEATHER_REASON_BUDGET_LIMITING,
+  WEATHER_REASON_BUDGET_OVERSHOOT,
+  WEATHER_WARN_OVER_HARDCAP_BODY,
 } from '../../shared-domain/src/weatherInsightCopy';
 
 describe('composeBudgetLimitingReason', () => {
@@ -13,7 +15,7 @@ describe('composeBudgetLimitingReason', () => {
     // Golden assertion: the trigger is no longer temperature-gated, so the
     // sentence must not say "cold days" as it used to.
     expect(WEATHER_REASON_BUDGET_LIMITING).toBe(
-      'Your budget has recently been limiting your devices — the suggestion is raised to match.',
+      'Your budget has recently been limiting your devices, so the suggestion is raised to match.',
     );
     expect(composeBudgetLimitingReason(0)).toBe(WEATHER_REASON_BUDGET_LIMITING);
   });
@@ -21,16 +23,27 @@ describe('composeBudgetLimitingReason', () => {
   it('names the pressure contribution as part of the suggestion', () => {
     // The contribution may exceed the visible increase over the current budget.
     expect(composeBudgetLimitingReason(7)).toBe(
-      'Your budget has recently been limiting your devices — the suggestion is raised to match.'
+      'Your budget has recently been limiting your devices, so the suggestion is raised to match.'
       + ' 7.0 kWh of the suggestion covers recent demand beyond your budget.',
     );
   });
 
-  it('explains measured overshoot without claiming devices were limited', () => {
+  it('explains measured overshoot without claiming devices were limited, saying it once', () => {
     expect(composeBudgetLimitingReason(7, false)).toBe(
-      'Recent usage exceeded your budget — the suggestion includes extra room.'
-      + ' 7.0 kWh of the suggestion covers recent demand beyond your budget.',
+      'Recent usage went over your budget, so the suggestion includes 7.0 kWh of extra room.',
     );
+    expect(composeBudgetLimitingReason(0.5, false)).toBe(WEATHER_REASON_BUDGET_OVERSHOOT);
+    expect(WEATHER_REASON_BUDGET_OVERSHOOT).toBe(
+      'Recent usage went over your budget, so the suggestion includes extra room.',
+    );
+  });
+
+  it('uses no em-dashes in the budget reason lines or the over-cap body', () => {
+    for (const line of [
+      composeBudgetLimitingReason(7), composeBudgetLimitingReason(7, false),
+      composeBudgetLimitingReason(0, false), WEATHER_WARN_OVER_HARDCAP_BODY,
+    ]) expect(line).not.toContain('—');
+    expect(WEATHER_WARN_OVER_HARDCAP_BODY).toContain('limited in the coldest hours');
   });
 
   it('drops a contribution too small to act on, and never renders a junk number', () => {

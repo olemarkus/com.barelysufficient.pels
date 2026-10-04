@@ -60,7 +60,7 @@ lib/device/expectedPowerOverrideState.ts 1
 lib/device/flowBackedDeviceState.ts 3
 lib/device/learnedPowerPeakState.ts 1
 lib/device/liveFeed.ts 2
-lib/device/managerControl.ts 4
+lib/device/managerControl.ts 3
 lib/device/managerFlowSupport.ts 3
 lib/device/managerMeasuredPower.ts 1
 lib/device/managerNativeEv.ts 6
@@ -304,7 +304,7 @@ packages/shared-domain/src/activePlanRevisionLog.ts 2
 packages/shared-domain/src/dailyBudget/attributionSplit.ts 1
 packages/shared-domain/src/dailyBudget/dayContext.ts 2
 packages/shared-domain/src/dailyBudgetHeroStrings.ts 1
-packages/shared-domain/src/deadlineLabels.ts 12
+packages/shared-domain/src/deadlineLabels.ts 11
 packages/shared-domain/src/deadlinesListHero.ts 1
 packages/shared-domain/src/deferredActivePlanChartData.ts 1
 packages/shared-domain/src/deferredPlanHistoryChartData.ts 2

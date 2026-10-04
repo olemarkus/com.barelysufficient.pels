@@ -17,6 +17,7 @@ import {
   buildYesterdayHistory as computeYesterdayHistory,
   type DailyBudgetAdjacentDayDeps,
 } from './dailyBudgetAdjacentDays';
+import { resolveBudgetCountedDayKwh } from './dailyBudgetState';
 import { composeHotPathDailyBudgetSnapshot, computeAdjacentDaysSeedSignature } from './dailyBudgetSnapshotState';
 import {
   DailyBudgetStatePersistencePolicy,
@@ -448,6 +449,16 @@ export class DailyBudgetService {
     if (!this.settings.enabled) return undefined;
     const budgetKwh = this.settings.dailyBudgetKWh;
     return Number.isFinite(budgetKwh) && budgetKwh > 0 ? budgetKwh : undefined;
+  }
+
+  /**
+   * The local day's usage as the budget counted it (metered less budget-exempt),
+   * or `undefined` when the tracker holds no hourly usage for that day. Read by
+   * the weather collector at day close next to `getAppliedBudgetKwh`, so the
+   * budget-pressure loop measures an overshoot on the axis the budget paced.
+   */
+  getBudgetCountedKwh(dateKey: string): number | undefined {
+    return resolveBudgetCountedDayKwh(this.deps.getPowerTracker(), dateKey, this.resolveTimeZone());
   }
 
   /**

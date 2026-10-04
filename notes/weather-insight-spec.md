@@ -106,12 +106,20 @@ card → `Choose temperature device` → Settings, Weather insight section.
   correction and credit unused allowance. Auto-apply follows the recommendation
   upward or downward; a remaining correction is not a lowering veto.
   See `notes/starvation/README.md` for the evidence and migration rules.
-- The reason line under a raised suggestion (`composeBudgetLimitingReason`):
-  `Your budget has recently been limiting your devices — the suggestion is raised
-  to match.` plus, when the pressure term contributed ≥ 1 kWh after clamping,
-  ` N kWh of the suggestion covers recent demand beyond your budget.` — the
-  suggestion also includes headroom, so the number is a component and not
-  the whole delta.
+- The reason line under a raised suggestion (`composeBudgetLimitingReason`),
+  chosen by the producer-resolved `budgetMayBeLimiting`:
+  - limiting (budget-attributed shortfall or a priced budget task miss):
+    `Your budget has recently been limiting your devices, so the suggestion is
+    raised to match.` plus, when the pressure term contributed ≥ 1 kWh after
+    clamping, ` N kWh of the suggestion covers recent demand beyond your budget.`
+  - measured overshoot alone (budget-counted usage above the applied budget,
+    no device proven held back): `Recent usage went over your budget, so the
+    suggestion includes extra room.`; with a contribution ≥ 1 kWh it becomes the
+    single sentence `Recent usage went over your budget, so the suggestion
+    includes N kWh of extra room.` so "over your budget" is not said twice.
+  The suggestion also includes headroom, so the number is a component and not
+  the whole delta. Overshoot is measured on budget-counted usage (metered less
+  usage allowed beyond the budget), so that load never reads as going over.
 - When the suggestion is clamped by the hard cap (`cappedByCapacity`), a warn-tone
   over-cap banner (`.banner banner--warning banner--stacked`) renders before the
   verdict: `Tomorrow may need more than your hard cap allows`. The cap is the tariff step —
@@ -157,6 +165,11 @@ higher.`
 Row labels deliberately avoid `Base load` (collides with `Background usage`)
 and `sensitivity` (jargon-adjacent).
 
+When the fit carries a season term (`seasonKwh`: the home uses more in the dark
+half of the year at the same temperature), warm-day usage in this card and in
+the summary headline is stated for tomorrow's time of year (`outlookDateKey`),
+so it matches the prediction. There is no separate season row.
+
 ### Detail card 3 — scatter + coverage
 
 - Title `Usage and outside temperature`, subtitle `Each dot is one day from
@@ -168,7 +181,8 @@ and `sensitivity` (jargon-adjacent).
   Quality-flagged (`partial`/`unreliable`) days dimmed; `backfilled` days
   render normally (they are good data). Today is never plotted.
 - Fit line: accent 2 px, sloped below the balance point, flat at warm-day
-  usage above it. Winter-only: sloped segment only across the observed range,
+  usage above it. With a season term the line is drawn for tomorrow's time of
+  year, so dots from the opposite season sit above or below it. Winter-only: sloped segment only across the observed range,
   no flat segment, no balance tick. Uncorrelated: no line (flat cloud is
   self-explanatory).
 - Balance-point marker: thin vertical tick (marker grammar: thin tick =

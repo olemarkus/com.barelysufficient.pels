@@ -17,11 +17,8 @@
 // failure, and folding it into the rate would penalise blameless aborts. The
 // abandoned count still surfaces in the strip so the run isn't invisible.
 //
-// `replaced` collapses into `abandoned` in the strip totals, mirroring
-// `countOutcomes` in the ISO-week archive module and the chip-vocabulary
-// divider headings. Other outcomes (`unknown` — backfill / pre-schema entries)
-// are not counted in any bucket; they don't represent a meaningful planner
-// result.
+// Replaced runs have their own muted count. Unknown entries are not counted
+// in an outcome bucket because they do not represent a meaningful result.
 
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory';
 import {
@@ -30,6 +27,7 @@ import {
 } from './deadlineLabels';
 import {
   formatReceiptOutcomeAbandoned,
+  formatReceiptOutcomeReplaced,
   formatReceiptOutcomeMissed,
   formatReceiptOutcomeSucceeded,
   RECEIPT_FRAGMENT_SEPARATOR,
@@ -73,6 +71,7 @@ type SevenDayCounts = {
   succeeded: number;
   missed: number;
   abandoned: number;
+  replaced: number;
   inWindow: number;
 };
 
@@ -103,13 +102,13 @@ const tallySevenDayEntry = (
     succeeded: counts.succeeded,
     missed: counts.missed,
     abandoned: counts.abandoned,
+    replaced: counts.replaced,
     inWindow: counts.inWindow + 1,
   };
   if (entry.outcome === 'met') next.succeeded += 1;
   else if (entry.outcome === 'missed') next.missed += 1;
-  else if (entry.outcome === 'abandoned' || entry.outcome === 'replaced') {
-    next.abandoned += 1;
-  }
+  else if (entry.outcome === 'abandoned') next.abandoned += 1;
+  else if (entry.outcome === 'replaced') next.replaced += 1;
   return next;
 };
 
@@ -143,6 +142,7 @@ export type PlanHistory7DayHitRateStrip = {
   succeeded: number;
   missed: number;
   abandoned: number;
+  replaced: number;
   // Hit rate as an integer percent rounded to the nearest whole number.
   // `null` when no Succeeded + Missed entries landed in the window — a
   // strip that rendered the shipped "0% of 0 finished" fragment off only
@@ -192,7 +192,7 @@ export const resolvePlanHistory7DayHitRateStrip = (
   const cutoffMs = resolveSevenDayCutoffMs(nowMs, timeZone);
   const counts = entries.reduce<SevenDayCounts>(
     (acc, entry) => tallySevenDayEntry(acc, entry, cutoffMs, nowMs),
-    { succeeded: 0, missed: 0, abandoned: 0, inWindow: 0 },
+    { succeeded: 0, missed: 0, abandoned: 0, replaced: 0, inWindow: 0 },
   );
   if (counts.inWindow === 0) return null;
   // `decisive` is the hit-rate denominator: succeeded + missed (the runs that
@@ -218,6 +218,9 @@ export const resolvePlanHistory7DayHitRateStrip = (
   if (counts.abandoned > 0) {
     segments.push({ text: formatReceiptOutcomeAbandoned(counts.abandoned), tone: 'muted' });
   }
+  if (counts.replaced > 0) {
+    segments.push({ text: formatReceiptOutcomeReplaced(counts.replaced), tone: 'muted' });
+  }
   if (hitRatePercent !== null) {
     segments.push({ text: formatSmartTaskHitRateFragment(hitRatePercent, decisive), tone: 'neutral' });
   }
@@ -227,6 +230,7 @@ export const resolvePlanHistory7DayHitRateStrip = (
     succeeded: counts.succeeded,
     missed: counts.missed,
     abandoned: counts.abandoned,
+    replaced: counts.replaced,
     hitRatePercent,
   };
 };

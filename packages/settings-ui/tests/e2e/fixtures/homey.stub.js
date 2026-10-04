@@ -1404,6 +1404,7 @@
     const dailyBudgetEnabled = settings.daily_budget_enabled === true;
     const autoApplyDailyBudget = advisor.autoApplyDailyBudget === true;
     const lastAutoApply = advisor.lastAutoApply ?? null;
+    const outlookDateKey = dateKeyUtc(nowMs + 24 * 3600 * 1000);
     const emptyPayload = (state) => ({
       state,
       driftSuspected: false,
@@ -1416,6 +1417,7 @@
       autoApplyDailyBudget,
       lastAutoApply,
       fit: null,
+      outlookDateKey,
       coverage: [],
       prediction: null,
       suggestion: null,
@@ -1479,6 +1481,7 @@
       dailyBudgetEnabled,
       autoApplyDailyBudget,
       lastAutoApply,
+      outlookDateKey,
       fit: {
         model: 'changepoint',
         baseLoadKwhPerDay: baseLoad,
@@ -1855,7 +1858,12 @@
         { id: 'dev_evcharger', name: 'Generic EV Charger', class: 'evcharger', hasTemperature: false, hasPower: true },
       ];
     },
-    'GET /ui_recommendation_cars': () => ({ state: 'resolved', cars: [] }),
+    // A spec seeds car candidates, with their match history, through
+    // `window.__PELS_HOMEY_STUB__.recommendationCars`.
+    'GET /ui_recommendation_cars': () => ({
+      state: 'resolved',
+      cars: Array.isArray(initialOverrides.recommendationCars) ? initialOverrides.recommendationCars : [],
+    }),
     // Mirrors `readHubMarket` (lib/home/hubMarket.ts): an ISO country the
     // runtime resolved from the hub's location, or `unavailable`. The baseline
     // is `unavailable`, the market-neutral copy every other spec expects; a

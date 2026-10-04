@@ -152,12 +152,13 @@ export const RECEIPT_LAST_STATE_TARGET_REACHED = 'Last device state: target alre
 // ─── ISO-week archive grouping (DeadlinesHistoryList) ────────────────────────
 
 // Outcome-count chip fragments for the week-divider headings and the 7-day
-// strip. Chip vocabulary (`succeeded` / `missed` / `abandoned`) per
-// notes/ui-terminology.md "Chip adjectives vs divider verbs"; the same three
+// strip. Chip vocabulary (`succeeded` / `missed` / `abandoned` / `replaced`) per
+// notes/ui-terminology.md "Chip adjectives vs divider verbs"; the same
 // nouns back both surfaces so they can't drift.
 export const formatReceiptOutcomeSucceeded = (count: number): string => `${count} succeeded`;
 export const formatReceiptOutcomeMissed = (count: number): string => `${count} missed`;
 export const formatReceiptOutcomeAbandoned = (count: number): string => `${count} abandoned`;
+export const formatReceiptOutcomeReplaced = (count: number): string => `${count} replaced`;
 
 // "≈ 41 kr" rolled-up cost fragment for the week-divider heading. The week
 // heading uses a plain space (not NBSP) around the glyph — preserved verbatim

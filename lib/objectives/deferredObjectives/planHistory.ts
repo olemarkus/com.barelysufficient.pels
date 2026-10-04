@@ -1,3 +1,6 @@
+import type { TaskEvaluation } from './taskEvaluation';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { resolveObjectiveTargetValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 import { resolveTaskCompletionDiagnostic } from './diagnosticsBridge';
 import {
   EMPTY_DELIVERY_EVIDENCE, activeDeliveryCause, observeTaskDelivery, resolveTaskDeliveryFacts,
@@ -37,7 +40,7 @@ import {
   isSatisfiedStatus,
   lastObservedAtMs,
   mergeRecord,
-  promoteRecordToStalled,
+  refreshRecordCompletion,
   rawHorizonStatus,
   recordNonPlannableTick,
   startRecord,
@@ -66,9 +69,6 @@ type DeliveryTick = {
   atMs: number;
   drawKw: number;
 };
-
-// Completion promotion consumes the same operational verdict as the live task.
-// Only accepted thermal near-target evidence supplies the stalled met reason.
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;
@@ -134,7 +134,7 @@ export type PlanHistoryPersistDeps = {
   // misses versus shaky-estimate / conservative-planning false alarms. Gated on
   // the `deferred_objectives` debug topic by the wiring in `setup/appInit.ts`.
   debugStructured: StructuredDebugEmitter;
-  // Idle-classifier reader for stall promotion (see `maybePromoteOnStall`).
+  // Observer evidence for the operational completion verdict.
   getStallClassification: DeferredObjectiveStallClassificationReader;
   getDeviceConstraint: (deviceId: string) => TaskDeviceConstraint;
   getDeliveryControl: (deviceId: string) => TaskDeliveryControl;
@@ -146,10 +146,6 @@ export type PlanHistoryLoadResult = {
   persistenceSafe: boolean;
   meteredDeliveryStates: readonly PersistedMeteredDeliveryState[];
 };
-
-const operationalProgressValue = (diag: DeferredObjectiveDiagnostic): number | null => (
-  diag.evaluation.progress.kind === 'known' ? diag.evaluation.progress.value : null
-);
 
 export class DeferredObjectivePlanHistoryRecorder {
   private inProgress = new Map<InProgressKey, InProgressRecord>();
@@ -243,17 +239,18 @@ export class DeferredObjectivePlanHistoryRecorder {
       }
   }
 
-  // Runs after merge/start so the freeze-on-met-time logic in `mergeRecord`
-  // doesn't overwrite the plateau on the cycle stall is declared.
-  private maybePromoteOnStall(
-    record: InProgressRecord,
-    diag: DeferredObjectiveDiagnostic,
-    nowMs: number,
-  ): InProgressRecord {
-    const reason = diag.evaluation.completion.kind === 'accepted_near_target' ? 'stalled' : null;
-    return reason === null
-      ? record
-      : promoteRecordToStalled(record, diag, nowMs, reason);
+  private emitCompletionChange(
+    previous: InProgressRecord, current: InProgressRecord, evaluation: TaskEvaluation,
+  ): void {
+    if (previous.satisfied === current.satisfied) return;
+    this.deps.debugStructured({
+      event: current.satisfied ? 'smart_task_completion_accepted' : 'smart_task_completion_reopened',
+      deviceId: evaluation.deviceId,
+      currentValue: evaluation.progress.kind === 'known' ? evaluation.progress.value : null,
+      targetValue: evaluation.requestedTarget,
+      completion: evaluation.completion.kind,
+      evidence: this.deps.getStallClassification(evaluation.deviceId),
+    });
   }
 
   private observeDiagnostic(
@@ -275,19 +272,11 @@ export class DeferredObjectivePlanHistoryRecorder {
       // count as observation ("PELS was watching"). If an already-met run later reports
       // trustworthy below-target progress, clear the live met marker; otherwise preserve
       // the last trustworthy progress.
-      const merged = plannable
+      const current = plannable
         ? mergeRecord(existing, diag, nowMs, plan)
         : recordNonPlannableTick(existing, diag, nowMs, plan);
-      const settled = this.maybePromoteOnStall(merged, diag, nowMs);
-      if (existing.satisfied !== settled.satisfied) {
-        this.deps.debugStructured({
-          event: settled.satisfied ? 'smart_task_completion_accepted' : 'smart_task_completion_reopened',
-          deviceId: diag.evaluation.deviceId,
-          currentValue: operationalProgressValue(diag),
-          targetValue: diag.evaluation.requestedTarget,
-          completion: diag.evaluation.completion.kind, evidence: this.deps.getStallClassification(diag.deviceId) });
-      }
-      this.storeWithHourStartBooking(key, settled, plan, nowMs);
+      this.emitCompletionChange(existing, current, diag.evaluation);
+      this.storeWithHourStartBooking(key, current, plan, nowMs);
       return;
     }
     // Begin tracking on first sight of a future-dated deadline, regardless of status. The
@@ -314,15 +303,9 @@ export class DeferredObjectivePlanHistoryRecorder {
       next = mergeSavedRun(next, restored);
       this.restoredMeteredDeliveryByKey.delete(key);
     }
-    // Deliberately skip stall promotion on first-seen records. The
-    // classification ticks AFTER plan emission (`tickIdleClassifier`), so the
-    // value we'd read here is the *previous* cycle's result — which belongs
-    // to whatever objective ran for this device on the prior tick. After a
-    // `finalizeForUserChange` swap (user replaced target / deadline), that
-    // stale `near_target_idle` would falsely auto-complete the brand-new run
-    // on its first tick and stick until finalization. The next tick — where
-    // the classifier has had a chance to re-evaluate against the actual
-    // current objective — handles promotion through the `existing` branch.
+    // Completion resolution above excludes prior-cycle thermal evidence on a
+    // first-seen run. The observer is keyed by device, so its previous verdict
+    // may belong to the task just replaced. A later observation can accept it.
     // The hour-start capture runs after the restore so a restart inside an
     // hour the run already recorded keeps that hour's saved booking.
     this.storeWithHourStartBooking(key, next, plan, nowMs);
@@ -365,22 +348,37 @@ export class DeferredObjectivePlanHistoryRecorder {
     }
   }
 
+  /** Exact observed obligation, independent of whether allocation was possible. */
+  hasObservedTask(deviceId: string, objective: DeferredObjectiveSettingsEntry): boolean {
+    const record = this.inProgress.get(buildKey(deviceId, objective.deadlineAtMs));
+    return record !== undefined && record.objectiveKind === objective.kind
+      && record.targetValue === resolveObjectiveTargetValue(objective);
+  }
+
   /**
    * Finalize any in-progress run for this device because the user changed or cleared the
-   * objective. `'replaced'` is for a new deadline / target replacing the prior one;
-   * `'abandoned'` is for an explicit clear. Without this signal the recorder would wait the
+   * objective. A still-satisfied run records `met`; otherwise `'replaced'` is for a new
+   * deadline / target and `'abandoned'` for an explicit clear. Without this signal the recorder would wait the
    * full `ABANDON_GRACE_MS` before declaring the run abandoned, and a user-initiated swap
    * would be misreported as `'abandoned'` instead of `'replaced'`.
    *
-   * The active-plan recorder deliberately keeps same-deadline target changes as in-run
-   * revisions; history splits them into separate entries so each entry has a stable target
-   * to judge outcome against.
+   * History splits target / deadline changes into separate runs with stable obligations.
+   * Writers supply the old task's pre-write evaluation before seeding the replacement
+   * active plan, so a between-tick regression clears cached completion before finalizing.
    */
-  finalizeForUserChange(deviceId: string, nowMs: number, reason: 'replaced' | 'abandoned'): void {
+  finalizeForUserChange(
+    deviceId: string, nowMs: number, reason: 'replaced' | 'abandoned', evaluation?: TaskEvaluation,
+  ): void {
     this.bookHeldDraw(deviceId, nowMs);
     for (const [key, record] of this.inProgress) {
       if (record.deviceId !== deviceId) continue;
-      this.finalizeInProgress(key, record, nowMs, reason);
+      // A prior run can survive an unreadable settings clear until the grace sweep.
+      // The new reading belongs only to the obligation captured before this write.
+      const matchesEvaluation = evaluation !== undefined && record.deadlineAtMs === evaluation.deadlineAtMs
+        && record.targetValue === evaluation.requestedTarget;
+      const current = matchesEvaluation ? refreshRecordCompletion(record, evaluation, nowMs) : record;
+      if (matchesEvaluation) this.emitCompletionChange(record, current, evaluation);
+      this.finalizeInProgress(key, current, nowMs, reason);
     }
   }
 

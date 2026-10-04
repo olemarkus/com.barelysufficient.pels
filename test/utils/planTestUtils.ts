@@ -60,7 +60,7 @@ import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observe
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
 import { resolveStartPolicyInForce } from '../../lib/device/temperatureControlPosture';
-import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { getSteppedLoadLowestActiveStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import {
   TARGET_TEMPERATURE_CAPABILITY_ID,
@@ -400,7 +400,6 @@ export const fixtureCurrentDrawKw = (o: {
   typeof o.currentDrawKw === 'number' ? o.currentDrawKw : getCurrentDrawKw(o)
 );
 
-const noopEstimateLogger = { structuredLog: { debug: () => {} } } as unknown as Logger;
 const evidenceFreeEstimateByCapability = new Map<string, number>();
 
 /**
@@ -446,7 +445,6 @@ export const fixtureExpectedPowerKw = (o: {
       lastEstimateDecisionLogByDevice: new Map(),
       lastPeakPowerLogByDevice: new Map(),
     },
-    logger: noopEstimateLogger,
   }).expectedPowerKw;
   evidenceFreeEstimateByCapability.set(key, resolved);
   return resolved;

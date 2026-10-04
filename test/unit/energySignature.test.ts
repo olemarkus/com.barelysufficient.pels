@@ -2,6 +2,7 @@ import type { WeatherDailyRecord } from '../../packages/contracts/src/weatherAdv
 import {
   fitEnergySignature,
   predictDailyKwh,
+  seasonIndexForDateKey,
 } from '../../packages/shared-domain/src/energySignature/energySignature';
 
 const NOW_MS = Date.UTC(2026, 5, 1, 0, 0, 0);
@@ -201,6 +202,7 @@ describe('fitEnergySignature — suppression awareness', () => {
           tempMinC: -3,
           tempMaxC: 3,
           kwhTotal: 50,
+          kwhBudgetCounted: 50,
           appliedBudgetKwh: 45,
           suppression: { budgetUnservedKwh: 6 },
         }
@@ -245,6 +247,7 @@ describe('fitEnergySignature — suppression awareness', () => {
           tempMinC: 22,
           tempMaxC: 28,
           kwhTotal: 50,
+          kwhBudgetCounted: 50,
           appliedBudgetKwh: 45,
           suppression: { budgetUnservedKwh: 6 },
         }
@@ -255,12 +258,75 @@ describe('fitEnergySignature — suppression awareness', () => {
 
 });
 
+/**
+ * A calendar year from 2026-01-01: temperatures follow the seasons plus
+ * day-to-day weather, so season and temperature are related but separable.
+ * House: 30 kWh base + 3 kWh per °C below 14, plus `seasonKwh` × season index.
+ */
+const seasonalYear = (seasonKwh: number, keep: (index: number) => boolean = () => true): WeatherDailyRecord[] => (
+  Array.from({ length: 365 }, (_, index) => index).filter(keep).map((index) => {
+    const tempC = 6 - 10 * Math.cos((2 * Math.PI * (index - 15)) / 365) + 4 * Math.sin(index * 1.7);
+    const record = day(index, tempC, 0);
+    const kwh = 30 + 3 * Math.max(0, 14 - tempC) + seasonKwh * seasonIndexForDateKey(record.dateKey) + noise(index);
+    return { ...record, kwhTotal: kwh };
+  })
+);
+const YEAR_END_MS = Date.UTC(2027, 0, 1, 0, 5, 0);
+
+describe('season term', () => {
+  it('places the solstices and equinoxes on the season index', () => {
+    expect(seasonIndexForDateKey('2026-12-21')).toBeCloseTo(1, 2);
+    expect(seasonIndexForDateKey('2026-06-21')).toBeCloseTo(-1, 2);
+    expect(Math.abs(seasonIndexForDateKey('2026-03-21'))).toBeLessThan(0.05);
+    expect(Math.abs(seasonIndexForDateKey('2026-09-22'))).toBeLessThan(0.05);
+    // Leap years peak on the same calendar day.
+    expect(seasonIndexForDateKey('2024-12-21')).toBe(1);
+  });
+
+  it('rejects a season term that would push warm-day usage to zero or below', () => {
+    // Usage swings ±40 kWh with the season around a 30 kWh base: no warm-day usage
+    // is negative in reality, so a term this size means the fit cannot be trusted.
+    const fit = fitEnergySignature(seasonalYear(40), YEAR_END_MS);
+    expect(fit?.seasonKwh).toBeUndefined();
+  });
+
+  it('learns a dark-season extra from a full year and applies it by date', () => {
+    const fit = fitEnergySignature(seasonalYear(8), YEAR_END_MS);
+    if (!fit) throw new Error('expected fit');
+    expect(fit.model).toBe('changepoint');
+    expect(fit.seasonKwh).toBeGreaterThan(6.5);
+    expect(fit.seasonKwh).toBeLessThan(9.5);
+    expect(fit.balancePointC).toBeGreaterThanOrEqual(13);
+    expect(fit.balancePointC).toBeLessThanOrEqual(15);
+    expect(fit.slopeKwhPerDegree).toBeGreaterThan(2.6);
+    expect(fit.slopeKwhPerDegree).toBeLessThan(3.4);
+    // Same mild temperature, opposite ends of the year: about twice the term apart.
+    const december = predictDailyKwh(fit, 16, '2026-12-21') ?? 0;
+    const june = predictDailyKwh(fit, 16, '2026-06-21') ?? 0;
+    expect(december - june).toBeGreaterThan(13);
+    expect(december - june).toBeLessThan(19);
+  });
+
+  it('leaves the season term out when usage does not follow the season', () => {
+    const fit = fitEnergySignature(seasonalYear(0), YEAR_END_MS);
+    expect(fit?.model).toBe('changepoint');
+    expect(fit?.seasonKwh).toBeUndefined();
+  });
+
+  it('leaves the season term out until the history covers the light half of the year', () => {
+    // Only January to March and October to December: no summer to compare with.
+    const darkHalf = seasonalYear(8, (index) => index < 75 || index >= 288);
+    const fit = fitEnergySignature(darkHalf, YEAR_END_MS);
+    expect(fit?.seasonKwh).toBeUndefined();
+  });
+});
+
 describe('predictDailyKwh', () => {
   it('predicts along the hinge for changepoint fits and undefined when uncorrelated', () => {
     const fit = fitEnergySignature(heatingDays(60), NOW_MS);
     if (!fit) throw new Error('expected fit');
-    const coldDay = predictDailyKwh(fit, -5) ?? 0;
-    const warmDay = predictDailyKwh(fit, 20) ?? 0;
+    const coldDay = predictDailyKwh(fit, -5, '2026-03-01') ?? 0;
+    const warmDay = predictDailyKwh(fit, 20, '2026-03-01') ?? 0;
     expect(coldDay).toBeGreaterThan(warmDay + 25);
     expect(Math.abs(warmDay - (fit.baseLoadKwhPerDay ?? 0))).toBeLessThan(0.01);
 
@@ -269,7 +335,7 @@ describe('predictDailyKwh', () => {
       NOW_MS,
     );
     if (!flat) throw new Error('expected flat fit');
-    expect(predictDailyKwh(flat, -5)).toBeUndefined();
+    expect(predictDailyKwh(flat, -5, '2026-03-01')).toBeUndefined();
   });
 });
 

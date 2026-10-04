@@ -14,9 +14,10 @@ import {
  * wiring file naming two peers is the cross-peer composition this layer's
  * rules forbid.
  *
- * The collector is the store's only reader, so it is also its only holder —
- * the database it is built on is the one the app opens at its first boot step
- * and closes last at teardown.
+ * The collector is the store's only holder: its own loop and the
+ * budget-diagnostics API (`WeatherCollector.budgetHistory`) both read through
+ * this one instance. The database it is built on is the one the app opens at
+ * its first boot step and closes last at teardown.
  */
 export const createWeatherHistoryStoreForApp = (
   ctx: Pick<AppContext, 'homey' | 'getUserdataDatabase'>,

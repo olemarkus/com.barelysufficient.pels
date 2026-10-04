@@ -16,12 +16,24 @@
  * refresh rather than a slower cadence of its own: Homey publishes no zone
  * event, so a stale tree has nothing to correct it.
  */
-import type { Logger } from '../../utils/types';
 import { isUnknownRecord } from '../../utils/types';
 import { normalizeError } from '../../utils/errorUtils';
+import { getDebugEmitter } from '../../logging/logger';
 import { getRawFromHomeyApi } from './managerHomeyApi';
 
 export const ZONES_API_PATH = 'manager/zones/zone';
+
+/*
+ * The zone diagnostics go through the `devices` debug emitter, never a module
+ * logger. The root pino logger runs at `info`, so `getLogger(...).debug` here
+ * would emit nothing in production: PR #2252 made exactly that move and
+ * silently lost every `zone_tree_fetch_failed` / `zone_tree_fetched` record,
+ * the lines an owner enables the `devices` topic to read. The emitter is gated
+ * on that same topic, writes each record as JSON with its `event` field, and is
+ * the channel `snapshotRefresh`'s neighbouring zone events use, so one zone
+ * story stays on one channel.
+ */
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 export type ZoneTreeNode = {
   id: string;
@@ -76,23 +88,13 @@ const toZoneTreeNode = (value: unknown): ZoneTreeNode | null => {
  * throws outward: any failure — including an empty payload or one where every
  * entry is malformed — returns `null` so the caller retains its cached tree.
  */
-/*
- * Keeps the INJECTED devices-topic logger rather than a module logger. The root
- * pino logger is created at its default `info` level (`installStructuredLogger`
- * passes no level), so `moduleLogger.debug` here emits nothing in production —
- * it would silently drop every `zone_tree_fetch_failed` / `zone_tree_fetched`
- * record, which are the diagnostics an owner enables the `devices` topic to
- * read. The caller's neighbouring zone logs in `snapshotRefresh` go through the
- * same injected emitter, so this also keeps one zone story on one channel.
- */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export async function fetchZoneTree(params: { logger: Logger }): Promise<ZoneTree | null> {
-  const { logger } = params;
+export async function fetchZoneTree(): Promise<ZoneTree | null> {
   let data: unknown;
   try {
     data = await getRawFromHomeyApi(ZONES_API_PATH);
   } catch (error) {
-    logger.debug({
+    emitDeviceDebug({
       event: 'zone_tree_fetch_failed',
       reasonCode: 'fetch_failed',
       error: normalizeError(error).message,
@@ -101,7 +103,7 @@ export async function fetchZoneTree(params: { logger: Logger }): Promise<ZoneTre
   }
   const rawEntries = toRawZoneEntries(data);
   if (rawEntries === null) {
-    logger.debug({ event: 'zone_tree_fetch_failed', reasonCode: 'invalid_payload' });
+    emitDeviceDebug({ event: 'zone_tree_fetch_failed', reasonCode: 'invalid_payload' });
     return null;
   }
   // Accumulate on a null-prototype object so a hostile key that slipped a
@@ -122,14 +124,14 @@ export async function fetchZoneTree(params: { logger: Logger }): Promise<ZoneTre
   // quirk / shape change, never truth — treat them as a failed fetch so the
   // cached tree survives.
   if (Object.keys(tree).length === 0) {
-    logger.debug({
+    emitDeviceDebug({
       event: 'zone_tree_fetch_failed',
       reasonCode: rawEntries.length === 0 ? 'empty_payload' : 'all_entries_malformed',
       droppedEntries,
     });
     return null;
   }
-  logger.debug({
+  emitDeviceDebug({
     event: 'zone_tree_fetched',
     zonesTotal: Object.keys(tree).length,
     droppedEntries,

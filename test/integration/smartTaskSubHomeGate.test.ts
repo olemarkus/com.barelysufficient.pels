@@ -1,3 +1,5 @@
+import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
+import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/deferredObjectiveValues';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
@@ -114,6 +116,9 @@ const buildDeviceDeps = (
     activePlanRecorder,
     planHistoryRecorder,
     nowMs: NOW_MS,
+    readCurrentTaskEvaluation: (deviceId, objective) => inactiveTaskEvaluation(
+      deviceId, objective.deadlineAtMs, resolveObjectiveTargetValue(objective),
+    ),
     ...(resolveDeviceHomeScope ? { resolveDeviceHomeScope } : {}),
     debugStructured,
   };

@@ -203,7 +203,7 @@ function resolveDeviceControlBundle(params: {
         previousSnapshot, retainedReading, purpose, managedDecision,
     } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
-    const { logger, debugStructured, isPowerCapable } = deps;
+    const { logger, isPowerCapable } = deps;
     const evCharging = getEvCharging(overlay.capabilityObj);
     // A declared plug state is a member of the Homey enum by the time a read
     // reaches the parse: the read contract (`deviceReadContract.ts`) ignored any
@@ -214,7 +214,7 @@ function resolveDeviceControlBundle(params: {
     }
         = resolveDeviceParsedControlState({
         logger,
-        debugStructured, deviceId, deviceName: effectiveDevice.name ?? null,
+        deviceId, deviceName: effectiveDevice.name ?? null,
         deviceLabel,
         deviceClassKey,
         binaryCapabilityId,
@@ -285,7 +285,6 @@ export function assembleDeviceSnapshot(params: {
         now,
         measuredPowerResolver: deps.measuredPowerResolver,
         powerState: deps.powerState,
-        logger: deps.logger,
     });
     // Keep the last trusted measurement when a refresh has no newer sample.
     // In particular, re-reading one `meter_power` sample must not drop admission.

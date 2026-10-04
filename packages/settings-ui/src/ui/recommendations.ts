@@ -49,7 +49,8 @@ import { subscribeToHomeScope } from './homeScope.ts';
 
 export type RecommendationNavigation = {
   openPanel: (panelId: string) => void;
-  openDevice: (deviceId: string) => void;
+  // `focus` names the setting to land on inside the device page.
+  openDevice: (deviceId: string, focus: 'top' | 'start-policy') => void;
 };
 
 // Browser-owned acknowledgement state. The runtime never reads this key.
@@ -121,6 +122,8 @@ const resolveRecommendationReadiness = (afterSetupRead: AfterSetupFactsRead): Re
   const flowReporterRead = readEvSocFlowReporters();
   return state.evCarAssociationsLoaded
     && carInventory.state === 'resolved'
+    // A car whose match history is unreadable leaves its advice undecided.
+    && carInventory.cars.every((car) => car.matchHistory.state === 'resolved')
     && smartTaskUsageRead === 'resolved'
     && (!needsFlowReporterCheck || flowReporterRead.state === 'resolved')
     && afterSetupRead.state === 'resolved'
@@ -135,12 +138,16 @@ const getSurfaces = (): { banner: HTMLElement | null; page: HTMLElement | null }
 
 const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): SetupRecommendation[] => {
   if (!state.devicesLoaded) return [];
-  const cars = state.evCarAssociationsLoaded
-    && (carInventory.state === 'resolved' || carInventory.state === 'stale')
-    ? carInventory.cars
-    : [];
+  const inventory = carInventory;
+  const carsKnown = inventory.state === 'resolved' || inventory.state === 'stale';
+  const cars = state.evCarAssociationsLoaded && carsKnown ? inventory.cars : [];
   const flowReporterRead = readEvSocFlowReporters();
+  // Whether a battery-level Flow is a leftover or the charger's only working
+  // source depends on the car's match history, so neither reading is offered
+  // until the car list has loaded, nor from a list that failed to refresh: a
+  // past match stays true, but "not matched yet" may have changed since.
   const evSocReporters = state.evCarAssociationsLoaded
+    && inventory.state === 'resolved'
     && (flowReporterRead.state === 'resolved' || flowReporterRead.state === 'stale')
     ? flowReporterRead.reporters
     : [];
@@ -292,7 +299,8 @@ const runRecommendationAction = (recommendation: SetupRecommendation): void => {
     return;
   }
   navigationRead.navigation.openPanel('devices');
-  if (target.kind === 'device') navigationRead.navigation.openDevice(target.deviceId);
+  if (target.kind === 'device') navigationRead.navigation.openDevice(target.deviceId, 'top');
+  if (target.kind === 'device-start-policy') navigationRead.navigation.openDevice(target.deviceId, 'start-policy');
 };
 
 const writeDismissal = async (recommendation: SetupRecommendation, dismissed: boolean): Promise<void> => {

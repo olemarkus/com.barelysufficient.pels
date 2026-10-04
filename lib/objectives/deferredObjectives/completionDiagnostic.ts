@@ -1,6 +1,7 @@
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { StallEvidence } from '../../../packages/contracts/src/idleClassification';
 import { resolveTaskCompletion, type TaskCompletion } from './taskCompletion';
+import type { TaskEvaluation } from './taskEvaluation';
 import {
   type DeferredObjectiveDiagnostic, type DeferredObjectiveStallClassificationReader,
 } from './diagnosticTypes';
@@ -31,16 +32,24 @@ export const completionFromDiagnostic = (
   diagnostic: DeferredObjectiveDiagnostic,
   evidence: StallEvidence | undefined,
   hasEstablishedPlan: boolean,
+): TaskCompletion | { kind: 'inactive' } => completionFromEvaluation(
+  diagnostic.evaluation, evidence, hasEstablishedPlan,
+);
+
+export const completionFromEvaluation = (
+  evaluation: TaskEvaluation,
+  evidence: StallEvidence | undefined,
+  hasEstablishedPlan: boolean,
 ): TaskCompletion | { kind: 'inactive' } => {
-  const { progress } = diagnostic.evaluation;
+  const { progress } = evaluation;
   if (progress.kind === 'unobserved') return { kind: 'inactive' };
   const thermalEvidence = hasEstablishedPlan
-    && diagnostic.evaluation.targetControl.kind === 'temperature' && evidence !== undefined
+    && evaluation.targetControl.kind === 'temperature' && evidence !== undefined
     ? { kind: 'accepted' as const, evidence }
     : { kind: 'none' as const };
   return resolveTaskCompletion({
     currentValue: progress.value,
-    requestedTarget: diagnostic.evaluation.requestedTarget,
+    requestedTarget: evaluation.requestedTarget,
     direction: progress.direction,
     thermalEvidence,
   });

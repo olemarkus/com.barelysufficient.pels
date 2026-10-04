@@ -14,6 +14,7 @@ import type { Mock } from 'vitest';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import { partialDouble } from '../helpers/partialDouble';
+import type { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
 
 describe('registerAppFlowCards', () => {
   const homeModeCatalog = partialDouble<HomeModeCatalog>({
@@ -138,6 +139,7 @@ describe('registerAppFlowCards', () => {
     } as unknown as AppContext['homeMembership'];
     ctx.deferredObjectiveActivePlanRecorder = {} as AppContext['deferredObjectiveActivePlanRecorder'];
     ctx.deferredObjectivePlanHistoryRecorder = {} as AppContext['deferredObjectivePlanHistoryRecorder'];
+    ctx.deferredObjectiveEnergyDelivery = partialDouble<EnergyTaskDeliveryTracker>({ getDeliveredKWh: vi.fn() });
 
     registerAppFlowCards(ctx, homeModeCatalog.resolveModeName, homeModeCatalog.getAllModes, homeModeCatalog.getOperatingMode);
     const deps = registerFlowCards.mock.calls[0]?.[0] as {

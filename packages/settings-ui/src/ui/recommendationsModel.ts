@@ -19,7 +19,8 @@ export type RecommendationDismissals = Record<string, number>;
 
 export type RecommendationTarget =
   | { kind: 'device'; deviceId: string }
-  | { kind: 'devices' }
+  // The device page with Setup open on "Only PELS starts this device".
+  | { kind: 'device-start-policy'; deviceId: string }
   | { kind: 'flow-conflict-check'; deviceId: string }
   | { kind: 'ev-soc-flow-conflict-check'; deviceId: string }
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
@@ -115,48 +116,114 @@ export const resolveNativeControlRecommendations = (
   })
 );
 
+/**
+ * Only a car PELS has already matched to one of this home's chargers is worth
+ * choosing: selecting a car makes PELS ignore the charger's other battery
+ * sources until a match, so recommending a car that has never matched would
+ * steer a working Flow-reported level into no level at all.
+ */
 export const resolveCarAssociationRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],
   cars: readonly SettingsUiRecommendationCar[],
   associations: EvCarAssociations,
-): SetupRecommendation[] => {
-  const chargers = devices.filter((device) => device.isEvCharger);
-  if (chargers.length === 0) return [];
-  const chargerIds = new Set(chargers.map((charger) => charger.id));
-  const associatedCarIds = new Set(
-    Object.entries(associations).flatMap(([chargerId, association]) => (
-      chargerIds.has(chargerId) ? association.carIds : []
-    )),
-  );
-  const target: RecommendationTarget = chargers.length === 1
-    ? { kind: 'device', deviceId: chargers[0]!.id }
-    : { kind: 'devices' };
-  return cars.flatMap((car) => (
-    associatedCarIds.has(car.id) ? [] : [{
-      id: recommendationId('charger-car', car.id),
-      version: RECOMMENDATION_VERSION,
-      category: 'optional' as const,
-      title: `Choose a charger for ${car.name}`,
-      body: 'Choose the charger this car uses so PELS can read its battery level while it charges.',
-      actionLabel: 'Choose charger',
-      target,
-    }]
-  ));
-};
-
-export const resolveEvSocFlowConflictRecommendations = (
-  devices: readonly SettingsUiDeviceDetailItem[],
-  associations: EvCarAssociations,
-  reporters: readonly SettingsUiEvSocFlowReporter[],
 ): SetupRecommendation[] => {
   const chargersById = new Map(
     devices
       .filter((device) => device.isEvCharger)
       .map((device) => [device.id, device]),
   );
-  return reporters.flatMap((reporter) => {
+  if (chargersById.size === 0) return [];
+  const associatedCarIds = new Set(
+    Object.entries(associations).flatMap(([chargerId, association]) => (
+      chargersById.has(chargerId) ? association.carIds : []
+    )),
+  );
+  return cars.flatMap((car) => {
+    if (associatedCarIds.has(car.id)) return [];
+    if (car.matchHistory.state !== 'resolved') return [];
+    // Newest first, so this is the charger the car was matched to most recently.
+    const match = car.matchHistory.chargerMatches.find(({ chargerId }) => chargersById.has(chargerId));
+    const charger = match ? chargersById.get(match.chargerId) : undefined;
+    if (!charger) return [];
+    return [{
+      id: recommendationId('charger-car', car.id),
+      version: RECOMMENDATION_VERSION,
+      category: 'optional' as const,
+      title: `Select ${car.name} on ${charger.name}`,
+      body: `PELS has matched ${car.name} to ${charger.name}. Select the car in its Car section so `
+        + 'PELS can read its battery level while it charges.',
+      actionLabel: 'Open charger',
+      target: { kind: 'device' as const, deviceId: charger.id },
+    }];
+  });
+};
+
+/**
+ * Whether a car selected for this charger has been matched to it, now or in the
+ * retained history. Until one has, the charger has no battery level, so the
+ * Flow that reports one is the owner's only working source, not a leftover.
+ * `unknown` while a selected car's history is unreadable.
+ */
+const resolveSelectedCarMatch = (
+  charger: SettingsUiDeviceDetailItem,
+  selectedCarIds: readonly string[],
+  cars: readonly SettingsUiRecommendationCar[],
+): 'matched' | 'unmatched' | 'unknown' => {
+  if (charger.associatedCar && selectedCarIds.includes(charger.associatedCar.carId)) return 'matched';
+  const selected = cars.filter((car) => selectedCarIds.includes(car.id));
+  if (selected.some(({ matchHistory }) => (
+    matchHistory.state === 'resolved'
+    && matchHistory.chargerMatches.some(({ chargerId }) => chargerId === charger.id)
+  ))) return 'matched';
+  return selected.some(({ matchHistory }) => matchHistory.state === 'unavailable') ? 'unknown' : 'unmatched';
+};
+
+const selectedCarLabel = (
+  selectedCarIds: readonly string[],
+  cars: readonly SettingsUiRecommendationCar[],
+): string => {
+  const names = cars.filter((car) => selectedCarIds.includes(car.id)).map((car) => car.name);
+  return names.length === 1 ? names[0]! : 'the selected cars';
+};
+
+const flowReference = (reporter: SettingsUiEvSocFlowReporter): string => (
+  reporter.flowName
+    ? `the “Report battery level for charger” action in the Flow “${reporter.flowName}”`
+    : '“Report battery level for charger” actions in enabled Homey Flows'
+);
+
+export const resolveEvSocFlowConflictRecommendations = (
+  devices: readonly SettingsUiDeviceDetailItem[],
+  associations: EvCarAssociations,
+  reporters: readonly SettingsUiEvSocFlowReporter[],
+  cars: readonly SettingsUiRecommendationCar[],
+): SetupRecommendation[] => {
+  const chargersById = new Map(
+    devices
+      .filter((device) => device.isEvCharger)
+      .map((device) => [device.id, device]),
+  );
+  return reporters.flatMap((reporter): SetupRecommendation[] => {
     const charger = chargersById.get(reporter.chargerDeviceId);
-    if (!charger || (associations[charger.id]?.carIds.length ?? 0) === 0) return [];
+    const selectedCarIds = charger ? associations[charger.id]?.carIds ?? [] : [];
+    if (!charger || selectedCarIds.length === 0) return [];
+    const match = resolveSelectedCarMatch(charger, selectedCarIds, cars);
+    // Neither "remove it" nor "you need it" is honest without the history.
+    if (match === 'unknown') return [];
+    if (match === 'unmatched') {
+      return [{
+        id: recommendationId('ev-soc-flow-unmatched', charger.id),
+        version: RECOMMENDATION_VERSION,
+        category: 'recommendation' as const,
+        title: `${charger.name} has no battery level`,
+        body: `A car is selected for this charger, so PELS ignores ${flowReference(reporter)}. `
+          + `PELS has not matched ${selectedCarLabel(selectedCarIds, cars)} to this charger yet, so the `
+          + 'charger has no battery level. Clear the car selection to use the Flow again, and select '
+          + 'the car once it shows as matched.',
+        actionLabel: 'Open charger',
+        target: { kind: 'device' as const, deviceId: charger.id },
+      }];
+    }
     const body = reporter.flowName
       ? `With a car selected, PELS ignores the “Report battery level for charger” action in the Flow `
         + `“${reporter.flowName}”. Remove that action or disable the Flow if you no longer need it.`
@@ -194,9 +261,9 @@ export const resolveSmartTaskStartPolicyRecommendations = (
     category: 'optional',
     title: `Keep ${device.name} within Smart tasks`,
     body: 'Turn on “Only PELS starts this device” to keep it within Smart tasks. '
-      + 'PELS turns it off if turned on outside a Smart task. Without a Smart task, it stays off.',
+      + 'PELS turns it off if it is turned on outside a Smart task. Without a Smart task, it stays off.',
     actionLabel: 'Review device',
-    target: { kind: 'device', deviceId: device.id },
+    target: { kind: 'device-start-policy', deviceId: device.id },
   }];
 });
 
@@ -210,7 +277,7 @@ export const resolveSetupRecommendations = (
   [
     ...[
       ...resolveNativeControlRecommendations(devices, nativeWiringEnabledByDeviceId),
-      ...resolveEvSocFlowConflictRecommendations(devices, associations, evSocReporters),
+      ...resolveEvSocFlowConflictRecommendations(devices, associations, evSocReporters, cars),
     ].sort((left, right) => left.title.localeCompare(right.title)),
     ...resolveCarAssociationRecommendations(devices, cars, associations)
       .sort((left, right) => left.title.localeCompare(right.title)),

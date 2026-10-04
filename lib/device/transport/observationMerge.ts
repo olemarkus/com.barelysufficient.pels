@@ -23,14 +23,12 @@ export function mergeFresherCapabilityObservations(params: {
     previousSnapshot: TransportDeviceSnapshot[];
     nextSnapshot: TransportDeviceSnapshot[];
     devices: HomeyDeviceLike[];
-    logger: { debug: (...args: unknown[]) => void };
 }): void {
     const {
         state,
         previousSnapshot,
         nextSnapshot,
         devices,
-        logger,
     } = params;
     const previousById = new Map(previousSnapshot.map((device) => [device.id, device]));
     const devicesById = new Map<string, HomeyDeviceLike>();
@@ -63,14 +61,12 @@ export function mergeFresherCapabilityObservations(params: {
                 nextSnapshot: snapshot,
                 previous,
                 sourceDevice,
-                logger,
             });
         } else {
             mergeTemperatureRejectionObservations({
                 state,
                 snapshot,
                 sourceDevice,
-                logger,
         });
         }
         if (
@@ -89,9 +85,8 @@ function mergeTemperatureRejectionObservations(params: {
     state: DeviceTransportObservationState;
     snapshot: TransportDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
-    logger: { debug: (...args: unknown[]) => void };
 }): void {
-    const { state, snapshot, sourceDevice, logger } = params;
+    const { state, snapshot, sourceDevice } = params;
     for (const capabilityId of ['target_temperature', 'measure_temperature'] as const) {
         const observation = state.capabilityObservations.get(
             buildCapabilityObservationKey(snapshot.id, capabilityId),
@@ -104,7 +99,6 @@ function mergeTemperatureRejectionObservations(params: {
             capabilityId,
             sourceDevice,
             nextSnapshot: snapshot,
-            logger,
         });
     }
 }
@@ -119,14 +113,12 @@ function mergeSnapshotObservationsForDevice(params: {
     nextSnapshot: TransportDeviceSnapshot;
     previous: TransportDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
-    logger: { debug: (...args: unknown[]) => void };
 }): void {
     const {
         state,
         nextSnapshot,
         previous,
         sourceDevice,
-        logger,
     } = params;
     const snapshot = nextSnapshot;
     snapshot.lastLocalWriteMs = Math.max(
@@ -153,7 +145,6 @@ function mergeSnapshotObservationsForDevice(params: {
             capabilityId: snapshot.binaryCapabilityId,
             sourceDevice,
             nextSnapshot: snapshot,
-            logger,
             });
     }
 
@@ -165,7 +156,6 @@ function mergeSnapshotObservationsForDevice(params: {
             capabilityId: target.id,
             sourceDevice,
             nextSnapshot: snapshot,
-            logger,
         });
     }
 
@@ -180,14 +170,12 @@ function mergeSnapshotObservationsForDevice(params: {
             capabilityId,
             sourceDevice,
             nextSnapshot: snapshot,
-            logger,
         });
     }
     mergeStateOfChargeObservationsForDevice({
         state,
         snapshot,
         sourceDevice,
-        logger,
     });
     const maxRetainedMs = getMaxRetainedObservationTimeMs(state, snapshot);
     if (maxRetainedMs > 0) {
@@ -221,13 +209,11 @@ function mergeStateOfChargeObservationsForDevice(params: {
     state: DeviceTransportObservationState;
     snapshot: TransportDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
-    logger: { debug: (...args: unknown[]) => void };
 }): void {
     const {
         state,
         snapshot,
         sourceDevice,
-        logger,
     } = params;
     let newestCapabilityId: string | undefined;
     let newestObservedAt = 0;
@@ -257,7 +243,6 @@ function mergeStateOfChargeObservationsForDevice(params: {
         capabilityId: newestCapabilityId,
         sourceDevice,
         nextSnapshot: snapshot,
-        logger,
     });
 }
 
@@ -290,7 +275,6 @@ function mergeCapabilityObservation(params: {
     capabilityId: string;
     sourceDevice: HomeyDeviceLike;
     nextSnapshot: TransportDeviceSnapshot;
-    logger: { debug: (...args: unknown[]) => void };
 }): void {
     const {
         state,
@@ -299,7 +283,6 @@ function mergeCapabilityObservation(params: {
         capabilityId,
         sourceDevice,
         nextSnapshot,
-        logger,
     } = params;
     const observationKey = buildCapabilityObservationKey(deviceId, capabilityId);
     const observation = state.capabilityObservations.get(observationKey);
@@ -381,7 +364,7 @@ function mergeCapabilityObservation(params: {
         return;
     }
     emitConsolidation(observation.value, 'retained', 'retained_fresher');
-    logger.debug({
+    emitDeviceDebug({
         event: 'snapshot_refresh_preserved_newer',
         deviceId,
         deviceName,

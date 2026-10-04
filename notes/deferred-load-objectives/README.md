@@ -132,6 +132,14 @@ and history; history records its acceptance and reopens on a trusted observer ex
 regression. The completion events carry the classification, classified setpoint, measured
 progress and requested target so the decision is traceable.
 
+When a task is replaced before its deadline, history records `met` only when
+its latest trusted completion still holds; every unfinished task records
+`replaced`, regardless of its forecast. The user-change path reads completion
+against the old objective before changing settings, so a trusted regression
+between lifecycle ticks cannot finalize a stale success. An unavailable read
+preserves the last accepted observation. At or after the old deadline, normal
+deadline finalization applies. The replacement begins without inherited success.
+
 
 ## Soft Temperature Runtime Semantics
 
@@ -485,26 +493,28 @@ mobile WebView does not inject the Homey SDK on sub-pages; the deadline-plan vie
 as an in-page route off `index.html`.):
 
 - The recorder observes the diagnostic stream once per plan cycle. It starts an in-progress
-  record on the first plannable diagnostic for a `(deviceId, deadlineAtMs)` pair, refreshes
-  progress + planning flags each cycle, and stamps `metAtMs` while the status is `satisfied`.
+  record on the first future-dated diagnostic for a `(deviceId, deadlineAtMs)` pair, refreshes
+  progress + planning flags each cycle, and stamps `metAtMs` when completion is accepted.
   If progress moves away from the target before the deadline, the recorder clears that live
   satisfied marker and continues tracking; a later recovered `satisfied` status stamps the later
   met time.
-- A run is finalized as `met` when the latest trustworthy progress at finalization has reached
-  the target in its progress direction, `missed` when the deadline passed short of the target,
-  `abandoned` when the user
+- A run is finalized as `met` when current completion is accepted: the requested target is
+  reached in its progress direction, or eligible observer near-target acceptance still holds.
+  Unavailable progress preserves the last accepted completion. An unfinished run is `missed`
+  when the deadline passed short of the target, `abandoned` when the user
   clears the objective (or when the diagnostic stops appearing for >1 hour with the deadline
   still in the future), `replaced` when the user picks a new deadline or changes the target
   value on the same deadline, and `unknown` when there's not enough fresh input to classify.
   These stored outcome names are internal compatibility values. Public Settings UI labels
-  expose `met` as `Succeeded`, `missed` as `Missed`, and user-clear/replacement/disappear
-  outcomes as `Abandoned`.
+  expose `met` as `Succeeded`, `missed` as `Missed`, `abandoned` as `Abandoned`, and
+  `replaced` as `Replaced`.
 - Flow card writes route through `applyDeferredObjectiveChange`
   (`lib/objectives/deferredObjectives/objectiveChange.ts`) so a user-initiated replace or clear
   finalizes the prior in-progress run immediately rather than waiting for the abandon-grace
   window. The lifecycle deadline transition routed through `handleDeferredDeadlineReached` stays
   on the `deadline_passed` classification — only user-initiated changes whose prior deadline is
-  still in the future produce `replaced` or the prompt `abandoned`. When the prior
+  still in the future produce `replaced` or the prompt `abandoned` for unfinished runs.
+  A still-satisfied run records `met` instead. When the prior
   deadline has already elapsed at the moment of the user change, `applyDeferredObjectiveChange`
   calls `planHistoryRecorder.finalizeElapsedDeadline` instead, which pushes a
   `deadline_passed` entry synchronously (resolves to `met`/`missed` from observed progress).
@@ -513,8 +523,9 @@ as an in-page route off `index.html`.):
   drop the just-completed entry on restart. A "When deadline reached" → "Set deadline" Flow
   chain therefore classifies the just-completed task as met/missed instead of muted-Abandoned.
   The active-plan hero still swaps immediately in that case.
-- Same-deadline target changes finalize the prior history entry as `replaced`, clear the old
-  active plan, and start a fresh pending active plan. History and the current-plan hero now
+- Same-deadline target changes finalize the prior history entry as `met` if it is still
+  satisfied, otherwise `replaced`, clear the old active plan, and start a fresh pending active plan.
+  History and the current-plan hero now
   both treat a target/deadline edit as abandoning the committed schedule and starting a new
   run.
 - Each hour's booking is recorded once, on the run's first tick in the hour, as
@@ -636,8 +647,8 @@ This gives PELS one planner contract for both EVs and heaters:
 - What is the minimum step/mode/action required to remain on plan?
 
 Trustworthiness is deliberately NOT on this contract: admission
-(`lib/objectives/deferredObjectives/admission.ts`, `PLANNABLE_STATUSES` /
-`resolveDecision`) resolves a `satisfied`, `unknown` or `invalid` objective to
+(`lib/objectives/deferredObjectives/admission.ts`, `resolveDecision`) maps the task evaluation's
+`completion` (`target_reached` / `accepted_near_target`) and `planning.kind === 'inactive'` to
 `inactive` before the plan build, so nothing untrusted reaches the planner to judge.
 
 ## State vs Evaluation
@@ -649,7 +660,8 @@ be collapsed into one object.
 > **Note:** the types below are forward-design types capturing the eventual planner contract.
 > The shipped persisted shape is `DeferredObjectiveSettingsV1` (see §"Persisted Settings Slice")
 > and the shipped evaluation type is `DeferredObjectiveDiagnostic` in
-> `lib/objectives/deferredObjectives/diagnosticsBridge.ts`. Fields below that don't appear on the
+> `lib/objectives/deferredObjectives/diagnosticTypes.ts`, produced by `taskEvaluationCoordinator.ts`.
+> Fields below that don't appear on the
 > shipped types (e.g. `stableStatus`, `requiredAverageKw`, `conservativeNetGainKw`) are
 > aspirational and may never ship as named. **Shipped status enum is `cannot_meet`**, not the
 > aspirational `cannot_be_met` shown below; the Flow-card surface adds a third translation —
@@ -661,8 +673,8 @@ The original forward-design `DeviceObjectiveState` / `DeviceObjectiveEvaluation`
 named and were drifting from reality. The shipped equivalents are:
 
 - **Persisted state**: `DeferredObjectiveSettingsV1` (`packages/contracts/src/deferredObjectiveSettings.ts`).
-- **Evaluation**: `DeferredObjectiveDiagnostic` (`lib/objectives/deferredObjectives/diagnosticsBridge.ts`),
-  status enum `unknown | on_track | at_risk | cannot_meet`.
+- **Evaluation**: `DeferredObjectiveDiagnostic` (`lib/objectives/deferredObjectives/diagnosticTypes.ts`,
+  produced by `taskEvaluationCoordinator.ts`), status enum `unknown | on_track | at_risk | cannot_meet`.
 - **Rate estimate**: the learned-profile model in `lib/objectives/` (see §"Learned Profiling First").
 
 The enduring design rule still holds: the planner consumes a generic objective evaluation in
@@ -1075,8 +1087,8 @@ projectedCompletionAtMs =
 
 ## Status Semantics
 
-The shipped status values on the diagnostic
-(`lib/objectives/deferredObjectives/diagnosticsBridge.ts`):
+The shipped status values on the diagnostic (`lib/objectives/deferredObjectives/diagnosticTypes.ts`,
+resolved in `taskEvaluationCoordinator.ts`):
 
 - `unknown` — required inputs are missing, invalid, or impossible to evaluate.
   Per-kind: EV SoC additionally treats stale or session-invalid progress as
@@ -1401,11 +1413,12 @@ The richer-tokens slice originally drafted as `ev-ready-by/README.md` §P2.3
 
 Use structured reason codes rather than prose as planner contract. The live source-of-truth is
 the union in `lib/objectives/deferredObjectives/types.ts` plus the per-module narrow types in
-`diagnosticsBridge.ts`, `policyHorizon.ts`, and `horizonPlanner.ts`.
+`diagnosticTypes.ts`, `diagnosticProgress.ts`, `policyHorizon.ts`, and `horizonPlanner.ts`.
 
 ### Shipped today
 
-Diagnostics bridge (`diagnosticsBridge.ts`):
+Task evaluation (`diagnosticTypes.ts`, produced by `taskEvaluationCoordinator.ts` and
+`diagnosticProgress.ts`):
 
 - `objective_missing_device`
 - `objective_device_in_sub_home`

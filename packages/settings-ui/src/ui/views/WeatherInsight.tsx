@@ -1,4 +1,4 @@
-import { resolveResidualHeadroom } from '../../../../shared-domain/src/energySignature/energySignature';
+import { resolveResidualHeadroom, warmDayKwhFor } from '../../../../shared-domain/src/energySignature/energySignature';
 import type { ComponentChildren } from 'preact';
 import { MdCircularProgress, MdElevation, MdTextButton } from './materialWebJSX.tsx';
 import { ExpandMoreIcon, WarningIcon } from './icons.tsx';
@@ -312,7 +312,7 @@ export const WeatherBudgetCard = ({ data, onShowDetails, onAdjustBudget }: {
 
 // ─── Detail view ──────────────────────────────────────────────────────────────
 
-const summaryHeadline = (fit: EnergySignatureFit): string => {
+const summaryHeadline = (fit: EnergySignatureFit, outlookDateKey: string): string => {
   if (fit.model === 'uncorrelated') return composeUncorrelatedSummary(fit.usableDays);
   if (fit.model === 'linear') {
     return composeWinterOnlyHeadline({
@@ -321,7 +321,7 @@ const summaryHeadline = (fit: EnergySignatureFit): string => {
     });
   }
   return composeSummaryHeadline({
-    baseLoadKwhPerDay: fit.baseLoadKwhPerDay ?? 0,
+    baseLoadKwhPerDay: warmDayKwhFor(fit, outlookDateKey),
     slopeKwhPerDegree: fit.slopeKwhPerDegree,
     balancePointC: fit.balancePointC ?? 0,
   });
@@ -337,7 +337,7 @@ const SummaryCard = ({ readout, fit }: { readout: WeatherAdvisorReadoutPayload; 
           <span class="plan-chip plan-chip--info">{chip}</span>
         </div>
       )}
-      <p class="plan-hero__decision weather-summary__headline">{summaryHeadline(fit)}</p>
+      <p class="plan-hero__decision weather-summary__headline">{summaryHeadline(fit, readout.outlookDateKey)}</p>
       <p class="pels-card-supporting">{composeBasedOnDays(fit.usableDays)}</p>
       {readout.yesterday !== null && (
         <p class="pels-card-supporting">
@@ -364,7 +364,9 @@ const NumbersCard = ({ readout, fit }: { readout: WeatherAdvisorReadoutPayload; 
   const rows = [
     {
       label: WEATHER_ROW_WARM_DAY_USAGE,
-      value: isChangepoint ? formatWarmDayUsage(fit.baseLoadKwhPerDay ?? 0) : WEATHER_VALUE_NOT_CLEAR_YET,
+      value: isChangepoint
+        ? formatWarmDayUsage(warmDayKwhFor(fit, readout.outlookDateKey))
+        : WEATHER_VALUE_NOT_CLEAR_YET,
     },
     { label: WEATHER_ROW_PER_DEGREE, value: formatPerDegree(fit.slopeKwhPerDegree) },
     {
@@ -442,6 +444,7 @@ const ScatterCard = ({ readout }: { readout: WeatherAdvisorReadoutPayload }) => 
         recentDays={readout.recentDays}
         fit={readout.fit}
         prediction={readout.prediction}
+        outlookDateKey={readout.outlookDateKey}
         yesterdayDateKey={readout.yesterday?.dateKey ?? null}
       />
       {!learning && !uncorrelated && (

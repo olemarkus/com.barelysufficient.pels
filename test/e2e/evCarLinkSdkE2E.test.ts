@@ -436,6 +436,42 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
   // than a transport accessor) is what proves the value actually survives to a
   // reader: an earlier design stamped it onto the device snapshot, where the
   // observed-state projection dropped it and every device re-parse wiped it.
+  it('stops serving a Flow-reported battery level as soon as a car is selected', async () => {
+    // SHS 2026-10-04: selecting a car left the charger's earlier level in the
+    // snapshot until the next scheduled re-parse, while the charger page said
+    // the charger had no battery level and boost and Smart tasks still used it.
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
+    const car = await buildCar();
+    const charger = await buildCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
+    seedSettings();
+    driveHomeEnergy(liveHomeW(3_000));
+
+    const app = createApp();
+    spyLogs(app);
+    await app.onInit();
+    await pumpMinutes(2);
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_paused');
+    await pumpMinutes(1);
+    // How the reporting owner fed the level before selecting a car.
+    const report = mockHomeyInstance.flow._actionCardListeners.report_evcharger_battery_level;
+    await report({ device: CHARGER_ID, battery_percent: 70 });
+    await flushDetached();
+    expect(socOf(getLatestTargetSnapshotForTests())?.level).toMatchObject({ kind: 'known', percent: 70 });
+
+    mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
+    await flushDetached();
+
+    // The car is not plugged in, so nothing is matched: the charger has no level.
+    expect(socOf(getLatestTargetSnapshotForTests())?.level.kind).not.toBe('known');
+
+    // Clearing the selection, as the charger page advises, brings the Flow's
+    // level straight back.
+    mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, {});
+    await flushDetached();
+    expect(socOf(getLatestTargetSnapshotForTests())?.level).toMatchObject({ kind: 'known', percent: 70 });
+  });
+
   it('serves the associated car to the settings UI only for a car the user ticked', async () => {
     vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
     const car = await buildCar();
@@ -459,6 +495,19 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     // The probe has matched the pair, but the user has ticked nothing: the
     // default for every existing install must stay invisible.
     expect((await chargerFromUi()).associatedCar).toBeUndefined();
+    // The match itself is still offered, so the owner can see it before
+    // selecting the car and giving up a working battery-level Flow.
+    expect(await api.ui_recommendation_cars({ homey: mockHomeyInstance as never })).toEqual({
+      state: 'resolved',
+      cars: [{
+        id: CAR_ID,
+        name: 'Polestar',
+        matchHistory: {
+          state: 'resolved',
+          chargerMatches: [{ chargerId: CHARGER_ID, lastMatchedAtMs: expect.any(Number) }],
+        },
+      }],
+    });
 
     // Tick the car for this charger.
     mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });

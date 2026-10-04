@@ -5,6 +5,7 @@ import type {
 } from '../../../contracts/src/weatherAdvisorTypes.ts';
 import { SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { WEATHER_ADVISOR_SETTINGS } from '../../../contracts/src/settingsKeys.ts';
+import { isCalendarDateKey } from '../../../shared-domain/src/utils/dateUtils.ts';
 import { WEATHER_FIRST_ESTIMATE_TOAST } from '../../../shared-domain/src/weatherInsightCopy.ts';
 import { callApi, getSetting, setSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
@@ -76,10 +77,14 @@ export const asReadoutPayload = (read: unknown): WeatherAdvisorReadoutPayload | 
   if (typeof read !== 'object' || read === null) return null;
   const { kind, payload } = read as { kind?: unknown; payload?: unknown };
   if (kind !== 'readout' || typeof payload !== 'object' || payload === null) return null;
-  const { state, settings, outdoorReading } = payload as {
-    state?: unknown; settings?: unknown; outdoorReading?: unknown;
+  const {
+    state, settings, outdoorReading, outlookDateKey,
+  } = payload as {
+    state?: unknown; settings?: unknown; outdoorReading?: unknown; outlookDateKey?: unknown;
   };
   if (typeof state !== 'string') return null;
+  // The estimate line and warm-day usage are evaluated on this date's season.
+  if (!isCalendarDateKey(outlookDateKey)) return null;
   if (typeof settings !== 'object' || settings === null) return null;
   if (typeof outdoorReading !== 'object' || outdoorReading === null) return null;
   return payload as WeatherAdvisorReadoutPayload;

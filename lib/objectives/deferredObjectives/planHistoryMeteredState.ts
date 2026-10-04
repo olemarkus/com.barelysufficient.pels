@@ -1,4 +1,4 @@
-import { isTaskDeliveryEvidence } from '../../../packages/shared-domain/src/taskDeliveryValidation';
+import { isTaskDeliveryEvidence } from './taskDeliveryValidation';
 import type { TaskDeliveryEvidence } from '../../../packages/contracts/src/taskDelivery';
 import { LEGACY_DELIVERY_EVIDENCE } from './deliveryEvidence';
 import type {

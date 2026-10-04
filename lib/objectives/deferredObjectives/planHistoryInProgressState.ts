@@ -92,7 +92,7 @@ export type InProgressRecord = Omit<
   finalProgressDirection: ObjectiveProgressDirectionRead;
   satisfied: boolean;
   // `null` for target-reached / in-flight; `'stalled'` once the idle
-  // classifier promoted the run. Sticky, reset only by clearSatisfiedWithProgress.
+  // classifier promoted the run. Retained while completion remains accepted.
   metReason: DeferredObjectivePlanMetReason | null;
   // True original plan for this run, captured the first cycle an active plan
   // exists for `(deviceId, deadlineAtMs)`. We snapshot `plan.original` when
@@ -505,7 +505,7 @@ const hasMovedSinceResumedStart = (
 // preserves the last accepted result until the owner can decide again.
 const computeMergedMetState = (
   record: InProgressRecord,
-  diag: DeferredObjectiveDiagnostic,
+  evaluation: TaskEvaluation,
   nowMs: number,
 ): {
   satisfied: boolean;
@@ -514,20 +514,21 @@ const computeMergedMetState = (
   finalProgressValue: number | null;
   finalProgressDirection: InProgressRecord['finalProgressDirection'];
 } => {
-  const acceptedNearTarget = diag.evaluation.completion.kind === 'accepted_near_target';
-  const preserveAccepted = record.satisfied && diag.evaluation.completion.kind === 'inactive';
+  const acceptedNearTarget = evaluation.completion.kind === 'accepted_near_target';
+  const preserveAccepted = record.satisfied && evaluation.completion.kind === 'inactive';
   const currentlySatisfied = acceptedNearTarget || preserveAccepted
-    || diag.evaluation.completion.kind === 'target_reached';
+    || evaluation.completion.kind === 'target_reached';
   const preservedMetReason = preserveAccepted ? record.metReason : null;
   const preservePlateau = acceptedNearTarget && record.satisfied;
+  const currentValue = evaluation.progress.kind === 'known' ? evaluation.progress.value : record.finalProgressValue;
+  const currentDirection = evaluation.progress.kind === 'known'
+    ? evaluation.progress.direction : record.finalProgressDirection;
   return {
     satisfied: currentlySatisfied,
     metAtMs: currentlySatisfied ? (record.metAtMs ?? nowMs) : null,
     metReason: acceptedNearTarget ? 'stalled' : preservedMetReason,
-    finalProgressValue: preservePlateau ? record.finalProgressValue
-      : captureTrustedProgress(diag) ?? record.finalProgressValue,
-    finalProgressDirection: preservePlateau ? record.finalProgressDirection
-      : captureTrustedDirection(diag, record.finalProgressDirection),
+    finalProgressValue: preservePlateau ? record.finalProgressValue : currentValue,
+    finalProgressDirection: preservePlateau ? record.finalProgressDirection : currentDirection,
   };
 };
 
@@ -537,7 +538,7 @@ export const mergeRecord = (
   nowMs: number,
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => {
-  const merged = computeMergedMetState(record, diag, nowMs);
+  const merged = computeMergedMetState(record, diag.evaluation, nowMs);
   return {
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
@@ -550,93 +551,41 @@ export const mergeRecord = (
     satisfied: merged.satisfied,
     metAtMs: merged.metAtMs,
     metReason: merged.metReason,
-    progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
+    progressSamples: recordProgressSample(record.progressSamples, diag.evaluation, nowMs),
     ...refreshPlanSnapshots(record, plan),
   };
 };
 
-const clearSatisfiedWithProgress = (
+/** Apply a current completion read without fabricating a plan revision. */
+export const refreshRecordCompletion = (
   record: InProgressRecord,
-  diag: DeferredObjectiveDiagnostic,
+  evaluation: TaskEvaluation,
   nowMs: number,
-  plan: DeferredObjectiveActivePlanV1 | undefined,
-): InProgressRecord => {
-  return {
-    ...record,
-    deviceName: diag.deviceName ?? record.deviceName,
-    startProgressValue: backfillStartProgress(record, diag),
-    finalProgressValue: captureTrustedProgress(diag) ?? record.finalProgressValue,
-    finalProgressDirection: captureTrustedDirection(diag, record.finalProgressDirection),
-    observedIntervals: extendIntervals(record.observedIntervals, nowMs),
-    satisfied: false,
-    metAtMs: null,
-    metReason: null,
-    progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
-    ...refreshPlanSnapshots(record, plan),
-  };
-};
-
-const recordObservedTick = (
-  record: InProgressRecord,
-  diag: DeferredObjectiveDiagnostic,
-  nowMs: number,
-  plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => ({
   ...record,
-  finalProgressValue: captureTrustedProgress(diag) ?? record.finalProgressValue,
-  finalProgressDirection: captureTrustedDirection(diag, record.finalProgressDirection),
-  startProgressValue: backfillStartProgress(record, diag),
+  ...computeMergedMetState(record, evaluation, nowMs),
+  startProgressValue: record.startProgressValue
+    ?? (evaluation.progress.kind === 'known' ? evaluation.progress.value : null),
   observedIntervals: extendIntervals(record.observedIntervals, nowMs),
-  progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
-  ...refreshPlanSnapshots(record, plan),
+  progressSamples: recordProgressSample(record.progressSamples, evaluation, nowMs),
 });
-
-// Preserve the accepted near-target reason and its trustworthy reading.
-export const promoteRecordToStalled = (
-  record: InProgressRecord,
-  diag: DeferredObjectiveDiagnostic,
-  nowMs: number,
-  reason: DeferredObjectivePlanMetReason,
-): InProgressRecord => {
-  if (record.satisfied) return record;
-  return {
-    ...record,
-    finalProgressValue: captureTrustedProgress(diag) ?? record.finalProgressValue,
-    finalProgressDirection: captureTrustedDirection(diag, record.finalProgressDirection),
-    satisfied: true,
-    metAtMs: nowMs,
-    metReason: reason,
-  };
-};
 
 export const recordNonPlannableTick = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
   plan: DeferredObjectiveActivePlanV1 | undefined,
-): InProgressRecord => {
-  if (
-    record.satisfied
-    && diag.evaluation.completion.kind === 'unmet'
-  ) {
-    return clearSatisfiedWithProgress(record, diag, nowMs, plan);
-  }
-  return recordObservedTick(record, diag, nowMs, plan);
-};
-
-const wasTargetReached = (record: InProgressRecord): boolean => {
-  // Value selection is unit-agnostic; direction is captured with the final
-  // trustworthy reading so terminal classification follows the device mode.
-  const final = record.finalProgressValue;
-  if (final === null || record.finalProgressDirection === 'unknown') return false;
-  return record.finalProgressDirection === 'increasing' ? final >= record.targetValue : final <= record.targetValue;
-};
+): InProgressRecord => ({
+  ...refreshRecordCompletion(record, diag.evaluation, nowMs),
+  deviceName: diag.deviceName ?? record.deviceName,
+  ...refreshPlanSnapshots(record, plan),
+});
 
 const classifyOutcome = (
   record: InProgressRecord,
   reason: 'deadline_passed' | 'replaced' | 'abandoned',
 ): DeferredObjectivePlanTerminalOutcome => {
-  if (record.satisfied || wasTargetReached(record)) return 'met';
+  if (record.satisfied) return 'met';
   if (reason === 'abandoned') return 'abandoned';
   if (reason === 'replaced') return 'replaced';
   if (record.finalProgressValue === null) return 'abandoned';

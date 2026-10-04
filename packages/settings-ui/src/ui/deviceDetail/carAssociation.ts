@@ -1,5 +1,8 @@
 import type { EvCarAssociations } from '../../../../contracts/src/types.ts';
-import { SETTINGS_UI_RECOMMENDATION_CARS_PATH } from '../../../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_RECOMMENDATION_CARS_PATH,
+  type SettingsUiRecommendationCar,
+} from '../../../../contracts/src/settingsUiApi.ts';
 import { parseCarAssociationCandidatesRead } from '../carAssociationCandidates.ts';
 import { isEvChargerDevice } from '../deviceKind.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
@@ -13,7 +16,7 @@ import {
   deviceDetailCarSection,
   deviceDetailCarStatus,
 } from '../dom.ts';
-import { callApi, getSetting, getSettingFresh, sleep } from '../homey.ts';
+import { callApi, getHomeyTimezone, getSetting, getSettingFresh, sleep } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
@@ -28,7 +31,7 @@ import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.
  * device payload as `associatedCar`.
  */
 
-type CarOption = { id: string; name: string };
+type CarOption = SettingsUiRecommendationCar;
 
 const runSerializedCarWrite = createSerializedAsyncRunner();
 const ASSOCIATION_READ_RETRY_DELAYS_MS = [250, 750] as const;
@@ -38,6 +41,18 @@ let associationLoadGeneration = 0;
 let carOptions: CarOption[] | null = null;
 let carOptionsLoading = false;
 let carOptionsUnavailable = false;
+// Each car carries its match history, which moves with every plug-in, so the
+// list is re-read whenever a charger page opens rather than once per session.
+let carOptionsStale = true;
+// Bumped by every invalidation, so a read already in flight when a page opens
+// does not count as that page's fresh read.
+let carOptionsGeneration = 0;
+
+/** Re-read the cars, and their match history, on the next render. */
+export const invalidateCarOptions = (): void => {
+  carOptionsStale = true;
+  carOptionsGeneration += 1;
+};
 
 export const supportsCarAssociation = (
   device: SettingsUiDeviceDetailItem | null | undefined,
@@ -95,23 +110,33 @@ export const clearEvCarAssociations = (): void => {
 const ensureCarsLoaded = async (render: () => void): Promise<void> => {
   // An empty result remains retryable on the next panel open instead of leaving
   // the picker empty for the whole WebView session after a transient blip.
-  if (carOptionsLoading || (carOptions !== null && carOptions.length > 0)) return;
+  if (carOptionsLoading) return;
+  if (!carOptionsStale && carOptions !== null && carOptions.length > 0) return;
   carOptionsLoading = true;
+  const generation = carOptionsGeneration;
+  let invalidatedInFlight = false;
   try {
     const read = parseCarAssociationCandidatesRead(
       await callApi<unknown>('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH),
     );
     if (read.state === 'unavailable') throw new Error('Car candidates are unavailable.');
     carOptions = read.cars;
+    invalidatedInFlight = generation !== carOptionsGeneration;
+    carOptionsStale = invalidatedInFlight;
     carOptionsUnavailable = false;
     render();
   } catch (error) {
-    carOptionsUnavailable = true;
+    // A failed re-read keeps the rows already on screen, still stale, so their
+    // match history is not shown; only a picker that never loaded reports the
+    // failure.
+    carOptionsUnavailable = carOptions === null;
     render();
     await logSettingsError('Failed to load cars for the charger car picker', error, 'carAssociation');
   } finally {
     carOptionsLoading = false;
   }
+  // A page opened while this read was in flight gets its own fresh read.
+  if (invalidatedInFlight) render();
 };
 
 /**
@@ -121,7 +146,7 @@ const ensureCarsLoaded = async (render: () => void): Promise<void> => {
  */
 const orphanedCarIds = (ticked: readonly string[], known: CarOption[]): CarOption[] => ticked
   .filter((carId) => !known.some((car) => car.id === carId))
-  .map((carId) => ({ id: carId, name: 'Removed car' }));
+  .map((carId) => ({ id: carId, name: 'Removed car', matchHistory: { state: 'resolved', chargerMatches: [] } }));
 
 const tickedCarIds = (deviceId: string): readonly string[] => (
   state.evCarAssociations[deviceId]?.carIds ?? []
@@ -148,8 +173,8 @@ const renderStatus = (device: SettingsUiDeviceDetailItem, ticked: readonly strin
       .join(' · ');
     return;
   }
-  // Ticked but unmatched. Deliberately not "no car": PELS matches a car a minute
-  // or two after it plugs in, so claiming absence during that window would be
+  // Ticked but unmatched. Deliberately not "no car": PELS matches a car 20 to 40
+  // minutes after it plugs in, so claiming absence during that window would be
   // wrong as often as it was right.
   deviceDetailCarStatus.textContent = 'Waiting to match a car';
 };
@@ -180,14 +205,63 @@ const renderFlowNote = (device: SettingsUiDeviceDetailItem, ticked: readonly str
     && Number.isFinite(matched.socPct);
   deviceDetailCarFlowNote.classList.toggle('field__hint--alert', !hasBatteryLevel);
   if (!matched) {
-    deviceDetailCarFlowNote.textContent = 'Until a car is matched this charger has no battery level: '
-      + 'while a car is ticked, both the Flow card that reports it and the charger\'s own reading are ignored.';
+    deviceDetailCarFlowNote.textContent = mayHaveMatchedSelectedCar(device.id, ticked)
+      ? 'Until a car is matched, this charger has no battery level. While a car is selected, PELS ignores '
+        + 'both the Flow card that reports it and the charger\'s own reading.'
+      // The status line already says no car is matched; this states the
+      // consequence and the way back, conditionally, because not every owner
+      // had another source to return to.
+      : 'This charger has no battery level until PELS matches a selected car. If a Flow card or the '
+        + 'charger itself reported the level before, clear the selection to keep using it, and select '
+        + 'the car again once it shows as matched.';
     return;
   }
   deviceDetailCarFlowNote.textContent = hasBatteryLevel
     ? `Battery level comes from ${formatDisplayDeviceName(matched.carName)}.`
     : `${formatDisplayDeviceName(matched.carName)} is matched but has not reported a battery level. `
       + 'Charge boost and Smart tasks cannot use it yet.';
+};
+
+const lastMatchToCharger = (
+  history: Extract<CarOption['matchHistory'], { state: 'resolved' }>,
+  chargerId: string,
+): number | undefined => (
+  history.chargerMatches.find((match) => match.chargerId === chargerId)?.lastMatchedAtMs
+);
+
+/**
+ * Whether a selected car may have matched this charger. Unknown counts as yes —
+ * before the cars load, while the list awaits its re-read, or while the history
+ * is unreadable — so the established note stands and nobody is told to clear a
+ * selection on missing evidence.
+ */
+const mayHaveMatchedSelectedCar = (chargerId: string, ticked: readonly string[]): boolean => (
+  carOptions === null
+  || carOptionsStale
+  || carOptions.some((car) => ticked.includes(car.id) && (
+    car.matchHistory.state === 'unavailable'
+    || lastMatchToCharger(car.matchHistory, chargerId) !== undefined
+  ))
+);
+
+const formatMatchDate = (ms: number): string => new Intl.DateTimeFormat('en-GB', {
+  timeZone: getHomeyTimezone(),
+  day: 'numeric',
+  month: 'short',
+}).format(new Date(ms));
+
+/**
+ * No hint while the history is unreadable or the list awaits its re-read:
+ * silence beats a wrong "not matched".
+ */
+const matchHint = (car: CarOption, chargerId: string): string | null => {
+  if (carOptionsStale || car.matchHistory.state === 'unavailable') return null;
+  const lastMatchedAtMs = lastMatchToCharger(car.matchHistory, chargerId);
+  if (lastMatchedAtMs !== undefined) return `Last matched to this charger on ${formatMatchDate(lastMatchedAtMs)}`;
+  // "yet" promises a match that a car charging on another charger will not bring.
+  return car.matchHistory.chargerMatches.length > 0
+    ? 'Not matched to this charger'
+    : 'Not matched to this charger yet';
 };
 
 const renderCarRows = (deviceId: string, ticked: readonly string[]): void => {
@@ -200,7 +274,8 @@ const renderCarRows = (deviceId: string, ticked: readonly string[]): void => {
       : 'Looking for cars…'));
     return;
   }
-  const rows = [...carOptions, ...orphanedCarIds(ticked, carOptions)];
+  const orphans = orphanedCarIds(ticked, carOptions);
+  const rows = [...carOptions, ...orphans];
   if (rows.length === 0) {
     deviceDetailCarList.append(hint(
       'No cars found. A car app that reports charging state and battery level will show up here.',
@@ -208,7 +283,7 @@ const renderCarRows = (deviceId: string, ticked: readonly string[]): void => {
     return;
   }
   for (const car of rows) {
-    deviceDetailCarList.append(carRow(deviceId, car, ticked.includes(car.id)));
+    deviceDetailCarList.append(carRow(deviceId, car, ticked.includes(car.id), !orphans.includes(car)));
   }
 };
 
@@ -219,7 +294,7 @@ const hint = (text: string): HTMLElement => {
   return element;
 };
 
-const carRow = (deviceId: string, car: CarOption, checked: boolean): HTMLElement => {
+const carRow = (deviceId: string, car: CarOption, checked: boolean, known: boolean): HTMLElement => {
   const row = document.createElement('label');
   row.className = 'md-switch-row detail-car-row';
   const input = document.createElement('input');
@@ -229,10 +304,16 @@ const carRow = (deviceId: string, car: CarOption, checked: boolean): HTMLElement
   input.addEventListener('change', () => {
     void runSerializedCarWrite(() => writeAssociation(deviceId, car.id, input.checked));
   });
+  const content = document.createElement('span');
+  content.className = 'md-switch-row__content';
   const label = document.createElement('span');
   label.className = 'md-switch-row__label pels-text-settings-label';
   label.textContent = formatDisplayDeviceName(car.name);
-  row.append(input, label);
+  content.append(label);
+  // A removed car has no history to show; its row exists only so it can be cleared.
+  const matchText = known ? matchHint(car, deviceId) : null;
+  if (matchText !== null) content.append(hint(matchText));
+  row.append(input, content);
   return row;
 };
 

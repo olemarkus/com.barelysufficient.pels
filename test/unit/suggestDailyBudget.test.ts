@@ -1,6 +1,8 @@
 import type { EnergySignatureFit } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { suggestDailyBudgetKwh } from '../../lib/weather/suggestDailyBudget';
 
+const TARGET_DATE_KEY = '2026-01-15';
+
 const baseFit: EnergySignatureFit = {
   model: 'changepoint',
   baseLoadKwhPerDay: 20,
@@ -28,7 +30,7 @@ const baseFit: EnergySignatureFit = {
 describe('suggestDailyBudgetKwh', () => {
   it('adds q80 headroom to the prediction and reports the q10–q90 band', () => {
     // 0 °C: 20 + 2×15 = 50 kWh predicted.
-    const result = suggestDailyBudgetKwh({ fit: baseFit, forecastMeanTempC: 0 });
+    const result = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0 });
     expect(result.predictedKwh).toBe(50);
     expect(result.suggestedBudgetKwh).toBe(55);
     expect(result.predictedLowKwh).toBe(46);
@@ -37,14 +39,25 @@ describe('suggestDailyBudgetKwh', () => {
     expect(result.budgetMayBeLimiting).toBe(false);
   });
 
+  it('evaluates the season term on the target day', () => {
+    const seasonalFit = { ...baseFit, seasonKwh: 10 };
+    const at = (targetDateKey: string): number => suggestDailyBudgetKwh({
+      fit: seasonalFit, targetDateKey, forecastMeanTempC: 0,
+    }).predictedKwh;
+    // 50 kWh from temperature, plus the full term at the December solstice and
+    // minus it at the June solstice.
+    expect(at('2026-12-21')).toBeCloseTo(60, 2);
+    expect(at('2026-06-21')).toBeCloseTo(40, 2);
+  });
+
   it('leans the suggestion UP (q80→q90) when the budget has recently been limiting', () => {
     const limitedFit = { ...baseFit, recentSuppressionSuspected: true };
     // 0 °C: predicted 50, headroom uses q90 (8) instead of q80 (5).
-    const result = suggestDailyBudgetKwh({ fit: limitedFit, forecastMeanTempC: 0 });
+    const result = suggestDailyBudgetKwh({ fit: limitedFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0 });
     expect(result.budgetMayBeLimiting).toBe(true);
     expect(result.suggestedBudgetKwh).toBe(58);
     // Never lower than the un-leaned suggestion for the same forecast.
-    const baseline = suggestDailyBudgetKwh({ fit: baseFit, forecastMeanTempC: 0 });
+    const baseline = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0 });
     expect(result.suggestedBudgetKwh).toBeGreaterThanOrEqual(baseline.suggestedBudgetKwh);
   });
 
@@ -54,20 +67,20 @@ describe('suggestDailyBudgetKwh', () => {
     // the prediction is the flat base load (20) — exactly the regime where the
     // base load is extrapolated rather than observed, and least trustworthy.
     const limitedFit = { ...baseFit, recentSuppressionSuspected: true };
-    const result = suggestDailyBudgetKwh({ fit: limitedFit, forecastMeanTempC: 18 });
+    const result = suggestDailyBudgetKwh({ fit: limitedFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 18 });
     expect(result.budgetMayBeLimiting).toBe(true);
     expect(result.suggestedBudgetKwh).toBe(28); // 20 + q90 8, not 20 + q80 5
   });
 
   it('adds the full budget-pressure term on top of the headroom', () => {
     const state = { kwh: 7, throughDateKey: '2026-07-31' };
-    const result = suggestDailyBudgetKwh({ fit: baseFit, forecastMeanTempC: 0, budgetPressure: state });
+    const result = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0, budgetPressure: state });
     expect(result.budgetPressureKwh).toBe(7);
     expect(result.suggestedBudgetKwh).toBe(62); // 50 predicted + 5 q80 + 7 pressure
 
     // Pressure is not model-relative: it exists to correct an under-predicting model.
     const runaway = suggestDailyBudgetKwh({
-      fit: baseFit, forecastMeanTempC: 0, budgetPressure: { kwh: 90, throughDateKey: '2026-07-31' },
+      fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0, budgetPressure: { kwh: 90, throughDateKey: '2026-07-31' },
     });
     expect(runaway.budgetPressureKwh).toBe(90);
     expect(runaway.suggestedBudgetKwh).toBe(145);
@@ -76,7 +89,7 @@ describe('suggestDailyBudgetKwh', () => {
   it('keeps the capacity ceiling above the pressure term, and reports what it really added', () => {
     const result = suggestDailyBudgetKwh({
       fit: baseFit,
-      forecastMeanTempC: 0,
+      targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0,
       capacityLimitKw: 2,
       budgetPressure: { kwh: 40, throughDateKey: '2026-07-31' },
     });
@@ -88,7 +101,7 @@ describe('suggestDailyBudgetKwh', () => {
   });
 
   it('refuses to extrapolate below observed temperatures and flags it', () => {
-    const result = suggestDailyBudgetKwh({ fit: baseFit, forecastMeanTempC: -15 });
+    const result = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -15 });
     // Evaluated at −8 (coldest observed), not −15.
     expect(result.predictedKwh).toBe(20 + 2 * 23);
     expect(result.beyondObservedCold).toBe(true);
@@ -108,7 +121,7 @@ describe('suggestDailyBudgetKwh', () => {
       lowObservedDayKwh: 75,
       medianDayKwh: 90,
     };
-    const result = suggestDailyBudgetKwh({ fit: winterFit, forecastMeanTempC: 25 });
+    const result = suggestDailyBudgetKwh({ fit: winterFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 25 });
     // Evaluated at −4 (warmest observed): 65 + 3×4 — never a negative
     // prediction from descending an unbounded line.
     expect(result.predictedKwh).toBe(77);
@@ -118,22 +131,22 @@ describe('suggestDailyBudgetKwh', () => {
   });
 
   it('caps at the capacity ceiling and clamps to the daily-budget bounds', () => {
-    const capped = suggestDailyBudgetKwh({ fit: baseFit, forecastMeanTempC: -8, capacityLimitKw: 2 });
+    const capped = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, capacityLimitKw: 2 });
     expect(capped.suggestedBudgetKwh).toBe(48); // 2 kW × 24 h
     // The physical cap outranks the 20 kWh setting minimum.
-    const tinyCap = suggestDailyBudgetKwh({ fit: baseFit, forecastMeanTempC: -8, capacityLimitKw: 0.5 });
+    const tinyCap = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, capacityLimitKw: 0.5 });
     expect(tinyCap.suggestedBudgetKwh).toBe(12);
     const warmFit = { ...baseFit, baseLoadKwhPerDay: 6, medianDayKwh: 7, lowObservedDayKwh: 5, residualQ80: 0.2 };
-    const floor = suggestDailyBudgetKwh({ fit: warmFit, forecastMeanTempC: 20 });
+    const floor = suggestDailyBudgetKwh({ fit: warmFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 20 });
     expect(floor.suggestedBudgetKwh).toBe(20); // MIN_DAILY_BUDGET_KWH
   });
 
   it('uses the target local-day length for the sustainable capacity ceiling', () => {
     const shortDay = suggestDailyBudgetKwh({
-      fit: baseFit, forecastMeanTempC: -8, capacityLimitKw: 2, capacityDayHours: 23,
+      fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, capacityLimitKw: 2, capacityDayHours: 23,
     });
     const longDay = suggestDailyBudgetKwh({
-      fit: baseFit, forecastMeanTempC: -8, capacityLimitKw: 2, capacityDayHours: 25,
+      fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, capacityLimitKw: 2, capacityDayHours: 25,
     });
     expect(shortDay.suggestedBudgetKwh).toBe(46);
     expect(longDay.suggestedBudgetKwh).toBe(50);
@@ -141,7 +154,7 @@ describe('suggestDailyBudgetKwh', () => {
 
   it('never suggests below the home-demonstrated q05 floor', () => {
     const fit = { ...baseFit, residualQ80: -10 }; // pathological residuals
-    const result = suggestDailyBudgetKwh({ fit, forecastMeanTempC: 14 });
+    const result = suggestDailyBudgetKwh({ fit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 14 });
     // Prediction 22, q80 headroom negative → 5% relative headroom keeps it
     // above; q05 floor (18 kWh) is the backstop.
     expect(result.suggestedBudgetKwh).toBeGreaterThanOrEqual(20);
@@ -149,7 +162,7 @@ describe('suggestDailyBudgetKwh', () => {
 
   it('anchors on the median day when the fit is uncorrelated', () => {
     const fit: EnergySignatureFit = { ...baseFit, model: 'uncorrelated', baseLoadKwhPerDay: undefined, balancePointC: undefined };
-    const result = suggestDailyBudgetKwh({ fit, forecastMeanTempC: 0 });
+    const result = suggestDailyBudgetKwh({ fit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0 });
     expect(result.predictedKwh).toBe(40);
   });
 });
@@ -158,16 +171,16 @@ describe('suggestDailyBudgetKwh', () => {
 describe('recent measured demand headroom', () => {
   it('covers increased recent usage without claiming budget damage', () => {
     const result = suggestDailyBudgetKwh({
-      fit: { ...baseFit, recentResidualQ80: 14, recentResidualQ90: 20 }, forecastMeanTempC: 0,
+      fit: { ...baseFit, recentResidualQ80: 14, recentResidualQ90: 20 }, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0,
     });
     expect(result.predictedKwh).toBe(50);
     expect(result.suggestedBudgetKwh).toBe(64);
     expect(result.budgetMayBeLimiting).toBe(false);
   });
   it('retains annual headroom during a quiet fortnight and uses recent q90 only for damage', () => {
-    expect(suggestDailyBudgetKwh({ fit: { ...baseFit, recentResidualQ80: -3 }, forecastMeanTempC: 0 })
+    expect(suggestDailyBudgetKwh({ fit: { ...baseFit, recentResidualQ80: -3 }, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0 })
       .suggestedBudgetKwh).toBe(55);
     expect(suggestDailyBudgetKwh({ fit: { ...baseFit, recentSuppressionSuspected: true,
-      recentResidualQ90: 20 }, forecastMeanTempC: 0 }).suggestedBudgetKwh).toBe(70);
+      recentResidualQ90: 20 }, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0 }).suggestedBudgetKwh).toBe(70);
   });
 });

@@ -158,6 +158,18 @@ describe('rollupDay', () => {
     expect(state.records[0].suppression).toEqual({ deadlineMissedToBudget: true });
   });
 
+  it('stamps budget-counted usage only next to the budget it was counted against', () => {
+    const withBudget = rollupDay(baseState(), {
+      dateKey: '2026-01-10', dayLengthHours: 24, kwhTotal: 42.5, unreliablePower: false,
+      appliedBudgetKwh: 40, kwhBudgetCounted: 37,
+    });
+    expect(withBudget.records[0]).toMatchObject({ kwhTotal: 42.5, appliedBudgetKwh: 40, kwhBudgetCounted: 37 });
+    const withoutBudget = rollupDay(baseState(), {
+      dateKey: '2026-01-10', dayLengthHours: 24, kwhTotal: 42.5, unreliablePower: false, kwhBudgetCounted: 37,
+    });
+    expect(withoutBudget.records[0].kwhBudgetCounted).toBeUndefined();
+  });
+
   it('omits an all-empty suppression object so absent stays "unknown"', () => {
     const state = rollupDay(baseState(), {
       dateKey: '2026-01-10', dayLengthHours: 24, kwhTotal: 42.5, unreliablePower: false, suppression: {},
@@ -546,7 +558,7 @@ describe('stripMeterScopeDerivedState record-level strip', () => {
   });
 
   it('drops the budget-pressure term — it is scope-derived exactly like the fit', () => {
-    // The term is a function of kwhTotal − appliedBudgetKwh, so a term earned
+    // The term is a function of kwhBudgetCounted − appliedBudgetKwh, so a term earned
     // under the OLD metering arrangement would keep raising the budget on top of
     // a fit rebuilt from nothing, and would take a week of leak to clear.
     const stripped = stripMeterScopeDerivedState({
@@ -555,6 +567,16 @@ describe('stripMeterScopeDerivedState record-level strip', () => {
       budgetPressure: { kwh: 12, throughDateKey: '2026-01-05' },
     });
     expect(stripped.budgetPressure).toBeUndefined();
+  });
+
+  it('strips budget-counted usage with the rest of the kWh layer', () => {
+    const stripped = stripMeterScopeDerivedState({
+      records: [liveRecord('2026-01-05', { appliedBudgetKwh: 44, kwhBudgetCounted: 40 })],
+      meterScopeSignature: 'source:flow',
+    });
+    expect(stripped.records[0].kwhBudgetCounted).toBeUndefined();
+    expect(stripped.records[0].kwhTotal).toBeUndefined();
+    expect(stripped.records[0].quality.missingKwh).toBe(true);
   });
 
   it('returns a record with no kWh evidence by reference', () => {
@@ -663,6 +685,19 @@ describe('normalizeWeatherHistoryState', () => {
     expect(normalizeWeatherHistoryState({ records: 'nope' })).toBeNull();
   });
 
+  it('keeps budget-counted usage only beside the applied budget it was counted against', () => {
+    const normalized = normalizeWeatherHistoryState({
+      records: [
+        liveRecord('2026-01-07', { appliedBudgetKwh: 44, kwhBudgetCounted: 40 }),
+        liveRecord('2026-01-08', { kwhBudgetCounted: 40 }),
+        liveRecord('2026-01-09', { appliedBudgetKwh: 0, kwhBudgetCounted: 40 }),
+        liveRecord('2026-01-10', { appliedBudgetKwh: 44, kwhBudgetCounted: -1 }),
+      ],
+    });
+    expect(normalized?.records.map((record) => record.kwhBudgetCounted)).toEqual([40, undefined, undefined, undefined]);
+    expect(normalized?.records.map((record) => record.appliedBudgetKwh)).toEqual([44, undefined, undefined, 44]);
+  });
+
   it('round-trips a valid state and drops malformed entries', () => {
     const valid: WeatherHistoryState = {
       records: [liveRecord('2026-01-09'), liveRecord('2026-01-08')],
@@ -678,7 +713,8 @@ describe('normalizeWeatherHistoryState', () => {
     };
     const withJunk = {
       ...valid,
-      records: [...valid.records, { dateKey: 'bad' }, 42],
+      // A well-shaped but impossible date is junk too: the fit reads its season.
+      records: [...valid.records, { dateKey: 'bad' }, 42, liveRecord('2026-13-01')],
       accumulators: { ...valid.accumulators, 'not-a-date': { sumC: 1, count: 1, minC: 1, maxC: 1 } },
       forecastHourly: { ...valid.forecastHourly, '2026-01-12': { '99': 5, '07': 200 } },
     };

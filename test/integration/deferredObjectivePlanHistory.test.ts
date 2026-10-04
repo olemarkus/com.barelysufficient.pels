@@ -1122,6 +1122,89 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.metAtMs).toBe(2 * HOUR_MS);
     });
 
+    it.each([
+      { initial: 65, current: 65, completion: 'target_reached', outcome: 'met' },
+      { initial: 61.8, current: 61.5, completion: 'accepted_near_target', outcome: 'met' },
+      { initial: 65, current: 55, completion: 'unmet', outcome: 'replaced' },
+      { initial: 61.8, current: 55, completion: 'unmet', outcome: 'replaced' },
+      { initial: 61.8, current: null, completion: 'inactive', outcome: 'met' },
+    ] as const)('refreshes completion at replacement: $initial → $current gives $outcome', (scenario) => {
+      const { deps, saved } = buildPersistDeps();
+      const ended = vi.fn();
+      deps.endedBus.onEnded(ended);
+      const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps,
+        getStallClassification: () => ({ classification: 'near_target_idle',
+          classifiedAgainstTargetValue: 65, temperatureGapC: 0 }),
+      });
+      const deadlineAtMs = 6 * HOUR_MS;
+      const initial = makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: scenario.initial });
+      recorder.observe([initial], 0, null);
+      recorder.observe([initial], 30_000, null);
+      // Current observer state is read at the edit, before the next recorder tick.
+      const current = makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: scenario.current });
+      recorder.finalizeForUserChange('dev', 35_000, 'replaced', {
+        ...current.evaluation, completion: { kind: scenario.completion },
+      });
+      recorder.flushIfDirty();
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe(scenario.outcome);
+      if (scenario.outcome === 'replaced') {
+        expect(entry.finalProgressValue).toBe(55);
+        expect(entry.metAtMs).toBeNull();
+        expect(entry.metReason).toBeUndefined();
+        expect(ended).not.toHaveBeenCalled();
+      } else {
+        expect(ended).toHaveBeenCalledOnce();
+        expect(ended).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'succeeded' }));
+      }
+      // Reusing the same deadline with a higher target starts a separate run.
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs,
+        targetTemperatureC: 75, currentTemperatureC: 55 })], 40_000, null);
+      recorder.observe([], deadlineAtMs, null);
+      recorder.flushIfDirty();
+      expect(saved()!.entries[1]!.outcome).toBe('missed');
+    });
+
+    it('refreshes only the evaluated obligation when an older run survives an unreadable clear', () => {
+      const { deps, saved } = buildPersistDeps();
+      const ended = vi.fn();
+      deps.endedBus.onEnded(ended);
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const olderDeadline = 6 * HOUR_MS;
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: olderDeadline,
+        targetTemperatureC: 75, currentTemperatureC: 55 })], 0, null);
+      // An unreadable clear cannot identify the old settings entry to finalize it.
+      // The subsequent task appears while that history record is still in its grace period.
+      const current = makeDiag({ deviceId: 'dev', deadlineAtMs: 7 * HOUR_MS,
+        targetTemperatureC: 65, currentTemperatureC: 55 });
+      recorder.observe([current], 30_000, null);
+      const reached = makeDiag({ deviceId: 'dev', deadlineAtMs: 7 * HOUR_MS,
+        targetTemperatureC: 65, currentTemperatureC: 65 });
+      recorder.finalizeForUserChange('dev', 35_000, 'replaced', reached.evaluation);
+      recorder.flushIfDirty();
+      expect(saved()!.entries).toEqual([
+        expect.objectContaining({ deadlineAtMs: olderDeadline, targetValue: 75,
+          finalProgressValue: 55, outcome: 'replaced', metAtMs: null }),
+        expect.objectContaining({ deadlineAtMs: 7 * HOUR_MS, targetValue: 65,
+          finalProgressValue: 65, outcome: 'met' }),
+      ]);
+      expect(ended).toHaveBeenCalledOnce();
+      expect(ended).toHaveBeenCalledWith(expect.objectContaining({ deadlineAtMs: 7 * HOUR_MS }));
+    });
+
+    it.each(['on_track', 'at_risk', 'cannot_meet'] as const)(
+      'records an unfinished %s task as replaced rather than missed', (status) => {
+        const { deps, saved } = buildPersistDeps();
+        const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+        const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+          trajectory: { kind: 'resolved', status }, horizonPlan: makeHorizon({ status }) });
+        recorder.observe([diag], 0, null);
+        recorder.finalizeForUserChange('dev', 5_000, 'replaced', diag.evaluation);
+        recorder.flushIfDirty();
+        expect(saved()!.entries[0]!.outcome).toBe('replaced');
+      },
+    );
+
     it('is a no-op when there is no in-progress run for the device', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
@@ -2922,13 +3005,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     });
 
     it('keeps metReason "stalled" when the live status was producer-resolved to satisfied', () => {
-      // The lifecycleEmitter feeds the recorder diagnostics whose top-level
-      // `status` was resolved to `satisfied` by diagnosticsBridge (so the chip /
-      // Flows agree), while `horizonPlan.status` stays the raw `cannot_meet`
-      // trajectory. The postmortem must read the RAW status (`rawHorizonStatus`)
-      // so `mergeRecord` doesn't pre-satisfy the run and short-circuit the stall
-      // promotion via `promoteRecordToStalled`'s already-satisfied early return —
-      // which would silently drop the `stalled` met-reason.
+      // Completion records the observer's reason independently of the raw
+      // trajectory and its satisfied presentation overlay.
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps, getStallClassification: () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65, temperatureGapC: 0 }) });
       const deadlineAtMs = 6 * HOUR_MS;
@@ -2957,8 +3035,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
     it('keeps a run unmet below its requested target at a car limit', () => {
       // Production, 2026-09-26: an 80 % task on a car that stops at 70 %. The
-      // capped task is satisfied at 70; the Easee then ended the session and
-      // read unplugged, which is a non-plannable tick with no progress.
+      // requested 80 % stays the target, so the run is not met at 70; the Easee
+      // then ended the session and read unplugged, which is a non-plannable tick
+      // with no progress.
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 9 * HOUR_MS;
@@ -3210,9 +3289,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         null,
       );
       // Classifier subsequently exits idle (tank cooled below the
-      // hysteresis exit threshold) — the recorder must NOT downgrade the
-      // already-stalled record; the device having accepted the run as
-      // done is not retracted by later drift.
+      // hysteresis exit threshold) — the live acceptance must reopen.
       classify = noClassifier;
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
@@ -3266,14 +3343,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     });
 
     it('captures the live diagnostic reading into finalProgress at promotion time even on a non-plannable tick', () => {
-      // Regression for PR #888 review (Copilot): when stall fires via a
-      // non-plannable tick (e.g. status='unknown' carrying a trustworthy
-      // currentTemperatureC), `recordObservedTick` doesn't refresh
-      // `finalProgress*`, so without an explicit capture in
-      // `promoteRecordToStalled` the freeze would pin to the previous
-      // plannable tick's reading rather than the live plateau. The
-      // chart marker and the postmortem caption would then both read
-      // the stale value.
+      // A non-plannable tick with known progress must capture its live
+      // plateau rather than freezing the previous plannable reading.
       const { deps, saved } = buildPersistDeps();
       const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65, temperatureGapC: 0 });
       const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps, getStallClassification: stallNearTarget });
@@ -3342,14 +3413,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.metReason).toBeUndefined();
     });
 
-    it('a stalled run replaced by the user before its deadline still finalizes as met (stall promotion is terminal)', () => {
-      // `classifyOutcome` returns `'met'` whenever the in-progress record
-      // is satisfied, regardless of the finalize reason — so once stall
-      // has fired, a subsequent user-replace doesn't downgrade the
-      // outcome. The metReason rides through. The contract validator's
-      // "metReason only on met" guard is a defensive read-time check for
-      // hand-edited / corrupted persisted payloads; the recorder itself
-      // never produces the violating combination.
+    it('a near-target run still satisfied at replacement finalizes as met', () => {
+      // Current acceptance counts as success; a trusted exit must reopen it.
       const { deps, saved } = buildPersistDeps();
       const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65, temperatureGapC: 0 });
       const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps, getStallClassification: stallNearTarget });

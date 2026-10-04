@@ -19,6 +19,7 @@ import { APPROX_GLYPH } from './deadlineLabels';
 import {
   formatReceiptOtherTasksHeading,
   formatReceiptOutcomeAbandoned,
+  formatReceiptOutcomeReplaced,
   formatReceiptOutcomeMissed,
   formatReceiptOutcomeSucceeded,
   formatReceiptWeekCost,
@@ -170,21 +171,19 @@ type OutcomeCounts = {
   succeeded: number;
   missed: number;
   abandoned: number;
+  replaced: number;
 };
 
-// `replaced` collapses into `abandoned` for the chip strip per
-// notes/ui-terminology.md — both render the same `Abandoned` chip on each
-// row, and the divider summary speaks the chip language.
+// Each outcome has the same distinct count and label as its history chip.
 const countOutcomes = (
   entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
 ): OutcomeCounts => {
-  const counts: OutcomeCounts = { succeeded: 0, missed: 0, abandoned: 0 };
+  const counts: OutcomeCounts = { succeeded: 0, missed: 0, abandoned: 0, replaced: 0 };
   for (const entry of entries) {
     if (entry.outcome === 'met') counts.succeeded += 1;
     else if (entry.outcome === 'missed') counts.missed += 1;
-    else if (entry.outcome === 'abandoned' || entry.outcome === 'replaced') {
-      counts.abandoned += 1;
-    }
+    else if (entry.outcome === 'abandoned') counts.abandoned += 1;
+    else if (entry.outcome === 'replaced') counts.replaced += 1;
   }
   return counts;
 };
@@ -206,6 +205,7 @@ const formatWeekHeading = (
   if (counts.succeeded > 0) outcomeFragments.push(formatReceiptOutcomeSucceeded(counts.succeeded));
   if (counts.missed > 0) outcomeFragments.push(formatReceiptOutcomeMissed(counts.missed));
   if (counts.abandoned > 0) outcomeFragments.push(formatReceiptOutcomeAbandoned(counts.abandoned));
+  if (counts.replaced > 0) outcomeFragments.push(formatReceiptOutcomeReplaced(counts.replaced));
   const parts = [lead, ...outcomeFragments];
   // Heading total is an amount: drop a `/kWh` rate suffix (Flow/Homey schemes
   // record `kr/kWh`). Unit comes from the entries' OWN recorded provenance.

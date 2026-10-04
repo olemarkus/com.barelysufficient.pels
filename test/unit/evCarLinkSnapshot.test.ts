@@ -15,6 +15,7 @@ import {
   recordEvCarLinkVote,
   recordEvCarSelfStopSoc,
   resolveEvCarChargeLimit,
+  resolveEvCarChargerMatches,
   summarizeEvCarObservedLimit,
 } from '../../lib/device/evCarLinkSnapshot';
 
@@ -46,6 +47,26 @@ describe('recordEvCarLinkVote', () => {
       snapshot: createEmptyEvCarLinkSnapshot(), carId: 'carA', chargerId: 'charger', nowMs: 1,
     });
     expect(getEvCarLinkVotes(snapshot, 'carB', 'charger')).toBe(0);
+  });
+});
+
+describe('resolveEvCarChargerMatches', () => {
+  it('lists the chargers a car was matched to, newest first, and nothing for other cars', () => {
+    const snapshot = {
+      ...createEmptyEvCarLinkSnapshot(),
+      pairs: {
+        [buildEvCarLinkPairKey('car-1', 'charger-a')]: { votes: 3, lastVotedAtMs: 1_000 },
+        [buildEvCarLinkPairKey('car-1', 'charger-b')]: { votes: 1, lastVotedAtMs: 2_000 },
+        [buildEvCarLinkPairKey('car-1', 'charger-c')]: { votes: 0, lastVotedAtMs: 3_000 },
+        [buildEvCarLinkPairKey('car-2', 'charger-a')]: { votes: 5, lastVotedAtMs: 4_000 },
+      },
+    };
+
+    expect(resolveEvCarChargerMatches(snapshot, 'car-1')).toEqual([
+      { chargerId: 'charger-b', lastMatchedAtMs: 2_000 },
+      { chargerId: 'charger-a', lastMatchedAtMs: 1_000 },
+    ]);
+    expect(resolveEvCarChargerMatches(snapshot, 'car-3')).toEqual([]);
   });
 });
 

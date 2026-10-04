@@ -51,7 +51,7 @@ describe('device_in_sub_home active-task presentation', () => {
       planStatus: 'on_track',
       firstActionAtMs: 1,
       nowMs: 0,
-      carChargeLimitReached: false,
+      carChargeLimit: null,
     })).toBe('unavailable');
   });
 
@@ -64,7 +64,7 @@ describe('device_in_sub_home active-task presentation', () => {
       planStatus: undefined,
       firstActionAtMs: null,
       nowMs: 0,
-      carChargeLimitReached: false,
+      carChargeLimit: null,
     })).toBe('unavailable');
   });
 

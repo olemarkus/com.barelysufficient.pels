@@ -70,6 +70,7 @@ const baseInput = (overrides: Partial<WeatherChartOptionInput> = {}): WeatherCha
     beyondObservedCold: false,
     beyondObservedWarm: false,
   },
+  outlookDateKey: '2026-06-11',
   yesterdayDateKey: '2026-06-10',
   palette,
   labelFontSize: 11,
@@ -98,6 +99,16 @@ describe('buildWeatherChartOption', () => {
       [13, 23],
       [22, 23],
     ]);
+  });
+
+  it('draws a seasonal estimate line for the outlook day\'s time of year', () => {
+    const flatKwh = (outlookDateKey: string): number => {
+      const data = seriesById(buildWeatherChartOption(baseInput({ fit: fit({ seasonKwh: 10 }), outlookDateKey })), 'fit')
+        ?.data as Array<[number, number]>;
+      return data[2]?.[1] ?? Number.NaN;
+    };
+    expect(flatKwh('2026-12-21')).toBeCloseTo(33, 2);
+    expect(flatKwh('2026-06-21')).toBeCloseTo(13, 2);
   });
 
   it('uses a line series (not markLine) for the balance tick', () => {

@@ -52,6 +52,7 @@ export const createPersistedEvCarLinkAccess = (
   };
   return {
     get: () => resolve().getSnapshot(),
+    historyResolved: () => resolve().hasResolvedHistory(),
     set: (snapshot) => {
       const active = resolve();
       active.setSnapshot(snapshot);

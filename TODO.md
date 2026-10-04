@@ -307,6 +307,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `lib/plan` code reads `surplusWilling` or `surplusDelta` directly. Source:
       `pels-layering-guardian` on the setpoint-resolution move, 2026-09-15. [P2]
 
+- [ ] **A single-phase car on an "EV 3-phase" preset frees no relief on any rung.** Since stepped
+      devices are priced at nameplate for capacity (0f15d3558), `resolveStepChangeKw`
+      (`lib/plan/planSteppedLoad.ts`) prices each rung of a 3-phase ladder at its 3-phase nameplate,
+      while a single-phase car draws about a third of it. Every step-down then frees no relief
+      against the measured draw, so `lib/plan/shedding/steppedCandidates.ts` skips the charger as
+      `zero_step_relief`. Change: scale each rung's nameplate by the measured-to-nameplate ratio at
+      the current rung when pricing step-down relief. Done when a unit test with a 1-phase car on a
+      3-phase ladder gets a rung that frees relief and the charger is no longer skipped as
+      `zero_step_relief`. *Persona:* owner whose single-phase car charges on a charger configured
+      3-phase. *Hypothesis:* since nameplate pricing, PELS over-sheds other devices instead of
+      stepping the charger down. Source: release review of 3.9.3, 2026-10-04. [P2]
+
 ## Restore admission
 
 - [ ] **The budget-exempt restore lane can now open inside the shedding hysteresis band.**
@@ -362,6 +374,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Done when the two are not spelled alike. Source: adversarial review, 2026-09-15. [P3]
 
 ## Smart tasks
+
+- [ ] **Use one established-task gate for thermal completion.** Live completion in
+      `lib/objectives/deferredObjectives/completionDiagnostic.ts` and
+      `taskEvaluationCoordinator.ts` requires an allocated active-plan revision;
+      `planHistory.ts` accepts evidence once its exact run has been observed.
+      Missing prices can therefore leave live status unresolved while history accepts
+      near-target completion. Resolve eligibility independently of allocation and reuse
+      it across live status, reservations, and history. Complete when an SDK regression
+      with missing initial prices shows agreement while a newly replaced task still
+      rejects prior-task thermal evidence. Identified during the production-log audit,
+      2026-10-04. [P1]
 
 - [ ] **A genuine learned-rate gap mid-commitment still strips a committed task to `unknown`.**
       Same shape as the fixed step-ladder gap one short-circuit earlier: in
@@ -563,7 +586,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       *Why:* widens device support for the EV persona. Design: `notes/ev-ready-by/README.md`. Files:
       `packages/contracts/src/deferredObjectiveSettings.ts` and its parser in
       `packages/shared-domain/src/settings/deferredObjectiveSettings.ts`,
-      `flowCards/deadlineObjectiveCards.ts`, `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
+      `flowCards/deadlineObjectiveCards.ts`, `lib/objectives/deferredObjectives/taskEvaluationCoordinator.ts`,
       `.homeycompose/flow/actions/set_ev_charge_deadline.json`. [P3]
 
 - [ ] **Smart-task edit lane: don't reattach a stale draft to a NEW task on the same device.**
@@ -817,19 +840,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       lands, so the wrong axis label is the remaining harm. Source: 2026-08-01 budget-hold copy
       investigation. [P2]
 
-- [ ] **The budget-pressure overshoot compares whole-home kWh against a budget that paces on non-exempt energy.**
-      `measuredBalanceKwh` (`packages/shared-domain/src/energySignature/budgetPressure.ts`) computes
-      `kwhTotal - appliedBudgetKwh`, but `kwhTotal` is metered whole-home consumption while the daily-budget
-      controller deliberately subtracts budget-exempt usage before pacing (`dailyBudgetState.ts`:
-      "Budget control ignores exempt load, but reporting stays on real metered usage"). On a home with exempt
-      devices, their energy is counted as a budget overrun even when non-exempt usage stayed inside the budget,
-      so the loop can grow on a day that never actually ran out. Bounded by the per-day step cap and inert on a
-      home with no exemptions configured — which is why it is not
-      being fixed in the PR that introduced it. Fix: carry the day's non-exempt (budget-counted) kWh on the
-      record and measure against that. Persona: an owner with a "Get power now" exemption or an always-on
-      exempt device; hypothesis: their suggested budget drifts up for energy the budget was never governing.
-      Source: copilot on #1957, 2026-08-02. [P2]
-
 - [ ] **P2 — an off `meter_power`-only device keeps its last interval average as its draw.**
       A cumulative meter resolves a draw only when it moves, and an app republishes it only on
       change, so a meter-only device switched off keeps the last interval average it resolved
@@ -858,6 +868,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       MET UI-cleanup scope decision, 2026-06-14. [P3]
 
 ## Device observation and transport
+
+- [ ] **A stall-evidence read changes the idle classifier's state.**
+      `getLiveStallEvidence` (`lib/observer/idleClassifier.ts`) deletes `acceptedNearTargetById`,
+      `lastResultById` and the detector state once the near-target hold has ended. It is reached through
+      `PlanService.getStallEvidence` from settings-UI and smart-task preview reads
+      (`setup/appSmartTaskApi.ts`) as well as the lifecycle and recorder, so a UI read can wipe state
+      `classifyAll` owns and the outcome depends on which caller reads first. Change: route
+      between-plan device observations into the classifier through a write path so the read is pure.
+      Done when the two "withdraws…" cases in `test/unit/idleClassifier.test.ts` pass with a
+      side-effect-free read. *Persona:* owner watching a temperature task near its target in the
+      settings UI. *Hypothesis:* opening the task page can change when the task reads as accepted near
+      target. Source: release review of 3.9.3, 2026-10-04. [P2]
 
 - [ ] **P2 — three transport writes of observed fields still never reach the observer projection.**
       Stage 6 made the plan input read every observed field off the projection, so a write that
@@ -1324,6 +1346,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       which state each code actually arrives in before classifying it, because a code that only
       ever rides `keep` needs a different classification argument from one that rides `shed`. [P3]
 
+- [ ] **A malformed budget-diagnostics date range logs as a server failure.**
+      `readBudgetHistoryRange` (`lib/weather/budgetDiagnosticsHistory.ts`) throws a plain `Error`
+      for a client mistake (a non-`YYYY-MM-DD` `from`/`to`, an unordered or over-366-day range, a
+      `homeId`), and `withApiLogging` (`api.ts`) logs every throw as `[err] api_handler_failed` with
+      a stack, the same as a real handler crash. No API handler has a client-error path today; the
+      settings-UI writes return typed `invalid_request` members instead. Change: throw a request-error
+      type from the range reader and have `withApiLogging` log it at warn as `api_request_rejected`
+      without a stack, still rejecting the call. Done when an `api.ts` spec with a bad range sees a
+      warn-level `api_request_rejected` and no `api_handler_failed`. *Persona:* Optimiser exporting
+      budget history for replay. *Hypothesis:* a typo in a diagnostics query reads in `/tmp/pels` as
+      an app crash and sends triage after a defect that does not exist. *Why:* keeps error-level
+      logs meaning "PELS broke". Source: release review of v3.9.2..main, 2026-10-04. [P3]
+
 ## Architecture and tooling debt
 
 - [ ] **The device transport's parse providers are optional though production sets all 13.**
@@ -1401,13 +1436,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       fixture that gains watts can newly be credited pending relief. Done when the `shed`
       variant has no `| null` and `resolveMeasurementPowerW` is gone. Source: layering review of the
       shed-outcome state layer, 2026-09-08.
-
-- [x] **P2 — "held off by the owner" classification belonged with the hold policy.**
-      `lib/observer/externalOffHold.ts` owns persistence; `lib/planInput/externalOffHoldProjection.ts`
-      owns the shared resolution: a hold applies to a binary device only while it is still observed
-      off, and the executor preserves it conservatively when observation is absent. The planner
-      projects that answer into input. Source: layering review of the overshoot-incident state layer,
-      2026-09-08; ownership move completed in PR #2561.
 
 - [ ] **P2 — one plan build reads three clocks.** `PlanBuilder.buildPlanSnapshotWithTimings`
       stamps `nowTs` once (`lib/plan/planBuilder.ts`) and hands it to the overshoot tracker that
@@ -1654,17 +1682,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       level is readable at the call site. Done when an actionChanged-only rebuild produces a
       `plan_rebuild_completed` line with `debugTopic: 'plan'` and the file leaves the allowlist. [P2]
 
-- [ ] **80 runtime sites still log a way that is invisible or unfilterable.**
+- [ ] **38 runtime sites still log a way that is invisible or unfilterable.**
       `npm run logging:no-legacy` bans four shapes — any `.debug()` outside `lib/logging/` (dark on
       a pino module logger, topic-gated prose on the injected SDK `Logger`, hand-rolled on a
       `.child(..., {level:'debug'})`, and the call site cannot say which), prose via `logDebug` /
       `this.log`, a computed log level, and `console.*` — and freezes the pre-existing ones in
       `scripts/logging-legacy-allowlist.txt` with per-file budgets that may only shrink. Lanes,
-      largest first: `lib/device` (34), entry points and wiring (20), `lib/plan` + `lib/observer`
-      (12), and the remaining domain modules (14). Most of the device lane is injected-prose
-      `.debug` that does emit but carries no `event` field, so draining it buys filterability
-      rather than visibility — unlike the executor lane, which is done and was the one carrying
-      events production never showed at all. Fix per file: replace the call with a module-scope
+      largest first: entry points and wiring (16), `lib/plan` + `lib/observer` (11), and the
+      remaining domain modules (11). The executor and device lanes are done. Fix per file: replace the call with a module-scope
       `getDebugEmitter(component, topic)`, or with `getLogger(module).info(...)` where the event
       deserves to be visible by default, and lower the budget. Done when the allowlist file is
       deleted and the guard requires its absence — `api.ts`'s pre-logger `console.error` is

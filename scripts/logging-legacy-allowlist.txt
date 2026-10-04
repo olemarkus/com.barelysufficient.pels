@@ -18,27 +18,14 @@
 # permanent exemption. When the last line goes, DELETE THIS FILE — the guard
 # then requires its absence.
 #
-# Counts were 63 files / 122 sites at the guard's introduction; 48 files / 76 sites now.
+# Counts were 63 files / 122 sites at the guard's introduction; 29 files / 38 sites now.
 # The executor lane is gone: its debug events were the four *_command_skipped that
 # production never showed, and they now resolve their own emitter.
-
-# --- Device / transport lane ------------------------------------------------
-# Snapshot, fetch, zone and write paths. Most of these are the INJECTED SDK
-# `Logger` (lib/utils/types.ts), whose `.debug` is topic-gated prose via
-# `ctx.logDebug('devices', …)` — so unlike the executor lane these lines DO
-# reach the log, they just carry no `event` field to filter or count on.
-# `managerZones.ts` documents the distinction in its own comment.
-lib/device/devicePowerEstimate.ts 1
-lib/device/evCarLinkStore.ts 1
-lib/device/liveFeed.ts 2
-lib/device/managerControl.ts 5
-lib/device/managerRuntime.ts 1
-lib/device/measuredPowerResolver.ts 2
-lib/device/transport/homePowerPoll.ts 1
-lib/device/transport/managerFetch.ts 5
-lib/device/transport/managerParseSnapshot.ts 2
-lib/device/transport/managerZones.ts 4
-lib/device/transport/observationMerge.ts 1
+# The device / transport lane is gone too. Most of it was the INJECTED SDK
+# `Logger` (lib/utils/types.ts), whose `.debug` reached the log as topic-gated
+# prose with no `event` field (`zone_tree_fetched` printed as a Node object
+# literal hundreds of times a day); the rest was a pino `.debug` that never
+# reached it at all. Both now go through `getDebugEmitter('devices', 'devices')`.
 
 # --- Entry points and wiring ------------------------------------------------
 # `api.ts` is NOT here: its console.error runs before a root logger exists and is
@@ -47,7 +34,6 @@ app.ts 2
 setup/appInit/createDailyBudgetService.ts 1
 setup/appInit/createPlanEngine.ts 1
 setup/appInit/priceServices.ts 2
-setup/appInit/wireDeviceTransport.ts 1
 setup/appRuntimeApi.ts 1
 setup/appServiceWiring.ts 1
 setup/appSnapshotHelpers.ts 1

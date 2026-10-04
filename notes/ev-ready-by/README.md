@@ -76,8 +76,8 @@ end-to-end, including charger pause/resume actuation:
   `deadline_plan_changed`.
 - Horizon planner (`lib/objectives/deferredObjectives/horizonPlanner.ts`) selecting budget-friendly
   hours before the deadline, price-gated.
-- Diagnostics bridge (`lib/objectives/deferredObjectives/diagnosticsBridge.ts`) emitting
-  `DeferredObjectiveDiagnostic` per cycle.
+- Task evaluation (`lib/objectives/deferredObjectives/taskEvaluationCoordinator.ts`) producing
+  `DeferredObjectiveDiagnostic` per cycle (`diagnosticsBridge.ts` is now only its reporting facade).
 - Active-plan recorder (`lib/objectives/deferredObjectives/activePlanRecorder.ts`) persisting current
   allocation with revision triggers (`flow_card`, `prices_arrived`, `objective_changed`,
   `prices_revised`, `rate_refined`).
@@ -356,7 +356,7 @@ task the UI already holds for the Smart task chip. Stepped chargers state their
 plug or car exception in the status fact line instead. Start/finish come from the active-plan recorder's `latest.hours`; the
 paused state comes from `isPlugOutPaused` (the `objective_invalid_session`
 reason emitted by `resolveEvObjectiveProgress` in
-`lib/objectives/deferredObjectives/diagnosticsBridge.ts`, which fires when the
+`lib/objectives/deferredObjectives/diagnosticProgress.ts`, which fires when the
 observation layer reports `stateOfCharge.status === 'invalid'`).
 
 #### Planning speed and estimated duration — shipped
@@ -393,7 +393,7 @@ shapes round-tripping through the active-plan recorder.
 Files: `packages/contracts/src/deferredObjectiveSettings.ts` (the type),
 `packages/shared-domain/src/settings/deferredObjectiveSettings.ts` (its parser),
 `flowCards/deadlineObjectiveCards.ts`,
-`lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
+`lib/objectives/deferredObjectives/taskEvaluationCoordinator.ts`,
 `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and
 bridge tests.
 

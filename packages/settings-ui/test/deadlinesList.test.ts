@@ -438,7 +438,8 @@ describe('resolveDeadlinesListCards', () => {
 
   it('shows a task stopped at a lower car limit as at risk with the constraint', () => {
     // The charger ends the session at the car's limit and reads unplugged with
-    // the car still in: the task is done (owner ruling 2026-09-26).
+    // the car still in. The requested target stays unmet, so the task is at
+    // risk (the same status the detail hero reports), never paused-unplugged.
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([
         buildPlan({
@@ -453,7 +454,43 @@ describe('resolveDeadlinesListCards', () => {
       devices,
       nowMs: T0,
     });
-    expect(cards[0]).toMatchObject({ statusId: 'at_risk', carLimitLine: 'Car stopped at its limit of 70%' });
+    expect(cards[0]).toMatchObject({ statusId: 'at_risk', liveCauseLine: 'Car stopped at its limit of 70%' });
+  });
+
+  it.each([
+    ['objective_device_left_off', 'Device is staying off until turned on again.'],
+    ['objective_not_accepting_energy', 'Device stopped taking power.'],
+    ['objective_device_schedule', 'Car is delaying charging'],
+  ] as const)('names the live cause of an at-risk card beside its target (%s)', (code, line) => {
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({ objectiveKind: 'ev_soc', targetValue: 80, pending: false, diagnosticReasonCode: code }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledEvEntry }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards[0]).toMatchObject({ statusId: 'at_risk', liveCauseLine: line });
+  });
+
+  it.each([
+    [{ pending: true, latest: null }, 'building_plan'],
+    [{ pending: false, diagnosticReasonCode: 'objective_invalid_session' as const }, 'paused_unplugged'],
+    [{ pending: false, diagnosticReasonCode: 'objective_device_unmanaged' as const }, 'paused_unmanaged'],
+    [{ pending: false, diagnosticReasonCode: 'objective_device_in_sub_home' as const }, 'unavailable'],
+  ])('shows no car-limit line beside a %o card', (fields, statusId) => {
+    // A car on its way to a lower limit: the line would contradict the chip.
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          objectiveKind: 'ev_soc', targetValue: 80, carChargeLimit: { limitValue: 70, reached: false }, ...fields,
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledEvEntry }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards[0]).toMatchObject({ statusId, liveCauseLine: null });
   });
 
   it('suppresses a committed cached schedule after the device moves to a separate meter', () => {

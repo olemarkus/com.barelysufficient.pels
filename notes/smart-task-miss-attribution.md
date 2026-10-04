@@ -35,10 +35,51 @@ reservations. Resumed draw clears the blocker and suppression; lower tasks
 receive the released allocation at the ordinary settle. An unclaimed or
 released hour cannot start this timer.
 
+## Live status overlay
+
+`reportTaskDeliveryStatus` lets only confirmed device-side causes downgrade a
+healthy live status, each with its own reason code and copy:
+`device_not_accepting` (the 15-minute non-delivery confirmation above, or a
+confirmed car self-stop), `device_limit` (the car at its qualified own charge
+limit) and `device_schedule` (a confirmed car schedule hold). The horizon plan
+cannot see these. Everything else is recorded as evidence only:
+
+- Capacity, budget and priority limiting are PELS's own per-cycle decisions,
+  which the committed plan already prices in. Overlaying them flipped the status,
+  and fired the status Flow trigger, on every shed/settle cycle (production: an
+  EV task three hours from its deadline, shed in its claimed hour).
+- `control_pending` is a settle in progress.
+- `control_failed` is a per-tick executor fact with no hold. A failure that
+  persists costs progress, which the next settle re-plans against.
+- `uncontrolled` is either the owner's "Leave off until turned on again", which
+  reaches every surface as `objective_device_left_off` from the diagnostic
+  itself (and outranks the delivery codes), or a PELS policy hold the plan owns.
+
+The surfaces read the codes from the active plan through
+`resolveEffectivePlanStatus` and explain them through `resolveSmartTaskLiveCause`
+(`notes/ui-terminology.md`, "Live causes on an at-risk or cannot-finish task").
+The same status rule also reads a known car charge limit below the target, reached
+or not, as at risk: the requested target stays the target and the car will stop
+short of it. Durable exclusions (separate meter, not managed) and a pending plan
+outrank every overlay.
+
+v3.9.3 also persisted `objective_delivery_restricted` for capacity, budget and
+priority limiting. The active-plan loader drops it (`activePlanSettings.ts`), and
+the resolvers ignore it if a browser reads a stored plan first.
+
 ## Recorded explanations
 
 The recorder stores the final active blocker, earlier contributing causes and
-coalesced time intervals. Cleared restrictions remain earlier contributors;
+coalesced time intervals. The interval list keeps the newest
+`MAX_DELIVERY_INTERVALS` (120): every flip between causes appends one, and the
+evidence is persisted every tick and copied into history. Contributors keep
+every cause ever seen, so the bound drops only old durations; older, longer
+persisted rows stay valid and are trimmed on their next append. The past-task
+sentence names the final blocker, then at most one earlier contributor, the one
+with the most blocked time within that window, never a momentary
+`control_pending` settle. A run the car held back (`device_limit`,
+`device_schedule`) gets no "Review device" button: no PELS setting changes the
+car. Cleared restrictions remain earlier contributors;
 they do not describe the current blocker. A missed task with permitted delivery
 and no recorded blocker states that its target was not reached during that
 permitted delivery. Physical/time feasibility and uncertain estimates are

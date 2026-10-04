@@ -348,7 +348,7 @@ export function computePeriodicStatusMetrics(
 async function refreshZoneTreeCache(refresh: SnapshotRefreshService): Promise<void> {
     try {
         const generation = refresh.refreshState.beginZoneTreeRefresh();
-        const zoneTree = await fetchZoneTree({ logger: refresh.reader.logger });
+        const zoneTree = await fetchZoneTree();
         if (zoneTree === null) return;
         // Generation guard: detached fetches can resolve out of order — commit
         // only if newer than the last COMMITTED generation. A stale fetch
@@ -484,7 +484,6 @@ export class SnapshotRefreshService {
             previousSnapshot,
             nextSnapshot: presentSnapshot,
             devices: effectiveList,
-            logger: this.reader.logger,
         });
         // `fetchSource` resolves whether this committed read is a targeted
         // overlay or a full read — a targeted refresh that fell back to full
@@ -557,7 +556,6 @@ export class SnapshotRefreshService {
             });
         }
         logEvSnapshotChanges({
-            logger: this.reader.logger,
             previousSnapshot,
             nextSnapshot: snapshot,
         });

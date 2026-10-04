@@ -79,6 +79,7 @@ import {
 import {
   clearEvCarAssociations,
   loadEvCarAssociations,
+  invalidateCarOptions,
   renderCarAssociation,
 } from './carAssociation.ts';
 import {
@@ -116,7 +117,7 @@ import {
   setDeviceDetailBudgetExemptState,
 } from './budgetExempt.ts';
 import { initRespectExternalOffHandler } from './respectExternalOff.ts';
-import { initStartPolicyHandler, syncDevicePolicyRows } from './startPolicy.ts';
+import { initStartPolicyHandler, revealStartPolicyRow, syncDevicePolicyRows } from './startPolicy.ts';
 import {
   initTemperatureControlDisabledHandler,
   syncTemperatureControlDisabledRow,
@@ -384,6 +385,7 @@ export const openDeviceDetail = (deviceId: string) => {
   renderExpectedPowerField(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
+  invalidateCarOptions();
   renderCarAssociation(device);
   renderDeviceDetailModes(device);
   setDeviceDetailDeltaValues(deviceId);
@@ -465,6 +467,15 @@ export {
   loadEvCarAssociations,
   loadShedBehaviors,
   loadTemperatureBoostSettings,
+};
+
+/** Where a deep link lands inside the device page. */
+type DeviceDetailFocus = 'top' | 'start-policy';
+
+/** Open a device's page and land on the setting a deep link names. */
+export const openDeviceDetailAt = (deviceId: string, focus: DeviceDetailFocus): void => {
+  openDeviceDetail(deviceId);
+  if (focus === 'start-policy' && currentDetailDeviceId === deviceId) revealStartPolicyRow();
 };
 
 export const initDeviceDetailHandlers = () => {

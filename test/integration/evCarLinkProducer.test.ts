@@ -76,6 +76,7 @@ class Harness {
       getChargers: () => this.chargers,
       getSnapshot: () => this.snapshot,
       setSnapshot: (next) => { this.snapshot = next; },
+      isHistoryResolved: () => true,
       onAssociatedCarStateOfCharge: (reading) => { this.adopted.push(reading); },
       onAssociationEnded: (chargerId) => { this.ended.push(chargerId); },
     });

@@ -60,7 +60,7 @@ An Easee charger goes back to its maximum current whenever a charging session st
 
 ## Battery Reporting
 
-Choose a supported car in the charger's **Car** section to use its battery level when PELS matches it to the charger. Alternatively, leave the car selection empty and use **Report battery level for charger**, selecting the Easee charger in that Flow card. These are separate battery sources: while any car is selected, PELS ignores both Flow reports and the charger's own battery reading, including while waiting to match a car. See [EV charger battery reporting](/ev-charger#step-5-configure-boost-mode-battery-reporting).
+Select a supported car in the charger's **Car** section to use its battery level when PELS matches it to the charger. Alternatively, leave the car selection empty and use **Report battery level for charger**, selecting the Easee charger in that Flow card. These are separate battery sources: while any car is selected, PELS ignores both Flow reports and the charger's own battery reading, including while waiting to match a car. Each car in the **Car** section says whether PELS has matched it to this charger; PELS matches cars whether or not they are selected, so you can keep a working Flow until the car shows as matched. See [EV charger battery reporting](/ev-charger#step-5-configure-boost-mode-battery-reporting).
 
 ## Troubleshooting
 

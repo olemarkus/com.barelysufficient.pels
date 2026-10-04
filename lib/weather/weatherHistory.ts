@@ -8,6 +8,7 @@ import type {
 import { isUnknownRecord } from '../utils/types';
 import {
   getZonedParts,
+  isCalendarDateKey,
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
@@ -42,7 +43,6 @@ export function isPlausibleOutdoorTemperature(value: unknown): value is number {
     && value <= MAX_PLAUSIBLE_C;
 }
 
-const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const HOUR_KEY_PATTERN = /^([01]\d|2[0-3])$/;
 
 const byDateKeyAscending = (a: { dateKey: string }, b: { dateKey: string }): number => (
@@ -111,18 +111,19 @@ export function rollupDay(
     unreliablePower: boolean;
     suppression?: WeatherDaySuppression;
     appliedBudgetKwh?: number;
+    kwhBudgetCounted?: number;
   },
 ): WeatherHistoryState {
   const {
     dateKey, dayLengthHours, kwhTotal, kwhControlled, kwhUncontrolled, unreliablePower, suppression,
-    appliedBudgetKwh,
+    appliedBudgetKwh, kwhBudgetCounted,
   } = params;
   const accumulator = (state.accumulators ?? {})[dateKey];
 
   const records = accumulator
     ? upsertRecord(state.records, buildRollupRecord({
       dateKey, dayLengthHours, kwhTotal, kwhControlled, kwhUncontrolled, unreliablePower, suppression,
-      appliedBudgetKwh, accumulator,
+      appliedBudgetKwh, kwhBudgetCounted, accumulator,
     }), { overwriteLive: false })
     : state.records;
 
@@ -146,11 +147,12 @@ function buildRollupRecord(params: {
   unreliablePower: boolean;
   suppression?: WeatherDaySuppression;
   appliedBudgetKwh?: number;
+  kwhBudgetCounted?: number;
   accumulator: WeatherDayAccumulator;
 }): WeatherDailyRecord {
   const {
     dateKey, dayLengthHours, kwhTotal, kwhControlled, kwhUncontrolled, unreliablePower, suppression,
-    appliedBudgetKwh, accumulator,
+    appliedBudgetKwh, kwhBudgetCounted, accumulator,
   } = params;
   // A fully-observed day has one sample per local hour; allow a 6-hour
   // shortfall (boot gaps, transient device reads) before flagging partial.
@@ -172,6 +174,8 @@ function buildRollupRecord(params: {
       backfilled: false,
     },
     ...(isPositiveFinite(appliedBudgetKwh) ? { appliedBudgetKwh } : {}),
+    // Only meaningful against the budget it was counted for.
+    ...(isPositiveFinite(appliedBudgetKwh) && kwhBudgetCounted !== undefined ? { kwhBudgetCounted } : {}),
     ...(cleanSuppression !== undefined ? { suppression: cleanSuppression } : {}),
   };
 }
@@ -228,7 +232,7 @@ export function stripMeterScopeDerivedState(state: WeatherHistoryState): Weather
     controlledBackfillVersion: _split,
     latestFit: _fit,
     latestSuggestion: _suggestion,
-    // The budget-pressure term is a function of `kwhTotal − appliedBudgetKwh`,
+    // The budget-pressure term is a function of `kwhBudgetCounted − appliedBudgetKwh`,
     // so it is scope-derived exactly like the fit and must go with it. Keeping
     // it would let a term accumulated under the OLD metering arrangement keep
     // raising the budget on top of a fit rebuilt from nothing, and it would take
@@ -252,10 +256,12 @@ function stripRecordKwhEvidence(record: WeatherDailyRecord): WeatherDailyRecord 
   const hasKwhEvidence = record.kwhTotal !== undefined
     || record.kwhControlled !== undefined
     || record.kwhUncontrolled !== undefined
+    || record.kwhBudgetCounted !== undefined
     || record.quality.kwhBackfilled === true;
   if (!hasKwhEvidence) return record;
   const {
-    kwhTotal: _total, kwhControlled: _controlled, kwhUncontrolled: _uncontrolled, ...rest
+    kwhTotal: _total, kwhControlled: _controlled, kwhUncontrolled: _uncontrolled,
+    kwhBudgetCounted: _budgetCounted, ...rest
   } = record;
   const { kwhBackfilled: _flag, ...quality } = record.quality;
   return { ...rest, quality: { ...quality, missingKwh: true } };
@@ -603,7 +609,7 @@ function normalizeAccumulators(raw: Record<string, unknown>): Record<string, Wea
   return Object.fromEntries(
     Object.entries(raw).filter(
       (entry): entry is [string, WeatherDayAccumulator] => (
-        DATE_KEY_PATTERN.test(entry[0]) && isPlausibleAccumulator(entry[1])
+        isCalendarDateKey(entry[0]) && isPlausibleAccumulator(entry[1])
       ),
     ),
   );
@@ -613,7 +619,7 @@ function normalizeForecastHourly(raw: Record<string, unknown>): Record<string, R
   return Object.fromEntries(
     Object.entries(raw)
       .map(([dateKey, hours]) => (
-        DATE_KEY_PATTERN.test(dateKey) && isUnknownRecord(hours)
+        isCalendarDateKey(dateKey) && isUnknownRecord(hours)
           ? ([dateKey, normalizeForecastHours(hours)] as const)
           : undefined
       ))
@@ -706,8 +712,9 @@ function isPlausibleQuality(value: unknown): value is WeatherDailyQuality {
 
 function isPlausibleRecord(value: unknown): value is WeatherDailyRecord {
   if (!isUnknownRecord(value)) return false;
-  return typeof value.dateKey === 'string'
-    && DATE_KEY_PATTERN.test(value.dateKey)
+  // A real calendar day, not just the shape: the fit reads each record's
+  // date (its season), and an impossible date would turn that into NaN.
+  return isCalendarDateKey(value.dateKey)
     && isPlausibleOutdoorTemperature(value.tempMeanC)
     && isPlausibleOutdoorTemperature(value.tempMinC)
     && isPlausibleOutdoorTemperature(value.tempMaxC)

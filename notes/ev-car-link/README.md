@@ -109,6 +109,17 @@ the realtime feed within seconds of a plug edge, while snapshots are rebuilt onl
 of the time and up to half an hour stale after unplugging. `DeviceTransport.getAssociatedCar`
 resolves it per call; the settings-UI devices composer decorates its payload with it.
 
+**Match history is served alongside the car candidates.** The probe votes whether or not a
+car is ticked, so the persisted `pairs` already record which charger each car has matched.
+`ui_recommendation_cars` gives every candidate its `matchHistory` (charger id and latest
+vote time per matched charger), and the UI uses it to show a match before the owner ticks the
+car and gives up a working Flow-reported level. It carries no count: a session usually casts
+one vote on plug-in and another on unplug. The history covers the prune window (90 days). It
+is read per candidate, so a home without cars never loads the link store. While a suspect
+boot read awaits recovery (`EvCarLinkStore.hasResolvedHistory`), the history is
+`unavailable` rather than empty, and the UI gives no match-based advice: an empty snapshot
+standing in for an unreadable one must not read as "never matched".
+
 **The charge reading is served with its timestamp and is not gated on the session start.**
 Cars publish `measure_battery` on change, so a session normally opens with the last pre-plug
 reading and nothing new arrives until the level rises. That reading is the car's real charge.
@@ -124,7 +135,9 @@ charger's `stateOfCharge`, carrying `source: { kind: 'car', carId }`. Three rule
 - **The charger's own sources are ignored, not ranked below.** Neither a native `measure_battery`
   nor the `report_evcharger_battery_level` flow card contributes. Ranking them as a fallback
   would let the level flip between two sources mid-session, and the opt-in is a clear statement
-  about which one the user wants.
+  about which one the user wants. The source is chosen at parse, so a change to the selection
+  re-parses the snapshot at once; waiting for the scheduled refresh left the ignored level
+  feeding boost and Smart tasks for up to half an hour.
 - **The level comes from the association, not from a change notification.** The probe holds the
   car's current `measure_battery` continuously and offers it every correlation pass, so an
   associated charger always has a level. Driving it from change events instead would strand a

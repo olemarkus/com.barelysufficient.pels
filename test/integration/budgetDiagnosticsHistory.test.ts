@@ -63,7 +63,7 @@ describe('persisted budget diagnostics history', () => {
       h.decisions.record(decision({ recordedAtMs: NOW + 1000, outcome: 'applied',
         budgetAfterKwh: 84.1, meterScopeSignature: 'source:homey_energy|main:meter-b' }));
       const reloaded = createBudgetAdviceHistoryStore(h.db);
-      const response = readBudgetDecisionHistory(reloaded, { from: '2026-10-02', to: '2026-10-03' }, NOW, TZ);
+      const response = readBudgetDecisionHistory(reloaded.read(), { from: '2026-10-02', to: '2026-10-03' }, NOW, TZ);
       expect(response.records.map((r) => r.outcome)).toEqual(['would_lower_while_limiting', 'applied']);
       expect(response.records[0]).toEqual(decision());
       expect(response.records[1].meterScopeSignature).toBe('source:homey_energy|main:meter-b');
@@ -92,7 +92,7 @@ describe('persisted budget diagnostics history', () => {
         recordBudgetDecision: (record) => h.decisions.record(record),
         logger: { info: vi.fn(), warn: vi.fn() } as unknown as PinoLogger,
       });
-      const [record] = readBudgetDecisionHistory(createBudgetAdviceHistoryStore(h.db), {
+      const [record] = readBudgetDecisionHistory(createBudgetAdviceHistoryStore(h.db).read(), {
         from: '2026-10-03', to: '2026-10-03',
       }, NOW, TZ).records;
       expect(record).toMatchObject({
@@ -126,7 +126,7 @@ describe('persisted budget diagnostics history', () => {
         records: [], currentBudgetPressure: null,
         meta: { retained: null, missingDates: ['2026-10-25'], meterScopeSignature: null },
       });
-      expect(readBudgetDecisionHistory(h.decisions, query, NOW, TZ).meta.retained).toBeNull();
+      expect(readBudgetDecisionHistory(h.decisions.read(), query, NOW, TZ).meta.retained).toBeNull();
     } finally { h.db.close(); }
   });
 });

@@ -571,7 +571,7 @@ const resolveEffectiveStatus = (
   if (plan !== null && isDeviceExclusionPaused(plan)) return null;
   if (plan === null || plan.pending || plan.latest === null) return PENDING_FLOW_STATUS;
   return mapPlanStatusToFlowStatus(
-    resolveEffectivePlanStatus(plan.latest.planStatus, plan.diagnosticReasonCode, plan.liveCompletion),
+    resolveEffectivePlanStatus(plan.latest.planStatus, plan),
   );
 };
 

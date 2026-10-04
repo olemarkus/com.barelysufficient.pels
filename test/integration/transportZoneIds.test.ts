@@ -22,12 +22,14 @@ import {
   setMockZones,
 } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { PassThrough, type Writable } from 'node:stream';
+import { createRootLogger, setDebugTopics, setRootLogger } from '../../lib/logging/logger';
+import { captureLogger } from '../utils/loggerCapture';
 
 const homeyMock = mockHomeyInstance as unknown as Homey.App;
 const noop = (): void => undefined;
 const loggerMock: Logger = {
   log: noop,
-  debug: noop,
   error: noop,
   structuredLog: { info: noop, error: noop, debug: noop, warn: noop } as unknown as Logger['structuredLog'],
 };
@@ -116,28 +118,84 @@ describe('zone tree fetch riding the snapshot refresh', () => {
   it('a throwing failure-path logger cannot reject the detached refresh (whole-body containment)', async () => {
     // `refreshZoneTreeCache` runs fire-and-forget; anything that throws on a
     // failure path — here `fetchZoneTree`'s own `zone_tree_fetch_failed`
-    // debug call — would become an unhandled rejection without the
+    // debug emit — would become an unhandled rejection without the
     // whole-body guard (vitest fails the run on one, so this test completing
-    // IS the assertion).
-    const explodingLogger: Logger = {
-      ...loggerMock,
-      debug: (...args: unknown[]) => {
-        const payload = args[0] as { event?: string } | undefined;
-        if (payload?.event === 'zone_tree_fetch_failed') {
+    // IS the assertion). The emit is made to throw at the log destination,
+    // which pino writes to synchronously from inside the emitter call.
+    // Proof the emit really threw: without it a destination that stopped
+    // receiving the line (pino going async, a topic gate) would pass vacuously.
+    let exploded = false;
+    const explodingDestination = {
+      write: (line: string) => {
+        if (line.includes('"event":"zone_tree_fetch_failed"')) {
+          exploded = true;
           throw new Error('failure-path logger exploded');
         }
+        return true;
       },
-    };
-    setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
-    const transport = createTestDeviceTransport(homeyMock, explodingLogger);
-    await refreshAndSettleZones(transport);
-    expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
+    } as unknown as Writable;
+    setRootLogger(createRootLogger(explodingDestination));
+    setDebugTopics(new Set(['devices']));
+    try {
+      setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
+      const transport = createTestDeviceTransport(homeyMock, loggerMock);
+      await refreshAndSettleZones(transport);
+      expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
 
-    // Route now throws → fetch-failure path → the logger throws → the outer
-    // containment swallows it. Cached tree retained (abandon-grace).
-    setMockZones(null);
-    await refreshAndSettleZones(transport);
-    expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
+      // Route now throws → fetch-failure path → the emit throws → the outer
+      // containment swallows it. Cached tree retained (abandon-grace).
+      setMockZones(null);
+      await refreshAndSettleZones(transport);
+      expect(exploded).toBe(true);
+      expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
+    } finally {
+      // This test owns the destination, so it owns the reset `captureLogger`
+      // would otherwise perform: a silent root and no topics.
+      setRootLogger(createRootLogger(new PassThrough(), 'silent'));
+      setDebugTopics(new Set());
+    }
+  });
+
+  it('reports a fetched tree as a structured devices-topic debug event at an info root', async () => {
+    // Regression: PR #2252 moved these lines onto a module logger, whose
+    // `.debug` inherits the `info` root and is never written. The production
+    // root runs at `info`, so the capture does too: the event must still
+    // arrive, as JSON carrying its `event` field, with the `devices` topic on.
+    const capture = captureLogger('info', ['devices']);
+    try {
+      setMockZones({
+        z1: { id: 'z1', name: 'Home', parent: null },
+        z2: { id: 'z2', name: 'First floor', parent: 'z1' },
+        junk: { name: 'No id here' },
+      });
+      const transport = createTestDeviceTransport(homeyMock, loggerMock);
+      await refreshAndSettleZones(transport);
+      expect(capture.findEvent('zone_tree_fetched')).toMatchObject({
+        component: 'devices',
+        debugTopic: 'devices',
+        zonesTotal: 2,
+        droppedEntries: 1,
+      });
+      expect(capture.findEvent('manager_api_devices_returned')).toMatchObject({
+        component: 'devices',
+        debugTopic: 'devices',
+      });
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it('keeps the zone fetch events out of the log while the devices topic is off', async () => {
+    const capture = captureLogger('info', []);
+    try {
+      setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
+      const transport = createTestDeviceTransport(homeyMock, loggerMock);
+      await refreshAndSettleZones(transport);
+      expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
+      expect(capture.findEvent('zone_tree_fetched')).toBeUndefined();
+    } finally {
+      capture.restore();
+    }
   });
 
   it('normalizes a good payload into the typed tree', async () => {

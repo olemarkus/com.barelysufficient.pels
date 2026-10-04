@@ -1,3 +1,4 @@
+import { createCurrentTaskEvaluationReader } from '../../lib/objectives/deferredObjectives/currentTaskEvaluation';
 import { flattenAllHours } from '../../lib/price/priceStore';
 import {
   resolvePostmortemTone,
@@ -435,6 +436,13 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
     activePlanRecorder,
     planHistoryRecorder,
     nowMs,
+    readCurrentTaskEvaluation: createCurrentTaskEvaluationReader({
+      getDevices: () => requirePlanService(ctx).getPlanDevices(),
+      getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
+      getDeliveredEnergyKWh: requireDeferredObjectiveEnergyDelivery(ctx).getDeliveredKWh,
+      getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
+      hasObservedTask: (deviceId, objective) => planHistoryRecorder.hasObservedTask(deviceId, objective),
+    }),
     // Multi-home v1 scope gate: durable relocation is a hard
     // `device_in_sub_home` refusal, while a provisional/global ownership fence
     // is the retryable `ownership_unavailable` lane. Every write surface builds

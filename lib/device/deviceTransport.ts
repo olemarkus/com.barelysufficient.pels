@@ -225,9 +225,7 @@ export class DeviceTransport {
         };
         // The measured-power resolver, built with what it retains restored from the
         // store before the first read (`retainedPowerPersistence.ts`).
-        this.retainedPower = new RetainedPowerPersistence(
-            options.retainedPowerStore, this.logger,
-        );
+        this.retainedPower = new RetainedPowerPersistence(options.retainedPowerStore);
         this.binaryEvidence = new BinarySettleEvidenceService(
             this.snapshotStore,
             this.observationBridge.state,
@@ -357,7 +355,11 @@ export class DeviceTransport {
     }
     /** Association-capable cars from the last trusted full read; never starts another SDK fetch. */
     readCarAssociationCandidates() {
-        return resolveCarAssociationCandidatesRead(this.hasWarmSnapshot(), this.snapshotStore.getLatestRawDevices());
+        return resolveCarAssociationCandidatesRead(
+            this.hasWarmSnapshot(),
+            this.snapshotStore.getLatestRawDevices(),
+            this.observationProducers.evCarLink,
+        );
     }
     // Poll-path home power read; also fans the additional (sub-home) meter
     // readings out to the `onAdditionalMeterReadings` provider (multi-home

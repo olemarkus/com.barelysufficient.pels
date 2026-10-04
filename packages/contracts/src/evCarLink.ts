@@ -62,6 +62,26 @@ export type EvCarLinkSession = {
     sinceMs: number;
 };
 
+/** A charger the probe matched a car to, with the latest vote for that pair. */
+export type EvCarChargerMatch = {
+    chargerId: string;
+    lastMatchedAtMs: number;
+};
+
+/**
+ * Which chargers a car has been matched to. Matching runs whether or not the
+ * user selected the car, so this shows a match before the owner relies on it.
+ * No count: a session usually casts one vote on plug-in and another on unplug.
+ *
+ * `unavailable` while the persisted history could not be read at boot and has
+ * not been recovered yet: an empty list then would claim "never matched" for a
+ * car that may have matched many times.
+ */
+export type EvCarChargerMatchHistory =
+    /** Newest match first; empty when no match falls inside the prune window. */
+    | { state: 'resolved'; chargerMatches: EvCarChargerMatch[] }
+    | { state: 'unavailable' };
+
 export type EvCarLinkSnapshot = {
     version: EvCarLinkVersion;
     /** Keyed `${carId}|${chargerId}` — see `buildEvCarLinkPairKey`. */

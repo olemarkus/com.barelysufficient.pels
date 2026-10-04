@@ -122,6 +122,17 @@ export type WeatherDailyRecord = {
    * days and whenever the daily budget was disabled.
    */
   appliedBudgetKwh?: number;
+  /**
+   * The day's usage as the daily budget counted it: metered kWh less
+   * budget-exempt kWh, hour by hour (`resolveBudgetCountedDayKwh`). The budget
+   * paces on this axis, so the budget-pressure loop measures overshoot and
+   * unused allowance against it rather than `kwhTotal`, which also counts
+   * exempt load the budget never governed. Stamped only alongside
+   * `appliedBudgetKwh`. ABSENT on records rolled up before the field existed and
+   * whenever the tracker held no hourly usage for the day; absent is not zero,
+   * and the loop then measures no balance for that day.
+   */
+  kwhBudgetCounted?: number;
   /** Producer-internal censoring evidence; consumers must not branch on it. See WeatherDaySuppression. */
   suppression?: WeatherDaySuppression;
 };
@@ -285,6 +296,13 @@ export type EnergySignatureFit = {
   baseLoadKwhPerDay?: number;
   /** Predicted kWh/day at 0 °C; `linear` only (no identifiable balance point). */
   interceptKwhAtZeroC?: number;
+  /**
+   * Season term (kWh/day): added at the December solstice, subtracted at the
+   * June solstice, scaled by a cosine of the day of year in between, on top of
+   * `baseLoadKwhPerDay`. `changepoint` only, and only when the history spans
+   * both halves of the year and the term clearly lowers the error.
+   */
+  seasonKwh?: number;
   /** Extra kWh per °C colder day — the headline "temperature sensitivity". */
   slopeKwhPerDegree: number;
   /** Sen's nonparametric 95% interval on the slope. */
@@ -489,6 +507,8 @@ export type WeatherAdvisorReadoutPayload = {
   /** Last auto-applied budget (date + kWh) for the "Last applied" line; null when never applied. */
   lastAutoApply: { dateKey: string; kwh: number } | null;
   fit: EnergySignatureFit | null;
+  /** Local date the outlook describes (tomorrow); the estimate line and warm-day usage are shown for its season. */
+  outlookDateKey: string;
   coverage: WeatherCoverageBin[];
   prediction: WeatherAdvisorPrediction | null;
   suggestion: WeatherAdvisorSuggestion | null;

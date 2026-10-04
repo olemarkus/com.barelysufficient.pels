@@ -12,6 +12,7 @@
  * `normalizePersistedPowerCalibration`.
  */
 import type {
+    EvCarChargerMatch,
     EvCarLinkAffinity,
     EvCarLinkSnapshot,
     EvCarLinkVersion,
@@ -247,6 +248,23 @@ export const getEvCarLinkVotes = (
     carId: string,
     chargerId: string,
 ): number => snapshot.pairs[buildEvCarLinkPairKey(carId, chargerId)]?.votes ?? 0;
+
+/**
+ * The chargers this car has been matched to, newest first. A pair with no votes
+ * is not a match. Pruning bounds the history, so this covers the retained window
+ * (`EV_CAR_LINK_PRUNE_MAX_AGE_MS`), not all time.
+ */
+export const resolveEvCarChargerMatches = (
+    snapshot: EvCarLinkSnapshot,
+    carId: string,
+): EvCarChargerMatch[] => {
+    const matches = Object.entries(snapshot.pairs).flatMap(([key, affinity]) => {
+        const pair = parseEvCarLinkPairKey(key);
+        if (pair?.carId !== carId || affinity.votes <= 0) return [];
+        return [{ chargerId: pair.chargerId, lastMatchedAtMs: affinity.lastVotedAtMs }];
+    });
+    return [...matches].sort((left, right) => right.lastMatchedAtMs - left.lastMatchedAtMs);
+};
 
 /**
  * Record the state-of-charge at which a car stopped charging on its own.

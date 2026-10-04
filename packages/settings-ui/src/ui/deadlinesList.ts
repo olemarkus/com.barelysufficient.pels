@@ -28,13 +28,15 @@ import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import { areMeterAreasInUse, subscribeToHomeScope } from './homeScope.ts';
 import {
   formatSmartTaskExtraPermissionsValue,
-  formatSmartTaskCarLimitListLine,
   formatSmartTaskCurrentValueLine,
   resolveChipConfidence,
   resolveSmartTaskCarChargeLimit,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
+  resolveSmartTaskLiveCause,
   SMART_TASK_LIST_LOAD_ERROR_COPY,
+  type SmartTaskCarChargeLimit,
+  type SmartTaskListStatusId,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import {
   renderDeadlinesList,
@@ -78,6 +80,20 @@ const resolveCurrentValue = (
   return level.kind === 'known' ? level.percent : null;
 };
 
+// The card's line beside the target: the same live cause the widget and the
+// detail hero name (device left off, stopped taking power, the car's own limit
+// or schedule), in its short form. Only on a card whose status that cause
+// explains, at risk or cannot finish: beside "Building plan…", a pause, an
+// unavailable or a satisfied chip, "Car stops at 70%" would contradict the chip.
+const resolveListCauseLine = (
+  statusId: SmartTaskListStatusId,
+  plan: ResolvedDeferredObjectiveActivePlanV1,
+  carChargeLimit: SmartTaskCarChargeLimit | null,
+): string | null => {
+  if (statusId !== 'at_risk' && statusId !== 'cannot_meet') return null;
+  return resolveSmartTaskLiveCause(plan.diagnosticReasonCode, carChargeLimit)?.listLine ?? null;
+};
+
 const buildCard = (params: {
   deviceId: string;
   plan: ResolvedDeferredObjectiveActivePlanV1;
@@ -88,6 +104,7 @@ const buildCard = (params: {
   const { deviceId, plan, objective, device, nowMs } = params;
   const pending = plan.pending || plan.latest === null;
   const firstHour = plan.latest?.hours[0]?.startsAtMs ?? null;
+  const carChargeLimit = resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue);
   const statusId = resolveSmartTaskListStatus({
     pending,
     pendingReason: plan.pendingReason,
@@ -95,10 +112,9 @@ const buildCard = (params: {
     planStatus: plan.latest?.planStatus,
     firstActionAtMs: firstHour,
     nowMs,
-    carChargeLimitReached: plan.carChargeLimit?.reached === true,
+    carChargeLimit,
     liveCompletion: plan.liveCompletion,
   });
-  const carChargeLimit = resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue);
   // Mirror the hero's chip-confidence chain (see `resolveEnergyNeededKWh` in
   // `deadlinePlanResolvers.ts`); `profileConfidence: null` collapses the
   // live-profile step since the list doesn't load `objectiveProfiles`.
@@ -133,8 +149,7 @@ const buildCard = (params: {
       kind: plan.objectiveKind,
       currentValue,
     }),
-    // Why a task shows a target it will not reach: the car stops charging below it.
-    carLimitLine: carChargeLimit === null ? null : formatSmartTaskCarLimitListLine(carChargeLimit),
+    liveCauseLine: resolveListCauseLine(statusId, plan, carChargeLimit),
   };
 };
 
