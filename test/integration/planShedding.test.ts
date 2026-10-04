@@ -3803,7 +3803,7 @@ describe('buildSheddingPlan', () => {
     it('does not deepen into a higher-priority device while the reading repeats', async () => {
       const deps = incidentDeps();
       const state = await shedLowestPriorityFirst(deps);
-      const decidedAtMs = state.shedPlanLatch?.decisions.get('vvb')?.decidedAtMs;
+      const decidedAtMs = state.shedPlanLatch?.decisions.get('vvb')?.[0]?.decidedAtMs;
 
       vi.setSystemTime(new Date(Date.now() + 10_000));
 
@@ -3828,7 +3828,7 @@ describe('buildSheddingPlan', () => {
       // Nothing was mitigated, so the window must keep running from the real
       // shed rather than restarting on every held cycle.
       if (repeatResult.outcome.kind !== 'held') throw new Error(`expected a hold, got ${repeatResult.outcome.kind}`);
-      expect(repeatResult.outcome.latch.decisions.get('vvb')?.decidedAtMs).toBe(decidedAtMs);
+      expect(repeatResult.outcome.latch.decisions.get('vvb')?.map((decision) => decision.decidedAtMs)).toEqual([decidedAtMs]);
       expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
         event: 'plan_shed_held_pending_relief',
         pendingReliefKw: 2,
@@ -4110,10 +4110,92 @@ describe('buildSheddingPlan', () => {
       expect(result.shedStepTargets.get('ev')).toBe('10a');
       expect(result.shedSet.has('bath')).toBe(false);
       if (result.outcome.kind !== 'shed') throw new Error(`expected a shed outcome, got ${result.outcome.kind}`);
-      // The credit still outstanding rides along, so the next reading is counted
-      // against both steps.
-      expect(result.outcome.latch?.decisions.get('ev')?.creditedKw).toBeCloseTo((CHARGER_DRAW_KW - 3.22) + (3.07 - 2.3), 6);
+      // The 14 A step is on the charger already: it keeps its own decision and
+      // stamp, still outstanding against this reading, and the 10 A step gets a
+      // decision of its own.
+      expect(result.outcome.latch?.decisions.get('ev')).toEqual([
+        { decidedAtMs: Date.now() - 3_000, creditedKw: expect.closeTo(CHARGER_DRAW_KW - 3.22, 6) },
+        { decidedAtMs: Date.now(), creditedKw: expect.closeTo(3.07 - 2.3, 6) },
+      ]);
       expect(result.outcome.latch?.stepTargets.get('ev')).toBe('10a');
+    });
+
+    it('does not re-date relief a charger has delivered while a rising load walks it down', async () => {
+      const state = createPlanEngineState();
+      state.overshoot.enter(Date.now());
+      const shedAtMs = Date.now();
+      const cycle = async (afterMs: number, charger: Parameters<typeof buildDevice>[0], totalKw: number) => {
+        vi.setSystemTime(new Date(shedAtMs + afterMs));
+        const deps: SheddingDeps = {
+          ...chargingDeps(state, { ts: 1_000 + afterMs, powerW: Math.round(totalKw * 1000) }),
+          getShedBehavior: (deviceId: string) => (deviceId === 'ev' ? { action: 'set_step' } : { action: 'turn_off' }),
+        };
+        const result = await buildSheddingPlanForSpec(...chargingCycle(chargingHome(charger), totalKw), state, deps);
+        state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
+        return { result, deps };
+      };
+      const landedAt = (stepId: string, drawKw: number) => ({
+        selectedStepId: stepId, desiredStepId: stepId, currentDrawKw: drawKw,
+      });
+      const creditedOn = (deps: SheddingDeps, pendingReliefKw: number) => expect(deps.debugStructured)
+        .toHaveBeenCalledWith(expect.objectContaining({
+          event: 'plan_shed_beyond_pending_relief',
+          pendingReliefKw: expect.closeTo(pendingReliefKw, 6),
+        }));
+
+      expect((await cycle(0, {}, 6.336)).result.shedStepTargets.get('ev')).toBe('14a');
+      // Each reading the charger has landed on the rung it was last sent to, and a
+      // heat pump ramping up has more than eaten what that step gave back. The
+      // sum cannot tell that from a lagging meter, so each step is credited for
+      // its own 30 s.
+      const second = await cycle(10_000, landedAt('14a', 3.22), 6.336 - 1.321 + 2.5);
+      expect(second.result.shedStepTargets.get('ev')).toBe('10a');
+      creditedOn(second.deps, CHARGER_DRAW_KW - 3.22);
+      const third = await cycle(20_000, landedAt('10a', 2.3), 6.336 - 1.321 + 2.5 - 0.92 + 1);
+      expect(third.result.shedStepTargets.get('ev')).toBe('6a');
+      expect(third.result.shedSet.has('bath')).toBe(false);
+      creditedOn(third.deps, (CHARGER_DRAW_KW - 3.22) + (3.22 - 2.3));
+      // At 30 s the 14 A step's window has closed on its own stamp: only the two
+      // steps decided since are credited, and the bathroom floor answers the
+      // rest. Re-dated with each later step, the 14 A step was still credited
+      // here and the floor stayed on until the charger's last step expired. The
+      // expired step stays in the latch only as its claim on a later fall.
+      const fourth = await cycle(30_000, landedAt('6a', 1.38), 6.336 - 1.321 + 2.5 - 0.92 + 1 - 0.92 + 1);
+      creditedOn(fourth.deps, (3.22 - 2.3) + (2.3 - 1.38));
+      expect(fourth.result.shedSet.has('bath')).toBe(true);
+      expect(state.shedPlanLatch?.decisions.get('ev')?.map((decision) => decision.decidedAtMs))
+        .toEqual([shedAtMs, shedAtMs + 10_000, shedAtMs + 20_000]);
+    });
+
+    it('does not retire a later step when a lagging reading shows only the earlier one', async () => {
+      const state = await stepChargerTo14a();
+      const shedAtMs = Date.now();
+      const cycle = async (afterMs: number, stepId: string, drawKw: number, totalKw: number) => {
+        vi.setSystemTime(new Date(shedAtMs + afterMs));
+        const deps = chargingDeps(state, { ts: 1_000 + afterMs, powerW: Math.round(totalKw * 1000) });
+        const charger = { selectedStepId: stepId, desiredStepId: stepId, currentDrawKw: drawKw };
+        const result = await buildSheddingPlanForSpec(...chargingCycle(chargingHome(charger), totalKw), state, deps);
+        state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
+        return result;
+      };
+
+      // 3 s on, the charger's own meter shows the 14 A step landed; the whole-home
+      // meter still repeats its 20 A, and a 0.9 kW load has started: 14 A -> 10 A.
+      const restamped = await cycle(3_000, '14a', 3.22, 6.336 + 0.9);
+      expect(restamped.shedStepTargets.get('ev')).toBe('10a');
+      // The charger has landed at 10 A, and the meter catches up on the 14 A step
+      // only. That fall is the earlier step's: the 10 A step is still to show, and
+      // it covers what is left, so nothing more is cut.
+      const caughtUp = await cycle(13_000, '10a', 2.3, 6.336 + 0.9 - 1.321);
+      expect(caughtUp.outcome.kind).toBe('held');
+      expect(caughtUp.shedStepTargets.get('ev')).toBe('10a');
+      expect(caughtUp.shedSet.has('bath')).toBe(false);
+      // The meter repeats that reading. The fall the 14 A step claimed went with
+      // it, so it is not laid against the 10 A step a second time.
+      const repeated = await cycle(16_000, '10a', 2.3, 6.336 + 0.9 - 1.321);
+      expect(repeated.outcome.kind).toBe('held');
+      expect(repeated.shedStepTargets.get('ev')).toBe('10a');
+      expect(repeated.shedSet.has('bath')).toBe(false);
     });
 
     it('does not count the charger\'s undelivered relief twice when a residual is shed', async () => {
@@ -4163,7 +4245,9 @@ describe('buildSheddingPlan', () => {
       // Without its rung, the next reading would count the charger's whole draw
       // as still to come.
       expect(result.outcome.latch?.stepTargets.get('ev')).toBe('6a');
-      expect(result.outcome.latch?.decisions.get('ev')?.creditedKw).toBeCloseTo(CHARGER_DRAW_KW - 1.38, 6);
+      expect(result.outcome.latch?.decisions.get('ev')).toEqual([
+        { decidedAtMs: expect.any(Number), creditedKw: expect.closeTo(CHARGER_DRAW_KW - 1.38, 6) },
+      ]);
     });
 
     it('credits a turn-off that is still pending, shedding only what it leaves open', async () => {
@@ -4264,7 +4348,7 @@ describe('buildSheddingPlan', () => {
       // A 0.4 kW load at 20 s deepens the charger one rung; it stays stamped at 0 s.
       const deepened = await cycle(20_000, 6.736);
       expect(deepened.shedStepTargets.get('ev')).toBe('12a');
-      expect(state.shedPlanLatch?.decisions.get('ev')?.decidedAtMs).toBe(shedAtMs);
+      expect(state.shedPlanLatch?.decisions.get('ev')?.map((decision) => decision.decidedAtMs)).toEqual([shedAtMs]);
       // At 31 s nothing it was asked for has shown: its credit is gone and the
       // breach escalates onto the next device.
       const escalated = await cycle(31_000, 6.736);
