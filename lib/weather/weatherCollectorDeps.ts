@@ -39,6 +39,13 @@ export type WeatherCollectorDeps = {
    * budget-pressure loop pairs it with the day's measured kWh to size its step.
    */
   getAppliedDailyBudgetKwh: () => number | undefined;
+  /**
+   * The local day's usage as the daily budget counted it (metered less
+   * budget-exempt), or `undefined` when there is no hourly usage to count.
+   * Stamped next to the applied budget so the pressure loop measures overshoot
+   * and unused allowance on the axis the budget actually paced.
+   */
+  getBudgetCountedKwh: (dateKey: string) => number | undefined;
   /** Sustainable capacity rate: hard cap minus its configured safety margin. */
   getSustainableCapacityKw: () => number;
   getSettings: () => WeatherAdvisorSettings;
@@ -108,5 +115,7 @@ export type WeatherCollectorDeps = {
    */
   onDailyBudgetAutoApplied?: (info: { budgetKwh: number; forecastMeanTempC: number }) => void;
   recordBudgetDecision?: (decision: BudgetAdviceDecision) => void;
+  /** The persisted decision journal, served by the budget-diagnostics API (`budgetHistory`). */
+  readBudgetDecisions: () => BudgetAdviceDecision[];
   logger: PinoLogger;
 };

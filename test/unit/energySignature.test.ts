@@ -201,6 +201,7 @@ describe('fitEnergySignature — suppression awareness', () => {
           tempMinC: -3,
           tempMaxC: 3,
           kwhTotal: 50,
+          kwhBudgetCounted: 50,
           appliedBudgetKwh: 45,
           suppression: { budgetUnservedKwh: 6 },
         }
@@ -245,6 +246,7 @@ describe('fitEnergySignature — suppression awareness', () => {
           tempMinC: 22,
           tempMaxC: 28,
           kwhTotal: 50,
+          kwhBudgetCounted: 50,
           appliedBudgetKwh: 45,
           suppression: { budgetUnservedKwh: 6 },
         }

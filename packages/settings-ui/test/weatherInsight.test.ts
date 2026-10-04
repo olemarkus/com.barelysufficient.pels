@@ -276,7 +276,7 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     const readout = buildReadout();
     readout.suggestion = { ...readout.suggestion!, budgetPressureKwh: 4, budgetMayBeLimiting: false };
     renderBudgetOverview(mount, buildProps({ weatherInsight: { readout, fetchFailed: false } }));
-    expect(mount.querySelector('#weather-tomorrow-card')?.textContent).toContain('Recent usage exceeded your budget');
+    expect(mount.querySelector('#weather-tomorrow-card')?.textContent).toContain('Recent usage went over your budget');
     expect(mount.querySelector('#weather-tomorrow-card')?.textContent).not.toContain('limiting your devices');
   });
 

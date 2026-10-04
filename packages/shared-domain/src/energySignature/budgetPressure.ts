@@ -8,12 +8,23 @@ const positive = (value: number | undefined): number => (
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
 );
 
-/** Trusted day balance; missing/unreliable readings must not invent spare allowance. */
+/**
+ * Trusted day balance on the budget's own axis: what the budget counted
+ * (metered less budget-exempt, `kwhBudgetCounted`) against what it allowed.
+ * Whole-home `kwhTotal` also counts exempt load the budget never paced, so
+ * using it would read an exempt device's energy as an overshoot.
+ *
+ * Missing/unreliable readings must not invent spare allowance or an overshoot.
+ * A record without `kwhBudgetCounted` (rolled up before the field existed)
+ * has no measurable balance: absent is not zero, and its whole-home total
+ * cannot stand in for it.
+ */
 function measuredBalanceKwh(record: WeatherDailyRecord): number | undefined {
   if (record.quality.unreliablePower || record.quality.missingKwh) return undefined;
   if (positive(record.appliedBudgetKwh) === 0) return undefined;
-  if (record.kwhTotal === undefined || !Number.isFinite(record.kwhTotal) || record.kwhTotal < 0) return undefined;
-  return record.kwhTotal - (record.appliedBudgetKwh as number);
+  const counted = record.kwhBudgetCounted;
+  if (counted === undefined || !Number.isFinite(counted) || counted < 0) return undefined;
+  return counted - (record.appliedBudgetKwh as number);
 }
 
 export function measuredBudgetOvershootKwh(record: WeatherDailyRecord): number | undefined {

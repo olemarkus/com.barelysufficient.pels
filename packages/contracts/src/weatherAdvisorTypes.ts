@@ -122,6 +122,17 @@ export type WeatherDailyRecord = {
    * days and whenever the daily budget was disabled.
    */
   appliedBudgetKwh?: number;
+  /**
+   * The day's usage as the daily budget counted it: metered kWh less
+   * budget-exempt kWh, hour by hour (`resolveBudgetCountedDayKwh`). The budget
+   * paces on this axis, so the budget-pressure loop measures overshoot and
+   * unused allowance against it rather than `kwhTotal`, which also counts
+   * exempt load the budget never governed. Stamped only alongside
+   * `appliedBudgetKwh`. ABSENT on records rolled up before the field existed and
+   * whenever the tracker held no hourly usage for the day; absent is not zero,
+   * and the loop then measures no balance for that day.
+   */
+  kwhBudgetCounted?: number;
   /** Producer-internal censoring evidence; consumers must not branch on it. See WeatherDaySuppression. */
   suppression?: WeatherDaySuppression;
 };

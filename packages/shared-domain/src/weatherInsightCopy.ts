@@ -129,8 +129,11 @@ export const WEATHER_REASON_DRIFT_WIDER = 'Recent days ran higher than usual, so
 // described wrongly), and a budget limits DEVICES, not days. "recently" carries
 // the time anchor once, so the follow-on clause does not have to restate it with
 // a different span in mind.
-export const WEATHER_REASON_BUDGET_LIMITING = 'Your budget has recently been limiting your devices — '
-  + 'the suggestion is raised to match.';
+export const WEATHER_REASON_BUDGET_LIMITING = 'Your budget has recently been limiting your devices, '
+  + 'so the suggestion is raised to match.';
+/** Measured overshoot alone: usage went over the budget, but no device was proven held back. */
+export const WEATHER_REASON_BUDGET_OVERSHOOT = 'Recent usage went over your budget, '
+  + 'so the suggestion includes extra room.';
 
 /**
  * The reason line under a raised suggestion. Names the part of the raise that
@@ -145,10 +148,17 @@ export const WEATHER_REASON_BUDGET_LIMITING = 'Your budget has recently been lim
  * as too small to act on.
  */
 export const composeBudgetLimitingReason = (budgetPressureKwh: number, budgetMayBeLimiting = true): string => {
-  const reason = budgetMayBeLimiting ? WEATHER_REASON_BUDGET_LIMITING
-    : 'Recent usage exceeded your budget — the suggestion includes extra room.';
-  if (!Number.isFinite(budgetPressureKwh) || budgetPressureKwh < 1) return reason;
-  return `${reason} ${formatDailyKwh(budgetPressureKwh)} of the suggestion `
+  const sized = Number.isFinite(budgetPressureKwh) && budgetPressureKwh >= 1;
+  if (!budgetMayBeLimiting) {
+    // One sentence: the overshoot already says usage went over the budget, so
+    // the number names the extra room instead of restating "beyond your budget".
+    return sized
+      ? `Recent usage went over your budget, so the suggestion includes ${formatDailyKwh(budgetPressureKwh)} `
+        + 'of extra room.'
+      : WEATHER_REASON_BUDGET_OVERSHOOT;
+  }
+  if (!sized) return WEATHER_REASON_BUDGET_LIMITING;
+  return `${WEATHER_REASON_BUDGET_LIMITING} ${formatDailyKwh(budgetPressureKwh)} of the suggestion `
     + 'covers recent demand beyond your budget.';
 };
 
@@ -157,7 +167,7 @@ export const composeBudgetLimitingReason = (budgetPressureKwh: number, budgetMay
 // is physical — copy NEVER suggests raising it; it states what PELS will do.
 export const WEATHER_WARN_OVER_HARDCAP_TITLE = 'Tomorrow may need more than your hard cap allows';
 export const WEATHER_WARN_OVER_HARDCAP_BODY = 'Tomorrow’s expected usage is higher than your hard cap '
-  + 'can deliver in a day. PELS will hold the cap, so some managed usage may be limited on the coldest hours.';
+  + 'can deliver in a day. PELS will hold the cap, so some managed usage may be limited in the coldest hours.';
 
 export type WeatherVerdictTone = 'ok' | 'warn';
 export type WeatherTomorrowVerdict = { text: string; tone: WeatherVerdictTone };

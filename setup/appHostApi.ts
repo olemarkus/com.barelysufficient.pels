@@ -1,6 +1,3 @@
-import { createWeatherHistoryStore } from '../lib/weather/weatherHistoryStore';
-import { createBudgetAdviceHistoryStore } from '../lib/weather/budgetAdviceHistoryStore';
-import { readBudgetDailyHistory, readBudgetDecisionHistory } from '../lib/weather/budgetDiagnosticsHistory';
 import type { BudgetDailyHistory, BudgetDecisionHistory } from '../packages/contracts/src/budgetDiagnostics';
 import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureControlPosture';
 import type Homey from 'homey';
@@ -313,18 +310,15 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.requirePlanService().getDeviceLogUiPayload();
   }
 
+  // Read through the weather collector, the history stores' only holder. It is
+  // constructed (not necessarily started) after the startup window, so a
+  // disabled weather insight still serves its persisted history.
   public getBudgetDailyHistory(query: unknown): BudgetDailyHistory {
-    return readBudgetDailyHistory(
-      createWeatherHistoryStore(this.context.getUserdataDatabase()), query,
-      this.context.getNow().getTime(), this.context.getTimeZone(),
-    );
+    return this.requireWeatherCollector().budgetHistory.readDays(query);
   }
 
   public getBudgetDecisionHistory(query: unknown): BudgetDecisionHistory {
-    return readBudgetDecisionHistory(
-      createBudgetAdviceHistoryStore(this.context.getUserdataDatabase()), query,
-      this.context.getNow().getTime(), this.context.getTimeZone(),
-    );
+    return this.requireWeatherCollector().budgetHistory.readDecisions(query);
   }
 
   public async getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadout> {
@@ -393,6 +387,10 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected requireDailyBudgetService() {
     if (!this.context.dailyBudgetService) throw new Error('DailyBudgetService must be initialized');
     return this.context.dailyBudgetService;
+  }
+  protected requireWeatherCollector(): WeatherCollector {
+    if (!this.weatherCollector) throw new Error('Budget history is unavailable during startup');
+    return this.weatherCollector;
   }
 }
 

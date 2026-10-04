@@ -35,10 +35,19 @@ const FORECAST_MEAN_C = 13.57;
 /** What the home actually drew on the two closed days either side of the decision. */
 const OBSERVED_DEMAND_KWH = 49.99;
 
+/**
+ * The fixture predates `kwhBudgetCounted`, so the loop would measure no balance
+ * on it at all. Replay it as a home with no budget-exempt load, where the
+ * budget-counted axis and the whole-home total coincide.
+ */
+const withoutExemptLoad = (record: WeatherDailyRecord): WeatherDailyRecord => (
+  record.kwhTotal === undefined ? record : { ...record, kwhBudgetCounted: record.kwhTotal }
+);
+
 const foldClosedDays = (fromDateKey: string) => {
   let state;
   for (const record of records.filter((entry) => entry.dateKey >= fromDateKey)) {
-    state = foldBudgetPressureDay(state, record);
+    state = foldBudgetPressureDay(state, withoutExemptLoad(record));
   }
   return state;
 };
@@ -112,6 +121,7 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
       pressure = foldBudgetPressureDay(pressure, {
         dateKey: `2026-08-${String(index + 1).padStart(2, '0')}`,
         kwhTotal: Math.min(OBSERVED_DEMAND_KWH, budget),
+        kwhBudgetCounted: Math.min(OBSERVED_DEMAND_KWH, budget),
         appliedBudgetKwh: budget,
         tempMeanC: 13.5,
         tempMinC: 11,
@@ -140,6 +150,7 @@ describe('2026-08-08 under the day-close damage model (real production numbers)'
     tempMaxC: 15,
     tempSampleCount: 24,
     kwhTotal: 62.83023596083332,
+    kwhBudgetCounted: 62.83023596083332,
     appliedBudgetKwh: 60.719406746659125,
     quality: {
       partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false,
@@ -173,6 +184,19 @@ describe('2026-08-08 under the day-close damage model (real production numbers)'
     expect(folded.kwh).toBeCloseTo(CARRIED.kwh + 2.28 + 2.1108292141741956, 9);
   });
 
+  it('does not grow on whole-home usage over the budget that was budget-exempt', () => {
+    // Same day, but 4 kWh of it came from a budget-exempt device: the budget
+    // counted 58.83 against 60.72, so there is no overshoot to correct and the
+    // unused allowance unwinds the carried term instead.
+    const folded = foldBudgetPressureDay(CARRIED, {
+      ...augEighth({ budgetDenialObserved: true, budgetDeniedKwh: 0, budgetUnservedKwh: 0 }),
+      kwhBudgetCounted: 62.83023596083332 - 4,
+    });
+    const spare = 60.719406746659125 - (62.83023596083332 - 4);
+    expect(folded.kwh).toBeCloseTo(CARRIED.kwh * 0.75 - spare, 9);
+    expect(folded.kwh).toBeLessThan(CARRIED.kwh);
+  });
+
   it('grows on a denial day the budget kept UNDER its number — invisible to the old step', () => {
     const folded = foldBudgetPressureDay(CARRIED, {
       ...augEighth({
@@ -182,6 +206,7 @@ describe('2026-08-08 under the day-close damage model (real production numbers)'
         budgetDeniedMs: 3 * 60 * 60 * 1000,
       }),
       kwhTotal: 58,
+      kwhBudgetCounted: 58,
     });
     // Credit 2.72 kWh of unused allowance against the 3.42 kWh pending denial.
     expect(folded.kwh).toBeCloseTo(CARRIED.kwh + 3.42 + 58 - 60.719406746659125, 9);

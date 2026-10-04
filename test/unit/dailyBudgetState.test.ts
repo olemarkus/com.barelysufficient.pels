@@ -3,6 +3,7 @@ import {
   buildBudgetUsageViews,
   buildDailyBudgetSnapshot,
   buildDayContext,
+  resolveBudgetCountedDayKwh,
 } from '../../lib/dailyBudget/dailyBudgetState';
 import type { BudgetState, DayContext } from '../../lib/dailyBudget/dailyBudgetState';
 import type { DailyBudgetSettings } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -371,3 +372,64 @@ function buildSnapshotContext(overrides: Partial<DayContext> = {}): DayContext {
     ...overrides,
   };
 }
+
+describe('resolveBudgetCountedDayKwh', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+  /** One metered kWh per UTC hour in [fromMs, toMs). */
+  const everyHour = (fromMs: number, toMs: number, kWh = 1): Record<string, number> => Object.fromEntries(
+    Array.from({ length: Math.round((toMs - fromMs) / HOUR_MS) }, (_, index) => [
+      new Date(fromMs + index * HOUR_MS).toISOString(), kWh,
+    ]),
+  );
+  const utcDayStart = Date.UTC(2024, 0, 1);
+  const hour = (h: number): string => new Date(utcDayStart + h * HOUR_MS).toISOString();
+
+  it('counts the day on the budget axis: metered less exempt, hour by hour', () => {
+    expect(resolveBudgetCountedDayKwh({
+        buckets: { ...everyHour(utcDayStart, utcDayStart + 24 * HOUR_MS), [hour(0)]: 5, [hour(1)]: 3 },
+        // Hour 1's exempt reading exceeds its metered total and clamps to it.
+        exemptBuckets: { [hour(0)]: 2, [hour(1)]: 4 },
+      }, '2024-01-01', 'UTC')).toBe(22 + 3 + 0);
+  });
+
+  it('counts an hour with no exempt bucket in full, as the pacer does', () => {
+    expect(resolveBudgetCountedDayKwh({ buckets: everyHour(utcDayStart, utcDayStart + 24 * HOUR_MS, 0.5) }, '2024-01-01', 'UTC')).toBe(12);
+  });
+
+  it('is undefined while any hour of the day is unmeasured: a gap is not unused allowance', () => {
+    const buckets = everyHour(utcDayStart, utcDayStart + 24 * HOUR_MS);
+    delete buckets[hour(13)];
+    expect(resolveBudgetCountedDayKwh({ buckets }, '2024-01-01', 'UTC'))
+      .toBeUndefined();
+    // A single recovered hour is not a day.
+    expect(resolveBudgetCountedDayKwh({ buckets: { [hour(4)]: 6 } }, '2024-01-01', 'UTC')).toBeUndefined();
+    expect(resolveBudgetCountedDayKwh({ buckets: { ...buckets, [hour(13)]: Number.NaN } }, '2024-01-01', 'UTC')).toBeUndefined();
+    expect(resolveBudgetCountedDayKwh({}, '2024-01-01', 'UTC'))
+      .toBeUndefined();
+  });
+
+  it('needs all 23 hours of the spring-forward day in Europe/Oslo', () => {
+    // 2026-03-29 local runs 2026-03-28T23:00Z to 2026-03-29T22:00Z: 23 hours.
+    const fromMs = Date.UTC(2026, 2, 28, 23);
+    const toMs = Date.UTC(2026, 2, 29, 22);
+    const buckets = everyHour(fromMs, toMs);
+    expect(resolveBudgetCountedDayKwh({ buckets }, '2026-03-29', 'Europe/Oslo'))
+      .toBe(23);
+    // The next day's first hour is not this day's; dropping this day's last hour is a gap.
+    const { [new Date(toMs - HOUR_MS).toISOString()]: _last, ...short } = buckets;
+    expect(resolveBudgetCountedDayKwh({ buckets: { ...short, [new Date(toMs).toISOString()]: 1 } }, '2026-03-29', 'Europe/Oslo')).toBeUndefined();
+  });
+
+  it('needs all 25 hours of the fall-back day in Europe/Oslo, both passes of the repeated hour', () => {
+    // 2026-10-25 local runs 2026-10-24T22:00Z to 2026-10-25T23:00Z: 25 hours.
+    // 02:00 local happens twice, at 00:00Z (CEST) and 01:00Z (CET).
+    const fromMs = Date.UTC(2026, 9, 24, 22);
+    const toMs = Date.UTC(2026, 9, 25, 23);
+    const firstPass = new Date(Date.UTC(2026, 9, 25, 0)).toISOString();
+    const secondPass = new Date(Date.UTC(2026, 9, 25, 1)).toISOString();
+    const buckets = everyHour(fromMs, toMs);
+    expect(resolveBudgetCountedDayKwh({ buckets, exemptBuckets: { [firstPass]: 0.25, [secondPass]: 0.5 } }, '2026-10-25', 'Europe/Oslo')).toBe(25 - 0.75);
+    const { [secondPass]: _repeated, ...missingRepeat } = buckets;
+    expect(resolveBudgetCountedDayKwh({ buckets: missingRepeat }, '2026-10-25', 'Europe/Oslo')).toBeUndefined();
+  });
+});

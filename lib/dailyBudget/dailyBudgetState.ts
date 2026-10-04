@@ -201,6 +201,37 @@ export const buildBucketUsage = (params: {
   };
 };
 
+/**
+ * A local day's usage on the budget's own pacing axis: metered kWh less
+ * budget-exempt kWh, hour by hour, exactly as `buildBudgetUsageViews` paces it.
+ * This is the figure a day's applied budget actually governed, so it is the one
+ * an overshoot or unused allowance must be measured against; whole-home kWh
+ * also counts exempt load the budget never paced.
+ *
+ * `undefined` unless the tracker holds a finite metered bucket for EVERY hour
+ * of the local day (23, 24 or 25 per `buildLocalDayBuckets`). A missing hour is
+ * unmeasured, not zero: summing a partially recovered tracker would understate
+ * the day and read the gap as unused allowance. An hour with metered usage but
+ * no exempt bucket counts as fully budget-counted, which is how the pacer
+ * treats it.
+ */
+export const resolveBudgetCountedDayKwh = (
+  powerTracker: PowerTrackerState,
+  dateKey: string,
+  timeZone: string,
+): number | undefined => {
+  const dayStartUtcMs = getDateKeyStartMs(dateKey, timeZone);
+  const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
+  const { bucketStartUtcMs } = buildLocalDayBuckets({ dayStartUtcMs, nextDayStartUtcMs, timeZone });
+  const everyHourMeasured = bucketStartUtcMs.length > 0 && bucketStartUtcMs.every((ts) => {
+    const value = powerTracker.buckets?.[new Date(ts).toISOString()];
+    return typeof value === 'number' && Number.isFinite(value);
+  });
+  if (!everyHourMeasured) return undefined;
+  const { bucketUsage, bucketUsageExempt } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
+  return buildBudgetUsageViews({ bucketUsage, bucketUsageExempt }).budgetControlUsedNowKWh;
+};
+
 export const computePlanDeviation = (params: {
   enabled: boolean;
   plannedKWh: number[];
