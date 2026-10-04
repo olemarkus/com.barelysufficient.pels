@@ -133,10 +133,12 @@ export type ShedPlanLatch = {
   readonly powerW: number;
   /**
    * Per device the shedding pass limited — its OWN selection, never the plan's
-   * shed set, which is merged with holds downstream — when it was decided and
-   * the relief it banked that `powerW` does not show.
+   * shed set, which is merged with holds downstream — its decisions oldest
+   * first: when each was decided and the relief it banked that `powerW` does not
+   * show. A device chosen again after delivering gets a decision beside its
+   * earlier one, so each keeps its own window.
    */
-  readonly decisions: ReadonlyMap<string, ShedLatchDecision>;
+  readonly decisions: ReadonlyMap<string, readonly ShedLatchDecision[]>;
   /** The rung each stepped device was sent to, which a hold keeps it at rather than re-pricing it. */
   readonly stepTargets: ReadonlyMap<string, string>;
 };

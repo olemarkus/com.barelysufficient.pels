@@ -199,8 +199,11 @@ main meter's sample clock; that design was wrong on both counts and was never me
 The shedding planner's pending-relief credit (`lib/plan/shedding/pendingRelief.ts`) follows this
 rule. Whether a shed device has delivered the relief the planner counted on is read from that
 device's own meter. The whole-home reading is asked only whether it has *shown* relief the devices
-delivered. It is bookkeeping about the planner's own decisions, not settle: it applies no tolerance
-or timing to a device reading and never tells the executor that a write landed.
+delivered. It is bookkeeping about the planner's own decisions, not settle: it applies no settle
+tolerance or timing to a device reading and never tells the executor that a write landed. Its one
+allowance is that an EV charger drawing slightly over its held rung's nameplate (under 5% of it, and
+under half the gap to the rung above) has landed there, because a charger rung's nameplate is its
+current at nominal mains voltage.
 
 ## The rule going forward
 

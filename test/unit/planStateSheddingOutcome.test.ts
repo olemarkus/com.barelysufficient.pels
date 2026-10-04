@@ -4,7 +4,7 @@ import { NO_SHEDDING_OUTCOME, type ShedPlanLatch } from '../../lib/plan/planStat
 const T = 1_000_000;
 const latch: ShedPlanLatch = {
   powerW: 4_351,
-  decisions: new Map([['vvb', { decidedAtMs: T, creditedKw: 1.8 }]]),
+  decisions: new Map([['vvb', [{ decidedAtMs: T, creditedKw: 1.8 }]]]),
   stepTargets: new Map(),
 };
 
