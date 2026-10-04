@@ -107,8 +107,9 @@ export type PriceLevelLookahead = {
 
 /**
  * A look-ahead's answer. `unavailable` is a series that could not be built
- * right now, kept apart from an empty `levels`: "no change is coming" and "the
- * prices could not be read" send a Flow opposite ways.
+ * right now, or one with no price for the period in force, kept apart from an
+ * empty `levels`: "no change is coming" and "the prices could not be read"
+ * send a Flow opposite ways.
  */
 export type PriceLevelChangesRead =
   | { state: 'resolved'; levels: PriceLevel[] }
@@ -130,24 +131,30 @@ const periodStartMs = (period: PriceEntry): number => new Date(period.startsAt).
  * Classified against the same average and band as
  * {@link resolveCurrentPricePeriodLevel}, so a level reported here is the
  * current level once that period starts, provided the series holds until then.
- * It does not always hold: tomorrow's prices arriving move the average. That is
- * a promise about the level, not about `price_level_changed`, which fires only
- * when PELS next publishes its status and can miss a period shorter than the
- * gap between two meter readings. Past the last known price nothing is
+ * It does not always hold: tomorrow's prices arriving, or a new day dropping
+ * the old one, move the average. That is a promise about the level, not about
+ * `price_level_changed`, which fires only when PELS next publishes its status
+ * and can miss a period shorter than the gap between two meter readings. Past the last known price nothing is
  * reported, because missing prices are not a level.
+ *
+ * A series with no period in force at `nowMs` is `unavailable`: a price source
+ * that cannot price this period yields no periods rather than an error (a
+ * Homey price formula never read, unreadable or unsupported, or no prices
+ * stored for today), and that must not read as "no change is coming".
  */
 export const resolvePriceLevelChangesWithin = (
   prices: PriceEntry[],
   band: PriceLevelBand,
   window: PriceLevelLookahead,
-): PriceLevel[] => {
+): PriceLevelChangesRead => {
+  if (getCurrentPricePeriod(prices, window.nowMs) === null) return { state: 'unavailable' };
   const classify = createPricePeriodClassifier(prices, band);
   const byEndMs = new Map(prices.map((period) => [
     periodStartMs(period) + period.durationMinutes * MINUTE_MS,
     period,
   ]));
   const windowEndMs = window.nowMs + window.horizonMs;
-  return prices
+  const levels = prices
     .filter((period) => {
       const startMs = periodStartMs(period);
       return startMs > window.nowMs && startMs <= windowEndMs;
@@ -158,5 +165,6 @@ export const resolvePriceLevelChangesWithin = (
       const previous = byEndMs.get(periodStartMs(period));
       return previous !== undefined && classify(previous) === level ? [] : [level];
     });
+  return { state: 'resolved', levels };
 };
 

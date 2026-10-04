@@ -35,7 +35,7 @@ Once the behavior matches your expectations, expand the managed device set.
 ## Price optimization advice
 
 - Thermal loads are usually the best targets.
-- Start with modest temperature adjustments such as `+3 °C` and `-3 °C`.
+- Start with modest temperature adjustments, such as a 3 °C cheap-hour boost and a 3 °C expensive-hour reduction.
 - Set a minimum price difference so comfort is not traded away for tiny savings.
 
 ## Daily budget advice

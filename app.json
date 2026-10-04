@@ -1067,7 +1067,7 @@
           "en": "Price level !{{changes|does not change}} to [[level]] within [[hours]] h"
         },
         "hint": {
-          "en": "True when a coming price period switches to the chosen level within this many hours. If the price is already at that level, it has to leave it and come back to count. The first period after missing prices counts as a change too. Uses the prices PELS has now, so the answer can change when tomorrow's prices arrive."
+          "en": "True when a coming price period switches to the chosen level within this many hours. If the price is already at that level, it has to leave it and come back to count. The first period after missing prices counts as a change too. Uses the prices PELS has now, so the answer can change when tomorrow's prices arrive or a new day starts. If PELS has no price for the current period, the Flow fails instead of answering."
         },
         "args": [
           {
@@ -1609,7 +1609,7 @@
           "en": "Set the temperature for [[device]] in [[mode]] to [[temperature]] °C"
         },
         "hint": {
-          "en": "Saves the device's target temperature for a mode, the same setting as the device's Temperature per mode section. Choose Active mode to change whichever mode is in force when the Flow runs. With Return to mode target selected for the device, PELS still applies price adjustments and power limiting on top. With Keep the new temperature selected, PELS saves it but does not apply it."
+          "en": "Saves the device's target temperature for a mode, the same setting as the device's Temperature per mode section. Choose Active mode to change whichever mode is in force when the Flow runs. With \"Return to mode target\" selected for the device, PELS applies it with price and solar adjustments and power limiting on top. With \"Save as current mode target\", PELS applies it without price or solar adjustments; power limiting still applies. With \"Keep the new temperature\", PELS saves it but does not apply it."
         },
         "args": [
           {
@@ -1656,7 +1656,7 @@
           "en": "Set the [[adjustment]] for [[device]] to [[amount]] °C"
         },
         "hint": {
-          "en": "Saves how far PELS moves this device's temperature in cheap or expensive hours, the same setting as the device's Price response section. Use 0 to stop that adjustment. Needs Price-based control turned on for the device. Not applied while the device keeps or saves temperature changes made outside PELS."
+          "en": "Saves how far PELS moves this device's temperature in cheap or expensive hours, the same setting as the device's Price response section. Use 0 to stop that adjustment. Needs Price-based control turned on for the device. Applied only while \"Respond to prices\" is on under Price-aware devices, and not while the device is set to \"Keep the new temperature\" or \"Save as current mode target\"."
         },
         "args": [
           {
@@ -1714,7 +1714,7 @@
           "en": "Set what happens when the temperature of [[device]] changes outside PELS: [[choice]]"
         },
         "hint": {
-          "en": "The same setting as \"When the temperature changes outside PELS\" in the device's Setup section. With \"Keep the new temperature\", PELS stops setting this device's temperature: price adjustments stop, and PELS cannot limit its power by lowering the temperature. With \"Save as current mode target\", price and solar adjustments stop. While the device has an active Smart task, only \"Return to mode target\" is accepted. Switching back to \"Return to mode target\" puts the device on its mode target again."
+          "en": "The same setting as \"When the temperature changes outside PELS\" in the device's Setup section. With \"Keep the new temperature\", PELS stops setting this device's temperature: mode targets and price and solar adjustments stop, and PELS cannot limit its power by lowering the temperature. With \"Save as current mode target\", price and solar adjustments stop and power limiting continues. While the device has an active Smart task, only \"Return to mode target\" is accepted. Switching back to \"Return to mode target\" lets PELS set the temperature again: the mode target, with price and solar adjustments and power limiting on top."
         },
         "args": [
           {

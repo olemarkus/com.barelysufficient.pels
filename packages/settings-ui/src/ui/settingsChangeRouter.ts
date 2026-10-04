@@ -88,6 +88,7 @@ import {
   refreshHomeBadgesForUi,
   refreshModeAndDeviceControls,
   refreshOverviewPlanIfVisible,
+  refreshPriceOptimizationSettings,
   refreshPlanForUi,
   refreshPowerData,
   refreshPowerDataIfVisible,
@@ -473,6 +474,7 @@ export const createSettingsSetHandler = () => (key: string) => {
   if (key === TEMPERATURE_BOOST_SETTINGS) {
     runLoggedTask(loadTemperatureBoostSettings(), 'Failed to load temperature boost settings', 'settings.set');
   }
+  if (key === PRICE_OPTIMIZATION_SETTINGS) refreshPriceOptimizationSettings();
   if (key === EV_BOOST_SETTINGS) {
     runLoggedTask(loadEvBoostSettings(), 'Failed to load EV boost settings', 'settings.set');
   }

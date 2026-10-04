@@ -6,7 +6,7 @@
     "en": "Set the temperature for [[device]] in [[mode]] to [[temperature]] °C"
   },
   "hint": {
-    "en": "Saves the device's target temperature for a mode, the same setting as the device's Temperature per mode section. Choose Active mode to change whichever mode is in force when the Flow runs. With Return to mode target selected for the device, PELS still applies price adjustments and power limiting on top. With Keep the new temperature selected, PELS saves it but does not apply it."
+    "en": "Saves the device's target temperature for a mode, the same setting as the device's Temperature per mode section. Choose Active mode to change whichever mode is in force when the Flow runs. With \"Return to mode target\" selected for the device, PELS applies it with price and solar adjustments and power limiting on top. With \"Save as current mode target\", PELS applies it without price or solar adjustments; power limiting still applies. With \"Keep the new temperature\", PELS saves it but does not apply it."
   },
   "args": [
     {

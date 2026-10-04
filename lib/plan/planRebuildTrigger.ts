@@ -60,15 +60,18 @@ export const PLAN_REBUILD_TRIGGERS = [
   'freshness_heartbeat',
 
   // An input other than the reading changed, so a re-decision is owed regardless
-  // of how current the reading is. Carries a `detail`. What a Flow card or a
-  // smart-task write changes is not here on purpose: it is read at the next
+  // of how current the reading is. Carries a `detail`. A Flow card that changes
+  // a setting comes through here like the settings UI, from the key's settings
+  // handler. A smart-task write is not here on purpose: it is read at the next
   // reading that rebuilds, which is when it has ever taken effect.
   //
   // A price-period change is not here either. The price in force is read at the
   // next reading, like any other input: a price-shifted setpoint waits for it.
   // A rebuild fired at the boundary ran against the daily-budget snapshot the
   // last reading computed, which still pointed at the hour just ended, and paced
-  // the new hour from that hour's leftover budget.
+  // the new hour from that hour's leftover budget. A settings rebuild in the
+  // first moments of a new hour meets the same snapshot, so an ended bucket
+  // paces nothing (`resolveDailySoftLimitBucket`).
   'settings',
 
   // Startup and per-home lifecycle.

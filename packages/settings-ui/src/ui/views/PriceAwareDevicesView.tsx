@@ -170,8 +170,8 @@ const DeviceRow = ({
           max={DELTA_MAX}
           step={DELTA_STEP}
           unit="°C"
-          increaseLabel={`Increase cheap-price boost for ${displayName}`}
-          decreaseLabel={`Decrease cheap-price boost for ${displayName}`}
+          increaseLabel={`Increase cheap-hour boost for ${displayName}`}
+          decreaseLabel={`Decrease cheap-hour boost for ${displayName}`}
           onChange={(val) => onCheapChange(val)}
         />
       </div>
@@ -187,8 +187,8 @@ const DeviceRow = ({
           max={DELTA_MAX}
           step={DELTA_STEP}
           unit="°C"
-          increaseLabel={`Increase expensive-price reduction for ${displayName}`}
-          decreaseLabel={`Decrease expensive-price reduction for ${displayName}`}
+          increaseLabel={`Increase expensive-hour reduction for ${displayName}`}
+          decreaseLabel={`Decrease expensive-hour reduction for ${displayName}`}
           onChange={(val) => onExpensiveChange(-val)}
         />
       </div>

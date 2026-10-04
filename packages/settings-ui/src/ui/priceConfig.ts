@@ -26,6 +26,7 @@ import {
 import {
   readPriceConfigSettings,
   validateAndSavePriceSettings as saveValidatedPriceSettings,
+  writePriceOptimizationSettings,
 } from './priceConfigSettingsIo.ts';
 import {
   POWERHOUR_DEVICE_ID, PRICE_OPTIMIZATION_ENABLED, PV_FORECAST_SOURCE,
@@ -449,7 +450,7 @@ const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
   state.priceOptimizationSettings[deviceId] = { ...existing, cheapDelta: val, priceConfigured: true };
   renderPriceAwareDevices();
   try {
-    await setSetting('price_optimization_settings', state.priceOptimizationSettings);
+    await writePriceOptimizationSettings();
   } catch (error) {
     // Roll back only this device's `cheapDelta`, and only if a later
     // successful save has not already overwritten it. Replacing the whole
@@ -476,7 +477,7 @@ const handleDeviceExpensiveDeltaChange = async (deviceId: string, val: number) =
   state.priceOptimizationSettings[deviceId] = { ...existing, expensiveDelta: val, priceConfigured: true };
   renderPriceAwareDevices();
   try {
-    await setSetting('price_optimization_settings', state.priceOptimizationSettings);
+    await writePriceOptimizationSettings();
   } catch (error) {
     // Same field-level rollback rationale as `cheapDelta` above.
     const current = state.priceOptimizationSettings[deviceId];

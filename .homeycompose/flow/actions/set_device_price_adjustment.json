@@ -6,7 +6,7 @@
     "en": "Set the [[adjustment]] for [[device]] to [[amount]] °C"
   },
   "hint": {
-    "en": "Saves how far PELS moves this device's temperature in cheap or expensive hours, the same setting as the device's Price response section. Use 0 to stop that adjustment. Needs Price-based control turned on for the device. Not applied while the device keeps or saves temperature changes made outside PELS."
+    "en": "Saves how far PELS moves this device's temperature in cheap or expensive hours, the same setting as the device's Price response section. Use 0 to stop that adjustment. Needs Price-based control turned on for the device. Applied only while \"Respond to prices\" is on under Price-aware devices, and not while the device is set to \"Keep the new temperature\" or \"Save as current mode target\"."
   },
   "args": [
     {

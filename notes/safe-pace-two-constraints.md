@@ -191,7 +191,7 @@ consistent with what an exemption is for: an exempt device must not cause the
 budget to shed other things.
 
 The *energy* axis performs the same subtraction but does floor it.
-`resolveDailySoftLimitBucket` (`lib/plan/planDailyBudgetWindow.ts:80-84`) reduces
+`resolveDailySoftLimitBucket` (`lib/plan/planDailyBudgetWindow.ts:90-94`) reduces
 to `max(0, meteredUsedKWh - exemptUsedKWh)`. That asymmetry is deliberate rather
 than drift: instantaneous power is a signed rate and can legitimately point
 backwards, while cumulative billed usage cannot, which is the same reason
@@ -373,13 +373,18 @@ exceed `P_import`, which is exactly when `P_nonExempt` goes negative. That is th
 axis behaving correctly, not mixing.
 
 Note the window on the second row. `resolveDailySoftLimitWindow`
-(`lib/plan/planDailyBudgetWindow.ts:137-147`) spans `bucketStartIso` to
+(`lib/plan/planDailyBudgetWindow.ts:132-142`) spans `bucketStartIso` to
 `nextBucketStartIso` (defaulting to one hour), so `remainingKWh / remainingHours`
 in `computeDailyUsageSoftLimit` paces the *current bucket's* share of the daily
 plan. It is not a whole-day burst rate. Both paces run on roughly hourly windows;
 the difference that matters is which load each one counts, not the horizon.
 
-Exempt netting happens at `lib/plan/planDailyBudgetWindow.ts:80-84`: the bucket's
+A bucket that has ended paces nothing. A rebuild no reading drove, such as a
+settings change, runs against the snapshot the last reading computed, which in
+the first moments of a new bucket still names the one just ended. Until the
+first reading in the new bucket recomputes it, capacity alone binds.
+
+Exempt netting happens at `lib/plan/planDailyBudgetWindow.ts:90-94`: the bucket's
 `usedKWh` is `meteredUsedKWh - exemptUsedKWh`. (`lib/dailyBudget/dailyBudgetState.ts:139-147`
 performs the same subtraction for the daily-budget state and UI view; that is a
 parallel path, not the one the planner paces on.)

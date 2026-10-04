@@ -96,7 +96,7 @@ describe('Price level flow cards', () => {
     it('fails the Flow when prices cannot be read, rather than answering no', async () => {
       const { listener } = register({ state: 'unavailable' });
 
-      await expect(listener({ level: PriceLevel.EXPENSIVE, hours: 3 })).rejects.toThrow('could not read prices');
+      await expect(listener({ level: PriceLevel.EXPENSIVE, hours: 3 })).rejects.toThrow('no price for the current period');
     });
 
     it('rejects a window outside the card\'s 0.25 to 24 hours', async () => {

@@ -102,7 +102,7 @@ describe('current-hour price level resolves from a single series build', () => {
       horizonMs: 3 * 3600_000,
     });
 
-    expect(levels).toEqual([PriceLevel.CHEAP, PriceLevel.NORMAL]);
+    expect(levels).toEqual({ state: 'resolved', levels: [PriceLevel.CHEAP, PriceLevel.NORMAL] });
     expect(buildSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -111,5 +111,15 @@ describe('current-hour price level resolves from a single series build', () => {
     const service = createService();
 
     expect(service.getCurrentHourPriceLevel()).toEqual(PriceLevel.UNKNOWN);
+  });
+
+  it('reports the look-ahead unavailable when the current hour has no price', () => {
+    priceCache.write('spot_prices', []);
+    const service = createService();
+
+    expect(service.getPriceLevelChangesWithin({
+      nowMs: Date.UTC(2026, 2, 11, 8, 30, 0),
+      horizonMs: 3 * 3600_000,
+    })).toEqual({ state: 'unavailable' });
   });
 });

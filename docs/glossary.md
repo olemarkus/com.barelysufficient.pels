@@ -135,7 +135,8 @@ show a *using your solar* reason line.
 
 ### Cheap-hour boost / expensive-hour reduction
 Temperature nudges (in °C) PELS applies to a price-aware device while electricity
-is cheap or expensive — for example +2 °C overnight, −2 °C during the evening peak.
+is cheap or expensive: for example 2 °C up overnight and 2 °C down during the
+evening peak. A unit that is cooling moves the other way.
 They follow the price for as long as it lasts, which is a quarter of an hour where
 your source publishes 15-minute prices.
 

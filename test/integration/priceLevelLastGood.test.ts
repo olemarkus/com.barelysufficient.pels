@@ -67,7 +67,7 @@ describe('PriceCoordinator.getPriceLevelChangesWithin', () => {
   it('passes the window through and reports the resolved levels', () => {
     const coordinator = createCoordinator();
     const build = vi.spyOn(coordinator['priceService'], 'getPriceLevelChangesWithin')
-      .mockReturnValue([PriceLevel.EXPENSIVE]);
+      .mockReturnValue({ state: 'resolved', levels: [PriceLevel.EXPENSIVE] });
 
     expect(coordinator.getPriceLevelChangesWithin(window))
       .toEqual({ state: 'resolved', levels: [PriceLevel.EXPENSIVE] });
@@ -77,7 +77,7 @@ describe('PriceCoordinator.getPriceLevelChangesWithin', () => {
   it('reports a failed build as unavailable, even after a good one', () => {
     const coordinator = createCoordinator();
     vi.spyOn(coordinator['priceService'], 'getPriceLevelChangesWithin')
-      .mockReturnValueOnce([PriceLevel.EXPENSIVE])
+      .mockReturnValueOnce({ state: 'resolved', levels: [PriceLevel.EXPENSIVE] })
       .mockImplementationOnce(() => { throw new Error('settings unavailable'); });
 
     expect(coordinator.getPriceLevelChangesWithin(window).state).toBe('resolved');

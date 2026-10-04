@@ -210,7 +210,8 @@ The banner above the Overview tells you which state you are in:
   its price devices prices your home. Prices only start at the hour you pick the source;
   earlier hours of that day stay blank, which is normal.
 - For price-based temperature shifts, the device needs **Price** (or **Setup → Price-based control**)
-  enabled, and **Respond to prices** must be on globally.
+  enabled and **When the temperature changes outside PELS** set to **Return to mode target**, and
+  **Respond to prices** must be on globally.
 - A Smart task that stays at **Building plan…** is usually waiting for prices
   through its ready-by time — tomorrow's prices may not be published yet.
 

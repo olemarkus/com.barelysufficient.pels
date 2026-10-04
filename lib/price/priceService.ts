@@ -56,6 +56,7 @@ import {
   resolveCurrentPricePeriodLevel,
   resolvePriceLevelChangesWithin,
   type PriceLevelBand,
+  type PriceLevelChangesRead,
   type PriceLevelLookahead,
 } from './priceLevelUtils';
 import { PriceLevel } from './priceLevels';
@@ -555,7 +556,7 @@ export default class PriceService {
    * The levels the price changes to inside `window`, from a SINGLE series
    * build. See `resolvePriceLevelChangesWithin`.
    */
-  getPriceLevelChangesWithin(window: PriceLevelLookahead): PriceLevel[] {
+  getPriceLevelChangesWithin(window: PriceLevelLookahead): PriceLevelChangesRead {
     return resolvePriceLevelChangesWithin(this.getCombinedPricePeriods(), this.priceLevelBand, window);
   }
 

@@ -1,7 +1,9 @@
 import {
   getHourUsageSplit,
+  resolveDailySoftLimitBucket,
   resolveHourlyUsageSplit,
 } from '../../lib/plan/planDailyBudgetWindow';
+import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 
 describe('plan daily budget current-hour usage split', () => {
   beforeEach(() => {
@@ -86,5 +88,69 @@ describe('plan daily budget current-hour usage split', () => {
       controlledKWh: 1.1,
       uncontrolledKWh: 0.2,
     });
+  });
+});
+
+// A rebuild no reading drove runs against the snapshot the last reading
+// computed. At the start of a new hour that snapshot still names the hour just
+// ended, and pacing the new hour from its leftover would shed for nothing.
+describe('resolveDailySoftLimitBucket', () => {
+  const HOUR_MS = 3_600_000;
+  const DAY_START_MS = Date.parse('2026-10-24T22:00:00.000Z');
+  const hourStart = (index: number) => new Date(DAY_START_MS + index * HOUR_MS).toISOString();
+  const snapshotAtHour = (currentBucketIndex: number): DailyBudgetUiPayload => {
+    const zeros = Array.from({ length: 24 }, () => 0);
+    return {
+      todayKey: '2026-10-25',
+      days: {
+        '2026-10-25': {
+          dateKey: '2026-10-25',
+          timeZone: 'Europe/Oslo',
+          nowUtc: hourStart(currentBucketIndex),
+          dayStartUtc: hourStart(0),
+          currentBucketIndex,
+          budget: { enabled: true, dailyBudgetKWh: 24, priceShapingEnabled: false },
+          state: {
+            usedNowKWh: 0,
+            allowedNowKWh: 0,
+            remainingKWh: 24,
+            deviationKWh: 0,
+            exceeded: false,
+            frozen: false,
+            confidence: 1,
+            priceShapingActive: false,
+          },
+          buckets: {
+            startUtc: Array.from({ length: 24 }, (_, index) => hourStart(index)),
+            startLocalLabels: Array.from({ length: 24 }, (_, index) => String(index)),
+            plannedWeight: zeros,
+            plannedKWh: Array.from({ length: 24 }, () => 1),
+            plannedUncontrolledKWh: zeros,
+            plannedControlledKWh: zeros,
+            actualKWh: zeros,
+            actualControlledKWh: zeros,
+            actualUncontrolledKWh: zeros,
+            allowedCumKWh: zeros,
+            price: zeros,
+            priceFactor: zeros,
+          },
+        },
+      },
+    };
+  };
+  const tracker = { buckets: { [hourStart(5)]: 1.4 } };
+
+  it('paces the bucket the snapshot names while it lasts', () => {
+    expect(resolveDailySoftLimitBucket(snapshotAtHour(5), tracker, DAY_START_MS + 5.5 * HOUR_MS)).toEqual({
+      plannedKWh: 1,
+      usedKWh: 1.4,
+      bucketStartMs: DAY_START_MS + 5 * HOUR_MS,
+      bucketEndMs: DAY_START_MS + 6 * HOUR_MS,
+    });
+  });
+
+  it('paces nothing once that bucket has ended', () => {
+    expect(resolveDailySoftLimitBucket(snapshotAtHour(5), tracker, DAY_START_MS + 6 * HOUR_MS)).toBeNull();
+    expect(resolveDailySoftLimitBucket(snapshotAtHour(5), tracker, DAY_START_MS + 6 * HOUR_MS + 1_000)).toBeNull();
   });
 });
