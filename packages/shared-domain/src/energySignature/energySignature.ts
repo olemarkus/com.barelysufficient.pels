@@ -21,6 +21,13 @@ import { dayWasBudgetDamaged } from './budgetPressure';
  *   the robust loss; no math libraries needed.
  * - No 23/25-hour DST day-length normalization: at most two days a year
  *   deviate by ±4%, which cannot move a median-based fit over ≥21 days.
+ * - An optional season term on top of the change-point: at the same mean
+ *   temperature a home uses more in the dark half of the year (lighting, time
+ *   indoors, little solar gain). It is a fixed cosine of the day of year that
+ *   peaks at the December solstice, so only its size is learned and no latitude
+ *   is needed; a southern-hemisphere home simply learns a negative size. It is
+ *   fitted by alternating Theil–Sen passes and kept only when the history spans
+ *   both halves of the year and the term clearly lowers the fit's error.
  */
 
 const MIN_USABLE_DAYS = 21;
@@ -47,10 +54,24 @@ const CURVATURE_STEEPER_FACTOR = 1.3;
 const MIN_DAYS_ABOVE_BALANCE = 5;
 /** 97.5th normal quantile for Sen's 95% slope interval. */
 const SEN_CI_Z = 1.96;
+/** Month (0-based) and day of the December solstice, where the season index peaks at +1. */
+const SEASON_PEAK_MONTH = 11;
+const SEASON_PEAK_DAY = 21;
+const DAYS_PER_YEAR = 365.25;
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** A season index at least this far from 0 places a day in the dark or light half of the year. */
+const SEASON_SIDE_THRESHOLD = 0.5;
+/** Days needed in each half of the year before the season term is identifiable. */
+const SEASON_MIN_DAYS_PER_SIDE = 20;
+/** Season/change-point passes; the second leaves real histories within 0.1 kWh/day of the converged fit. */
+const SEASON_BACKFIT_ROUNDS = 2;
+/** The season term must cut the fit's total absolute error by at least this fraction to be kept. */
+const SEASON_MIN_LOSS_REDUCTION = 0.05;
 
-type FitDay = { tempC: number; kwh: number };
+type FitDay = { tempC: number; kwh: number; season: number };
 
-type RobustLine = { slope: number; intercept: number; slopes: number[] };
+/** `sortedSlopes`: every pairwise slope in ascending order, for Sen's interval. */
+type RobustLine = { slope: number; intercept: number; sortedSlopes: Float64Array };
 
 /**
  * A day whose measured kWh is a censored lower bound on demand strong enough to
@@ -113,6 +134,7 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
   const usable: FitDay[] = selection.records.map((record) => ({
     tempC: record.tempMeanC,
     kwh: record.kwhTotal as number,
+    season: seasonIndexForDateKey(record.dateKey),
   }));
 
   const temps = usable.map((day) => day.tempC);
@@ -122,12 +144,15 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
   const medianDayKwh = median(kwhs);
   const lowObservedDayKwh = quantile(kwhs, 0.05);
 
-  const { model, line, balancePointC } = resolveModel(usable);
-  const residuals = usable.map((day) => day.kwh - predictWithLine(model, line, balancePointC, day.tempC));
+  const { model, line, balancePointC, seasonKwh } = resolveModel(usable);
+  const seasonOf = (day: FitDay): number => (seasonKwh ?? 0) * day.season;
+  const residuals = usable.map((day) => (
+    day.kwh - predictWithLine(model, line, balancePointC, day.tempC) - seasonOf(day)
+  ));
   // The annual model captures seasons; recent residuals capture occupancy/load changes.
   const recentResiduals = residuals.slice(-DRIFT_RECENT_DAYS);
   const pseudoR2 = pseudoR2L1(kwhs, residuals);
-  const ci = senSlopeInterval(line.slopes, usable.length);
+  const ci = senSlopeInterval(line.sortedSlopes, usable.length);
   const driftSuspected = detectDrift(residuals);
   const confidence = resolveConfidence({
     model, usableDays: usable.length, temps, pseudoR2, slope: line.slope, ci, driftSuspected,
@@ -138,6 +163,7 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
     model,
     ...(model === 'changepoint' ? { baseLoadKwhPerDay: line.intercept, balancePointC } : {}),
     ...(model === 'linear' ? { interceptKwhAtZeroC: line.intercept } : {}),
+    ...(seasonKwh !== undefined ? { seasonKwh } : {}),
     slopeKwhPerDegree: line.slope,
     ...(ci ? { slopeCiLow: ci.low, slopeCiHigh: ci.high } : {}),
     recentResidualQ80: quantile(recentResiduals, 0.8),
@@ -149,7 +175,12 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
     medianDayKwh,
     lowObservedDayKwh,
     confidence,
-    curvatureSteeperWhenCold: model !== 'uncorrelated' && detectColdCurvature(usable, balancePointC),
+    // Curvature is judged on the temperature response alone, with the season
+    // term taken out — otherwise dark-season days would read as a steeper cold half.
+    curvatureSteeperWhenCold: model !== 'uncorrelated' && detectColdCurvature(
+      usable.map((day) => ({ ...day, kwh: day.kwh - seasonOf(day) })),
+      balancePointC,
+    ),
     ...(model !== 'uncorrelated' ? { heatLossWPerK: (line.slope * 1000) / 24 } : {}),
     driftSuspected,
     suppressedDaysExcluded: selection.suppressedDaysExcluded,
@@ -163,13 +194,31 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
   };
 }
 
-/** Expected kWh for a day with the given mean temperature; undefined when usage is uncorrelated. */
-export function predictDailyKwh(fit: EnergySignatureFit, tempMeanC: number): number | undefined {
+/**
+ * Where a local day sits in the year: +1 at the December solstice, −1 at the
+ * June solstice, ~0 at the equinoxes. Calendar arithmetic on the date key only,
+ * so it is the same in every time zone and needs no location.
+ */
+export function seasonIndexForDateKey(dateKey: string): number {
+  const dayMs = Date.parse(`${dateKey}T00:00:00Z`);
+  const peakMs = Date.UTC(new Date(dayMs).getUTCFullYear(), SEASON_PEAK_MONTH, SEASON_PEAK_DAY);
+  return Math.cos((2 * Math.PI * ((dayMs - peakMs) / DAY_MS)) / DAYS_PER_YEAR);
+}
+
+/** Usage above the balance point on the given local day: the base load moved by the season term. */
+export function warmDayKwhFor(fit: EnergySignatureFit, dateKey: string): number {
+  return (fit.baseLoadKwhPerDay ?? 0) + (fit.seasonKwh ?? 0) * seasonIndexForDateKey(dateKey);
+}
+
+/**
+ * Expected kWh for the local day `dateKey` with the given mean temperature;
+ * undefined when usage is uncorrelated.
+ */
+export function predictDailyKwh(fit: EnergySignatureFit, tempMeanC: number, dateKey: string): number | undefined {
   if (fit.model === 'uncorrelated') return undefined;
   if (fit.model === 'changepoint') {
-    const base = fit.baseLoadKwhPerDay ?? 0;
     const balance = fit.balancePointC ?? 0;
-    return base + fit.slopeKwhPerDegree * Math.max(0, balance - tempMeanC);
+    return warmDayKwhFor(fit, dateKey) + fit.slopeKwhPerDegree * Math.max(0, balance - tempMeanC);
   }
   return (fit.interceptKwhAtZeroC ?? 0) - fit.slopeKwhPerDegree * tempMeanC;
 }
@@ -197,24 +246,35 @@ export function countUsableDays(records: WeatherDailyRecord[]): number {
   return selectUsableDays(records).length;
 }
 
-function selectUsableDays(records: WeatherDailyRecord[]): FitDay[] {
+function selectUsableDays(records: WeatherDailyRecord[]): WeatherDailyRecord[] {
   return records
     .filter((record) => isUsableSignatureDay(record))
     // Deliberately the trailing USABLE days, not calendar days: windowing
     // before the quality filter would shrink the sample after flaky stretches
     // and can drop the fit below the 21-day gate entirely. The drift detector
     // slices the same usable axis, so recency stays mutually consistent.
-    .slice(-FIT_WINDOW_DAYS)
-    .map((record) => ({ tempC: record.tempMeanC, kwh: record.kwhTotal as number }));
+    .slice(-FIT_WINDOW_DAYS);
 }
+
+type ChangepointFit = { line: RobustLine; balancePointC: number };
 
 function resolveModel(days: FitDay[]): {
   model: EnergySignatureModel;
   line: RobustLine;
   balancePointC?: number;
+  seasonKwh?: number;
 } {
   const changepoint = fitBestChangepoint(days);
   if (changepoint && changepoint.line.slope > 0) {
+    const seasonal = fitSeasonalChangepoint(days, changepoint);
+    if (seasonal) {
+      return {
+        model: 'changepoint',
+        line: seasonal.fit.line,
+        balancePointC: seasonal.fit.balancePointC,
+        seasonKwh: seasonal.seasonKwh,
+      };
+    }
     return { model: 'changepoint', line: changepoint.line, balancePointC: changepoint.balancePointC };
   }
   // Winter-only data (or no usable change-point): fit kWh against −T so a
@@ -227,10 +287,68 @@ function resolveModel(days: FitDay[]): {
   // fit — residual quantiles must be centered on the same anchor the budget
   // suggestion adds them to, and a rejected negative slope must not be
   // stamped into the contract's "kWh per °C colder" field.
-  return { model: 'uncorrelated', line: { slope: 0, intercept: median(days.map((d) => d.kwh)), slopes: [] } };
+  return {
+    model: 'uncorrelated',
+    line: { slope: 0, intercept: median(days.map((d) => d.kwh)), sortedSlopes: new Float64Array(0) },
+  };
 }
 
-function fitBestChangepoint(days: FitDay[]): { line: RobustLine; balancePointC: number } | null {
+/**
+ * Change-point plus season term, by alternating robust passes. Each pass
+ * updates the season size from the change-point's residuals against the part
+ * of the season index the heating term cannot already explain (cold days come
+ * in winter, so the two overlap heavily and a plain residual regression would
+ * creep toward the answer over dozens of passes), then refits the change-point,
+ * balance point included, on usage with that season taken out. Null, so the
+ * plain change-point stands, when the history does not cover both halves of the
+ * year, when a pass loses the change-point, or when the term does not clearly
+ * lower the total error.
+ */
+function fitSeasonalChangepoint(
+  days: FitDay[],
+  plain: ChangepointFit,
+): { fit: ChangepointFit; seasonKwh: number } | null {
+  const darkDays = days.filter((day) => day.season >= SEASON_SIDE_THRESHOLD).length;
+  const lightDays = days.filter((day) => day.season <= -SEASON_SIDE_THRESHOLD).length;
+  if (darkDays < SEASON_MIN_DAYS_PER_SIDE || lightDays < SEASON_MIN_DAYS_PER_SIDE) return null;
+  let fit = plain;
+  let seasonKwh = 0;
+  for (let round = 0; round < SEASON_BACKFIT_ROUNDS; round += 1) {
+    const current = fit;
+    const heating = days.map((day) => Math.max(0, current.balancePointC - day.tempC));
+    const seasonOnHeating = theilSen(days.map((day, index) => ({ x: heating[index] ?? 0, y: day.season })));
+    if (!seasonOnHeating) return null;
+    const size = seasonKwh;
+    const step = theilSen(days.map((day, index) => ({
+      x: day.season - seasonOnHeating.intercept - seasonOnHeating.slope * (heating[index] ?? 0),
+      y: day.kwh - size * day.season - predictChangepoint(current, day.tempC),
+    })));
+    if (!step) return null;
+    seasonKwh = size + step.slope;
+    const adjusted = seasonKwh;
+    const refit = fitBestChangepoint(days.map((day) => ({ ...day, kwh: day.kwh - adjusted * day.season })));
+    if (!refit || refit.line.slope <= 0) return null;
+    fit = refit;
+  }
+  const final = fit;
+  const plainLoss = days.reduce((sum, day) => sum + Math.abs(day.kwh - predictChangepoint(plain, day.tempC)), 0);
+  const seasonalLoss = days.reduce(
+    (sum, day) => sum + Math.abs(day.kwh - predictChangepoint(final, day.tempC) - seasonKwh * day.season),
+    0,
+  );
+  if (!Number.isFinite(seasonalLoss) || seasonalLoss > (1 - SEASON_MIN_LOSS_REDUCTION) * plainLoss) return null;
+  // The season and the heating term overlap (cold days come in winter); when the
+  // history cannot tell them apart, the size can run off while the heating refit
+  // compensates. Usage above the balance point must stay positive at both solstices.
+  if (final.line.intercept - Math.abs(seasonKwh) <= 0) return null;
+  return { fit: final, seasonKwh };
+}
+
+const predictChangepoint = (fit: ChangepointFit, tempC: number): number => (
+  fit.line.intercept + fit.line.slope * Math.max(0, fit.balancePointC - tempC)
+);
+
+function fitBestChangepoint(days: FitDay[]): ChangepointFit | null {
   let best: { line: RobustLine; balancePointC: number; loss: number } | null = null;
   let worstLoss = 0;
   for (const tau of BALANCE_POINT_GRID_C) {
@@ -255,8 +373,15 @@ function fitBestChangepoint(days: FitDay[]): { line: RobustLine; balancePointC: 
   return { line: chosen.line, balancePointC: chosen.balancePointC };
 }
 
+/**
+ * Theil–Sen line. The pairwise slopes go into a typed array and are sorted
+ * natively: the fit runs this for every balance-point candidate on every
+ * season pass, and a comparator sort over ~66k slopes per call dominated the
+ * fit's time on the hub.
+ */
 function theilSen(points: Array<{ x: number; y: number }>): RobustLine | null {
-  const slopes: number[] = [];
+  const buffer = new Float64Array((points.length * (points.length - 1)) / 2);
+  let count = 0;
   for (let i = 0; i < points.length; i += 1) {
     const from = points[i];
     if (from === undefined) continue;
@@ -265,18 +390,26 @@ function theilSen(points: Array<{ x: number; y: number }>): RobustLine | null {
       if (to === undefined) continue;
       const dx = to.x - from.x;
       if (dx === 0) continue;
-      slopes.push((to.y - from.y) / dx);
+      buffer[count] = (to.y - from.y) / dx;
+      count += 1;
     }
   }
-  if (slopes.length === 0) return null;
-  const slope = median(slopes);
+  if (count === 0) return null;
+  const sortedSlopes = buffer.subarray(0, count).sort();
+  const slope = sortedMedian(sortedSlopes);
   const intercept = median(points.map((point) => point.y - slope * point.x));
-  return { slope, intercept, slopes };
+  return { slope, intercept, sortedSlopes };
 }
 
-function senSlopeInterval(slopes: number[], n: number): { low: number; high: number } | null {
-  if (slopes.length < 3) return null;
-  const sorted = [...slopes].sort((a, b) => a - b);
+/** Median of an ascending typed array; same interpolation as `quantile(values, 0.5)`. */
+function sortedMedian(sorted: Float64Array): number {
+  const lower = sorted[Math.floor((sorted.length - 1) / 2)] ?? 0;
+  const upper = sorted[Math.ceil((sorted.length - 1) / 2)] ?? 0;
+  return (lower + upper) / 2;
+}
+
+function senSlopeInterval(sorted: Float64Array, n: number): { low: number; high: number } | null {
+  if (sorted.length < 3) return null;
   const halfWidth = SEN_CI_Z * Math.sqrt((n * (n - 1) * (2 * n + 5)) / 18);
   const lowIndex = Math.max(0, Math.floor((sorted.length - halfWidth) / 2));
   const highIndex = Math.min(sorted.length - 1, Math.ceil((sorted.length + halfWidth) / 2));

@@ -713,7 +713,8 @@ describe('normalizeWeatherHistoryState', () => {
     };
     const withJunk = {
       ...valid,
-      records: [...valid.records, { dateKey: 'bad' }, 42],
+      // A well-shaped but impossible date is junk too: the fit reads its season.
+      records: [...valid.records, { dateKey: 'bad' }, 42, liveRecord('2026-13-01')],
       accumulators: { ...valid.accumulators, 'not-a-date': { sumC: 1, count: 1, minC: 1, maxC: 1 } },
       forecastHourly: { ...valid.forecastHourly, '2026-01-12': { '99': 5, '07': 200 } },
     };

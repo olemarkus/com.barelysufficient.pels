@@ -66,6 +66,7 @@ for (const record of records) {
   if (forecast && fit && conservativeFit && record.appliedBudgetKwh !== void 0) {
     revisedBudget = suggestDailyBudgetKwh({
       fit,
+      targetDateKey: record.dateKey,
       forecastMeanTempC: forecast.tempC,
       capacityLimitKw: capacityKw,
       capacityDayHours: dayHours,
@@ -73,6 +74,7 @@ for (const record of records) {
     }).suggestedBudgetKwh;
     conservativeBudget = suggestDailyBudgetKwh({
       fit: conservativeFit,
+      targetDateKey: record.dateKey,
       forecastMeanTempC: forecast.tempC,
       capacityLimitKw: capacityKw,
       capacityDayHours: dayHours,

@@ -1404,6 +1404,7 @@
     const dailyBudgetEnabled = settings.daily_budget_enabled === true;
     const autoApplyDailyBudget = advisor.autoApplyDailyBudget === true;
     const lastAutoApply = advisor.lastAutoApply ?? null;
+    const outlookDateKey = dateKeyUtc(nowMs + 24 * 3600 * 1000);
     const emptyPayload = (state) => ({
       state,
       driftSuspected: false,
@@ -1416,6 +1417,7 @@
       autoApplyDailyBudget,
       lastAutoApply,
       fit: null,
+      outlookDateKey,
       coverage: [],
       prediction: null,
       suggestion: null,
@@ -1479,6 +1481,7 @@
       dailyBudgetEnabled,
       autoApplyDailyBudget,
       lastAutoApply,
+      outlookDateKey,
       fit: {
         model: 'changepoint',
         baseLoadKwhPerDay: baseLoad,

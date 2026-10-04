@@ -180,6 +180,13 @@ export function getDateKeyInTimeZone(date: Date, timeZone: string): string {
     return `${yyyy}-${mm}-${dd}`;
 }
 
+/** A `YYYY-MM-DD` key naming a real calendar day (`2026-02-30` and `2026-13-01` are not). */
+export function isCalendarDateKey(value: unknown): value is string {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export function shiftDateKey(dateKey: string, dayDelta: number): string {
     const { year, month, day } = parseDateKey(dateKey);
     return new Date(Date.UTC(year, month - 1, day + dayDelta, 0, 0, 0, 0)).toISOString().slice(0, 10);

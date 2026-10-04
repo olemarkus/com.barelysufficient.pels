@@ -30,6 +30,8 @@ const MAX_DAILY_BUDGET_KWH = 360;
  */
 export type DailyBudgetSuggestionInput = {
   fit: EnergySignatureFit;
+  /** Local date the suggestion is for; the fit's season term is evaluated on it. */
+  targetDateKey: string;
   forecastMeanTempC: number;
   /** Sustainable capacity rate (hard cap minus margin), in kW. */
   capacityLimitKw?: number;
@@ -57,7 +59,7 @@ const OBSERVED_RANGE_SLACK_C = 2;
 
 export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyBudgetSuggestionResult {
   const {
-    fit, forecastMeanTempC, capacityLimitKw, capacityDayHours = 24, budgetPressure,
+    fit, targetDateKey, forecastMeanTempC, capacityLimitKw, capacityDayHours = 24, budgetPressure,
   } = input;
   // Never extrapolate OUTSIDE the observed range in either direction: the
   // cold side underestimates exactly during cold snaps, and the warm side of
@@ -69,7 +71,7 @@ export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyB
     fit.observedTempMaxC,
     Math.max(fit.observedTempMinC, forecastMeanTempC),
   );
-  const predictedKwh = predictDailyKwh(fit, evaluationTempC) ?? fit.medianDayKwh;
+  const predictedKwh = predictDailyKwh(fit, evaluationTempC, targetDateKey) ?? fit.medianDayKwh;
 
   // Keep annual uncertainty, but widen for measured recent demand. Only proven
   // unresolved budget shortfall enables q90; routine shifting does not.

@@ -165,6 +165,11 @@ higher.`
 Row labels deliberately avoid `Base load` (collides with `Background usage`)
 and `sensitivity` (jargon-adjacent).
 
+When the fit carries a season term (`seasonKwh`: the home uses more in the dark
+half of the year at the same temperature), warm-day usage in this card and in
+the summary headline is stated for tomorrow's time of year (`outlookDateKey`),
+so it matches the prediction. There is no separate season row.
+
 ### Detail card 3 — scatter + coverage
 
 - Title `Usage and outside temperature`, subtitle `Each dot is one day from
@@ -176,7 +181,8 @@ and `sensitivity` (jargon-adjacent).
   Quality-flagged (`partial`/`unreliable`) days dimmed; `backfilled` days
   render normally (they are good data). Today is never plotted.
 - Fit line: accent 2 px, sloped below the balance point, flat at warm-day
-  usage above it. Winter-only: sloped segment only across the observed range,
+  usage above it. With a season term the line is drawn for tomorrow's time of
+  year, so dots from the opposite season sit above or below it. Winter-only: sloped segment only across the observed range,
   no flat segment, no balance tick. Uncorrelated: no line (flat cloud is
   self-explanatory).
 - Balance-point marker: thin vertical tick (marker grammar: thin tick =

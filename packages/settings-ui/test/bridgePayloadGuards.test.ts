@@ -30,7 +30,9 @@ describe('asBudgetPayload — the /daily_budget bridge guard', () => {
 });
 
 describe('asReadoutPayload — the /ui_weather_advisor_readout bridge guard', () => {
-  const payload = { state: 'ready', settings: { outdoorDeviceId: 'dev-1' }, outdoorReading: {} };
+  const payload = {
+    state: 'ready', settings: { outdoorDeviceId: 'dev-1' }, outdoorReading: {}, outlookDateKey: '2026-10-05',
+  };
 
   it('passes a complete readout through unchanged', () => {
     expect(asReadoutPayload({ kind: 'readout', payload })).toBe(payload);
@@ -43,6 +45,11 @@ describe('asReadoutPayload — the /ui_weather_advisor_readout bridge guard', ()
     ['a payload missing settings', { kind: 'readout', payload: { state: 'ready', outdoorReading: {} } }],
     ['a payload missing outdoorReading', { kind: 'readout', payload: { state: 'ready', settings: {} } }],
     ['a payload whose state is not a string', { kind: 'readout', payload: { ...payload, state: 7 } }],
+    // The season-aware estimate is evaluated on this date.
+    ['a payload missing outlookDateKey', { kind: 'readout', payload: { ...payload, outlookDateKey: undefined } }],
+    ['a payload whose outlookDateKey is not a calendar day', {
+      kind: 'readout', payload: { ...payload, outlookDateKey: '2026-13-01' },
+    }],
     ['null', null],
   ])('reads %s as no readout', (_label, wire) => {
     expect(asReadoutPayload(wire)).toBeNull();
