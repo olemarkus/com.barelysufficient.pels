@@ -735,11 +735,12 @@ Rule: a temperature device must never render the words *charge*, *charging*, or 
 
 An EV task whose car's own charge limit sits below the task's target keeps the owner's target: the
 car's limit only explains why delivery stops short, and the surfaces suggest raising it. As soon as
-PELS knows the limit is below the target (`resolveSmartTaskCarChargeLimit`: `limitValue <
+PELS knows the limit is below the target (`resolveReportedCarChargeLimit`: `limitValue <
 targetValue`, the same rule for status and copy) the task reads **`At risk`**, or keeps **`Cannot
 finish`** (owner decision): "On track" promises the target, and the car will stop short of it.
 Every surface names the **car's own limit** as the cause, since the setting that would change it
-lives in the car, never PELS or the charger:
+lives in the car, never PELS or the charger, unless the daily budget is the cause and the car has
+not reached its limit yet (see the precedence under "Live causes"):
 
 | Surface | Copy |
 |---|---|
@@ -756,12 +757,17 @@ unplugged`: an Easee ends the session at the car's limit and reports unplugged w
 in, and telling that owner to plug in would be wrong. A car unplugged on its way to the limit
 reads `Paused — unplugged` on the list, widget and detail page, including after a schedule was
 committed. The detail uses the unplugged hero instead of a retained car-limit reason; the
-committed schedule and car-limit observation stay retained for reconnection. Flow statuses keep
-their existing contract.
+committed schedule and car-limit observation stay retained for reconnection. The Flow status
+condition and trigger follow the same rule: for that car they report the plan's own status, not
+`At risk`.
 Durable exclusions (`Paused — not managed`, a separate meter) and a pending plan outrank it. The
 list card's car line shows only beside `At risk` / `Cannot finish`, never beside a pending, paused,
 unavailable or satisfied chip. With no current reading after a reached car limit the detail page
-still shows the `At risk` chip and the car-limit line; only the progress content is left out.
+still shows the `At risk` chip, with the list card's car line as its headline in place of `Waiting for
+the first state-of-charge reading` and the car-limit line as its body; only the progress content is
+left out. A car unplugged before it reached its limit is just unplugged on every surface, the Flow
+status cards included: the limit the recorder keeps while the charger reports no level does not
+make it `At risk` (`resolveReportedCarChargeLimit`).
 The hero offers no settings button: the fix is in the car. Progress
 on the detail page counts to the owner's target (`now 70% of 80% target`). A run that ends there is
 missed, with the car's limit as its cause and no recourse button; `met-at-car-limit` survives only
@@ -779,23 +785,31 @@ the device or in the car.
 
 | Cause (reason code) | Widget why-line | List card line | Hero reason line | Widget recourse |
 |---|---|---|---|---|
-| Leave off until turned on again (`objective_device_left_off`) | `Device is staying off until turned on again.` | same | same | none |
+| Leave off until turned on again (`objective_device_left_off`) | `Device is staying off until turned on again.` | `Device is staying off until turned on again` | `Device is staying off until turned on again.` | none |
 | Car's known charge limit below the target | see the section above | see above | see above | `Raise the car’s charge limit to reach the target.` |
 | Car stopped at its own limit, value unknown (`objective_device_limit`) | `Your car stopped at its own charge limit.` | `Car stopped at its own limit` | `Your car stopped at its own charge limit, below this smart task’s target. Raise the car’s charge limit to let it continue.` | `Raise the car’s charge limit to reach the target.` |
 | Car delaying charging (`objective_device_schedule`) | `Your car is delaying charging on its own schedule.` | `Car is delaying charging` | `Your car is delaying charging, for example on its own charging schedule or smart charging. Turn that off in the car so PELS can charge it before the deadline.` | `Turn off the car’s own charging schedule or smart charging.` |
-| Device took no power through 15 minutes of permitted delivery (`objective_not_accepting_energy`) | `Device stopped taking power.` | same | `The device stopped taking power while PELS allowed it to run. Check whether it switched itself off.` | none |
+| Device took no power through 15 minutes of permitted delivery (`objective_not_accepting_energy`) | `Device stopped taking power.` | `Device stopped taking power` | `The device stopped taking power while PELS allowed it to run. Check whether it switched itself off.` | none |
 
 Precedence: the off action first, then the car stopped at its limit, then the confirmed device-side
-stops, then a car limit the car has not reached yet. The car rows come only from the EV car link,
+stops, then a car limit the car has not reached yet. That last one yields to a daily-budget cause:
+while the car is still charging toward its limit, today's budget is what holds the task back, so the
+surfaces explain the budget (with `Open Budget` where it applies) rather than ask for a higher car
+limit that would not finish the task. List card lines carry no final period, like the other short
+lines beside the target; with no current reading the same line is the detail card's headline. The car rows come only from the EV car link,
 whatever the task's kind; the not-accepting row is device-neutral and never says *charge*. PELS's
 own decisions never downgrade a status: limiting for the hard cap, the daily budget or a
 higher-priority device, and the settle after a command, are already in the plan, and treating them
 as live risk flipped the chip (and the status Flow) on every shed cycle. They still appear in the
 past-task explanation.
 
-An at-risk task with no live cause uses the widget's hedged line on the detail hero too
-(`Limited time left before the deadline.`, or the budget variants), with no device button; the
-`Not enough time … Lower the target` sentence and `Adjust device` belong to `Cannot finish`.
+An at-risk task with no live cause and no budget cause uses the widget's hedged line on the detail
+hero too (`Limited time left before the deadline.`), with no device button; the `Not enough time …
+Lower the target` sentence and `Adjust device` belong to `Cannot finish`. A budget cause keeps the
+hero's own sentence on an at-risk task as well (`Today's daily budget is fully booked. Lower it …`,
+or the contributing variant), because it names what to change on the Budget tab, which `Open
+Budget` opens; the widget's shorter row hedges it (`Today’s daily budget may run out before the
+deadline.`).
 
 ### Smart task list status chips
 

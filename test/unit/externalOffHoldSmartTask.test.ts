@@ -135,7 +135,7 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
     expect(resolveEffectivePlanStatus('on_track', {
       liveCompletion: { kind: 'unavailable' }, targetValue: 55, diagnosticReasonCode: retired,
     })).toBe('on_track');
-    expect(resolveSmartTaskLiveCause(retired, null)).toBeNull();
+    expect(resolveSmartTaskLiveCause(retired, null, 'none')).toBeNull();
   });
 
   it('returns to on track the moment the device is turned on again', () => {

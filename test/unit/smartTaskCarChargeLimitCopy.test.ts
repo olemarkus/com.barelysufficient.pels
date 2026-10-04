@@ -10,6 +10,7 @@ import {
   formatSmartTaskCarLimitReason,
   formatSmartTaskCarLimitWhy,
   resolveEffectivePlanStatus,
+  resolveReportedCarChargeLimit,
   resolveSmartTaskCarChargeLimit,
   resolveSmartTaskListStatus,
   resolveSmartTaskLiveCause,
@@ -123,7 +124,10 @@ describe('the list status of a task held below target by the car\'s limit', () =
     // The recorder holds the last limit while the charger reports no level; a
     // car that never got there was unplugged, and the owner should plug it in.
     expect(resolveSmartTaskListStatus({
-      ...base, diagnosticReasonCode: 'objective_invalid_session', carChargeLimit: charging,
+      ...base, diagnosticReasonCode: 'objective_invalid_session',
+      carChargeLimit: resolveReportedCarChargeLimit({
+        diagnosticReasonCode: 'objective_invalid_session', targetValue: 80, carChargeLimit: { limitValue: 70, reached: false },
+      }),
     })).toBe('paused_unplugged');
   });
 
@@ -236,7 +240,7 @@ describe('a known car limit below the target reads the same on every surface', (
   });
 
   it('gives the hero the same cause, with the full reason line', () => {
-    expect(resolveSmartTaskLiveCause(undefined, stopped)).toEqual({
+    expect(resolveSmartTaskLiveCause(undefined, stopped, 'none')).toEqual({
       why: 'Your car stopped at its own charge limit of 70%, below the 80% target.',
       recourseHint: 'Raise the car’s charge limit to reach the target.',
       reason: 'Your car stopped at its own charge limit of 70%, below this smart task’s 80% target.'
@@ -246,13 +250,78 @@ describe('a known car limit below the target reads the same on every surface', (
   });
 
   it('lets a device the owner left off outrank the car limit', () => {
-    expect(resolveSmartTaskLiveCause('objective_device_left_off', stopped)?.why)
+    expect(resolveSmartTaskLiveCause('objective_device_left_off', stopped, 'none')?.why)
       .toBe('Device is staying off until turned on again.');
   });
 
   it('lets a confirmed stop outrank a limit the car has not reached', () => {
     const charging = resolveSmartTaskCarChargeLimit({ limitValue: 70, reached: false }, 80);
-    expect(resolveSmartTaskLiveCause('objective_not_accepting_energy', charging)?.why)
+    expect(resolveSmartTaskLiveCause('objective_not_accepting_energy', charging, 'none')?.why)
       .toBe('Device stopped taking power.');
+  });
+});
+
+describe('a car limit the car has not reached yet beside a daily-budget cause', () => {
+  const charging = resolveSmartTaskCarChargeLimit({ limitValue: 70, reached: false }, 80)!;
+  const stopped = resolveSmartTaskCarChargeLimit({ limitValue: 70, reached: true }, 80)!;
+
+  it('yields to the budget, which is what holds the task back while the car still charges', () => {
+    expect(resolveSmartTaskLiveCause(undefined, charging, 'sole')).toBeNull();
+    expect(resolveSmartTaskLiveCause(undefined, charging, 'contributing')).toBeNull();
+    expect(resolveSmartTaskLiveCause(undefined, charging, 'none')?.listLine).toBe('Car stops at 70%');
+  });
+
+  it('keeps a car stopped at its limit as the cause whatever the budget says', () => {
+    expect(resolveSmartTaskLiveCause(undefined, stopped, 'sole')?.listLine).toBe('Car stopped at its limit of 70%');
+  });
+
+  it('sends the widget\'s cannot-finish row to the budget, not to the car', () => {
+    expect(resolveSmartTaskWidgetDetailCopy({
+      statusId: 'cannot_meet', floorShortfallCause: 'budget', carChargeLimit: charging,
+    }).recourseHint).toBe(resolveSmartTaskWidgetDetailCopy({
+      statusId: 'cannot_meet', floorShortfallCause: 'budget',
+    }).recourseHint);
+    expect(resolveSmartTaskWidgetDetailCopy({
+      statusId: 'cannot_meet', floorShortfallCause: 'budget', carChargeLimit: charging,
+    }).whyLabel).not.toContain('charge limit');
+  });
+
+  it('hedges the widget\'s at-risk row on the budget', () => {
+    expect(resolveSmartTaskWidgetDetailCopy({
+      statusId: 'at_risk', floorShortfallCause: 'budget', carChargeLimit: charging,
+    }).whyLabel).toBe('Today’s daily budget may run out before the deadline.');
+  });
+});
+
+describe('the car limit every surface reports for an unplugged car', () => {
+  const plan = (reached: boolean, diagnosticReasonCode?: 'objective_invalid_session' | 'objective_device_unmanaged') => ({
+    diagnosticReasonCode, targetValue: 80, carChargeLimit: { limitValue: 70, reached },
+  });
+
+  it('drops a limit the car had not reached when it was unplugged', () => {
+    expect(resolveReportedCarChargeLimit(plan(false, 'objective_invalid_session'))).toBeNull();
+    expect(resolveEffectivePlanStatus('on_track', {
+      ...plan(false, 'objective_invalid_session'), liveCompletion: { kind: 'unavailable' },
+    })).toBe('on_track');
+  });
+
+  it('keeps a limit the car reached, since that charger ends the session with the car still in', () => {
+    expect(resolveReportedCarChargeLimit(plan(true, 'objective_invalid_session'))?.reached).toBe(true);
+    expect(resolveEffectivePlanStatus('on_track', {
+      ...plan(true, 'objective_invalid_session'), liveCompletion: { kind: 'unavailable' },
+    })).toBe('at_risk');
+  });
+
+  it('keeps an unreached limit on a plugged-in car and drops any limit on an excluded device', () => {
+    expect(resolveReportedCarChargeLimit(plan(false))?.reached).toBe(false);
+    expect(resolveReportedCarChargeLimit(plan(true, 'objective_device_unmanaged'))).toBeNull();
+  });
+
+  it('agrees with the list chip, which pauses that car as unplugged', () => {
+    expect(resolveSmartTaskListStatus({
+      pending: false, pendingReason: undefined, diagnosticReasonCode: 'objective_invalid_session',
+      planStatus: 'on_track', firstActionAtMs: null, nowMs: 0, liveCompletion: { kind: 'unavailable' },
+      carChargeLimit: resolveReportedCarChargeLimit(plan(false, 'objective_invalid_session')),
+    })).toBe('paused_unplugged');
   });
 });

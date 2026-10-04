@@ -37,7 +37,7 @@ import {
   resolveMissedHistoryRecourse,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
-  resolveSmartTaskCarChargeLimit,
+  resolveReportedCarChargeLimit,
   resolveSmartTaskWidgetDetailCopy,
   type SmartTaskCarChargeLimit,
   suppressesSmartTaskConfidenceChip,
@@ -345,7 +345,7 @@ const resolveStatusId = (
     planStatus: plan.latest?.planStatus,
     firstActionAtMs: plan.latest?.hours[0]?.startsAtMs ?? null,
     nowMs,
-    carChargeLimit: resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue),
+    carChargeLimit: resolveReportedCarChargeLimit(plan),
     liveCompletion: plan.liveCompletion,
   })
 );
@@ -377,7 +377,7 @@ const resolveRowCopy = (
       ? { budgetContributedToShortfall: true as const }
       : {}),
     firstPlannedTimeLabel,
-    ...withCarChargeLimit(resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue)),
+    ...withCarChargeLimit(resolveReportedCarChargeLimit(plan)),
   });
   // Suppress the receipt-flavoured plan-meta line on a failing task: the
   // diagnosis ("why" + recourse) is what the distressed visitor came for, and

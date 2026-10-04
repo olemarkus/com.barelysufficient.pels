@@ -7,15 +7,16 @@ import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/defe
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
-  type DeadlineBudgetRole,
   isDeviceExclusionPaused,
   resolveEffectivePlanStatus,
-  resolveSmartTaskCarChargeLimit,
+  resolveReportedCarChargeLimit,
+  resolveSmartTaskBudgetRole,
   resolveSmartTaskLiveCause,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
   type DeadlinePendingContext,
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
+  type SmartTaskLiveCause,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
 import { buildTrajectory } from './deadlinePlanTrajectory.ts';
@@ -55,7 +56,6 @@ import {
 } from './views/DeadlinePlan.tsx';
 import type {
   ResolvedDeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlanRevisionV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 
 type ObjectivePlanInput = {
@@ -138,12 +138,18 @@ const buildPendingPayload = (
 
 type ObjectivePayloadResult =
   | { kind: 'ok'; payload: DeadlinePlanPayload }
-  // `body` replaces the reason's fixed copy with the task's live cause (the car
-  // stopped at its own charge limit, the device left off). `statusChip` carries
-  // the shared effective status when it is at risk or cannot finish, so a task
-  // the list reports At risk is not a neutral waiting card here.
+  // `headline` and `body` replace the reason's fixed copy with the task's live
+  // cause (the car stopped at its own charge limit, the device left off): the
+  // fixed "Waiting for the first … reading" would contradict a cause the card
+  // already names. `statusChip` carries the shared effective status when it is
+  // at risk or cannot finish, so a task the list reports At risk is not a
+  // neutral waiting card here.
   | {
-    kind: 'unavailable'; reason: DeadlinePlanUnavailableReason; body?: string; statusChip?: DeadlineHeroStatusChip;
+    kind: 'unavailable';
+    reason: DeadlinePlanUnavailableReason;
+    headline?: string;
+    body?: string;
+    statusChip?: DeadlineHeroStatusChip;
   }
   // Active plan exists but the UI lacks prices to render a timeline. The
   // caller routes this to the pending hero so the user sees the same "waiting
@@ -179,6 +185,15 @@ const resolveDirectionUnavailable = (
 };
 
 
+// The live cause's short line heads the card and its reason line explains it.
+// Where the reason only restates the short line ("Device is staying off until
+// turned on again."), the reason's fixed body stays instead of repeating it.
+const resolveNoReadingCauseCopy = (liveCause: SmartTaskLiveCause): { headline: string; body?: string } => (
+  liveCause.reason === `${liveCause.listLine}.`
+    ? { headline: liveCause.listLine }
+    : { headline: liveCause.listLine, body: liveCause.reason }
+);
+
 // No current reading (a charger that ended the session at the car's limit takes
 // the car's level with it): progress-dependent content, the trajectory and the
 // delivered-so-far line, has nothing to stand on. The task's status does not
@@ -188,8 +203,9 @@ const resolveNoReadingResult = (
   activePlan: ResolvedDeferredObjectiveActivePlanV1,
   latest: NonNullable<ResolvedDeferredObjectiveActivePlanV1['latest']>,
 ): ObjectivePayloadResult => {
-  const carLimit = resolveSmartTaskCarChargeLimit(activePlan.carChargeLimit, activePlan.targetValue);
-  const liveCause = resolveSmartTaskLiveCause(activePlan.diagnosticReasonCode, carLimit);
+  const liveCause = resolveSmartTaskLiveCause(
+    activePlan.diagnosticReasonCode, resolveReportedCarChargeLimit(activePlan), resolveSmartTaskBudgetRole(latest),
+  );
   const statusChip = resolveHeroStatusChip({
     labels: deadlineLabels(objectiveKind, activePlan.progressDirection),
     planStatus: resolveEffectivePlanStatus(latest.planStatus, activePlan),
@@ -197,7 +213,7 @@ const resolveNoReadingResult = (
   return {
     kind: 'unavailable',
     reason: 'no_current_reading',
-    ...(liveCause === null ? {} : { body: liveCause.reason }),
+    ...(liveCause === null ? {} : resolveNoReadingCauseCopy(liveCause)),
     ...(statusChip === null ? {} : { statusChip }),
   };
 };
@@ -249,21 +265,6 @@ const prepareObjectivePayload = (
 // these, every inline `typeof … && Number.isFinite(…) && …` branch ticks the
 // complexity score even though the meaning is just "carry through when valid,
 // null otherwise."
-// Both producer fields are flat and read exactly once, here. `floorShortfallCause`
-// carries the outright case; `budgetContributedToShortfall` the partial one.
-// Absence of either is an ordinary shape (the recorder suppresses the empty
-// cases for byte-stability), never "unknown" — see the contract for both.
-const resolveBudgetRole = (latest: DeferredObjectiveActivePlanRevisionV1): DeadlineBudgetRole => {
-  if (latest.floorShortfallCause === 'budget') return 'sole';
-  // Only a genuine miss. `estimate` (short only by the estimator's confidence
-  // padding) and `step_power` (climbing fits) are at-risk shapes, and the
-  // contributing sentence asserts the task cannot finish — saying that over an
-  // at-risk chip would have the hero contradict itself.
-  if (latest.floorShortfallCause === 'time_capacity' && latest.budgetContributedToShortfall === true) {
-    return 'contributing';
-  }
-  return 'none';
-};
 
 const resolvePositiveNumber = (value: number | undefined): number | null => (
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
@@ -408,9 +409,25 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   // and is still what the budget-cause derivation below reads — a device left
   // off is not a budget shortfall.
   const reportedPlanStatus = resolveEffectivePlanStatus(latest.planStatus, activePlan!);
-  const carChargeLimit = resolveSmartTaskCarChargeLimit(activePlan!.carChargeLimit, activePlan!.targetValue);
+  const carChargeLimit = resolveReportedCarChargeLimit(activePlan!);
+  // The cannot-meet body copy + recourse fire on a budget-bound verdict. The
+  // producer-resolved `latest.floorShortfallCause === 'budget'` is the only
+  // signal — it covers the per-bucket background-squeeze case (prod Connected
+  // 300) that the retired count-based heuristic missed. Per
+  // `feedback_layering_resolution_in_producer` the consumer reads the flat
+  // producer field and stops (`resolveSmartTaskBudgetRole`, the rule the list
+  // and the widget share). Absence is NOT "unknown": the recorder suppresses
+  // the `none` case for byte-stability, so an absent cause means the floor was
+  // not short at all.
+  // Three states, not a boolean: the budget can explain the shortfall outright
+  // (`sole` — lifting the per-bucket cap closes the gap), have a hand in it
+  // without closing it (`contributing`), or be uninvolved. The middle one used
+  // to be invisible, so a plan whose every hour was budget-shaped read as purely
+  // physical. It is resolved before the live cause, which an unreached car
+  // limit only supplies when the budget is uninvolved.
+  const budgetRole = resolveSmartTaskBudgetRole(latest);
   // The same live cause the Smart tasks widget explains, from the same resolver.
-  const liveCause = resolveSmartTaskLiveCause(activePlan!.diagnosticReasonCode, carChargeLimit);
+  const liveCause = resolveSmartTaskLiveCause(activePlan!.diagnosticReasonCode, carChargeLimit, budgetRole);
   const cannotMeet = reportedPlanStatus === 'cannot_meet' || reportedPlanStatus === 'at_risk';
   const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
   const costAndDelivery = resolveLiveCostAndDelivery({
@@ -439,20 +456,6 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     if (!Number.isFinite(candidate) || (progress.unit === '%' && candidate < 0)) return null;
     return candidate;
   })();
-  // The cannot-meet body copy + recourse fire on a budget-bound verdict. The
-  // producer-resolved `latest.floorShortfallCause === 'budget'` is the only
-  // signal — it covers the per-bucket background-squeeze case (prod Connected
-  // 300) that the retired count-based heuristic missed. Per
-  // `feedback_layering_resolution_in_producer` the consumer reads the flat
-  // producer field and stops. Absence is NOT "unknown": the recorder
-  // suppresses the `none` case for byte-stability, so an absent cause means
-  // the floor was not short at all.
-  // Three states, not a boolean: the budget can explain the shortfall outright
-  // (`sole` — lifting the per-bucket cap closes the gap), have a hand in it
-  // without closing it (`contributing`), or be uninvolved. The middle one used
-  // to be invisible, so a plan whose every hour was budget-shaped read as purely
-  // physical. Both producer fields are flat and read once, here.
-  const budgetRole = resolveBudgetRole(latest);
   const planningSpeedKw = resolvePositiveNumber(activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw);
   const displayRate = resolveDisplayRateAndSpeedMode({ latest, profile, objectiveKind: objective.kind });
 
@@ -565,6 +568,7 @@ export type DeadlineRenderInput =
     status: 'unavailable';
     kind: DeferredObjectiveSettingsEntry['kind'];
     reason: DeadlinePlanUnavailableReason;
+    headline?: string;
     body?: string;
     statusChip?: DeadlineHeroStatusChip;
   }
@@ -594,7 +598,7 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   // now. Match the list's pause, except when the car already reached its own
   // lower limit: some chargers end that session with an unplugged reading.
   if (ctx.activePlan.diagnosticReasonCode === 'objective_invalid_session'
-    && resolveSmartTaskCarChargeLimit(ctx.activePlan.carChargeLimit, ctx.activePlan.targetValue)?.reached !== true) {
+    && resolveReportedCarChargeLimit(ctx.activePlan) === null) {
     return { status: 'pending', pending: buildPendingPayload(ctx, priceContext, 'invalid_session') };
   }
   const result = buildObjectivePayload(params);
@@ -604,6 +608,7 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
       status: 'unavailable',
       kind: ctx.objective.kind,
       reason: result.reason,
+      ...(result.headline === undefined ? {} : { headline: result.headline }),
       ...(result.body === undefined ? {} : { body: result.body }),
       ...(result.statusChip === undefined ? {} : { statusChip: result.statusChip }),
     };
@@ -641,6 +646,7 @@ export const resolveDeadlinePlanLoadState = (
       status: 'unavailable',
       objectiveKind: renderInput.kind,
       reason: renderInput.reason,
+      ...(renderInput.headline === undefined ? {} : { headline: renderInput.headline }),
       ...(renderInput.body === undefined ? {} : { body: renderInput.body }),
       ...(renderInput.statusChip === undefined ? {} : { statusChip: renderInput.statusChip }),
       history,

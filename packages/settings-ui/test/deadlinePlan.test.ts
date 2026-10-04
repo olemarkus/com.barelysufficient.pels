@@ -2443,13 +2443,50 @@ describe('deadline plan page payload', () => {
 
     // The status does not depend on the reading: the card reports the same
     // At risk the list and the widget do, and leaves out only the progress.
+    // The headline names that cause too: "Waiting for the first state-of-charge
+    // reading" would contradict a car that has reported, and stopped.
     expect(renderInput).toMatchObject({
       status: 'unavailable',
       reason: 'no_current_reading',
+      headline: 'Car stopped at its limit of 70%',
       body: "Your car stopped at its own charge limit of 70%, below this smart task’s 80% target."
         + ' Raise the car’s charge limit to let it continue.',
       statusChip: { text: 'At risk', tone: 'warn' },
     });
+  });
+
+  it('heads a no-reading card for a device left off with the cause, without repeating it below', () => {
+    const renderInput = testExports.resolveRenderInput(carCapPlanInput({ limitValue: 90, reached: false }, null, {
+      diagnosticReasonCode: 'objective_device_left_off',
+    }));
+    expect(renderInput).toMatchObject({
+      status: 'unavailable', reason: 'no_current_reading', headline: 'Device is staying off until turned on again',
+    });
+    expect(renderInput).not.toHaveProperty('body');
+  });
+
+  it('explains a budget-bound cannot-finish task by the budget while the car is still below its limit', () => {
+    const input = carCapPlanInput({ limitValue: 70, reached: false }, 50);
+    const plan = input.bootstrap.deferredObjectiveActivePlans?.plansByDeviceId.ev;
+    if (!plan?.latest) throw new Error('Expected committed plan');
+    plan.latest = { ...plan.latest, planStatus: 'cannot_meet', floorShortfallCause: 'budget' };
+
+    // Raising the car's limit would not finish a task today's budget cannot
+    // fund, so the budget sentence and its Open Budget button stay.
+    const payload = expectOk(testExports.buildObjectivePayload(input));
+    expect(payload.hero.metaLine).toMatch(/today's daily budget is fully booked/i);
+    expect(payload.hero.recourse?.label).toBe('Open Budget');
+  });
+
+  it('keeps a car stopped at its limit as the cause of a budget-bound task', () => {
+    const input = carCapPlanInput({ limitValue: 70, reached: true }, 70);
+    const plan = input.bootstrap.deferredObjectiveActivePlans?.plansByDeviceId.ev;
+    if (!plan?.latest) throw new Error('Expected committed plan');
+    plan.latest = { ...plan.latest, planStatus: 'cannot_meet', floorShortfallCause: 'budget' };
+
+    const payload = expectOk(testExports.buildObjectivePayload(input));
+    expect(payload.hero.metaLine).toContain('Your car stopped at its own charge limit of 70%');
+    expect(payload.hero.recourse).toBeNull();
   });
 
   it('reports a confirmed stop as at risk with the device-side reason, matching the list and widget', () => {
@@ -5079,7 +5116,7 @@ describe('resolveHeroHeadline', () => {
         labels,
         firstChargingHour: queuedHour,
         nowMs: queuedHour.startsAtMs + 60_000,
-        liveCause: resolveSmartTaskLiveCause(code, null),
+        liveCause: resolveSmartTaskLiveCause(code, null, 'none'),
         tone: 'warn',
       })).toBeNull();
     },
@@ -5091,7 +5128,7 @@ describe('resolveHeroHeadline', () => {
       labels,
       firstChargingHour: queuedHour,
       nowMs: queuedHour.startsAtMs + 60_000,
-      liveCause: resolveSmartTaskLiveCause('objective_device_left_off', null),
+      liveCause: resolveSmartTaskLiveCause('objective_device_left_off', null, 'none'),
       tone: 'good',
     })).toBe('Heating now');
   });
@@ -5196,7 +5233,7 @@ describe('resolveQueuedHeadlineReason', () => {
 // view never branches on raw cause codes.
 describe('resolveCannotMeetRecourse', () => {
   const labels = deadlineLabels('temperature');
-  const leftOff = resolveSmartTaskLiveCause('objective_device_left_off', null);
+  const leftOff = resolveSmartTaskLiveCause('objective_device_left_off', null, 'none');
 
   it('returns null when the hero is not cannot-meet', async () => {
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
@@ -5307,7 +5344,7 @@ describe('resolveCannotMeetRecourse', () => {
     ['objective_device_schedule', 'Your car is delaying charging'],
   ] as const)('explains a confirmed %s with its own reason and no settings button', async (code, reason) => {
     const { resolveCannotMeetRecourse, resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
-    const liveCause = resolveSmartTaskLiveCause(code, null);
+    const liveCause = resolveSmartTaskLiveCause(code, null, 'none');
     expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'sole' as const, liveCause })).toContain(reason);
     expect(resolveCannotMeetRecourse({
       labels, cannotMeet: true, planStatus: 'at_risk' as const, budgetRole: 'none' as const, liveCause,

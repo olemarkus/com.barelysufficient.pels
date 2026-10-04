@@ -306,8 +306,9 @@ export type DeadlinePlanLoadState =
     status: 'unavailable';
     objectiveKind: DeferredObjectiveSettingsKind;
     reason: DeadlinePlanUnavailableReason;
-    // Producer-resolved body replacing the reason's fixed copy (the task's
-    // live cause, such as the car stopped at its own charge limit).
+    // Producer-resolved headline and body replacing the reason's fixed copy
+    // (the task's live cause, such as the car stopped at its own charge limit).
+    headline?: string;
     body?: string;
     // The shared effective status (`At risk` / `Cannot finish`) when it is not
     // healthy, so this card agrees with the list chip and the widget row.
@@ -1602,7 +1603,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
             <span class={chipClass(loadState.statusChip.tone)}>{loadState.statusChip.text}</span>
           </div>
         )}
-        <h1 class="plan-card__title">{copy.headline}</h1>
+        <h1 class="plan-card__title">{loadState.headline ?? copy.headline}</h1>
         <p class="pels-card-supporting">{loadState.body ?? copy.body}</p>
       </section>
     );

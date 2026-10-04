@@ -399,7 +399,7 @@ export type SmartTaskLiveCause = {
 const LIVE_CAUSE_DEVICE_LEFT_OFF: SmartTaskLiveCause = {
   why: WHY_AT_RISK_DEVICE_LEFT_OFF,
   recourseHint: null,
-  listLine: WHY_AT_RISK_DEVICE_LEFT_OFF,
+  listLine: 'Device is staying off until turned on again',
   reason: WHY_AT_RISK_DEVICE_LEFT_OFF,
 };
 // Device-neutral: the 15-minute non-delivery confirmation covers any metered
@@ -408,7 +408,7 @@ const LIVE_CAUSE_DEVICE_LEFT_OFF: SmartTaskLiveCause = {
 const LIVE_CAUSE_NOT_ACCEPTING: SmartTaskLiveCause = {
   why: 'Device stopped taking power.',
   recourseHint: null,
-  listLine: 'Device stopped taking power.',
+  listLine: 'Device stopped taking power',
   reason: 'The device stopped taking power while PELS allowed it to run. Check whether it switched itself off.',
 };
 // `objective_device_limit` and `objective_device_schedule` have one producer,
@@ -446,33 +446,49 @@ const carLimitLiveCause = (cap: SmartTaskCarChargeLimit): SmartTaskLiveCause => 
  * first; then the car stopped at its known limit (which explains a device limit
  * or a stop with numbers); then the confirmed device-side causes; last, a known
  * car limit below the target that the car has not reached yet, which a more
- * specific stop outranks. `carChargeLimit` is the resolved cap
- * (`resolveSmartTaskCarChargeLimit`), so it is only present below the target.
+ * specific stop outranks. `carChargeLimit` is the reported cap
+ * (`resolveReportedCarChargeLimit`), so it is only present below the target
+ * and only while it explains the status.
+ *
+ * An unreached limit also yields to a daily-budget cause (`budgetRole`): the
+ * car is still charging toward its limit, so today's budget is what holds the
+ * task back now, and raising the car's limit would not finish it. A car that
+ * has stopped at its limit is the cause whatever the budget says.
+ *
  * Null when no live cause applies; the caller then explains the committed
  * verdict (budget, time) itself.
  */
 export const resolveSmartTaskLiveCause = (
   diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined,
   carChargeLimit: SmartTaskCarChargeLimit | null,
+  budgetRole: DeadlineBudgetRole,
 ): SmartTaskLiveCause | null => {
   if (diagnosticReasonCode === 'objective_device_left_off') return LIVE_CAUSE_DEVICE_LEFT_OFF;
   if (carChargeLimit?.reached === true) return carLimitLiveCause(carChargeLimit);
   if (diagnosticReasonCode === 'objective_device_limit') return LIVE_CAUSE_CAR_LIMIT_UNKNOWN;
   if (diagnosticReasonCode === 'objective_device_schedule') return LIVE_CAUSE_CAR_SCHEDULE;
   if (diagnosticReasonCode === 'objective_not_accepting_energy') return LIVE_CAUSE_NOT_ACCEPTING;
-  if (carChargeLimit !== null) return carLimitLiveCause(carChargeLimit);
+  if (carChargeLimit !== null && budgetRole === 'none') return carLimitLiveCause(carChargeLimit);
   return null;
 };
 
-// Budget vs device cause. The producer-resolved `floorShortfallCause` decides,
-// alone (per `feedback_layering_resolution_in_producer`). Absence is NOT
-// "unknown": the recorder suppresses the `none` case for byte-stability, so an
-// absent cause means the floor was not short at all.
-const resolveWidgetBudgetRole = (input: SmartTaskWidgetDetailInput): DeadlineBudgetRole => {
-  if (input.floorShortfallCause === 'budget') return 'sole';
-  // Same rule the hero applies: only a genuine miss, never the at-risk shapes
-  // (`estimate` padding, `step_power` climbing) where "cannot finish" is false.
-  if (input.floorShortfallCause === 'time_capacity' && input.budgetContributedToShortfall === true) {
+/**
+ * How far the daily budget accounts for a task's shortfall, from the revision's
+ * producer-resolved fields. The one rule the detail hero, the list card and
+ * the widget share. `floorShortfallCause` decides, alone (per
+ * `feedback_layering_resolution_in_producer`). Absence is NOT "unknown": the
+ * recorder suppresses the `none` case for byte-stability, so an absent cause
+ * means the floor was not short at all.
+ */
+export const resolveSmartTaskBudgetRole = (revision: {
+  floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
+  budgetContributedToShortfall?: true;
+}): DeadlineBudgetRole => {
+  if (revision.floorShortfallCause === 'budget') return 'sole';
+  // Only a genuine miss. `estimate` (short only by the estimator's confidence
+  // padding) and `step_power` (climbing fits) are at-risk shapes, and the
+  // contributing sentence asserts the task cannot finish.
+  if (revision.floorShortfallCause === 'time_capacity' && revision.budgetContributedToShortfall === true) {
     return 'contributing';
   }
   return 'none';
@@ -482,7 +498,9 @@ const resolveWidgetBudgetRole = (input: SmartTaskWidgetDetailInput): DeadlineBud
 // cause — neither the budget nor the clock — on an at-risk and a cannot-finish
 // row alike, matching the detail hero.
 const resolveLiveCauseCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDetailCopy | null => {
-  const cause = resolveSmartTaskLiveCause(input.diagnosticReasonCode, input.carChargeLimit ?? null);
+  const cause = resolveSmartTaskLiveCause(
+    input.diagnosticReasonCode, input.carChargeLimit ?? null, resolveSmartTaskBudgetRole(input),
+  );
   return cause === null ? null : { whyLabel: cause.why, recourseHint: cause.recourseHint };
 };
 
@@ -506,7 +524,7 @@ const AT_RISK_RECOURSE_BY_BUDGET_ROLE: Record<DeadlineBudgetRole, string | null>
 const resolveAtRiskCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDetailCopy => {
   const live = resolveLiveCauseCopy(input);
   if (live !== null) return live;
-  const budgetRole = resolveWidgetBudgetRole(input);
+  const budgetRole = resolveSmartTaskBudgetRole(input);
   return {
     whyLabel: resolveSmartTaskAtRiskWhy(budgetRole),
     recourseHint: AT_RISK_RECOURSE_BY_BUDGET_ROLE[budgetRole],
@@ -516,7 +534,7 @@ const resolveAtRiskCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDe
 const resolveCannotMeetCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDetailCopy => {
   const live = resolveLiveCauseCopy(input);
   if (live !== null) return live;
-  const budgetRole = resolveWidgetBudgetRole(input);
+  const budgetRole = resolveSmartTaskBudgetRole(input);
   if (budgetRole === 'sole') {
     return { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET };
   }
@@ -1544,9 +1562,10 @@ const resolveReportedStatus = (
  * immediately without rewriting the frozen schedule. Legacy/unavailable completion
  * preserves the settled verdict; live causes still downgrade health:
  *  - a reason code in `LIVE_RISK_REASON_CODES` turns `on_track` into `at_risk`;
- *  - a known car charge limit below the target (`resolveSmartTaskCarChargeLimit`,
+ *  - a known car charge limit below the target (`resolveReportedCarChargeLimit`,
  *    the same rule that gates its copy), reached or not, reads `at_risk`
- *    (or keeps `cannot_meet` / `satisfied`).
+ *    (or keeps `cannot_meet` / `satisfied`), except a limit the car had not
+ *    reached when it was unplugged: that car is just unplugged.
  *
  * EVERY surface that reports a task's status must resolve through here. The full
  * set, so a new one can be checked against it:
@@ -1567,14 +1586,30 @@ export const resolveEffectivePlanStatus = (
   planStatus: DeferredObjectiveActivePlanStatusV1,
   plan: SmartTaskLiveStatusFacts,
 ): DeferredObjectiveActivePlanStatusV1 => resolveReportedStatus(
-  planStatus, plan.diagnosticReasonCode, plan.liveCompletion,
-  // A durable exclusion (separate meter, not managed) outranks every overlay,
-  // the car limit included: the task is paused, and the Flow trigger must not
-  // announce a risk the list, the detail page and the Flow condition do not show.
-  resolveExclusionPendingReason(plan.diagnosticReasonCode) === null
-    ? resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue)
-    : null,
+  planStatus, plan.diagnosticReasonCode, plan.liveCompletion, resolveReportedCarChargeLimit(plan),
 );
+
+/**
+ * The car's charge limit as every surface reports it: the resolved cap
+ * (`resolveSmartTaskCarChargeLimit`), or null when it explains nothing now.
+ *  - A durable exclusion (separate meter, not managed) outranks every overlay:
+ *    the task is paused.
+ *  - A car unplugged before it reached its limit is just unplugged. The
+ *    recorder keeps the last limit while the charger reports no level, but
+ *    telling that owner to raise the limit instead of plugging in is wrong.
+ *  - A REACHED limit outranks "unplugged": a charger that ends the session at
+ *    the car's limit reads unplugged with the car still in.
+ * The list chip, the widget, the detail page and both status Flow cards read
+ * the limit through here, so none of them can announce a risk the others hide.
+ */
+export const resolveReportedCarChargeLimit = (
+  plan: Pick<DeferredObjectiveActivePlanV1, 'diagnosticReasonCode' | 'carChargeLimit' | 'targetValue'>,
+): SmartTaskCarChargeLimit | null => {
+  if (resolveExclusionPendingReason(plan.diagnosticReasonCode) !== null) return null;
+  const cap = resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue);
+  if (cap === null) return null;
+  return cap.reached || plan.diagnosticReasonCode !== 'objective_invalid_session' ? cap : null;
+};
 
 const resolveCompletionStatus = (
   completion: Exclude<DeferredObjectiveLiveCompletion, { kind: 'unavailable' }>,
@@ -1602,14 +1637,14 @@ const resolveCurrentCauseListStatus = (params: SmartTaskListStatusInput): SmartT
   if (diagnosticReasonCode === 'objective_device_unmanaged') return 'paused_unmanaged';
   // A known car limit below the target on a COMMITTED plan. A pending plan has
   // no status to overlay and falls through to the pending ladder, as the detail
-  // page's pending hero and the Flow's pending status do. Only a REACHED limit
-  // outranks "unplugged": the charger that ends the session at the car's limit
-  // reads unplugged with the car still in, and telling that owner to plug in
-  // would be wrong. A car unplugged on its way to its limit is just unplugged
-  // (the recorder holds the last limit while the charger reports no level).
+  // page's pending hero and the Flow's pending status do. The reported limit
+  // (`resolveReportedCarChargeLimit`) already leaves out a limit the car had not
+  // reached when it was unplugged, so that car falls through to "unplugged"
+  // below, while a REACHED limit outranks it: the charger that ends the session
+  // at the car's limit reads unplugged with the car still in, and telling that
+  // owner to plug in would be wrong.
   const { carChargeLimit } = params;
-  if (!params.pending && planStatus !== undefined && carChargeLimit !== null
-    && (carChargeLimit.reached || diagnosticReasonCode !== 'objective_invalid_session')) {
+  if (!params.pending && planStatus !== undefined && carChargeLimit !== null) {
     return resolveCarLimitStatus(resolveCurrentStatus(planStatus, params.liveCompletion));
   }
   // Unplugged-mid-plan: the recorder refreshes `diagnosticReasonCode` even on
@@ -1628,8 +1663,9 @@ export type SmartTaskListStatusInput = {
   planStatus: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied' | undefined;
   firstActionAtMs: number | null;
   nowMs: number;
-  // The plan's resolved car limit (`resolveSmartTaskCarChargeLimit`): present
-  // only while the car's own charge limit sits below the target.
+  // The plan's reported car limit (`resolveReportedCarChargeLimit`): present
+  // only while the car's own charge limit sits below the target and explains
+  // the status.
   carChargeLimit: SmartTaskCarChargeLimit | null;
   liveCompletion: DeferredObjectiveLiveCompletion;
 };

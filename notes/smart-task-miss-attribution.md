@@ -76,8 +76,9 @@ The surfaces read the codes from the active plan through
 (`notes/ui-terminology.md`, "Live causes on an at-risk or cannot-finish task").
 The same status rule also reads a known car charge limit below the target, reached
 or not, as at risk: the requested target stays the target and the car will stop
-short of it. Durable exclusions (separate meter, not managed) and a pending plan
-outrank every overlay.
+short of it. A car unplugged before it reached that limit is just unplugged
+(`resolveReportedCarChargeLimit`). Durable exclusions (separate meter, not
+managed) and a pending plan outrank every overlay.
 
 v3.9.3 also persisted `objective_delivery_restricted` for capacity, budget and
 priority limiting. The active-plan loader drops it (`activePlanSettings.ts`), and

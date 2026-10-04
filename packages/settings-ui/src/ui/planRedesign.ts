@@ -31,7 +31,7 @@ import {
 } from '../../../shared-domain/src/overviewSmartTaskRow.ts';
 import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import {
-  resolveSmartTaskCarChargeLimit,
+  resolveReportedCarChargeLimit,
   resolveSmartTaskListStatus,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { PlanSnapshot } from './planTypes.ts';
@@ -372,7 +372,7 @@ const toRowStatus = (params: {
         ? plan.latest.hours[0]?.startsAtMs ?? null
         : null,
       nowMs,
-      carChargeLimit: resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue),
+      carChargeLimit: resolveReportedCarChargeLimit(plan),
       liveCompletion: plan.liveCompletion,
     }),
     // The status derives from the recorded PLAN, so the ETA prefers the

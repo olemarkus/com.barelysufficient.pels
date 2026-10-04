@@ -338,8 +338,13 @@ export class DeferredObjectiveActivePlanRecorder {
     const existing = this.plans[diag.deviceId];
     if (existing !== undefined) {
       // Settled records refresh live facts; pendingReason only applies before commitment.
+      // A live fact can move the public status here too (an unplugged car no
+      // longer reports a limit it had not reached), and a horizon-less cycle
+      // writes no revision, so it announces that change itself.
       if (!existing.pending) {
-        this.refreshDiagnosticReasonCode(existing, diag);
+        const previousEffective = effectivePlanStatusOf(existing);
+        const refreshed = this.refreshDiagnosticReasonCode(existing, diag);
+        publishOverlayOnlyStatusChange(this.deps, refreshed, previousEffective);
         return;
       }
       // Pending records refresh both `pendingReason` and `diagnosticReasonCode`.
