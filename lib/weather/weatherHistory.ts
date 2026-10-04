@@ -8,6 +8,7 @@ import type {
 import { isUnknownRecord } from '../utils/types';
 import {
   getZonedParts,
+  isCalendarDateKey,
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
@@ -42,7 +43,6 @@ export function isPlausibleOutdoorTemperature(value: unknown): value is number {
     && value <= MAX_PLAUSIBLE_C;
 }
 
-const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const HOUR_KEY_PATTERN = /^([01]\d|2[0-3])$/;
 
 const byDateKeyAscending = (a: { dateKey: string }, b: { dateKey: string }): number => (
@@ -609,7 +609,7 @@ function normalizeAccumulators(raw: Record<string, unknown>): Record<string, Wea
   return Object.fromEntries(
     Object.entries(raw).filter(
       (entry): entry is [string, WeatherDayAccumulator] => (
-        DATE_KEY_PATTERN.test(entry[0]) && isPlausibleAccumulator(entry[1])
+        isCalendarDateKey(entry[0]) && isPlausibleAccumulator(entry[1])
       ),
     ),
   );
@@ -619,7 +619,7 @@ function normalizeForecastHourly(raw: Record<string, unknown>): Record<string, R
   return Object.fromEntries(
     Object.entries(raw)
       .map(([dateKey, hours]) => (
-        DATE_KEY_PATTERN.test(dateKey) && isUnknownRecord(hours)
+        isCalendarDateKey(dateKey) && isUnknownRecord(hours)
           ? ([dateKey, normalizeForecastHours(hours)] as const)
           : undefined
       ))
@@ -712,8 +712,9 @@ function isPlausibleQuality(value: unknown): value is WeatherDailyQuality {
 
 function isPlausibleRecord(value: unknown): value is WeatherDailyRecord {
   if (!isUnknownRecord(value)) return false;
-  return typeof value.dateKey === 'string'
-    && DATE_KEY_PATTERN.test(value.dateKey)
+  // A real calendar day, not just the shape: the fit reads each record's
+  // date (its season), and an impossible date would turn that into NaN.
+  return isCalendarDateKey(value.dateKey)
     && isPlausibleOutdoorTemperature(value.tempMeanC)
     && isPlausibleOutdoorTemperature(value.tempMinC)
     && isPlausibleOutdoorTemperature(value.tempMaxC)

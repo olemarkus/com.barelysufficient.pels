@@ -296,6 +296,13 @@ export type EnergySignatureFit = {
   baseLoadKwhPerDay?: number;
   /** Predicted kWh/day at 0 °C; `linear` only (no identifiable balance point). */
   interceptKwhAtZeroC?: number;
+  /**
+   * Season term (kWh/day): added at the December solstice, subtracted at the
+   * June solstice, scaled by a cosine of the day of year in between, on top of
+   * `baseLoadKwhPerDay`. `changepoint` only, and only when the history spans
+   * both halves of the year and the term clearly lowers the error.
+   */
+  seasonKwh?: number;
   /** Extra kWh per °C colder day — the headline "temperature sensitivity". */
   slopeKwhPerDegree: number;
   /** Sen's nonparametric 95% interval on the slope. */
@@ -500,6 +507,8 @@ export type WeatherAdvisorReadoutPayload = {
   /** Last auto-applied budget (date + kWh) for the "Last applied" line; null when never applied. */
   lastAutoApply: { dateKey: string; kwh: number } | null;
   fit: EnergySignatureFit | null;
+  /** Local date the outlook describes (tomorrow); the estimate line and warm-day usage are shown for its season. */
+  outlookDateKey: string;
   coverage: WeatherCoverageBin[];
   prediction: WeatherAdvisorPrediction | null;
   suggestion: WeatherAdvisorSuggestion | null;

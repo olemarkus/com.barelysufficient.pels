@@ -1,18 +1,12 @@
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { isCanonicalHomeyDeviceId } from '../utils/homeyDeviceId';
+import { isCalendarDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 
 type DailyKwhTotals = { total?: number; controlled?: number; uncontrolled?: number };
 type MeterScopeMarkers = Pick<WeatherHistoryState, 'meterScopeSignature' | 'meterScopeSinceDateKey'>;
 
-const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const FLOW_SIGNATURE = 'source:flow';
 const HOMEY_ENERGY_EXPLICIT_SIGNATURE_PREFIX = 'source:homey_energy|main:';
-
-const isValidDateKey = (value: unknown): value is string => {
-  if (typeof value !== 'string' || !DATE_KEY_PATTERN.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-};
 
 const isValidMeterScopeSignature = (value: unknown): value is string => {
   if (typeof value !== 'string') return false;
@@ -51,15 +45,15 @@ export function normalizeMeterScopeMarkers(
   currentDateKey?: string,
 ): MeterScopeMarkers {
   if (!isValidMeterScopeSignature(raw.meterScopeSignature)) return {};
-  if (raw.meterScopeSinceDateKey !== undefined && !isValidDateKey(raw.meterScopeSinceDateKey)) return {};
+  if (raw.meterScopeSinceDateKey !== undefined && !isCalendarDateKey(raw.meterScopeSinceDateKey)) return {};
   if (
-    isValidDateKey(raw.meterScopeSinceDateKey)
+    isCalendarDateKey(raw.meterScopeSinceDateKey)
     && currentDateKey !== undefined
     && raw.meterScopeSinceDateKey > currentDateKey
   ) return {};
   return {
     meterScopeSignature: raw.meterScopeSignature,
-    ...(isValidDateKey(raw.meterScopeSinceDateKey)
+    ...(isCalendarDateKey(raw.meterScopeSinceDateKey)
       ? { meterScopeSinceDateKey: raw.meterScopeSinceDateKey }
       : {}),
   };

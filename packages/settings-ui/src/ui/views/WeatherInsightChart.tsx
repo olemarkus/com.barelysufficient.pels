@@ -70,6 +70,8 @@ export type WeatherChartOptionInput = {
   recentDays: WeatherRecentDay[];
   fit: EnergySignatureFit | null;
   prediction: WeatherAdvisorPrediction | null;
+  /** The estimate line is drawn for this local date's season. */
+  outlookDateKey: string;
   /** Largest solid dot (marker grammar: yesterday is the freshest actual). */
   yesterdayDateKey: string | null;
   palette: WeatherChartPalette;
@@ -119,13 +121,20 @@ const buildRecentDayData = (
  * Estimate line sampled from the fit, never extrapolated past the observed
  * range: changepoint = sloped-then-flat (the knee at the balance point),
  * winter-only linear = sloped segment only, uncorrelated = no line at all
- * (a flat cloud is self-explanatory — spec S5).
+ * (a flat cloud is self-explanatory — spec S5). A fit with a season term is
+ * drawn for the outlook day's time of year, matching tomorrow's marker.
  */
-const buildFitLinePoints = (fit: EnergySignatureFit | null): Array<[number, number]> => {
+const buildFitLinePoints = (
+  fit: EnergySignatureFit | null,
+  outlookDateKey: string,
+): Array<[number, number]> => {
   if (!fit || fit.model === 'uncorrelated') return [];
   const minT = fit.observedTempMinC;
   const maxT = fit.observedTempMaxC;
-  const at = (tempC: number): [number, number] => [tempC, predictDailyKwh(fit, tempC) ?? fit.medianDayKwh];
+  const at = (tempC: number): [number, number] => [
+    tempC,
+    predictDailyKwh(fit, tempC, outlookDateKey) ?? fit.medianDayKwh,
+  ];
   if (fit.model === 'changepoint' && fit.balancePointC !== undefined
     && fit.balancePointC > minT && fit.balancePointC < maxT) {
     return [at(minT), at(fit.balancePointC), at(maxT)];
@@ -134,8 +143,10 @@ const buildFitLinePoints = (fit: EnergySignatureFit | null): Array<[number, numb
 };
 
 export const buildWeatherChartOption = (input: WeatherChartOptionInput): EChartsOption => {
-  const { scatter, recentDays, fit, prediction, palette, labelFontSize } = input;
-  const fitLine = buildFitLinePoints(fit);
+  const {
+    scatter, recentDays, fit, prediction, outlookDateKey, palette, labelFontSize,
+  } = input;
+  const fitLine = buildFitLinePoints(fit, outlookDateKey);
   const temps = [
     ...scatter.map((bin) => bin.tempBinC),
     ...recentDays.map((day) => day.tempMeanC),
@@ -298,23 +309,27 @@ export type WeatherScatterChartProps = {
   recentDays: WeatherRecentDay[];
   fit: EnergySignatureFit | null;
   prediction: WeatherAdvisorPrediction | null;
+  outlookDateKey: string;
   yesterdayDateKey: string | null;
 };
 
 export const WeatherScatterChart = (props: WeatherScatterChartProps) => {
-  const { scatter, recentDays, fit, prediction, yesterdayDateKey } = props;
+  const {
+    scatter, recentDays, fit, prediction, outlookDateKey, yesterdayDateKey,
+  } = props;
   const chartRef = useEchartsMount({
     buildOption: (container) => buildWeatherChartOption({
       scatter,
       recentDays,
       fit,
       prediction,
+      outlookDateKey,
       yesterdayDateKey,
       palette: resolveWeatherPalette(container),
       labelFontSize: cssNumber(container, '--font-size-xs', 11),
     }),
     resolveSize: resolveWeatherChartSize,
-    deps: [scatter, recentDays, fit, prediction, yesterdayDateKey],
+    deps: [scatter, recentDays, fit, prediction, outlookDateKey, yesterdayDateKey],
   });
   return (
     <div

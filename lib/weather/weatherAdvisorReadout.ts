@@ -116,6 +116,7 @@ export function buildWeatherAdvisorReadout(
       outdoorReading,
       dailyBudgetKwh,
       autoApplyEcho,
+      outlookDateKey: tomorrowKey,
       nowMs: input.nowMs,
     });
     return { kind: 'readout', payload: needsDevice };
@@ -141,6 +142,7 @@ export function buildWeatherAdvisorReadout(
     dailyBudgetKwh,
     ...autoApplyEcho,
     fit,
+    outlookDateKey: tomorrowKey,
     coverage: buildCoverageBins(usableYearRecords, tomorrow?.prediction.tempMeanC),
     prediction: tomorrow?.prediction ?? null,
     suggestion: tomorrow?.suggestion ?? null,
@@ -168,6 +170,7 @@ function buildNeedsDevicePayload(params: {
   outdoorReading: WeatherDeviceReading;
   dailyBudgetKwh: number | null;
   autoApplyEcho: AutoApplyEcho;
+  outlookDateKey: string;
   nowMs: number;
 }): WeatherAdvisorReadoutPayload {
   return {
@@ -180,6 +183,7 @@ function buildNeedsDevicePayload(params: {
     dailyBudgetKwh: params.dailyBudgetKwh,
     ...params.autoApplyEcho,
     fit: null,
+    outlookDateKey: params.outlookDateKey,
     coverage: [],
     prediction: null,
     suggestion: null,
@@ -343,6 +347,7 @@ function recomputeTomorrowSuggestion(
     // without the pressure term would understate it.
     result: suggestDailyBudgetKwh({
       fit,
+      targetDateKey: tomorrowKey,
       forecastMeanTempC: meanTempC,
       capacityLimitKw: input.capacityLimitKw,
       capacityDayHours: resolveLocalDayHours(tomorrowKey, input.timeZone),
@@ -472,7 +477,7 @@ function buildYesterday(
     dateKey: record.dateKey,
     tempMeanC: record.tempMeanC,
     kwhTotal,
-    deviationKwh: fit ? kwhTotal - typicalKwhFor(fit, record.tempMeanC) : null,
+    deviationKwh: fit ? kwhTotal - typicalKwhFor(fit, record) : null,
   };
 }
 
@@ -480,10 +485,10 @@ function buildYesterday(
 function computeDriftDeviationKwh(usableRecords: WeatherDailyRecord[], fit: EnergySignatureFit): number {
   const residuals = usableRecords
     .slice(-DRIFT_RECENT_DAYS)
-    .map((record) => (record.kwhTotal as number) - typicalKwhFor(fit, record.tempMeanC));
+    .map((record) => (record.kwhTotal as number) - typicalKwhFor(fit, record));
   return quantile(residuals, 0.5);
 }
 
-const typicalKwhFor = (fit: EnergySignatureFit, tempC: number): number => (
-  predictDailyKwh(fit, tempC) ?? fit.medianDayKwh
+const typicalKwhFor = (fit: EnergySignatureFit, record: WeatherDailyRecord): number => (
+  predictDailyKwh(fit, record.tempMeanC, record.dateKey) ?? fit.medianDayKwh
 );

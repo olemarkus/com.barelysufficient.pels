@@ -17,6 +17,7 @@ import {
   composeYesterdayLine,
   formatDailyKwh,
   formatKwhRange,
+  formatWarmDayUsage,
   resolveTomorrowVerdict,
   WEATHER_BACKFILL_BODY,
   WEATHER_BACKFILL_TITLE,
@@ -89,6 +90,7 @@ const buildReadout = (
   autoApplyDailyBudget: false,
   lastAutoApply: null,
   fit: buildFit(),
+  outlookDateKey: '2026-06-11',
   coverage: [
     { fromC: -10, toC: -5, days: 6, sufficient: false },
     { fromC: -5, toC: 0, days: 22, sufficient: true },
@@ -407,6 +409,17 @@ describe('WeatherInsightDetail (localView weather)', () => {
     expect(footer).not.toBeNull();
     // The footer's forecast half is the MET Norway CC-BY attribution.
     expect(footer?.textContent).toContain('Weather data from MET Norway');
+  });
+
+  it('states warm-day usage for the outlook day\'s season when the fit has a season term', () => {
+    const mount = mountIntoBody();
+    const readout = buildReadout({ fit: buildFit({ seasonKwh: 10 }), outlookDateKey: '2026-12-21' });
+    renderBudgetOverview(mount, buildProps({ localView: 'weather', weatherInsight: { readout, fetchFailed: false } }));
+    // December solstice: the full season term on top of the 23 kWh base load.
+    expect(mount.querySelector('#weather-summary-card')?.textContent).toContain(composeSummaryHeadline({
+      baseLoadKwhPerDay: 33, slopeKwhPerDegree: 1.8, balancePointC: 13,
+    }));
+    expect(mount.querySelector('#weather-numbers-card')?.textContent).toContain(formatWarmDayUsage(33));
   });
 
   it('S5: uncorrelated homes get the honest summary and no numbers card', () => {
