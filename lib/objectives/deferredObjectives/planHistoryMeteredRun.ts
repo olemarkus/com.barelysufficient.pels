@@ -2,6 +2,7 @@ import type { MeteredRunCommitment, PersistedMeteredDeliveryState } from './plan
 import type { InProgressCommitment, InProgressRecord } from './planHistoryInProgressState';
 import { appendHourlyContribution } from './planHistoryV4Helpers';
 import { mergeHourStartBookings } from './planHistoryHourStartBookings';
+import { persistTaskNonDelivery, restoreTaskNonDelivery } from './taskDeliveryState';
 
 /**
  * An in-progress run across a restart: the row the recorder (`planHistory.ts`)
@@ -44,7 +45,9 @@ export const toPersistedMeteredDeliveryState = (record: InProgressRecord): Persi
   deviceId: record.deviceId,
   deadlineAtMs: record.deadlineAtMs,
   startedAtMs: record.startedAtMs,
-  deliveryEvidence: record.deliveryEvidence,
+  deliveryEvidence: {
+    ...record.deliveryEvidence, nonDelivery: persistTaskNonDelivery(record.deliveryEvidence.nonDelivery),
+  },
   commitment: toPersistedCommitment(record),
   startProgressValue: record.startProgressValue,
   deliveredKWh: record.deliveredKWh,
@@ -74,7 +77,9 @@ export const mergeSavedRun = (
     // reading after it. A run saved before any trusted reading keeps the
     // live record's own first trusted reading.
     startProgressValue: state.startProgressValue ?? record.startProgressValue,
-    deliveryEvidence: { ...state.deliveryEvidence, nonDelivery: { kind: 'none' } },
+    deliveryEvidence: {
+      ...state.deliveryEvidence, nonDelivery: restoreTaskNonDelivery(state.deliveryEvidence.nonDelivery),
+    },
     commitment: resumeSavedCommitment(state),
     deliveredKWh: state.deliveredKWh + record.deliveredKWh,
     totalCost: state.totalCost + record.totalCost,

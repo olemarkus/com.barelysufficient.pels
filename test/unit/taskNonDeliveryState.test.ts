@@ -10,12 +10,18 @@ describe('operational non-delivery hold', () => {
     expect(observeTaskNonDelivery(watching, permitted, NON_DELIVERY_HOLD_MS))
       .toEqual({ kind: 'confirmed', sinceMs: 0 });
   });
-  it.each(['restricted', 'pending', 'failed', 'uncontrolled'] as const)('resets during %s control', (control) => {
+  // A confirmed stop ends its window on these ticks: the room is held again
+  // (no longer `confirmed`), while the stop itself is kept for the status.
+  it.each(['restricted', 'pending', 'failed', 'uncontrolled'] as const)('ends the window during %s control', (control) => {
     expect(observeTaskNonDelivery({ kind: 'confirmed', sinceMs: 0 }, { ...permitted, control }, NON_DELIVERY_HOLD_MS))
-      .toEqual({ kind: 'none' });
+      .toEqual({ kind: 'stopped', sinceMs: 0 });
   });
-  it.each(['drawing', 'unobserved'] as const)('resets when draw is %s', (draw) => {
-    expect(observeTaskNonDelivery({ kind: 'confirmed', sinceMs: 0 }, { ...permitted, draw }, NON_DELIVERY_HOLD_MS))
+  it('ends the window when draw is unobserved', () => {
+    expect(observeTaskNonDelivery({ kind: 'confirmed', sinceMs: 0 }, { ...permitted, draw: 'unobserved' }, NON_DELIVERY_HOLD_MS))
+      .toEqual({ kind: 'stopped', sinceMs: 0 });
+  });
+  it('resets when the device draws', () => {
+    expect(observeTaskNonDelivery({ kind: 'confirmed', sinceMs: 0 }, { ...permitted, draw: 'drawing' }, NON_DELIVERY_HOLD_MS))
       .toEqual({ kind: 'none' });
   });
   it('starts a fresh hold after a interrupted window and freezes its final state on expiry', () => {

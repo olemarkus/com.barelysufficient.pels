@@ -337,6 +337,86 @@ describe('task delivery evidence at the device boundary', () => {
     });
   });
 
+  it('keeps a device that stopped taking power at risk through PELS\'s own holds, with one status event', () => {
+    // A water heater at its own thermostat cutoff is confirmed after 15 minutes
+    // of permitted delivery. A shed or settle tick afterwards is PELS's own
+    // decision and no evidence the device would draw: the status must not flip
+    // back to on track and fire the status Flow again each time.
+    const scenario = createScenario(claimedEnergySettings());
+    const observed = (atMs: number, kw: number) => [relay(HIGH_ID, kw, atMs)];
+    scenario.tick(START_MS, observed(START_MS, 2));
+    const eventsBefore = scenario.revisionEvents().length;
+    scenario.setPlanDecision({ kind: 'permitted' });
+    for (let minutes = 2; minutes <= 18; minutes += 2) {
+      scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 0));
+    }
+    expect(scenario.evidence().nonDelivery.kind).toBe('confirmed');
+    expect(scenario.activePlan().diagnosticReasonCode).toBe('objective_not_accepting_energy');
+
+    const holds: TaskDeliveryControl[] = [
+      { kind: 'restricted', cause: 'capacity_limited' }, { kind: 'pending' },
+      { kind: 'restricted', cause: 'budget_limited' }, { kind: 'permitted' },
+    ];
+    for (let step = 1; step <= 12; step += 1) {
+      const atMs = START_MS + (18 + step * 2) * MIN_MS;
+      const control = holds[step % holds.length];
+      if (!control) throw new Error('Missing hold step');
+      scenario.setPlanDecision(control);
+      scenario.tick(atMs, observed(atMs, 0));
+      expect(scenario.activePlan().diagnosticReasonCode).toBe('objective_not_accepting_energy');
+      expect(effectivePlanStatusOf(scenario.activePlan())).toBe('at_risk');
+      // A hold keeps the stop for the status but holds the room again; the next
+      // permitted window re-tests the device before freeing it.
+      expect(['stopped', 'rechecking']).toContain(scenario.evidence().nonDelivery.kind);
+    }
+    const flips = () => scenario.revisionEvents().slice(eventsBefore).filter((event) => (
+      event.eventType === 'revision_written' && event.effectivePlanStatus !== undefined
+      && event.effectivePlanStatus !== event.previousPlanStatus
+    ));
+    expect(flips().map((event) => event.effectivePlanStatus)).toEqual(['at_risk']);
+
+    // A full permitted window re-confirms the stop and frees the room again,
+    // with no second status event.
+    scenario.setPlanDecision({ kind: 'permitted' });
+    for (let minutes = 44; minutes <= 60; minutes += 2) {
+      const atMs = START_MS + minutes * MIN_MS;
+      scenario.tick(atMs, observed(atMs, 0));
+    }
+    expect(scenario.evidence().nonDelivery.kind).toBe('confirmed');
+    expect(flips().map((event) => event.effectivePlanStatus)).toEqual(['at_risk']);
+
+    // Drawing again ends the stop on the same tick, and the Flow hears it.
+    const resumedAt = START_MS + 62 * MIN_MS;
+    scenario.setPlanDecision({ kind: 'permitted' });
+    scenario.tick(resumedAt, observed(resumedAt, 2));
+    expect(scenario.evidence().nonDelivery.kind).toBe('none');
+    expect(scenario.activePlan().diagnosticReasonCode).toBeUndefined();
+    expect(effectivePlanStatusOf(scenario.activePlan())).toBe('on_track');
+    expect(flips().map((event) => event.effectivePlanStatus)).toEqual(['at_risk', 'on_track']);
+  });
+
+  it('keeps a stop across a restart, in a form older builds can read, and re-tests before freeing the room', () => {
+    const scenario = createScenario(claimedEnergySettings());
+    const observed = (atMs: number, kw: number) => [relay(HIGH_ID, kw, atMs)];
+    scenario.tick(START_MS, observed(START_MS, 2));
+    for (let minutes = 2; minutes <= 18; minutes += 2) {
+      scenario.tick(START_MS + minutes * MIN_MS, observed(START_MS + minutes * MIN_MS, 0));
+    }
+    scenario.setPlanDecision({ kind: 'restricted', cause: 'capacity_limited' });
+    scenario.tick(START_MS + 20 * MIN_MS, observed(START_MS + 20 * MIN_MS, 0));
+    expect(scenario.evidence().nonDelivery.kind).toBe('stopped');
+    expect(scenario.persisted().meteredDeliveryStates.find((row) => row.deviceId === HIGH_ID)
+      ?.deliveryEvidence.nonDelivery.kind).toBe('confirmed');
+
+    scenario.restart();
+    expect(scenario.evidence().nonDelivery.kind).toBe('stopped');
+    scenario.setPlanDecision({ kind: 'permitted' });
+    const restoredAt = START_MS + 25 * MIN_MS;
+    scenario.tick(restoredAt, observed(restoredAt, 0));
+    expect(scenario.evidence().nonDelivery.kind).toBe('rechecking');
+    expect(scenario.activePlan().diagnosticReasonCode).toBe('objective_not_accepting_energy');
+  });
+
   it('names the owner\'s off action for a device held off in its claimed hour', () => {
     // "Leave off until turned on again" reaches the delivery owner as
     // `uncontrolled`. The surfaces must still say the device is being left off,
@@ -365,12 +445,13 @@ describe('task delivery evidence at the device boundary', () => {
     expect(scenario.persisted().meteredDeliveryStates.find((row) => row.deviceId === HIGH_ID)?.deliveryEvidence.explanation)
       .toMatchObject({ kind: 'recorded', primary: { kind: 'blocked', cause: 'device_not_accepting' } });
     scenario.restart();
-    expect(scenario.evidence().nonDelivery.kind).toBe('none');
+    // The stop survives for the status; its room is held again until re-tested.
+    expect(scenario.evidence().nonDelivery.kind).toBe('stopped');
     const restoredAt = START_MS + 25 * MIN_MS;
     scenario.tick(restoredAt, [relay(HIGH_ID, 0, restoredAt), relay(LOW_ID, 0, restoredAt)]);
     // Restart resumes fresh observation instead of billing or counting its gap.
     expect(scenario.delivered()).toBe(0);
-    expect(scenario.evidence().nonDelivery.kind).toBe('watching');
+    expect(scenario.evidence().nonDelivery.kind).toBe('rechecking');
     for (let atMs = restoredAt + 5 * MIN_MS; atMs < DEADLINE_MS; atMs += 5 * MIN_MS) {
       scenario.tick(atMs, [relay(HIGH_ID, 0, atMs), relay(LOW_ID, 0, atMs)]);
     }
