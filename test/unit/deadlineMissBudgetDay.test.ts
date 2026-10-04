@@ -1,4 +1,5 @@
 import type {
+  BudgetOnlyMissRecord,
   DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
@@ -15,255 +16,61 @@ const plan = (
   DeferredObjectivePlanHistoryRevisionSnapshot
 >({ energyNeededKWh: 4, ...partial });
 
+const BUDGET_ONLY_EXPLANATION: BudgetOnlyMissRecord['deliveryExplanation'] = {
+  kind: 'recorded',
+  primary: { kind: 'blocked', cause: 'budget_limited' },
+  contributors: [],
+  intervals: [],
+};
+
+/**
+ * A finalized miss the recorder has already classified as budget-only. The
+ * fields that seal `BudgetOnlyMissRecord` (`outcome`, `deliveryExplanation`)
+ * are written out and typechecked against it; only the rest come from the
+ * partial double.
+ */
 const missed = (
-  partial: Partial<DeferredObjectivePlanHistoryRecord> = {},
-): DeferredObjectivePlanHistoryRecord => partialDouble<DeferredObjectivePlanHistoryRecord>({
+  partial: Partial<BudgetOnlyMissRecord> = {},
+): BudgetOnlyMissRecord => ({
+  ...partialDouble<DeferredObjectivePlanHistoryRecord>({
+    deadlineAtMs: DEADLINE_MS,
+    finalPlan: plan({ dailyBudgetExhaustedBucketCount: 3 }),
+    originalPlan: null,
+    initialEnergyExpectedKWh: 10,
+    deliveredKWh: 8,
+  }),
   outcome: 'missed',
-  deliveryExplanation: {
-    kind: 'recorded',
-    primary: { kind: 'blocked', cause: 'budget_limited' },
-    contributors: [],
-    intervals: [],
-  },
-  deadlineAtMs: DEADLINE_MS,
-  finalPlan: plan({ dailyBudgetExhaustedBucketCount: 3 }),
-  originalPlan: null,
-  initialEnergyExpectedKWh: 10,
-  deliveredKWh: 8,
+  deliveryExplanation: BUDGET_ONLY_EXPLANATION,
   ...partial,
 });
 
 const resolve = (
-  entries: DeferredObjectivePlanHistoryRecord[],
+  entries: BudgetOnlyMissRecord[],
   dateKey = DAY,
 ): ReturnType<typeof resolveDeadlineMissSuppression> => (
   resolveDeadlineMissSuppression(entries, dateKey, 'UTC')
 );
 
-const MINUTE_MS = 60_000;
-/** A `control_pending` interval of `minutes` ending `endsBeforeDeadlineMin` before the deadline. */
-const settle = (minutes: number, endsBeforeDeadlineMin: number) => ({
-  fromMs: DEADLINE_MS - (endsBeforeDeadlineMin + minutes) * MINUTE_MS,
-  toMs: DEADLINE_MS - endsBeforeDeadlineMin * MINUTE_MS,
-  cause: 'control_pending' as const,
-});
-
-describe('resolveDeadlineMissSuppression — which misses count', () => {
-  it('counts recorded budget-only delivery blockers without any plan snapshot', () => {
-    expect(resolve([missed({ finalPlan: null, originalPlan: null })]))
-      .toEqual({ deadlineMissedToBudget: true, deadlineMissDeniedKwh: 2 });
+// Which misses count as budget-only is the smart-task owner's answer
+// (`isBudgetOnlyMiss`, test/unit/budgetOnlyMiss.test.ts); every entry handed in
+// here is already one. These cases cover how the weather day dates and sizes them.
+describe('resolveDeadlineMissSuppression — which days carry a miss', () => {
+  it('stamps the day a budget-only miss fell on', () => {
+    expect(resolve([missed()])).toEqual({ deadlineMissedToBudget: true, deadlineMissDeniedKwh: 2 });
   });
 
-  it('uses recorded budget evidence even when the final plan projected no budget shortfall', () => {
-    expect(resolve([missed({
-      finalPlan: plan({ floorShortfallCause: 'time_capacity' }),
-      originalPlan: plan({ dailyBudgetExhaustedBucketCount: 5 }),
-    })]).deadlineMissedToBudget).toBe(true);
-  });
-
-  it('does not turn legacy budget-shaped snapshots into proved damage', () => {
-    for (const finalPlan of [
-      plan({ dailyBudgetExhaustedBucketCount: 3 }),
-      plan({ floorShortfallCause: 'budget' }),
-      null,
-    ]) {
-      expect(resolve([missed({
-        deliveryExplanation: { kind: 'legacy_unrecorded' },
-        finalPlan,
-        originalPlan: plan({ floorShortfallCause: 'budget' }),
-      })])).toEqual({});
-    }
-  });
-
-  it('ignores a permitted delivery miss despite budget-shaped snapshots', () => {
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded', primary: { kind: 'clear' }, contributors: [], intervals: [],
-      },
-      finalPlan: plan({ floorShortfallCause: 'budget' }),
-    })])).toEqual({});
-  });
-
-  it('excludes a device cutoff even when budget was an earlier contributor', () => {
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'device_not_accepting' },
-        contributors: ['budget_limited'],
-        intervals: [],
-      },
-    })])).toEqual({});
-  });
-
-  it('excludes primary budget control when any other delivery blocker contributed', () => {
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['capacity_limited'],
-        intervals: [],
-      },
-    })])).toEqual({});
-  });
-
-  it('accepts repeated budget contributors as budget-only evidence', () => {
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['budget_limited'],
-        intervals: [],
-      },
-    })]).deadlineMissDeniedKwh).toBe(2);
-  });
-
-  it('counts a budget-held run that passed through control settling ticks', () => {
-    // The realistic shape: a run held by the budget also crosses restore
-    // cooldowns, meter settling and throttled restores, each of which records
-    // `control_pending` for a tick. Those are PELS settling its own decision,
-    // not a competing cause, so they must not hide the budget miss.
-    for (const contributors of [
-      ['control_pending'],
-      ['control_pending', 'budget_limited'],
-      ['budget_limited', 'control_pending'],
-    ] as const) {
-      expect(resolve([missed({
-        deliveryExplanation: {
-          kind: 'recorded',
-          primary: { kind: 'blocked', cause: 'budget_limited' },
-          contributors: [...contributors],
-          intervals: [
-            { fromMs: DEADLINE_MS - 7_200_000, toMs: DEADLINE_MS - 7_170_000, cause: 'control_pending' },
-            { fromMs: DEADLINE_MS - 7_170_000, toMs: DEADLINE_MS, cause: 'budget_limited' },
-          ],
-        },
-      })])).toEqual({ deadlineMissedToBudget: true, deadlineMissDeniedKwh: 2 });
-    }
-  });
-
-  it('still counts a run with several short settles inside the total bound', () => {
-    // Three restore-cooldown-sized settles (5 + 4 + 5 = 14 min) across the run.
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['control_pending', 'budget_limited'],
-        intervals: [settle(5, 300), settle(4, 200), settle(5, 100)],
-      },
-    })])).toEqual({ deadlineMissedToBudget: true, deadlineMissDeniedKwh: 2 });
-  });
-
-  it('excludes a run held by a long-lived control_pending, such as a stuck command', () => {
-    // A command that never converged for 3 h is a competing cause, not a settle.
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['control_pending', 'budget_limited'],
-        intervals: [settle(180, 30)],
-      },
-    })])).toEqual({});
-    // One interval just past the settle bound is enough, even beside short ones.
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['control_pending', 'budget_limited'],
-        intervals: [settle(1, 300), settle(6, 100)],
-      },
-    })])).toEqual({});
-  });
-
-  it('excludes a run whose short settles add up to more than the total bound', () => {
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['control_pending', 'budget_limited'],
-        intervals: [settle(5, 400), settle(5, 300), settle(5, 200), settle(1, 100)],
-      },
-    })])).toEqual({});
-  });
-
-  it('excludes a control_pending contributor with no recorded interval: it cannot be shown short', () => {
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['control_pending', 'budget_limited'],
-        intervals: [{ fromMs: DEADLINE_MS - 3_600_000, toMs: DEADLINE_MS, cause: 'budget_limited' }],
-      },
-    })])).toEqual({});
-  });
-
-  it('excludes a run whose interval list is full: an evicted stretch could have been long', () => {
-    // The recorder keeps the newest 120 intervals; a full window cannot prove every settle was short.
-    const intervals = Array.from({ length: 120 }, (_, index) => (index % 2 === 0
-      ? { fromMs: DEADLINE_MS - (120 - index) * 60_000, toMs: DEADLINE_MS - (119 - index) * 60_000, cause: 'budget_limited' as const }
-      : { fromMs: DEADLINE_MS - (120 - index) * 60_000, toMs: DEADLINE_MS - (120 - index) * 60_000 + 1_000, cause: 'control_pending' as const }));
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['control_pending', 'budget_limited'],
-        intervals,
-      },
-    })])).toEqual({});
-  });
-
-  it('excludes a run whose intervals record a competing cause its contributor list lacks', () => {
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['budget_limited'],
-        intervals: [{ fromMs: DEADLINE_MS - 3_600_000, toMs: DEADLINE_MS - 600_000, cause: 'capacity_limited' }],
-      },
-    })])).toEqual({});
-  });
-
-  it('still excludes a run whose settling ticks sit beside a real competing cause', () => {
-    const others = ['capacity_limited', 'priority_limited', 'control_failed', 'observation_unavailable'] as const;
-    for (const other of others) {
-      expect(resolve([missed({
-        deliveryExplanation: {
-          kind: 'recorded',
-          primary: { kind: 'blocked', cause: 'budget_limited' },
-          contributors: ['control_pending', 'budget_limited', other],
-          intervals: [settle(1, 60)],
-        },
-      })])).toEqual({});
-    }
-  });
-
-  it('keeps a run that crossed the upgrade out, even when its recorded tail is budget-only', () => {
-    // `legacy_unrecorded` marks an unrecorded stretch whose cause is unknown;
-    // no recorded cause cannot establish budget alone.
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'budget_limited' },
-        contributors: ['legacy_unrecorded', 'control_pending', 'budget_limited'],
-        intervals: [settle(1, 60)],
-      },
-    })])).toEqual({});
-  });
-
-  it('does not let settling ticks stand in for a budget primary', () => {
-    expect(resolve([missed({
-      deliveryExplanation: {
-        kind: 'recorded',
-        primary: { kind: 'blocked', cause: 'control_pending' },
-        contributors: ['budget_limited'],
-        intervals: [],
-      },
-    })])).toEqual({});
-  });
-
-  it('ignores non-missed outcomes, other days, and an empty history', () => {
-    expect(resolve([missed({ outcome: 'met' })])).toEqual({});
+  it('ignores other days and an empty history', () => {
     expect(resolve([missed()], '2026-02-11')).toEqual({});
     expect(resolve([])).toEqual({});
+  });
+
+  it('refuses unclassified history at compile time', () => {
+    // The recorder's whole history is not budget damage: handing it in would
+    // count every run, met ones included. Only `isBudgetOnlyMiss` produces the
+    // sealed type this takes.
+    const history: DeferredObjectivePlanHistoryRecord[] = [];
+    // @ts-expect-error an unclassified history record is not a budget-only miss
+    expect(resolveDeadlineMissSuppression(history, DAY, 'UTC')).toEqual({});
   });
 });
 

@@ -131,9 +131,16 @@ export const WEATHER_REASON_DRIFT_WIDER = 'Recent days ran higher than usual, so
 // a different span in mind.
 export const WEATHER_REASON_BUDGET_LIMITING = 'Your budget has recently been limiting your devices, '
   + 'so the suggestion is raised to match.';
-/** Measured overshoot alone: usage went over the budget, but no device was proven held back. */
-export const WEATHER_REASON_BUDGET_OVERSHOOT = 'Recent usage went over your budget, '
-  + 'so the suggestion includes extra room.';
+/**
+ * A raised suggestion with no device recently proven held back. The correction
+ * behind it grows from usage that went over the budget, heater demand the
+ * budget held back, and smart tasks the budget made miss their deadline, and it
+ * fades over more days than the recent-limiting check looks back. A smart task
+ * the budget made miss raises it even on a day that ended under the budget. So
+ * the sentence names what all three share, recent demand, and claims neither an
+ * overshoot nor a budget that was too small.
+ */
+export const WEATHER_REASON_RECENT_DEMAND = 'The suggestion includes extra room based on recent demand.';
 
 /**
  * The reason line under a raised suggestion. Names the part of the raise that
@@ -150,12 +157,10 @@ export const WEATHER_REASON_BUDGET_OVERSHOOT = 'Recent usage went over your budg
 export const composeBudgetLimitingReason = (budgetPressureKwh: number, budgetMayBeLimiting = true): string => {
   const sized = Number.isFinite(budgetPressureKwh) && budgetPressureKwh >= 1;
   if (!budgetMayBeLimiting) {
-    // One sentence: the overshoot already says usage went over the budget, so
-    // the number names the extra room instead of restating "beyond your budget".
+    // One sentence, the same source-neutral claim, with the size of the room.
     return sized
-      ? `Recent usage went over your budget, so the suggestion includes ${formatDailyKwh(budgetPressureKwh)} `
-        + 'of extra room.'
-      : WEATHER_REASON_BUDGET_OVERSHOOT;
+      ? `The suggestion includes ${formatDailyKwh(budgetPressureKwh)} of extra room based on recent demand.`
+      : WEATHER_REASON_RECENT_DEMAND;
   }
   if (!sized) return WEATHER_REASON_BUDGET_LIMITING;
   return `${WEATHER_REASON_BUDGET_LIMITING} ${formatDailyKwh(budgetPressureKwh)} of the suggestion `

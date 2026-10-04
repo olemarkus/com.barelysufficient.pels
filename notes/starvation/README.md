@@ -122,7 +122,10 @@ Unreliable/missing meter readings cannot prove spare allowance or heater shortfa
 and neither can a record without `kwhBudgetCounted` (rolled up before the field
 existed): absent is not zero, and the whole-home total does not stand in.
 A finalized, priced task miss remains independent evidence at its deadline
-when its recorded delivery blockers establish budget alone: `budget_limited`
+when its recorded delivery blockers establish budget alone. The smart-task
+history recorder answers that question (`getBudgetOnlyMisses`, rules in
+`lib/objectives/deferredObjectives/budgetOnlyMiss.ts`); the weather rollup only
+dates and sizes the misses it is handed. Budget alone means `budget_limited`
 is the primary cause and every contributor is either `budget_limited` or a
 provably short `control_pending`. `control_pending` covers PELS settling its own
 decision (restore or shed cooldown, meter settling, a throttled or queued

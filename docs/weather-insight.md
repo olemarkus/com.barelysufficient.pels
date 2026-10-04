@@ -60,11 +60,11 @@ A **Rough estimate** chip appears when tomorrow is colder than anything PELS has
 The suggestion follows the forecast, but it also learns from how recent days went against your budget. When recent days show your budget was set too low, PELS adds a correction on top of the forecast and says why in a line under the suggestion:
 
 - *"Your budget has recently been limiting your devices, so the suggestion is raised to match."* PELS held devices back for the budget and they did not catch up later the same day, or a smart task missed its deadline because the budget ran out.
-- *"Recent usage went over your budget, so the suggestion includes extra room."* Usage counted toward the budget ended a day above it, even though no device was proven held back.
+- *"The suggestion includes extra room based on recent demand."* The correction is still in place, but no device has recently been proven held back. It may come from usage counted toward the budget ending a day above it, from heater demand the budget held back earlier, or from a smart task that missed its deadline because of the budget, and it fades over several days after the last of them.
 
-When the correction is at least 1 kWh, the line names it: *"… 6.0 kWh of the suggestion covers recent demand beyond your budget."*, or for the second case *"Recent usage went over your budget, so the suggestion includes 6.0 kWh of extra room."* The number is the part of the suggestion the correction accounts for, not the whole difference from your current budget, since the suggestion also includes ordinary headroom.
+When the correction is at least 1 kWh, the line names it: *"… 6.0 kWh of the suggestion covers recent demand beyond your budget."*, or for the second case *"The suggestion includes 6.0 kWh of extra room based on recent demand."* The number is the part of the suggestion the correction accounts for, not the whole difference from your current budget, since the suggestion also includes ordinary headroom.
 
-For the second line, only usage counted toward your daily budget can count as going over it. Energy used by devices allowed beyond today's budget still shows in your real usage, but it never counts as going over the budget. The correction grows by at most 10 kWh per day and never goes past what your hard cap can deliver in a day. It fades on days that bring no new evidence, and fades faster when usage stays under the budget.
+Only usage counted toward your daily budget can count as going over it. Energy used by devices allowed beyond today's budget still shows in your real usage, but it never counts as going over the budget. The correction grows by at most 10 kWh per day and never goes past what your hard cap can deliver in a day. It fades on days that bring no new evidence, and fades faster when usage stays under the budget.
 
 ## What PELS learned about your home
 

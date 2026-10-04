@@ -415,6 +415,27 @@ export type DeferredObjectivePlanHistoryRecord = Omit<
   outcome: DeferredObjectivePlanTerminalOutcome;
 };
 
+/**
+ * A finalized run the smart-task owner classified as a deadline miss the daily
+ * budget alone caused (`isBudgetOnlyMiss` in
+ * `lib/objectives/deferredObjectives/budgetOnlyMiss.ts`). The daily-budget
+ * correction trusts every one of these as budget damage.
+ *
+ * Sealed structurally: a plain `DeferredObjectivePlanHistoryRecord` does not
+ * satisfy it (its outcome and delivery explanation are wider), so unclassified
+ * history cannot be handed to a consumer that would count every run as budget
+ * damage. The type states only the part of the classification a shape can
+ * carry, a missed run whose recorded primary blocker is budget; the rest (no
+ * competing contributor, settles provably short) is the guard's to establish,
+ * and the guard is the one producer.
+ */
+export type BudgetOnlyMissRecord = Omit<DeferredObjectivePlanHistoryRecord, 'outcome' | 'deliveryExplanation'> & {
+  outcome: 'missed';
+  deliveryExplanation: Extract<TaskDeliveryExplanation, { kind: 'recorded' }> & {
+    primary: { kind: 'blocked'; cause: 'budget_limited' };
+  };
+};
+
 // Consumer-facing view of a finalized plan-history entry. The raw kind-split
 // value columns (`targetTemperatureC`/`targetPercent`, `startProgress*`,
 // `finalProgress*`, and sample `valueC`/`valuePercent`) are RESOLVED to single

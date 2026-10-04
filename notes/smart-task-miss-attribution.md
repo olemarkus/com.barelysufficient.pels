@@ -90,7 +90,11 @@ coalesced time intervals. The interval list keeps the newest
 `MAX_DELIVERY_INTERVALS` (120): every flip between causes appends one, and the
 evidence is persisted every tick and copied into history. Contributors keep
 every cause ever seen, so the bound drops only old durations; older, longer
-persisted rows stay valid and are trimmed on their next append. The past-task
+persisted rows stay valid and are trimmed on their next append. The recorder
+also answers which finalized misses were caused by the daily budget alone
+(`budgetOnlyMiss.ts`), which reads that window and treats a full list as
+possibly truncated; the daily-budget correction consumes that answer
+(`notes/starvation/README.md`). The past-task
 sentence names the final blocker, then at most one earlier contributor, the one
 with the most blocked time within that window, never a momentary
 `control_pending` settle. A run the car held back (`device_limit`,
