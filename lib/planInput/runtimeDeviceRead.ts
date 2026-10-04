@@ -11,7 +11,6 @@ export type RuntimeDeviceRead = DeviceConfigurationRead & ProjectedObservedDevic
 /** What the device-control decorator (`deviceControlProjection.ts`) adds, and nothing else. */
 export type DeviceControlDecoration = SteppedLoadDecoration & {
   controlModel?: DeviceControlModel;
-  restorePreparedStepId?: string;
 };
 
 /**

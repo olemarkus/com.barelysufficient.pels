@@ -35,9 +35,8 @@
  * `no-device-to-peer-except-power` rule). Likewise the producer must not
  * depend on `lib/plan/**`, so the stepped-load logic is implemented here
  * using only the pure step-shape helpers in
- * `packages/shared-domain/src/deviceControlProfiles.ts`. Caller-side step-state pre-resolution
- * (e.g. `resolveKnownEffectiveStepId` in `lib/plan/planSteppedLoadState.ts`)
- * is funnelled in via `hasKnownEffectiveStep`. For restore, the observer-
+ * `packages/shared-domain/src/deviceControlProfiles.ts`. The caller funnels
+ * its producer-resolved step presence in via `hasKnownEffectiveStep`. For restore, the observer-
  * resolved `currentState !== 'off'` decision and the `getHighestKnownPowerKw`
  * fallback are likewise pre-resolved by the wiring layer.
  *
@@ -77,10 +76,7 @@ export type ResidualKwShedSteppedDevice = {
   profile: SteppedLoadProfile;
   selectedStepId?: string;
   /**
-   * True when the caller resolved a known effective step ID for this device
-   * via `resolveKnownEffectiveStepId` (any of reported / selected / actual /
-   * assumed; stamped input-side in `lib/planInput/residualKwForPlanDevice.ts` and
-   * output-side in `lib/plan/planRemainingSheddableLoad.ts`).
+   * Whether the producer supplied a selected step (reported or planning fallback).
    * The unknown-current-measured fallback below only fires when no step state is
    * known at all.
    */

@@ -9,10 +9,6 @@ import {
   resolveResidualKwShed,
   type ResidualKwShedBehavior,
 } from '../../lib/device/deviceResidualKw';
-import {
-  normalizeSteppedLoadStepStateFromLegacyFields,
-  resolveKnownEffectiveStepId,
-} from '../../lib/plan/planSteppedLoadState';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import {
   buildPlanDevice as baseBuildPlanDevice,
@@ -232,9 +228,6 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
       const shedBehavior: ResidualKwShedBehavior = device.id === temperatureNoopShed.id
         ? { action: 'set_temperature', temperature: 18 }
         : { action: 'turn_off' };
-      const stepState = device.controlModel === 'stepped_load' && steppedDevice.steppedLoadProfile
-        ? normalizeSteppedLoadStepStateFromLegacyFields({ fields: device })
-        : null;
       const target = getPrimaryTargetCapability(device.targets);
       const shed = resolveResidualKwShed({
         device: {
@@ -251,12 +244,12 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
               },
             }
             : {}),
-          ...(device.controlModel === 'stepped_load' && steppedDevice.steppedLoadProfile && stepState
+          ...(device.controlModel === 'stepped_load' && steppedDevice.steppedLoadProfile
             ? {
               steppedLoad: {
                 profile: steppedDevice.steppedLoadProfile,
                 ...(isSteppedLoadDevice(device) ? { selectedStepId: device.selectedStepId } : {}),
-                hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
+                hasKnownEffectiveStep: steppedDevice.selectedStepId !== undefined,
                 currentDrawKw: device.currentDrawKw,
                 hasBinaryControl: isBinaryPlanDevice(device),
               },

@@ -121,7 +121,7 @@ lib/executor/steppedLoadExecutor.ts 2
 lib/executor/steppedLoadExecutorCommand.ts 1
 lib/executor/steppedLoadExecutorContext.ts 2
 lib/executor/steppedLoadExecutorRestore.ts 4
-lib/executor/targetCommandRetry.ts 4
+lib/executor/targetCommandRetry.ts 1
 lib/executor/targetExecutor.ts 3
 lib/executor/targetPendingCommand.ts 1
 lib/executor/targetPowerReachability.ts 4

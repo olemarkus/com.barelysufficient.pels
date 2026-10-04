@@ -1,8 +1,7 @@
 import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
 import {
   getPendingTargetCommandDecision,
-  recordFailedPendingTargetCommandAttempt,
-  recordPendingTargetCommandAttempt,
+  recordTargetCommandAttempt,
 } from './targetCommandRetry';
 import type { PendingTargetCommandStatus } from '../plan/planTypes';
 import { getDebugEmitter, getLogger } from '../logging/logger';
@@ -349,14 +348,9 @@ const executeTargetCommandDispatch = async (
       return { applied: false, reason: 'skipped' };
     }
     const requestedValue = outcome.requestedTargetValue;
-    const pending = recordPendingTargetCommandAttempt({
-      state: ctx.state,
-      deviceId,
-      target,
-      desired: requestedValue,
-      nowMs,
-      observedValue: latestObservedValue ?? observedValue,
-    });
+    const pending = recordTargetCommandAttempt(
+      ctx.state, deviceId, requestedValue, nowMs, 'waiting_confirmation', latestObservedValue ?? observedValue,
+    );
     const {
       latestObservedValueAfterActuation,
       pendingStillExists,
@@ -382,14 +376,9 @@ const executeTargetCommandDispatch = async (
     }
     return { applied: true, attemptType: decisionType, requestedValue };
   } catch (error) {
-    const failedPending = recordFailedPendingTargetCommandAttempt({
-      state: ctx.state,
-      deviceId,
-      target,
-      desired,
-      nowMs,
-      observedValue: latestObservedValue ?? observedValue,
-    });
+    const failedPending = recordTargetCommandAttempt(
+      ctx.state, deviceId, desired, nowMs, 'temporary_unavailable', latestObservedValue ?? observedValue,
+    );
     const retryDelaySec = Math.max(1, Math.ceil((failedPending.nextRetryAtMs - nowMs) / 1000));
     logger.error({
       event: 'target_command_failed',

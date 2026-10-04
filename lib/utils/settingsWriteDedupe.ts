@@ -95,33 +95,21 @@ const DEDUPED_WRITE_KEYS = new Set<string>([
   ...DEDUPED_LOGGING_KEYS,
 ]);
 
-type NoopWriteSkipper = {
-  shouldSkipNoopWrite: (key: string) => boolean;
-  markProcessedWrite: (key: string) => void;
-};
-
-export const createNoopWriteSkipper = (
+export const createSettingsWriteDedupe = (
   readSetting: (key: string) => unknown,
-): NoopWriteSkipper => {
+) => {
   const lastProcessedFingerprints = new Map<string, string>();
 
-  const readFingerprint = (key: string): string | null => {
-    if (!DEDUPED_WRITE_KEYS.has(key)) return null;
-    return toStableFingerprint(readSetting(key));
-  };
-
-  const shouldSkipNoopWrite = (key: string): boolean => {
-    const fingerprint = readFingerprint(key);
-    if (fingerprint === null) return false;
-    return lastProcessedFingerprints.get(key) === fingerprint;
-  };
-
-  const markProcessedWrite = (key: string): void => {
-    const fingerprint = readFingerprint(key);
+  return async (key: string, handle: () => Promise<void>): Promise<void> => {
+    const fingerprint = DEDUPED_WRITE_KEYS.has(key)
+      ? toStableFingerprint(readSetting(key))
+      : null;
+    if (fingerprint !== null && lastProcessedFingerprints.get(key) === fingerprint) return;
+    await handle();
+    // A later write may have arrived while the handler awaited refresh/replan.
+    // Only acknowledge the value this operation started processing.
     if (fingerprint !== null) {
       lastProcessedFingerprints.set(key, fingerprint);
     }
   };
-
-  return { shouldSkipNoopWrite, markProcessedWrite };
 };

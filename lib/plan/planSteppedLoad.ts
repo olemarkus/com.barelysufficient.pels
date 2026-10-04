@@ -33,11 +33,6 @@ import type {
   SteppedPlanDevice,
   SteppedPlanInputDevice,
 } from './planTypes';
-import {
-  isReportedStep,
-  normalizeSteppedLoadStepStateFromLegacyFields,
-  resolveKnownEffectiveStepId,
-} from './planSteppedLoadState';
 
 // The stepped discriminant is the presence of a valid `steppedLoadProfile`
 // (`controlModel` is a producer-only setting on the snapshot, not a planner
@@ -188,7 +183,7 @@ export const resolveSteppedLoadInitialDesiredStepId = (
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return undefined;
-  return getSteppedLoadStep(profile, resolvePlannerEffectiveStepId(device))?.id ?? undefined;
+  return getSteppedLoadStep(profile, device.selectedStepId)?.id;
 };
 
 /* eslint-disable complexity, sonarjs/cognitive-complexity --
@@ -201,8 +196,7 @@ export const resolveSteppedLoadTransition = (
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
 
-  const stepState = normalizePlannerStepState(device);
-  const selectedStep = getSteppedLoadStep(profile, resolveKnownEffectiveStepId(stepState));
+  const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
   const desiredStep = getSteppedLoadStep(profile, plannedDesiredStepId);
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
   // The decided end state, not the policy: only a shed the planner decided
@@ -226,7 +220,7 @@ export const resolveSteppedLoadTransition = (
     const commandStepId = lowestActiveStep?.id ?? desiredStep?.id;
     const stepPrepared = commandStepId !== undefined
       && selectedStep?.id === commandStepId
-      && isReportedStep(stepState, commandStepId);
+      && device.reportedStepId === commandStepId;
     return {
       effectiveTransition: 'restore_from_off_at_low',
       stepPreparationPurpose: commandStepId ? 'prepare_for_on' : null,
@@ -317,7 +311,7 @@ export const resolveSteppedKeepDesiredStepIdFor = (
       return resolveHigherSteppedLoadStepId({
         profile,
         firstStepId: baseStepId,
-        secondStepId: resolvePlannerEffectiveStepId(device),
+        secondStepId: device.selectedStepId,
       }) ?? lowestActiveStepId;
     }
     return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited({
@@ -332,7 +326,7 @@ export const resolveSteppedKeepDesiredStepIdFor = (
     return clampToSurplusCeiling(profile, lowestActiveStepId, surplusCeilingStepId);
   }
 
-  const selectedStep = getSteppedLoadStep(profile, resolvePlannerEffectiveStepId(device));
+  const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
   if (!selectedStep || selectedStep.planningPowerW <= 0) {
     return clampToSurplusCeiling(profile, lowestActiveStepId, surplusCeilingStepId);
   }
@@ -460,7 +454,7 @@ export const getSteppedLoadNextRestoreStep = (
   }
 
   const highestStepId = getSteppedLoadHighestStep(profile)?.id;
-  return getSteppedLoadNextHigherStep(profile, resolvePlannerEffectiveStepId(device), highestStepId);
+  return getSteppedLoadNextHigherStep(profile, device.selectedStepId, highestStepId);
 };
 
 export const getSteppedLoadShedTargetStep = (params: {
@@ -476,7 +470,7 @@ export const getSteppedLoadShedTargetStep = (params: {
   } = params;
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
-  const currentStep = getSteppedLoadStep(profile, currentDesiredStepId ?? resolvePlannerEffectiveStepId(device));
+  const currentStep = getSteppedLoadStep(profile, currentDesiredStepId ?? device.selectedStepId);
   if (!currentStep) return null;
 
   const targetStep = shedAction === 'set_step'
@@ -509,7 +503,7 @@ export const resolveSteppedLoadSheddingTarget = (params: {
   const { device, targetStep } = params;
   const steppedProfile = getSteppedLoadProfileForDevice(device);
   if (!steppedProfile) return null;
-  const selectedStep = getSteppedLoadStep(steppedProfile, resolvePlannerEffectiveStepId(device));
+  const selectedStep = getSteppedLoadStep(steppedProfile, device.selectedStepId);
   if (!selectedStep) return null;
   const desiredStep = resolveUnconfirmedLowerDesiredStep({ device, steppedProfile, selectedStep });
   const staleLowerDesiredStep = hasStaleLowerDesiredStep({ device, steppedProfile, selectedStep });
@@ -608,7 +602,7 @@ export function resolveStepChangeKw(
   toStepId: string | undefined,
 ): StepChange {
   if (!isSteppedLoadDevice(device)) return NO_STEP_CHANGE;
-  const effectiveFromStepId = fromStepId ?? resolvePlannerEffectiveStepId(device);
+  const effectiveFromStepId = fromStepId ?? device.selectedStepId;
   // A device the producer resolved as off is AT zero, whatever step it still
   // reports — both for where the change starts and for what is flowing. Reading
   // the reported step as the from-position would make a restore look like a
@@ -719,12 +713,4 @@ function clampSteppedShedTarget(
   if (!targetStep) return null;
   if (!desiredStep) return targetStep;
   return desiredStep.planningPowerW <= targetStep.planningPowerW ? desiredStep : targetStep;
-}
-
-function normalizePlannerStepState(device: StepIdentityFields) {
-  return normalizeSteppedLoadStepStateFromLegacyFields({ fields: device });
-}
-
-function resolvePlannerEffectiveStepId(device: Parameters<typeof normalizePlannerStepState>[0]): string | undefined {
-  return resolveKnownEffectiveStepId(normalizePlannerStepState(device));
 }

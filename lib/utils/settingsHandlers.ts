@@ -56,7 +56,7 @@ import {
   createDebouncedSyncScheduler,
   type DebouncedSyncScheduler,
 } from './settingsHandlerDebounce';
-import { createNoopWriteSkipper } from './settingsWriteDedupe';
+import { createSettingsWriteDedupe } from './settingsWriteDedupe';
 import { handleSettingsUiLog } from './settingsUiLogIngest';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 
@@ -241,7 +241,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     () => dailyBudgetSettingsSyncScheduler.schedule(),
   );
 
-  const { shouldSkipNoopWrite, markProcessedWrite } = createNoopWriteSkipper(
+  const runIfChanged = createSettingsWriteDedupe(
     (key) => deps.homey.settings.get(key),
   );
 
@@ -284,11 +284,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     // main-home dispatch below stays exact-key and byte-identical to before.
     const keyHandler = handlers[key];
     if (!keyHandler) return;
-    queue = queue.then(async () => {
-      if (shouldSkipNoopWrite(key)) return;
-      await keyHandler();
-      markProcessedWrite(key);
-    }).catch((error) => {
+    queue = queue.then(() => runIfChanged(key, keyHandler)).catch((error) => {
       settingsLogger.error({
         event: 'settings_handler_failed',
         settingKey: key,

@@ -7,7 +7,7 @@ import {
 } from '../../lib/executor/lifecycleFallbackDispatcher';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { prunePendingTargetCommandsForPlan } from '../../lib/plan/planTargetControl';
-import { recordPendingTargetCommandAttempt } from '../../lib/executor/targetCommandRetry';
+import { recordTargetCommandAttempt } from '../../lib/executor/targetCommandRetry';
 import {
   applyDeferredBinaryCommand,
   type PlanExecutorBinaryContext,
@@ -1288,22 +1288,8 @@ describe('LifecycleFallbackDispatcher', () => {
   it('claims the updated ordinary retry when the ordinary lane runs first at the due time', async () => {
     vi.useFakeTimers();
     const planState = createPlanEngineState();
-    recordPendingTargetCommandAttempt({
-      state: planState,
-      deviceId: 'heater-1',
-      target: 'temperature',
-      desired: 5,
-      nowMs: 1_000_000,
-      observedValue: 21,
-    });
-    recordPendingTargetCommandAttempt({
-      state: planState,
-      deviceId: 'heater-1',
-      target: 'temperature',
-      desired: 5,
-      nowMs: 1_030_001,
-      observedValue: 21,
-    });
+    recordTargetCommandAttempt(planState, 'heater-1', 5, 1_000_000, 'waiting_confirmation', 21);
+    recordTargetCommandAttempt(planState, 'heater-1', 5, 1_030_001, 'waiting_confirmation', 21);
     const dueAtMs = planState.pendingTargetCommands['heater-1']?.nextRetryAtMs ?? 0;
     vi.setSystemTime(dueAtMs);
     const actuator = createTestActuator();
@@ -1369,22 +1355,8 @@ describe('LifecycleFallbackDispatcher', () => {
   it('blocks the ordinary lane when lifecycle claims the due retry first', async () => {
     vi.useFakeTimers();
     const planState = createPlanEngineState();
-    recordPendingTargetCommandAttempt({
-      state: planState,
-      deviceId: 'heater-1',
-      target: 'temperature',
-      desired: 5,
-      nowMs: 1_000_000,
-      observedValue: 21,
-    });
-    recordPendingTargetCommandAttempt({
-      state: planState,
-      deviceId: 'heater-1',
-      target: 'temperature',
-      desired: 5,
-      nowMs: 1_030_001,
-      observedValue: 21,
-    });
+    recordTargetCommandAttempt(planState, 'heater-1', 5, 1_000_000, 'waiting_confirmation', 21);
+    recordTargetCommandAttempt(planState, 'heater-1', 5, 1_030_001, 'waiting_confirmation', 21);
     const dueAtMs = planState.pendingTargetCommands['heater-1']?.nextRetryAtMs ?? 0;
     vi.setSystemTime(dueAtMs);
     const actuator = createTestActuator();
@@ -1450,23 +1422,9 @@ describe('LifecycleFallbackDispatcher', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
     const planState = createPlanEngineState();
-    recordPendingTargetCommandAttempt({
-      state: planState,
-      deviceId: 'heater-1',
-      target: 'temperature',
-      desired: 5,
-      nowMs: 1_000_000,
-      observedValue: 21,
-    });
+    recordTargetCommandAttempt(planState, 'heater-1', 5, 1_000_000, 'waiting_confirmation', 21);
     vi.setSystemTime(1_030_001);
-    recordPendingTargetCommandAttempt({
-      state: planState,
-      deviceId: 'heater-1',
-      target: 'temperature',
-      desired: 5,
-      nowMs: 1_030_001,
-      observedValue: 21,
-    });
+    recordTargetCommandAttempt(planState, 'heater-1', 5, 1_030_001, 'waiting_confirmation', 21);
     expect(planState.pendingTargetCommands['heater-1']?.retryCount).toBe(1);
     let observedValue = 21;
     const actuator = createTestActuator();
@@ -1680,14 +1638,7 @@ describe('LifecycleFallbackDispatcher', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
     const planState = createPlanEngineState();
-    recordPendingTargetCommandAttempt({
-      state: planState,
-      deviceId: 'heater-1',
-      target: 'temperature',
-      desired: 20,
-      nowMs: Date.now(),
-      observedValue: 5,
-    });
+    recordTargetCommandAttempt(planState, 'heater-1', 20, Date.now(), 'waiting_confirmation', 5);
     let observedValue = 20;
     const actuator = createTestActuator();
     const targetCommandClaim = createTargetCommandClaim();

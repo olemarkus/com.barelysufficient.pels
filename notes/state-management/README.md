@@ -57,13 +57,11 @@ Internally, stepped-load feedback and intent use synthetic PELS capability IDs:
 These IDs are internal capability-shaped contracts. They are not Homey-declared device
 capabilities unless a future change intentionally exposes them.
 
-The planner-private stepped state model is intentionally narrower than the public snapshot shape.
-It has no optional step-state fields:
-
-- observation is either `reported` or `unknown`
-- intent is either `target` or `none`
-- planning assumption is either `fallback` or `none`
-- restore preparation is either `prepared` or `not_prepared`
+The planner consumes the producer-resolved `selectedStepId` directly. The producer
+chooses the admitted `reportedStepId` or the ladder's lowest active planning fallback.
+The planner does not reconstruct observation, intent, or restore-preparation state.
+For restore preparation it compares the admitted `reportedStepId` with the requested
+pre-restore rung; a planning fallback is never confirmation.
 
 What was removed (2026-09-03) and must not come back: a second restore-preparation source
 (`suppressed_flow`) admitted only when its observation was younger than a `maxAgeMs` policy. That
@@ -71,11 +69,6 @@ age test was the one real freshness call inside `lib/plan`, and it was unreachab
 caller ever passed the policy, so only unit tests constructed it. A reported step prepares restore
 however long ago it arrived; the planner has no clock to weigh an observation by, and a Homey
 driver only republishes on CHANGE, so an old stamp means "unchanged", not "unknown".
-
-Unknown is represented explicitly. A missing field is only allowed at raw Homey, flow, persisted,
-API, or settings-UI boundaries before those inputs are normalized. The normalized state does not
-store an "effective step"; planner code must resolve that through a helper so the derived value
-does not become another source of truth.
 
 Layer ownership:
 
@@ -87,7 +80,7 @@ Layer ownership:
   state into planner input. Its `decorateSnapshotWithDeviceControl` reads command stores; it does
   not confirm commands, expire latches, or prune sessions.
 - `lib/plan` decides desired state and consumes the producer-resolved planning step. Its private
-  `planSteppedLoadState.ts` helpers do not own device admission or configuration resolution.
+  helpers do not own device admission or configuration resolution.
 - `lib/executor` owns requested-step execution, pending/retry state, and explicit command
   settlement. Materialization comes from admitted reported evidence, never a planning fallback.
 - `PlanExecutor.getDeviceExecutionStates(plan)` is a read-only comparison of executable intent,

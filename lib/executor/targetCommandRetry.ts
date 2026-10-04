@@ -26,12 +26,6 @@
  * something this split introduced — but before the split it was one file's
  * problem, and no test pins it. Whoever moves the storage owns reconciling it;
  * do not discover it by breaking it.
- *
- * The two `record*Attempt` functions are ~35 lines of near-duplicate, differing
- * only in `nextRetryAtMs`, `status`, and `lastWaitingLogAtMs`. They are carried
- * over verbatim on purpose: this was a pure move, and collapsing them into one
- * `status`-parameterized builder in the same change would have hidden a
- * behaviour question inside a relocation. Collapse them in a follow-up.
  */
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import type { PendingTargetCommandState, PlanEngineState } from '../plan/planState';
@@ -65,87 +59,38 @@ export function getPendingTargetCommandDecision(params: {
   };
 }
 
-export function recordPendingTargetCommandAttempt(params: {
-  state: PendingTargetStore;
-  deviceId: string;
-  target: 'temperature';
-  desired: number;
-  nowMs: number;
-  observedValue?: unknown;
-}): PendingTargetCommandState {
-  const {
-    state,
-    deviceId,
-    target,
-    desired,
-    nowMs,
-    observedValue,
-  } = params;
-  const previous = state.pendingTargetCommands[deviceId];
+/** Record the transport outcome of one temperature-target dispatch. */
+export function recordTargetCommandAttempt(
+  state: PendingTargetStore,
+  deviceId: string,
+  desired: number,
+  nowMs: number,
+  status: PendingTargetCommandState['status'],
+  observedValue: unknown,
+): PendingTargetCommandState {
+  const { pendingTargetCommands } = state;
+  const previous = pendingTargetCommands[deviceId];
   const isRetry = previous?.target === 'temperature' && previous.desired === desired;
   const retryCount = isRetry ? previous.retryCount + 1 : 0;
+  const waitingConfirmation = status === 'waiting_confirmation';
+  const retainedObservedValue = isRetry ? previous.lastObservedValue : undefined;
   const entry: PendingTargetCommandState = {
-    target,
+    target: 'temperature',
     desired,
     startedMs: isRetry ? previous.startedMs : nowMs,
     lastAttemptMs: nowMs,
     retryCount,
-    nextRetryAtMs: nowMs + (isRetry
-      ? getTargetCommandRetryDelayMs(retryCount)
-      : CONTROL_COMMAND_CONFIRMATION_MS),
-    status: 'waiting_confirmation',
-    lastObservedValue: resolvePendingTargetObservedValue({
-      isRetry,
-      observedValue,
-      previous,
-    }),
-    lastObservedSource: isRetry ? previous?.lastObservedSource : undefined,
-    lastObservedAtMs: isRetry ? previous?.lastObservedAtMs : undefined,
-    lastWaitingLogAtMs: isRetry ? previous?.lastWaitingLogAtMs : undefined,
+    nextRetryAtMs: nowMs + (waitingConfirmation && !isRetry
+      ? CONTROL_COMMAND_CONFIRMATION_MS
+      : getTargetCommandRetryDelayMs(retryCount)),
+    status,
+    lastObservedValue: observedValue !== undefined ? observedValue : retainedObservedValue,
+    lastObservedSource: isRetry ? previous.lastObservedSource : undefined,
+    lastObservedAtMs: isRetry ? previous.lastObservedAtMs : undefined,
+    lastWaitingLogAtMs: waitingConfirmation && isRetry ? previous.lastWaitingLogAtMs : undefined,
   };
   // eslint-disable-next-line functional/immutable-data -- Executor-owned pending-command store owns this entry.
-  state.pendingTargetCommands[deviceId] = entry;
-  return entry;
-}
-
-export function recordFailedPendingTargetCommandAttempt(params: {
-  state: PendingTargetStore;
-  deviceId: string;
-  target: 'temperature';
-  desired: number;
-  nowMs: number;
-  observedValue?: unknown;
-}): PendingTargetCommandState {
-  const {
-    state,
-    deviceId,
-    target,
-    desired,
-    nowMs,
-    observedValue,
-  } = params;
-  const previous = state.pendingTargetCommands[deviceId];
-  const isRetry = previous?.target === 'temperature' && previous.desired === desired;
-  const retryCount = isRetry ? previous.retryCount + 1 : 0;
-  const entry: PendingTargetCommandState = {
-    target,
-    desired,
-    startedMs: isRetry ? previous.startedMs : nowMs,
-    lastAttemptMs: nowMs,
-    retryCount,
-    nextRetryAtMs: nowMs + getTargetCommandRetryDelayMs(retryCount),
-    status: 'temporary_unavailable',
-    lastObservedValue: resolvePendingTargetObservedValue({
-      isRetry,
-      observedValue,
-      previous,
-    }),
-    lastObservedSource: isRetry ? previous?.lastObservedSource : undefined,
-    lastObservedAtMs: isRetry ? previous?.lastObservedAtMs : undefined,
-    lastWaitingLogAtMs: undefined,
-  };
-  // eslint-disable-next-line functional/immutable-data -- Executor-owned pending-command store owns this entry.
-  state.pendingTargetCommands[deviceId] = entry;
+  pendingTargetCommands[deviceId] = entry;
   return entry;
 }
 
@@ -155,14 +100,4 @@ function getTargetCommandRetryDelayMs(retryCount: number): number {
   // lookup can only miss for a negative retry count — which reads as "no retry yet", the
   // first rung.
   return TARGET_COMMAND_RETRY_DELAYS_MS[index] ?? TARGET_COMMAND_RETRY_DELAYS_MS[0];
-}
-
-function resolvePendingTargetObservedValue(params: {
-  isRetry: boolean;
-  observedValue: unknown;
-  previous?: PendingTargetCommandState;
-}): unknown {
-  const { isRetry, observedValue, previous } = params;
-  if (observedValue !== undefined) return observedValue;
-  return isRetry ? previous?.lastObservedValue : undefined;
 }

@@ -36,6 +36,7 @@ import {
   DEVICE_START_POLICIES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_DRIVER_OVERRIDES,
+  DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_TARGET_POWER_REACHABILITY,
   EV_BOOST_SETTINGS,
@@ -416,7 +417,7 @@ export function initSettingsHandlerForApp(
   });
   const onSettingsSet = async (key: string) => {
     if (options.consumeObservedModeTargetChange?.(key)) return;
-    await settingsHandler?.(key);
+    await settingsHandler(key);
     if (key === OPERATING_MODE_SETTING) {
       ctx.notifyOperatingModeChanged(getHomeOperatingMode());
     }
@@ -430,10 +431,14 @@ export function initSettingsHandlerForApp(
     MODE_CATALOG_INITIALIZED,
   ]);
   const onSettingsUnset = async (key: string) => {
+    if (key === DEVICE_EXPECTED_POWER_OVERRIDES) {
+      await settingsHandler(key);
+      return;
+    }
     const scoped = parseHomeScopedSettingsKey(key);
     const modeCatalogKey = modeCatalogKeys.has(scoped.baseKey);
     if (scoped.homeId === MAIN_HOME_ID || !modeCatalogKey) return;
-    await settingsHandler?.(key);
+    await settingsHandler(key);
   };
   ctx.homey.settings.on('unset', onSettingsUnset);
   return {

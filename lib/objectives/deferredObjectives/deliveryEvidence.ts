@@ -151,8 +151,6 @@ export const observeTaskDelivery = (
   return { explanation: { kind: 'recorded', primary, contributors, intervals }, nonDelivery };
 };
 
-export const suppressTaskDeliveryReservation = (evidence: TaskDeliveryEvidence): boolean =>
-  evidence.nonDelivery.kind === 'confirmed';
 export const activeDeliveryCause = (evidence: TaskDeliveryEvidence): TaskDeliveryCause | 'clear' => (
   evidence.explanation.kind === 'recorded' && evidence.explanation.primary.kind === 'blocked'
     ? evidence.explanation.primary.cause : 'clear'

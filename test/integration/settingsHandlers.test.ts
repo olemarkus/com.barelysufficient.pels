@@ -479,16 +479,64 @@ describe('createSettingsHandler', () => {
 
   it('processes deduped settings keys again when value changes', async () => {
     const deps = buildDeps();
-    const values = [25, 30];
-    deps.homey.settings.get = vi.fn(() => values.shift());
+    let value = 25;
+    deps.homey.settings.get = vi.fn(() => value);
     const handler = createSettingsHandler(deps);
 
     await handler('price_threshold_percent');
+    value = 30;
     await handler('price_threshold_percent');
 
     expect(deps.priceService.updateCombinedPrices).toHaveBeenCalledTimes(2);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+  });
+
+  it('processes an unset arriving while the previous override refresh awaits', async () => {
+    let releaseRefresh!: () => void;
+    const parkedRefresh = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    const manual = { 'dev-1': { kw: 1.337, ts: 12345 } };
+    let stored: unknown = manual;
+    const acceptedReads: unknown[] = [];
+    const deps = buildDeps({
+      reloadExpectedPowerOverrides: vi.fn(() => { acceptedReads.push(stored); }),
+      refreshTargetDevicesSnapshot: vi.fn()
+        .mockResolvedValue(undefined)
+        .mockImplementationOnce(() => parkedRefresh),
+    });
+    deps.homey.settings.get = vi.fn(() => stored);
+    const handler = createSettingsHandler(deps);
+
+    const firstWrite = handler(DEVICE_EXPECTED_POWER_OVERRIDES);
+    await flushMicrotasks();
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
+
+    stored = null;
+    const unset = handler(DEVICE_EXPECTED_POWER_OVERRIDES);
+    releaseRefresh();
+    await Promise.all([firstWrite, unset]);
+
+    expect(acceptedReads).toEqual([manual, null]);
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(2);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries an unchanged setting after its handler failed', async () => {
+    const deps = buildDeps({
+      reloadExpectedPowerOverrides: vi.fn().mockImplementationOnce(() => {
+        throw new Error('Override reload failed');
+      }),
+    });
+    deps.homey.settings.get = vi.fn().mockReturnValue({ 'dev-1': { kw: 1.337, ts: 12345 } });
+    const handler = createSettingsHandler(deps);
+
+    await handler(DEVICE_EXPECTED_POWER_OVERRIDES);
+    await handler(DEVICE_EXPECTED_POWER_OVERRIDES);
+
+    expect(deps.reloadExpectedPowerOverrides).toHaveBeenCalledTimes(2);
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(settingsLoggerError).toHaveBeenCalledTimes(1);
   });
 
   // The combined prices live in the price cache, and a change of price is not a

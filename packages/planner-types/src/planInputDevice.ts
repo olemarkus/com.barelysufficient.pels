@@ -44,7 +44,7 @@ type SteppedPlanInputKind = {
    * an absent value would be a producer bug — `resolveSteppedClusterFields`
    * refuses the whole cluster rather than emitting a stepped device without
    * its step. The retired raw-evidence trio (actualStepId / assumedStepId /
-   * actualStepSource) collapsed into this plus the typed stepped-state adapter.
+   * actualStepSource) collapsed into this producer-resolved field.
    */
   selectedStepId: string;
   /**
@@ -60,8 +60,7 @@ type SteppedPlanInputKind = {
    * `asSteppedLoadProfile` admits a profile only if it has a rung above zero
    * (`hasUsableSteppedLoadLadder`), so `getSteppedLoadLowestActiveStep` — the
    * first step with `planningPowerW > 0` — is non-null by construction, so the
-   * planning fallback always resolves, so `resolveEffectiveStepId` never
-   * answers `'unknown'`, so `selectedStepId` is always a step OF that profile.
+   * planning fallback always resolves, so `selectedStepId` always names a step.
    * `resolveSteppedLoadPlanningPowerKw` returns `undefined` only for a missing
    * step id or one absent from the profile, and neither survives that chain.
    *
@@ -721,7 +720,6 @@ export type PlanDeviceCarriedKey =
   | 'lastUpdated' | 'managed' | 'measuredPowerObservedAtMs' | 'name'
   | 'nextStepCommandRetryAtMs' | 'planningPowerKw' | 'powerCapable'
   | 'previousStepId' | 'priority' | 'reportedStepId' | 'reportedStepObservedAtMs'
-  | 'restorePreparedStepId'
   | 'reportedStepPowerW' | 'selectedStepId' | 'stateOfCharge' | 'stepCommandPending'
   | 'stepCommandRetryCount' | 'stepCommandStatus' | 'targetStepId'
   | 'targets';
