@@ -1,7 +1,7 @@
 import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { withDescriptorIdentities } from './helpers/deviceSnapshotFixture.ts';
 import { describe, expect, it } from 'vitest';
-import { testExports } from '../src/ui/deadlinePlan.ts';
+import { resolveRenderInput } from '../src/ui/deadlinePlan.ts';
 import { pendingChipTone } from '../src/ui/deadlinePlanPending.ts';
 import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../contracts/src/settingsUiApi.ts';
 import type { DecoratedDeviceSnapshot, ObservedStateOfChargeProbe, TemperatureObservedProbe } from '../../contracts/src/types.ts';
@@ -24,9 +24,9 @@ const atLocalHour = (base: Date, hourOffset: number): Date => {
   return date;
 };
 
-const expectOk = (result: ReturnType<typeof testExports.buildObjectivePayload>) => {
-  if (!result || result.kind !== 'ok') {
-    throw new Error(`expected buildObjectivePayload ok, got ${result ? result.kind : 'null'}`);
+const expectReady = (result: ReturnType<typeof resolveRenderInput>) => {
+  if (result.status !== 'ready') {
+    throw new Error(`expected ready smart-task plan, got ${result.status}`);
   }
   return result.payload;
 };
@@ -213,7 +213,7 @@ describe('deadline plan page payload', () => {
       powerhourSource: { kind: 'unknown' },
       priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -287,7 +287,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -368,7 +368,7 @@ describe('deadline plan page payload', () => {
     priceOptimizationSetup: { state: 'unavailable' },
     };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -433,7 +433,7 @@ describe('deadline plan page payload', () => {
       latest: null,
     };
 
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -494,7 +494,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -551,7 +551,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -647,7 +647,7 @@ describe('deadline plan page payload', () => {
       },
     };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -695,7 +695,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -765,7 +765,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -826,7 +826,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -888,7 +888,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -983,7 +983,7 @@ describe('deadline plan page payload', () => {
     // Strip the learned profile so the UI must lean on the allocation.
     bootstrap.power.tracker = { objectiveProfiles: {} };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -1058,7 +1058,7 @@ describe('deadline plan page payload', () => {
     if (!profile?.kwhPerUnit) throw new Error('expected heater profile');
     profile.kwhPerUnit.confidence = 'low';
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -1161,7 +1161,7 @@ describe('deadline plan page payload', () => {
       floorShortfallCause: 'time_capacity',
     }));
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -1248,7 +1248,7 @@ describe('deadline plan page payload', () => {
       floorShortfallCause: 'budget',
     }));
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -1333,7 +1333,7 @@ describe('deadline plan page payload', () => {
       floorShortfallCause: 'budget',
     }));
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -1410,7 +1410,7 @@ describe('deadline plan page payload', () => {
       floorShortfallCause: 'step_power',
     }));
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -1500,7 +1500,7 @@ describe('deadline plan page payload', () => {
       floorShortfallCause: 'budget',
     }));
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -1553,7 +1553,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -1650,15 +1650,15 @@ describe('deadline plan page payload', () => {
       },
     };
 
-    const result = testExports.buildObjectivePayload({
+    const result = resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
       prices,
       nowMs: now.getTime(),
     });
-    expect(result?.kind).toBe('unavailable');
-    if (result?.kind !== 'unavailable') return;
+    expect(result.status).toBe('unavailable');
+    if (result.status !== 'unavailable') return;
     expect(result.reason).toBe('no_current_reading');
   });
 
@@ -1737,15 +1737,15 @@ describe('deadline plan page payload', () => {
     // No learned EV profile, and none would be read: progress is the live reading alone.
     bootstrap.power.tracker = { objectiveProfiles: {} };
 
-    const result = testExports.buildObjectivePayload({
+    const result = resolveRenderInput({
       bootstrap,
       deviceId: 'ev',
       devices,
       prices,
       nowMs: now.getTime(),
     });
-    expect(result?.kind).toBe('unavailable');
-    if (result?.kind !== 'unavailable') return;
+    expect(result.status).toBe('unavailable');
+    if (result.status !== 'unavailable') return;
     expect(result.reason).toBe('no_current_reading');
   });
 
@@ -1804,7 +1804,7 @@ describe('deadline plan page payload', () => {
       plannedKWhPerHour: 2,
     }));
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -1862,7 +1862,7 @@ describe('deadline plan page payload', () => {
       plannedKWhPerHour: 2,
     }));
 
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -1908,7 +1908,7 @@ describe('deadline plan page payload', () => {
       original: null,
       latest: null,
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -1993,15 +1993,15 @@ describe('deadline plan page payload', () => {
     // already-satisfied state, not a missing kWh-per-unit estimate.
     bootstrap.power.tracker = { objectiveProfiles: {} };
 
-    const result = testExports.buildObjectivePayload({
+    const result = resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
       prices,
       nowMs: now.getTime(),
     });
-    expect(result?.kind).toBe('unavailable');
-    if (result?.kind !== 'unavailable') return;
+    expect(result.status).toBe('unavailable');
+    if (result.status !== 'unavailable') return;
     expect(result.reason).toBe('already_satisfied');
   });
 
@@ -2039,7 +2039,7 @@ describe('deadline plan page payload', () => {
       original: null,
       latest: null,
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -2105,7 +2105,7 @@ describe('deadline plan page payload', () => {
       original: null,
       latest: null,
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -2187,7 +2187,7 @@ describe('deadline plan page payload', () => {
         planStatus: 'on_track',
       },
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -2290,7 +2290,7 @@ describe('deadline plan page payload', () => {
     // No learned EV profile — only the heater placeholder.
     bootstrap.power.tracker = { objectiveProfiles: {} };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'ev',
       devices,
@@ -2391,7 +2391,7 @@ describe('deadline plan page payload', () => {
   };
 
   it('explains the car\'s own charge limit and counts progress to the requested target', () => {
-    const payload = expectOk(testExports.buildObjectivePayload(carCapPlanInput({ limitValue: 70, reached: false }, 40)));
+    const payload = expectReady(resolveRenderInput(carCapPlanInput({ limitValue: 70, reached: false }, 40)));
 
     expect(payload.hero.metaLine).toBe(
       "Your car stops at its own charge limit of 70%, below this smart task’s 80% target."
@@ -2408,7 +2408,7 @@ describe('deadline plan page payload', () => {
     const input = carCapPlanInput({ limitValue, reached: false }, null, {
       diagnosticReasonCode: 'objective_invalid_session',
     });
-    const renderInput = testExports.resolveRenderInput(input);
+    const renderInput = resolveRenderInput(input);
 
     expect(renderInput.status).toBe('pending');
     if (renderInput.status !== 'pending') throw new Error('Expected unplugged hero');
@@ -2427,7 +2427,7 @@ describe('deadline plan page payload', () => {
     const plans = input.bootstrap.deferredObjectiveActivePlans;
     if (plans === null) throw new Error('Expected committed plan');
     delete plans.plansByDeviceId.ev.carChargeLimit;
-    const renderInput = testExports.resolveRenderInput(input);
+    const renderInput = resolveRenderInput(input);
 
     expect(renderInput.status).toBe('pending');
     if (renderInput.status !== 'pending') throw new Error('Expected unplugged hero');
@@ -2437,7 +2437,7 @@ describe('deadline plan page payload', () => {
 
   it('keeps the requested target unmet when a stopped car has no reading', () => {
     // The charger ends the session at the limit and takes the car's level with it.
-    const renderInput = testExports.resolveRenderInput(carCapPlanInput({ limitValue: 70, reached: true }, null, {
+    const renderInput = resolveRenderInput(carCapPlanInput({ limitValue: 70, reached: true }, null, {
       diagnosticReasonCode: 'objective_invalid_session',
     }));
 
@@ -2456,7 +2456,7 @@ describe('deadline plan page payload', () => {
   });
 
   it('heads a no-reading card for a device left off with the cause, without repeating it below', () => {
-    const renderInput = testExports.resolveRenderInput(carCapPlanInput({ limitValue: 90, reached: false }, null, {
+    const renderInput = resolveRenderInput(carCapPlanInput({ limitValue: 90, reached: false }, null, {
       diagnosticReasonCode: 'objective_device_left_off',
     }));
     expect(renderInput).toMatchObject({
@@ -2473,7 +2473,7 @@ describe('deadline plan page payload', () => {
 
     // Raising the car's limit would not finish a task today's budget cannot
     // fund, so the budget sentence and its Open Budget button stay.
-    const payload = expectOk(testExports.buildObjectivePayload(input));
+    const payload = expectReady(resolveRenderInput(input));
     expect(payload.hero.metaLine).toMatch(/today's daily budget is fully booked/i);
     expect(payload.hero.recourse?.label).toBe('Open Budget');
   });
@@ -2484,14 +2484,14 @@ describe('deadline plan page payload', () => {
     if (!plan?.latest) throw new Error('Expected committed plan');
     plan.latest = { ...plan.latest, planStatus: 'cannot_meet', floorShortfallCause: 'budget' };
 
-    const payload = expectOk(testExports.buildObjectivePayload(input));
+    const payload = expectReady(resolveRenderInput(input));
     expect(payload.hero.metaLine).toContain('Your car stopped at its own charge limit of 70%');
     expect(payload.hero.recourse).toBeNull();
   });
 
   it('reports a confirmed stop as at risk with the device-side reason, matching the list and widget', () => {
     // The car's limit (90 %) is above the target, so only the device-side cause explains the risk.
-    const payload = expectOk(testExports.buildObjectivePayload(carCapPlanInput(
+    const payload = expectReady(resolveRenderInput(carCapPlanInput(
       { limitValue: 90, reached: false }, 60, { diagnosticReasonCode: 'objective_not_accepting_energy' },
     )));
     expect(payload.hero.chips).toContainEqual({ text: 'At risk', tone: 'warn' });
@@ -2502,7 +2502,7 @@ describe('deadline plan page payload', () => {
   });
 
   it('does not report completion at a lower car limit while the reading is available', () => {
-    const payload = expectOk(testExports.buildObjectivePayload(carCapPlanInput({ limitValue: 70, reached: true }, 70)));
+    const payload = expectReady(resolveRenderInput(carCapPlanInput({ limitValue: 70, reached: true }, 70)));
     expect(payload.hero.deliveredSoFarLine).toContain('now 70% of 80% target');
     expect(payload.hero.metaLine).toBe("Your car stopped at its own charge limit of 70%, below this smart task’s 80% target."
       + ' Raise the car’s charge limit to let it continue.');
@@ -2602,7 +2602,7 @@ describe('deadline plan page payload', () => {
       },
     };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'ev',
       devices,
@@ -2713,7 +2713,7 @@ describe('deadline plan page payload', () => {
       },
     };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'ev',
       devices,
@@ -2804,7 +2804,7 @@ describe('deadline plan page payload', () => {
     }, activePlan);
     bootstrap.power.tracker = { objectiveProfiles: {} };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'ev',
       devices,
@@ -2896,7 +2896,7 @@ describe('deadline plan page payload', () => {
     }, activePlan);
     bootstrap.power.tracker = { objectiveProfiles: {} };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'ev',
       devices,
@@ -2995,7 +2995,7 @@ describe('deadline plan page payload', () => {
     }, activePlan);
     bootstrap.power.tracker = { objectiveProfiles: {} };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'ev',
       devices,
@@ -3081,7 +3081,7 @@ describe('deadline plan page payload', () => {
     }, activePlan);
     bootstrap.power.tracker = { objectiveProfiles: {} };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap,
       deviceId: 'ev',
       devices,
@@ -3154,7 +3154,7 @@ describe('deadline plan page payload', () => {
       original: allocatedRevision,
       latest: allocatedRevision,
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -3227,7 +3227,7 @@ describe('deadline plan page payload', () => {
       plannedKWhPerHour: 2,
     }));
 
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -3289,7 +3289,7 @@ describe('deadline plan page payload', () => {
       plannedKWhPerHour: 2,
     }));
 
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -3351,7 +3351,7 @@ describe('deadline plan page payload', () => {
       plannedKWhPerHour: 2,
     }));
 
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
@@ -3401,7 +3401,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -3468,7 +3468,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -3539,7 +3539,7 @@ describe('deadline plan page payload', () => {
     priceOptimizationSetup: { state: 'unavailable' },
     };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -3635,7 +3635,7 @@ describe('deadline plan page payload', () => {
       latest: revision,
     };
 
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -3700,7 +3700,7 @@ describe('deadline plan page payload', () => {
       original: null,
       latest: null,
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -3763,7 +3763,7 @@ describe('deadline plan page payload', () => {
       latest: null,
     };
 
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -3824,7 +3824,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -3888,7 +3888,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -3958,7 +3958,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -4057,7 +4057,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -4137,7 +4137,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -4449,7 +4449,7 @@ describe('deadline plan page payload', () => {
 
   // Wiring check for the proration above: `coversFromMs` persisted on the
   // active plan's current-hour bucket must reach the trajectory staircase
-  // through `buildObjectivePayload` (via `buildCoverStartByStartMs`).
+  // through `resolveRenderInput` (via `buildCoverStartByStartMs`).
   it('threads coversFromMs from the active plan into the trajectory staircase', () => {
     const hourStart = new Date(2026, 0, 1, 13, 0, 0, 0);
     const now = new Date(2026, 0, 1, 13, 30, 0, 0);
@@ -4499,7 +4499,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -4577,7 +4577,7 @@ describe('deadline plan page payload', () => {
     });
     // Zero out the first allocated hour (offset 1); offset 2 keeps 2 kWh.
     plan.latest.hours[0] = { ...plan.latest.hours[0], plannedKWh: 0 };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -4646,7 +4646,7 @@ describe('deadline plan page payload', () => {
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
     };
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -4729,7 +4729,7 @@ describe('deadline plan page payload', () => {
         },
       },
     };
-    const buildPayload = (prices: SettingsUiPricesPayload) => expectOk(testExports.buildObjectivePayload({
+    const buildPayload = (prices: SettingsUiPricesPayload) => expectReady(resolveRenderInput({
       bootstrap: buildBootstrap(settings, buildHeaterActivePlan({
         now,
         deadline,
@@ -4889,7 +4889,7 @@ describe('resolveConfidenceChipText', () => {
   });
 });
 
-describe('energy estimate range (expected…planned, end-to-end through buildObjectivePayload)', () => {
+describe('energy estimate range (expected…planned, end-to-end through resolveRenderInput)', () => {
   const setup = (options: {
     energyExpectedKWh?: number;
     planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
@@ -4965,7 +4965,7 @@ describe('energy estimate range (expected…planned, end-to-end through buildObj
         },
       },
     }, activePlan);
-    return expectOk(testExports.buildObjectivePayload({
+    return expectReady(resolveRenderInput({
       bootstrap, deviceId: 'heater', devices, prices, nowMs: now.getTime(),
     }));
   };
@@ -5744,7 +5744,7 @@ describe('cost + delivered-so-far hero lines', () => {
       targetTemperatureC: 22,
       planStatus: 'on_track',
     });
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildStubBootstrap(now, deadline, plan, 22),
       deviceId: 'heater',
       devices: buildHeaterDevice(18),
@@ -5777,8 +5777,11 @@ describe('cost + delivered-so-far hero lines', () => {
     });
     // 1 kWh delivered an hour ago (the 12:00 bucket).
     const pastBucketKey = planAnchor.toISOString();
-    const payload = expectOk(testExports.buildObjectivePayload({
-      bootstrap: buildStubBootstrap(planAnchor, deadline, plan, 22, { [pastBucketKey]: 1 }),
+    const bootstrap = buildStubBootstrap(planAnchor, deadline, plan, 22, { [pastBucketKey]: 1 });
+    const activePlan = bootstrap.deferredObjectiveActivePlans!.plansByDeviceId.heater;
+    activePlan.startProgressValue = 17;
+    const payload = expectReady(resolveRenderInput({
+      bootstrap,
       deviceId: 'heater',
       devices: buildHeaterDevice(19),
       prices,
@@ -5788,8 +5791,28 @@ describe('cost + delivered-so-far hero lines', () => {
     // (The delivered-so-far cost split moved off the hero with the metadata
     // wall; the delivered-kWh line below still shows delivery progress.)
     expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 8.00 kr');
-    // start = 19 − 1 × (3/4) = 18.25; current = 19; target = 22.
-    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · 18.3 °C → 19.0 °C of 22.0 °C target');
+    // The observed run start wins over a learned-rate reconstruction (18.25 °C).
+    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · 17.0 °C → 19.0 °C of 22.0 °C target');
+    // Zero is also a real observed start, and must not be mistaken for absence.
+    activePlan.startProgressValue = 0;
+    const zeroStart = expectReady(resolveRenderInput({
+      bootstrap,
+      deviceId: 'heater',
+      devices: buildHeaterDevice(19),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(zeroStart.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · 0.0 °C → 19.0 °C of 22.0 °C target');
+    // No trajectory is a real degraded-boot state, not an invitation to estimate.
+    delete activePlan.startProgressValue;
+    const withoutTrajectory = expectReady(resolveRenderInput({
+      bootstrap,
+      deviceId: 'heater',
+      devices: buildHeaterDevice(19),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(withoutTrajectory.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · now 19.0 °C of 22.0 °C target');
   });
 
   it('prorates the plan-start hour bucket so pre-plan usage does not inflate delivered totals', () => {
@@ -5816,7 +5839,7 @@ describe('cost + delivered-so-far hero lines', () => {
     // 1.0 kWh recorded in the 12:00 bucket. Half occurred before plan start
     // at 12:30, so only 0.5 kWh should count as delivered.
     const bucketKey = hourBucket.toISOString();
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildStubBootstrap(planAnchor, deadline, plan, 22, { [bucketKey]: 1 }),
       deviceId: 'heater',
       devices: buildHeaterDevice(19),
@@ -5842,7 +5865,7 @@ describe('cost + delivered-so-far hero lines', () => {
       energyNeededKWh: 8,
       planStatus: 'at_risk',
     });
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildStubBootstrap(now, deadline, plan, 30),
       deviceId: 'heater',
       devices: buildHeaterDevice(18),
@@ -5880,7 +5903,7 @@ describe('cost + delivered-so-far hero lines', () => {
       energyNeededKWh: 4,
       planStatus: 'at_risk',
     });
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildStubBootstrap(now, deadline, plan, 30),
       deviceId: 'heater',
       devices: buildHeaterDevice(18),
@@ -5908,7 +5931,7 @@ describe('cost + delivered-so-far hero lines', () => {
       energyNeededKWh: 8,
       planStatus: 'at_risk',
     });
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildStubBootstrap(now, deadline, plan, 30),
       deviceId: 'heater',
       devices: buildHeaterDevice(18),
@@ -5939,7 +5962,7 @@ describe('cost + delivered-so-far hero lines', () => {
       energyNeededKWh: 16, // far more than 4 kWh allocated → won't reach
       planStatus: 'cannot_meet',
     });
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildStubBootstrap(now, deadline, plan, 65),
       deviceId: 'heater',
       devices: buildHeaterDevice(40),
@@ -5994,7 +6017,7 @@ describe('cost + delivered-so-far hero lines', () => {
       targetTemperatureC: 22,
       planStatus: 'on_track',
     });
-    const payload = expectOk(testExports.buildObjectivePayload({
+    const payload = expectReady(resolveRenderInput({
       bootstrap: buildStubBootstrap(now, deadline, plan, 22),
       deviceId: 'heater',
       devices: buildHeaterDevice(18),
@@ -6399,7 +6422,7 @@ describe('pending hero producer wiring', () => {
       }),
       diagnosticReasonCode: 'objective_device_in_sub_home',
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -6475,7 +6498,7 @@ describe('pending hero producer wiring', () => {
       }),
       diagnosticReasonCode: 'objective_device_unmanaged',
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -6540,7 +6563,7 @@ describe('pending hero producer wiring', () => {
       original: null,
       latest: null,
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {
@@ -6609,7 +6632,7 @@ describe('pending hero producer wiring', () => {
       original: null,
       latest: null,
     };
-    const renderInput = testExports.resolveRenderInput({
+    const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
         deferred_objectives: {

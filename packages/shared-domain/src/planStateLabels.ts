@@ -244,7 +244,3 @@ export const resolvePlanStateKind = (device: DeviceOverviewSnapshot): PlanStateK
   if (!normalize(device.currentState)) return 'unknown';
   return 'idle';
 };
-
-export const resolvePlanStateTone = (device: DeviceOverviewSnapshot): PlanStateTone => (
-  PLAN_STATE_TONE[resolvePlanStateKind(device)]
-);

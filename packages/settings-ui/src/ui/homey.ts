@@ -238,20 +238,6 @@ export const getHomeyTimezone = () => {
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const withTimeout = (promise: Promise<unknown>, ms: number, message: string) => Promise.race([
-  promise,
-  new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
-]);
-
-export const pollSetting = async (key: string, attempts = 10, delay = 300) => {
-  for (let i = 0; i < attempts; i += 1) {
-    const value = await getSetting(key);
-    if (value) return value;
-    await sleep(delay);
-  }
-  return null;
-};
-
 export const getSetting = (key: string): Promise<unknown> => {
   if (!homeyClient) return Promise.reject(new Error('Homey SDK not ready'));
   if (settingsCache.has(key)) {

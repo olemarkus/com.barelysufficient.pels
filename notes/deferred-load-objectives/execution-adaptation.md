@@ -70,8 +70,10 @@ override only** (see work item 2). Two distinct flap concerns, handled separatel
 
 **Scope: display-only, post-finalization history-detail chart.** The live active-plan chart
 (`packages/settings-ui/src/ui/deadlinePlan.ts`) is a *separate* builder and already
-measured-anchored — it back-calculates `startProgress` from `current − delivered × rate` and
-projects forward from there. The live control path is also measured-correct
+measured-anchored: its trajectory projects forward from the current observed progress,
+while the hero's start-to-current arrow uses the recorder's first trustworthy run reading
+(`activePlan.startProgressValue`). When no start reading exists, the hero shows current
+progress without estimating a start value. The live control path is also measured-correct
 (`resolveProfileEnergy` uses `remainingUnits = target − measured`). The "climbing from 20 °C"
 defect was only in the post-finalization **"Progress history"** chart
 (`packages/shared-domain/src/deferredPlanHistoryChartData.ts`).

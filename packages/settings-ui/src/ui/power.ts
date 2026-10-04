@@ -348,21 +348,9 @@ setActiveDailyBudgetChangeListener(() => {
   renderDailyHistory(latestPowerStats, latestPowerStatsTimeZone);
 });
 
-export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZone: string }> => {
-  const read = await readUsagePower();
-  // An unavailable scoped read has NO stats — the empty summary here is only
-  // a safe return shape for callers; `renderPowerStats` (the render owner)
-  // discriminates the same read itself and never paints these as figures.
-  return computePowerStats(read.state === 'served' ? read.payload.tracker : {});
-};
-
 const computePowerStats = (
-  tracker: PowerTrackerState | null,
+  tracker: PowerTrackerState,
 ): { stats: PowerStatsSummary; timeZone: string } => {
-  if (!tracker || typeof tracker !== 'object') {
-    return { stats: getEmptyPowerStats(), timeZone: getHomeyTimezone() };
-  }
-
   const now = new Date();
   const timeZone = getHomeyTimezone();
   const timeContext = getPowerTimeContext(now, timeZone);
