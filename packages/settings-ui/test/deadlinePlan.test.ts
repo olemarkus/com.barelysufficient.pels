@@ -2404,9 +2404,42 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.recourse).toBeNull();
   });
 
+  it.each([70, 90])('pauses a committed unplugged task before its car limit of %s is reached', (limitValue) => {
+    const input = carCapPlanInput({ limitValue, reached: false }, null, {
+      diagnosticReasonCode: 'objective_invalid_session',
+    });
+    const renderInput = testExports.resolveRenderInput(input);
+
+    expect(renderInput.status).toBe('pending');
+    if (renderInput.status !== 'pending') throw new Error('Expected unplugged hero');
+    expect(renderInput.pending.hero.headline).toBe('Charging paused — EV unplugged');
+    expect(renderInput.pending.hero.chips.map((chip) => chip.text)).toEqual(['EV', 'Paused — unplugged']);
+    expect(JSON.stringify(renderInput)).not.toContain('Raise the car');
+    const plans = input.bootstrap.deferredObjectiveActivePlans;
+    if (plans === null) throw new Error('Expected committed plan');
+    expect(plans.plansByDeviceId.ev.pending).toBe(false);
+  });
+
+  it('pauses a committed unplugged task without a retained car limit', () => {
+    const input = carCapPlanInput({ limitValue: 70, reached: false }, null, {
+      diagnosticReasonCode: 'objective_invalid_session',
+    });
+    const plans = input.bootstrap.deferredObjectiveActivePlans;
+    if (plans === null) throw new Error('Expected committed plan');
+    delete plans.plansByDeviceId.ev.carChargeLimit;
+    const renderInput = testExports.resolveRenderInput(input);
+
+    expect(renderInput.status).toBe('pending');
+    if (renderInput.status !== 'pending') throw new Error('Expected unplugged hero');
+    expect(renderInput.pending.hero.headline).toBe('Charging paused — EV unplugged');
+    expect(renderInput.pending.hero.chips.map((chip) => chip.text)).toEqual(['EV', 'Paused — unplugged']);
+  });
+
   it('keeps the requested target unmet when a stopped car has no reading', () => {
     // The charger ends the session at the limit and takes the car's level with it.
-    const renderInput = testExports.resolveRenderInput(carCapPlanInput({ limitValue: 70, reached: true }, null));
+    const renderInput = testExports.resolveRenderInput(carCapPlanInput({ limitValue: 70, reached: true }, null, {
+      diagnosticReasonCode: 'objective_invalid_session',
+    }));
 
     // The status does not depend on the reading: the card reports the same
     // At risk the list and the widget do, and leaves out only the progress.

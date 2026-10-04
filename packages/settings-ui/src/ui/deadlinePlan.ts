@@ -103,10 +103,8 @@ const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedContextRes
   return { kind: 'active', context: { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } };
 };
 
-// `reasonOverride` is for the one pending branch this page establishes itself:
-// a committed plan whose prices stop short of the deadline (`awaiting_prices`).
-// There the price gap is the page's own finding, not something the record
-// reports, so the record's reason must not speak for it.
+// `reasonOverride` names the page's current blocker when the committed record
+// retains an older reason: missing prices or a session that ended after planning.
 const buildPendingPayload = (
   ctx: ResolvedObjectiveContext,
   priceContext: Pick<DeadlinePendingContext, 'priceSource' | 'lastFetchedShort'>,
@@ -591,6 +589,13 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
       || isDeviceExclusionPaused(ctx.activePlan)
   ) {
     return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
+  }
+  // A committed schedule survives unplugging, but cannot describe what runs
+  // now. Match the list's pause, except when the car already reached its own
+  // lower limit: some chargers end that session with an unplugged reading.
+  if (ctx.activePlan.diagnosticReasonCode === 'objective_invalid_session'
+    && resolveSmartTaskCarChargeLimit(ctx.activePlan.carChargeLimit, ctx.activePlan.targetValue)?.reached !== true) {
+    return { status: 'pending', pending: buildPendingPayload(ctx, priceContext, 'invalid_session') };
   }
   const result = buildObjectivePayload(params);
   if (!result) return { status: 'absent' };
