@@ -27,11 +27,6 @@ function measuredBalanceKwh(record: WeatherDailyRecord): number | undefined {
   return counted - (record.appliedBudgetKwh as number);
 }
 
-export function measuredBudgetOvershootKwh(record: WeatherDailyRecord): number | undefined {
-  const balance = measuredBalanceKwh(record);
-  return balance === undefined ? undefined : Math.max(0, balance);
-}
-
 /**
  * Feedback prices unresolved, budget-attributed demand rather than all device
  * holds. Spare allowance absorbs heater denial: with enough total energy left,

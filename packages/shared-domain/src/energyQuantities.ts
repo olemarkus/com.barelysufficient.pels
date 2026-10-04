@@ -16,7 +16,7 @@
  * history is schema v4 and RELEASED — the persisted wire shape must not change
  * (`lib/objectives/deferredObjectives/planHistorySettings.ts`).
  *
- * This is a deliberately small, local idiom: it covers these three quantities
+ * This is a deliberately small, local idiom: it covers these two quantities
  * and does not introduce a general-purpose `Branded<T, K>` utility for the repo.
  *
  * Constructors return `| null` because they sit at the persisted-blob boundary,
@@ -41,12 +41,6 @@ type Branded<T, K extends string> = T & { readonly [energyBrand]: K };
  */
 export type RemainingEnergyKWh = Branded<number, 'RemainingEnergyKWh'>;
 
-/**
- * Sum of the per-hour `plannedKWh` a revision booked — the buffered
- * (`mean + k·SE`) allocation. A plan total, not a remainder.
- */
-export type PlannedFloorEnergyKWh = Branded<number, 'PlannedFloorEnergyKWh'>;
-
 /** Cumulative useful energy the executor delivered across a whole run. */
 export type DeliveredEnergyKWh = Branded<number, 'DeliveredEnergyKWh'>;
 
@@ -62,10 +56,6 @@ const asPositiveEnergy = (value: unknown): number | null => (
 
 export const asRemainingEnergyKWh = (value: unknown): RemainingEnergyKWh | null => (
   asPositiveEnergy(value) as RemainingEnergyKWh | null
-);
-
-export const asPlannedFloorEnergyKWh = (value: unknown): PlannedFloorEnergyKWh | null => (
-  asPositiveEnergy(value) as PlannedFloorEnergyKWh | null
 );
 
 /**
