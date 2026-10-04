@@ -73,6 +73,7 @@ export function createWeatherCollector(
   return new WeatherCollector({
     store: createWeatherHistoryStoreForApp(ctx),
     recordBudgetDecision: (decision) => adviceHistory.record(decision),
+    readBudgetDecisions: () => adviceHistory.read(),
     readDevice: (deviceId) => getRawDevice(deviceId),
     fetchInsights: (path) => getRawFromHomeyApi(path),
     getDailyKwh: (dateKey) => resolveDailyKwh({
@@ -106,6 +107,9 @@ export function createWeatherCollector(
     // day that just closed, so the value it reads still describes that day (the
     // midnight rollup runs before auto-apply writes the new one).
     getAppliedDailyBudgetKwh: () => ctx.dailyBudgetService?.getAppliedBudgetKwh(),
+    // The same day on the budget's own axis (metered less exempt), from the
+    // budget owner, so an exempt device's energy is not read as an overshoot.
+    getBudgetCountedKwh: (dateKey) => ctx.dailyBudgetService?.getBudgetCountedKwh(dateKey),
     getSustainableCapacityKw: () => resolveWeatherSustainableCapacityKw(ctx.capacitySettings),
     getSettings: () => buildWeatherAdvisorSettings({ settings: ctx.homey.settings }),
     // Meter-scope fingerprint for the start()-time invalidation reconcile —

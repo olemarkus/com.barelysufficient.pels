@@ -111,21 +111,38 @@ The revised `budgetUnservedKwh` is separate, persisted per device and local day:
 - A restart retains accrued evidence but does not price the unobserved gap.
   Old aggregates lack this field; their cumulative counters are not substituted.
 
-At rollup, heater shortfall is `max(0, actualKwh + budgetUnservedKwh - appliedBudgetKwh)`.
-Unused allowance therefore absorbs pending heater demand: a hold with sufficient
+At rollup, heater shortfall is `max(0, kwhBudgetCounted + budgetUnservedKwh - appliedBudgetKwh)`.
+`kwhBudgetCounted` is the day's usage on the budget's own pacing axis, metered
+less budget-exempt kWh hour by hour, read from the daily-budget owner
+(`resolveBudgetCountedDayKwh`) and stamped next to `appliedBudgetKwh`. Whole-home
+`kwhTotal` also counts exempt load the budget never paced, so it is not used for
+the balance. Unused allowance therefore absorbs pending heater demand: a hold with sufficient
 spare daily energy calls for pacing/scheduling, not a bigger energy allowance.
-Unreliable/missing meter readings cannot prove spare allowance or heater shortfall.
+Unreliable/missing meter readings cannot prove spare allowance or heater shortfall,
+and neither can a record without `kwhBudgetCounted` (rolled up before the field
+existed): absent is not zero, and the whole-home total does not stand in.
 A finalized, priced task miss remains independent evidence at its deadline
 when its recorded delivery blockers establish budget alone: `budget_limited`
-is the primary cause and no non-budget contributors are present. Legacy
-unrecorded history, device cutoffs, and mixed blockers do not qualify. Plan-time
+is the primary cause and every contributor is either `budget_limited` or a
+provably short `control_pending`. `control_pending` covers PELS settling its own
+decision (restore or shed cooldown, meter settling, a throttled or queued
+restore, startup stabilization) but also `no_decision`, unobserved actuator axes
+and convergence that never completes, so it is excused only on interval
+evidence: every recorded `control_pending` interval is at most 5 minutes (the
+planner's longest settle window, `RESTORE_COOLDOWN_MAX_MS`) and together they
+cover at most 15 minutes. A listed `control_pending` contributor with no
+recorded interval, or any longer stretch, disqualifies the miss. A
+`legacy_unrecorded` contributor (a run that crossed the upgrade) disqualifies
+it too: an unrecorded stretch cannot establish budget alone. Device cutoffs and any other contributor
+(capacity, priority, control failure, uncontrolled, observation or progress
+unavailable, rate or estimate) are mixed blockers and do not qualify. Plan-time
 budget exhaustion and floor snapshots do not establish this attribution. It uses `max(0, initialEnergyExpectedKWh - deliveredKWh)` from the
 anchored entry figures, never a remaining-energy revision. Missing figures do
 not become zero delivery. The larger of heater shortfall and terminal task
 shortfall avoids counting one heater task twice.
 
 The correction grows by at most 10 kWh per day from that shortfall or a reliable
-measured budget overshoot, whichever is greater. Measured overshoot alone
+measured budget overshoot (`kwhBudgetCounted - appliedBudgetKwh`), whichever is greater. Measured overshoot alone
 corrects the allowance without claiming device damage or enabling q90.
 Shortfalls below 0.25 kWh do not grow correction or select q90.
 On other days it decays by 0.75 and credits up to 10 kWh of reliably unused

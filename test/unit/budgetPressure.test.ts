@@ -6,7 +6,7 @@ import {
 
 const day = (over: Partial<WeatherDailyRecord> = {}): WeatherDailyRecord => ({
   dateKey: '2026-10-02', tempMeanC: 10, tempMinC: 8, tempMaxC: 12, tempSampleCount: 24,
-  kwhTotal: 50, appliedBudgetKwh: 60,
+  kwhTotal: 50, kwhBudgetCounted: 50, appliedBudgetKwh: 60,
   quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
   ...over,
 });
@@ -27,7 +27,9 @@ describe('budget demand feedback', () => {
     expect(foldBudgetPressureDay(undefined, day({ suppression: { budgetUnservedKwh: 13 } })).kwh).toBe(3);
   });
   it('recovered holds do not indicate damage, but actual overshoot corrects the allowance', () => {
-    const recovered = day({ kwhTotal: 65, suppression: { budgetDeniedKwh: 20, budgetUnservedKwh: 0 } });
+    const recovered = day({
+      kwhTotal: 65, kwhBudgetCounted: 65, suppression: { budgetDeniedKwh: 20, budgetUnservedKwh: 0 },
+    });
     expect(dayWasBudgetDamaged(recovered)).toBe(false);
     expect(foldBudgetPressureDay(carried, recovered).kwh).toBe(25);
   });
@@ -37,7 +39,7 @@ describe('budget demand feedback', () => {
     expect(foldBudgetPressureDay(undefined, missed).kwh).toBe(4);
   });
   it('does not double count heater and smart-task denial', () => {
-    expect(unresolvedBudgetShortfallKwh(day({ kwhTotal: 65,
+    expect(unresolvedBudgetShortfallKwh(day({ kwhTotal: 65, kwhBudgetCounted: 65,
       suppression: { budgetUnservedKwh: 3, deadlineMissDeniedKwh: 4 },
     }))).toBe(9);
   });
@@ -86,9 +88,34 @@ describe('budget demand feedback', () => {
     expect(foldBudgetPressureDay({ ...carried, kwh: 0.3 }, day({ appliedBudgetKwh: undefined })).kwh).toBe(0);
   });
   it('reports measured overshoot only when both values are reliable', () => {
-    expect(measuredBudgetOvershootKwh(day({ kwhTotal: 65 }))).toBe(5);
+    expect(measuredBudgetOvershootKwh(day({ kwhTotal: 65, kwhBudgetCounted: 65 }))).toBe(5);
     expect(measuredBudgetOvershootKwh(day())).toBe(0);
-    expect(measuredBudgetOvershootKwh(day({ kwhTotal: undefined }))).toBeUndefined();
+    expect(measuredBudgetOvershootKwh(day({ kwhBudgetCounted: undefined }))).toBeUndefined();
+  });
+  it('measures overshoot on the budget axis, not whole-home usage that includes exempt load', () => {
+    // 70 kWh metered, 15 of it from a budget-exempt device: the budget counted
+    // 55 against its 60, so the day ran 5 under, not 10 over.
+    const exemptDay = day({ kwhTotal: 70, kwhBudgetCounted: 55 });
+    expect(measuredBudgetOvershootKwh(exemptDay)).toBe(0);
+    expect(dayWasBudgetDamaged(exemptDay)).toBe(false);
+    // Quiet day: decays by 0.75 and credits the 5 kWh of real spare allowance.
+    expect(foldBudgetPressureDay(carried, exemptDay).kwh).toBe(10);
+  });
+  it('still grows on a real overshoot of budget-counted usage beside exempt load', () => {
+    const over = day({ kwhTotal: 80, kwhBudgetCounted: 64 });
+    expect(measuredBudgetOvershootKwh(over)).toBe(4);
+    expect(foldBudgetPressureDay(carried, over).kwh).toBe(24);
+  });
+  it('measures no balance on a record that predates budget-counted usage', () => {
+    // Absent is not zero, and whole-home kWh cannot stand in: no overshoot, no
+    // spare-allowance credit, and heater denial cannot be resolved into a shortfall.
+    const legacy = day({ kwhTotal: 75, kwhBudgetCounted: undefined, suppression: { budgetUnservedKwh: 8 } });
+    expect(measuredBudgetOvershootKwh(legacy)).toBeUndefined();
+    expect(unresolvedBudgetShortfallKwh(legacy)).toBe(0);
+    expect(foldBudgetPressureDay(carried, legacy).kwh).toBe(15);
+    // A priced task miss is independent evidence and still counts.
+    const legacyMiss = day({ kwhBudgetCounted: undefined, suppression: { deadlineMissDeniedKwh: 4 } });
+    expect(unresolvedBudgetShortfallKwh(legacyMiss)).toBe(4);
   });
   it('returns a finite positive pressure contribution', () => {
     expect(resolveBudgetPressureKwh({ state: carried })).toBe(20);

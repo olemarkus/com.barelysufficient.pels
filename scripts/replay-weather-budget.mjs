@@ -89,9 +89,17 @@ for (const record of records) {
       forecastSource: archived ? "archived_met" : "prior_week_fallback"
     });
   }
-  const observed = { ...record, appliedBudgetKwh: revisedBudget ?? record.appliedBudgetKwh };
+  // Exports from before budget-counted usage was recorded carry only the
+  // whole-home total; replay those as if no load was budget-exempt.
+  const counted = record.kwhBudgetCounted ?? record.kwhTotal;
+  const observed = {
+    ...record,
+    kwhBudgetCounted: counted,
+    appliedBudgetKwh: revisedBudget ?? record.appliedBudgetKwh
+  };
   const conservative = {
     ...record,
+    kwhBudgetCounted: counted,
     appliedBudgetKwh: conservativeBudget ?? record.appliedBudgetKwh,
     suppression: {
       ...record.suppression,
@@ -127,6 +135,7 @@ const report = {
     forecasts: "Earliest archived MET forecast during first 15 minutes of target day; other days use production prior-week fallback, reported separately.",
     missingEvidence: "Historical holds cannot prove recovery/cause. Conservative replay treats all cumulative holds as unresolved budget denial.",
     limitation: "Recorded usage and holds remain fixed; this does not simulate device delivery or prove tighter budgets serve demand.",
+    budgetCountedUsage: "Records without budget-counted usage are replayed on whole-home kWh, which overstates overshoot on homes with budget-exempt devices.",
     timeZone,
     capacityKw
   },

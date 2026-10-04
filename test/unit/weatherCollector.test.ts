@@ -44,6 +44,8 @@ const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness =>
     getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5 })),
     getDaySuppression: vi.fn(() => ({})),
     getAppliedDailyBudgetKwh: vi.fn(() => 50),
+    getBudgetCountedKwh: vi.fn((): number | undefined => 42.5),
+    readBudgetDecisions: vi.fn(() => []),
     getSustainableCapacityKw: vi.fn(() => 5),
     isManagedDevice: vi.fn(() => false),
     getUnreliablePeriods: vi.fn(() => []),
@@ -338,6 +340,50 @@ describe('WeatherCollector', () => {
     });
     // The 00:01:30 local sample opened the new day's accumulator.
     expect(written.accumulators?.['2026-01-11']?.count).toBe(1);
+  });
+
+  it('serves budget diagnostics through its own store instances, started or not', () => {
+    const decision = { targetDateKey: '2026-01-10' } as ReturnType<WeatherCollectorDeps['readBudgetDecisions']>[number];
+    const readBudgetDecisions = vi.fn(() => [decision]);
+    const { collector, store, persisted } = buildHarness({ readBudgetDecisions });
+    persisted.value = {
+      records: [{
+        dateKey: '2026-01-09', kwhTotal: 30, tempMeanC: 1, tempMinC: 0, tempMaxC: 2, tempSampleCount: 24,
+        quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
+      }],
+      meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
+    };
+    const query = { from: '2026-01-09', to: '2026-01-10' };
+    expect(collector.budgetHistory.readDays(query).records.map((record) => record.dateKey)).toEqual(['2026-01-09']);
+    expect(store.read).toHaveBeenCalledTimes(1);
+    expect(collector.budgetHistory.readDecisions(query).records).toEqual([decision]);
+    expect(readBudgetDecisions).toHaveBeenCalledTimes(1);
+  });
+
+  it('stamps the budget-counted usage next to the applied budget for the day that closed', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
+    const getBudgetCountedKwh = vi.fn((): number | undefined => 38);
+    const { collector, store } = buildHarness({ getBudgetCountedKwh });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(36 * 60 * 1000);
+    collector.stop();
+    expect(getBudgetCountedKwh).toHaveBeenCalledWith('2026-01-10');
+    expect(lastWritten(store).records[0]).toMatchObject({
+      kwhTotal: 42.5, appliedBudgetKwh: 50, kwhBudgetCounted: 38,
+    });
+  });
+
+  it('does not read budget-counted usage for a day with no measured total', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
+    const getBudgetCountedKwh = vi.fn((): number | undefined => 38);
+    const { collector, store } = buildHarness({ getBudgetCountedKwh, getDailyKwh: vi.fn(() => ({})) });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(36 * 60 * 1000);
+    collector.stop();
+    expect(getBudgetCountedKwh).not.toHaveBeenCalled();
+    expect(lastWritten(store).records[0].kwhBudgetCounted).toBeUndefined();
   });
 
   it('threads the uncontrolled split and the day suppression covariate into the record', async () => {

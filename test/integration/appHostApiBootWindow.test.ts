@@ -16,8 +16,15 @@ import Homey from 'homey';
 import { withAppHostApi } from '../../setup/appHostApi';
 import type { AppContext } from '../../lib/app/appContext';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { WeatherCollector } from '../../lib/weather/weatherCollector';
+import { createWeatherCollector } from '../../setup/appInit/createWeatherCollector';
+import { MockSettings } from '../mocks/homey';
 
-const createHostApi = (dailyBudgetService: AppContext['dailyBudgetService'], overrides: Partial<AppContext> = {}) => {
+const createHostApi = (
+  dailyBudgetService: AppContext['dailyBudgetService'],
+  overrides: Partial<AppContext> = {},
+  weatherCollector?: WeatherCollector,
+) => {
   const Base = withAppHostApi(Homey.App);
   class TestHostApi extends Base {
     protected readonly context = partialDouble<AppContext>({ dailyBudgetService, ...overrides });
@@ -31,7 +38,7 @@ const createHostApi = (dailyBudgetService: AppContext['dailyBudgetService'], ove
 
     protected readonly smartTaskPayloads = {} as never;
 
-    protected weatherCollector = undefined;
+    protected weatherCollector = weatherCollector;
 
     public getCombinedPricesForUi = (): unknown => null;
 
@@ -73,10 +80,14 @@ describe('budget history app API wiring', () => {
         tempMeanC: 16, tempMinC: 12, tempMaxC: 18, tempSampleCount: 24,
         quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
       }] });
-      const host = createHostApi(undefined, {
+      const context = partialDouble<AppContext>({
+        homey: { settings: new MockSettings() } as unknown as AppContext['homey'],
         getUserdataDatabase: () => db, getNow: () => new Date('2026-10-03T06:00:00Z'),
         getTimeZone: () => 'Europe/Oslo',
       });
+      // The production wiring, constructed but never started: the diagnostics
+      // read goes through the collector's own store instances.
+      const host = createHostApi(undefined, context, createWeatherCollector(context));
       const homey = partialDouble<Homey.App['homey']>({ app: host });
       const query = { from: '2026-10-01', to: '2026-10-02' };
       const days = await api.diagnostics_budget_days({ homey, query });
@@ -86,5 +97,13 @@ describe('budget history app API wiring', () => {
       expect(decisions.records).toEqual([]);
       expect(decisions.meta.missingDates).toEqual(['2026-10-01', '2026-10-02']);
     } finally { db.close(); }
+  });
+
+  it('reports the startup window instead of building a second store', () => {
+    const host = createHostApi(undefined);
+    expect(() => host.getBudgetDailyHistory({ from: '2026-10-01', to: '2026-10-02' }))
+      .toThrow('Budget history is unavailable during startup');
+    expect(() => host.getBudgetDecisionHistory({ from: '2026-10-01', to: '2026-10-02' }))
+      .toThrow('Budget history is unavailable during startup');
   });
 });

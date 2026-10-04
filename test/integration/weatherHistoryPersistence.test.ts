@@ -34,6 +34,8 @@ const buildCollector = (
   getUnreliablePeriods: () => [],
   getDaySuppression: () => ({}),
   getAppliedDailyBudgetKwh: () => 50,
+  getBudgetCountedKwh: () => 18,
+  readBudgetDecisions: () => [],
   getSustainableCapacityKw: () => 5,
   getSettings: () => buildWeatherAdvisorSettings({ settings: homey.settings }),
   readMeterScopeSignature: () => meterScopeSignature,
@@ -194,6 +196,7 @@ describe('weather history persistence through the userdata store', () => {
           partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false,
         },
         appliedBudgetKwh: 44,
+        kwhBudgetCounted: 47,
         suppression: { blockedByHeadroomMs: 6 * 60 * 60 * 1000 },
       }],
       budgetPressure: { algorithmVersion: 2, kwh: 13.9, throughDateKey: '2026-07-31' },
@@ -203,6 +206,7 @@ describe('weather history persistence through the userdata store', () => {
     const normalized = normalizeWeatherHistoryState(store.read());
     expect(normalized?.budgetPressure).toEqual({ algorithmVersion: 2, kwh: 13.9, throughDateKey: '2026-07-31' });
     expect(normalized?.records[0].appliedBudgetKwh).toBe(44);
+    expect(normalized?.records[0].kwhBudgetCounted).toBe(47);
     expect(normalized?.records[0].suppression?.blockedByHeadroomMs).toBe(6 * 60 * 60 * 1000);
   });
 

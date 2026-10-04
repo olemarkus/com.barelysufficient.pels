@@ -1,10 +1,10 @@
 import type {
-  BudgetDailyHistory, BudgetDecisionHistory, BudgetHistoryMetadata, BudgetHistoryRange,
+  BudgetAdviceDecision, BudgetDailyHistory, BudgetDecisionHistory, BudgetHistoryMetadata, BudgetHistoryRange,
 } from '../../packages/contracts/src/budgetDiagnostics';
+import type { WeatherCollectorDeps } from './weatherCollectorDeps';
 import { isUnknownRecord } from '../utils/types';
 import { normalizeWeatherHistoryState } from './weatherHistory';
 import type { WeatherHistoryStore } from './weatherHistoryStore';
-import type { BudgetAdviceHistoryStore } from './budgetAdviceHistoryStore';
 
 const DAY_MS = 86400000;
 
@@ -74,12 +74,31 @@ export function readBudgetDailyHistory(
 }
 
 export function readBudgetDecisionHistory(
-  store: BudgetAdviceHistoryStore, query: unknown, nowMs: number, timeZone: string,
+  records: readonly BudgetAdviceDecision[], query: unknown, nowMs: number, timeZone: string,
 ): BudgetDecisionHistory {
   const range = readBudgetHistoryRange(query);
-  const records = store.read();
   return {
     meta: buildMetadata(range, records.map((record) => record.targetDateKey), undefined, nowMs, timeZone),
     records: records.filter((record) => record.targetDateKey >= range.from && record.targetDateKey <= range.to),
   };
 }
+
+/** The two budget-diagnostics reads the app API serves. */
+export type BudgetHistoryReader = {
+  readDays(query: unknown): BudgetDailyHistory;
+  readDecisions(query: unknown): BudgetDecisionHistory;
+};
+
+/**
+ * The diagnostics reads over the weather collector's OWN store instances
+ * (`WeatherCollector.budgetHistory`), so the collector stays the stores' only
+ * holder: no second store is built per request, and the one-shot legacy import
+ * the app's store ran at construction is the history these reads see. Reads
+ * the persisted rows, so it answers while the collector is stopped or disabled.
+ */
+export const createBudgetHistoryReader = (deps: WeatherCollectorDeps): BudgetHistoryReader => ({
+  readDays: (query) => readBudgetDailyHistory(deps.store, query, deps.getNowMs(), deps.getTimeZone()),
+  readDecisions: (query) => readBudgetDecisionHistory(
+    deps.readBudgetDecisions(), query, deps.getNowMs(), deps.getTimeZone(),
+  ),
+});

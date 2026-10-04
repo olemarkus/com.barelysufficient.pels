@@ -110,7 +110,10 @@ const resolveBlocker = (facts: TaskDeliveryFacts, confirmed: boolean): TaskDeliv
  * a longer list stay valid and are trimmed on their next append.
  *
  * The window is sized so an ordinary run never fills it. A reader that needs
- * every interval of a run must treat a full list as possibly truncated.
+ * every interval of a run must treat a full list as possibly truncated: the
+ * daily-budget miss attribution (`lib/weather/deadlineMissBudgetDay.ts`) does,
+ * and mirrors this value as `DELIVERY_INTERVAL_WINDOW` because `lib/weather`
+ * may not import `lib/objectives`. Keep both in sync.
  */
 export const MAX_DELIVERY_INTERVALS = 120;
 const appendInterval = (
