@@ -17,6 +17,7 @@ import type {
   DeviceOverviewStrings,
 } from '../../shared-domain/src/deviceOverview.js';
 import type { DeviceStatus } from './deviceStatus.js';
+import type { EvCarChargerMatchHistory } from './evCarLink.js';
 
 export type { DeviceStartPolicy };
 
@@ -57,6 +58,7 @@ export type SettingsUiHubMarketRead =
 export type SettingsUiRecommendationCar = {
   id: string;
   name: string;
+  matchHistory: EvCarChargerMatchHistory;
 };
 
 export type SettingsUiRecommendationCarsRead =

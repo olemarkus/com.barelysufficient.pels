@@ -19,6 +19,7 @@ vi.mock('../src/ui/homey.ts', () => ({
   sleep: (...args: unknown[]) => sleep(...args),
   setSetting: (...args: unknown[]) => setSetting(...args),
   invalidateApiCache: vi.fn(),
+  getHomeyTimezone: () => 'Europe/Oslo',
 }));
 vi.mock('../src/ui/toast.ts', () => ({ showToast: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn().mockResolvedValue(undefined) }));
@@ -46,8 +47,16 @@ const charger = (overrides: Partial<SettingsUiDeviceDetailItem> = {}): SettingsU
 } as SettingsUiDeviceDetailItem);
 
 const CARS = [
-  { id: 'car-1', name: 'Polestar 3' },
+  { id: 'car-1', name: 'Polestar 3', matchHistory: { state: 'resolved', chargerMatches: [] } },
 ];
+
+// 2026-10-03 18:20 UTC: still 3 Oct in Oslo.
+const MATCHED_AT_MS = Date.UTC(2026, 9, 3, 18, 20);
+
+const matchedTo = (chargerId: string) => ({
+  state: 'resolved' as const,
+  chargerMatches: [{ chargerId, lastMatchedAtMs: MATCHED_AT_MS }],
+});
 
 const rows = () => [...document.querySelectorAll<HTMLInputElement>('#device-detail-car-list input')];
 const status = () => document.querySelector('#device-detail-car-status')?.textContent ?? '';
@@ -78,11 +87,11 @@ describe('charger car picker', () => {
   it('offers and saves eligible Kia and Hyundai vehicles', async () => {
     callApi.mockResolvedValue({
       state: 'resolved',
-      // The resolved endpoint returns only id/name, including for `vehicle`
-      // devices. Requiring class or capability metadata here drops these cars.
+      // The resolved endpoint returns only id/name and match history, including
+      // for `vehicle` devices. Requiring class or capability metadata here drops these cars.
       cars: [
-        { id: 'hyundai-vehicle', name: 'Hyundai Ioniq 5' },
-        { id: 'kia-vehicle', name: 'Kia EV6' },
+        { id: 'hyundai-vehicle', name: 'Hyundai Ioniq 5', matchHistory: { state: 'resolved', chargerMatches: [] } },
+        { id: 'kia-vehicle', name: 'Kia EV6', matchHistory: { state: 'resolved', chargerMatches: [] } },
       ],
     });
     const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
@@ -350,7 +359,7 @@ describe('charger car picker', () => {
     renderCarAssociation(charger());
     await flush();
 
-    // A match takes a minute or two after plug-in, so the wording says what PELS
+    // A match takes 20 to 40 minutes after plug-in, so the wording says what PELS
     // knows now rather than asserting the car is absent.
     expect(status()).toBe('Waiting to match a car');
   });
@@ -370,7 +379,7 @@ describe('charger car picker', () => {
     expect(flowNote().textContent).toContain('no battery level');
     // Both suppressed sources are named: an owner whose charger reports its own
     // level must not read a Flow-card-only warning and conclude it is free.
-    expect(flowNote().textContent).toContain("charger's own reading");
+    expect(flowNote().textContent).toContain('a Flow card or the charger itself');
     expect(flowNote().classList.contains('field__hint--alert')).toBe(true);
   });
 
@@ -411,5 +420,152 @@ describe('charger car picker', () => {
     expect(flowNote().textContent).toContain('has not reported a battery level');
     expect(flowNote().textContent).toContain('Charge boost and Smart tasks cannot use it yet');
     expect(flowNote().classList.contains('field__hint--alert')).toBe(true);
+  });
+
+  it('shows under each car whether PELS has matched it to this charger', async () => {
+    callApi.mockResolvedValue({
+      state: 'resolved',
+      cars: [
+        { id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') },
+        { id: 'car-2', name: 'Kia EV6', matchHistory: matchedTo('charger-2') },
+      ],
+    });
+    const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    renderCarAssociation(charger());
+    await flush();
+
+    const hints = [...document.querySelectorAll('#device-detail-car-list .field__hint')]
+      .map((element) => element.textContent);
+    // A match to another charger says nothing about this one, and no "yet":
+    // a car that charges elsewhere is not about to match here.
+    expect(hints).toEqual([
+      'Last matched to this charger on 3 Oct',
+      'Not matched to this charger',
+    ]);
+  });
+
+  it('re-reads the match history each time a charger page opens', async () => {
+    const { renderCarAssociation, invalidateCarOptions } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    renderCarAssociation(charger());
+    await flush();
+    renderCarAssociation(charger());
+    await flush();
+    expect(callApi).toHaveBeenCalledTimes(1);
+
+    callApi.mockResolvedValue({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') }],
+    });
+    invalidateCarOptions();
+    renderCarAssociation(charger());
+    await flush();
+
+    expect(callApi).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('#device-detail-car-list')?.textContent)
+      .toContain('Last matched to this charger on 3 Oct');
+  });
+
+  it('hides the previous match history while a re-read is pending', async () => {
+    callApi.mockResolvedValue({ state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') }] });
+    const { renderCarAssociation, invalidateCarOptions } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    renderCarAssociation(charger());
+    await flush();
+    expect(document.querySelectorAll('#device-detail-car-list .field__hint')).toHaveLength(1);
+
+    callApi.mockReturnValue(new Promise(() => {}));
+    invalidateCarOptions();
+    renderCarAssociation(charger());
+
+    expect(rows().map((input) => input.dataset.carId)).toEqual(['car-1']);
+    expect(document.querySelectorAll('#device-detail-car-list .field__hint')).toHaveLength(0);
+  });
+
+  it('keeps the rows on screen when a re-read fails', async () => {
+    const { renderCarAssociation, invalidateCarOptions } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    renderCarAssociation(charger());
+    await flush();
+
+    callApi.mockRejectedValue(new Error('offline'));
+    invalidateCarOptions();
+    renderCarAssociation(charger());
+    await flush();
+
+    expect(rows().map((input) => input.dataset.carId)).toEqual(['car-1']);
+    // The old history can no longer vouch for "not matched".
+    expect(document.querySelectorAll('#device-detail-car-list .field__hint')).toHaveLength(0);
+  });
+
+  it('gives a page opened during an in-flight read its own fresh read', async () => {
+    let resolveFirst!: (value: unknown) => void;
+    callApi.mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }));
+    const { renderCarAssociation, invalidateCarOptions } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    renderCarAssociation(charger());
+
+    callApi.mockResolvedValue({ state: 'resolved', cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') }] });
+    invalidateCarOptions();
+    renderCarAssociation(charger());
+    resolveFirst({ state: 'resolved', cars: CARS });
+    await flush();
+    await flush();
+
+    expect(callApi).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('#device-detail-car-list')?.textContent)
+      .toContain('Last matched to this charger on 3 Oct');
+  });
+
+  it('tells the owner to clear a selected car that has never matched this charger', async () => {
+    const { renderCarAssociation, loadEvCarAssociations } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger());
+    await flush();
+
+    expect(flowNote().textContent)
+      .toContain('This charger has no battery level until PELS matches a selected car');
+    expect(flowNote().textContent).toContain('clear the selection to keep using it');
+  });
+
+  it('keeps the waiting note for a selected car that has matched this charger before', async () => {
+    callApi.mockResolvedValue({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: matchedTo('charger-1') }],
+    });
+    const { renderCarAssociation, loadEvCarAssociations } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger());
+    await flush();
+
+    expect(flowNote().textContent).toContain('Until a car is matched, this charger has no battery level');
+    expect(flowNote().textContent).not.toContain('clear the selection');
+  });
+
+  it('shows no match hint and no clearing advice while the match history is unreadable', async () => {
+    callApi.mockResolvedValue({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Polestar 3', matchHistory: { state: 'unavailable' } }],
+    });
+    const { renderCarAssociation, loadEvCarAssociations } = await import(
+      '../src/ui/deviceDetail/carAssociation.ts'
+    );
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger());
+    await flush();
+
+    expect(document.querySelectorAll('#device-detail-car-list .field__hint')).toHaveLength(0);
+    expect(flowNote().textContent).toContain('Until a car is matched, this charger has no battery level');
   });
 });

@@ -115,6 +115,15 @@ export class EvCarLinkStore {
         return this.snapshot;
     }
 
+    /**
+     * Whether the in-memory snapshot holds the persisted history. False while a
+     * suspect boot read awaits its recovery re-read: the snapshot then started
+     * empty, and its absent pairs say nothing about past matches.
+     */
+    hasResolvedHistory(): boolean {
+        return !this.recoveryPending;
+    }
+
     /** Accept a new snapshot from the producer; marks the store dirty. */
     setSnapshot(snapshot: EvCarLinkSnapshot): void {
         if (snapshot === this.snapshot) return;
@@ -131,9 +140,16 @@ export class EvCarLinkStore {
         return true;
     }
 
-    /** Dirty AND past both the debounce and load-grace gates. Non-mutating. */
+    /**
+     * Dirty (or awaiting recovery) AND past both the debounce and load-grace
+     * gates. Non-mutating. A pending recovery counts as due even when clean:
+     * the recovery re-read runs only on the write path, and without this a home
+     * with no new plug-in would serve its match history as unavailable until
+     * the next vote. The write it leads to stores the recovered history back;
+     * when nothing was recoverable, `writeAndMark` writes nothing.
+     */
     snapshotForPersist(nowMs: number): EvCarLinkSnapshot | null {
-        if (!this.dirty) return null;
+        if (!this.dirty && !this.recoveryPending) return null;
         if (nowMs < this.persistGraceUntilMs) return null;
         if ((nowMs - this.lastPersistMs) < this.persistDebounceMs) return null;
         return this.snapshot;
@@ -379,6 +395,10 @@ const writeAndMark = (params: {
         snapshot,
     );
     if (resolution.kind === 'deferred') return false;
+    // A clean store reaches here only to drive a pending recovery. When that
+    // recovered nothing, the snapshot is the empty boot stand-in: writing it
+    // would put nothing over a value the re-read may only have missed.
+    if (!params.store.isDirty() && resolution.snapshot === snapshot) return false;
     try {
         params.homey.settings.set(EV_CAR_LINK_STATE, resolution.snapshot);
         params.homey.settings.set(EV_CAR_LINK_STATE_INITIALIZED, true);

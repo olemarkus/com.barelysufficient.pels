@@ -6,6 +6,7 @@ import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceSurfaces } from './deviceSurfaces';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { resolveChargerPhasePresets } from './chargerPhasePreset';
+import type { EvCarLinkProducer } from './evCarLinkProducer';
 import { resolveCarAssociationCandidates } from './evCarLinkObservation';
 import { projectDeviceSurfaces } from './deviceSurfaces';
 
@@ -20,12 +21,24 @@ export const resolveChargerPhasePresetsRead = (
         : { state: 'unavailable' }
 );
 
+/**
+ * Each candidate carries the chargers the probe has matched it to. The link
+ * history is read per candidate, so a home with no cars never touches the
+ * lazily loaded link store.
+ */
 export const resolveCarAssociationCandidatesRead = (
     snapshotWarm: boolean,
     devices: readonly HomeyDeviceLike[],
+    evCarLink: EvCarLinkProducer,
 ): SettingsUiRecommendationCarsRead => (
     snapshotWarm
-        ? { state: 'resolved', cars: resolveCarAssociationCandidates(devices) }
+        ? {
+            state: 'resolved',
+            cars: resolveCarAssociationCandidates(devices).map((car) => ({
+                ...car,
+                matchHistory: evCarLink.readChargerMatchesForCar(car.id),
+            })),
+        }
         : { state: 'unavailable' }
 );
 
