@@ -4,7 +4,7 @@ import type { MetDaySummaryWithCoverage, MetForecastFetchResult } from '../../li
 import { CONTROLLED_BACKFILL_VERSION } from '../../lib/weather/weatherHistory';
 import { TEMP_BACKFILL_VERSION } from '../../lib/weather/weatherInsightsBackfill';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
-import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
+import type { EnergySignatureSuggestion, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
 const OSLO = 'Europe/Oslo';
 // 2026-01-10T10:00:00Z = 11:00 in Oslo (UTC+1, winter): local dateKey 2026-01-10.
@@ -1490,6 +1490,31 @@ describe('WeatherCollector', () => {
 describe('weather feedback upgrade', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(START_MS); });
   afterEach(() => { vi.useRealTimers(); });
+  it('refreshes current-headroom advice after discarding whole-home correction without a startup apply', () => {
+    const suggestion: EnergySignatureSuggestion = {
+      targetDateKey: '2026-01-10', forecastMeanTempC: 3.5, forecastSource: 'recent_days',
+      predictedKwh: 35, predictedLowKwh: 30, predictedHighKwh: 40, suggestedBudgetKwh: 40,
+      beyondObservedCold: false, beyondObservedWarm: false, budgetMayBeLimiting: false,
+      budgetPressureKwh: 0, computedAtMs: START_MS,
+    };
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => ({ ...state, latestSuggestion: suggestion }));
+    const applySuggestedDailyBudget = vi.fn(() => true);
+    const { collector, persisted } = buildHarness({ recomputeDerived, applySuggestedDailyBudget });
+    persisted.value = {
+      records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
+      latestFit: { recentResidualQ80: 4 },
+      latestSuggestion: { ...suggestion, budgetPressureKwh: 10, suggestedBudgetKwh: 50 },
+      budgetPressure: { algorithmVersion: 2, kwh: 10, throughDateKey: '2026-01-09' },
+    };
+    collector.start();
+    expect(recomputeDerived).toHaveBeenCalledOnce();
+    expect(recomputeDerived.mock.calls[0]?.[0].budgetPressure).toBeUndefined();
+    expect(recomputeDerived.mock.calls[0]?.[0].latestSuggestion).toBeUndefined();
+    expect(collector.getHistoryStateSnapshot().latestSuggestion?.suggestedBudgetKwh).toBe(40);
+    expect(applySuggestedDailyBudget).not.toHaveBeenCalled();
+    collector.stop();
+  });
+
   it('refreshes old advice recovered after a transient startup read failure without applying it', async () => {
     const recomputeDerived = vi.fn((state: WeatherHistoryState) => ({ ...state,
       latestFit: { ...state.latestFit, recentResidualQ80: 4,

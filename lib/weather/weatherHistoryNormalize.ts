@@ -1,4 +1,5 @@
 import type {
+  BudgetPressureState,
   MetDaySummary,
   WeatherDailyRecord,
   WeatherDaySuppression,
@@ -45,20 +46,22 @@ export function defaultStoredSuggestion(raw: Record<string, unknown>): WeatherHi
   } as WeatherHistoryState['latestSuggestion'];
 }
 
-/**
- * Budget-pressure term: strip-not-reject, and fully shaped or discarded. A
- * dropped term simply restarts the loop at zero — it re-accumulates from the
- * next suppressed day, which is safer than trusting a half-written value that
- * would be added straight onto a persisted budget.
- */
-export function normalizeBudgetPressure(raw: unknown): WeatherHistoryState['budgetPressure'] {
-  if (typeof raw !== 'object' || raw === null) return undefined;
-  const { kwh, throughDateKey, algorithmVersion } = raw as Record<string, unknown>;
-  // Old pressure priced all holds without recovery. It cannot be carried into this loop.
-  if (algorithmVersion !== 2) return undefined;
-  if (typeof kwh !== 'number' || !Number.isFinite(kwh) || kwh < 0) return undefined;
-  if (typeof throughDateKey !== 'string' || throughDateKey.length === 0) return undefined;
-  return { kwh, throughDateKey, algorithmVersion };
+/** The persistence owner distinguishes no correction from advice requiring migration. */
+type PersistedBudgetPressure =
+  | { kind: 'absent' }
+  | { kind: 'incompatible' }
+  | { kind: 'current'; pressure: BudgetPressureState };
+
+/** Whole-home corrections cannot be recovered onto the budget-counted axis. */
+export function normalizeBudgetPressure(raw: unknown): PersistedBudgetPressure {
+  if (raw === undefined) return { kind: 'absent' };
+  if (!isUnknownRecord(raw)) return { kind: 'incompatible' };
+  const { kwh, throughDateKey, algorithmVersion } = raw;
+  if (algorithmVersion !== 3 || !isNonNegativeFinite(kwh)
+    || typeof throughDateKey !== 'string' || throughDateKey.length === 0) {
+    return { kind: 'incompatible' };
+  }
+  return { kind: 'current', pressure: { kwh, throughDateKey, algorithmVersion } };
 }
 
 /**

@@ -73,14 +73,14 @@ describe('suggestDailyBudgetKwh', () => {
   });
 
   it('adds the full budget-pressure term on top of the headroom', () => {
-    const state = { kwh: 7, throughDateKey: '2026-07-31' };
+    const state = { algorithmVersion: 3 as const, kwh: 7, throughDateKey: '2026-07-31' };
     const result = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0, budgetPressure: state });
     expect(result.budgetPressureKwh).toBe(7);
     expect(result.suggestedBudgetKwh).toBe(62); // 50 predicted + 5 q80 + 7 pressure
 
     // Pressure is not model-relative: it exists to correct an under-predicting model.
     const runaway = suggestDailyBudgetKwh({
-      fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0, budgetPressure: { kwh: 90, throughDateKey: '2026-07-31' },
+      fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0, budgetPressure: { algorithmVersion: 3 as const, kwh: 90, throughDateKey: '2026-07-31' },
     });
     expect(runaway.budgetPressureKwh).toBe(90);
     expect(runaway.suggestedBudgetKwh).toBe(145);
@@ -91,7 +91,7 @@ describe('suggestDailyBudgetKwh', () => {
       fit: baseFit,
       targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0,
       capacityLimitKw: 2,
-      budgetPressure: { kwh: 40, throughDateKey: '2026-07-31' },
+      budgetPressure: { algorithmVersion: 3 as const, kwh: 40, throughDateKey: '2026-07-31' },
     });
     expect(result.suggestedBudgetKwh).toBe(48); // 2 kW × 24 h still wins
     // Without the term the suggestion would already be 48 (55 clamped to the

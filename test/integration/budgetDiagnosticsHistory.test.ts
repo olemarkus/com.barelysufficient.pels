@@ -43,7 +43,7 @@ describe('persisted budget diagnostics history', () => {
         } }),
       ];
       h.days.write({ records, meterScopeSignature: 'source:homey_energy|main:meter-a',
-        budgetPressure: { algorithmVersion: 2, kwh: 17.8, throughDateKey: '2026-10-02' } });
+        budgetPressure: { algorithmVersion: 3, kwh: 17.8, throughDateKey: '2026-10-02' } });
       const response = readBudgetDailyHistory(h.days, { from: '2026-10-01', to: '2026-10-03' }, NOW, TZ);
       expect(response.records).toEqual(records.slice(1));
       expect(response.records[1].kwhTotal).toBeUndefined();
@@ -77,7 +77,7 @@ describe('persisted budget diagnostics history', () => {
       let currentBudget = 112.8;
       performBudgetAutoApply({
         records: [], meterScopeSignature: 'source:homey_energy|main:meter-a',
-        budgetPressure: { algorithmVersion: 2, kwh: 17.8, throughDateKey: '2026-10-02' },
+        budgetPressure: { algorithmVersion: 3, kwh: 17.8, throughDateKey: '2026-10-02' },
         latestSuggestion: {
           targetDateKey: '2026-10-03', forecastMeanTempC: 11, forecastSource: 'met_api',
           predictedKwh: 50.6, predictedLowKwh: 40, predictedHighKwh: 70, suggestedBudgetKwh: 84.1,

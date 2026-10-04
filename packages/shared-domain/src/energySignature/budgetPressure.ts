@@ -76,7 +76,7 @@ export function foldBudgetPressureDay(
     ? Math.min(ceiling, carried + Math.min(MAX_STEP_KWH, correction))
     : Math.max(0, carried * QUIET_DAY_DECAY - Math.min(MAX_STEP_KWH, spare));
   return {
-    algorithmVersion: 2,
+    algorithmVersion: 3,
     kwh: next < NEGLIGIBLE_KWH ? 0 : next,
     throughDateKey: record.dateKey,
   };

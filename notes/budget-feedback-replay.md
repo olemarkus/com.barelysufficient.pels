@@ -16,8 +16,11 @@ Capacity/cooldown holds and recovered intervals cannot raise the damage signal.
 Correction grows by at most 10 kWh/day; on quiet days it leaks by 25% and credits
 up to 10 kWh of unused allowance. Physical capacity, with actual local-day
 length, remains the ceiling. Auto-apply permits decreases while a correction
-remains. Old cumulative-hold corrections are discarded on upgrade, and cached
-pre-upgrade advice is recomputed without an apply merely on startup.
+remains. Version 3 corrections use budget-counted energy. Earlier corrections
+are discarded on load: cumulative holds and whole-home overshoot cannot be
+recovered onto this axis. Their cached suggestions are discarded too, then
+recomputed without an apply merely on startup. Measurement history and the
+last-applied audit remain intact.
 
 See `notes/starvation/README.md` for the accounting and producer ownership.
 

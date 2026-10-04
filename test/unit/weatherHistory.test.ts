@@ -538,21 +538,21 @@ describe('stripMeterScopeDerivedState record-level strip', () => {
     // arbitrary pick would take the in-memory side, which restarted from zero
     // after the failed read that made this merge run in the first place.
     const merged = mergeRecoveredState(
-      { records: [], budgetPressure: { kwh: 0, throughDateKey: '2026-01-05' } },
-      { records: [], budgetPressure: { kwh: 12, throughDateKey: '2026-01-05' } },
+      { records: [], budgetPressure: { algorithmVersion: 3, kwh: 0, throughDateKey: '2026-01-05' } },
+      { records: [], budgetPressure: { algorithmVersion: 3, kwh: 12, throughDateKey: '2026-01-05' } },
     );
-    expect(merged.budgetPressure).toEqual({ kwh: 12, throughDateKey: '2026-01-05' });
+    expect(merged.budgetPressure).toEqual({ algorithmVersion: 3, kwh: 12, throughDateKey: '2026-01-05' });
   });
 
   it('keeps whichever side folded the later day', () => {
     const liveAhead = mergeRecoveredState(
-      { records: [], budgetPressure: { kwh: 3, throughDateKey: '2026-01-06' } },
-      { records: [], budgetPressure: { kwh: 12, throughDateKey: '2026-01-05' } },
+      { records: [], budgetPressure: { algorithmVersion: 3, kwh: 3, throughDateKey: '2026-01-06' } },
+      { records: [], budgetPressure: { algorithmVersion: 3, kwh: 12, throughDateKey: '2026-01-05' } },
     );
     expect(liveAhead.budgetPressure?.throughDateKey).toBe('2026-01-06');
     const recoveredAhead = mergeRecoveredState(
-      { records: [], budgetPressure: { kwh: 3, throughDateKey: '2026-01-04' } },
-      { records: [], budgetPressure: { kwh: 12, throughDateKey: '2026-01-05' } },
+      { records: [], budgetPressure: { algorithmVersion: 3, kwh: 3, throughDateKey: '2026-01-04' } },
+      { records: [], budgetPressure: { algorithmVersion: 3, kwh: 12, throughDateKey: '2026-01-05' } },
     );
     expect(recoveredAhead.budgetPressure?.throughDateKey).toBe('2026-01-05');
   });
@@ -564,7 +564,7 @@ describe('stripMeterScopeDerivedState record-level strip', () => {
     const stripped = stripMeterScopeDerivedState({
       records: [liveRecord('2026-01-05', { appliedBudgetKwh: 44 })],
       meterScopeSignature: 'source:flow',
-      budgetPressure: { kwh: 12, throughDateKey: '2026-01-05' },
+      budgetPressure: { algorithmVersion: 3, kwh: 12, throughDateKey: '2026-01-05' },
     });
     expect(stripped.budgetPressure).toBeUndefined();
   });
@@ -906,7 +906,7 @@ describe('budget feedback version migration', () => {
   });
   it('retains the revised correction and unrecovered demand, including an observed zero', () => {
     const raw = { records: [liveRecord('2026-01-05', { suppression: { budgetUnservedKwh: 0 } })],
-      budgetPressure: { algorithmVersion: 2, kwh: 4, throughDateKey: '2026-01-05' } };
+      budgetPressure: { algorithmVersion: 3, kwh: 4, throughDateKey: '2026-01-05' } };
     const normalized = normalizeWeatherHistoryState(raw);
     expect(normalized?.budgetPressure).toEqual(raw.budgetPressure);
     expect(normalized?.records[0]?.suppression?.budgetUnservedKwh).toBe(0);

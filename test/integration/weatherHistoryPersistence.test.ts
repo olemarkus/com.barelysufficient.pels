@@ -6,7 +6,7 @@ import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
 import { normalizeWeatherHistoryState } from '../../lib/weather/weatherHistory';
 import { WEATHER_ADVISOR_SETTINGS } from '../../lib/utils/settingsKeys';
-import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
+import type { EnergySignatureSuggestion, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
 // Integration seam: the real store over an in-memory userdata database + the
 // real collector over the mock Homey settings — only the device transport
@@ -199,15 +199,43 @@ describe('weather history persistence through the userdata store', () => {
         kwhBudgetCounted: 47,
         suppression: { blockedByHeadroomMs: 6 * 60 * 60 * 1000 },
       }],
-      budgetPressure: { algorithmVersion: 2, kwh: 13.9, throughDateKey: '2026-07-31' },
+      budgetPressure: { algorithmVersion: 3, kwh: 13.9, throughDateKey: '2026-07-31' },
     };
     const store = freshStore();
     store.write(persisted as unknown as WeatherHistoryState);
     const normalized = normalizeWeatherHistoryState(store.read());
-    expect(normalized?.budgetPressure).toEqual({ algorithmVersion: 2, kwh: 13.9, throughDateKey: '2026-07-31' });
+    expect(normalized?.budgetPressure).toEqual({ algorithmVersion: 3, kwh: 13.9, throughDateKey: '2026-07-31' });
     expect(normalized?.records[0].appliedBudgetKwh).toBe(44);
     expect(normalized?.records[0].kwhBudgetCounted).toBe(47);
     expect(normalized?.records[0].suppression?.blockedByHeadroomMs).toBe(6 * 60 * 60 * 1000);
+  });
+
+  it('drops whole-home correction and cached advice while preserving measurements and audit', () => {
+    const store = freshStore();
+    const measurement = {
+      dateKey: '2026-07-31', kwhTotal: 60, tempMeanC: 12, tempMinC: 10, tempMaxC: 14,
+      tempSampleCount: 24,
+      quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
+      appliedBudgetKwh: 40,
+    };
+    const audit = { dateKey: '2026-07-31', kwh: 50, appliedAtMs: START_MS - 86400000 };
+    const suggestion: EnergySignatureSuggestion = {
+      targetDateKey: '2026-08-01', forecastMeanTempC: 12, forecastSource: 'recent_days',
+      predictedKwh: 35, predictedLowKwh: 30, predictedHighKwh: 40, suggestedBudgetKwh: 50,
+      beyondObservedCold: false, beyondObservedWarm: false, budgetMayBeLimiting: false,
+      budgetPressureKwh: 10, computedAtMs: START_MS,
+    };
+    // This fixture deliberately crosses the typed store boundary with the old persisted schema.
+    store.write({
+      records: [measurement], lastAutoApply: audit,
+      budgetPressure: { algorithmVersion: 2, kwh: 10, throughDateKey: measurement.dateKey },
+      latestSuggestion: suggestion,
+    } as unknown as WeatherHistoryState);
+    const normalized = normalizeWeatherHistoryState(store.read());
+    expect(normalized?.budgetPressure).toBeUndefined();
+    expect(normalized?.latestSuggestion).toBeUndefined();
+    expect(normalized?.records).toEqual([measurement]);
+    expect(normalized?.lastAutoApply).toEqual(audit);
   });
 
   it('drops a half-written budget-pressure term rather than trusting it', () => {
@@ -218,9 +246,9 @@ describe('weather history persistence through the userdata store', () => {
       store.write({ records: [], budgetPressure } as unknown as WeatherHistoryState);
       return normalizeWeatherHistoryState(store.read())?.budgetPressure;
     };
-    expect(roundTrip({ algorithmVersion: 2, kwh: 5 })).toBeUndefined();
-    expect(roundTrip({ algorithmVersion: 2, throughDateKey: 'd' })).toBeUndefined();
-    expect(roundTrip({ algorithmVersion: 2, kwh: -1, throughDateKey: 'd' })).toBeUndefined();
-    expect(roundTrip({ algorithmVersion: 2, kwh: Number.NaN, throughDateKey: 'd' })).toBeUndefined();
+    expect(roundTrip({ algorithmVersion: 3, kwh: 5 })).toBeUndefined();
+    expect(roundTrip({ algorithmVersion: 3, throughDateKey: 'd' })).toBeUndefined();
+    expect(roundTrip({ algorithmVersion: 3, kwh: -1, throughDateKey: 'd' })).toBeUndefined();
+    expect(roundTrip({ algorithmVersion: 3, kwh: Number.NaN, throughDateKey: 'd' })).toBeUndefined();
   });
 });

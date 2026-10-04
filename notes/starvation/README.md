@@ -151,10 +151,12 @@ integration, and sustainable capacity times the actual local-day length bounds
 both the correction and the final suggestion.
 
 Auto-apply follows the recommendation in either direction. The correction is
-already included in that recommendation and cannot veto decreases. Version-1
-corrections are discarded on load because their cause/recovery cannot be
-reconstructed. Cached pre-upgrade advice is recomputed at startup; startup
-alone does not apply a new setting.
+already included in that recommendation and cannot veto decreases. Version 3
+corrections measure budget-counted energy. Earlier corrections are discarded
+on load because neither cumulative holds nor whole-home overshoot can be
+reconstructed on this axis. Their cached suggestions are discarded and refitted
+at startup; startup alone does not apply a new setting. Measurement history and
+the last-applied audit are preserved.
 
 Historical evaluation and reproducible replay instructions are in
 `notes/budget-feedback-replay.md`.
