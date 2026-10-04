@@ -135,7 +135,6 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   });
   const deviceManager = new DeviceTransport(deps.homeyApp, {
     log: ctx.log.bind(ctx),
-    debug: (...args: unknown[]) => ctx.logDebug('devices', ...args),
     error: ctx.error.bind(ctx),
     structuredLog,
   }, buildDeviceParseProviders({

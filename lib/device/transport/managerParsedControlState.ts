@@ -1,4 +1,3 @@
-import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { EvChargingState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { Logger } from '../../utils/types';
 import {
@@ -24,7 +23,6 @@ type ResolvedControlFallback = {
 
 export function resolveDeviceParsedControlState(params: {
   logger: Logger;
-  debugStructured?: StructuredDebugEmitter;
   deviceId: string;
   deviceName: string | null;
   deviceLabel: string;
@@ -40,7 +38,6 @@ export function resolveDeviceParsedControlState(params: {
 }): ParsedControlStateResult {
   const {
     logger,
-    debugStructured,
     deviceId,
     deviceName,
     deviceLabel,
@@ -62,7 +59,6 @@ export function resolveDeviceParsedControlState(params: {
     ? resolveUnobservedControlFallback({ invalidControlPayload, previousSnapshot, binaryCapabilityId })
     : { currentOn: observedCurrentOn, trusted: true };
   const parsedControlState = resolveParsedControlState({
-    debugStructured,
     deviceId,
     deviceName,
     deviceLabel,

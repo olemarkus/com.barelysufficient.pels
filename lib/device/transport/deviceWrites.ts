@@ -138,7 +138,6 @@ export class DeviceWriteService {
         )
         : { write: requested, readBackAsWritten: true };
     logEvCapabilityRequest({
-        logger: this.logger,
         snapshotBefore,
         deviceId,
         capabilityId,
@@ -195,7 +194,6 @@ export class DeviceWriteService {
 
     const snapshotAfter = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     logEvCapabilityAccepted({
-        logger: this.logger,
         snapshotAfter,
         deviceId,
         capabilityId,

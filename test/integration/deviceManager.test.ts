@@ -6238,11 +6238,9 @@ describe('DeviceTransport', () => {
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     evChargingState: 'plugged_in_paused',
                 }));
-                expect(loggerMock.debug).not.toHaveBeenCalledWith(expect.objectContaining({
-                    event: 'snapshot_refresh_preserved_newer',
-                    capabilityId: 'evcharger_charging_state',
-                    deviceId: 'ev1',
-                }));
+                expect(logCapture.findEvents('snapshot_refresh_preserved_newer')).not.toContainEqual(
+                    expect.objectContaining({ capabilityId: 'evcharger_charging_state', deviceId: 'ev1' }),
+                );
 
                 evDeviceManager.destroy();
             } finally {
@@ -8037,7 +8035,6 @@ describe('DeviceTransport', () => {
                     previousSnapshot,
                     nextSnapshot,
                     devices: [sourceDevice],
-                    logger: loggerMock,
                 });
 
                 expect(nextSnapshot[0].lastFreshDataMs).toBe(initialFreshAt);
@@ -8092,7 +8089,6 @@ describe('DeviceTransport', () => {
                     previousSnapshot,
                     nextSnapshot,
                     devices: [sourceDevice],
-                    logger: loggerMock,
                 });
 
                 expect(nextSnapshot[0]).toMatchObject({

@@ -21,7 +21,7 @@ You cannot tell from a logging call site whether the line reaches the owner. Thr
 | Receiver | What actually happens |
 |---|---|
 | A pino module logger — `getLogger(module)` / `getStructuredLogger(component)` | **Dark.** The root is created at `info` and these children inherit it, so the line is never written. |
-| The injected SDK `Logger` (`lib/utils/types.ts`), wired to `ctx.logDebug('devices', …)` | Emits, as topic-gated **prose** with no `event` field to filter, count or alert on. |
+| The injected SDK `Logger` (`lib/utils/types.ts`), formerly wired to `ctx.logDebug('devices', …)` | Emitted as topic-gated **prose** (a printed object, not JSON) with no `event` field to filter, count or alert on. Its `debug` is gone since the device lane moved to `getDebugEmitter('devices', 'devices')`. |
 | A hand-rolled `.child({component}, {level:'debug'})` | Emits correctly — it is `getDebugEmitter` rewritten by hand, free to drift from it. |
 
 So all three are refused in runtime code (`app.ts`, `api.ts`, `lib/**`, `setup/**`, `flowCards/**`,
@@ -44,8 +44,9 @@ commanded?" events, the first thing anyone reaches for when a device will not re
 resolve `getDebugEmitter('executor', 'plan')` and arrive with the `plan` topic the owner already
 enables to read shed and restore decisions. Converting a working topic-gated emit onto that path DELETES the line, and that has
 shipped: PR #2252 moved `fetchZoneTree` and silently lost `zone_tree_fetch_failed` /
-`zone_tree_fetched`. `lib/device/transport/managerZones.ts` keeps the injected devices-topic logger
-for exactly this reason, and says so in its own comment.
+`zone_tree_fetched`. `lib/device/transport/managerZones.ts` now emits them through
+`getDebugEmitter('devices', 'devices')`, which keeps them on the topic the owner enables and makes
+them JSON with an `event` field, and its own comment says why it is not a module logger.
 
 `scripts/logging-legacy-allowlist.txt` carries the files that predate the ban, each with a budget
 that may only shrink. `api.ts`'s pre-logger boot `console.error` is exempted by name in the guard
@@ -165,7 +166,9 @@ rather than budgeted, so the list can reach zero and be deleted.
   failure paths at `error` (`binary_command_failed`, `target_command_failed`,
   `stepped_load_command_failed`) and the two `*_outcome_unknown` at `warn`. UI snapshot writes,
   startup step/background-task failures, and the main price/overshoot boundary transitions are
-  structured and emit. What remains dark is the device/transport lane and a long tail — see
+  structured and emit. The device/transport lane is done too: its fetch, zone, EV-command,
+  live-feed and power-estimate events emit as JSON on the `devices` topic. What remains is a long
+  tail of entry-point, plan/observer and domain-module sites — see
   `scripts/logging-legacy-allowlist.txt`.
 - Correlation coverage is narrow. Rebuild context exists, but there are no automatic helpers yet
   for `incidentId`, `snapshotId`, `priceRefreshId`, or broader flow-scoped correlation.
@@ -187,9 +190,8 @@ rather than budgeted, so the list can reach zero and be deleted.
   `info`/`warn`/`error`, and `const emitDebug = getDebugEmitter('<component>', '<topic>')` for
   debug payloads. `logger.debug(...)` is banned — it emits nothing. Do not add `structuredLog?` /
   `debugStructured?` to deps types.
-- Drain `scripts/logging-legacy-allowlist.txt`. The executor lane is done; the device/transport
-  lane is the largest remaining, and is mostly injected-prose `.debug` that emits but carries no
-  `event` field to filter on.
+- Drain `scripts/logging-legacy-allowlist.txt`. The executor and device/transport lanes are done;
+  what remains is the entry-point/wiring, plan/observer and domain-module tail.
 
 ## Contributor Guidance
 

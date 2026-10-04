@@ -17,11 +17,12 @@
 //      path DELETES the line, and that has shipped: PR #2252 moved
 //      `fetchZoneTree` and silently lost `zone_tree_fetch_failed`.
 //
-//   2. THE INJECTED SDK `Logger` (`lib/utils/types.ts`), whose `.debug` is wired
-//      to `ctx.logDebug('devices', …)` (setup/appInit/wireDeviceTransport.ts).
-//      This one DOES emit — `zone_tree_fetched` is in the log hundreds of times
-//      — but as topic-gated PROSE through the Homey SDK, with no `event` field
-//      to filter, count or alert on.
+//   2. THE INJECTED SDK `Logger` (`lib/utils/types.ts`), whose `.debug` was wired
+//      to `ctx.logDebug('devices', …)`. It DID emit — `zone_tree_fetched` reached
+//      the log hundreds of times a day this way — but as topic-gated PROSE
+//      through the Homey SDK (a printed object, not JSON), with no `event` field
+//      to filter, count or alert on. The device lane moved to the devices-topic
+//      emitter and the SDK `Logger` no longer has a `debug` at all.
 //
 //   3. A HAND-ROLLED `.child({component}, {level:'debug'})`, which emits
 //      correctly (`lib/plan/rebuildScheduler/telemetryObserver.ts`). It is

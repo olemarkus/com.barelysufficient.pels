@@ -2,7 +2,9 @@ import type { EvChargingState } from '../../packages/contracts/src/types';
 import { isEvChargingState } from '../../packages/shared-domain/src/evPlugState';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { resolveBinaryOn } from '../utils/binaryControl';
-import type { Logger } from '../utils/types';
+import { getDebugEmitter } from '../logging/logger';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 export type DeviceCapabilityValue = {
   value?: unknown;
@@ -178,21 +180,19 @@ function parseTimeValueMs(rawValue: unknown): number | undefined {
 }
 
 export function logEvCapabilityRequest(params: {
-  logger: Logger;
   snapshotBefore?: TransportDeviceSnapshot;
   deviceId: string;
   capabilityId: string;
   value: unknown;
 }): void {
   const {
-    logger,
     snapshotBefore,
     deviceId,
     capabilityId,
     value,
   } = params;
   if (capabilityId !== 'evcharger_charging') return;
-  logger.debug({
+  emitDeviceDebug({
     event: 'ev_command_requested',
     deviceId,
     deviceName: snapshotBefore?.name,
@@ -203,21 +203,19 @@ export function logEvCapabilityRequest(params: {
 }
 
 export function logEvCapabilityAccepted(params: {
-  logger: Logger;
   snapshotAfter?: TransportDeviceSnapshot;
   deviceId: string;
   capabilityId: string;
   value: unknown;
 }): void {
   const {
-    logger,
     snapshotAfter,
     deviceId,
     capabilityId,
     value,
   } = params;
   if (capabilityId !== 'evcharger_charging') return;
-  logger.debug({
+  emitDeviceDebug({
     event: 'ev_command_accepted',
     deviceId,
     deviceName: snapshotAfter?.name,
@@ -228,18 +226,17 @@ export function logEvCapabilityAccepted(params: {
 }
 
 export function logEvSnapshotChanges(params: {
-  logger: Logger;
   previousSnapshot: TransportDeviceSnapshot[];
   nextSnapshot: TransportDeviceSnapshot[];
 }): void {
-  const { logger, previousSnapshot, nextSnapshot } = params;
+  const { previousSnapshot, nextSnapshot } = params;
   const previousEvById = getEvSnapshotEntries(previousSnapshot);
   const nextEvById = getEvSnapshotEntries(nextSnapshot);
 
   for (const [deviceId, nextEv] of nextEvById.entries()) {
     const previousEv = previousEvById.get(deviceId);
     if (!previousEv) {
-      logger.debug({
+      emitDeviceDebug({
         event: 'ev_snapshot_discovered',
         deviceId,
         deviceName: nextEv.name,
@@ -250,7 +247,7 @@ export function logEvSnapshotChanges(params: {
 
     const changes = buildEvSnapshotChangeLines(previousEv, nextEv);
     if (changes.length > 0) {
-      logger.debug({
+      emitDeviceDebug({
         event: 'ev_snapshot_changed',
         deviceId,
         deviceName: nextEv.name,
@@ -261,7 +258,7 @@ export function logEvSnapshotChanges(params: {
 
   for (const [deviceId, previousEv] of previousEvById.entries()) {
     if (nextEvById.has(deviceId)) continue;
-    logger.debug({ event: 'ev_snapshot_removed', deviceId, deviceName: previousEv.name });
+    emitDeviceDebug({ event: 'ev_snapshot_removed', deviceId, deviceName: previousEv.name });
   }
 }
 

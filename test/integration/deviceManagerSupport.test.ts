@@ -45,6 +45,7 @@ import type Homey from 'homey';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { PEAK_REANCHOR_INTERVAL_MS, type LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { mockHomeyInstance } from '../mocks/homey';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -64,7 +65,12 @@ const createLogger = () => ({
 const mockRestClient = { get: vi.fn(), put: vi.fn() };
 
 describe('device manager support helpers', () => {
+  // The device-lane debug events go through `getDebugEmitter('devices', 'devices')`,
+  // not the injected logger, so they are read back from the structured capture.
+  let logCapture: LoggerCapture;
+
   beforeEach(() => {
+    logCapture = captureLogger();
     mockRestClient.get.mockClear();
     mockRestClient.put.mockClear();
     setRestClient(mockRestClient);
@@ -73,6 +79,7 @@ describe('device manager support helpers', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     resetRestClient();
+    logCapture.restore();
   });
 
   it('resolves EV control capability and charging state helpers', () => {
@@ -157,7 +164,6 @@ describe('device manager support helpers', () => {
   });
 
   it('logs EV command and snapshot changes', () => {
-    const logger = createLogger();
     const previousSnapshot: (TransportDeviceSnapshot & EvObservedProbe)[] = transportSnapshotFixtures([
       { available: true, id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_in_paused', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
     ]);
@@ -167,27 +173,26 @@ describe('device manager support helpers', () => {
     ]);
 
     logEvCapabilityRequest({
-      logger,
       snapshotBefore: previousSnapshot[0],
       deviceId: 'ev1',
       capabilityId: 'evcharger_charging',
       value: true,
     });
     logEvCapabilityAccepted({
-      logger,
       snapshotAfter: nextSnapshot[0],
       deviceId: 'ev1',
       capabilityId: 'evcharger_charging',
       value: true,
     });
-    logEvSnapshotChanges({ logger, previousSnapshot, nextSnapshot });
-    logEvSnapshotChanges({ logger, previousSnapshot: nextSnapshot, nextSnapshot: [nextSnapshot[0]] });
+    logEvSnapshotChanges({ previousSnapshot, nextSnapshot });
+    logEvSnapshotChanges({ previousSnapshot: nextSnapshot, nextSnapshot: [nextSnapshot[0]] });
 
-    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_command_requested' }));
-    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_command_accepted' }));
-    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_snapshot_changed', deviceName: 'EV 1' }));
-    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_snapshot_discovered', deviceName: 'EV 2' }));
-    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_snapshot_removed', deviceName: 'EV 2' }));
+    const devicesDebug = { component: 'devices', debugTopic: 'devices' };
+    expect(logCapture.findEvent('ev_command_requested')).toMatchObject({ ...devicesDebug, deviceId: 'ev1' });
+    expect(logCapture.findEvent('ev_command_accepted')).toMatchObject({ ...devicesDebug, deviceId: 'ev1' });
+    expect(logCapture.findEvent('ev_snapshot_changed')).toMatchObject({ ...devicesDebug, deviceName: 'EV 1' });
+    expect(logCapture.findEvent('ev_snapshot_discovered')).toMatchObject({ ...devicesDebug, deviceName: 'EV 2' });
+    expect(logCapture.findEvent('ev_snapshot_removed')).toMatchObject({ ...devicesDebug, deviceName: 'EV 2' });
   });
 
   it('resolves device parse capabilities and power capability lookup', () => {
@@ -268,7 +273,7 @@ describe('device manager support helpers', () => {
       lastKnownPowerKw: { dev1: { kw: 0.5, observedAtMs: 0 } },
       lastPeakPowerLogByDevice: new Map(),
     };
-    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.2, deviceLabel: 'Device 1', nowMs: 0 });
+    updateLastKnownPower({ state, deviceId: 'dev1', measuredKw: 1.2, deviceLabel: 'Device 1', nowMs: 0 });
     expect(state.lastKnownPowerKw.dev1?.kw).toBe(1.2);
 
     const mockGet = vi.fn().mockResolvedValue([{ id: 'direct' }]);
@@ -304,7 +309,6 @@ describe('device manager support helpers', () => {
     // standing peak changes no calibration input, so the seam it used to hang off
     // never fired — and the log dedupe below would swallow it too, which is why
     // the announcement sits ahead of it.
-    const logger = createLogger();
     const state = {
       lastKnownPowerKw: { dev1: { kw: 2, observedAtMs: 0 } },
       lastPeakPowerLogByDevice: new Map(),
@@ -313,19 +317,19 @@ describe('device manager support helpers', () => {
 
     // A match before the anchor is a re-anchor interval old moves nothing.
     updateLastKnownPower({
-      state, logger, deviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: 60_000, onPeakChanged,
+      state, deviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: 60_000, onPeakChanged,
     });
     expect(onPeakChanged).not.toHaveBeenCalled();
 
     updateLastKnownPower({
-      state, logger, deviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: PEAK_REANCHOR_INTERVAL_MS, onPeakChanged,
+      state, deviceId: 'dev1', measuredKw: 2, deviceLabel: 'Device 1', nowMs: PEAK_REANCHOR_INTERVAL_MS, onPeakChanged,
     });
     expect(state.lastKnownPowerKw.dev1?.observedAtMs).toBe(PEAK_REANCHOR_INTERVAL_MS);
     expect(onPeakChanged).toHaveBeenCalledTimes(1);
 
     // A lower reading inside the open window moves nothing, so it announces nothing.
     updateLastKnownPower({
-      state, logger, deviceId: 'dev1', measuredKw: 1, deviceLabel: 'Device 1', nowMs: PEAK_REANCHOR_INTERVAL_MS + 1000, onPeakChanged,
+      state, deviceId: 'dev1', measuredKw: 1, deviceLabel: 'Device 1', nowMs: PEAK_REANCHOR_INTERVAL_MS + 1000, onPeakChanged,
     });
     expect(onPeakChanged).toHaveBeenCalledTimes(1);
   });
@@ -362,25 +366,19 @@ describe('device manager support helpers', () => {
   });
 
   it('dedupes peak-power updates within the same rounded band', () => {
-    const logger = createLogger();
     const state = {
       lastKnownPowerKw: { dev1: { kw: 1.231, observedAtMs: 0 } },
       lastPeakPowerLogByDevice: new Map(),
     };
 
-    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.232, deviceLabel: 'Device 1', nowMs: 0 });
-    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.234, deviceLabel: 'Device 1', nowMs: 0 });
-    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.29, deviceLabel: 'Device 1', nowMs: 0 });
+    updateLastKnownPower({ state, deviceId: 'dev1', measuredKw: 1.232, deviceLabel: 'Device 1', nowMs: 0 });
+    updateLastKnownPower({ state, deviceId: 'dev1', measuredKw: 1.234, deviceLabel: 'Device 1', nowMs: 0 });
+    updateLastKnownPower({ state, deviceId: 'dev1', measuredKw: 1.29, deviceLabel: 'Device 1', nowMs: 0 });
 
-    expect(logger.structuredLog.debug).toHaveBeenCalledTimes(2);
-    expect(logger.structuredLog.debug).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      event: 'power_estimate_peak_updated',
-      peakKw: 1.23,
-    }));
-    expect(logger.structuredLog.debug).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      event: 'power_estimate_peak_updated',
-      peakKw: 1.29,
-    }));
+    const peakEvents = logCapture.findEvents('power_estimate_peak_updated');
+    expect(peakEvents).toHaveLength(2);
+    expect(peakEvents[0]).toMatchObject({ component: 'devices', debugTopic: 'devices', peakKw: 1.23 });
+    expect(peakEvents[1]).toMatchObject({ component: 'devices', debugTopic: 'devices', peakKw: 1.29 });
   });
 
   it('does not probe an empty capability id when no binary control capability is known', () => {
@@ -613,9 +611,12 @@ describe('device manager support helpers', () => {
     expect(result.fetchSource).toBe('raw_manager_devices');
     expect(result.devices).toHaveLength(3);
     expect(fullFetch).toHaveBeenCalled();
-    expect(logger.debug).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'targeted_fetch_fallback_to_full' }),
-    );
+    expect(logCapture.findEvent('targeted_fetch_fallback_to_full')).toMatchObject({
+      component: 'devices', debugTopic: 'devices', failures: 2,
+    });
+    expect(logCapture.findEvent('manager_api_devices_returned')).toMatchObject({
+      component: 'devices', debugTopic: 'devices', validDevices: 3, invalidEntries: 0,
+    });
   });
 });
 

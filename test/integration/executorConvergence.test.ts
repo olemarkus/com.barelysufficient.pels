@@ -907,7 +907,6 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
   const noop = (): void => undefined;
   const loggerMock: Logger = {
     log: noop,
-    debug: noop,
     error: noop,
     structuredLog: { info: noop, error: noop, debug: noop, warn: noop } as unknown as Logger['structuredLog'],
   };
