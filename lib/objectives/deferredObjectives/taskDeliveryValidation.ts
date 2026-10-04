@@ -1,7 +1,12 @@
+// Shape guards for persisted delivery evidence, read by the plan-history and
+// metered-state loaders at the persistence boundary. Runtime-only: the settings
+// UI receives history already resolved, so this is not shared-domain code.
+// Accepts rows written before `MAX_DELIVERY_INTERVALS` bounded the interval
+// list; the next append trims them.
 import type {
   TaskDeliveryCause, TaskDeliveryEvidence, TaskDeliveryExplanation,
-} from '../../contracts/src/taskDelivery';
-import { isFiniteNumber } from './numberGuards';
+} from '../../../packages/contracts/src/taskDelivery';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 const CAUSES: Record<TaskDeliveryCause, true> = {
   capacity_limited: true, budget_limited: true, priority_limited: true,
   device_not_accepting: true, device_limit: true, device_schedule: true, control_pending: true,

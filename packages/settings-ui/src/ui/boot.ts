@@ -87,7 +87,7 @@ import {
 import { initWeatherInsight } from './weatherInsight.ts';
 import {
   initDeviceDetailHandlers,
-  openDeviceDetail,
+  openDeviceDetailAt,
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
   loadEvCarAssociations,
@@ -479,7 +479,7 @@ const initializeBootHandlers = () => {
   initRealtimeListeners();
   initRecommendationSurfaces({
     openPanel: showTab,
-    openDevice: openDeviceDetail,
+    openDevice: openDeviceDetailAt,
   });
   showTab('overview');
   initTabHandlers();

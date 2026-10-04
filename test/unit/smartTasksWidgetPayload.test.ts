@@ -463,6 +463,48 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(byId.time.recourseHint).toBeNull();
   });
 
+  // A confirmed device-side cause downgrades an on-track plan and the row names
+  // it; it never falls back to "limited time".
+  test.each([
+    ['objective_not_accepting_energy', 'Device stopped taking power.', null],
+    ['objective_device_limit', 'Your car stopped at its own charge limit.',
+      'Raise the car’s charge limit to reach the target.'],
+    ['objective_device_schedule', 'Your car is delaying charging on its own schedule.',
+      'Turn off the car’s own charging schedule or smart charging.'],
+  ] as const)('reports a confirmed %s as at risk with its own why-line', (code, why, recourse) => {
+    const payload = buildSmartTasksWidgetPayload(buildInput({
+      dev: buildPlan({ deviceId: 'dev', diagnosticReasonCode: code }),
+    }));
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows[0].statusLabel).toBe('At risk');
+    expect(payload.rows[0].whyLabel).toBe(why);
+    expect(payload.rows[0].recourseHint).toBe(recourse);
+  });
+
+  test('keeps the car-limit why-line once the car stopped there, with the status the hero reports', () => {
+    const payload = buildSmartTasksWidgetPayload(buildInput({
+      at_risk: buildPlan({
+        deviceId: 'at_risk', objectiveKind: 'ev_soc', targetValue: 80,
+        carChargeLimit: { limitValue: 70, reached: true },
+      }),
+      cannot_meet: buildPlan({
+        deviceId: 'cannot_meet', objectiveKind: 'ev_soc', targetValue: 80,
+        carChargeLimit: { limitValue: 70, reached: true },
+        latest: { ...buildPlan({}).latest!, planStatus: 'cannot_meet' },
+      }),
+    }));
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    const byId = Object.fromEntries(payload.rows.map((r) => [r.deviceId, r]));
+    expect(byId.at_risk.statusLabel).toBe('At risk');
+    expect(byId.cannot_meet.statusLabel).toBe('Cannot finish');
+    for (const row of [byId.at_risk, byId.cannot_meet]) {
+      expect(row.whyLabel).toBe('Your car stopped at its own charge limit of 70%, below the 80% target.');
+      expect(row.recourseHint).toBe('Raise the car’s charge limit to reach the target.');
+    }
+  });
+
   test('suppresses plan-meta on a cannot_meet row so recourse stays above the fold', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput({
       dev: buildPlan({

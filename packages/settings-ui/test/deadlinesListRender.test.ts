@@ -30,7 +30,7 @@ const buildCard = (overrides: Partial<DeadlinesListCard> = {}): DeadlinesListCar
   learning: false,
   extraPermissionsValue: null,
   currentValueLine: null,
-  carLimitLine: null,
+  liveCauseLine: null,
   ...overrides,
 });
 
@@ -239,7 +239,7 @@ describe('DeadlinesList', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
       status: 'ready',
-      cards: [buildCard({ kind: 'ev_soc', targetValue: 80, carLimitLine: 'Car stops at 70%' })],
+      cards: [buildCard({ kind: 'ev_soc', targetValue: 80, liveCauseLine: 'Car stops at 70%' })],
     });
     expect(mount.querySelector('.deadline-list-card__current')?.textContent).toBe('Car stops at 70%');
   });

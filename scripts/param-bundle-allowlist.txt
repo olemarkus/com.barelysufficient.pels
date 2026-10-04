@@ -304,7 +304,7 @@ packages/shared-domain/src/activePlanRevisionLog.ts 2
 packages/shared-domain/src/dailyBudget/attributionSplit.ts 1
 packages/shared-domain/src/dailyBudget/dayContext.ts 2
 packages/shared-domain/src/dailyBudgetHeroStrings.ts 1
-packages/shared-domain/src/deadlineLabels.ts 12
+packages/shared-domain/src/deadlineLabels.ts 11
 packages/shared-domain/src/deadlinesListHero.ts 1
 packages/shared-domain/src/deferredActivePlanChartData.ts 1
 packages/shared-domain/src/deferredPlanHistoryChartData.ts 2

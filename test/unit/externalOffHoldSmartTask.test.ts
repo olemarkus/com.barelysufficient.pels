@@ -5,6 +5,7 @@ import { resolveFloorShortfallCause } from '../../lib/objectives/deferredObjecti
 import {
   resolveEffectivePlanStatus,
   resolveSmartTaskListStatus,
+  resolveSmartTaskLiveCause,
   resolveSmartTaskWidgetDetailCopy,
 } from '../../packages/shared-domain/src/deadlineLabels';
 import { withBinaryDiscriminant, type PlanInputDevice } from '../../lib/plan/planTypes';
@@ -68,7 +69,11 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
     planStatus: 'on_track' as const,
     firstActionAtMs: null,
     nowMs: 1_000_000,
-    carChargeLimitReached: false,
+    carChargeLimit: null,
+  };
+  const leftOff = {
+    diagnosticReasonCode: 'objective_device_left_off' as const, liveCompletion: { kind: 'unavailable' as const },
+    targetValue: 55,
   };
 
   it('routes the cause onto the plan every cycle', () => {
@@ -77,11 +82,23 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
     } as DeferredObjectiveDiagnostic)).toBe('objective_device_left_off');
   });
 
+  // A device held off in its claimed hour is `uncontrolled` to the delivery
+  // owner, and its evidence may carry a device-side cause from before the hold.
+  // The owner's off action is still the cause to name.
+  it.each([
+    'objective_not_accepting_energy', 'objective_device_limit', 'objective_device_schedule',
+    'planned_with_margin',
+  ] as const)('names the off action ahead of a %s diagnostic in a claimed hour', (reasonCode) => {
+    expect(resolveDiagnosticReasonCode({
+      externalOffHoldActive: true, reasonCode,
+    } as DeferredObjectiveDiagnostic)).toBe('objective_device_left_off');
+  });
+
   it('names the cause even when the reported status does not change', () => {
     // A budget-bound at-risk task whose device is then switched off must stop
     // blaming the budget: the status stays At risk, but the recourse changes
     // completely, and admission has already dropped its rescue claims.
-    expect(resolveEffectivePlanStatus('at_risk', 'objective_device_left_off', { kind: 'unavailable' })).toBe('at_risk');
+    expect(resolveEffectivePlanStatus('at_risk', leftOff)).toBe('at_risk');
     expect(resolveSmartTaskWidgetDetailCopy({
       statusId: 'at_risk',
       diagnosticReasonCode: 'objective_device_left_off',
@@ -93,10 +110,11 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
     // `resolveEffectivePlanStatus` overlays; it never rewrites. The persisted
     // `planStatus` stays the trajectory truth, which is what makes recovery
     // immediate instead of stranded until the next settle.
-    expect(resolveEffectivePlanStatus('on_track', 'objective_device_left_off', { kind: 'unavailable' })).toBe('at_risk');
-    expect(resolveEffectivePlanStatus('on_track', undefined, { kind: 'unavailable' })).toBe('on_track');
-    expect(resolveEffectivePlanStatus('satisfied', 'objective_device_left_off', { kind: 'unavailable' })).toBe('satisfied');
-    expect(resolveEffectivePlanStatus('cannot_meet', 'objective_device_left_off', { kind: 'unavailable' })).toBe('cannot_meet');
+    expect(resolveEffectivePlanStatus('on_track', leftOff)).toBe('at_risk');
+    expect(resolveEffectivePlanStatus('on_track', { liveCompletion: { kind: 'unavailable' }, targetValue: 55 }))
+      .toBe('on_track');
+    expect(resolveEffectivePlanStatus('satisfied', leftOff)).toBe('satisfied');
+    expect(resolveEffectivePlanStatus('cannot_meet', leftOff)).toBe('cannot_meet');
   });
 
   it('overrides a cached on-track verdict rather than waiting for the settle', () => {
@@ -105,6 +123,19 @@ describe('external-off hold — the persisted plan, not just the live diagnostic
       ...cachedOnTrackPlan,
       diagnosticReasonCode: 'objective_device_left_off',
     })).toBe('at_risk');
+  });
+
+  // A browser can read a stored plan before the runtime rewrites it, so the
+  // retired v3.9.3 code must be inert in every resolver too.
+  it('ignores the retired objective_delivery_restricted code on every surface', () => {
+    const retired = 'objective_delivery_restricted' as never;
+    expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' }, ...cachedOnTrackPlan, diagnosticReasonCode: retired,
+    })).toBe('on_track');
+    expect(resolveEffectivePlanStatus('on_track', {
+      liveCompletion: { kind: 'unavailable' }, targetValue: 55, diagnosticReasonCode: retired,
+    })).toBe('on_track');
+    expect(resolveSmartTaskLiveCause(retired, null)).toBeNull();
   });
 
   it('returns to on track the moment the device is turned on again', () => {

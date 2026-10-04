@@ -43,8 +43,9 @@ that reverses on a later revision. The same risk applies to EV SoC: a charger
 reporting an integer percent that bounces 79 -> 80 -> 79 can alternate the
 saved public status across revisions even though no meaningful progress changed.
 
-The fix is an **asymmetric satisfied-gate** at the diagnostic boundary in
-`lib/objectives/deferredObjectives/diagnosticsBridge.ts`:
+The fix is an **asymmetric satisfied-gate** at the task-evaluation boundary in
+`lib/objectives/deferredObjectives/taskEvaluationCoordinator.ts`, where completion is resolved once
+by `resolveTaskCompletion` (`taskCompletion.ts`):
 
 - **Entering `satisfied`** requires `current >= target` exactly (no
   premature satisfaction). This is already shipped — `energy_already_met`
@@ -117,8 +118,9 @@ landing `likely_to_meet` when they should land `at_risk`.
 
 ## Status enum (shipped, for reference)
 
-The shipped status values live on the diagnostic type
-(`lib/objectives/deferredObjectives/diagnosticsBridge.ts`):
+The shipped status values are `DeferredObjectiveHorizonStatus`
+(`lib/objectives/deferredObjectives/types.ts`), carried as the diagnostic's `trajectory`
+(`diagnosticTypes.ts`) and produced by `taskEvaluationCoordinator.ts`:
 
 - `unknown` — required inputs missing, stale, invalid, or impossible to
   evaluate.

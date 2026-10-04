@@ -8,7 +8,7 @@ Connected 300 events show `rescueExemptMode: "always"`, `rescueLimitMode:
 planner sees the rescue as designed. The 2026-05-22 symptom was a config-side
 state (rescue not yet set or set on a different device), not a wiring bug.
 Prong B2 (the `isCurrentBucketPlanned` self-disarm question) confirmed
-intentional per the field comment in `diagnosticsBridge.ts:98-101` — the rescue
+intentional per the field comment on `budgetExemptApplied` in `diagnosticTypes.ts` — the rescue
 applies only "while the current bucket is a planned bucket … idle/background
 cycles stay normal," matching the `limitLowerPriorityApplied` companion. The
 background-squeeze copy-routing follow-up is resolved (2026-09-08). The planner
@@ -92,7 +92,7 @@ caps lifted only when `objective.rescue?.exemptFromBudget === 'always'`; the
 (or on the wrong device). No code fix needed.
 
 **B2 (the `isCurrentBucketPlanned` self-disarm question):** confirmed
-**intentional** per the field comment at `diagnosticsBridge.ts:98-101`:
+**intentional** per the field comment on `budgetExemptApplied` in `diagnosticTypes.ts`:
 > True only while the current bucket is a planned bucket for a smart task whose
 > "exempt from budget" rescue permission is active. Admission consumes this
 > flat flag … idle/background cycles stay normal.

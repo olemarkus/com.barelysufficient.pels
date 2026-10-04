@@ -2957,8 +2957,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
     it('keeps a run unmet below its requested target at a car limit', () => {
       // Production, 2026-09-26: an 80 % task on a car that stops at 70 %. The
-      // capped task is satisfied at 70; the Easee then ended the session and
-      // read unplugged, which is a non-plannable tick with no progress.
+      // requested 80 % stays the target, so the run is not met at 70; the Easee
+      // then ended the session and read unplugged, which is a non-plannable tick
+      // with no progress.
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 9 * HOUR_MS;

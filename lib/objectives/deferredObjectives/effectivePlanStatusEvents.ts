@@ -3,9 +3,10 @@
 //
 // Split out of `activePlanRecorder` because it answers a different question. The
 // recorder owns what gets COMMITTED; this owns what gets REPORTED — the committed
-// verdict with any live per-cycle overlay applied (today: the device is being
-// left off outside PELS). The two diverge on purpose: freezing the overlay into
-// a revision would keep it alive after the cause ended.
+// verdict with any live per-cycle overlay applied (the device is being left off
+// outside PELS, a confirmed device-side stop, or the car stopped at its own
+// charge limit). The two diverge on purpose: freezing the overlay into a
+// revision would keep it alive after the cause ended.
 
 import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/deadlineLabels';
 import type {
@@ -19,7 +20,7 @@ export const effectivePlanStatusOf = (
   plan: DeferredObjectiveActivePlanV1,
 ): DeferredObjectiveActivePlanStatusV1 | null => {
   if (plan.latest === null) return null;
-  return resolveEffectivePlanStatus(plan.latest.planStatus, plan.diagnosticReasonCode, plan.liveCompletion);
+  return resolveEffectivePlanStatus(plan.latest.planStatus, plan);
 };
 
 /**

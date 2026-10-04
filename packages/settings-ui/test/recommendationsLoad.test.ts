@@ -219,7 +219,7 @@ describe('recommendation loading', () => {
       await recommendations.loadRecommendationData();
       const surface = document.getElementById('setup-recommendations-root');
       expect(surface?.textContent).toContain('Keep Connected 300 within Smart tasks');
-      expect(surface?.textContent).toContain('PELS turns it off if turned on outside a Smart task');
+      expect(surface?.textContent).toContain('PELS turns it off if it is turned on outside a Smart task');
 
       state.controllableMap = { 'device-1': true };
       recommendations.refreshRecommendationSurfaces();
@@ -250,7 +250,8 @@ describe('recommendation loading', () => {
     try {
       await recommendations.loadRecommendationData();
       document.querySelector('md-filled-tonal-button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      expect(openDevice).toHaveBeenCalledWith('device-1');
+      // Lands on the setting the suggestion names, not the collapsed page top.
+      expect(openDevice).toHaveBeenCalledWith('device-1', 'start-policy');
       const dismiss = [...document.querySelectorAll('md-text-button')]
         .find((button) => button.textContent?.trim() === 'Dismiss');
       dismiss?.dispatchEvent(new MouseEvent('click', { bubbles: true }));

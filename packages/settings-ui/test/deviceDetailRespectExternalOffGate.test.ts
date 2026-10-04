@@ -385,6 +385,19 @@ describe('device detail "Only PELS starts this device" row', () => {
     expect(startPolicyRow()?.hidden).toBe(true);
   });
 
+  it('is where the "Keep within Smart tasks" suggestion lands, with Setup open', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: false });
+    const setup = document.querySelector('#device-detail-setup-disclosure') as HTMLDetailsElement;
+    setup.open = false;
+    const scrolled = vi.fn();
+    const target = startPolicyRow();
+    if (target) target.scrollIntoView = scrolled;
+    const { openDeviceDetailAt } = await import('../src/ui/deviceDetail/index.ts');
+    openDeviceDetailAt('heater-1', 'start-policy');
+    expect(setup.open).toBe(true);
+    expect(scrolled).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+  });
+
   it('says an opted-in device\u2019s setting is paused while power limiting is on, and can still clear it', async () => {
     // A Flow can turn power limiting off (`disable_device_capacity_control`), and
     // the stored choice applies again then, so the owner must be able to see it

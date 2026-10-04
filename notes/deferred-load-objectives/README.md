@@ -636,8 +636,8 @@ This gives PELS one planner contract for both EVs and heaters:
 - What is the minimum step/mode/action required to remain on plan?
 
 Trustworthiness is deliberately NOT on this contract: admission
-(`lib/objectives/deferredObjectives/admission.ts`, `PLANNABLE_STATUSES` /
-`resolveDecision`) resolves a `satisfied`, `unknown` or `invalid` objective to
+(`lib/objectives/deferredObjectives/admission.ts`, `resolveDecision`) maps the task evaluation's
+`completion` (`target_reached` / `accepted_near_target`) and `planning.kind === 'inactive'` to
 `inactive` before the plan build, so nothing untrusted reaches the planner to judge.
 
 ## State vs Evaluation
@@ -649,7 +649,8 @@ be collapsed into one object.
 > **Note:** the types below are forward-design types capturing the eventual planner contract.
 > The shipped persisted shape is `DeferredObjectiveSettingsV1` (see §"Persisted Settings Slice")
 > and the shipped evaluation type is `DeferredObjectiveDiagnostic` in
-> `lib/objectives/deferredObjectives/diagnosticsBridge.ts`. Fields below that don't appear on the
+> `lib/objectives/deferredObjectives/diagnosticTypes.ts`, produced by `taskEvaluationCoordinator.ts`.
+> Fields below that don't appear on the
 > shipped types (e.g. `stableStatus`, `requiredAverageKw`, `conservativeNetGainKw`) are
 > aspirational and may never ship as named. **Shipped status enum is `cannot_meet`**, not the
 > aspirational `cannot_be_met` shown below; the Flow-card surface adds a third translation —
@@ -661,8 +662,8 @@ The original forward-design `DeviceObjectiveState` / `DeviceObjectiveEvaluation`
 named and were drifting from reality. The shipped equivalents are:
 
 - **Persisted state**: `DeferredObjectiveSettingsV1` (`packages/contracts/src/deferredObjectiveSettings.ts`).
-- **Evaluation**: `DeferredObjectiveDiagnostic` (`lib/objectives/deferredObjectives/diagnosticsBridge.ts`),
-  status enum `unknown | on_track | at_risk | cannot_meet`.
+- **Evaluation**: `DeferredObjectiveDiagnostic` (`lib/objectives/deferredObjectives/diagnosticTypes.ts`,
+  produced by `taskEvaluationCoordinator.ts`), status enum `unknown | on_track | at_risk | cannot_meet`.
 - **Rate estimate**: the learned-profile model in `lib/objectives/` (see §"Learned Profiling First").
 
 The enduring design rule still holds: the planner consumes a generic objective evaluation in
@@ -1075,8 +1076,8 @@ projectedCompletionAtMs =
 
 ## Status Semantics
 
-The shipped status values on the diagnostic
-(`lib/objectives/deferredObjectives/diagnosticsBridge.ts`):
+The shipped status values on the diagnostic (`lib/objectives/deferredObjectives/diagnosticTypes.ts`,
+resolved in `taskEvaluationCoordinator.ts`):
 
 - `unknown` — required inputs are missing, invalid, or impossible to evaluate.
   Per-kind: EV SoC additionally treats stale or session-invalid progress as
@@ -1401,11 +1402,12 @@ The richer-tokens slice originally drafted as `ev-ready-by/README.md` §P2.3
 
 Use structured reason codes rather than prose as planner contract. The live source-of-truth is
 the union in `lib/objectives/deferredObjectives/types.ts` plus the per-module narrow types in
-`diagnosticsBridge.ts`, `policyHorizon.ts`, and `horizonPlanner.ts`.
+`diagnosticTypes.ts`, `diagnosticProgress.ts`, `policyHorizon.ts`, and `horizonPlanner.ts`.
 
 ### Shipped today
 
-Diagnostics bridge (`diagnosticsBridge.ts`):
+Task evaluation (`diagnosticTypes.ts`, produced by `taskEvaluationCoordinator.ts` and
+`diagnosticProgress.ts`):
 
 - `objective_missing_device`
 - `objective_device_in_sub_home`

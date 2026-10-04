@@ -443,10 +443,10 @@ describe('formatPlanHistoryMissedReason (recorded delivery explanation)', () => 
 
   it.each([
     ['budget_limited', 'The daily budget held delivery back.'],
-    ['capacity_limited', 'Power-limit control held delivery back.'],
+    ['capacity_limited', 'Not enough available power held delivery back.'],
     ['estimate_uncertain', 'The energy estimate could not establish a feasible schedule.'],
-    ['device_not_accepting', 'The device stopped accepting energy before reaching the target.'],
-    ['device_limit', 'The device has its own limit below the requested target.'],
+    ['device_not_accepting', 'The device stopped taking power before reaching the target.'],
+    ['device_limit', 'The car stopped at its own charge limit, below this smart task’s target.'],
   ] as const)('names the recorded %s cause regardless of plan snapshot or energy ratio', (cause, copy) => {
     const entry = withRecordedCause(buildEntry({
       outcome: 'missed', deliveredKWh: 0.9, initialEnergyExpectedKWh: 2,
@@ -455,14 +455,14 @@ describe('formatPlanHistoryMissedReason (recorded delivery explanation)', () => 
     expect(formatPlanHistoryMissedReason(entry)).toBe(copy);
   });
 
-  it('keeps the final device blocker primary and names earlier restrictions as contributors', () => {
+  it('keeps the final device blocker primary and names the longest earlier restriction', () => {
     const entry = withRecordedCause(buildEntry({
       outcome: 'missed', deliveredKWh: 2.5,
       finalPlan: buildSnapshot({ planStatus: 'cannot_meet', dailyBudgetExhaustedBucketCount: 2 }),
     }), 'device_not_accepting', ['budget_limited', 'capacity_limited']);
     expect(formatPlanHistoryMissedReason(entry)).toBe(
-      'The device stopped accepting energy before reaching the target.'
-      + ' Earlier: The daily budget held delivery back. Power-limit control held delivery back.',
+      'The device stopped taking power before reaching the target.'
+      + ' Earlier: The daily budget held delivery back.',
     );
   });
 

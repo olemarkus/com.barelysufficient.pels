@@ -49,7 +49,8 @@ import { subscribeToHomeScope } from './homeScope.ts';
 
 export type RecommendationNavigation = {
   openPanel: (panelId: string) => void;
-  openDevice: (deviceId: string) => void;
+  // `focus` names the setting to land on inside the device page.
+  openDevice: (deviceId: string, focus: 'top' | 'start-policy') => void;
 };
 
 // Browser-owned acknowledgement state. The runtime never reads this key.
@@ -298,7 +299,8 @@ const runRecommendationAction = (recommendation: SetupRecommendation): void => {
     return;
   }
   navigationRead.navigation.openPanel('devices');
-  if (target.kind === 'device') navigationRead.navigation.openDevice(target.deviceId);
+  if (target.kind === 'device') navigationRead.navigation.openDevice(target.deviceId, 'top');
+  if (target.kind === 'device-start-policy') navigationRead.navigation.openDevice(target.deviceId, 'start-policy');
 };
 
 const writeDismissal = async (recommendation: SetupRecommendation, dismissed: boolean): Promise<void> => {

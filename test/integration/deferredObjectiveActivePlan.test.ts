@@ -6,6 +6,7 @@ import {
   type ActivePlanFlowCardSeed,
   type ActivePlanPersistDeps,
 } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
+import type { DeferredObjectivePlanRevisionEvent } from '../../lib/objectives/deferredObjectives/planRevisionBus';
 import {
   normalizeDeferredObjectiveActivePlans,
 } from '../../lib/objectives/deferredObjectives/activePlanSettings';
@@ -249,6 +250,41 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(clearedLimit.latest).toBe(original.latest);
     expect(clearedLimit.commitment).toBe(original.commitment);
     expect(clearedLimit.latest!.revision).toBe(1);
+  });
+
+  // A target edit across the car's own limit (85 %) changes the reported status.
+  // The settle event must publish the status of the plan it just wrote, which
+  // carries the new target: the list, the hero and the Flow condition read that
+  // plan, and the next cycle's "previous" status comes from it too.
+  it.each([
+    [80, 90, 'at_risk'],
+    [90, 80, 'on_track'],
+  ] as const)('publishes the reported status after a target edit from %s %% to %s %% across a car limit', (
+    fromTarget, toTarget, expected,
+  ) => {
+    const persist = buildPersistDeps();
+    const events: DeferredObjectivePlanRevisionEvent[] = [];
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...persist.deps, onRevisionWritten: (event) => { events.push(event); },
+    });
+    const evDiagnostic = (targetValue: number) => makeDiag({
+      deviceId: 'ev', deadlineAtMs: 6 * HOUR_MS, objectiveKind: 'ev_soc',
+      objectiveId: 'ev:ev_soc', targetTemperatureC: null, currentTemperatureC: null,
+      targetPercent: targetValue, currentPercent: 60, targetValue,
+      reachableTargetValue: Math.min(targetValue, 85),
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5, { plannedAdmissionPowerKw: 3 })]),
+    });
+    recorder.observe([evDiagnostic(fromTarget)], HOUR_MS);
+    const before = recorder.getActivePlansSnapshot().plansByDeviceId.ev!;
+    expect(effectivePlanStatusOf(before)).toBe(expected === 'at_risk' ? 'on_track' : 'at_risk');
+    events.length = 0;
+
+    recorder.observe([evDiagnostic(toTarget)], HOUR_MS + 10 * 60_000);
+    const after = recorder.getActivePlansSnapshot().plansByDeviceId.ev!;
+    expect(after.targetValue).toBe(toTarget);
+    expect(effectivePlanStatusOf(after)).toBe(expected);
+    const statusEvents = events.filter((event) => event.eventType === 'revision_written');
+    expect(statusEvents.at(-1)?.effectivePlanStatus).toBe(expected);
   });
 
   it('persists a contributing budget verdict and restores it on the frozen horizon', () => {
@@ -4023,6 +4059,32 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(plan?.latest?.revision).toBe(1);
       expect(plan?.latest?.planStatus).toBe('on_track');
       expect(plan?.latest?.energyNeededKWh).toBeCloseTo(1.5);
+    });
+
+    // v3.9.3 wrote `objective_delivery_restricted` whenever PELS's own limiting
+    // held a task's device back. The code is retired: the plan must load with its
+    // commitment, report its committed verdict, and never write the code back.
+    it('loads a plan carrying the retired `objective_delivery_restricted` without it', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: { dev: { ...basePlan(), diagnosticReasonCode: 'objective_delivery_restricted' } },
+      };
+      const plan = normalizeDeferredObjectiveActivePlans(persisted).plansByDeviceId.dev;
+      expect(plan).toBeDefined();
+      expect(plan).not.toHaveProperty('diagnosticReasonCode');
+      expect(plan?.latest?.planStatus).toBe('on_track');
+      expect(plan && effectivePlanStatusOf(plan)).toBe('on_track');
+
+      // The next diagnostic writes the live cause, if any, and never the retired one.
+      const recorder = new DeferredObjectiveActivePlanRecorder({
+        load: () => normalizeDeferredObjectiveActivePlans(persisted),
+        save: () => undefined,
+      });
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
+        horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5)]),
+      })], 1.5 * HOUR_MS);
+      expect(recorder.getActivePlansSnapshot()?.plansByDeviceId.dev?.diagnosticReasonCode).toBeUndefined();
     });
 
     it('drops a committed plan without a latest revision', () => {
