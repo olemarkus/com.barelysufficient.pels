@@ -60,41 +60,13 @@ const getPositiveIntegerArg = (
   if (hasFiniteNumber(options.max) && value > options.max) return null;
   return value;
 };
-const parsePriceEntry = (entry: unknown): ParsedPriceEntry | null => {
-  if (!entry || typeof entry !== 'object') return null;
-  const record = entry as Record<string, unknown>;
-  const startsAtRaw = record.startsAt;
-  if (typeof startsAtRaw !== 'string' || !startsAtRaw.trim()) return null;
-  const startsAtMs = Date.parse(startsAtRaw);
-  if (!Number.isFinite(startsAtMs)) return null;
-  let totalPriceRaw: number | null = null;
-  if (hasFiniteNumber(record.totalPrice)) {
-    totalPriceRaw = record.totalPrice;
-  } else if (hasFiniteNumber(record.total)) {
-    totalPriceRaw = record.total;
-  }
-  if (!hasFiniteNumber(totalPriceRaw)) return null;
-  return {
-    startsAtMs,
-    price: totalPriceRaw,
-  };
-};
-const normalizeCombinedEntries = (combinedPrices: unknown): ParsedPriceEntry[] => {
-  let maybeArray: unknown[] = [];
-  if (Array.isArray(combinedPrices)) {
-    maybeArray = combinedPrices;
-  } else if (
-    combinedPrices
-    && typeof combinedPrices === 'object'
-    && Array.isArray((combinedPrices as Record<string, unknown>).prices)
-  ) {
-    maybeArray = (combinedPrices as Record<string, unknown>).prices as unknown[];
-  }
-  return maybeArray
-    .map((entry) => parsePriceEntry(entry))
-    .filter((entry): entry is ParsedPriceEntry => entry !== null)
-    .sort((a, b) => a.startsAtMs - b.startsAtMs);
-};
+const normalizeCombinedEntries = (combinedPrices: readonly CombinedHourlyPrice[]): ParsedPriceEntry[] => (
+  [...combinedPrices.flatMap((entry) => {
+    const startsAtMs = Date.parse(entry.startsAt);
+    if (!Number.isFinite(startsAtMs) || !Number.isFinite(entry.totalPrice)) return [];
+    return [{ startsAtMs, price: entry.totalPrice }];
+  })].sort((a, b) => a.startsAtMs - b.startsAtMs)
+);
 const buildSlotIndex = (
   entries: ParsedPriceEntry[],
   timeZone: string,
@@ -115,20 +87,12 @@ const buildSlotIndex = (
     dayMap.set(slotParts.hour, hourList);
     grouped.set(dateKey, dayMap);
   }
-  const indexed = new Map<string, Map<number, HourSlot[]>>();
-  for (const [dateKey, dayMap] of grouped.entries()) {
-    const compactDayMap = new Map<number, HourSlot[]>();
-    for (const [hour, hourList] of dayMap.entries()) {
-      const sorted = [...hourList].sort((a, b) => a.startsAtMs - b.startsAtMs);
-      if (sorted.length === 0) continue;
-      compactDayMap.set(hour, sorted);
-    }
-    indexed.set(dateKey, compactDayMap);
-  }
-  return indexed;
+  // Entries are sorted before grouping, so each hour retains chronological order,
+  // including the two instants of a repeated DST hour.
+  return grouped;
 };
 const buildEvaluationContext = (params: {
-  combinedPrices: unknown;
+  combinedPrices: readonly CombinedHourlyPrice[];
   timeZone: string;
   now: Date;
 }): EvaluationContext => {
@@ -195,8 +159,7 @@ const getDaySlots = (context: EvaluationContext, dateKey: string): HourSlot[] =>
 };
 const selectCurrentHourSlot = (hourSlots: HourSlot[], nowMs: number): HourSlot | null => {
   if (hourSlots.length === 0) return null;
-  const sorted = [...hourSlots].sort((a, b) => a.startsAtMs - b.startsAtMs);
-  const active = [...sorted].reverse().find((slot) => slot.startsAtMs <= nowMs);
+  const active = [...hourSlots].reverse().find((slot) => slot.startsAtMs <= nowMs);
   return active ?? null;
 };
 const selectWindowSlot = (params: {
@@ -208,12 +171,11 @@ const selectWindowSlot = (params: {
 }): HourSlot | null => {
   const { hourSlots, dayOffset, localHour, currentHour, nowMs } = params;
   if (hourSlots.length === 0) return null;
-  const sorted = [...hourSlots].sort((a, b) => a.startsAtMs - b.startsAtMs);
-  if (dayOffset === 0 && localHour === currentHour) return selectCurrentHourSlot(sorted, nowMs);
-  if (dayOffset < 0) return sorted.at(-1) ?? null;
-  if (dayOffset > 0) return sorted[0] ?? null;
-  if (localHour < currentHour) return sorted.at(-1) ?? null;
-  return sorted[0] ?? null;
+  if (dayOffset === 0 && localHour === currentHour) return selectCurrentHourSlot(hourSlots, nowMs);
+  if (dayOffset < 0) return hourSlots.at(-1) ?? null;
+  if (dayOffset > 0) return hourSlots[0] ?? null;
+  if (localHour < currentHour) return hourSlots.at(-1) ?? null;
+  return hourSlots[0] ?? null;
 };
 const evaluateLowestToday = (
   args: unknown,
@@ -259,15 +221,6 @@ const evaluateLowestToday = (
       if (!currentSlot) return null;
       return currentSlot.price;
     })();
-  if (!hasFiniteNumber(currentPrice)) {
-    return {
-      matches: false,
-      reason: 'missing_current_slot',
-      currentPrice: null,
-      cutoff: null,
-      candidateCount: daySlots.length,
-    };
-  }
   if (!hasFiniteNumber(currentPrice)) {
     return {
       matches: false,

@@ -4,13 +4,12 @@
 // These types exist to make one specific class of bug a compile error: the
 // quantities are all `number`, several were `number | null`, and `??` between
 // any two of them typechecked — so a chain of such fallbacks silently swapped a
-// remainder for a plan total. See `energyQuantities.ts`.
+// remainder for cumulative delivery. See `energyQuantities.ts`.
 import {
   asDeliveredEnergyKWh,
-  asPlannedFloorEnergyKWh,
   asRemainingEnergyKWh,
   resolveRemainingEnergyKWh,
-  type PlannedFloorEnergyKWh,
+  type DeliveredEnergyKWh,
   type RemainingEnergyKWh,
 } from '../../packages/shared-domain/src/energyQuantities';
 
@@ -20,10 +19,8 @@ describe('energy quantity constructors', () => {
     // deliver what this run needed?", so it is rejected rather than clamped.
     for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, null, undefined, '5']) {
       expect(asRemainingEnergyKWh(bad)).toBeNull();
-      expect(asPlannedFloorEnergyKWh(bad)).toBeNull();
     }
     expect(asRemainingEnergyKWh(21.69)).toBe(21.69);
-    expect(asPlannedFloorEnergyKWh(5)).toBe(5);
   });
 
   it('admits zero delivered energy, which is a real observation', () => {
@@ -61,22 +58,22 @@ describe('resolveRemainingEnergyKWh', () => {
 describe('energy quantity brands (compile-time)', () => {
   it('does not let one energy quantity stand in for another', () => {
     const remaining = asRemainingEnergyKWh(21.69);
-    const floor = asPlannedFloorEnergyKWh(5);
-    if (remaining === null || floor === null) throw new Error('fixture');
+    const delivered = asDeliveredEnergyKWh(5);
+    if (remaining === null || delivered === null) throw new Error('fixture');
 
-    const takesFloor = (value: PlannedFloorEnergyKWh): number => value;
+    const takesDelivered = (value: DeliveredEnergyKWh): number => value;
     const takesRemaining = (value: RemainingEnergyKWh): number => value;
 
-    // The exact swap that shipped the wrong postmortem: a remainder used where
-    // a plan total was meant. Before the brands this compiled silently.
-    // @ts-expect-error a remainder is not a planned floor
-    takesFloor(remaining);
-    // @ts-expect-error a planned floor is not a remainder
-    takesRemaining(floor);
+    // The exact swap that shipped the wrong postmortem: a remainder compared with
+    // cumulative delivery. Before the brands this compiled silently.
+    // @ts-expect-error a remainder is not cumulative delivery
+    takesDelivered(remaining);
+    // @ts-expect-error cumulative delivery is not a remainder
+    takesRemaining(delivered);
 
     // The right way round still compiles, and the brands erase at runtime so a
     // branded value serializes byte-identically into the released v4 schema.
-    expect(takesFloor(floor)).toBe(5);
+    expect(takesDelivered(delivered)).toBe(5);
     expect(takesRemaining(remaining)).toBe(21.69);
     expect(JSON.stringify({ remaining })).toBe('{"remaining":21.69}');
   });

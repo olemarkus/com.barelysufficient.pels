@@ -142,7 +142,7 @@ describe('priceLowestFlowEvaluator', () => {
     expect(result.reason).toBe('missing_current_slot');
   });
 
-  it('uses the active duplicate local hour slot on fallback days for lowest-today', () => {
+  it('uses the active duplicate local hour from unsorted fallback-day prices for lowest-today', () => {
     const fallbackDayValues = Array.from({ length: 25 }, () => 120);
     fallbackDayValues[2] = 1;
     fallbackDayValues[3] = 80;
@@ -150,7 +150,7 @@ describe('priceLowestFlowEvaluator', () => {
     const result = evaluateLowestPriceCard({
       cardId: 'price_lowest_today',
       args: { number: 1 },
-      combinedPrices: buildUtcRange('2026-10-24T22:00:00.000Z', fallbackDayValues),
+      combinedPrices: buildUtcRange('2026-10-24T22:00:00.000Z', fallbackDayValues).reverse(),
       timeZone: 'Europe/Oslo',
       now: new Date('2026-10-25T01:30:00.000Z'),
     });
@@ -161,7 +161,7 @@ describe('priceLowestFlowEvaluator', () => {
     expect(result.matches).toBe(false);
   });
 
-  it('uses the active duplicate local hour slot in before-window evaluation on fallback days', () => {
+  it('uses the active duplicate local hour from unsorted fallback-day prices in before-window evaluation', () => {
     const fallbackDayValues = Array.from({ length: 25 }, () => 120);
     fallbackDayValues[2] = 1;
     fallbackDayValues[3] = 110;
@@ -170,7 +170,7 @@ describe('priceLowestFlowEvaluator', () => {
     const result = evaluateLowestPriceCard({
       cardId: 'price_lowest_before',
       args: { period: 2, number: 1, time: 4 },
-      combinedPrices: buildUtcRange('2026-10-24T22:00:00.000Z', fallbackDayValues),
+      combinedPrices: buildUtcRange('2026-10-24T22:00:00.000Z', fallbackDayValues).reverse(),
       timeZone: 'Europe/Oslo',
       now: new Date('2026-10-25T01:30:00.000Z'),
     });

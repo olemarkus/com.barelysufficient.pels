@@ -6,16 +6,6 @@ import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDev
 
 type DeviceRef = RawFlowDeviceArg;
 
-/**
- * The snapshot this card reads is the decorated carrier, whose stepped
- * descriptor is optional — widened with the probe so `isSteppedLoadSnapshot`
- * can narrow it. The base snapshot type omits `steppedLoadProfile` outright.
- */
-// Was a local `TargetDeviceSnapshot & SteppedLoadDescriptorProbe`, which is the
-// descriptor read's shape spelled by hand on top of the whole snapshot. This card
-// asks two descriptor questions — is the device stepped, and what is it called.
-type ExpectedPowerDeviceSnapshot = DeviceDescriptorRead;
-
 type ActionCardHomey = Pick<FlowHomeyLike, 'flow'> & {
   flow: { getActionCard: (id: string) => FlowCard };
 };
@@ -44,12 +34,7 @@ function parseExpectedPowerW(payload: { power_w?: number } | null): number {
  * device that declares a load made the ladder's top rung unreachable for exactly
  * the owner most likely to need it: someone whose declared load is wrong.
  */
-async function assertOverrideSupported(
-  deps: { getDeviceDescriptors: () => Promise<ExpectedPowerDeviceSnapshot[]> },
-  deviceId: string,
-): Promise<void> {
-  const descriptors = await deps.getDeviceDescriptors();
-  const device = descriptors.find((entry) => entry.id === deviceId);
+function assertOverrideSupported(device: DeviceDescriptorRead | undefined): void {
   if (device && isSteppedLoadSnapshot(device)) {
     throw new Error(
       'Stepped load devices use configured planning power per step; '
@@ -58,15 +43,10 @@ async function assertOverrideSupported(
   }
 }
 
-function resolveDeviceName(devices: DeviceDescriptorRead[], deviceId: string): string | null {
-  const device = devices.find((d) => d.id === deviceId);
-  return device ? device.name : null;
-}
-
 export function registerExpectedPowerCard(
   homey: ActionCardHomey,
   deps: {
-    getDeviceDescriptors: () => Promise<ExpectedPowerDeviceSnapshot[]>;
+    getDeviceDescriptors: () => Promise<DeviceDescriptorRead[]>;
     setExpectedOverride: (deviceId: string, kw: number) => boolean;
     refreshSnapshot: () => Promise<void>;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
@@ -79,14 +59,14 @@ export function registerExpectedPowerCard(
     const deviceId = extractDeviceId(payload);
     const powerW = parseExpectedPowerW(payload);
     const requestedKw = powerW / 1000;
-    await assertOverrideSupported(deps, deviceId);
-
     const descriptors = await deps.getDeviceDescriptors();
+    const device = descriptors.find((entry) => entry.id === deviceId);
+    assertOverrideSupported(device);
     const changed = deps.setExpectedOverride(deviceId, requestedKw);
     if (!changed) {
       return true;
     }
-    const deviceName = resolveDeviceName(descriptors, deviceId);
+    const deviceName = device?.name ?? null;
     deps.getStructuredLogger('devices')?.info({
       event: 'flow_expected_power_set',
       deviceId,

@@ -1,3 +1,4 @@
+import { parseInsightsTimestamp } from './insightsTimestamp';
 import type { WeatherDailyRecord } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { isUnknownRecord } from '../utils/types';
 import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
@@ -147,16 +148,7 @@ function parseEntryPoint(entry: unknown): { timestampMs: number; temperatureC: n
   if (!isUnknownRecord(entry)) return undefined;
   const value = entry.v;
   if (!isPlausibleOutdoorTemperature(value)) return undefined;
-  const timestampMs = parseEntryTimestamp(entry.t);
+  const timestampMs = parseInsightsTimestamp(entry.t);
   if (timestampMs === undefined) return undefined;
   return { timestampMs, temperatureC: value };
-}
-
-function parseEntryTimestamp(raw: unknown): number | undefined {
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
-  if (typeof raw === 'string') {
-    const parsed = Date.parse(raw);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
 }

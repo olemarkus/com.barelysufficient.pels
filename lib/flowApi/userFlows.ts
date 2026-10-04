@@ -192,19 +192,12 @@ function collectFromAdvancedFlows(
 }
 
 /**
- * Merge both endpoint responses into one device-capability write map.
+ * Merge both endpoint responses into device-capability writes and EV SoC reporters.
  * Defensive against unexpected shapes: anything that is not a flow map / not
  * an action card / not a device-capability id is skipped rather than thrown.
- * An empty or fully-unrecognised input yields an empty map (the caller, not
+ * An empty or fully-unrecognised input yields empty facts (the caller, not
  * this function, distinguishes "read failed" from "read OK, nothing found").
  */
-export function normalizeFlowCapabilityWrites(
-  flatFlows: Record<string, unknown>,
-  advancedFlows: Record<string, unknown>,
-): FlowCapabilityWrites {
-  return normalizeUserFlowFacts(flatFlows, advancedFlows).writes;
-}
-
 export function normalizeUserFlowFacts(
   flatFlows: Record<string, unknown>,
   advancedFlows: Record<string, unknown>,

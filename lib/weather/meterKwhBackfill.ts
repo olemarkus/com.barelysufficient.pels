@@ -1,3 +1,4 @@
+import { parseInsightsTimestamp } from './insightsTimestamp';
 import { isUnknownRecord } from '../utils/types';
 import {
   getDateKeyInTimeZone,
@@ -415,18 +416,9 @@ function parseCounterPoint(entry: unknown): { timestampMs: number; counterKwh: n
   const value = entry.v;
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
   if (value < 0 || value > MAX_PLAUSIBLE_COUNTER_KWH) return undefined;
-  const timestampMs = parseEntryTimestamp(entry.t);
+  const timestampMs = parseInsightsTimestamp(entry.t);
   if (timestampMs === undefined) return undefined;
   return { timestampMs, counterKwh: value };
-}
-
-function parseEntryTimestamp(raw: unknown): number | undefined {
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
-  if (typeof raw === 'string') {
-    const parsed = Date.parse(raw);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
 }
 
 /** Linear-interpolated quantile over an ascending-sorted sample. */
