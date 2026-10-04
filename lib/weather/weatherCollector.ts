@@ -268,7 +268,7 @@ export class WeatherCollector {
     const normalized = read.readable ? normalizeWeatherHistoryState(raw, this.getCurrentDateKey()) : null;
     if (normalized) {
       this.state = normalized;
-      this.refreshLegacyAdvice();
+      this.refreshCachedAdvice();
       this.loadedImplausibleAtMs = undefined;
       return;
     }
@@ -282,9 +282,10 @@ export class WeatherCollector {
     }
   }
 
-  /** Upgrade cached advice without applying a budget merely because state loaded. */
-  private refreshLegacyAdvice(): void {
-    if (!this.state.latestFit || this.state.latestFit.recentResidualQ80 !== undefined) return;
+  /** Refit legacy or discarded advice without applying a budget merely because state loaded. */
+  private refreshCachedAdvice(): void {
+    if (!this.state.latestFit) return;
+    if (this.state.latestFit.recentResidualQ80 !== undefined && this.state.latestSuggestion) return;
     const refreshed = this.deps.recomputeDerived?.(this.state) ?? this.state;
     if (refreshed !== this.state) this.markDirty();
     this.state = refreshed;
@@ -453,7 +454,7 @@ export class WeatherCollector {
     // wholesale; if the arrangement changed while the store was unreadable,
     // forget them again before the caller persists the merged state.
     const meterScope = this.reconcileMeterScope();
-    this.refreshLegacyAdvice();
+    this.refreshCachedAdvice();
     if (!meterScope.resolved) this.scheduleMeterScopeRetry();
     if (meterScope.resolved) {
       this.backfillChain.startMeterKwhBackfill();

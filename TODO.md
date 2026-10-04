@@ -76,7 +76,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - **Shed and restore control** — 2: restore-cooldown window and global stamp; temperature-control
   toggle strands a shed setpoint
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
-- **Docs** — 1: safe pace defined as "hard cap minus safety margin"
 
 ## Shed and restore control
 
@@ -1710,18 +1709,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       deleted and the guard requires its absence — `api.ts`'s pre-logger `console.error` is
       exempted by name in the guard rather than budgeted, so zero is reachable. [P2]
 ## Docs
-
-- [ ] **The docs define safe pace as "hard cap minus safety margin", which is wrong.**
-      `docs/glossary.md` ("Safe pace") and `docs/how-pels-decides.md` (~line 55) both state the
-      safe pace *is* the cap minus the margin. It is not: the capacity pace is a burst rate,
-      `remainingKWh / remainingHours` capped by the end-of-hour drain ceiling
-      (`computeDynamicSoftLimit`, `lib/plan/planBudget.ts`), which legitimately sits *above* cap-minus-margin for most of
-      an under-used hour. `notes/ui-terminology.md` § "Safe pace, hard cap, and safety margin"
-      and `docs/technical.md` already say this correctly, and the glossary entry contradicts its
-      own next sentence ("a moving target, not a fixed limit"). Cap-minus-margin is the
-      *sustainable* rate and is the right frame only for the Advanced page's "safe pace starts
-      each hour at" preview. Persona: first-time user reading the glossary link from the hero
-      tooltip. Source: safe-pace definition audit (2026-07-26). [P1]
 
 - [ ] **Eleven device-detail captures are committed but referenced by no docs page.**
       `docs/public/screenshots/device-detail/` holds fourteen images; only

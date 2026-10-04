@@ -3,6 +3,10 @@ import { resolve } from 'node:path';
 import type { WeatherDailyRecord } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { fitEnergySignature, predictDailyKwh } from '../../packages/shared-domain/src/energySignature/energySignature';
 import { suggestDailyBudgetKwh } from '../../lib/weather/suggestDailyBudget';
+import { getLogger } from '../../lib/logging/logger';
+import { normalizeWeatherHistoryState } from '../../lib/weather/weatherHistory';
+import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
+import { performBudgetAutoApply } from '../../lib/weather/weatherAutoApply';
 import { foldBudgetPressureDay } from '../../packages/shared-domain/src/energySignature/budgetPressure';
 
 /**
@@ -55,6 +59,38 @@ const foldClosedDays = (fromDateKey: string) => {
 };
 
 describe('2026-08-01 under-budget regression (real production history)', () => {
+  it('applies freshly recomputed advice without an inherited whole-home correction after upgrade', () => {
+    const logger = getLogger('weather/upgrade-test');
+    const deps = {
+      getNowMs: () => NOW_MS, getTimeZone: () => 'Europe/Oslo',
+      getCapacityLimitKw: () => 10, logger,
+    };
+    const original = computeEnergySignatureUpdate({ records }, deps);
+    const suggestion = original.latestSuggestion;
+    if (!suggestion) throw new Error('expected production history to yield advice');
+    const migrated = normalizeWeatherHistoryState({
+      ...original,
+      budgetPressure: { algorithmVersion: 2, kwh: 10, throughDateKey: '2026-07-31' },
+      latestSuggestion: {
+        ...suggestion, budgetPressureKwh: 10, suggestedBudgetKwh: suggestion.suggestedBudgetKwh + 10,
+      },
+    });
+    if (!migrated) throw new Error('expected history to survive migration');
+    const applySuggestedDailyBudget = vi.fn(() => true);
+    const applyDeps = {
+      getSettings: () => ({ enabled: true, autoApplyDailyBudget: true }),
+      getNowMs: deps.getNowMs, applySuggestedDailyBudget, logger,
+    };
+    performBudgetAutoApply(migrated, applyDeps);
+    expect(applySuggestedDailyBudget).not.toHaveBeenCalled();
+    const updated = computeEnergySignatureUpdate(migrated, deps);
+    const applied = performBudgetAutoApply(updated, applyDeps);
+    expect(updated.latestSuggestion?.budgetPressureKwh).toBe(0);
+    expect(applySuggestedDailyBudget).toHaveBeenCalledExactlyOnceWith(suggestion.suggestedBudgetKwh);
+    expect(applied.lastAutoApply?.kwh).toBe(suggestion.suggestedBudgetKwh);
+    expect(migrated.records).toEqual(original.records);
+  });
+
   it('reproduces the model that under-predicted the day', () => {
     const fit = fitEnergySignature(records, NOW_MS);
     if (!fit) throw new Error('expected a fit');
@@ -150,7 +186,7 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
 
 /** Production overshoot corrects allowance; only unresolved budget denial selects q90. */
 describe('2026-08-08 under the day-close damage model (real production numbers)', () => {
-  const CARRIED = { kwh: 3.1640625, throughDateKey: '2026-08-07' };
+  const CARRIED = { algorithmVersion: 3 as const, kwh: 3.1640625, throughDateKey: '2026-08-07' };
   const augEighth = (suppression: WeatherDailyRecord['suppression']): WeatherDailyRecord => ({
     dateKey: '2026-08-08',
     tempMeanC: 12.749999999999998,

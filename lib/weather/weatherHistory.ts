@@ -575,11 +575,11 @@ export function normalizeWeatherHistoryState(raw: unknown, currentDateKey?: stri
     // fit/suggestion persisted by a PRE-suppression version still satisfies the
     // contract when served to the readout before the first recompute.
     ...(isUnknownRecord(raw.latestFit) ? { latestFit: defaultStoredFit(raw.latestFit) } : {}),
-    ...(isUnknownRecord(raw.latestSuggestion)
+    ...(budgetPressure.kind !== 'incompatible' && isUnknownRecord(raw.latestSuggestion)
       ? { latestSuggestion: defaultStoredSuggestion(raw.latestSuggestion) }
       : {}),
     ...(lastAutoApply ? { lastAutoApply } : {}),
-    ...(budgetPressure ? { budgetPressure } : {}),
+    ...(budgetPressure.kind === 'current' ? { budgetPressure: budgetPressure.pressure } : {}),
   };
 }
 

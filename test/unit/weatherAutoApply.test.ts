@@ -55,7 +55,7 @@ describe('performBudgetAutoApply', () => {
       latestSuggestion: {
         targetDateKey: '2026-01-11', suggestedBudgetKwh: 48, forecastMeanTempC: -4, budgetPressureKwh: 0,
       } as WeatherHistoryState['latestSuggestion'],
-      budgetPressure: { kwh: 4, throughDateKey: '2026-01-10' },
+      budgetPressure: { algorithmVersion: 3, kwh: 4, throughDateKey: '2026-01-10' },
     });
     const next = performBudgetAutoApply(state, d);
     expect(d.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
@@ -68,7 +68,7 @@ describe('performBudgetAutoApply', () => {
       latestSuggestion: {
         targetDateKey: '2026-01-11', suggestedBudgetKwh: 48, forecastMeanTempC: -4, budgetPressureKwh: 4,
       } as WeatherHistoryState['latestSuggestion'],
-      budgetPressure: { kwh: 4, throughDateKey: '2026-01-10' },
+      budgetPressure: { algorithmVersion: 3, kwh: 4, throughDateKey: '2026-01-10' },
     }), raising);
     expect(raising.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
 
@@ -88,7 +88,7 @@ describe('performBudgetAutoApply', () => {
       latestSuggestion: {
         targetDateKey: '2026-01-11', suggestedBudgetKwh: 48, forecastMeanTempC: -4, budgetPressureKwh: 0,
       } as WeatherHistoryState['latestSuggestion'],
-      budgetPressure: { kwh: 13.9, throughDateKey: '2026-01-10' },
+      budgetPressure: { algorithmVersion: 3, kwh: 13.9, throughDateKey: '2026-01-10' },
     }), d);
     expect(d.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
   });
@@ -141,7 +141,7 @@ describe('budget advice decision recording', () => {
     const recordBudgetDecision = vi.fn();
     const d = deps({ recordBudgetDecision, ...overrides });
     performBudgetAutoApply(baseState({
-      meterScopeSignature: 'scope-a', budgetPressure: { kwh: 17.8, throughDateKey: '2026-01-10' },
+      meterScopeSignature: 'scope-a', budgetPressure: { algorithmVersion: 3, kwh: 17.8, throughDateKey: '2026-01-10' },
     }), d);
     expect(recordBudgetDecision).toHaveBeenCalledWith(expect.objectContaining({
       outcome, suggestedBudgetKwh: 48, forecastMeanTempC: -4, pressureAccumulatorKwh: 17.8,

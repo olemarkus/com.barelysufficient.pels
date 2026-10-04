@@ -10,7 +10,7 @@ const day = (over: Partial<WeatherDailyRecord> = {}): WeatherDailyRecord => ({
   quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
   ...over,
 });
-const carried = { algorithmVersion: 2 as const, kwh: 20, throughDateKey: '2026-10-01' };
+const carried = { algorithmVersion: 3 as const, kwh: 20, throughDateKey: '2026-10-01' };
 
 describe('budget demand feedback', () => {
   it('does not turn historical temporary/capacity holds into damaged days', () => {

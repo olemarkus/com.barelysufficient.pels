@@ -269,8 +269,8 @@ export type WeatherHistoryState = {
 
 /** See `WeatherHistoryState.budgetPressure` and `foldBudgetPressureDay`. */
 export type BudgetPressureState = {
-  /** Version 2 excludes temporary/capacity holds and credits unused allowance. */
-  algorithmVersion?: 2;
+  /** Version 3 measures balance on budget-counted usage, excluding exempt energy. */
+  algorithmVersion: 3;
   /** Accumulated extra kWh; never negative. */
   kwh: number;
   /** Newest day already folded in — days at or before this are skipped. */

@@ -51,10 +51,13 @@ The features stack. Each one works *inside* the one above it, so they never figh
 
 ## How PELS chooses what to turn down
 
-PELS doesn't react at the hard cap itself — it reacts a little earlier, at the
-[safe pace](/glossary#safe-pace) (the cap minus your [safety margin](/glossary#safety-margin),
-or lower when the daily budget is the tighter constraint). When the home crosses
-the safe pace, PELS eases devices off **in [priority](/glossary#priority) order**:
+PELS reacts at the [safe pace](/glossary#safe-pace): the power level that keeps
+the remaining energy allowance on track. During an under-used hour it can sit
+above the hard cap minus your [safety margin](/glossary#safety-margin), then
+tighten toward that steady rate as the hour ends. On the 15-minute period it
+never rises above that rate. A tighter daily budget can lower the pace further.
+When the home crosses the safe pace, PELS eases devices off
+**in [priority](/glossary#priority) order**:
 the least important device (highest priority number) goes first, the most
 important stays running longest. Priorities are per [mode](/glossary#mode), so
 your bedroom can outrank the water heater at night and not during the day.
