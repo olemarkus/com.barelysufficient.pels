@@ -112,11 +112,14 @@ card → `Choose temperature device` → Settings, Weather insight section.
     `Your budget has recently been limiting your devices, so the suggestion is
     raised to match.` plus, when the pressure term contributed ≥ 1 kWh after
     clamping, ` N kWh of the suggestion covers recent demand beyond your budget.`
-  - measured overshoot alone (budget-counted usage above the applied budget,
-    no device proven held back): `Recent usage went over your budget, so the
-    suggestion includes extra room.`; with a contribution ≥ 1 kWh it becomes the
-    single sentence `Recent usage went over your budget, so the suggestion
-    includes N kWh of extra room.` so "over your budget" is not said twice.
+  - not limiting, with a correction still in place (no device recently proven
+    held back): `The suggestion includes extra room based on recent demand.`;
+    with a contribution ≥ 1 kWh it reads `The suggestion includes N kWh of
+    extra room based on recent demand.` The wording names no single source and
+    claims no overshoot, because the correction grows from measured overshoot,
+    held-back heater demand and budget-caused task misses alike (a miss raises
+    it even on a day that ended under the budget), and it outlives the 14-day
+    limiting check as it decays.
   The suggestion also includes headroom, so the number is a component and not
   the whole delta. Overshoot is measured on budget-counted usage (metered less
   usage allowed beyond the budget), so that load never reads as going over.

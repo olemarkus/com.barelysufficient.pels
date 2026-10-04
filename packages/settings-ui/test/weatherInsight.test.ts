@@ -273,12 +273,12 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     expect(verdict?.textContent).not.toContain('room to spare');
   });
 
-  it('explains overshoot correction without claiming devices were limited', () => {
+  it('explains a correction without a recent limit without claiming devices were limited', () => {
     const mount = mountIntoBody();
     const readout = buildReadout();
     readout.suggestion = { ...readout.suggestion!, budgetPressureKwh: 4, budgetMayBeLimiting: false };
     renderBudgetOverview(mount, buildProps({ weatherInsight: { readout, fetchFailed: false } }));
-    expect(mount.querySelector('#weather-tomorrow-card')?.textContent).toContain('Recent usage went over your budget');
+    expect(mount.querySelector('#weather-tomorrow-card')?.textContent).toContain('extra room based on recent demand');
     expect(mount.querySelector('#weather-tomorrow-card')?.textContent).not.toContain('limiting your devices');
   });
 

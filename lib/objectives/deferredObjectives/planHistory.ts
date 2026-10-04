@@ -15,6 +15,7 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
+  BudgetOnlyMissRecord,
   DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryV6,
   ResolvedDeferredObjectivePlanHistoryEntry,
@@ -51,6 +52,7 @@ import { randomUUID } from 'node:crypto';
 import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
 import { captureHourStartBooking } from './planHistoryHourStartBookings';
 import { mergeSavedRun, toPersistedMeteredDeliveryState } from './planHistoryMeteredRun';
+import { isBudgetOnlyMiss } from './budgetOnlyMiss';
 
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
@@ -574,6 +576,13 @@ export class DeferredObjectivePlanHistoryRecorder {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),
     };
+  }
+
+  // Finalized runs that missed their deadline because of the daily budget
+  // alone (`budgetOnlyMiss.ts`). The daily-budget correction reads these as
+  // budget damage; the recorder answers because it owns the delivery evidence.
+  getBudgetOnlyMisses(): BudgetOnlyMissRecord[] {
+    return this.entries.filter(isBudgetOnlyMiss);
   }
 
   private recoverHistoryIfAvailable(): void {

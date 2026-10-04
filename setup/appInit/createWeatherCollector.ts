@@ -85,17 +85,18 @@ export function createWeatherCollector(
     isManagedDevice: (deviceId) => ctx.resolveManagedState(deviceId),
     // Composed from two planner-orthogonal sources so lib/weather sees only
     // primitives: diagnostics (device deficit durations and the day-close denial)
-    // and the smart-task history (deadline misses the budget caused). Absent
-    // services → {}. The two contribute disjoint keys by construction —
+    // and the smart-task history (deadline misses the budget caused, as the
+    // recorder classifies them). Absent services → {}. The two contribute
+    // disjoint keys by construction —
     // `DeviceDiagnosticsDaySuppressionTotals` declares neither deadline field —
     // so the spread order below cannot silently drop one producer's evidence,
     // and an overlap introduced later fails to typecheck rather than merging.
     getDaySuppression: (dateKey) => {
       const totals = ctx.deviceDiagnosticsService?.getDaySuppressionTotals(dateKey);
-      const entries = ctx.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot().entries ?? [];
+      const budgetOnlyMisses = ctx.deferredObjectivePlanHistoryRecorder?.getBudgetOnlyMisses() ?? [];
       return {
         ...(totals !== undefined ? totals : {}),
-        ...resolveDeadlineMissSuppression(entries, dateKey, ctx.getTimeZone()),
+        ...resolveDeadlineMissSuppression(budgetOnlyMisses, dateKey, ctx.getTimeZone()),
       };
     },
     // The tracker also records sub-hour gaps that merely cross an hour

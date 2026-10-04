@@ -3892,6 +3892,83 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.initialEnergyExpectedKWh).toBeUndefined();
     });
   });
+
+  describe('getBudgetOnlyMisses', () => {
+    // Which runs qualify is `isBudgetOnlyMiss`'s rule (test/unit/budgetOnlyMiss.test.ts);
+    // this pins that the recorder answers from its own finalized history.
+    const finalized = (
+      overrides: Pick<DeferredObjectivePlanHistoryRecord, 'id' | 'deviceId' | 'outcome' | 'deliveryExplanation'>
+        & Partial<Pick<DeferredObjectivePlanHistoryRecord, 'metAtMs'>>,
+    ): DeferredObjectivePlanHistoryRecord => ({
+      metAtMs: null,
+      targetValue: 65,
+      deadlineAtMs: 2 * HOUR_MS,
+      startedAtMs: HOUR_MS,
+      finalizedAtMs: 2 * HOUR_MS,
+      startProgressValue: 50,
+      finalProgressValue: 60,
+      initialEnergyNeededKWh: 22.5,
+      usedDeadlineReserve: false,
+      observedIntervals: [{ fromMs: HOUR_MS, toMs: 2 * HOUR_MS }],
+      discoveredFrom: 'observation',
+      originalPlan: null,
+      finalPlan: null,
+      ...overrides,
+    });
+
+    it('answers with the finalized budget-only misses and nothing else', () => {
+      const budgetMiss = finalized({
+        id: 'budget-miss',
+        deviceId: 'heater',
+        outcome: 'missed',
+        deliveryExplanation: {
+          kind: 'recorded',
+          primary: { kind: 'blocked', cause: 'budget_limited' },
+          contributors: ['budget_limited'],
+          intervals: [{ fromMs: HOUR_MS, toMs: 2 * HOUR_MS, cause: 'budget_limited' }],
+        },
+      });
+      const deviceCutoff = finalized({
+        id: 'device-cutoff',
+        deviceId: 'car',
+        outcome: 'missed',
+        deliveryExplanation: {
+          kind: 'recorded',
+          primary: { kind: 'blocked', cause: 'device_not_accepting' },
+          contributors: ['budget_limited'],
+          intervals: [],
+        },
+      });
+      const metUnderBudget = finalized({
+        id: 'met',
+        deviceId: 'boiler',
+        outcome: 'met',
+        metAtMs: 2 * HOUR_MS - 1,
+        deliveryExplanation: {
+          kind: 'recorded',
+          primary: { kind: 'blocked', cause: 'budget_limited' },
+          contributors: ['budget_limited'],
+          intervals: [],
+        },
+      });
+      const legacyMiss = finalized({
+        id: 'legacy-miss',
+        deviceId: 'pool',
+        outcome: 'missed',
+        deliveryExplanation: { kind: 'legacy_unrecorded' },
+      });
+      const recorder = new DeferredObjectivePlanHistoryRecorder({
+        ...inertPlanHistoryDeps(),
+        load: () => ({
+          snapshot: { version: 6, entries: [budgetMiss, deviceCutoff, metUnderBudget, legacyMiss] },
+          persistenceSafe: true,
+          meteredDeliveryStates: [],
+        }),
+        save: () => true,
+      });
+      expect(recorder.getBudgetOnlyMisses()).toEqual([budgetMiss]);
+    });
+  });
 });
 
 describe('appendRevisionLogIfNew (revisions[] cap)', () => {
