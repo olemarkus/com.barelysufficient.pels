@@ -9696,7 +9696,3 @@ md-switch {
   height: var(--spacing-4);
   accent-color: var(--color-role-accent);
 }
-
-.detail-car-row .md-switch-row__label {
-  order: 1;
-}
