@@ -160,7 +160,7 @@ const OUTCOME_LABELS: Record<DeferredObjectivePlanOutcome, string> = {
   met: 'Succeeded',
   missed: 'Missed',
   abandoned: 'Abandoned',
-  replaced: 'Abandoned',
+  replaced: 'Replaced',
   unknown: 'Unknown',
 };
 

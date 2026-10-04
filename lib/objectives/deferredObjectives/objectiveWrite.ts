@@ -1,3 +1,4 @@
+import type { TaskEvaluation } from './taskEvaluation';
 import { applyDeferredObjectiveChange } from './objectiveChange';
 import type { DeferredObjectiveChangeInput } from './objectiveChange';
 import type { DeferredObjectiveActivePlanRecorder } from './activePlanRecorder';
@@ -14,6 +15,7 @@ import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVES_PERKEY_MIGRATED } from '../../utils/settingsKeys';
 import type { SmartTaskHomeScope } from '../../../packages/contracts/src/smartTaskHomeScope';
+import type { CurrentTaskEvaluationReader } from './currentTaskEvaluation';
 
 // Device-scoped writes only proceed once the per-key migration is COMPLETE. Until
 // then a device's objective may still live only in the un-migrated legacy blob, so
@@ -63,6 +65,7 @@ export type DeferredObjectiveDeviceWriteDeps = {
   planHistoryRecorder: DeferredObjectivePlanHistoryRecorder;
   activePlanRecorder: DeferredObjectiveActivePlanRecorder;
   nowMs: number;
+  readCurrentTaskEvaluation: CurrentTaskEvaluationReader;
   // Main-home scope gate, wired by `buildDeferredObjectiveDeviceWriteDeps`
   // from the membership service. A separate-meter sub-home refuses as
   // `device_in_sub_home`; an active meter source refuses as
@@ -78,6 +81,16 @@ export type DeferredObjectiveDeviceWriteDeps = {
   // topic), wired by `buildDeferredObjectiveDeviceWriteDeps`. Optional so test
   // harnesses can omit it. Used only to surface refusals (see `refuse`).
   debugStructured?: StructuredDebugEmitter;
+};
+
+/** Capture against the old settings before a write can replace its obligation. */
+const readPreviousEvaluation = (
+  deps: DeferredObjectiveDeviceWriteDeps,
+  deviceId: string,
+  objective: DeferredObjectiveSettingsEntry | undefined,
+): TaskEvaluation | undefined => {
+  if (objective === undefined || !objective.enabled || objective.deadlineAtMs <= deps.nowMs) return undefined;
+  return deps.readCurrentTaskEvaluation(deviceId, objective);
 };
 
 // A device-scoped write op = 'upsert' | 'rescue' | 'clear', carried on the
@@ -177,8 +190,9 @@ export const upsertObjectiveForDevice = (
     ? { ...params.entry, rescue: prevEntry.rescue }
     : params.entry;
 
+  const previousEvaluation = readPreviousEvaluation(deps, deviceId, prevEntry);
   writeObjectiveForDevice(deps.store, deviceId, nextEntry);
-  notifyAndFlush(deps, { deviceId, deviceName, prevEntry, nextEntry, nowMs: deps.nowMs });
+  notifyAndFlush(deps, { deviceId, deviceName, prevEntry, nextEntry, nowMs: deps.nowMs, previousEvaluation });
   return { persisted: true };
 };
 
@@ -204,7 +218,10 @@ export const clearObjectiveForDevice = (
   // objective stays persisted and reappears on the next clean cycle.
   if (objectiveAbsenceIsTrustworthy(deps.store, deviceId)) return { persisted: true };
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
+  const previousEvaluation = readPreviousEvaluation(deps, deviceId, prevEntry);
   clearObjectiveKey(deps.store, deviceId);
-  notifyAndFlush(deps, { deviceId, deviceName, prevEntry, nextEntry: undefined, nowMs: deps.nowMs });
+  notifyAndFlush(deps, {
+    deviceId, deviceName, prevEntry, nextEntry: undefined, nowMs: deps.nowMs, previousEvaluation,
+  });
   return { persisted: true };
 };

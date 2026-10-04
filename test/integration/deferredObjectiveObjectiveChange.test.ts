@@ -87,7 +87,7 @@ describe('applyDeferredObjectiveChange', () => {
       activePlanRecorder,
     });
 
-    expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced');
+    expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced', undefined);
     expect(clearSpy).not.toHaveBeenCalled();
     expect(markSpy).toHaveBeenCalledTimes(1);
     expect(markSpy.mock.calls[0]![0]!.deadlineAtMs).toBe(8 * HOUR_MS);
@@ -110,7 +110,7 @@ describe('applyDeferredObjectiveChange', () => {
       activePlanRecorder,
     });
 
-    expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced');
+    expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced', undefined);
     expect(clearSpy).not.toHaveBeenCalled();
     expect(markSpy).toHaveBeenCalledTimes(1);
     expect(markSpy.mock.calls[0]![0]).toMatchObject({
@@ -156,7 +156,7 @@ describe('applyDeferredObjectiveChange', () => {
       activePlanRecorder,
     });
 
-    expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'abandoned');
+    expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'abandoned', undefined);
     expect(clearSpy).toHaveBeenCalledWith('dev');
     expect(markSpy).not.toHaveBeenCalled();
   });
@@ -176,7 +176,7 @@ describe('applyDeferredObjectiveChange', () => {
       activePlanRecorder,
     });
 
-    expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced');
+    expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced', undefined);
   });
 
   it('treats a disabled prior entry as no prior run', () => {
@@ -292,7 +292,7 @@ describe('applyDeferredObjectiveChange', () => {
         activePlanRecorder,
       });
 
-      expect(userChangeSpy).toHaveBeenCalledWith('dev', 6 * HOUR_MS, 'replaced');
+      expect(userChangeSpy).toHaveBeenCalledWith('dev', 6 * HOUR_MS, 'replaced', undefined);
       expect(elapsedSpy).not.toHaveBeenCalled();
     });
   });

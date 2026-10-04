@@ -1,3 +1,4 @@
+import type { TaskEvaluation } from './taskEvaluation';
 // v4 helpers for `DeferredObjectivePlanHistoryRecorder`: revision-snapshot
 // capture (with `kwhPerUnitMean` from the active plan's provenance),
 // progress-sample build/drain, and the symmetric-difference hour diff used
@@ -245,10 +246,10 @@ export const hasTrustworthyProgress = (diag: DeferredObjectiveDiagnostic): boole
 // missing device/temperature, invalid deadline) so the ring never accumulates
 // untrusted telemetry.
 const buildProgressSample = (
-  diag: DeferredObjectiveDiagnostic,
+  evaluation: TaskEvaluation,
   atMs: number,
 ): ResolvedDeferredObjectivePlanHistoryProgressSample | null => (
-  diag.evaluation.progress.kind === 'known' ? { atMs, value: diag.evaluation.progress.value } : null
+  evaluation.progress.kind === 'known' ? { atMs, value: evaluation.progress.value } : null
 );
 
 // Seed the in-memory progress ring with the first observation so a run that
@@ -260,7 +261,7 @@ export const seedProgressSamples = (
   nowMs: number,
 ): Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample> => {
   const map = new Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>();
-  const sample = buildProgressSample(diag, nowMs);
+  const sample = buildProgressSample(diag.evaluation, nowMs);
   if (sample !== null) map.set(progressSampleBucketMs(nowMs), sample);
   return map;
 };
@@ -304,10 +305,10 @@ export const rebucketProgressSamples = (
 // losing the run's start.
 export const recordProgressSample = (
   current: Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample>,
-  diag: DeferredObjectiveDiagnostic,
+  evaluation: TaskEvaluation,
   nowMs: number,
 ): Map<number, ResolvedDeferredObjectivePlanHistoryProgressSample> => {
-  const sample = buildProgressSample(diag, nowMs);
+  const sample = buildProgressSample(evaluation, nowMs);
   if (sample === null) return current;
   const next = new Map(current);
   next.set(progressSampleBucketMs(nowMs), sample);

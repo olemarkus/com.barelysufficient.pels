@@ -375,6 +375,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Smart tasks
 
+- [ ] **Use one established-task gate for thermal completion.** Live completion in
+      `lib/objectives/deferredObjectives/completionDiagnostic.ts` and
+      `taskEvaluationCoordinator.ts` requires an allocated active-plan revision;
+      `planHistory.ts` accepts evidence once its exact run has been observed.
+      Missing prices can therefore leave live status unresolved while history accepts
+      near-target completion. Resolve eligibility independently of allocation and reuse
+      it across live status, reservations, and history. Complete when an SDK regression
+      with missing initial prices shows agreement while a newly replaced task still
+      rejects prior-task thermal evidence. Identified during the production-log audit,
+      2026-10-04. [P1]
+
 - [ ] **A genuine learned-rate gap mid-commitment still strips a committed task to `unknown`.**
       Same shape as the fixed step-ladder gap one short-circuit earlier: in
       `buildDiagnosticWithPolicyHorizon`, a `profileEnergy.reasonCode` (e.g. a real

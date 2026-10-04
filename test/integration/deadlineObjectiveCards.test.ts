@@ -1,3 +1,6 @@
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
+import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
+import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/deferredObjectiveValues';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { registerDeadlineObjectiveCards } from '../../flowCards/deadlineObjectiveCards';
 import {
@@ -282,6 +285,9 @@ const buildDeps = (overrides: {
     activePlanRecorder: recorders.activePlanRecorder,
     planHistoryRecorder: recorders.planHistoryRecorder,
     nowMs: MOCK_NOW_MS,
+    readCurrentTaskEvaluation: (deviceId: string, objective: DeferredObjectiveSettingsEntry) => (
+      inactiveTaskEvaluation(deviceId, objective.deadlineAtMs, resolveObjectiveTargetValue(objective))
+    ),
     ...(overrides.resolveDeviceHomeScope
       ? { resolveDeviceHomeScope: overrides.resolveDeviceHomeScope }
       : {}),
@@ -625,7 +631,7 @@ describe('deadline objective flow cards', () => {
     // The prior future-deadline run is finalized as replaced and a fresh
     // pending plan is seeded — the device-scoped op runs applyDeferredObjectiveChange.
     expect(recorders.planHistoryRecorder.finalizeForUserChange)
-      .toHaveBeenCalledWith('heater-1', MOCK_NOW_MS, 'replaced');
+      .toHaveBeenCalledWith('heater-1', MOCK_NOW_MS, 'replaced', expect.objectContaining({ completion: { kind: 'inactive' } }));
     expect(recorders.activePlanRecorder.markPending).toHaveBeenCalledTimes(1);
     const storedMap = readObjectivesMap(mock.settings);
     expect(storedMap['heater-1']).toMatchObject({
@@ -690,7 +696,7 @@ describe('deadline objective flow cards', () => {
     // The prior future-deadline run is finalized as abandoned and the active
     // plan dropped — the device-scoped op runs applyDeferredObjectiveChange.
     expect(recorders.planHistoryRecorder.finalizeForUserChange)
-      .toHaveBeenCalledWith('heater-1', MOCK_NOW_MS, 'abandoned');
+      .toHaveBeenCalledWith('heater-1', MOCK_NOW_MS, 'abandoned', expect.objectContaining({ completion: { kind: 'inactive' } }));
     expect(recorders.activePlanRecorder.clearForDevice).toHaveBeenCalledWith('heater-1');
   });
 

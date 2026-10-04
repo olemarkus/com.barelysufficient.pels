@@ -244,11 +244,11 @@ describe('DeadlinePlanHistory', () => {
     expect(mount.querySelector('.plan-history-card__overshoot')).toBeNull();
   });
 
-  it('renders a replaced entry as abandoned', () => {
+  it('renders a replaced entry with a distinct muted label', () => {
     const entry = buildEntry({ outcome: 'replaced', metAtMs: null });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     const chip = mount.querySelector('.plan-chip--muted');
-    expect(chip?.textContent).toBe('Abandoned');
+    expect(chip?.textContent).toBe('Replaced');
   });
 
   // Cost-on-list-rows — the persisted `totalCost` / `deliveredKWh` totals reach

@@ -7,9 +7,9 @@
 Surfaces a per-device state for temperature devices that are commanded on but
 either drawing ~0 W (the existing two states) or cycling against the device's
 own internal setpoint cap (the third state). The intent is purely UI and
-diagnostics plus a producer-side bridge into the deferred-objective recorder
-so a run plateaued at the device's plateau finalises as succeeded rather than
-a false-missed verdict — the planner itself doesn't read the classification.
+diagnostics plus observer evidence for smart-task completion. Only accepted
+near-target evidence can satisfy a task below its requested target; a device's
+own setpoint cap remains unmet. Completion reopens on a trusted exit.
 
 ## Three states
 
@@ -17,7 +17,7 @@ a false-missed verdict — the planner itself doesn't read the classification.
 |-------|---------|----|-----------|-----------------|
 | `near_target_idle` | Device has stopped drawing while close to or above its setpoint. Normal behaviour — the device's own controller (water-heater stratification, thermostat hysteresis) decided to hold. | Quiet on the temperature card: the existing temperature/target fact line is sufficient. No reason line or chip. | `device_near_target_idle_started` / `..._cleared` | Promotes a deferred-objective run to `met` with `metReason: 'stalled'` only when the setpoint classified by the observer is at least that objective's target. |
 | `unresponsive` | Device is below setpoint and drawing nothing for an extended period. Almost always the device's own controller pausing between cycles (anti-cycle / overshoot guard / a wide internal hysteresis band); only rarely an actual fault. Copy stays understated — no breaker/wiring assertion. | Mild warning chip (`Not drawing power`) plus a status line. | `device_unresponsive_started` / `..._cleared` | None — a device that isn't actually reaching its target shouldn't be silently called "succeeded". |
-| `capped_idle` | Device is well below the PELS-commanded target but its own internal setpoint cap has opened. Temperature parks at a stable plateau several degrees below target while power cycles around the device's own anti-cycle hysteresis (e.g. Connected 300 capped internally at ~60 °C with a 65 °C PELS target). | Neutral status line (`Device reached its own setpoint cap (58° / 65°)`). No chip — the device is doing the right thing against its own cap. | `device_capped_idle_started` / `..._cleared` | Promotes a run to `met` with `metReason: 'stalled_device_capped'` only when the classified setpoint covers the objective target. Postmortem variant `met-by-device-cap` names the device's own setpoint cap as recourse (deliberately not the PELS-canonical "hard cap" per `feedback_hard_cap_is_physical.md`). |
+| `capped_idle` | Device is well below the PELS-commanded target but its own internal setpoint cap has opened. Temperature parks at a stable plateau several degrees below target while power cycles around the device's own anti-cycle hysteresis (e.g. Connected 300 capped internally at ~60 °C with a 65 °C PELS target). | Neutral status line (`Device reached its own setpoint cap (58° / 65°)`). No chip — the device is doing the right thing against its own cap. | `device_capped_idle_started` / `..._cleared` | Does not satisfy a smart task below its requested target. The device's own setpoint cap is a delivery constraint, not a successful task outcome. |
 
 ## Detection criteria
 
@@ -161,8 +161,8 @@ does).
   `near_target_idle` produces none.
 
 The deferred-objective bridge compares the observer-supplied target basis with
-the objective target before translating `near_target_idle` or `capped_idle`
-into success. A verdict reached while ordinary mode has lowered the device to
+the objective target before accepting `near_target_idle` as completion.
+`capped_idle` never supplies below-target completion. A verdict reached while ordinary mode has lowered the device to
 40 °C therefore cannot satisfy a simultaneous 65 °C smart task. The observer
 owns the evidence; the objective layer owns whether it is sufficient for that
 objective. Neither layer branches on a device model or capability identifier.
