@@ -28,7 +28,14 @@ export type TaskDeliveryExplanation =
 /** In-flight persistence carries evidence, never a restart-spanning power anchor. */
 export type TaskDeliveryEvidence = {
   explanation: TaskDeliveryExplanation;
-  nonDelivery: { kind: 'none' } | { kind: 'watching'; sinceMs: number } | { kind: 'confirmed'; sinceMs: number };
+  // `stopped` and `rechecking` keep a confirmed stop for the status without
+  // freeing reservations; see `TaskNonDeliveryState` in lib/objectives.
+  nonDelivery:
+    | { kind: 'none' }
+    | { kind: 'watching'; sinceMs: number }
+    | { kind: 'confirmed'; sinceMs: number }
+    | { kind: 'stopped'; sinceMs: number }
+    | { kind: 'rechecking'; sinceMs: number };
 };
 
 /** Device-owned constraint independent of the task's unit or underlying control type. */

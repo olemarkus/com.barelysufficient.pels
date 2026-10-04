@@ -5,6 +5,7 @@ import { resolveTaskCompletionDiagnostic } from './diagnosticsBridge';
 import {
   EMPTY_DELIVERY_EVIDENCE, activeDeliveryCause, observeTaskDelivery, resolveTaskDeliveryFacts,
 } from './deliveryEvidence';
+import { restoreTaskNonDelivery } from './taskDeliveryState';
 import type {
   TaskDeviceConstraint, TaskDeliveryControl, TaskDeliveryEvidence,
 } from '../../../packages/contracts/src/taskDelivery';
@@ -160,7 +161,8 @@ export class DeferredObjectivePlanHistoryRecorder {
 
   private restoreDeliveryState(state: PersistedMeteredDeliveryState): void {
     const deliveryEvidence: TaskDeliveryEvidence = {
-      explanation: state.deliveryEvidence.explanation, nonDelivery: { kind: 'none' },
+      explanation: state.deliveryEvidence.explanation,
+      nonDelivery: restoreTaskNonDelivery(state.deliveryEvidence.nonDelivery),
     };
     this.restoredMeteredDeliveryByKey.set(buildKey(state.deviceId, state.deadlineAtMs), { ...state, deliveryEvidence });
   }
@@ -229,10 +231,13 @@ export class DeferredObjectivePlanHistoryRecorder {
         const facts = resolveTaskDeliveryFacts(diag, this.deps.getDeliveryControl(diag.deviceId),
           this.deps.isLiveMeasuredDraw(diag.deviceId), this.deps.getDeviceConstraint(diag.deviceId), nowMs);
         const deliveryEvidence = observeTaskDelivery(record.deliveryEvidence, facts, nowMs, nowMs - previousAtMs);
-        if (activeDeliveryCause(record.deliveryEvidence) !== activeDeliveryCause(deliveryEvidence)) {
+        // The latch keeps a task at risk while the tick's blocker names PELS's
+        // own hold, so its changes are logged beside the blocker's.
+        if (activeDeliveryCause(record.deliveryEvidence) !== activeDeliveryCause(deliveryEvidence)
+          || record.deliveryEvidence.nonDelivery.kind !== deliveryEvidence.nonDelivery.kind) {
           this.deps.debugStructured({ event: 'smart_task_delivery_blocker_changed', deviceId: diag.deviceId,
             deadlineAtMs: diag.deadlineAtMs, before: activeDeliveryCause(record.deliveryEvidence),
-            after: activeDeliveryCause(deliveryEvidence), facts });
+            after: activeDeliveryCause(deliveryEvidence), nonDelivery: deliveryEvidence.nonDelivery.kind, facts });
         }
         this.inProgress.set(key, { ...record, deliveryEvidence });
         this.dirty = true;

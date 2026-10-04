@@ -35,6 +35,22 @@ reservations. Resumed draw clears the blocker and suppression; lower tasks
 receive the released allocation at the ordinary settle. An unclaimed or
 released hour cannot start this timer.
 
+Once confirmed, the stop is latched for the status (`stopped`, then
+`rechecking`, in `taskDeliveryState.ts`) until the device draws again, the
+task is met, or its plan goes inactive (an unplugged car names itself). A
+tick PELS holds the device back, or an hour the plan does not book, keeps the
+latch but not the suppression: the next claimed, permitted window re-tests
+the device for 15 minutes with its reservation held before freeing it again,
+so a device the plan cannot run is never starved of the window that would
+show it drawing. Consecutive permitted hours stay one window, as before the
+latch. A restart restores a stop as `stopped` (no observation spans the
+downtime), and the persisted form writes the latched kinds as `confirmed`,
+which builds before the latch can still read. While latched, the reported
+cause is the last device-side one recorded, so a car waiting on its own
+schedule keeps that copy through PELS's holds. Without the latch those ticks
+reset the cause, and the status flipped back to on track and fired the status
+Flow on each re-confirmation.
+
 ## Live status overlay
 
 `reportTaskDeliveryStatus` lets only confirmed device-side causes downgrade a

@@ -14,6 +14,9 @@ const CAUSES: Record<TaskDeliveryCause, true> = {
   progress_unavailable: true, rate_insufficient: true, estimate_uncertain: true,
   delivery_unfulfilled: true, legacy_unrecorded: true,
 };
+const TIMED_NON_DELIVERY_KINDS: Record<Exclude<TaskDeliveryEvidence['nonDelivery']['kind'], 'none'>, true> = {
+  watching: true, confirmed: true, stopped: true, rechecking: true,
+};
 const isCause = (value: unknown): value is TaskDeliveryCause => (
   typeof value === 'string' && Object.hasOwn(CAUSES, value)
 );
@@ -40,5 +43,6 @@ export const isTaskDeliveryEvidence = (raw: unknown): raw is TaskDeliveryEvidenc
   }
   const state = value.nonDelivery as Record<string, unknown>;
   return state.kind === 'none'
-    || ((state.kind === 'watching' || state.kind === 'confirmed') && isFiniteNumber(state.sinceMs));
+    || (typeof state.kind === 'string' && Object.hasOwn(TIMED_NON_DELIVERY_KINDS, state.kind)
+      && isFiniteNumber(state.sinceMs));
 };

@@ -3,7 +3,9 @@ import type {
   TaskDeliveryControl, TaskDeliveryEvidence, TaskDeliveryInterval,
 } from '../../../packages/contracts/src/taskDelivery';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
-import { DELIVERY_EPSILON_KWH, NON_DELIVERY_HOLD_MS, observeTaskNonDelivery } from './taskDeliveryState';
+import {
+  DELIVERY_EPSILON_KWH, isTaskDeviceStopped, NON_DELIVERY_HOLD_MS, observeTaskNonDelivery,
+} from './taskDeliveryState';
 
 export type TaskDeliveryReader = (deviceId: string, deadlineAtMs: number) => TaskDeliveryEvidence;
 export const EMPTY_DELIVERY_EVIDENCE = {
@@ -165,8 +167,9 @@ export const activeDeliveryCause = (evidence: TaskDeliveryEvidence): TaskDeliver
  * Only DEVICE-SIDE causes the horizon plan cannot see, and only once they are
  * confirmed, qualify:
  *  - `device_not_accepting`: the device took no energy through
- *    `NON_DELIVERY_HOLD_MS` of claimed, permitted delivery, or the car link
- *    confirmed a self-stop episode.
+ *    `NON_DELIVERY_HOLD_MS` of claimed, permitted delivery (and has not drawn
+ *    since: `isTaskDeviceStopped`), or the car link confirmed a self-stop
+ *    episode.
  *  - `device_limit`: the car stopped at its qualified own charge limit.
  *  - `device_schedule`: the car link confirmed a self-stop held by the car's
  *    own schedule.
@@ -196,13 +199,33 @@ const DELIVERY_RISK_REASON = {
 const isDeliveryRiskCause = (cause: TaskDeliveryCause | 'clear'): cause is keyof typeof DELIVERY_RISK_REASON => (
   Object.hasOwn(DELIVERY_RISK_REASON, cause)
 );
+/**
+ * The live cause the status reports. The tick's own blocker when it is a
+ * device-side cause; otherwise a device that stopped taking power stays the
+ * cause until it draws again, through ticks PELS itself holds it back or hours
+ * the plan does not book. Those ticks blame PELS's decision in the past-task
+ * explanation, but they are no evidence the device would have taken power.
+ * The latched cause is the last device-side one recorded (a car waiting on its
+ * own schedule stays that), so the copy does not alternate with each hold.
+ */
+const resolveDeliveryRiskCause = (evidence: TaskDeliveryEvidence): TaskDeliveryCause | 'clear' => {
+  const cause = activeDeliveryCause(evidence);
+  if (isDeliveryRiskCause(cause) || !isTaskDeviceStopped(evidence.nonDelivery)) return cause;
+  const intervals = evidence.explanation.kind === 'recorded' ? evidence.explanation.intervals : [];
+  for (let index = intervals.length - 1; index >= 0; index -= 1) {
+    const recorded = intervals[index]?.cause;
+    if (recorded !== undefined && isDeliveryRiskCause(recorded)) return recorded;
+  }
+  return 'device_not_accepting';
+};
+
 /** A live overlay; the settled allocation continues to own admission and revision metadata. */
 export const reportTaskDeliveryStatus = (
   diagnostic: DeferredObjectiveDiagnostic, read: TaskDeliveryReader,
 ): DeferredObjectiveDiagnostic => {
   if (diagnostic.deadlineAtMs === null || diagnostic.trajectory.kind !== 'resolved') return diagnostic;
   if (diagnostic.trajectory.status === 'satisfied' || diagnostic.trajectory.status === 'invalid') return diagnostic;
-  const cause = activeDeliveryCause(read(diagnostic.deviceId, diagnostic.deadlineAtMs));
+  const cause = resolveDeliveryRiskCause(read(diagnostic.deviceId, diagnostic.deadlineAtMs));
   if (!isDeliveryRiskCause(cause)) return diagnostic;
   return {
     ...diagnostic,
