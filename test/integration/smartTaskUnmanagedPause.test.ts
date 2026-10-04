@@ -26,9 +26,6 @@ import {
 } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { resolvePendingReason } from '../../lib/objectives/deferredObjectives/activePlanRevisionBuild';
 import { resolveDiagnosticReasonCode } from '../../lib/objectives/deferredObjectives/activePlanDiagnosticReason';
-import {
-  hasTrustworthyProgress,
-} from '../../lib/objectives/deferredObjectives/planHistoryV4Helpers';
 import type { ResolveObjectiveDeviceExclusion } from '../../lib/objectives/deferredObjectives/deviceExclusion';
 import { resolveSmartTaskDeviceExclusion } from '../../setup/appInit/smartTaskHomeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
@@ -226,9 +223,6 @@ describe('smart task on an un-managed device', () => {
       devices: [],
       resolveDeviceExclusion: () => 'unmanaged',
     }));
-    // `hasTrustworthyProgress` is the gate the recorder actually applies before
-    // writing `progressSamples` / `finalProgress*` from operational facts.
-    expect(hasTrustworthyProgress(diagnostic)).toBe(false);
     expect(diagnostic.evaluation.progress.kind).toBe('unobserved');
   });
 });

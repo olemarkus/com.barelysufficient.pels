@@ -34,10 +34,6 @@ import {
 } from '../device/deviceResidualKw';
 import { getCurrentDrawKw, getHighestKnownPowerKw } from '../observer/observedPower';
 import { resolveObservedCurrentState } from '../observer/observedState';
-import {
-  normalizeSteppedLoadStepStateFromLegacyFields,
-  resolveKnownEffectiveStepId,
-} from '../plan/planSteppedLoadState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 
@@ -114,8 +110,7 @@ function toResidualSteppedLoad(
   hasBinaryControl: boolean,
 ): ResidualKwShedSteppedDevice | undefined {
   if (!isSteppedLoadSnapshot(device)) return undefined;
-  const stepState = normalizeSteppedLoadStepStateFromLegacyFields({ fields: device });
-  const hasKnownEffectiveStep = resolveKnownEffectiveStepId(stepState) !== undefined;
+  const hasKnownEffectiveStep = device.selectedStepId !== undefined;
   return {
     profile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,

@@ -2,17 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   isTaskDeviceStopped, NON_DELIVERY_HOLD_MS, observeTaskNonDelivery, type TaskDeliveryInput, type TaskNonDeliveryState,
 } from '../../lib/objectives/deferredObjectives/taskDeliveryState';
-import { suppressTaskDeliveryReservation } from '../../lib/objectives/deferredObjectives/deliveryEvidence';
-import type { TaskDeliveryEvidence } from '../../packages/contracts/src/taskDelivery';
 
 // A device that stopped taking power stays the status cause until it draws
 // again, while every booked window still re-tests it before freeing its room.
 
 const permittedIdle: TaskDeliveryInput = { obligation: 'claimed', control: 'permitted', draw: 'not_drawing' };
 const confirmedAt = (sinceMs: number): TaskNonDeliveryState => ({ kind: 'confirmed', sinceMs });
-const suppresses = (nonDelivery: TaskNonDeliveryState): boolean => suppressTaskDeliveryReservation({
-  explanation: { kind: 'legacy_unrecorded' }, nonDelivery,
-} satisfies TaskDeliveryEvidence);
 
 describe('the non-delivery latch', () => {
   it('confirms after 15 minutes of a claimed, permitted window without draw', () => {
@@ -27,11 +22,10 @@ describe('the non-delivery latch', () => {
     ['an hour the plan does not book', { obligation: 'unclaimed', control: 'permitted', draw: 'not_drawing' }],
     ['a released hour', { obligation: 'deferred', control: 'permitted', draw: 'not_drawing' }],
     ['a missing power reading', { obligation: 'claimed', control: 'permitted', draw: 'unobserved' }],
-  ] as const)('keeps a confirmed stop for the status through %s, but stops suppressing the reservation', (_label, input) => {
+  ] as const)('keeps a confirmed stop for the status through %s', (_label, input) => {
     const next = observeTaskNonDelivery(confirmedAt(0), input, NON_DELIVERY_HOLD_MS + 60_000);
     expect(next).toEqual({ kind: 'stopped', sinceMs: 0 });
     expect(isTaskDeviceStopped(next)).toBe(true);
-    expect(suppresses(next)).toBe(false);
   });
 
   it('still resets an unconfirmed watch on those ticks, as before', () => {
@@ -44,12 +38,10 @@ describe('the non-delivery latch', () => {
     const rechecking = observeTaskNonDelivery({ kind: 'stopped', sinceMs: 0 }, permittedIdle, startMs);
     expect(rechecking).toEqual({ kind: 'rechecking', sinceMs: startMs });
     expect(isTaskDeviceStopped(rechecking)).toBe(true);
-    expect(suppresses(rechecking)).toBe(false);
     const still = observeTaskNonDelivery(rechecking, permittedIdle, startMs + NON_DELIVERY_HOLD_MS - 1);
     expect(still).toEqual({ kind: 'rechecking', sinceMs: startMs });
     const reconfirmed = observeTaskNonDelivery(still, permittedIdle, startMs + NON_DELIVERY_HOLD_MS);
     expect(reconfirmed).toEqual(confirmedAt(startMs));
-    expect(suppresses(reconfirmed)).toBe(true);
   });
 
   it.each([

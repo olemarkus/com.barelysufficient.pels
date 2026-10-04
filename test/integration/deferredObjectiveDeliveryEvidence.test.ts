@@ -224,6 +224,7 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
       return plan;
     },
     evidence: () => history.getDeliveryEvidence(HIGH_ID, DEADLINE_MS),
+    reservationSuppressed: () => history.isReservationSuppressed(HIGH_ID, DEADLINE_MS),
     delivered: () => energy.getDeliveredKWh(HIGH_ID, DEADLINE_MS),
     archive: () => history.getHistorySnapshot(),
     persisted: () => persistedHistory,
@@ -352,6 +353,7 @@ describe('task delivery evidence at the device boundary', () => {
     }
     expect(scenario.evidence().nonDelivery.kind).toBe('confirmed');
     expect(scenario.activePlan().diagnosticReasonCode).toBe('objective_not_accepting_energy');
+    expect(scenario.reservationSuppressed()).toBe(true);
 
     const holds: TaskDeliveryControl[] = [
       { kind: 'restricted', cause: 'capacity_limited' }, { kind: 'pending' },
@@ -368,6 +370,7 @@ describe('task delivery evidence at the device boundary', () => {
       // A hold keeps the stop for the status but holds the room again; the next
       // permitted window re-tests the device before freeing it.
       expect(['stopped', 'rechecking']).toContain(scenario.evidence().nonDelivery.kind);
+      expect(scenario.reservationSuppressed()).toBe(false);
     }
     const flips = () => scenario.revisionEvents().slice(eventsBefore).filter((event) => (
       event.eventType === 'revision_written' && event.effectivePlanStatus !== undefined
@@ -384,12 +387,14 @@ describe('task delivery evidence at the device boundary', () => {
     }
     expect(scenario.evidence().nonDelivery.kind).toBe('confirmed');
     expect(flips().map((event) => event.effectivePlanStatus)).toEqual(['at_risk']);
+    expect(scenario.reservationSuppressed()).toBe(true);
 
     // Drawing again ends the stop on the same tick, and the Flow hears it.
     const resumedAt = START_MS + 62 * MIN_MS;
     scenario.setPlanDecision({ kind: 'permitted' });
     scenario.tick(resumedAt, observed(resumedAt, 2));
     expect(scenario.evidence().nonDelivery.kind).toBe('none');
+    expect(scenario.reservationSuppressed()).toBe(false);
     expect(scenario.activePlan().diagnosticReasonCode).toBeUndefined();
     expect(effectivePlanStatusOf(scenario.activePlan())).toBe('on_track');
     expect(flips().map((event) => event.effectivePlanStatus)).toEqual(['at_risk', 'on_track']);

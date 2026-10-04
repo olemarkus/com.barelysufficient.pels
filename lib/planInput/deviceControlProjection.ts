@@ -59,7 +59,6 @@ function projectSteppedDeviceControl<T extends DeviceControlProjectionSource>(
     targetStepId,
     desiredStepId: targetStepId,
     selectedStepId,
-    restorePreparedStepId: device.reportedStepId,
     controlModel: 'stepped_load',
     previousStepId: currentDesired?.previousStepId,
     planningPowerKw: resolveSteppedLoadPlanningPowerKw(profile, selectedStepId),

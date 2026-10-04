@@ -5,7 +5,7 @@ import type { DeferredObjectiveHorizonPlan } from '../../lib/objectives/deferred
 import { partialDouble } from '../helpers/partialDouble';
 import {
   EMPTY_DELIVERY_EVIDENCE, MAX_DELIVERY_INTERVALS, activeDeliveryCause, observeTaskDelivery, reportTaskDeliveryStatus,
-  suppressTaskDeliveryReservation, resolveTaskDeliveryFacts, type TaskDeliveryFacts,
+  resolveTaskDeliveryFacts, type TaskDeliveryFacts,
 } from '../../lib/objectives/deferredObjectives/deliveryEvidence';
 import type { TaskDeliveryCause, TaskDeliveryEvidence } from '../../packages/contracts/src/taskDelivery';
 const MINUTE = 60000;
@@ -21,22 +21,18 @@ describe('device-neutral delivery evidence', () => {
   it('confirms a mechanical thermostat or EV cutoff only during claimed permitted delivery', () => {
     const state = tick();
     expect(activeDeliveryCause(state)).toBe('device_not_accepting');
-    expect(suppressTaskDeliveryReservation(state)).toBe(true);
   });
   it.each(['deferred', 'satisfied'] as const)('does not penalize %s delivery', (obligation) => {
     const state = tick({ ...permitted, obligation });
     expect(activeDeliveryCause(state)).toBe('clear');
-    expect(suppressTaskDeliveryReservation(state)).toBe(false);
   });
-  it('does not suppress reservations during restoration', () => {
+  it('reports pending control during restoration', () => {
     const state = tick({ ...permitted, control: { kind: 'pending' } });
     expect(activeDeliveryCause(state)).toBe('control_pending');
-    expect(suppressTaskDeliveryReservation(state)).toBe(false);
   });
   it('uses actual capacity restrictions even on a device still drawing', () => {
     const state = tick({ ...permitted, control: { kind: 'restricted', cause: 'capacity_limited' }, observation: { kind: 'drawing', kw: 1 } });
     expect(activeDeliveryCause(state)).toBe('capacity_limited');
-    expect(suppressTaskDeliveryReservation(state)).toBe(false);
   });
   it('uses confirmed limit evidence without waiting for a generic cutoff', () => {
     const state = tick({ ...permitted, deviceConstraint: { kind: 'limit_reached' } });
@@ -46,18 +42,15 @@ describe('device-neutral delivery evidence', () => {
     const state = tick({ ...permitted, deviceConstraint: { kind: 'limit_reached' },
       control: { kind: 'restricted', cause: 'capacity_limited' } });
     expect(activeDeliveryCause(state)).toBe('capacity_limited');
-    expect(suppressTaskDeliveryReservation(state)).toBe(false);
   });
   it('clears a blocker on resumed draw and records it only as an earlier contributor', () => {
     const state = observeTaskDelivery(tick(), { ...permitted, observation: { kind: 'drawing', kw: 2 } }, 16 * MINUTE, MINUTE);
     expect(activeDeliveryCause(state)).toBe('clear');
-    expect(suppressTaskDeliveryReservation(state)).toBe(false);
     expect(state.explanation).toMatchObject({ contributors: ['device_not_accepting'] });
   });
   it('distinguishes missing measurements from a cutoff', () => {
     const state = tick({ ...permitted, observation: { kind: 'unavailable' } });
     expect(activeDeliveryCause(state)).toBe('observation_unavailable');
-    expect(suppressTaskDeliveryReservation(state)).toBe(false);
   });
   it('keeps mixed causes in chronological intervals and final expiry retains the last blocker', () => {
     const limited = tick({ ...permitted, control: { kind: 'restricted', cause: 'budget_limited' } });

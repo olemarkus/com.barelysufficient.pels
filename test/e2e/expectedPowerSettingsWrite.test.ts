@@ -1,6 +1,7 @@
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../lib/utils/settingsKeys';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import api from '../../api';
 
 /**
  * The settings-UI "Power when running" field writes the same persisted record
@@ -73,6 +74,48 @@ describe('Expected power written through the settings key', () => {
 
     await vi.waitFor(() => expect(readExpectedPowerKw(app, 'dev-1')).toBeCloseTo(1));
     expect(app.expectedPowerKwOverrides['dev-1']).toBeUndefined();
+  });
+
+  it('clears an unset manual figure and persists the same Flow value again', async () => {
+    const app = await startApp();
+    const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
+    const args = { device: { id: 'dev-1' }, power_w: 1337 };
+
+    await expect(runAction(args)).resolves.toBe(true);
+    expect(mockHomeyInstance.settings.get(DEVICE_EXPECTED_POWER_OVERRIDES)).toMatchObject({
+      'dev-1': { kw: 1.337 },
+    });
+    await vi.waitFor(async () => {
+      const payload = await api.ui_devices({ homey: app.homey });
+      expect(payload.devices.find((device) => device.id === 'dev-1')).toMatchObject({
+        expectedPowerKw: 1.337,
+        expectedPowerSource: 'manual',
+      });
+    });
+
+    // Native SDK unset removes the key and emits `unset`, not `set` with {}.
+    mockHomeyInstance.settings.unset(DEVICE_EXPECTED_POWER_OVERRIDES);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(DEVICE_EXPECTED_POWER_OVERRIDES);
+    await vi.waitFor(async () => {
+      const payload = await api.ui_devices({ homey: app.homey });
+      const device = payload.devices.find((entry) => entry.id === 'dev-1');
+      expect(device?.expectedPowerKw).toBeCloseTo(1);
+      expect(device?.expectedPowerSource).not.toBe('manual');
+    });
+
+    // A stale live override would make the equality gate accept this as a no-op,
+    // leaving settings absent even though the Flow reports success.
+    await expect(runAction(args)).resolves.toBe(true);
+    expect(mockHomeyInstance.settings.get(DEVICE_EXPECTED_POWER_OVERRIDES)).toMatchObject({
+      'dev-1': { kw: 1.337 },
+    });
+    await vi.waitFor(async () => {
+      const payload = await api.ui_devices({ homey: app.homey });
+      expect(payload.devices.find((device) => device.id === 'dev-1')).toMatchObject({
+        expectedPowerKw: 1.337,
+        expectedPowerSource: 'manual',
+      });
+    });
   });
 
   it('keeps the live figure when the record reads back malformed', async () => {

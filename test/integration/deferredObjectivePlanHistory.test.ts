@@ -1841,7 +1841,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // Regression: `buildProgressSample` previously persisted any non-null
       // `currentTemperatureC` / `currentPercent`, including readings whose
       // reason code says they are stale or otherwise untrustworthy. The
-      // recorder now gates writes on `hasTrustworthyProgress` (same predicate
+      // recorder now gates writes on known operational progress (same predicate
       // `finalProgress*` uses) so the history chart never disagrees with the
       // headline value the UI shows.
       const { deps, saved } = buildPersistDeps();
@@ -3371,7 +3371,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           trajectory: unknown(),
           // `objective_missing_charge_rate` is a non-plannable reason
           // outside the untrustworthy set — the diag carries a real
-          // temperature reading, so `hasTrustworthyProgress` should let
+          // temperature reading, so known operational progress should let
           // promotion capture it.
           reasonCode: 'objective_missing_charge_rate',
           horizonPlan: undefined,

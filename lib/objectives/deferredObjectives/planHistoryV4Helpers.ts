@@ -236,11 +236,6 @@ export const captureRevisionSnapshot = (
   };
 };
 
-// History consumes the accepted operational progress, independently of reporting metadata.
-export const hasTrustworthyProgress = (diag: DeferredObjectiveDiagnostic): boolean => (
-  diag.evaluation.progress.kind === 'known'
-);
-
 // Build a progress sample from the diagnostic. Returns null when the
 // diagnostic carries no trustworthy progress (stale sensor, invalid session,
 // missing device/temperature, invalid deadline) so the ring never accumulates
