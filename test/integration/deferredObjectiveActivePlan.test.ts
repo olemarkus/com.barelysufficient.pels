@@ -287,6 +287,45 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(statusEvents.at(-1)?.effectivePlanStatus).toBe(expected);
   });
 
+  // Production routes an unplugged session through a horizon-less diagnostic,
+  // so the recorder refreshes the committed plan on its no-revision path. A car
+  // unplugged before its own (lower) limit stops reporting that limit, and the
+  // "Smart task status changed" Flow must hear the change back; a car that
+  // reached its limit keeps it, and fires nothing.
+  it.each([
+    [70, 'on_track', ['on_track']],
+    [85, 'at_risk', []],
+  ] as const)('announces the status change when a car at %s %% is unplugged below its 85 %% limit', (
+    percentAtUnplug, expected, published,
+  ) => {
+    const persist = buildPersistDeps();
+    const events: DeferredObjectivePlanRevisionEvent[] = [];
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...persist.deps, onRevisionWritten: (event) => { events.push(event); },
+    });
+    const ev = {
+      deviceId: 'ev', deadlineAtMs: 6 * HOUR_MS, objectiveKind: 'ev_soc' as const,
+      objectiveId: 'ev:ev_soc', targetTemperatureC: null, currentTemperatureC: null,
+      targetPercent: 90, targetValue: 90, reachableTargetValue: 85,
+    };
+    recorder.observe([makeDiag({
+      ...ev, currentPercent: percentAtUnplug, currentValue: percentAtUnplug,
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5, { plannedAdmissionPowerKw: 3 })]),
+    })], HOUR_MS);
+    expect(effectivePlanStatusOf(recorder.getActivePlansSnapshot().plansByDeviceId.ev!)).toBe('at_risk');
+    events.length = 0;
+
+    // The charger reports no level once unplugged.
+    recorder.observe([makeDiag({
+      ...ev, currentPercent: null, currentValue: null, horizonPlan: undefined, reasonCode: 'objective_invalid_session',
+    })], HOUR_MS + 10 * 60_000);
+    const unplugged = recorder.getActivePlansSnapshot().plansByDeviceId.ev!;
+    expect(unplugged.diagnosticReasonCode).toBe('objective_invalid_session');
+    expect(effectivePlanStatusOf(unplugged)).toBe(expected);
+    expect(events.filter((event) => event.eventType === 'revision_written')
+      .map((event) => event.effectivePlanStatus)).toEqual(published);
+  });
+
   it('persists a contributing budget verdict and restores it on the frozen horizon', () => {
     const persist = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);

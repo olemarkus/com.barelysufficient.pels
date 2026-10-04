@@ -30,7 +30,8 @@ import {
   formatSmartTaskExtraPermissionsValue,
   formatSmartTaskCurrentValueLine,
   resolveChipConfidence,
-  resolveSmartTaskCarChargeLimit,
+  resolveReportedCarChargeLimit,
+  resolveSmartTaskBudgetRole,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
   resolveSmartTaskLiveCause,
@@ -91,7 +92,8 @@ const resolveListCauseLine = (
   carChargeLimit: SmartTaskCarChargeLimit | null,
 ): string | null => {
   if (statusId !== 'at_risk' && statusId !== 'cannot_meet') return null;
-  return resolveSmartTaskLiveCause(plan.diagnosticReasonCode, carChargeLimit)?.listLine ?? null;
+  const budgetRole = plan.latest === null ? 'none' : resolveSmartTaskBudgetRole(plan.latest);
+  return resolveSmartTaskLiveCause(plan.diagnosticReasonCode, carChargeLimit, budgetRole)?.listLine ?? null;
 };
 
 const buildCard = (params: {
@@ -104,7 +106,7 @@ const buildCard = (params: {
   const { deviceId, plan, objective, device, nowMs } = params;
   const pending = plan.pending || plan.latest === null;
   const firstHour = plan.latest?.hours[0]?.startsAtMs ?? null;
-  const carChargeLimit = resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue);
+  const carChargeLimit = resolveReportedCarChargeLimit(plan);
   const statusId = resolveSmartTaskListStatus({
     pending,
     pendingReason: plan.pendingReason,

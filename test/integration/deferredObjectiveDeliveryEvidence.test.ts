@@ -22,7 +22,7 @@ import type { DeferredObjectivePlanRevisionEvent } from '../../lib/objectives/de
 import type { TaskDeliveryControl } from '../../packages/contracts/src/taskDelivery';
 import { effectivePlanStatusOf } from '../../lib/objectives/deferredObjectives/effectivePlanStatusEvents';
 import {
-  resolveSmartTaskCarChargeLimit,
+  resolveReportedCarChargeLimit,
   resolveSmartTaskListStatus,
   resolveSmartTaskWidgetDetailCopy,
 } from '../../packages/shared-domain/src/deadlineLabels';
@@ -265,7 +265,7 @@ describe('task delivery evidence at the device boundary', () => {
     const statusId = resolveSmartTaskListStatus({
       pending: plan.pending, pendingReason: plan.pendingReason, diagnosticReasonCode: plan.diagnosticReasonCode,
       planStatus: plan.latest?.planStatus, firstActionAtMs: null, nowMs: confirmedAt,
-      carChargeLimit: resolveSmartTaskCarChargeLimit(plan.carChargeLimit, plan.targetValue),
+      carChargeLimit: resolveReportedCarChargeLimit(plan),
       liveCompletion: plan.liveCompletion,
     });
     expect(statusId).toBe('at_risk');

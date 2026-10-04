@@ -175,7 +175,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 | **Cannot finish** | PELS does not currently see enough usable time or energy delivery before the ready-by time. |
 | **Satisfied** | The observed target is already met. For a heating or charging task, if a later reading drops below the target before the ready-by time, PELS returns to tracking it; delivered energy only ever goes up. |
 
-An EV task keeps the target you set even when the car's own charge limit is lower. As soon as PELS knows the car's limit is below the target, the task reads **At risk** (or **Cannot finish**) with the limit as the reason, because the car will stop short. Raise the limit in the car, or set the task's target to the car's limit.
+An EV task keeps the target you set even when the car's own charge limit is lower. As soon as PELS knows the car's limit is below the target, the task reads **At risk** (or **Cannot finish**) with the limit as the reason, because the car will stop short. Raise the limit in the car, or set the task's target to the car's limit. While the car is still charging toward its limit, today's daily budget is named instead when it is what holds the task back, since a higher car limit would not finish the task. A car unplugged before it reaches its limit shows **Paused — unplugged**.
 
 If no active task is stored for a device, that device simply has no Smart task status.
 
