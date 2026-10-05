@@ -580,5 +580,8 @@
   },
   "3.10.1": {
     "en": "A smart task whose device stops taking power now stays 'At risk' until the device draws power again, finishes, or the car is unplugged, so the 'Smart task status changed' Flow no longer fires back and forth while nothing changes. An EV task whose car is unplugged now shows as paused on the task page as well as in the Smart tasks list. The car's own charge limit is named as the reason only while it explains why the task is behind; when the daily budget is what holds the task back, the budget is named instead. The time left between finishing and the ready-by time is now rounded down, so it never promises more time than expected.\n\nIn the charger's car list, a car that PELS matched to a different charger now shows 'Not matched to this charger', and Setup no longer suggests waiting for a match in that case. If you use the weather-based budget suggestion, its correction for recent usage starts over once after this update, because earlier corrections were measured differently. The suggested daily budget may drop at first and adjust again over the following days."
+  },
+  "3.10.2": {
+    "en": "Smart task pages now show the recorded starting temperature or battery level instead of estimating it from energy use. When no starting reading is available, they show only the current reading.\n\nClearing a manually set power figure now updates PELS correctly. Settings changes made close together are also handled more reliably."
   }
 }
