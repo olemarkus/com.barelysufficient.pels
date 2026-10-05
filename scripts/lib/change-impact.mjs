@@ -46,6 +46,7 @@ export const MANIFEST_PATHS = Object.freeze([
 
 export const RUNTIME_TEST_WIRING_PATHS = Object.freeze([
   'test/setup.ts',
+  'test/utils/freshModuleRegistry.ts',
   'test/mocks/',
   'package.json',
   'package-lock.json',

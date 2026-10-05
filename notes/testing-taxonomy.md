@@ -155,9 +155,12 @@ unaffected.
 ## Commands and lane configs
 
 Every spec lives under `test/unit/`, `test/integration/`, or `test/e2e/` (plus `test/tz/` for
-the timezone harness). Each tier is its own vitest config and uses isolated forks, bounded
-to at most two workers locally so concurrent worktrees cannot exhaust the machine. Shared
-options and aliases live in `vitest.shared.mts`.
+the timezone harness). Each tier is its own vitest config and uses forks, bounded to at most
+two workers locally so concurrent worktrees cannot exhaust the machine. Integration and e2e
+spawn an isolated fork per file. The unit lane reuses its forks across files and clears the
+module registry before each file (`test/utils/freshModuleRegistry.ts`), so source-module
+state and `vi.mock()` factories stay per file; externalized `node_modules` packages are
+shared. Shared options and aliases live in `vitest.shared.mts`.
 
 | Command | Config | Tier / scope | Engine |
 |---|---|---|---|
@@ -166,7 +169,7 @@ options and aliases live in `vitest.shared.mts`.
 | `npm run test:e2e:runtime` | `vitest.config.e2e.mts` | `test/e2e/` only (SDK-boundary, 30s timeout) | vitest (fast, no coverage) |
 | `npm run test:unit:tz` | `vitest.config.tz.mts` | `test/tz/` + DST price specs, across TZ values | vitest |
 | `npm run test:coverage` (alias `test:unit:ci`) | `vitest.config.mts` | **all** runtime tiers in one pass | vitest (80% coverage gate) |
-| `npm run test:e2e:ui` (alias of `test:e2e`) | — | settings-UI e2e | Playwright |
+| `npm run test:e2e:ui` (alias of `test:e2e`) | — | settings-UI e2e; locally `chromium-mobile-width` only unless `--project` or `PELS_E2E_ALL_PROJECTS=1` is given, every project in CI | Playwright |
 
 The three tier commands partition the runtime suite cleanly; the coverage lane globs
 `test/**/*.test.ts` so the 80% gate sees every tier at once. PR CI runs that instrumented

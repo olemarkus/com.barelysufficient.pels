@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, type Project } from '@playwright/test';
 
 const PORT = process.env.PELS_E2E_PORT ?? '0';
 const IS_DYNAMIC_PORT = PORT === '0';
@@ -15,12 +15,35 @@ if (!Number.isInteger(configuredWorkers) || configuredWorkers < 1 || configuredW
   throw new Error('PELS_PLAYWRIGHT_WORKERS must be 1 or 2');
 }
 
+// A local run without --project covers the primary width only (about 2 min
+// instead of 6); CI runs every project. Workers re-read this config without
+// the CLI arguments, so the runner's decision travels in the environment.
+process.env.PELS_E2E_ALL_PROJECTS ??= (
+  process.env.CI || process.argv.some((argument) => argument === '--project' || argument.startsWith('--project='))
+) ? '1' : '0';
+const RUN_ALL_PROJECTS = process.env.PELS_E2E_ALL_PROJECTS === '1';
+
 const chromiumUse = {
   browserName: 'chromium' as const,
   ...(CHROMIUM_EXECUTABLE_PATH
     ? { launchOptions: { executablePath: CHROMIUM_EXECUTABLE_PATH } }
     : {}),
 };
+
+const PROJECTS: Project[] = [
+  {
+    name: 'chromium-mobile-width',
+    use: chromiumUse,
+  },
+  {
+    name: 'firefox-mobile-width',
+    use: { browserName: 'firefox' },
+  },
+  {
+    name: 'chromium-narrow-width',
+    use: { ...chromiumUse, viewport: { width: 320, height: 900 } },
+  },
+];
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -35,20 +58,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     viewport: { width: 480, height: 900 },
   },
-  projects: [
-    {
-      name: 'chromium-mobile-width',
-      use: chromiumUse,
-    },
-    {
-      name: 'firefox-mobile-width',
-      use: { browserName: 'firefox' },
-    },
-    {
-      name: 'chromium-narrow-width',
-      use: { ...chromiumUse, viewport: { width: 320, height: 900 } },
-    },
-  ],
+  projects: RUN_ALL_PROJECTS ? PROJECTS : PROJECTS.slice(0, 1),
   webServer: {
     command: SHOULD_BUILD
       ? `npm run build && node scripts/static-server.mjs --port ${PORT}`

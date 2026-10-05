@@ -1,14 +1,15 @@
+import { eslintCacheArgs, tscCacheArgs, tscCheck } from './lib/local-check-cache.mjs';
 import { runParallel } from './lib/run-parallel.mjs';
 
 await runParallel([
-  { label: 'tsc:runtime', command: 'npx', args: ['tsc', '--noEmit'] },
-  { label: 'tsc:settings-ui', command: 'npx', args: ['tsc', '-p', 'packages/settings-ui/tsconfig.json', '--noEmit'] },
-  { label: 'tsc:settings-ui-tests', command: 'npx', args: ['tsc', '-p', 'packages/settings-ui/tsconfig.tests.json', '--noEmit'] },
-  { label: 'tsc:widgets', command: 'npx', args: ['tsc', '-p', 'tsconfig.widgets.json', '--noEmit'] },
-  { label: 'tsc:shared-domain', command: 'npx', args: ['tsc', '-p', 'packages/shared-domain/tsconfig.json', '--noEmit'] },
-  { label: 'tsc:tests', command: 'npx', args: ['tsc', '-p', 'tsconfig.tests.json', '--noEmit'] },
-  { label: 'tsc:unused', command: 'npm', args: ['run', 'typecheck:unused'] },
-  { label: 'lint', command: 'npm', args: ['run', 'lint'] },
+  tscCheck('tsc:runtime'),
+  tscCheck('tsc:settings-ui', ['-p', 'packages/settings-ui/tsconfig.json']),
+  tscCheck('tsc:settings-ui-tests', ['-p', 'packages/settings-ui/tsconfig.tests.json']),
+  tscCheck('tsc:widgets', ['-p', 'tsconfig.widgets.json']),
+  tscCheck('tsc:shared-domain', ['-p', 'packages/shared-domain/tsconfig.json']),
+  tscCheck('tsc:tests', ['-p', 'tsconfig.tests.json']),
+  { label: 'tsc:unused', command: 'npm', args: ['run', 'typecheck:unused', '--', ...tscCacheArgs('tsc:unused')] },
+  { label: 'lint', command: 'npm', args: ['run', 'lint', '--', ...eslintCacheArgs()] },
   { label: 'lint:css', command: 'npm', args: ['run', 'lint:css'] },
   { label: 'lint:html', command: 'npm', args: ['run', 'lint:html'] },
   { label: 'arch', command: 'npm', args: ['run', 'arch:check'] },
