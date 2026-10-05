@@ -208,11 +208,12 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     const { surface, claim } = battery;
     const nowMs = Date.now();
     const claims = this.loadClaims();
-    const verification = this.verification.read(deviceId, Math.max(0, -surface.range.minW), nowMs);
+    const verification = this.verification.read(deviceId, surface.range, nowMs);
     return {
       kind: 'setpoint',
       stepW: surface.range.stepW,
       deliveryCeilingW: verification.deliveryCeilingW,
+      chargeCeilingW: verification.chargeCeilingW,
       claimHeld: claims.status === 'loaded' && claims.records.has(deviceId),
       handBackDeferred: this.releasing.has(deviceId) || this.isHandBackWaiting(deviceId, nowMs),
       claimEngaged: !('kind' in claim) && claim.value === surface.claim.homeyValue,

@@ -12,13 +12,14 @@ import type {
 } from '../../lib/ports/batteryControlOwner';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
-import type { HomeBatteryPowerObservation } from '../../packages/contracts/src/types';
+import type { HomeBatteryPowerObservation, HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { StorageDecision } from '../../lib/planContract/storageDecision';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/observer/controlCommandConfirmation';
 import { buildPlanDevice } from '../utils/planTestUtils';
 
 const BATTERY = 'battery';
+const RANGE: HomeBatterySetpointRange = { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 };
 const START_MS = Date.UTC(2026, 9, 5, 12, 0, 0);
 
 const decided = (storageDecision: StorageDecision): StorageDecidedDevice => (
@@ -43,7 +44,7 @@ const buildLane = () => {
       handBackDeferred: owned.deferred,
       claimEngaged: owned.held && !owned.takenOver,
       admissible: true,
-      ...ledger.read(BATTERY, 2500, Date.now()),
+      ...ledger.read(BATTERY, RANGE, Date.now()),
     })),
     releaseClaim: vi.fn(async () => {
       if (owned.releaseOutcome === 'released') owned.held = false;
@@ -77,7 +78,7 @@ const buildLane = () => {
     owned,
     apply,
     ledger,
-    verdict: () => ledger.read(BATTERY, 2500, Date.now()).verdict,
+    verdict: () => ledger.read(BATTERY, RANGE, Date.now()).verdict,
     send: async (setpointW: number, afterMs: number): Promise<boolean> => {
       at(afterMs);
       return lane.apply(setpoint(setpointW));
@@ -158,7 +159,7 @@ describe('battery storage lane', () => {
     expect(await send(-1500, CONTROL_COMMAND_CONFIRMATION_MS + 1_000)).toBe(false);
     expect(apply).toHaveBeenCalledTimes(1);
     expect(lane.hasDrift(setpoint(-1500))).toBe(false);
-    expect(ledger.read(BATTERY, 2500, Date.now() + 15 * 60_000).verdict).toBe('reprobing');
+    expect(ledger.read(BATTERY, RANGE, Date.now() + 15 * 60_000).verdict).toBe('reprobing');
   });
 
   it('calls a battery that never reports again not responding only after the longest wait', async () => {
@@ -193,7 +194,7 @@ describe('battery storage lane', () => {
 
   it('learns its plateau on an increase, keeps it through a step down, and re-learns it on a re-probe', async () => {
     const { send, read, ledger } = buildLane();
-    const ceiling = () => ledger.read(BATTERY, 2500, Date.now()).deliveryCeilingW;
+    const ceiling = () => ledger.read(BATTERY, RANGE, Date.now()).deliveryCeilingW;
 
     // Asked for 2.5 kW, it delivers 2 kW and no more.
     await send(-2500, 0);
@@ -204,7 +205,7 @@ describe('battery storage lane', () => {
     await send(-500, 100_000);
     read(-1200, 2800, 100_000 + CONTROL_COMMAND_CONFIRMATION_MS);
     expect(ceiling()).toBe(2000);
-    expect(ledger.read(BATTERY, 2500, Date.now()).verdict).toBe('responding');
+    expect(ledger.read(BATTERY, RANGE, Date.now()).verdict).toBe('responding');
 
     // Back at the plateau, and long enough later that the lesson has expired.
     const laterMs = 100_000 + DELIVERY_CEILING_TTL_MS;
@@ -215,7 +216,62 @@ describe('battery storage lane', () => {
     // A raise from the plateau that gets no further re-learns it.
     await send(-2500, laterMs + 60_000);
     read(-2000, 2000, laterMs + 60_000 + CONTROL_COMMAND_CONFIRMATION_MS);
-    expect(ledger.read(BATTERY, 2500, Date.now())).toEqual({ verdict: 'responding', deliveryCeilingW: 2000 });
+    expect(ledger.read(BATTERY, RANGE, Date.now()))
+      .toEqual({ verdict: 'responding', deliveryCeilingW: 2000, chargeCeilingW: 2500 });
+  });
+
+  it('confirms a charge setpoint and checks its sign the other way round', async () => {
+    const { send, read, verdict, ledger } = buildLane();
+    await send(1500, 0);
+
+    // Charging is load: the house's net rises with the battery's own power.
+    read(1480, 5500, 5_000);
+    expect(verdict()).toBe('responding');
+    read(1500, 5510, 15_000);
+    read(1500, 5520, 25_000);
+    expect(verdict()).toBe('responding');
+    expect(ledger.read(BATTERY, RANGE, Date.now()).chargeCeilingW).toBe(2500);
+  });
+
+  it('learns a charge ceiling from a charge that stops short, and a full battery is no failure', async () => {
+    const { lane, send, read, verdict, ledger } = buildLane();
+    const chargeCeiling = () => ledger.read(BATTERY, RANGE, Date.now()).chargeCeilingW;
+
+    // A full battery asked to charge does not move: its own limit, not a fault.
+    await send(2000, 0);
+    read(0, 3000, CONTROL_COMMAND_CONFIRMATION_MS);
+    expect(chargeCeiling()).toBe(0);
+    expect(verdict()).toBe('unverified');
+    expect(lane.hasDrift(setpoint(2000))).toBe(false);
+
+    // Once the lesson expires, one that charges some and stops short teaches
+    // that, and shows the battery follows.
+    const laterMs = DELIVERY_CEILING_TTL_MS + 60_000;
+    await send(2500, laterMs);
+    read(1200, 4200, laterMs + CONTROL_COMMAND_CONFIRMATION_MS);
+    expect(chargeCeiling()).toBe(1200);
+    expect(verdict()).toBe('responding');
+
+    // A charge delivered past it lifts it.
+    await send(2000, laterMs + 200_000);
+    read(2000, 5000, laterMs + 205_000);
+    expect(chargeCeiling()).toBe(2500);
+  });
+
+  it('marks a battery sign-inverted from charge steps too', async () => {
+    const { send, read, verdict } = buildLane();
+    const invertedStep = async (setpointW: number, meterW: number, atMs: number) => {
+      await send(setpointW, atMs);
+      read(setpointW, meterW, atMs + 10_000);
+      read(setpointW, meterW + 10, atMs + 20_000);
+    };
+
+    // The battery reports the charge it was asked for; the house draws LESS.
+    await invertedStep(1500, 2500, 0);
+    await invertedStep(2500, 1500, 60_000);
+    expect(verdict()).toBe('responding');
+    await invertedStep(1000, 3000, 120_000);
+    expect(verdict()).toBe('sign_inverted');
   });
 
   it('discounts a managed load ramping during the sign check', async () => {

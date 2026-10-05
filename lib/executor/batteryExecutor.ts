@@ -21,23 +21,27 @@
  *   `targetPowerCommandLifecycle.ts`). A setpoint is judged only on the
  *   battery's own power reported after it went out; a battery that reports
  *   nothing new gets up to `VERIFICATION_MAX_WAIT_MS`. It is confirmed within
- *   the setpoint tolerance (`storageSetpointToleranceW`). Past the window, an
- *   INCREASE in discharge that moved but stopped short teaches the delivery
- *   ceiling, as does one that starts at the last plateau and gets no further;
- *   a step down that stops short teaches nothing. No movement is
- *   `not_responding`, and the plan hands the battery back. A setpoint too small
+ *   the setpoint tolerance (`storageSetpointToleranceW`), charge and discharge
+ *   alike. Past the window, an INCREASE in discharge that moved but stopped
+ *   short teaches the delivery ceiling, as does one that starts at the last
+ *   plateau and gets no further; an increase in charge that stops short, moved
+ *   or not, teaches the charge ceiling (a full battery stops charging, which is
+ *   its own limit and no verdict); a step toward 0 W that stops short teaches
+ *   nothing. A discharge with no movement is `not_responding`, and the plan
+ *   hands the battery back. A setpoint too small
  *   to tell from noise, or from a minimum the battery may have and does not
  *   declare, gives no verdict at all. A battery whose claim no longer reads
  *   Homey's after the window was taken by someone else: it is judged not
  *   responding rather than claimed back. A battery the owner handed back (opt
  *   out) is simply forgotten, never judged.
- * - **Sign.** After a confirmed step of at least 1 kW, the whole-home meter's
- *   move, less the move of the managed devices' own metered draw, is compared
- *   with the battery's. A reading within `SIGN_CHECK_ACTION_QUIET_MS` of PELS's
- *   own shed or restore is no evidence. Two readings in a row decide a step;
- *   three inverted steps, one of them a step down, mark the battery
- *   `sign_inverted`, and each is logged with its evidence. Peer apps drove
- *   batteries with a silently inverted sign for months.
+ * - **Sign.** After a followed step in which the battery's own power moved at
+ *   least 1 kW, either way, the whole-home meter's move, less the move of the
+ *   managed devices' own metered draw, is compared with the battery's. A
+ *   reading within `SIGN_CHECK_ACTION_QUIET_MS` of PELS's own shed or restore is
+ *   no evidence. Two readings in a row decide a step; three inverted steps, one
+ *   of them toward charge (a step down in discharge, or a charge increase), mark
+ *   the battery `sign_inverted`, and each is logged with its evidence. Peer apps
+ *   drove batteries with a silently inverted sign for months.
  *
  * The verdicts are the battery owner's (`lib/battery/batteryVerification.ts`);
  * this lane writes them through the owner's port and reads them back through
@@ -63,7 +67,7 @@ const logger = getLogger('executor/battery');
 export const VERIFICATION_MAX_WAIT_MS = 5 * 60 * 1000;
 /** Below this, a setpoint may sit under a minimum power the battery does not declare: no verdict. */
 const NO_VERDICT_BELOW_W = 500;
-/** A confirmed step at least this large, W, is big enough to check the sign against the meter. */
+/** A followed step that moved the battery at least this much, W, is big enough to check the sign against the meter. */
 const SIGN_CHECK_MIN_STEP_W = 1000;
 /** A meter move smaller than this share of the battery's says nothing about the sign. */
 const SIGN_CHECK_MIN_METER_SHARE = 0.5;
@@ -71,7 +75,7 @@ const SIGN_CHECK_MIN_METER_SHARE = 0.5;
 const SIGN_CHECK_MAX_SAMPLES = 6;
 /** A reading this close after PELS's own shed or restore says nothing about the battery. */
 export const SIGN_CHECK_ACTION_QUIET_MS = 30 * 1000;
-/** Inverted steps, one of them a step down, before a battery is marked `sign_inverted`. */
+/** Inverted steps, one of them toward charge, before a battery is marked `sign_inverted`. */
 const SIGN_INVERTED_STEPS_REQUIRED = 3;
 
 /** A plan device carrying a home-battery decision. */
@@ -351,7 +355,10 @@ export class BatteryExecutor {
       this.commands.delete(deviceId);
       return verdict;
     }
-    const settled = { ...record, phase: verdict === 'followed' ? this.resolveSignPhase(deviceId, record) : DONE };
+    const settled = {
+      ...record,
+      phase: verdict === 'followed' ? this.resolveSignPhase(deviceId, record, power) : DONE,
+    };
     this.commands.set(deviceId, settled);
     return settled;
   }
@@ -366,25 +373,34 @@ export class BatteryExecutor {
   ): SetpointVerdict {
     const toleranceW = storageSetpointToleranceW(record.setpointW, record.stepW);
     const { verification } = this.deps.owner;
-    const deliveredW = Math.max(0, -power.signedW);
     const event = {
       deviceId, setpointW: record.setpointW, startPowerW: record.startSignedW, observedPowerW: power.signedW,
     };
     if (reached) {
-      verification.recordResponding(deviceId, { dischargeW: deliveredW, toleranceW }, nowMs);
+      verification.recordResponding(deviceId, { signedW: power.signedW, toleranceW }, nowMs);
       logger.info({ event: 'battery_storage_setpoint_confirmed', ...event, elapsedMs: nowMs - record.issuedAtMs });
       return 'followed';
     }
-    const increase = record.setpointW < record.startSignedW;
+    const towardDischarge = record.setpointW < record.startSignedW;
+    // An increase moves the setpoint away from 0 W on its own side; a judged
+    // setpoint is never 0 W (`NO_VERDICT_BELOW_W`), so it has a side.
+    const increase = towardDischarge ? record.setpointW < 0 : record.setpointW > 0;
     const progressW = (power.signedW - record.startSignedW) * Math.sign(record.setpointW - record.startSignedW);
     const moved = progressW >= toleranceW;
+    if (increase && !towardDischarge) {
+      verification.recordChargeCeiling(deviceId, Math.max(0, power.signedW), nowMs);
+      logger.info({ event: 'battery_storage_charge_plateaued', ...event, moved });
+      if (!moved) return 'inconclusive';
+      verification.recordResponding(deviceId, { signedW: power.signedW, toleranceW }, nowMs);
+      return 'followed';
+    }
     if (increase && (moved || verification.startsAtPlateau(deviceId, -record.startSignedW, toleranceW))) {
-      verification.recordDeliveryCeiling(deviceId, deliveredW, nowMs);
+      verification.recordDeliveryCeiling(deviceId, Math.max(0, -power.signedW), nowMs);
       logger.info({ event: 'battery_storage_setpoint_plateaued', ...event });
       return 'followed';
     }
     if (!increase && moved) {
-      // A step down that stopped short teaches nothing about what it can deliver.
+      // A step toward 0 W that stopped short teaches nothing about what it can deliver.
       logger.info({ event: 'battery_storage_step_down_short', ...event });
       return 'inconclusive';
     }
@@ -395,12 +411,18 @@ export class BatteryExecutor {
 
   /**
    * A followed step's sign is checked when it went out against a meter
-   * reading, is big enough to show on the meter, and no step has confirmed
-   * this battery's sign yet this run.
+   * reading, the battery's own power moved enough to show on the meter, and no
+   * step has confirmed this battery's sign yet this run. The move is what the
+   * battery did, not what it was asked: a step that plateaued where it started
+   * moved nothing for the meter to agree or disagree with.
    */
-  private resolveSignPhase(deviceId: string, record: StorageCommandRecord): CommandPhase {
+  private resolveSignPhase(
+    deviceId: string,
+    record: StorageCommandRecord,
+    power: HomeBatteryPowerObservation,
+  ): CommandPhase {
     if (record.phase.kind !== 'pending' || record.phase.baseline === 'unavailable') return DONE;
-    if (Math.abs(record.setpointW - record.startSignedW) < SIGN_CHECK_MIN_STEP_W) return DONE;
+    if (Math.abs(power.signedW - record.startSignedW) < SIGN_CHECK_MIN_STEP_W) return DONE;
     if (this.signEvidence.get(deviceId)?.kind === 'confirmed') return DONE;
     return { kind: 'sign_check', baseline: record.phase.baseline, lastSample: 'none', samples: 0 };
   }

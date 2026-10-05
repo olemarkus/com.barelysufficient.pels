@@ -197,6 +197,11 @@ export type ObservedStorageInput = {
    * an increase plateaued short of what it asked.
    */
   deliveryCeilingW: number;
+  /**
+   * The most charge PELS may ask for, W: the charge range, or less once a
+   * charge stopped short of what it asked (a full battery stops at 0 W).
+   */
+  chargeCeilingW: number;
 };
 
 /**
@@ -219,7 +224,10 @@ export type MissingStorageInput = {
  * `hasStorageInput` (`lib/plan/battery/storageRelief.ts`).
  *
  * The device stays `observeOnly` with no command authority: no shed, restore or
- * surplus lane sees it. Only the storage relief stage reads this cluster.
+ * surplus lane sees it. Only the storage stage reads this cluster, and the
+ * builder through the batteries' term in the surplus pool
+ * (`sumStorageSurplusW`): the solar a battery stores that PELS can free, less
+ * its discharge.
  *
  * State of charge is not here: the battery's own floor applies (owner ruling,
  * 2026-10-05), so nothing decides on it. A battery that stops delivering near

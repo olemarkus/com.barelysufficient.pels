@@ -57,6 +57,17 @@ B, C — starving them. The **fit-test** forecloses this:
   engaged device's draw from the shared pool before offering it to the next, so
   two willing devices cannot both claim the same surplus and oscillate; a
   lower-priority device only ever sees surplus the higher-priority ones left.
+  A home battery comes after the last willing device. The pool counts the
+  solar a battery stores that PELS can free (its own mode's charge less any
+  import, or the charge PELS holds it at) and never its discharge
+  (`sumStorageSurplusW`, `lib/plan/battery/storageRelief.ts`), so a battery
+  never hides surplus from a device and stored energy never boosts one. PELS
+  claims the battery only to cap that charge for a device waiting to start, and
+  its held charge follows what the devices leave (`SurplusLeftover`), bounded by
+  the headroom, so it stays net-neutral on the same terms as a lift. A battery
+  whose own mode discharges to hold the meter at 0 W hides the import a surplus
+  device causes; the hard-off counts that discharge as import, so the device
+  yields as it would to visible import and the battery is never claimed for it.
 - The capacity shed layer remains the ceiling regardless: the lift is
   **capacity-independent** (`applySurplusAbsorbDelta` is documented as such), so
   if the home genuinely were near the cap, capacity shedding still applies on top

@@ -5,12 +5,18 @@
  * plan is not driving and holds no claim on carries no decision at all.
  *
  * - `setpoint` — hold the battery at this signed power, W (negative
- *   discharges; this slice never charges). `stepW` is the battery's setpoint
- *   grid, which the executor's confirmation tolerance is sized against.
- * - `release` — hand the battery back to its own mode.
+ *   discharges for relief, positive charges from the surplus the willing
+ *   devices left). `stepW` is the battery's setpoint grid, which the
+ *   executor's confirmation tolerance is sized against.
+ * - `release` — hand the battery back to its own mode, saying which rule
+ *   fired: `idle` (a relief hold with nothing to do), `surplus_dwell` (a
+ *   surplus hold no device needs any more), `full` (a surplus hold on a
+ *   battery that stopped taking charge), or why it may not be held.
  */
 export type StorageReleaseReason =
   | 'idle'
+  | 'surplus_dwell'
+  | 'full'
   | 'meter_silent'
   | 'input_missing'
   | 'not_admissible'

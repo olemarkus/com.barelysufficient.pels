@@ -189,12 +189,27 @@ export const NO_SHEDDING_OUTCOME: SheddingOutcome = Object.freeze({ kind: 'none'
  * (`lib/plan/battery/storageRelief.ts`). An entry exists exactly while the plan
  * is driving the battery; releasing it deletes the entry. In memory: after a
  * restart the owner's boot recovery hands a claimed battery back, and the next
- * deficit claims it afresh.
+ * deficit or surplus claims it afresh.
  */
 export type StorageLeverState = {
-  /** The discharge this plan asks of the battery, W (>= 0): the setpoint is its negation. */
-  dischargeW: number;
-  /** When the current increase was decided: its credit's settle window runs from here. */
+  /**
+   * The signed power this plan holds the battery at, W: negative discharges
+   * (relief), positive charges (from the surplus the willing devices left).
+   */
+  setpointW: number;
+  /**
+   * Why the plan took the battery: `relief` against a deficit (handed back
+   * after `STORAGE_IDLE_RELEASE_MS` with nothing to do), or `surplus` to cap
+   * its own mode's charge for a device (handed back after
+   * `STORAGE_SURPLUS_RELEASE_DWELL_MS` without a device needing the cap). A
+   * surplus hold that meets a deficit becomes a relief hold.
+   */
+  purpose: 'relief' | 'surplus';
+  /**
+   * When the current discharge increase was decided: its credit's settle
+   * window runs from here. A hold that starts by charging has no increase to
+   * settle: its window is already over.
+   */
   increaseDecidedAtMs: number;
   /**
    * The discharge already accounted for when that increase was decided, W
@@ -203,15 +218,24 @@ export type StorageLeverState = {
    * never landed is not credited again by the next one.
    */
   creditBaseW: number;
-  /** When the setpoint last stepped down: decreases are paced, increases are not. */
+  /**
+   * When the discharge last stepped down: discharge decreases are paced, its
+   * increases are not. A charge is the other way round: it falls at once.
+   */
   lastDecreaseAtMs: number;
-  /** The last cycle with a deficit or a discharge held: the idle hand-back counts from here. */
+  /** When the charge last rose: charge increases are paced like other surplus claims. */
+  chargeRaisedAtMs: number;
+  /**
+   * The last cycle the hold was needed: for relief, a deficit or a discharge
+   * held; for surplus, a device wanting surplus while the charge is capped
+   * below `preClaimSignedW`. The hand-back counts from here.
+   */
   lastNeedAtMs: number;
   /**
    * The battery's own signed power when the plan first claimed it, W. A battery
    * stopped while it was charging would charge again at about this rate once
-   * handed back, so the hold at 0 W counts as needed while the house has no
-   * room for that.
+   * handed back, so a relief hold at 0 W counts as needed while the house has
+   * no room for that; a surplus hold is a cap on this charge.
    */
   preClaimSignedW: number;
   /** The battery's setpoint grid, W, as last read: a hold kept while unread still names it. */

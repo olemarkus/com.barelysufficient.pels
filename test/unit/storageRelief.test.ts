@@ -3,11 +3,15 @@ import {
   STORAGE_IDLE_RELEASE_MS,
   STORAGE_INPUT_MISSING_RELEASE_MS,
   STORAGE_RELIEF_SETTLE_WINDOW_MS,
+  STORAGE_SURPLUS_RELEASE_DWELL_MS,
   decideStorageRelief,
   releaseStorageOnSilentMeter,
-  withoutHeldStorageDischarge,
+  sumStorageSurplusW,
+  withoutStorageWithheld,
   type StorageRelief,
 } from '../../lib/plan/battery/storageRelief';
+import type { SurplusDemand, SurplusLeftover } from '../../lib/plan/planSurplusAbsorb';
+import { SURPLUS_TRACK_STEP_MIN_INTERVAL_MS } from '../../lib/plan/admission';
 import type { StorageLeverState } from '../../lib/plan/planState';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type {
@@ -38,6 +42,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
     admissible: true,
     verdict: 'unverified',
     deliveryCeilingW: 2500,
+    chargeCeilingW: 2500,
     ...overrides,
   },
 });
@@ -47,6 +52,9 @@ const unreadBattery = (admissible = true): PlanInputDevice & StoragePlanInputKin
   storage: { reading: 'missing', claimHeld: true, admissible },
 });
 
+/** No willing device, and the house importing: nothing to store. */
+const NO_SURPLUS: SurplusLeftover = { leftoverW: -5000, deviceDemand: 'none' };
+
 /** A cycle against the binding pace: negative headroom is the deficit, kW. */
 const cycle = (
   device: PlanInputDevice,
@@ -54,13 +62,25 @@ const cycle = (
   levers: Record<string, StorageLeverState> = {},
   nowTs = NOW,
   drawKw = 5,
-): StorageRelief => decideStorageRelief([device], buildMeasuredPower({ drawKw, headroomKw }), levers, nowTs);
+  surplus: SurplusLeftover = NO_SURPLUS,
+): StorageRelief => decideStorageRelief([device], buildMeasuredPower({ drawKw, headroomKw }), levers, surplus, nowTs);
+
+/** A cycle in an exporting house with this much leftover surplus, W, after the willing devices. */
+const exporting = (
+  device: PlanInputDevice,
+  leftoverW: number,
+  levers: Record<string, StorageLeverState> = {},
+  nowTs = NOW,
+  deviceDemand: SurplusDemand = 'waiting',
+): StorageRelief => cycle(device, 8, levers, nowTs, -1.5, { leftoverW, deviceDemand });
 
 const lever = (overrides: Partial<StorageLeverState> = {}): StorageLeverState => ({
-  dischargeW: 1500,
+  setpointW: -1500,
+  purpose: 'relief',
   increaseDecidedAtMs: NOW - 10 * 60_000,
   creditBaseW: 0,
   lastDecreaseAtMs: NOW - 10 * 60_000,
+  chargeRaisedAtMs: NOW - 10 * 60_000,
   lastNeedAtMs: NOW,
   preClaimSignedW: 0,
   stepW: 5,
@@ -74,7 +94,7 @@ describe('storage relief arithmetic', () => {
 
     expect(relief.decisions.get('battery')).toEqual({ kind: 'setpoint', setpointW: -1600, stepW: 5 });
     expect(relief.shed).toEqual({ netCreditKw: 1.3, relieving: true, drawMarginKw: 0.1 });
-    expect(relief.levers.battery).toMatchObject({ dischargeW: 1600, increaseDecidedAtMs: NOW, preClaimSignedW: -300 });
+    expect(relief.levers.battery).toMatchObject({ setpointW: -1600, increaseDecidedAtMs: NOW, preClaimSignedW: -300 });
   });
 
   it('bounds the setpoint by the delivery ceiling and the house draw less half the deadband', () => {
@@ -105,15 +125,15 @@ describe('storage relief arithmetic', () => {
 
   it('keeps the window stamp when the ask grows while it is still settling', () => {
     const relief = cycle(battery({ signedPowerW: -200 }), -1.8, {
-      battery: lever({ dischargeW: 1000, increaseDecidedAtMs: NOW - 20_000 }),
+      battery: lever({ setpointW: -1000, increaseDecidedAtMs: NOW - 20_000 }),
     });
 
     expect(relief.levers.battery?.increaseDecidedAtMs).toBe(NOW - 20_000);
     expect(relief.shed.netCreditKw).toBeCloseTo(1.9);
   });
 
-  it('turns a charging battery off to relieve, but never commands a charge', () => {
-    const relief = cycle(battery({ signedPowerW: 800 }), -0.5);
+  it('turns a charging battery off to relieve, and never charges while relief is needed', () => {
+    const relief = cycle(battery({ signedPowerW: 800 }), -0.5, {}, NOW, 5, { leftoverW: 2000, deviceDemand: 'waiting' });
 
     expect(relief.decisions.get('battery')).toMatchObject({ setpointW: 0 });
     expect(relief.shed.netCreditKw).toBeCloseTo(0.8);
@@ -150,7 +170,7 @@ describe('storage relief hysteresis', () => {
   });
 
   it('steps to 0 W once the discharge needed is under the deadband, so the idle clock runs', () => {
-    const relief = cycle(battery({ signedPowerW: -300 }), 0.15, { battery: lever({ dischargeW: 300 }) });
+    const relief = cycle(battery({ signedPowerW: -300 }), 0.15, { battery: lever({ setpointW: -300 }) });
     expect(relief.decisions.get('battery')).toMatchObject({ setpointW: 0 });
   });
 
@@ -171,7 +191,7 @@ describe('storage relief hysteresis', () => {
 
 describe('storage relief release', () => {
   const idleLever = (preClaimSignedW: number) => ({
-    battery: lever({ dischargeW: 0, lastNeedAtMs: NOW - STORAGE_IDLE_RELEASE_MS, preClaimSignedW }),
+    battery: lever({ setpointW: 0, lastNeedAtMs: NOW - STORAGE_IDLE_RELEASE_MS, preClaimSignedW }),
   });
 
   it('hands the battery back after the idle window at 0 W', () => {
@@ -200,7 +220,7 @@ describe('storage relief release', () => {
 
     expect(relief.decisions.get('battery')).toEqual({ kind: 'release', reason });
     expect(relief.shed).toEqual({ netCreditKw: -1.5, relieving: false, drawMarginKw: 0 });
-    expect(relief.heldDischargeKw).toBeCloseTo(1.5);
+    expect(relief.withheldKw).toBeCloseTo(1.5);
   });
 
   it('decides nothing for a battery it neither drives nor holds', () => {
@@ -220,7 +240,7 @@ describe('storage relief without a reading', () => {
     const kept = cycle(unreadBattery(), -1, { battery: lever({ increaseDecidedAtMs: NOW - 5_000 }) });
     expect(kept.decisions.get('battery')).toEqual({ kind: 'setpoint', setpointW: -1500, stepW: 5 });
     expect(kept.shed.netCreditKw).toBe(0);
-    expect(kept.heldDischargeKw).toBeCloseTo(1.5);
+    expect(kept.withheldKw).toBeCloseTo(1.5);
     expect(kept.levers.battery?.reading).toEqual({ kind: 'unread', sinceMs: NOW });
 
     const released = cycle(unreadBattery(), -1, kept.levers, NOW + STORAGE_INPUT_MISSING_RELEASE_MS);
@@ -235,14 +255,133 @@ describe('storage relief without a reading', () => {
 
   it('keeps a hold whose battery left the plan, then drops it, saying so', () => {
     const heater = buildPlanInputDevice({ id: 'heater', controllable: true });
-    const kept = decideStorageRelief([heater], buildMeasuredPower(), { battery: lever() }, NOW);
+    const kept = decideStorageRelief([heater], buildMeasuredPower(), { battery: lever() }, NO_SURPLUS, NOW);
     expect(kept.levers.battery).toBeDefined();
     expect(kept.decisions.size).toBe(0);
 
     const dropped = decideStorageRelief(
-      [heater], buildMeasuredPower(), kept.levers, NOW + STORAGE_INPUT_MISSING_RELEASE_MS,
+      [heater], buildMeasuredPower(), kept.levers, NO_SURPLUS, NOW + STORAGE_INPUT_MISSING_RELEASE_MS,
     );
     expect(dropped.levers).toEqual({});
+  });
+});
+
+describe('storage charge for the devices', () => {
+  /** A battery PELS took from its own mode's 2 kW charge and holds at 400 W for a device. */
+  const capped = (overrides: Partial<StorageLeverState> = {}): Record<string, StorageLeverState> => ({
+    battery: lever({ setpointW: 400, purpose: 'surplus', preClaimSignedW: 2000, ...overrides }),
+  });
+  const following = (signedPowerW = 400): PlanInputDevice => battery({ signedPowerW, claimHeld: true });
+
+  it('caps the charge its own mode takes to what a device waiting to start leaves', () => {
+    // Its own mode stores 2 kW, of which a waiting device needs 1.5 kW.
+    const relief = exporting(battery({ signedPowerW: 2000 }), 500);
+
+    expect(relief.decisions.get('battery')).toEqual({ kind: 'setpoint', setpointW: 400, stepW: 5 });
+    expect(relief.levers.battery).toMatchObject({ purpose: 'surplus', preClaimSignedW: 2000 });
+    expect(relief.batteries[0]).toMatchObject({ claim: 'cap_for_device', setpointW: 400 });
+    expect(relief.shed).toEqual({ netCreditKw: 0, relieving: false, drawMarginKw: 0 });
+  });
+
+  it('never claims to store more than its own mode does, or for a device already running', () => {
+    expect(exporting(battery({ signedPowerW: 1000 }), 1500).decisions.size).toBe(0);
+    expect(exporting(battery({ signedPowerW: 2000 }), 500, {}, NOW, 'running').decisions.size).toBe(0);
+    expect(exporting(battery({ signedPowerW: 2000 }), 500, {}, NOW, 'none').decisions.size).toBe(0);
+  });
+
+  it('never claims a discharging battery, a full one, or one charging from the grid', () => {
+    expect(exporting(battery({ signedPowerW: -500 }), 500).decisions.size).toBe(0);
+    expect(exporting(battery({ signedPowerW: 2000, chargeCeilingW: 0 }), 500).decisions.size).toBe(0);
+    // The house imports more than it charges: none of it is solar.
+    const grid = cycle(battery({ signedPowerW: 2000 }), 3, {}, NOW, 3, { leftoverW: -3000, deviceDemand: 'waiting' });
+    expect(grid.decisions.size).toBe(0);
+  });
+
+  it('keeps a capped charge steady while the device runs on the rest, and counts it needed', () => {
+    const relief = exporting(following(), 500, capped({ lastNeedAtMs: NOW - 60_000 }), NOW, 'running');
+
+    expect(relief.decisions.get('battery')).toMatchObject({ setpointW: 400 });
+    expect(relief.levers.battery?.lastNeedAtMs).toBe(NOW);
+  });
+
+  it('paces a rise like a surplus climb, and withholds the increase from restore', () => {
+    const recent = capped({ chargeRaisedAtMs: NOW - 60_000 });
+    expect(exporting(following(), 2500, recent, NOW, 'running').decisions.get('battery'))
+      .toMatchObject({ setpointW: 400 });
+
+    const due = exporting(following(), 2500, capped({ chargeRaisedAtMs: NOW - SURPLUS_TRACK_STEP_MIN_INTERVAL_MS }), NOW, 'running');
+    expect(due.decisions.get('battery')).toMatchObject({ setpointW: 2400 });
+    expect(due.levers.battery?.chargeRaisedAtMs).toBe(NOW);
+    expect(due.batteries[0]).toMatchObject({ claim: 'raise_charge' });
+    // 2 kW more charge than the battery takes now: restore may not spend it.
+    expect(due.withheldKw).toBeCloseTo(2);
+  });
+
+  it('falls at once when a device takes its share, but not inside the margin it leaves', () => {
+    const held = following(1400);
+    const justRaised = capped({ setpointW: 1400, chargeRaisedAtMs: NOW });
+    expect(exporting(held, 1200, justRaised).decisions.get('battery')).toMatchObject({ setpointW: 1100 });
+    expect(exporting(held, 1450, justRaised).decisions.get('battery')).toMatchObject({ setpointW: 1400 });
+    expect(exporting(held, 150, justRaised).decisions.get('battery')).toMatchObject({ setpointW: 0 });
+  });
+
+  it('stops a held charge on a deficit, credits the stop, and holds it for relief from then on', () => {
+    const relief = cycle(following(1400), -0.5, capped({ setpointW: 1400 }), NOW, 3, {
+      leftoverW: 1500, deviceDemand: 'waiting',
+    });
+
+    expect(relief.decisions.get('battery')).toMatchObject({ setpointW: 0 });
+    expect(relief.shed.netCreditKw).toBeCloseTo(1.4);
+    expect(relief.levers.battery?.purpose).toBe('relief');
+  });
+
+  it('hands a surplus hold back after a short dwell once no device needs the cap', () => {
+    const quiet = capped({ lastNeedAtMs: NOW - STORAGE_SURPLUS_RELEASE_DWELL_MS + 10_000 });
+    expect(exporting(following(), 500, quiet, NOW, 'none').decisions.get('battery')).toMatchObject({ setpointW: 400 });
+
+    const dwelt = capped({ lastNeedAtMs: NOW - STORAGE_SURPLUS_RELEASE_DWELL_MS });
+    expect(exporting(following(), 500, dwelt, NOW, 'none').decisions.get('battery'))
+      .toEqual({ kind: 'release', reason: 'surplus_dwell' });
+    // A charge raised past its own mode's does no device any good: not needed either.
+    const raised = capped({ setpointW: 2400, lastNeedAtMs: NOW - STORAGE_SURPLUS_RELEASE_DWELL_MS });
+    expect(exporting(following(2400), 2500, raised, NOW, 'running').decisions.get('battery'))
+      .toEqual({ kind: 'release', reason: 'surplus_dwell' });
+    // A relief hold keeps its ten idle minutes.
+    const relief = { battery: lever({ setpointW: 0, lastNeedAtMs: NOW - STORAGE_SURPLUS_RELEASE_DWELL_MS }) };
+    expect(exporting(battery({ claimHeld: true }), 0, relief, NOW, 'none').decisions.get('battery'))
+      .toMatchObject({ kind: 'setpoint', setpointW: 0 });
+  });
+
+  it('hands a surplus hold back at once when the battery stops taking charge', () => {
+    const full = battery({ signedPowerW: 0, claimHeld: true, chargeCeilingW: 0 });
+    expect(exporting(full, 500, capped(), NOW, 'running').decisions.get('battery'))
+      .toEqual({ kind: 'release', reason: 'full' });
+  });
+});
+
+describe('the batteries\' term in the surplus pool', () => {
+  it('counts what PELS charges a held battery with, up to what it asked', () => {
+    expect(sumStorageSurplusW([battery({ signedPowerW: 1200 })], { battery: lever({ setpointW: 1500 }) }, 0)).toBe(1200);
+    expect(sumStorageSurplusW([battery({ signedPowerW: 1800 })], { battery: lever({ setpointW: 1500 }) }, 0)).toBe(1500);
+  });
+
+  it('counts the solar a claimable battery stores in its own mode, less any import, smoothly', () => {
+    const own = [battery({ signedPowerW: 2000 })];
+    expect(sumStorageSurplusW(own, {}, 0)).toBe(2000);
+    expect(sumStorageSurplusW(own, {}, 300)).toBe(1700);
+    expect(sumStorageSurplusW(own, {}, 350)).toBe(1650);
+    expect(sumStorageSurplusW(own, {}, 400)).toBe(1600);
+    // Charging from the grid: none of it is surplus.
+    expect(sumStorageSurplusW(own, {}, 2500)).toBe(0);
+    // One PELS may not claim frees nothing.
+    expect(sumStorageSurplusW([battery({ signedPowerW: 2000, admissible: false })], {}, 0)).toBe(0);
+  });
+
+  it('takes every battery\'s own discharge out of the export', () => {
+    expect(sumStorageSurplusW([battery({ signedPowerW: -5000 })], {}, -5000)).toBe(-5000);
+    // A held discharge stepping down offers the devices none of it either.
+    expect(sumStorageSurplusW([battery({ signedPowerW: -800 })], { battery: lever() }, -800)).toBe(-800);
+    expect(sumStorageSurplusW([battery({ signedPowerW: -800, admissible: false })], {}, -800)).toBe(-800);
   });
 });
 
@@ -251,7 +390,7 @@ describe('storage discharge as restore sees it', () => {
     const power = buildMeasuredPower({ drawKw: 2, headroomKw: 1, capacityHeadroomKw: 1, budgetHeadroomKw: 0.5 });
     const relief = cycle(battery({ signedPowerW: -1500 }), 1, { battery: lever() });
 
-    expect(withoutHeldStorageDischarge(power, relief)).toEqual({
+    expect(withoutStorageWithheld(power, relief)).toEqual({
       ...power, headroomKw: -0.5, capacityHeadroomKw: -0.5, budgetHeadroomKw: -1,
     });
   });

@@ -116,7 +116,10 @@ const buildDevices = (params: {
     state: params.state,
     signedNetKw: params.context.drawKw,
     inferredSurplusKw: 0,
+    storageSurplusKw: 0,
+    excludeIds: new Set(),
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
+    nowTs: Date.now(),
   });
   return buildInitialPlanDevices({
     context: params.context,
@@ -333,8 +336,11 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         state,
         signedNetKw: context.drawKw,
         inferredSurplusKw,
+        storageSurplusKw: 0,
+        excludeIds: new Set(),
         getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
         debugStructured: options.debugStructured,
+        nowTs: Date.now(),
       });
       const device = buildInitialPlanDevices({
         context,

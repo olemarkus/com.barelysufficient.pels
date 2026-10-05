@@ -215,6 +215,8 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       state,
       signedNetKw: -3, // 3 kW export available
       inferredSurplusKw: 0,
+      storageSurplusKw: 0,
+      excludeIds: new Set(),
       // Even if a (nonsensical) surplus config were present, the temperature-boost
       // filter drops the battery before allocation.
       getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
