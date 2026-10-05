@@ -1,6 +1,5 @@
-import os from 'node:os';
 import path from 'node:path';
-import { expect, injectHomeyHostCss, test, type Page } from './fixtures/test';
+import { captureOutputDir, expect, injectHomeyHostCss, test, type Page } from './fixtures/test';
 
 // Baseline whole-surface render of the Smart tasks tab. Not a CI assertion — a
 // reusable capture harness for the periodic render-gate. Skipped unless
@@ -16,7 +15,7 @@ import { expect, injectHomeyHostCss, test, type Page } from './fixtures/test';
 // the touch emulation back to desktop (→ light canvas). `isMobile` is
 // chromium-only, so the spec skips non-chromium projects (Firefox rejects it at
 // context creation). The browser clock is pinned so captures are deterministic.
-const OUT_DIR = process.env.PELS_SMART_TASKS_OUT_DIR ?? path.join(os.tmpdir(), 'pels-smarttasks-render');
+const OUT_DIR = process.env.PELS_SMART_TASKS_OUT_DIR ?? captureOutputDir('pels-smarttasks-render');
 
 // Frozen "now" so the seeded history dates, the 7-day hit-rate window and the
 // relative week dividers ("This week" / "Last week") render identically on

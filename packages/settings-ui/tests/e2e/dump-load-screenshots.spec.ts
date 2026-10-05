@@ -1,7 +1,6 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { test, type Page } from './fixtures/test';
+import { captureOutputDir, test, type Page } from './fixtures/test';
 
 // Review-harness captures for the "Run on solar surplus" dump-load rung: the
 // device-detail toggle row and the held Overview card, at 360 px wide in the
@@ -11,7 +10,7 @@ import { test, type Page } from './fixtures/test';
 //
 //   PELS_CAPTURE_DUMP_LOAD=1 PELS_DUMP_LOAD_OUT_DIR=... \
 //     npx playwright test dump-load-screenshots --project=chromium-mobile-width
-const OUT_DIR = process.env.PELS_DUMP_LOAD_OUT_DIR ?? path.join(os.tmpdir(), 'pels-dump-load-shots');
+const OUT_DIR = process.env.PELS_DUMP_LOAD_OUT_DIR ?? captureOutputDir('pels-dump-load-shots');
 
 test.describe('dump-load screenshots (360 dark)', () => {
   test.beforeEach(({ browserName }) => {

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { runWithValidationLock } from '../../scripts/with-validation-lock.mjs';
 
@@ -78,6 +78,7 @@ describe('machine-wide validation lock', () => {
       args: ['-e', childScript, eventPath, 'first', '120'],
       env,
       lockPath,
+      tmpRoot: path.join(makeTempDir(), 'tmp-root'),
     });
     await waitForFileContent(eventPath, 'first:start');
     const second = runWithValidationLock({
@@ -86,6 +87,7 @@ describe('machine-wide validation lock', () => {
       args: ['-e', childScript, eventPath, 'second', '0'],
       env,
       lockPath,
+      tmpRoot: path.join(makeTempDir(), 'tmp-root'),
     });
 
     await expect(Promise.all([first, second])).resolves.toEqual([0, 0]);
@@ -107,6 +109,7 @@ describe('machine-wide validation lock', () => {
         PELS_VALIDATION_LOCK_HELD: '1',
       },
       platform: 'darwin',
+      tmpRoot: path.join(makeTempDir(), 'tmp-root'),
     });
 
     expect(code).toBe(0);
@@ -119,15 +122,67 @@ describe('machine-wide validation lock', () => {
       args: ['-e', 'process.exit(0)'],
       env: { PATH: process.env.PATH ?? '' },
       platform: 'darwin',
+      tmpRoot: path.join(makeTempDir(), 'tmp-root'),
     });
 
     expect(code).toBe(0);
+  });
+
+  it('runs the command with its own TMPDIR, keeps the caller\'s, and removes its own afterwards', async () => {
+    const dir = makeTempDir();
+    const tmpRoot = path.join(dir, 'tmp-root');
+    const reportPath = path.join(dir, 'tmpdir.txt');
+    const childScript = `
+      const fs = require('node:fs');
+      const os = require('node:os');
+      const path = require('node:path');
+      fs.writeFileSync(process.argv[1], JSON.stringify([os.tmpdir(), process.env.PELS_CALLER_TMPDIR]));
+      fs.mkdirSync(path.join(os.tmpdir(), 'leftover'));
+    `;
+
+    const code = await runWithValidationLock({
+      label: 'tmpdir',
+      command: process.execPath,
+      args: ['-e', childScript, reportPath],
+      env: { PATH: process.env.PATH ?? '', CI: '1' },
+      lockPath: path.join(dir, 'validation.lock'),
+      tmpRoot,
+    });
+
+    expect(code).toBe(0);
+    const [runTmpDir, callerTmpDir] = JSON.parse(fs.readFileSync(reportPath, 'utf8')) as [string, string];
+    expect(path.dirname(runTmpDir)).toBe(tmpRoot);
+    expect(callerTmpDir).toBe(os.tmpdir());
+    expect(fs.readdirSync(tmpRoot)).toEqual([]);
+  });
+
+  it('removes run directories whose wrapper is gone and keeps live ones', async () => {
+    const dir = makeTempDir();
+    const tmpRoot = path.join(dir, 'tmp-root');
+    const exited = spawnSync(process.execPath, ['-e', 'process.exit(0)']);
+    const orphaned = path.join(tmpRoot, `${exited.pid}-orphan`);
+    const live = path.join(tmpRoot, `${process.pid}-live`);
+    fs.mkdirSync(path.join(orphaned, 'ssr'), { recursive: true });
+    fs.mkdirSync(live, { recursive: true });
+
+    const code = await runWithValidationLock({
+      label: 'sweep',
+      command: process.execPath,
+      args: ['-e', 'process.exit(0)'],
+      env: { PATH: process.env.PATH ?? '' },
+      platform: 'darwin',
+      tmpRoot,
+    });
+
+    expect(code).toBe(0);
+    expect(fs.readdirSync(tmpRoot)).toEqual([path.basename(live)]);
   });
 
   it('forwards cancellation and promptly releases the lock', async () => {
     const dir = makeTempDir();
     const lockPath = path.join(dir, 'validation.lock');
     const eventPath = path.join(dir, 'events.log');
+    const tmpRoot = path.join(dir, 'tmp-root');
     const moduleUrl = pathToFileURL(path.resolve(__dirname, '../../scripts/with-validation-lock.mjs')).href;
     const childScript = `
       const fs = require('node:fs');
@@ -141,13 +196,14 @@ describe('machine-wide validation lock', () => {
     `;
     const wrapperScript = `
       import { runWithValidationLock } from ${JSON.stringify(moduleUrl)};
-      const [lockPath, eventPath, childScript] = process.argv.slice(1);
+      const [lockPath, eventPath, childScript, tmpRoot] = process.argv.slice(1);
       const code = await runWithValidationLock({
         label: 'cancel',
         command: process.execPath,
         args: ['-e', childScript, eventPath],
         env: { PATH: process.env.PATH ?? '', CI: '1' },
         lockPath,
+        tmpRoot,
       });
       process.exit(code);
     `;
@@ -158,6 +214,7 @@ describe('machine-wide validation lock', () => {
       lockPath,
       eventPath,
       childScript,
+      tmpRoot,
     ], { stdio: 'ignore' });
 
     await waitForFileContent(eventPath, 'child:start');
@@ -172,6 +229,7 @@ describe('machine-wide validation lock', () => {
 
     expect(wrapperExit).toBe(143);
     await waitForFileContent(eventPath, 'child:terminated');
+    expect(fs.readdirSync(tmpRoot)).toEqual([]);
     await expect(runWithValidationLock({
       label: 'reacquire',
       command: process.execPath,
@@ -179,6 +237,7 @@ describe('machine-wide validation lock', () => {
       env: { PATH: process.env.PATH ?? '' },
       lockPath,
       timeoutSeconds: 1,
+      tmpRoot: path.join(makeTempDir(), 'tmp-root'),
     })).resolves.toBe(0);
   });
 });

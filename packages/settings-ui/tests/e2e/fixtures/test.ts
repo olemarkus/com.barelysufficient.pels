@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Browser, expect, type Locator, test as base, type Page } from '@playwright/test';
@@ -12,6 +13,13 @@ export const test = base.extend({
 });
 export { expect };
 export type { Locator, Page } from '@playwright/test';
+
+// A locked test run gets a private TMPDIR that is deleted when the run ends, so
+// capture harnesses write to the temp dir of whoever started the run.
+export const captureOutputDir = (name: string): string => path.join(
+  process.env.PELS_CALLER_TMPDIR ?? os.tmpdir(),
+  name,
+);
 
 // --- Homey host stylesheet (the real app-settings iframe environment) --------
 //

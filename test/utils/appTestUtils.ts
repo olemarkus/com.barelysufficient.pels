@@ -31,7 +31,7 @@ type CreateAppOptions = {
   withoutPowerMeasurement?: boolean;
   /**
    * Where the userdata database lives for this app instance. Defaults to one
-   * file per spec FILE, deleted by `cleanupApps` after every test — the
+   * temp directory per test, deleted by `cleanupApps` after every test — the
    * `mockHomeyInstance.settings` analogue: two apps booted inside one test
    * (a restart) share it, and the next test starts empty.
    */
@@ -43,12 +43,11 @@ const testUserdataDatabase = (): string => {
   testUserdataDir ??= fs.mkdtempSync(path.join(os.tmpdir(), 'pels-userdata-'));
   return path.join(testUserdataDir, 'pels.sqlite');
 };
-/** Drop the spec file's database so the next test boots on an empty store. */
+/** Drop the database and its directory so the next test boots on an empty store. */
 const removeTestUserdataDatabase = (): void => {
   if (testUserdataDir === undefined) return;
-  for (const sidecar of ['', '-wal', '-shm']) {
-    fs.rmSync(path.join(testUserdataDir, `pels.sqlite${sidecar}`), { force: true });
-  }
+  fs.rmSync(testUserdataDir, { recursive: true, force: true });
+  testUserdataDir = undefined;
 };
 
 // A real, unremarkable reading: the house drawing nothing leaves full headroom,
