@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Electricity price</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./index.css">
+  </head>
+  <body class="homey-widget">
+    <main id="widget-root" class="widget-root" data-state="loading">
+      <div class="headline">
+        <span class="headline__price" data-price>—</span>
+        <span class="headline__level" data-level hidden></span>
+      </div>
+      <p class="subline" data-subline></p>
+      <div class="chart" data-chart></div>
+      <div class="legend" data-legend></div>
+      <p class="caption" data-caption hidden></p>
+    </main>
+    <script src="./index.js"></script>
+  </body>
+</html>

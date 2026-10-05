@@ -49,8 +49,9 @@ import {
   type NorwaySchemeSettings,
 } from './priceServiceNorway';
 import { mirrorPowerhourPrices, type PowerhourSourceUiStatus } from './powerhourScheme';
-import { applyExportPrices } from './exportPrice';
+import { applyExportPrices, type ExportPriceConfig } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
+import { buildPriceTimeline } from './priceTimeline';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import {
   resolveCurrentPricePeriodLevel,
@@ -70,6 +71,7 @@ import type { HomeyWebApiGet } from './homeyWebApiPort';
 import type { PriceDataStore } from './priceDataStore';
 import type { PricePayloadKey } from './priceCacheStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
+import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 
 const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | 'noData', string> = {
   keepCache: 'Keeping cached tariff data (NVE returned empty list)',
@@ -395,11 +397,13 @@ export default class PriceService {
   /**
    * The price series at the periods the source published, for the one consumer
    * that asks what the price is *right now* rather than this hour: the price
-   * level (and the temperature shift, the `price_level` trigger and the
-   * insights capability that follow it).
+   * level (and the temperature shift, the `price_level` trigger, the insights
+   * capability and the price widget's timeline that follow it).
    *
-   * The import price only: solar never changes a price level, so neither the
-   * export price nor the planning price is layered on here.
+   * The import price only: solar never changes a price level, so neither PELS's
+   * export model nor the planning price is layered on here. A Homey series that
+   * uses Homey's export terms still carries the export price its source
+   * attached; the level never reads it.
    */
   getCombinedPricePeriods(): CombinedPricePeriod[] {
     return this.buildImportPricePeriods();
@@ -411,12 +415,19 @@ export default class PriceService {
    * price level reads stays on the import price alone.
    */
   private withExportAndPlanningPrices<T extends CombinedPriceFields>(series: T[]): T[] {
-    const exportConfig = resolveExportConfigForScheme(
+    return applyBudgetPrices(
+      applyExportPrices(series, this.resolveExportConfig()),
+      this.budgetPriceInputs,
+      this.getTimeZone(),
+    );
+  }
+
+  private resolveExportConfig(): ExportPriceConfig {
+    return resolveExportConfigForScheme(
       this.homey.settings,
       (key) => this.getSettingValue(key),
       (key, fallback) => this.getNumberSetting(key, fallback),
     );
-    return applyBudgetPrices(applyExportPrices(series, exportConfig), this.budgetPriceInputs, this.getTimeZone());
   }
 
   private buildImportPricePeriods(): CombinedPricePeriod[] {
@@ -557,6 +568,22 @@ export default class PriceService {
    */
   getPriceLevelChangesWithin(window: PriceLevelLookahead): PriceLevelChangesRead {
     return resolvePriceLevelChangesWithin(this.getCombinedPricePeriods(), this.priceLevelBand, window);
+  }
+
+  /**
+   * Every period with its level and the lines that decided them, from a
+   * SINGLE series build, for the price widget. The same series and classifier
+   * as the current level, so the widget can never show a level the Flow cards
+   * and devices disagree with. The export price rides along for display only.
+   */
+  getPriceTimeline(): PriceTimelineRead {
+    const series = this.getCombinedPricePeriods();
+    if (series.length === 0) return { state: 'unavailable', reason: 'no_prices' };
+    return {
+      state: 'ready',
+      ...buildPriceTimeline(series, this.priceLevelBand, this.resolveExportConfig()),
+      priceUnit: this.getPriceUnitLabel(),
+    };
   }
 
   private get norwaySchemeSettings(): NorwaySchemeSettings {

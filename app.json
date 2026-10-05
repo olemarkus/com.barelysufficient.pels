@@ -2138,6 +2138,53 @@
       },
       "id": "plan_budget"
     },
+    "price": {
+      "name": {
+        "en": "Electricity price"
+      },
+      "height": 260,
+      "settings": [
+        {
+          "id": "show",
+          "type": "dropdown",
+          "title": {
+            "en": "Show"
+          },
+          "value": "import",
+          "values": [
+            {
+              "id": "import",
+              "title": {
+                "en": "Import price"
+              }
+            },
+            {
+              "id": "export",
+              "title": {
+                "en": "Export price"
+              }
+            },
+            {
+              "id": "both",
+              "title": {
+                "en": "Import and export"
+              }
+            }
+          ]
+        }
+      ],
+      "api": {
+        "getTimeline": {
+          "method": "GET",
+          "path": "/timeline"
+        },
+        "logClientError": {
+          "method": "POST",
+          "path": "/log"
+        }
+      },
+      "id": "price"
+    },
     "smart_tasks": {
       "name": {
         "en": "Smart tasks"

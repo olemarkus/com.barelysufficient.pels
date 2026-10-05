@@ -55,8 +55,9 @@ export type CombinedHourlyPrice = CombinedPriceFields & {
  * Norwegian spot feed and on owner-fed Flow prices, a quarter-hour on a Homey
  * Energy zone that has moved to the 15-minute market.
  *
- * Only the price level reads this series — the level answers "what is the price
- * right now", and now is a period. Everything that reasons in whole hours takes
+ * Only the price level reads this series (and the price widget's timeline,
+ * which draws those levels) — the level answers "what is the price right now",
+ * and now is a period. Everything that reasons in whole hours takes
  * {@link CombinedHourlyPrice} from `getCombinedHourlyPrices()` instead.
  */
 export type CombinedPricePeriod = CombinedPriceFields & {

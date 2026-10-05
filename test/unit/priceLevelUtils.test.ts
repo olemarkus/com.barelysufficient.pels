@@ -5,7 +5,11 @@
 // planning price (`budgetPrice`) is carried on the same entries for the
 // schedulers, and these pins prove the classifier ignores it.
 import { describe, expect, it } from 'vitest';
-import { resolveCurrentPricePeriodLevel, resolvePriceLevelChangesWithin } from '../../lib/price/priceLevelUtils';
+import {
+  resolveCurrentPricePeriodLevel,
+  resolvePriceLevelChangesWithin,
+  resolvePriceLevelTimeline,
+} from '../../lib/price/priceLevelUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -132,6 +136,60 @@ describe('resolvePriceLevelChangesWithin', () => {
       const before = resolveCurrentPricePeriodLevel(day, BAND, startMs - 1);
       const after = resolveCurrentPricePeriodLevel(day, BAND, startMs);
       expect(reported).toEqual(resolved(before === after ? [] : [after]));
+    }
+  });
+});
+
+describe('resolvePriceLevelTimeline — the lines it states decide every level', () => {
+  const series = [10, 35, 50, 60, 64, 66, 80, 100, 120, 140].map((price, hour) => entry(hour, price));
+
+  it('classifies every period exactly as the stated lines say', () => {
+    for (const band of [
+      { thresholdPercent: 25, minDiff: 0 },
+      { thresholdPercent: 10, minDiff: 30 },
+      { thresholdPercent: 40, minDiff: 5 },
+    ]) {
+      const { periods, lines } = resolvePriceLevelTimeline(series, band);
+      for (const period of periods) {
+        let expected: 'cheap' | 'normal' | 'expensive' = 'normal';
+        if (period.totalPrice <= lines.cheapAtOrBelow) expected = 'cheap';
+        else if (period.totalPrice >= lines.expensiveFrom) expected = 'expensive';
+        expect(period.level).toBe(expected);
+      }
+    }
+  });
+
+  it('moves a line out to the minimum difference when that is stricter than the percentage', () => {
+    // Average 72.5: 10% puts the lines at 65.25 / 79.75, a 30 minimum difference
+    // at 42.5 / 102.5, and a price must pass both.
+    const { lines } = resolvePriceLevelTimeline(series, { thresholdPercent: 10, minDiff: 30 });
+    expect(lines.average).toBeCloseTo(72.5, 9);
+    expect(lines.cheapAtOrBelow).toBeCloseTo(42.5, 9);
+    expect(lines.expensiveFrom).toBeCloseTo(102.5, 9);
+  });
+
+  it('agrees with the current level for the period in force', () => {
+    const band = { thresholdPercent: 25, minDiff: 0 };
+    const { periods } = resolvePriceLevelTimeline(series, band);
+    expect(resolveCurrentPricePeriodLevel(series, band, BASE_MS + 30 * 60 * 1000)).toBe(periods[0]?.level);
+  });
+});
+
+describe('resolvePriceLevelTimeline — negative prices', () => {
+  it('keeps the lines ordered and consistent around a negative average', () => {
+    // Average -10: 25% puts the band at -12.5 / -7.5, a minimum difference of 5
+    // at -15 / -5, and a price must pass both.
+    const series = [-30, -15, -12, -10, -8, -5, 10].map((price, hour) => entry(hour, price));
+    const negativeAverage = [...series, entry(7, -10 * 8 - series.reduce((sum, item) => sum + item.totalPrice, 0))];
+    const { periods, lines } = resolvePriceLevelTimeline(negativeAverage, { thresholdPercent: 25, minDiff: 5 });
+    expect(lines.average).toBeCloseTo(-10, 9);
+    expect(lines.cheapAtOrBelow).toBeCloseTo(-15, 9);
+    expect(lines.expensiveFrom).toBeCloseTo(-5, 9);
+    for (const period of periods) {
+      let expected: 'cheap' | 'normal' | 'expensive' = 'normal';
+      if (period.totalPrice <= lines.cheapAtOrBelow) expected = 'cheap';
+      else if (period.totalPrice >= lines.expensiveFrom) expected = 'expensive';
+      expect(period.level).toBe(expected);
     }
   });
 });

@@ -15,6 +15,7 @@
 import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceLevel } from './priceLevels';
 import type { PriceLevelChangesRead, PriceLevelLookahead } from './priceLevelUtils';
+import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 import PriceService from './priceService';
 import { createHomeyEnergyWebApi } from './homeyEnergyPriceFetch';
 import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
@@ -390,6 +391,20 @@ export class PriceCoordinator {
     } catch (error) {
       moduleLogger.warn({ event: 'price_level_lookahead_read_failed', err: normalizeError(error) });
       return { state: 'unavailable' };
+    }
+  }
+
+  /**
+   * The price series with its levels, for the price widget — see
+   * `PriceService.getPriceTimeline`. A failed build is `unavailable`; the widget
+   * polls, so the next read answers once the settings read recovers.
+   */
+  getPriceTimeline(): PriceTimelineRead {
+    try {
+      return this.priceService.getPriceTimeline();
+    } catch (error) {
+      moduleLogger.warn({ event: 'price_timeline_read_failed', err: normalizeError(error) });
+      return { state: 'unavailable', reason: 'read_failed' };
     }
   }
 

@@ -1194,9 +1194,9 @@ with the delta label of its own baseline, so the pair can't mix.
 
 ## Price info — one role per surface
 
-Current/near-term price context renders on exactly three surfaces, each with
-its own role. Do **not** add a fourth price surface (or move one of these
-roles) without updating this table — three renderings of "the price now" is
+Current/near-term price context renders on exactly four surfaces, each with
+its own role. Do **not** add a fifth price surface (or move one of these
+roles) without updating this table — four renderings of "the price now" is
 the ceiling, and each exists because its page mission needs it:
 
 | Surface | Role | Rendering |
@@ -1204,9 +1204,10 @@ the ceiling, and each exists because its page mission needs it:
 | Overview hero | The one *actionable* price fact for the set-and-forget owner | `Cheapest hour ahead: 02:00, 0.18 kr/kWh.` subline (`formatCheapestUpcomingHour`) — nothing else |
 | Budget tab | Price as *planning context* for the Optimiser | Exception-only `Price low` / `Price high` header chip + the shaping tagline (`Using cheaper hours`) + prosumer `Export price now:` subline |
 | Settings → Electricity prices | Price as *configuration + verification* | The `Right now` card (current price level, export row) + source settings |
+| Electricity price widget (owner-requested 2026-10-05) | Price as *expectation*: what counts as low or high, and when that changes | Current price + `Price low` / `Price normal` / `Price high` (chip only for low/high), a subline that always states the lines (`High from 40.90 øre · low up to 24.60 øre`, or `High from 0.412 EUR` on a currency source; a line no period reaches adds `highest …` / `lowest …`; neither reached reads `Prices stay close to the average of …, so none count as low or high`), a rolling curve from three hours back (never before today's midnight) to the last known price with low/high shades, a `Tomorrow` divider once tomorrow is published, screen-reader phrase `Price now <price>. Price: low|normal|high`, and `The lines can move when tomorrow's prices arrive.` until tomorrow is published. Lines are the producer's effective ones (percentage and minimum difference), never widget-derived. |
 
-The widgets reuse the same exception-only `Price low` / `Price high` pair
-(`priceLevelChips.ts`) — a glance surface, not a fourth role.
+The other widgets reuse the same exception-only `Price low` / `Price high` pair
+(`priceLevelChips.ts`) — a glance surface, not another role.
 
 ### Budget tab chart readout (pinned, one interaction grammar)
 
