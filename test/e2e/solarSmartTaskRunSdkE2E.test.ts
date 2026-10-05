@@ -53,7 +53,7 @@ type DeferredDiag = {
   status?: string;
   reasonCode?: string;
   plannedUsefulEnergyKWh?: number | null;
-  priceDeferralEligible?: boolean | null;
+  currentHourFacts?: { cheaperHourAhead: boolean } | null;
   expectedStepId?: string | null;
 };
 type PlanRebuildEvent = { event?: string; totalKw?: number; hardCapHeadroomKw?: number };
@@ -215,7 +215,7 @@ describe('smart task running during a sunny hour (SDK-boundary e2e via createApp
     expect(diag).toBeDefined();
     expect(['on_track', 'at_risk', 'cannot_meet']).toContain(diag?.status);
     expect(diag?.plannedUsefulEnergyKWh ?? 0).toBeGreaterThan(0);
-    expect(diag?.priceDeferralEligible).not.toBe(true); // current hour is cheapest -> not deferred
+    expect(diag?.currentHourFacts?.cheaperHourAhead).toBe(false); // current hour is cheapest -> not deferred
 
     // (2) Under PV self-consumption the heater is attributed in full as MANAGED, and
     // the residual is true background (gross = net 0.5 + PV 2.0 = 2.5 kW).

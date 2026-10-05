@@ -5,8 +5,8 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
-import type { DeferredObjectiveHorizonPlan } from './types';
-import { isMeaningfullyCheaper } from './bucketAllocation';
+import type { DeferredObjectiveHorizonPlan, DeferredObjectivePlannedBucket } from './types';
+import { hasCheaperBookedHourAhead } from './bucketAllocation';
 import { roundKWh } from './activePlanMath';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -290,9 +290,9 @@ export const stampUnitMilestones = (
 // FROZEN per hour like `plannedUnitMilestone`: an hour that already carries the
 // flag (committed at an earlier revision, carried through the merge via `{ ...c }`)
 // keeps it; only genuinely-new hours are computed from the current plan's bucket
-// prices. The comparison reuses `isMeaningfullyCheaper` — the same relative band
-// the build-time allocator and the live price-deferral gate use — so "worth
-// shifting load" stays consistent across all three. An hour the live plan carries
+// prices. The comparison is `hasCheaperBookedHourAhead` — the same definition the
+// fresh planner states for the current hour — over the relative band the
+// build-time allocator also uses, so "worth shifting load" stays consistent. An hour the live plan carries
 // no comparable price for is left unstamped (consumer reads absence as `false`).
 export const stampCheaperHourAhead = (
   hours: DeferredObjectiveActivePlanHourV1[],
@@ -301,25 +301,20 @@ export const stampCheaperHourAhead = (
   const horizonPlan = diag.evaluation.planning.kind === 'allocated' ? diag.evaluation.planning.plan : null;
   if (!horizonPlan) return hours;
   const buckets = horizonPlan.plannedBuckets;
-  // Reference price per hour-aligned slot: the earliest covering bucket's price
+  // Reference bucket per hour-aligned slot: the earliest covering priced bucket
   // (buckets may be split sub-hour at `nowMs`/`planningEndMs`; segments of one
   // hour share the source price).
-  const priceByHour = new Map<number, number>();
+  const referenceByHour = new Map<number, DeferredObjectivePlannedBucket>();
   for (const bucket of buckets) {
     if (typeof bucket.price !== 'number' || !Number.isFinite(bucket.price)) continue;
     const hourStart = Math.floor(bucket.startMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-    if (!priceByHour.has(hourStart)) priceByHour.set(hourStart, bucket.price);
+    if (!referenceByHour.has(hourStart)) referenceByHour.set(hourStart, bucket);
   }
   return hours.map((hour) => {
     if (typeof hour.cheaperHourAhead === 'boolean') return hour; // frozen at booking
-    const thisPrice = priceByHour.get(hour.startsAtMs);
-    if (typeof thisPrice !== 'number') return hour; // no comparable price ⇒ leave absent
-    const cheaperAhead = buckets.some((bucket) => (
-      !bucket.reserve
-      && Math.floor(bucket.startMs / ONE_HOUR_MS) * ONE_HOUR_MS > hour.startsAtMs
-      && bucket.plannedUsefulEnergyKWh > PLANNED_EPSILON_KWH
-      && isMeaningfullyCheaper(bucket.price, thisPrice)
-    ));
+    const reference = referenceByHour.get(hour.startsAtMs);
+    if (!reference) return hour; // no comparable price ⇒ leave absent
+    const cheaperAhead = hasCheaperBookedHourAhead(buckets, reference, PLANNED_EPSILON_KWH);
     return { ...hour, cheaperHourAhead: cheaperAhead };
   });
 };

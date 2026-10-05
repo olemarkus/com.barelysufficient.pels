@@ -400,12 +400,19 @@ once the executor climbs, and `estimate` means the gap is entirely the `k·SE` v
 Both are ordinary states for a stepped thermal task, so gating on the raw floor shortfall would
 switch price optimisation off for most of them.
 
-`priceDeferralEligible` and `coldStartReleaseEligible` release unconditionally — including out of a
-booked hour — because both are only asserted when the remaining need fits elsewhere.
+Releasing a booked hour is the other half of the same resolver, over the plan's `currentHourFacts`:
+price deferral (ahead of the milestone AND a cheaper booked hour later) and cold-start release
+(`coldStartFeasible`: the whole remaining need fits the cheaper hours at the real element). Cold-start
+release is unconditional: it exists for the case where the floor plan reports `cannot_meet` but the
+real element finishes in the cheaper hours. Price deferral is not: a task under `time_capacity` (it
+cannot finish at all, or a higher-priority task's claims leave it short) never price-defers a booked
+hour, because the cheaper hours are already booked to their cap and coasting only widens the miss.
+A `budget`-bound task still does.
 
 Two consequences worth knowing before reading either as a bug. A budget-bound or infeasible task
-never releases *on the unbooked-hour path*, because there is no later hour to defer into (it can
-still release from an hour it did book, via price deferral). And the frozen mid-hour read replays
+never releases *on the unbooked-hour path*, because there is no later hour to defer into. A
+budget-bound task can still release from an hour it did book, via price deferral; a
+`time_capacity` task can only release through cold-start release. And the frozen mid-hour read replays
 the `:58` settle's `floorShortfallCause` rather than recomputing sufficiency from the live need —
 recomputing would put a control decision back on the per-cycle clock the two-clock design removes,
 and a device idling in a released hour drifts, so the answer would cross back and forth mid-hour.

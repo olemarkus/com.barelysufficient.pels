@@ -66,10 +66,11 @@ const resolveDecision = (
     // shed/restore lane gives it rather than commanding a stand-down.
     if (horizonPlan.currentHourClaim === 'unclaimed') return { kind: 'unclaimed', budgetExempt: false };
     // Released bucket: hold the device in its configured release posture. Besides
-    // genuine idle hours (nothing booked here and nothing left to deliver), this also
-    // fires when the producer flagged the hour price-deferral-eligible — the device is
-    // already at/above this hour's trajectory milestone and a later hour is
-    // cheaper, so release the device this cycle. This is a live per-cycle control decision on the
+    // genuine idle hours (nothing booked here and nothing left to deliver), the claim
+    // resolver (`resolveCurrentHourClaim`) also releases a booked hour for price
+    // deferral (the device is already at/above this hour's trajectory milestone and
+    // a later booked hour is cheaper) or cold-start release (a cold thermostat's whole
+    // need fits the cheaper hours). This is a live per-cycle control decision on the
     // admission path; the clock-driven recorder is insulated, so no revision is
     // written (the device's idling re-books the cheaper hours at the next :58 settle).
     //

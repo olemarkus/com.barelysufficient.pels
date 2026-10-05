@@ -11,8 +11,9 @@ const horizonPlanFields = (
   plannedUsefulEnergyKWh: horizonPlan?.plannedUsefulEnergyKWh ?? null,
   unplannedUsefulEnergyKWh: horizonPlan?.unplannedUsefulEnergyKWh ?? null,
   usesDeadlineReserve: horizonPlan?.usesDeadlineReserve ?? null,
-  priceDeferralEligible: horizonPlan?.priceDeferralEligible ?? null,
-  coldStartReleaseEligible: horizonPlan?.coldStartReleaseEligible ?? null,
+  // What was true about the current hour; `currentHourClaim` below is what the
+  // release rules decided from it.
+  currentHourFacts: horizonPlan?.currentHourFacts ?? null,
   // The producer's claim on the current hour, and therefore the admission decision:
   // `claimed` runs the device, `released` stands it down, `unclaimed` leaves it to
   // the planner's own priority call. Without it a log reader cannot tell "on because

@@ -108,8 +108,9 @@ const rateSignature = (diagnostic: DeferredObjectiveDiagnostic): string => [
   diagnostic.kwhPerUnitSource ?? '-',
 ].join('|');
 
-// The horizon's own decisions: the claim on the current hour, the three release
-// gates, whether anything failed to place, and the schedule itself.
+// The horizon's own decisions: the claim on the current hour, the price facts its
+// release rules read (not `aheadOfHourMilestone`: it follows the measured value, and
+// a release it causes already shows as a claim change), whether anything failed to place, and the schedule itself.
 //
 // `unplannedUsefulEnergyKWh` enters as a BOOLEAN. Its magnitude drifts with
 // `energyNeededKWh` on every thermal tick, so gating on the number would
@@ -117,8 +118,8 @@ const rateSignature = (diagnostic: DeferredObjectiveDiagnostic): string => [
 // where the horizon first could not place all of the need.
 const horizonSignature = (plan: DeferredObjectiveHorizonPlan | undefined): string => [
   plan?.currentHourClaim ?? '-',
-  plan?.priceDeferralEligible === true ? 'defer' : '-',
-  plan?.coldStartReleaseEligible === true ? 'cold' : '-',
+  plan?.currentHourFacts.cheaperHourAhead === true ? 'cheaper' : '-',
+  plan?.currentHourFacts.coldStartFeasible === true ? 'cold' : '-',
   plan?.usesDeadlineReserve === true ? 'reserve' : '-',
   (plan?.unplannedUsefulEnergyKWh ?? 0) > 0 ? 'unplanned' : '-',
   plannedBucketDigest(plan),

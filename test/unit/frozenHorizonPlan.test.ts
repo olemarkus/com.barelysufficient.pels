@@ -62,26 +62,46 @@ describe('buildFrozenHorizonPlan', () => {
   it('releases (currentBucket null) when the current hour is not in the commitment', () => {
     const plan = build({ committedHours: [{ startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 }] });
     expect(plan.currentBucket).toBeNull();
-    expect(plan.priceDeferralEligible).toBe(false);
-    expect(plan.coldStartReleaseEligible).toBe(false);
+    expect(plan.currentHourFacts.cheaperHourAhead).toBe(false);
+    expect(plan.currentHourFacts.coldStartFeasible).toBe(false);
+    expect(plan.currentHourClaim).toBe('released');
   });
 
-  it('flags priceDeferralEligible only when current hour booked AND ahead AND cheaperHourAhead', () => {
+  it('price-defers a booked hour only when ahead AND the settle stamped cheaperHourAhead', () => {
     const hoursAheadCheaper: DeferredObjectiveActivePlanHourV1[] = [
       { startsAtMs: NOW_MS, plannedKWh: 1, cheaperHourAhead: true },
       { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
     ];
-    expect(build({ committedHours: hoursAheadCheaper, aheadOfHourMilestone: true }).priceDeferralEligible).toBe(true);
+    const deferred = build({ committedHours: hoursAheadCheaper, aheadOfHourMilestone: true });
+    expect(deferred.currentHourFacts.cheaperHourAhead).toBe(true);
+    expect(deferred.currentHourClaim).toBe('released');
     // Not ahead ⇒ no price deferral (cold-start is handled on the fresh path, not here).
-    expect(build({ committedHours: hoursAheadCheaper, aheadOfHourMilestone: false }).priceDeferralEligible).toBe(false);
+    expect(build({ committedHours: hoursAheadCheaper, aheadOfHourMilestone: false }).currentHourClaim).toBe('claimed');
     // cheaperHourAhead false ⇒ no deferral even when ahead.
     const noCheaper: DeferredObjectiveActivePlanHourV1[] = [
       { startsAtMs: NOW_MS, plannedKWh: 1, cheaperHourAhead: false },
     ];
-    expect(build({ committedHours: noCheaper, aheadOfHourMilestone: true }).priceDeferralEligible).toBe(false);
+    const kept = build({ committedHours: noCheaper, aheadOfHourMilestone: true });
+    expect(kept.currentHourFacts.cheaperHourAhead).toBe(false);
+    expect(kept.currentHourClaim).toBe('claimed');
   });
 
-  it('never asserts coldStartReleaseEligible — cold-start candidates run the fresh allocator instead', () => {
+  it('keeps the hour claimed when ahead with a cheaper hour but the settled status is cannot_meet', () => {
+    const plan = build({
+      objectiveKind: 'ev_soc',
+      planStatus: 'cannot_meet',
+      floorShortfallCause: 'time_capacity',
+      aheadOfHourMilestone: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 1, cheaperHourAhead: true },
+        { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
+      ],
+    });
+    expect(plan.currentHourFacts).toMatchObject({ aheadOfHourMilestone: true, cheaperHourAhead: true });
+    expect(plan.currentHourClaim).toBe('claimed');
+  });
+
+  it('never states coldStartFeasible — cold-start candidates run the fresh allocator instead', () => {
     const hours: DeferredObjectiveActivePlanHourV1[] = [
       { startsAtMs: NOW_MS, plannedKWh: 1, cheaperHourAhead: true },
       { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
@@ -90,8 +110,8 @@ describe('buildFrozenHorizonPlan', () => {
     // step", so it never claims cold-start release; the diagnostics build routes such
     // a behind-temperature candidate to the fresh allocator (asserted in
     // deferredObjectiveDiagnostics.test.ts). The frozen plan reports false regardless.
-    expect(build({ committedHours: hours, aheadOfHourMilestone: false }).coldStartReleaseEligible).toBe(false);
-    expect(build({ committedHours: hours, aheadOfHourMilestone: true }).coldStartReleaseEligible).toBe(false);
+    expect(build({ committedHours: hours, aheadOfHourMilestone: false }).currentHourFacts.coldStartFeasible).toBe(false);
+    expect(build({ committedHours: hours, aheadOfHourMilestone: true }).currentHourFacts.coldStartFeasible).toBe(false);
   });
 
   it('keeps a positive sub-Wh EV booking price-released when ahead with a cheaper hour booked', () => {
@@ -103,7 +123,7 @@ describe('buildFrozenHorizonPlan', () => {
         { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 2 },
       ],
     });
-    expect(plan.priceDeferralEligible).toBe(true);
+    expect(plan.currentHourFacts.cheaperHourAhead).toBe(true);
     expect(plan.currentHourClaim).toBe('released');
   });
 });

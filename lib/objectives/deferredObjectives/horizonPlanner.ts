@@ -1,7 +1,7 @@
 import {
   allocateCommittedEnergyToBuckets,
   allocateEnergyToBuckets,
-  isMeaningfullyCheaper,
+  hasCheaperBookedHourAhead,
   normalizeHorizonBuckets,
   type BucketAllocationResult,
   type StepForBucket,
@@ -13,11 +13,12 @@ import {
   selectMinimumStepForEnergy,
 } from './stepSelection';
 
-import { resolveColdStartReleaseEligible } from './coldStartRelease';
+import { resolveColdStartFeasible } from './coldStartRelease';
 import { resolveCurrentHourClaim } from './currentHourClaim';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 import type {
   DeferredObjectiveCurrentBucketPlan,
+  DeferredObjectiveCurrentHourFacts,
   DeferredObjectiveHorizonInput,
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveHorizonStatus,
@@ -134,19 +135,20 @@ export const planDeferredObjectiveHorizon = (
     floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
     stepForBucket,
   });
-  const priceDeferralEligible = resolvePriceDeferralEligible({
-    allocation,
+  const currentBucket = allocation.plannedBuckets.find((bucket) => bucket.current);
+  const currentHourFacts: DeferredObjectiveCurrentHourFacts = {
     aheadOfHourMilestone: input.aheadOfHourMilestone,
-    epsilonKWh,
-  });
-  const coldStartReleaseEligible = resolveColdStartReleaseEligible({
-    objectiveKind: input.objective.kind,
-    buckets,
-    stepForBucket,
-    climbStep: topObjectiveStep(activeSteps),
-    energyNeededKWh,
-    epsilonKWh,
-  });
+    cheaperHourAhead: currentBucket !== undefined
+      && hasCheaperBookedHourAhead(allocation.plannedBuckets, currentBucket, epsilonKWh),
+    coldStartFeasible: resolveColdStartFeasible({
+      objectiveKind: input.objective.kind,
+      buckets,
+      stepForBucket,
+      climbStep: topObjectiveStep(activeSteps),
+      energyNeededKWh,
+      epsilonKWh,
+    }),
+  };
   return buildPlanFromAllocation({
     input,
     deadlineMarginMs,
@@ -157,8 +159,7 @@ export const planDeferredObjectiveHorizon = (
     epsilonKWh,
     feasibleOnClimbedBand,
     budgetRole,
-    priceDeferralEligible,
-    coldStartReleaseEligible,
+    currentHourFacts,
   });
 };
 
@@ -357,9 +358,6 @@ const resolveBudgetBoundFeasibility = (params: {
   energyNeededKWh: number;
   epsilonKWh: number;
   floorUnplannedKWh: number;
-  // Declared so the caller can hand over the shape it already holds rather than
-  // restating it property by property; this probe runs its own climb policy.
-  stepForBucket: StepForBucket;
   climbedBand: ClimbedBandProbe;
 }): BudgetShortfallRole => {
   // No shortfall, or climbing within the budget already fits — neither is a
@@ -391,49 +389,6 @@ const resolveBudgetBoundFeasibility = (params: {
   return uncappingHelped ? 'contributing' : 'none';
 };
 
-// Price-deferral release probe (mid-execution price deferral). Eligible when
-// BOTH hold:
-//  1. `aheadOfHourMilestone` — the device's MEASURED value is already at/above
-//     the committed plan's end-of-this-hour milestone in the objective's own
-//     unit (resolved by the producer in `isAheadOfHourMilestone`; the planner
-//     has no measured value or committed rate). Being at/ahead of a trajectory
-//     that was built to meet the deadline makes coasting this hour self-feasible
-//     — so no residual re-allocation safety check is needed.
-//  2. A later, NON-reserve hour is more than `PRICE_BAND_MARGIN` cheaper than the
-//     current hour (`isMeaningfullyCheaper`, a raw-price ratio — the SAME
-//     relative margin the build-time allocator bands hours by, so build-time fill
-//     order and live deferral agree on "worth shifting load"). Deadline-reserve
-//     hours are excluded so we never defer into the reserve. The current hour
-//     must still carry booked energy (else it is already idle and admission
-//     releases it via the `plannedUsefulEnergyKWh ≤ 0` branch — nothing to
-//     defer). A non-positive current price makes the ratio meaningless, so
-//     `isMeaningfullyCheaper` returns false there — run now rather than defer.
-// When true the decoration controller's admission idles the device this cycle so
-// a cheaper hour carries the load. Classification only — never writes a revision.
-const resolvePriceDeferralEligible = (params: {
-  allocation: BucketAllocationResult;
-  aheadOfHourMilestone: boolean;
-  epsilonKWh: number;
-}): boolean => {
-  if (!params.aheadOfHourMilestone) return false;
-  const current = params.allocation.plannedBuckets.find((bucket) => bucket.current);
-  if (!current || current.plannedUsefulEnergyKWh <= 0) return false;
-  return params.allocation.plannedBuckets.some((bucket) => (
-    !bucket.current
-    && !bucket.reserve
-    && bucket.startMs >= current.endMs
-    // The cheaper hour must be one the plan actually carries load in. A bucket
-    // the allocation booked nothing into (zero-capacity, or simply not part of
-    // the committed/expanded set) is cheap on paper but won't take the deferred
-    // energy — the committed reallocation fills the planned hours first, so
-    // releasing toward it would just push the load into the remaining (possibly
-    // pricier) committed hours at the next settle. Requiring booked energy keeps
-    // the price signal aligned with where the load really goes.
-    && bucket.plannedUsefulEnergyKWh > params.epsilonKWh
-    && isMeaningfullyCheaper(bucket.price, current.price)
-  ));
-};
-
 const buildPlanFromAllocation = (params: {
   input: DeferredObjectiveHorizonInput;
   deadlineMarginMs: number;
@@ -444,8 +399,7 @@ const buildPlanFromAllocation = (params: {
   feasibleOnClimbedBand: boolean;
   budgetRole: BudgetShortfallRole;
   varianceMarginKWh: number;
-  priceDeferralEligible: boolean;
-  coldStartReleaseEligible: boolean;
+  currentHourFacts: DeferredObjectiveCurrentHourFacts;
 }): DeferredObjectiveHorizonPlan => {
   const {
     input,
@@ -457,8 +411,7 @@ const buildPlanFromAllocation = (params: {
     feasibleOnClimbedBand,
     budgetRole,
     varianceMarginKWh,
-    priceDeferralEligible,
-    coldStartReleaseEligible,
+    currentHourFacts,
   } = params;
   const statusResult = resolveStatus({
     allocation,
@@ -491,14 +444,12 @@ const buildPlanFromAllocation = (params: {
     currentBucket,
     plannedBuckets: allocation.plannedBuckets,
     usesDeadlineReserve: allocation.usesDeadlineReserve,
-    priceDeferralEligible,
-    coldStartReleaseEligible,
-    // Same signal the recorder persists onto the revision, so the frozen mid-hour
-    // read replays exactly this verdict instead of recomputing one.
+    currentHourFacts,
+    // The cause is the same signal the recorder persists onto the revision, so the
+    // frozen mid-hour read replays exactly this verdict instead of recomputing one.
     currentHourClaim: resolveCurrentHourClaim({
       currentBucketBookedKWh: currentBucket?.plannedUsefulEnergyKWh ?? null,
-      priceDeferralEligible,
-      coldStartReleaseEligible,
+      facts: currentHourFacts,
       floorShortfallCause: resolveFloorShortfallCause(statusResult.statusDetail),
     }),
   };
@@ -613,7 +564,7 @@ const buildEmptyPlan = (params: {
     currentBucket: null,
     plannedBuckets: [],
     usesDeadlineReserve: false,
-    priceDeferralEligible: false,
+    currentHourFacts: { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false },
     // An empty plan has no schedule at all — a passed deadline, or a price window
     // that failed to cover the horizon. There is nothing demanding this hour and no
     // allocation whose shortfall could speak for it, so the device keeps its
