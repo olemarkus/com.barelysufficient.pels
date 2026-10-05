@@ -95,7 +95,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       battery, (b) over the binding pace with a charged battery, the discharge covers the deficit
       and no managed device is shed, (c) with an empty battery the shed happens exactly as today,
       and (d) a commanded setpoint the battery does not follow is reported and not counted as
-      relief. [P0]
+      relief, and `docs/solar.md` § "Home batteries" documents the control and its settings. [P0]
 
 ## Shed and restore control
 
