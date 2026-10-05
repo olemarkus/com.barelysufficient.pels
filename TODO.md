@@ -73,9 +73,29 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Do next
 
+- **Home battery control** — 1: the store copy claims it; releases are held until it lands
 - **Shed and restore control** — 2: restore-cooldown window and global stamp; temperature-control
   toggle strands a shed setpoint
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
+
+## Home battery control
+
+- [ ] **The store copy claims home battery control that the runtime does not have.** `README.txt`,
+      `README.nl.txt`, `README.no.txt` and the `en`/`nl` descriptions and tags in
+      `.homeycompose/app.json` say PELS charges a home battery from the solar surplus devices do not
+      use, and discharges it to hold the limit before limiting any device. A battery today is
+      observe-only (`lib/device/batteryStateProducer.ts`), and `DeviceCommand`
+      (`lib/actuator/deviceCommand.ts`) has no signed-power intent. Owner rulings (2026-10-05):
+      control is on by default for a battery whose Homey app exposes a writable signed
+      `target_power`, and PELS claims `target_power_mode: 'homey'` while it controls one and hands it
+      back on disable, uninstall or a meter outage; a battery with only a mode, switches or `onoff`
+      is observed and never commanded; solar surplus goes to devices first, then the battery, then
+      export. Releases are held until this lands. Done when, on a battery with signed
+      `target_power`, an e2e shows (a) surplus beyond the willing devices' claims charges the
+      battery, (b) over the binding pace with a charged battery, the discharge covers the deficit
+      and no managed device is shed, (c) with an empty battery the shed happens exactly as today,
+      and (d) a commanded setpoint the battery does not follow is reported and not counted as
+      relief. [P0]
 
 ## Shed and restore control
 
