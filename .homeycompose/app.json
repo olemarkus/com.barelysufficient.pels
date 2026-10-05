@@ -65,7 +65,8 @@
       "zero export",
       "widgets",
       "home battery",
-      "battery"
+      "battery",
+      "Power by the Hour"
     ],
     "no": [
       "effektledd",
@@ -139,7 +140,8 @@
       "airco",
       "Zaptec",
       "thuisbatterij",
-      "batterij"
+      "batterij",
+      "Power by the Hour"
     ],
     "fr": [
       "tarif capacitaire",
@@ -171,7 +173,8 @@
       "pilotage énergétique",
       "gestion de l'énergie",
       "pompe à chaleur",
-      "climatisation"
+      "climatisation",
+      "Power by the Hour"
     ]
   },
   "permissions": [
