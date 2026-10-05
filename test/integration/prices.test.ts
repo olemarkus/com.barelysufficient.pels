@@ -1735,6 +1735,36 @@ describe('Price optimization', () => {
     });
   });
 
+  it('serves the price widget a timeline whose current period carries the current level', async () => {
+    const now = new Date('2026-06-15T10:00:00.000Z');
+    const hourStartMs = now.getTime();
+    const spot = [20, 100, 100, 100, 100, 200];
+    priceCache.write('spot_prices', spot.map((spotPriceExVat, h) => ({
+      startsAt: new Date(hourStartMs + h * HOUR_MS).toISOString(),
+      spotPriceExVat,
+      currency: 'NOK',
+    })));
+    mockHomeyInstance.settings.set('export_price_enabled', true);
+    mockHomeyInstance.settings.set('export_spot_factor', 0);
+    mockHomeyInstance.settings.set('export_fixed', 1);
+
+    await withMockedNow(new Date(hourStartMs + 30 * 60 * 1000), async () => {
+      const coordinator = createPriceCoordinatorForTest();
+      const timeline = coordinator.getPriceTimeline();
+      if (timeline.state !== 'ready') throw new Error('expected a ready timeline');
+      const current = timeline.periods.find((period) => Date.parse(period.startsAt) === hourStartMs);
+      expect(current?.level).toBe(coordinator.getCurrentHourPriceLevel());
+      expect(current?.exportPrice).toBe(1);
+      expect(timeline.hasExportPrice).toBe(true);
+      expect(timeline.priceUnit).toBe('øre/kWh');
+      for (const period of timeline.periods) {
+        if (period.importPrice <= timeline.lines.cheapAtOrBelow) expect(period.level).toBe('cheap');
+        else if (period.importPrice >= timeline.lines.expensiveFrom) expect(period.level).toBe('expensive');
+        else expect(period.level).toBe('normal');
+      }
+    });
+  });
+
   it('applies cheapDelta temperature during cheap hours', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     waterHeater.setCapabilityValue('target_temperature', 55);

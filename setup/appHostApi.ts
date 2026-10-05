@@ -34,6 +34,7 @@ import type {
   PelsWidgetHostApi,
 } from '../packages/contracts/src/widgetHostApi';
 import type { SmartTaskHomeScope } from '../packages/contracts/src/smartTaskHomeScope';
+import type { PriceTimelineRead } from '../packages/contracts/src/priceTimeline';
 import type { SettingsUiDeviceDiagnosticsPayload } from '../packages/contracts/src/deviceDiagnosticsTypes';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanPreviewEstimate } from '../packages/contracts/src/deferredObjectivePlanPreview';
@@ -99,6 +100,12 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public readPriceOptimizationSetup = (): PriceOptimizationSetupRead => {
     const coordinator = this.context.priceCoordinator;
     return coordinator ? coordinator.readPriceOptimizationSetup() : { state: 'unavailable' };
+  };
+
+  // `unavailable` until the price coordinator is wired, like the setup read above.
+  public getPriceTimelineForUi = (): PriceTimelineRead => {
+    const coordinator = this.context.priceCoordinator;
+    return coordinator ? coordinator.getPriceTimeline() : { state: 'unavailable', reason: 'no_prices' };
   };
 
   public getCurrentMonthCapacityPeakKw = (): number | null => resolveCurrentMonthQuarterPeakKw(
