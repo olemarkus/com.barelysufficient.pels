@@ -398,18 +398,17 @@ export default class PriceService {
    * level (and the temperature shift, the `price_level` trigger and the
    * insights capability that follow it).
    *
-   * Export and planning prices are layered on exactly as they are for the hourly
-   * series, so a prosumer's level still classifies the planning price.
+   * The import price only: solar never changes a price level, so neither the
+   * export price nor the planning price is layered on here.
    */
   getCombinedPricePeriods(): CombinedPricePeriod[] {
-    return this.withExportAndPlanningPrices(this.buildImportPricePeriods());
+    return this.buildImportPricePeriods();
   }
 
   /**
-   * The two decorations every import series carries, in order: the feed-in
-   * price, then the planning price derived on top of it. Shared by both shapes
-   * — periods and whole hours — so neither can drift from the other about what
-   * the owner is paid or what the planner optimises against.
+   * The two decorations the hourly import series carries, in order: the feed-in
+   * price, then the planning price derived on top of it. The period series the
+   * price level reads stays on the import price alone.
    */
   private withExportAndPlanningPrices<T extends CombinedPriceFields>(series: T[]): T[] {
     const exportConfig = resolveExportConfigForScheme(

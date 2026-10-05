@@ -1,9 +1,9 @@
 // Unit coverage for the live cheap/expensive level classification
-// (`resolveCurrentPricePeriodLevel`) over the PLANNING price (`budgetPrice ?? totalPrice`).
+// (`resolveCurrentPricePeriodLevel`) over the IMPORT price (`totalPrice`).
 // This feeds thermostat price-opt deltas, the `price_level` flow trigger, and the
-// pels_insights level capability — all deliberately scheduling-consistent with the
-// planner. Includes the non-prosumer invariance pins: absent or total-equal
-// budgetPrice must classify byte-identically to the historical total-only path.
+// pels_insights level capability. Solar never changes a level: a solar home's
+// planning price (`budgetPrice`) is carried on the same entries for the
+// schedulers, and these pins prove the classifier ignores it.
 import { describe, expect, it } from 'vitest';
 import { resolveCurrentPricePeriodLevel, resolvePriceLevelChangesWithin } from '../../lib/price/priceLevelUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
@@ -31,50 +31,36 @@ const classify = (prices: Array<ReturnType<typeof entry>>, level: 'cheap' | 'exp
   ) === (level === 'cheap' ? PriceLevel.CHEAP : PriceLevel.EXPENSIVE)
 );
 
-describe('resolveCurrentPricePeriodLevel — planning price', () => {
-  it('classifies over budgetPrice when present: a flat-total hour with surplus becomes cheap', () => {
-    // Totals are flat (no hour is cheap on total), but hour 0 carries a low
-    // planning price. Average over planning prices = (10+100+100+100)/4 = 77.5;
-    // low threshold = 58.125 ⇒ hour 0 (10) is cheap.
+describe('resolveCurrentPricePeriodLevel — import price only', () => {
+  it('ignores a low planning price on the current hour: a flat-total day stays normal', () => {
+    // Totals are flat, so no hour is cheap on the import price, even though
+    // hour 0 carries a solar-lowered planning price.
     const prices = [entry(0, 100, 10), entry(1, 100), entry(2, 100), entry(3, 100)];
-    expect(classify(prices, 'cheap')).toBe(true);
+    expect(classify(prices, 'cheap')).toBe(false);
     expect(classify(prices, 'expensive')).toBe(false);
   });
 
-  it('a <= 0 planning price is legal and classifies as cheap (never clamped)', () => {
+  it('ignores a <= 0 planning price', () => {
     const prices = [entry(0, 100, -5), entry(1, 100), entry(2, 100), entry(3, 100)];
-    expect(classify(prices, 'cheap')).toBe(true);
+    expect(classify(prices, 'cheap')).toBe(false);
   });
 
-  it('other hours’ budgetPrice moves the average even when the current hour has none', () => {
-    // Current hour total 100; other hours plan at 10 ⇒ planning avg =
-    // (100+10+10+10)/4 = 32.5, high threshold = 40.625 ⇒ hour 0 is expensive.
+  it('other hours’ planning prices do not move the average', () => {
+    // On planning prices the average would drop to 32.5 and hour 0 would turn
+    // expensive; on the import price every hour is 100 and nothing is.
     const prices = [entry(0, 100), entry(1, 100, 10), entry(2, 100, 10), entry(3, 100, 10)];
-    expect(classify(prices, 'expensive')).toBe(true);
+    expect(classify(prices, 'expensive')).toBe(false);
   });
 
-  it('a non-finite budgetPrice falls back to the total (boundary junk cannot flip the level)', () => {
-    const junk = [entry(0, 100, Number.NaN), entry(1, 100), entry(2, 100), entry(3, 100)];
-    expect(classify(junk, 'cheap')).toBe(false);
-    expect(classify(junk, 'expensive')).toBe(false);
-  });
-
-  it('invariance: entries without budgetPrice classify exactly as the total-only path', () => {
-    // Historical behaviour pin: avg = (40+100+100+100)/4 = 85, low = 63.75 ⇒
-    // hour 0 (40) cheap; and a flat series is neither cheap nor expensive.
+  it('classifies the import price as before: avg 85, low 63.75 ⇒ hour 0 (40) is cheap', () => {
     expect(classify([entry(0, 40), entry(1, 100), entry(2, 100), entry(3, 100)], 'cheap')).toBe(true);
     expect(classify([entry(0, 100), entry(1, 100), entry(2, 100), entry(3, 100)], 'cheap')).toBe(false);
     expect(classify([entry(0, 100), entry(1, 100), entry(2, 100), entry(3, 100)], 'expensive')).toBe(false);
   });
 
-  it('invariance: budgetPrice === totalPrice on every entry is byte-identical to no budgetPrice', () => {
-    const totals = [40, 100, 100, 100];
-    const withEqualBudget = totals.map((total, hour) => entry(hour, total, total));
-    const without = totals.map((total, hour) => entry(hour, total));
-    for (const level of ['cheap', 'expensive'] as const) {
-      expect(classify(withEqualBudget, level)).toBe(classify(without, level));
-    }
-    expect(classify(withEqualBudget, 'cheap')).toBe(true);
+  it('an import-cheap hour stays cheap whatever its planning price', () => {
+    const prices = [entry(0, 40, 200), entry(1, 100, 10), entry(2, 100), entry(3, 100)];
+    expect(classify(prices, 'cheap')).toBe(true);
   });
 });
 

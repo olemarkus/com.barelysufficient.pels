@@ -3,21 +3,14 @@
 //   - `lastFetchedShort` — the pre-formatted short clock time of the last fetch.
 //   - `exportText` — the current-hour export (feed-in) price, scaled through the
 //     CostDisplay divisor (what the home is paid, or pays, for exported power).
-//   - `planningReasonLine` — the registered `using your solar` reason line
-//     attached to the "Current price" level (which tiers on the planning price
-//     post-#1808) when it diverges from the import price.
 //
 // Kept out of `priceConfig.ts` so that orchestrator stays under its line
 // ceiling, and so every "Right now" derivation from the combined-prices payload
-// lives in one place. The export/planning fields are null when no row covers
-// this hour, when export pricing is off, or when the planning price equals
-// import — so a non-prosumer's card never gains a row (byte-identical outside a
-// solar home).
+// lives in one place. The export field is null when no row covers this hour or
+// when export pricing is off — so a non-prosumer's card never gains a row
+// (byte-identical outside a solar home). The price level itself classifies the
+// import price, so no solar note explains it.
 
-import {
-  PLANNING_PRICE_REASON_LINE,
-  planningPriceDivergesFromImport,
-} from '../../../shared-domain/src/price/planningPrice.ts';
 import { normalizeCombinedPrices } from './combinedPrices.ts';
 import { formatScaledPriceValue, resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
 
@@ -26,7 +19,6 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 export type LiveSummarySignals = {
   lastFetchedShort: string | null;
   exportText: string | null;
-  planningReasonLine: string | null;
 };
 
 // Narrow the unknown `combinedPrices` read-model to its `lastFetched` field and
@@ -51,7 +43,7 @@ export const resolveLiveSummarySignals = (
     const startsAtMs = new Date(row.startsAt).getTime();
     return Number.isFinite(startsAtMs) && startsAtMs <= nowMs && nowMs < startsAtMs + ONE_HOUR_MS;
   });
-  if (!current) return { lastFetchedShort, exportText: null, planningReasonLine: null };
+  if (!current) return { lastFetchedShort, exportText: null };
   const costDisplay = resolveCostDisplayFromCombinedPrices(combinedPrices);
   return {
     lastFetchedShort,
@@ -60,9 +52,6 @@ export const resolveLiveSummarySignals = (
     // defensive consumer-side assertion (`Number.isFinite` global — no `lib/**`).
     exportText: Number.isFinite(current.exportPrice)
       ? formatScaledPriceValue(current.exportPrice as number, costDisplay)
-      : null,
-    planningReasonLine: planningPriceDivergesFromImport(current.budgetPrice, current.total, costDisplay.divisor)
-      ? PLANNING_PRICE_REASON_LINE
       : null,
   };
 };

@@ -70,7 +70,7 @@ Use it when:
 Good candidates are floor heating, water heaters, and rooms that stay warm for a while after heating stops. Poor candidates are rooms where the temperature must be exact at a specific time.
 
 ![PELS price settings showing the selected price source](/screenshots/landing-price.png)
-*Figure 2. Price settings supply the cheap and expensive hour information used by price shift, daily budget, Smart tasks, and price-based Flows.*
+*Figure 2. Price settings supply the prices behind price shift, daily budget, Smart tasks, and price-based Flows, and decide which hours count as cheap or expensive.*
 
 ## Smart Tasks
 

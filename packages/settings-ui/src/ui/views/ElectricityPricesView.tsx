@@ -63,11 +63,10 @@ export type ElectricityPricesViewProps = {
   // time (or null when prices have not been fetched yet).
   currentPriceLevel: string | null;
   lastFetchedShort: string | null;
-  // Current-hour export price (pre-scaled display text) and the `using your
-  // solar` reason line for the "Right now" card. Both null for a non-prosumer,
-  // so the card renders exactly as before outside a solar home.
+  // Current-hour export price (pre-scaled display text) for the "Right now"
+  // card. Null for a non-prosumer, so the card renders exactly as before
+  // outside a solar home.
   currentExportPriceText: string | null;
-  planningPriceReasonLine: string | null;
   norwayPriceModel: NorwayPriceModel;
   priceArea: string;
   providerSurcharge: number;
@@ -143,7 +142,6 @@ const LiveSummaryCard = ({
   currentPriceLevel,
   lastFetchedShort,
   currentExportPriceText,
-  planningPriceReasonLine,
 }: {
   currentPriceLevel: string | null;
   lastFetchedShort: string | null;
@@ -151,11 +149,6 @@ const LiveSummaryCard = ({
   // CostDisplay divisor (e.g. `0.34 kr/kWh`), or null when no export price
   // covers this hour. A non-prosumer never has one, so the row never renders.
   currentExportPriceText: string | null;
-  // The registered `using your solar` reason line, present only when the
-  // current-hour planning price (which the "Current price" level tiers on
-  // post-#1808) diverges from the import price. Null otherwise, so a
-  // non-prosumer sees nothing new.
-  planningPriceReasonLine: string | null;
 }) => {
   const chip = resolvePriceLevelChip(currentPriceLevel);
   const chipToneCls = chip ? (chip.tone === 'warn' ? 'plan-chip--warn' : 'plan-chip--info') : '';
@@ -171,26 +164,18 @@ const LiveSummaryCard = ({
   const hasUsablePriceLevel = chip !== null || currentPriceLevel === 'normal';
   return (
     <section class="settings-form-card electricity-prices-live-summary">
-      <div class="electricity-prices-current-price">
-        {/* "Right now" is the row's own heading — the former separate
-            "Current price" label doubled it, so it was dropped (legibility
-            item: every caption must add information its label doesn't). */}
-        <div class="price-config-status-row">
-          <h3 class="section-title">Right now</h3>
-          {chip ? (
-            <span class={`plan-chip ${chipToneCls}`} data-price-level={chip.priceLevel}>
-              {chip.label}
-            </span>
-          ) : (
-            <span class="price-config-status-value">{calmValue}</span>
-          )}
-        </div>
-        {/* Sub-note under the current-price row it explains: the level tiers on
-            the planning price for a prosumer. Same grey (pels-card-supporting)
-            as the Budget chart's note so the shared string reads as one voice. */}
-        {planningPriceReasonLine !== null ? (
-          <p class="pels-card-supporting electricity-prices-planning-reason">{planningPriceReasonLine}</p>
-        ) : null}
+      {/* "Right now" is the row's own heading — the former separate
+          "Current price" label doubled it, so it was dropped (legibility
+          item: every caption must add information its label doesn't). */}
+      <div class="price-config-status-row">
+        <h3 class="section-title">Right now</h3>
+        {chip ? (
+          <span class={`plan-chip ${chipToneCls}`} data-price-level={chip.priceLevel}>
+            {chip.label}
+          </span>
+        ) : (
+          <span class="price-config-status-value">{calmValue}</span>
+        )}
       </div>
       {currentExportPriceText !== null ? (
         <StatusRow label={EXPORT_PRICE_LABEL} value={currentExportPriceText} />
@@ -699,7 +684,7 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
 
 // Where the forecast of the home's solar production comes from. Lives on the
 // Electricity prices view because its output IS the planning price's surplus
-// input (the `using your solar` reason line above); labels follow
+// input; labels follow
 // `notes/ui-terminology.md` — say what happens, no internal jargon.
 const SolarForecastForm = ({ pvForecastSource, pvForecastStatus, onPvForecastSourceChange }: {
   pvForecastSource: PvForecastSourceSetting;
@@ -963,7 +948,7 @@ const ThresholdForm = ({
           if (val !== null) onMinDiffChange(val);
         }}
       />
-      <small class="field__hint">Skip optimization if savings are less than this.</small>
+      <small class="field__hint">Prices closer to the average than this stay normal.</small>
     </label>
   </form>
 );
@@ -986,7 +971,6 @@ const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => {
         currentPriceLevel={props.currentPriceLevel}
         lastFetchedShort={props.lastFetchedShort}
         currentExportPriceText={props.currentExportPriceText}
-        planningPriceReasonLine={props.planningPriceReasonLine}
       />
       <SourceForm {...props} />
       {props.showSolarForecastSection && (

@@ -61,7 +61,8 @@ const finiteOr = (value: number | undefined, fallback: number): number => (
  * spot, e.g. the flow/homey schemes) the spot term is 0 and the result is just
  * the fixed component — exactly the fixed-tariff (`spotFactorPercent = 0`) case.
  * The result may be <= 0; that is legitimate under feed-in fees / negative spot
- * and must NOT be clamped (callers that classify price levels handle the sign).
+ * and must NOT be clamped (the planning-price blend in `budgetPrice.ts` uses the
+ * signed value; price levels never read it, they classify the import price).
  */
 export const resolveExportPriceInclVat = (params: {
   spotPriceExVat?: number;

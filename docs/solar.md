@@ -143,7 +143,7 @@ On the other price sources, or with **Amounts I enter here**, enter what your po
 Once it is on:
 
 - the **Budget tab** shows **"Export price now"** — the current hour's export price;
-- scheduling uses it through the **planning price**: in hours where PELS expects your solar surplus to cover flexible load, it plans against what that energy is actually worth to you (the export price) rather than the import price — steering flexible load such as deadline EV charging into sunny hours.
+- scheduling uses it through the **planning price**: in hours where PELS expects your solar surplus to cover flexible load, it plans against what that energy is actually worth to you (the export price) rather than the import price — steering flexible load such as deadline EV charging into sunny hours. The cheap, normal and expensive price levels, and the cheap-hour boost and expensive-hour reduction that follow them, stay on the import price; to put your surplus to use directly, see [What PELS does with solar today](#what-pels-does-with-solar-today).
 
 Your money figures stay honest: receipts, usage costs, and the budget's money view remain on the import price you are billed, so they reconcile with your invoice.
 

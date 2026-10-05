@@ -1203,7 +1203,7 @@ the ceiling, and each exists because its page mission needs it:
 |---|---|---|
 | Overview hero | The one *actionable* price fact for the set-and-forget owner | `Cheapest hour ahead: 02:00, 0.18 kr/kWh.` subline (`formatCheapestUpcomingHour`) — nothing else |
 | Budget tab | Price as *planning context* for the Optimiser | Exception-only `Price low` / `Price high` header chip + the shaping tagline (`Using cheaper hours`) + prosumer `Export price now:` subline |
-| Settings → Electricity prices | Price as *configuration + verification* | The `Right now` card (current price, export row, planning-price reason line) + source settings |
+| Settings → Electricity prices | Price as *configuration + verification* | The `Right now` card (current price level, export row) + source settings |
 
 The widgets reuse the same exception-only `Price low` / `Price high` pair
 (`priceLevelChips.ts`) — a glance surface, not a fourth role.
@@ -1256,8 +1256,13 @@ nothing below renders differently from today):
   and the `plan_budget` widget's price curve + projected-cost estimate. Each is
   sourced from the persisted `budgetPrice` and falls back to `total` per hour.
   When a hour's planning price actually diverges from import, the surface adds
-  the `using your solar` reason line (Budget hourly chart caption; Electricity
-  prices "Right now" card, beneath the current-hour price row).
+  the `using your solar` reason line (Budget hourly chart caption, smart-task
+  schedule caption).
+- **Price levels** (cheap / normal / expensive: chips, `price_level` Flow cards,
+  cheap-hour boost / expensive-hour reduction, the insights capability, level
+  colours on charts) classify the **import price** only. Solar never changes a
+  level (owner ruling 2026-10-05), so no level carries the `using your solar`
+  reason line.
 - **Export price** shows on the Budget hero subline (`Export price now:`) and as
   the **Export price** row on the Electricity prices "Right now" card — both
   only when an export price covers the current hour.
