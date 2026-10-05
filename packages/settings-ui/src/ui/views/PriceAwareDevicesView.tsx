@@ -228,7 +228,7 @@ const DevicesSection = ({
         Adjusts the current mode&apos;s target temperature: higher while power is cheap, lower while it is expensive.
       </p>
       <div class="price-aware-grid" role="grid" aria-label="Device temperature adjustments">
-        <header class="price-aware-grid__head eyebrow" role="row">
+        <div class="price-aware-grid__head eyebrow" role="row">
           <span role="columnheader">Device</span>
           <span role="columnheader" class="price-aware-grid__col-head">
             <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--cheap" aria-hidden="true"></span>
@@ -238,7 +238,7 @@ const DevicesSection = ({
             <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--expensive" aria-hidden="true"></span>
             Expensive
           </span>
-        </header>
+        </div>
         {devices.map((device) => (
           <DeviceRow
             key={device.id}

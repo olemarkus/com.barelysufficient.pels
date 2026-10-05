@@ -322,7 +322,7 @@ export const PlanGenericCard = ({
   const singleReason = presentation.reason?.text ?? evStateLine ?? '';
 
   return (
-    <article
+    <div
       class={cardClasses}
       data-device-id={dev.id}
       data-state-kind={presentation.kind}
@@ -376,7 +376,7 @@ export const PlanGenericCard = ({
       </div>
 
       {singleReason !== '' && <p class="plan-card__reason">{singleReason}</p>}
-    </article>
+    </div>
   );
 };
 
@@ -407,7 +407,7 @@ export const PlanTemperatureCard = ({
   const displayName = formatDisplayDeviceName(dev.name);
 
   return (
-    <article
+    <div
       class={cardClasses}
       data-device-id={dev.id}
       data-state-kind={kind}
@@ -446,6 +446,6 @@ export const PlanTemperatureCard = ({
       {reasonLine !== null && (
         <p class="plan-card__temp-reason" data-tone={reasonTone} data-tooltip={reasonTooltip}>{reasonLine}</p>
       )}
-    </article>
+    </div>
   );
 };

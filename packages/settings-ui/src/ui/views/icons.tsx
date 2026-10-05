@@ -1,15 +1,15 @@
-import type { JSX } from 'preact';
+import type { SVGAttributes } from 'preact';
 
 // Material Symbols-style icons rendered inline as SVG so the Settings UI does
 // not need to load a separate icon font. Each icon uses a 24x24 viewBox and
 // inherits `currentColor`, matching the existing PELS inline icon pattern
 // (see `pels-icon-managed/limit/price` in `index.html`).
 
-type IconProps = Omit<JSX.SVGAttributes<SVGSVGElement>, 'children' | 'viewBox'>;
+type IconProps = Omit<SVGAttributes<SVGSVGElement>, 'children' | 'viewBox'>;
 
 const baseSvgProps = (
   rest: IconProps,
-): JSX.SVGAttributes<SVGSVGElement> => ({
+): SVGAttributes<SVGSVGElement> => ({
   viewBox: '0 0 24 24',
   width: '1em',
   height: '1em',
