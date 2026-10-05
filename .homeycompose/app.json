@@ -13,9 +13,9 @@
     "fr": "PELS Gestionnaire d'énergie"
   },
   "description": {
-    "en": "Keeps your home under its power limit and runs EV charging, heating and hot water in cheap hours and on your own solar.",
+    "en": "Energy management for EV charging, heating, hot water, solar and home batteries, under your power limit and in the cheapest hours.",
     "no": "Effektstyring og bruk av billige timer for elbillading, varme og varmtvann.",
-    "nl": "Lagere pieken, goedkopere uren en meer eigen zonnestroom voor je laadpaal, verwarming en boiler.",
+    "nl": "Lagere pieken, goedkopere uren en meer eigen zonnestroom voor je laadpaal, verwarming, boiler en thuisbatterij.",
     "fr": "Voiture électrique, chauffage et eau chaude aux heures les moins chères, sans dépasser votre limite de puissance."
   },
   "brandColor": "#22c55e",
@@ -63,7 +63,9 @@
       "Easee",
       "Zaptec",
       "zero export",
-      "widgets"
+      "widgets",
+      "home battery",
+      "battery"
     ],
     "no": [
       "effektledd",
@@ -98,7 +100,8 @@
       "hytte",
       "smartlading",
       "Easee",
-      "Zaptec"
+      "Zaptec",
+      "hjemmebatteri"
     ],
     "nl": [
       "capaciteitstarief",
@@ -134,7 +137,9 @@
       "Easee",
       "warmtepomp",
       "airco",
-      "Zaptec"
+      "Zaptec",
+      "thuisbatterij",
+      "batterij"
     ],
     "fr": [
       "tarif capacitaire",
