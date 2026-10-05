@@ -20,7 +20,6 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   currentPriceLevel: null,
   lastFetchedShort: null,
   currentExportPriceText: null,
-  planningPriceReasonLine: null,
   gridCompanyOptions: [
     { name: 'Grid Company', organizationNumber: '123' },
   ],
@@ -144,7 +143,7 @@ describe('ElectricityPricesView', () => {
     expect(summary?.textContent).toContain('—');
   });
 
-  it('adds the export-price row and "using your solar" reason line for a prosumer', () => {
+  it('adds the export-price row for a prosumer, with no solar note on the import-price level', () => {
     const mount = document.createElement('div');
     document.body.appendChild(mount);
 
@@ -152,17 +151,15 @@ describe('ElectricityPricesView', () => {
       currentPriceLevel: 'cheap',
       lastFetchedShort: '14:05',
       currentExportPriceText: '0.34 kr/kWh',
-      planningPriceReasonLine: 'using your solar',
     }));
 
     const summary = mount.querySelector('.electricity-prices-live-summary');
     expect(summary?.textContent).toContain('Export price');
     expect(summary?.textContent).toContain('0.34 kr/kWh');
-    expect(summary?.querySelector('.electricity-prices-planning-reason')?.textContent)
-      .toBe('using your solar');
+    expect(summary?.textContent).not.toContain('using your solar');
   });
 
-  it('stays byte-identical for a non-prosumer: no export row, no reason line', () => {
+  it('stays byte-identical for a non-prosumer: no export row', () => {
     const mount = document.createElement('div');
     document.body.appendChild(mount);
 
@@ -170,12 +167,10 @@ describe('ElectricityPricesView', () => {
       currentPriceLevel: 'cheap',
       lastFetchedShort: '14:05',
       currentExportPriceText: null,
-      planningPriceReasonLine: null,
     }));
 
     const summary = mount.querySelector('.electricity-prices-live-summary');
     expect(summary?.textContent).not.toContain('Export price');
-    expect(summary?.querySelector('.electricity-prices-planning-reason')).toBeNull();
   });
 
   it('shows "Awaiting prices" (not "Normal") for the unknown level before prices arrive', () => {

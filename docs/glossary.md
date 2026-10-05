@@ -131,7 +131,9 @@ under **Settings > Electricity prices** when you have solar; the Budget tab show
 The derived price PELS plans against when you have an export price: a blend of import
 and export that reflects what your energy is actually worth to you. It is always an
 estimate — your bills and receipts stay on the import price. Surfaces that act on it
-show a *using your solar* reason line.
+show a *using your solar* reason line. It steers the daily budget and Smart tasks
+only: whether power counts as cheap, normal or expensive always follows the import
+price, so solar never changes the price level.
 
 ### Cheap-hour boost / expensive-hour reduction
 Temperature nudges (in °C) PELS applies to a price-aware device while electricity

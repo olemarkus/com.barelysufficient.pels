@@ -97,8 +97,8 @@ export type PriceConfigState = {
   powerhourDeviceId: string | null;
   // `currentPriceLevel` is the raw Homey level read from the power read-model
   // (same field the budget hero consumes). The rest of the "Right now" card's
-  // signals — last-fetched time, current-hour export price, and the `using your
-  // solar` reason line — are the combined-prices derivations in `liveSummary`
+  // signals — last-fetched time and current-hour export price — are the
+  // combined-prices derivations in `liveSummary`
   // (byte-identical to today for a non-prosumer; see livePriceSignals.ts).
   currentPriceLevel: string | null;
   liveSummary: LiveSummarySignals;

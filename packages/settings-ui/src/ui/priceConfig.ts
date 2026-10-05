@@ -78,7 +78,7 @@ let configState: PriceConfigState = {
   powerhourStatus: null,
   powerhourDeviceId: null,
   currentPriceLevel: null,
-  liveSummary: { lastFetchedShort: null, exportText: null, planningReasonLine: null },
+  liveSummary: { lastFetchedShort: null, exportText: null },
   exportPriceEnabled: false,
   exportPriceSource: EXPORT_PRICE_SOURCE_DEFAULT,
   exportSpotFactor: 0,
@@ -130,15 +130,13 @@ const renderElectricityPrices = () => {
     powerhourDeviceId: configState.powerhourDeviceId,
     currentPriceLevel: configState.currentPriceLevel,
     lastFetchedShort: configState.liveSummary.lastFetchedShort,
-    // Gate the live export/planning signals on the CURRENT enabled setting, not
-    // the cached prices: `combined_prices` keeps carrying exportPrice/budgetPrice
-    // for up to an hour after the user turns export pricing off (the prices only
-    // drop them on the next rebuild), and `onEnabledChange` repaints without
-    // recomputing `liveSummary`. Reading the live flag here suppresses the export
-    // row and the `using your solar` reason line the instant the toggle flips —
-    // an enabled user is byte-identical.
+    // Gate the live export signal on the CURRENT enabled setting, not the cached
+    // prices: `combined_prices` keeps carrying exportPrice for up to an hour after
+    // the user turns export pricing off (the prices only drop it on the next
+    // rebuild), and `onEnabledChange` repaints without recomputing `liveSummary`.
+    // Reading the live flag here suppresses the export row the instant the toggle
+    // flips — an enabled user is byte-identical.
     currentExportPriceText: configState.exportPriceEnabled ? configState.liveSummary.exportText : null,
-    planningPriceReasonLine: configState.exportPriceEnabled ? configState.liveSummary.planningReasonLine : null,
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
     showPriceAwareDevicesLink: false,
     // Prosumer gate: any home that exhibits solar — a managed solar device OR

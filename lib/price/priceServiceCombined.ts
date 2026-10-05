@@ -10,7 +10,6 @@ import {
   type PriceScheme,
 } from './priceTypes';
 import { calculateAveragePrice, calculateThresholds, getPriceLevelFlags } from './priceMath';
-import { resolvePlanningPrice } from './budgetPrice';
 import {
   getDateKeyInTimeZone,
   shiftDateKey,
@@ -133,12 +132,11 @@ const buildEntry = (
   avgPrice: number,
   minDiffOre: number,
 ): CombinedPriceEntry => {
-  // Tier flags classify the PLANNING price (`budgetPrice ?? totalPrice`), matching
-  // the live level classification in `priceLevelUtils` — scheduling-consistent
-  // cheap/expensive verdicts for a prosumer, identical when no export price is
-  // configured. `total` itself stays the import money price.
+  // Tier flags classify the IMPORT price, matching the live level classification
+  // in `priceLevelUtils`: solar never changes a price level. `budgetPrice` is
+  // carried separately for the planning consumers.
   const flags = getPriceLevelFlags({
-    price: resolvePlanningPrice(source.budgetPrice, source.totalPrice),
+    price: source.totalPrice,
     avgPrice,
     thresholds,
     minDiff: minDiffOre,
@@ -233,14 +231,11 @@ export const buildCombinedPricePayload = (params: {
     };
   }
 
-  // Average + thresholds over the PLANNING price so the persisted `isCheap`/
-  // `isExpensive` flags classify what the planner schedules against.
+  // Average + thresholds over the IMPORT price, the same price the persisted
+  // `isCheap`/`isExpensive` flags and the live level classify.
   // Constraint: the persisted `avgPrice`/thresholds are flag context only —
   // they must never be rendered as money (money surfaces read per-entry `total`).
-  const avgPrice = calculateAveragePrice(
-    combined,
-    (entry) => resolvePlanningPrice(entry.budgetPrice, entry.totalPrice),
-  );
+  const avgPrice = calculateAveragePrice(combined, (entry) => entry.totalPrice);
   const { low: lowThreshold, high: highThreshold } = calculateThresholds(avgPrice, thresholdPercent);
   const thresholds = { low: lowThreshold, high: highThreshold };
   const entries = combined.map((source) => buildEntry(source, thresholds, avgPrice, minDiffOre));

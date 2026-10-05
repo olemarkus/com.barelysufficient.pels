@@ -731,11 +731,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 - [ ] **Solar export price — migrate the smart-task *preview* price reader onto the planning price.**
       The export-price model, the derived `budgetPrice`, its planning consumers (daily-budget
-      shaping/allocation, smart-task horizons, price levels, cheapest-hours — all `budgetPrice ?? total`,
+      shaping/allocation, smart-task horizons — all `budgetPrice ?? total`; price levels and the lowest-price Flow cards stay on `total`,
       money/receipt surfaces deliberately staying on `total`), the export-price settings section, the
       Budget-tab "Export price now" subline, AND the planning-price DISPLAY surfaces (smart-task schedule
       chart/readout/caption, Budget hourly-plan curve + `using your solar` note, `plan_budget` widget
-      curve + projected-cost estimate, Electricity "Right now" export row + reason line) all SHIPPED —
+      curve + projected-cost estimate, Electricity "Right now" export row) all SHIPPED —
       byte-identical to today for a non-prosumer, money/receipt figures kept on `total`. The one consumer
       left on the import price is the smart-task **preview** reader
       (`buildDeferredObjectivePolicyWindowPrices` / `...PolicyBucketPrices` in

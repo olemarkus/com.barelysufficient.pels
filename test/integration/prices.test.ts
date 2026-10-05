@@ -1703,6 +1703,38 @@ describe('Price optimization', () => {
     });
   });
 
+  it('keeps the price level on the import price while a solar surplus lowers the planning price', async () => {
+    // Flat spot prices: every hour's import price is equal, so nothing is cheap.
+    // The current hour gets a full surplus, so its planning price drops to the
+    // 1 øre export price. Solar never changes a level: the current level stays
+    // normal and no change is reported ahead, while the planning price is still
+    // produced for the schedulers.
+    const now = new Date('2026-06-15T10:00:00.000Z');
+    const hourStartMs = now.getTime();
+    const hourStarts = [0, 1, 2, 3, 4, 5].map((h) => hourStartMs + h * HOUR_MS);
+    priceCache.write('spot_prices', hourStarts.map((startMs) => ({
+      startsAt: new Date(startMs).toISOString(),
+      spotPriceExVat: 50,
+      currency: 'NOK',
+    })));
+    mockHomeyInstance.settings.set('export_price_enabled', true);
+    mockHomeyInstance.settings.set('export_spot_factor', 0);
+    mockHomeyInstance.settings.set('export_fixed', 1);
+
+    await withMockedNow(new Date(hourStartMs + 30 * 60 * 1000), async () => {
+      const coordinator = createPriceCoordinatorForTest();
+      coordinator.setBudgetPriceInputs({
+        expectedManagedDrawKwh: 5,
+        getSurplusKwh: (startsAtMs) => (startsAtMs === hourStarts[0] || startsAtMs === hourStarts[2] ? 5 : undefined),
+      });
+      const [current] = coordinator.getCombinedHourlyPrices();
+      expect(current.budgetPrice).toBe(1);
+      expect(coordinator.getCurrentHourPriceLevel()).toBe(PriceLevel.NORMAL);
+      expect(coordinator.getPriceLevelChangesWithin({ nowMs: Date.now(), horizonMs: 5 * HOUR_MS }))
+        .toEqual({ state: 'resolved', levels: [] });
+    });
+  });
+
   it('applies cheapDelta temperature during cheap hours', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     waterHeater.setCapabilityValue('target_temperature', 55);

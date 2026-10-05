@@ -534,31 +534,42 @@ describe('handleSchemeChange export transition (via priceConfig)', () => {
   // A current-hour combined-prices row still carrying an export price AND a
   // divergent planning price (budgetPrice != total) — the exact state right after
   // a user disables export pricing but before combined_prices rebuilds (up to an
-  // hour). The live "Right now" export row + `using your solar` reason line must
-  // read the current enabled setting, not the stale prices.
+  // hour). The live "Right now" export row must read the current enabled
+  // setting, not the stale prices. The level is on the import price, so the
+  // card never carries a `using your solar` note, divergent planning price or not.
   const bootWithLivePrices = async (exportEnabled: boolean) => {
     const hourMs = 60 * 60 * 1000;
     const startsAt = new Date(Math.floor(Date.now() / hourMs) * hourMs).toISOString();
     const stored: Record<string, unknown> = { price_scheme: 'norway', export_price_enabled: exportEnabled };
     const combinedPrices = { lastFetched: startsAt, prices: [{ startsAt, total: 1, exportPrice: -0.05, budgetPrice: 0.3 }] };
     getSettingMock.mockImplementation(async (key: string) => stored[key]);
-    getApiReadModelMock.mockImplementation(async (path: string) => (path === '/ui_prices' ? { combinedPrices } : null));
+    // A live `normal` level makes the card render its `Last fetched` row from the
+    // same read that carries the stale prices, so a test can wait for the prices
+    // to have landed before asserting what the card leaves out.
+    const powerPayload = { status: { state: 'live', status: { priceLevel: 'normal' } } };
+    getApiReadModelMock.mockImplementation(async (path: string) => {
+      if (path === '/ui_prices') return { combinedPrices };
+      if (path === '/ui_power') return powerPayload;
+      return null;
+    });
     const { initElectricityPricesView } = await import('../src/ui/priceConfig.ts');
     const surface = document.createElement('div');
     document.body.appendChild(surface);
     await initElectricityPricesView(surface);
     return surface;
   };
-  const planningReason = (surface: HTMLElement) => surface.querySelector('.electricity-prices-planning-reason');
+  const liveSummary = (surface: HTMLElement) => surface.querySelector('.electricity-prices-live-summary');
 
-  it('shows the live planning-price reason line when export pricing is enabled', async () => {
+  it('shows the live export row, and no solar note, when export pricing is enabled', async () => {
     const surface = await bootWithLivePrices(true);
-    await vi.waitFor(() => expect(planningReason(surface)).not.toBeNull());
+    await vi.waitFor(() => expect(liveSummary(surface)?.textContent).toContain('Export price'));
+    expect(liveSummary(surface)?.textContent).not.toContain('using your solar');
   });
 
-  it('suppresses the live planning-price reason line when export pricing is off, despite stale divergent prices', async () => {
+  it('suppresses the live export row when export pricing is off, despite stale prices', async () => {
     const surface = await bootWithLivePrices(false);
-    // Same stale divergent prices, but the toggle reads OFF → the gate suppresses it.
-    await vi.waitFor(() => expect(planningReason(surface)).toBeNull());
+    // Same stale prices, but the toggle reads OFF → the gate suppresses it.
+    await vi.waitFor(() => expect(liveSummary(surface)?.textContent).toContain('Last fetched'));
+    expect(liveSummary(surface)?.textContent).not.toContain('Export price');
   });
 });
