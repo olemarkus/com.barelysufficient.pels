@@ -114,4 +114,5 @@ export const driftDepsFromPlanInputs = (
     const live = getDevices().find((device) => device.id === deviceId);
     return live ? splitPlanInputDevice(live, getBinaryCommand(deviceId)).externalOffHeld : false;
   },
+  hasStorageDrift: () => false,
 });

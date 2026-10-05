@@ -358,6 +358,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
 
     const devices = buildHomePlanDevices(ctx, SUB_HOME.homeId, {
       surplusPostureEnabled: false,
+      storage: { kind: 'none' },
       projectCommandability: ({ base }) => ({ commandableNow: base, reason: 'none' }),
       clearRecentBinaryOffCommand: () => {},
       pruneCommandability: () => {},
@@ -380,6 +381,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       SUB_HOME.homeId,
       {
         surplusPostureEnabled: false,
+        storage: { kind: 'none' },
         projectCommandability: ({ base }) => ({ commandableNow: base, reason: 'none' }),
         clearRecentBinaryOffCommand: () => {},
         pruneCommandability,

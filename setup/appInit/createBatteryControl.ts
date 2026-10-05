@@ -8,9 +8,9 @@ import {
   type BatteryControlRead,
   type HomeBatteryClaimRead,
 } from '../../lib/battery/batteryControlOwner';
-import type { BatteryControlOwner } from '../../lib/ports/batteryControlOwner';
+import type { BatteryControlOwner, StorageLaneBinding } from '../../lib/ports/batteryControlOwner';
 import { buildDeviceActuator } from './buildDeviceActuator';
-import { requireDeviceManager } from './contextGuards';
+import { requireBatteryControl, requireDeviceManager } from './contextGuards';
 
 const UNREPORTED_CLAIM: HomeBatteryClaimRead = { kind: 'unreported' };
 
@@ -83,3 +83,11 @@ export const initMainBatteryControl = (
     (refresh) => owner.onSnapshotCommitted(refresh),
   ));
 };
+
+/**
+ * Main's storage lane over its battery control owner. `initMainBatteryControl`
+ * runs before the plan stack, so the owner is a required dependency here.
+ */
+export const mainStorageLane = (ctx: AppContext): StorageLaneBinding => (
+  { kind: 'battery_control', owner: requireBatteryControl(ctx) }
+);

@@ -980,6 +980,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
       markSteppedLoadDesiredStepIssued: vi.fn(),
       getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      storageLane: { kind: 'none' },
     };
     return new PlanExecutor(deps, state);
   };

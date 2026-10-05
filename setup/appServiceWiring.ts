@@ -33,6 +33,7 @@ import {
   createPriceCoordinator,
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
+  mainStorageLane,
   requirePlanService,
   resolvePlanService,
   subscribePlanObservedState,
@@ -462,11 +463,10 @@ export class AppServiceWiring {
     // device has not landed yet, firing a spurious `waiting → unachievable`
     // flow trigger on every restart. It depends on nothing the runtime builds.
     this.initSnapshotWarmupGate();
-    const { planEngine, planService, lifecycleFallbackPort } = createHomePlanRuntime(
-      ctx,
-      this.mainHomeScope,
-      { capacityGuard: ctx.capacityGuard, isActuationFenced: () => this.isMainActuationFenced() },
-    );
+    const { planEngine, planService, lifecycleFallbackPort } = createHomePlanRuntime(ctx, this.mainHomeScope, {
+      capacityGuard: ctx.capacityGuard, isActuationFenced: () => this.isMainActuationFenced(),
+      storageLane: mainStorageLane(ctx),
+    });
     ctx.planEngine = planEngine;
     ctx.planService = planService;
     ctx.lifecycleFallback = lifecycleFallbackPort;

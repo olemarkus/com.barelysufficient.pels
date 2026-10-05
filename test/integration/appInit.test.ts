@@ -75,7 +75,7 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanEngine(ctx, buildMainHomeScopeForTest(ctx, () => false, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false })).toThrow(
+    expect(() => createPlanEngine(ctx, buildMainHomeScopeForTest(ctx, () => false, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' } })).toThrow(
       'DeviceTransport must be initialized before plan engine setup.',
     );
   });
@@ -112,6 +112,7 @@ describe('app init plan service wiring', () => {
     createPlanEngine(engineCtx, buildMainHomeScopeForTest(engineCtx, () => false, () => false), {
       capacityGuard: engineCtx.capacityGuard,
       isActuationFenced: () => fenced,
+      storageLane: { kind: 'none' },
     });
     const actuator = (
       capturedPlanExecutorDeps.current as unknown as { actuator: Actuator }

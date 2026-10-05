@@ -62,6 +62,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   syncPendingTargetCommands: vi.fn(() => false),
   syncPendingBinaryCommands: vi.fn(() => false),
   syncSteppedCommands: () => false,
+  syncStorageCommands: () => undefined,
   prunePendingTargetCommands: vi.fn(() => false),
   shouldApplyStablePlanActions: vi.fn(() => false),
   // Delegates to the REAL predicate rather than returning a canned value: a

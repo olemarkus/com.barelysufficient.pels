@@ -1,0 +1,475 @@
+/**
+ * The storage lane: converges a newly built plan's home-battery decisions
+ * (`StorageDecision`, decided by `lib/plan/battery/storageRelief.ts`) and
+ * verifies the battery follows them. Main only: a meter area builds no lane
+ * (`StorageLaneBinding`, `NO_STORAGE_LANE`).
+ *
+ * - **Claim.** `admitClaim` answers before every `storage_power`: the owner
+ *   records the claim value the battery holds before the first one. The write
+ *   goes through Main's fenced plan actuator, like every other plan write, and
+ *   is dispatched after the plan's shed writes, so a slow cloud battery never
+ *   delays a shed.
+ * - **Drift.** A setpoint has work only until it is sent; a release only while
+ *   the claim is held and no hand-back is running, backing off or stopped. A
+ *   write the battery or Homey refused is judged like an unanswered setpoint,
+ *   never resent every rebuild.
+ * - **Release.** A release decision hands the battery back through its owner
+ *   (`releaseClaim`), which restores the claim value it recorded. Capacity
+ *   simulation dispatches nothing, and the planner decides nothing for a
+ *   battery then; the owner hands a held one back itself.
+ * - **Verification** (`syncStorageCommands`, once per plan reading, modelled on
+ *   `targetPowerCommandLifecycle.ts`). A setpoint is judged only on the
+ *   battery's own power reported after it went out; a battery that reports
+ *   nothing new gets up to `VERIFICATION_MAX_WAIT_MS`. It is confirmed within
+ *   the setpoint tolerance (`storageSetpointToleranceW`). Past the window, an
+ *   INCREASE in discharge that moved but stopped short teaches the delivery
+ *   ceiling, as does one that starts at the last plateau and gets no further;
+ *   a step down that stops short teaches nothing. No movement is
+ *   `not_responding`, and the plan hands the battery back. A setpoint too small
+ *   to tell from noise, or from a minimum the battery may have and does not
+ *   declare, gives no verdict at all. A battery whose claim no longer reads
+ *   Homey's after the window was taken by someone else: it is judged not
+ *   responding rather than claimed back. A battery the owner handed back (opt
+ *   out) is simply forgotten, never judged.
+ * - **Sign.** After a confirmed step of at least 1 kW, the whole-home meter's
+ *   move, less the move of the managed devices' own metered draw, is compared
+ *   with the battery's. A reading within `SIGN_CHECK_ACTION_QUIET_MS` of PELS's
+ *   own shed or restore is no evidence. Two readings in a row decide a step;
+ *   three inverted steps, one of them a step down, mark the battery
+ *   `sign_inverted`, and each is logged with its evidence. Peer apps drove
+ *   batteries with a silently inverted sign for months.
+ *
+ * The verdicts are the battery owner's (`lib/battery/batteryVerification.ts`);
+ * this lane writes them through the owner's port and reads them back through
+ * `readControl`, so the planner input and this lane read one answer.
+ */
+import type { Actuator } from '../actuator/deviceActuator';
+import { getLogger } from '../logging/logger';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
+import type { BatteryControlOwner, BatteryLeverRead } from '../ports/batteryControlOwner';
+import type { HomeBatteryPowerObservation } from '../../packages/contracts/src/types';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import type { PowerTrackerState } from '../power/tracker';
+import {
+  storageSetpointToleranceW,
+  type StorageDecidedDevice,
+  type StorageDecision,
+} from '../planContract/storageDecision';
+import { normalizeError } from '../utils/errorUtils';
+
+const logger = getLogger('executor/battery');
+
+/** How long a setpoint waits for a battery reading newer than it before it is judged anyway. */
+export const VERIFICATION_MAX_WAIT_MS = 5 * 60 * 1000;
+/** Below this, a setpoint may sit under a minimum power the battery does not declare: no verdict. */
+const NO_VERDICT_BELOW_W = 500;
+/** A confirmed step at least this large, W, is big enough to check the sign against the meter. */
+const SIGN_CHECK_MIN_STEP_W = 1000;
+/** A meter move smaller than this share of the battery's says nothing about the sign. */
+const SIGN_CHECK_MIN_METER_SHARE = 0.5;
+/** Meter readings one setpoint may spend on the sign check before it is left to the next. */
+const SIGN_CHECK_MAX_SAMPLES = 6;
+/** A reading this close after PELS's own shed or restore says nothing about the battery. */
+export const SIGN_CHECK_ACTION_QUIET_MS = 30 * 1000;
+/** Inverted steps, one of them a step down, before a battery is marked `sign_inverted`. */
+const SIGN_INVERTED_STEPS_REQUIRED = 3;
+
+/** A plan device carrying a home-battery decision. */
+
+type SetpointLever = Extract<BatteryLeverRead, { kind: 'setpoint' }>;
+type SetpointDecision = Extract<StorageDecision, { kind: 'setpoint' }>;
+
+/** Did the meter move the way the battery says its own power moved? `none` when it moved too little to say. */
+type SignSample = 'agrees' | 'inverted' | 'none';
+
+/** The whole-home meter's latched reading, W, and when it landed. */
+type MeterReading = { meterW: number; atMs: number };
+
+/**
+ * What a setpoint's sign is checked against: the whole-home meter and the
+ * managed devices' metered draw when it went out, W, and the last meter
+ * reading the check has looked at.
+ */
+type SignBaseline = { meterW: number; managedW: number; lastAtMs: number };
+
+/**
+ * Where a setpoint is in its verification: waiting for its verdict, a followed
+ * step sampling its sign against the meter, or `done` (judged, and its sign
+ * checked or not worth checking). A setpoint sent with no meter reading
+ * latched has no baseline, and its sign goes unchecked.
+ */
+type CommandPhase =
+  | { kind: 'pending'; baseline: SignBaseline | 'unavailable' }
+  | { kind: 'sign_check'; baseline: SignBaseline; lastSample: SignSample; samples: number }
+  | { kind: 'done' };
+
+type SignCheckPhase = Extract<CommandPhase, { kind: 'sign_check' }>;
+
+const DONE: CommandPhase = { kind: 'done' };
+
+/** One setpoint the lane sent and what it has shown so far. */
+type StorageCommandRecord = {
+  setpointW: number;
+  stepW: number;
+  issuedAtMs: number;
+  /** The battery's own signed power when the setpoint went out, W. */
+  startSignedW: number;
+  phase: CommandPhase;
+};
+
+/**
+ * What a setpoint showed: the battery `followed` it (reached it, or plateaued
+ * on an increase), showed nothing either way (`inconclusive`), or did not
+ * answer it (`unanswered`, judged not responding).
+ */
+type SetpointVerdict = 'followed' | 'inconclusive' | 'unanswered';
+
+/** What this run's sign checks have shown about a battery: confirmed once, or inverted steps so far. */
+type SignEvidence = { kind: 'confirmed' } | { kind: 'inverted'; invertedSteps: number; stepDownSeen: boolean };
+
+const NO_INVERTED_STEPS = { kind: 'inverted', invertedSteps: 0, stepDownSeen: false } as const;
+
+export type BatteryExecutorDeps = {
+  owner: BatteryControlOwner;
+  /** Main's fenced plan actuator. */
+  actuator: Actuator;
+  /** The battery's own signed power, from the observer's record. */
+  readBatteryPower: (deviceId: string) => HomeBatteryPowerObservation | undefined;
+  getPowerTracker: () => PowerTrackerState;
+  /** The managed devices' own metered draw, W (no battery): the sign check discounts its move. */
+  readManagedDrawW: () => number;
+  /** Whether PELS shed or restored any device at or after this time. */
+  hasShedOrRestoreSince: (sinceMs: number) => boolean;
+};
+
+/** What the plan executor asks of a home's storage lane. */
+export type StorageLane = Pick<BatteryExecutor, 'apply' | 'hasDrift' | 'sync'>;
+
+/** A meter area's lane: it plans no battery, so its plans carry no storage decision to converge. */
+export const NO_STORAGE_LANE: StorageLane = {
+  apply: async () => false,
+  hasDrift: () => false,
+  sync: () => undefined,
+};
+
+const isBlockedVerdict = (control: SetpointLever): boolean => (
+  control.verdict === 'not_responding' || control.verdict === 'sign_inverted'
+);
+
+const resolveSignSample = (batteryDeltaW: number, meterDeltaW: number): SignSample => {
+  if (Math.abs(meterDeltaW) < Math.abs(batteryDeltaW) * SIGN_CHECK_MIN_METER_SHARE) return 'none';
+  return Math.sign(meterDeltaW) === Math.sign(batteryDeltaW) ? 'agrees' : 'inverted';
+};
+
+export class BatteryExecutor {
+  private readonly commands = new Map<string, StorageCommandRecord>();
+  private readonly signEvidence = new Map<string, SignEvidence>();
+
+  constructor(private readonly deps: BatteryExecutorDeps) {}
+
+  /** Converge one decision. True when a write or hand-back was requested. */
+  async apply(device: StorageDecidedDevice): Promise<boolean> {
+    const decision = device.storageDecision;
+    // A released battery has no setpoint left to judge.
+    if (decision.kind === 'release') this.commands.delete(device.id);
+    const control = this.resolveDrift(device);
+    if (control === 'no_drift') return false;
+    return decision.kind === 'release'
+      ? this.release(device, decision)
+      : this.sendSetpoint(device, decision, control);
+  }
+
+  /** Whether this decision has a write or a hand-back due. */
+  hasDrift(device: StorageDecidedDevice): boolean {
+    return this.resolveDrift(device) !== 'no_drift';
+  }
+
+  /**
+   * Judge every setpoint in flight against the battery's own power, then its
+   * sign against the meter. Run once per plan reading, before the build, so
+   * the build reads this reading's verdicts.
+   */
+  sync(nowMs: number): void {
+    for (const [deviceId, recorded] of this.commands) {
+      const control = this.deps.owner.readControl(deviceId);
+      // Handed back (an opt-out, a hand-back of the owner's own): nothing to judge.
+      if (control.kind === 'none' || !control.claimHeld) {
+        this.commands.delete(deviceId);
+        continue;
+      }
+      const power = this.deps.readBatteryPower(deviceId);
+      if (power === undefined) continue;
+      const record = recorded.phase.kind === 'pending' ? this.settle(deviceId, recorded, power, nowMs) : recorded;
+      if (record === 'unanswered' || record.phase.kind === 'pending') continue;
+      if (this.isClaimLost(deviceId, record, control, nowMs)) continue;
+      if (record.phase.kind === 'sign_check') this.sampleSign(deviceId, record, record.phase, power);
+    }
+  }
+
+  /**
+   * The battery's lever when this decision has work: a setpoint only until it
+   * is sent, and never to a battery judged not responding or sign-inverted; a
+   * release only while the claim is held and no hand-back is running, backing
+   * off or stopped.
+   */
+  private resolveDrift(device: StorageDecidedDevice): SetpointLever | 'no_drift' {
+    const control = this.deps.owner.readControl(device.id);
+    if (control.kind === 'none') return 'no_drift';
+    const decision = device.storageDecision;
+    const drifted = decision.kind === 'release'
+      ? control.claimHeld && !control.handBackDeferred
+      : !isBlockedVerdict(control) && this.commands.get(device.id)?.setpointW !== decision.setpointW;
+    return drifted ? control : 'no_drift';
+  }
+
+  private async sendSetpoint(
+    device: StorageDecidedDevice,
+    decision: SetpointDecision,
+    control: SetpointLever,
+  ): Promise<boolean> {
+    const power = this.deps.readBatteryPower(device.id);
+    if (power === undefined) return false;
+    const admission = this.deps.owner.admitClaim(device.id);
+    if (admission.status === 'refused') {
+      logger.info({
+        event: 'battery_storage_claim_refused', deviceId: device.id, deviceName: device.name, reason: admission.reason,
+      });
+      return false;
+    }
+    const sent = await this.send(device, decision.setpointW);
+    if (sent === 'skipped') return false;
+    // A write the battery or Homey refused is a setpoint it did not follow:
+    // it is judged like one, rather than resent on every rebuild.
+    this.recordSent(device.id, decision, power, Date.now());
+    if (sent === 'failed') return false;
+    logger.info({
+      event: 'battery_storage_setpoint_sent',
+      deviceId: device.id,
+      deviceName: device.name,
+      setpointW: decision.setpointW,
+      observedPowerW: power.signedW,
+      verdict: control.verdict,
+    });
+    return true;
+  }
+
+  private async send(device: StorageDecidedDevice, setpointW: number): Promise<'sent' | 'skipped' | 'failed'> {
+    try {
+      const outcome = await this.deps.actuator.apply({ kind: 'storage_power', deviceId: device.id, setpointW });
+      return outcome.requested ? 'sent' : 'skipped';
+    } catch (error) {
+      logger.warn({
+        event: 'battery_storage_setpoint_failed',
+        deviceId: device.id,
+        deviceName: device.name,
+        setpointW,
+        err: normalizeError(error),
+      });
+      return 'failed';
+    }
+  }
+
+  /** The whole-home meter's latched reading, or `unavailable` when none is latched. */
+  private readMeter(): MeterReading | 'unavailable' {
+    const { lastPowerW, lastTimestamp } = this.deps.getPowerTracker();
+    if (!isFiniteNumber(lastPowerW) || lastTimestamp === undefined) return 'unavailable';
+    return { meterW: lastPowerW, atMs: lastTimestamp };
+  }
+
+  /**
+   * Remember the setpoint for its verdict. One replacing a setpoint still
+   * unanswered is judged from where the first one found the battery and when it
+   * went out: a battery that never moves cannot have its verdict postponed by a
+   * stream of new setpoints. Its sign check starts after the latest send.
+   */
+  private recordSent(
+    deviceId: string,
+    decision: SetpointDecision,
+    power: HomeBatteryPowerObservation,
+    nowMs: number,
+  ): void {
+    const meter = this.readMeter();
+    const unanswered = this.commands.get(deviceId);
+    if (unanswered?.phase.kind === 'pending') {
+      const { baseline } = unanswered.phase;
+      const latest = baseline === 'unavailable' || meter === 'unavailable'
+        ? baseline
+        : { ...baseline, lastAtMs: meter.atMs };
+      this.commands.set(deviceId, {
+        ...unanswered,
+        setpointW: decision.setpointW,
+        stepW: decision.stepW,
+        phase: { kind: 'pending', baseline: latest },
+      });
+      return;
+    }
+    this.commands.set(deviceId, {
+      setpointW: decision.setpointW,
+      stepW: decision.stepW,
+      issuedAtMs: nowMs,
+      startSignedW: power.signedW,
+      phase: {
+        kind: 'pending',
+        baseline: meter === 'unavailable'
+          ? meter
+          : { meterW: meter.meterW, managedW: this.deps.readManagedDrawW(), lastAtMs: meter.atMs },
+      },
+    });
+  }
+
+  private async release(
+    device: StorageDecidedDevice,
+    decision: Extract<StorageDecision, { kind: 'release' }>,
+  ): Promise<boolean> {
+    if (await this.deps.owner.releaseClaim(device.id, decision.reason) !== 'released') return false;
+    logger.info({
+      event: 'battery_storage_released', deviceId: device.id, deviceName: device.name, reason: decision.reason,
+    });
+    return true;
+  }
+
+  /**
+   * Settle a pending setpoint once the battery reached it or its window is
+   * over: the record as it stands now, or `unanswered` once it was judged so
+   * and dropped.
+   */
+  private settle(
+    deviceId: string,
+    record: StorageCommandRecord,
+    power: HomeBatteryPowerObservation,
+    nowMs: number,
+  ): StorageCommandRecord | 'unanswered' {
+    const toleranceW = storageSetpointToleranceW(record.setpointW, record.stepW);
+    const fresh = power.observedAtMs > record.issuedAtMs;
+    const elapsedMs = nowMs - record.issuedAtMs;
+    const reached = fresh && Math.abs(power.signedW - record.setpointW) <= toleranceW;
+    const windowOver = fresh ? elapsedMs >= CONTROL_COMMAND_CONFIRMATION_MS : elapsedMs >= VERIFICATION_MAX_WAIT_MS;
+    if (!reached && !windowOver) return record;
+    const tooSmall = Math.abs(record.setpointW) < Math.max(toleranceW, NO_VERDICT_BELOW_W);
+    const verdict = tooSmall ? 'inconclusive' : this.judge(deviceId, record, power, reached, nowMs);
+    if (verdict === 'unanswered') {
+      this.commands.delete(deviceId);
+      return verdict;
+    }
+    const settled = { ...record, phase: verdict === 'followed' ? this.resolveSignPhase(deviceId, record) : DONE };
+    this.commands.set(deviceId, settled);
+    return settled;
+  }
+
+  /** Record what the setpoint showed with the battery's owner. */
+  private judge(
+    deviceId: string,
+    record: StorageCommandRecord,
+    power: HomeBatteryPowerObservation,
+    reached: boolean,
+    nowMs: number,
+  ): SetpointVerdict {
+    const toleranceW = storageSetpointToleranceW(record.setpointW, record.stepW);
+    const { verification } = this.deps.owner;
+    const deliveredW = Math.max(0, -power.signedW);
+    const event = {
+      deviceId, setpointW: record.setpointW, startPowerW: record.startSignedW, observedPowerW: power.signedW,
+    };
+    if (reached) {
+      verification.recordResponding(deviceId, { dischargeW: deliveredW, toleranceW }, nowMs);
+      logger.info({ event: 'battery_storage_setpoint_confirmed', ...event, elapsedMs: nowMs - record.issuedAtMs });
+      return 'followed';
+    }
+    const increase = record.setpointW < record.startSignedW;
+    const progressW = (power.signedW - record.startSignedW) * Math.sign(record.setpointW - record.startSignedW);
+    const moved = progressW >= toleranceW;
+    if (increase && (moved || verification.startsAtPlateau(deviceId, -record.startSignedW, toleranceW))) {
+      verification.recordDeliveryCeiling(deviceId, deliveredW, nowMs);
+      logger.info({ event: 'battery_storage_setpoint_plateaued', ...event });
+      return 'followed';
+    }
+    if (!increase && moved) {
+      // A step down that stopped short teaches nothing about what it can deliver.
+      logger.info({ event: 'battery_storage_step_down_short', ...event });
+      return 'inconclusive';
+    }
+    verification.recordNotResponding(deviceId, nowMs);
+    logger.warn({ event: 'battery_storage_setpoint_unanswered', ...event });
+    return 'unanswered';
+  }
+
+  /**
+   * A followed step's sign is checked when it went out against a meter
+   * reading, is big enough to show on the meter, and no step has confirmed
+   * this battery's sign yet this run.
+   */
+  private resolveSignPhase(deviceId: string, record: StorageCommandRecord): CommandPhase {
+    if (record.phase.kind !== 'pending' || record.phase.baseline === 'unavailable') return DONE;
+    if (Math.abs(record.setpointW - record.startSignedW) < SIGN_CHECK_MIN_STEP_W) return DONE;
+    if (this.signEvidence.get(deviceId)?.kind === 'confirmed') return DONE;
+    return { kind: 'sign_check', baseline: record.phase.baseline, lastSample: 'none', samples: 0 };
+  }
+
+  /**
+   * A held battery that no longer reports Homey's claim after the confirmation
+   * window was taken by something else. It is judged not responding, so the
+   * plan hands it back, and PELS does not fight the other controller by writing
+   * the claim again.
+   */
+  private isClaimLost(
+    deviceId: string,
+    record: StorageCommandRecord,
+    control: SetpointLever,
+    nowMs: number,
+  ): boolean {
+    if (control.claimEngaged || nowMs - record.issuedAtMs < CONTROL_COMMAND_CONFIRMATION_MS) return false;
+    this.commands.delete(deviceId);
+    this.deps.owner.verification.recordNotResponding(deviceId, nowMs);
+    logger.warn({ event: 'battery_storage_claim_lost', deviceId, setpointW: record.setpointW });
+    return true;
+  }
+
+  /**
+   * One sign sample per new whole-home reading. A reading near PELS's own shed
+   * or restore is skipped; otherwise the meter's move less the managed devices'
+   * metered move is laid against the battery's. Two readings in a row decide
+   * this step.
+   */
+  private sampleSign(
+    deviceId: string,
+    record: StorageCommandRecord,
+    phase: SignCheckPhase,
+    power: HomeBatteryPowerObservation,
+  ): void {
+    const meter = this.readMeter();
+    if (meter === 'unavailable' || meter.atMs <= phase.baseline.lastAtMs) return;
+    const quiet = !this.deps.hasShedOrRestoreSince(record.issuedAtMs - SIGN_CHECK_ACTION_QUIET_MS);
+    const batteryDeltaW = power.signedW - record.startSignedW;
+    const managedDeltaW = this.deps.readManagedDrawW() - phase.baseline.managedW;
+    const meterDeltaW = meter.meterW - phase.baseline.meterW - managedDeltaW;
+    const sample = quiet ? resolveSignSample(batteryDeltaW, meterDeltaW) : 'none';
+    const decided = sample !== 'none' && phase.lastSample === sample;
+    const samples = phase.samples + 1;
+    this.commands.set(deviceId, {
+      ...record,
+      phase: decided || samples >= SIGN_CHECK_MAX_SAMPLES ? DONE : {
+        kind: 'sign_check',
+        baseline: { ...phase.baseline, lastAtMs: meter.atMs },
+        lastSample: sample === 'none' ? phase.lastSample : sample,
+        samples,
+      },
+    });
+    if (!decided) return;
+    const evidence = { deviceId, setpointW: record.setpointW, batteryDeltaW, meterDeltaW, managedDeltaW };
+    if (sample === 'agrees') {
+      this.signEvidence.set(deviceId, { kind: 'confirmed' });
+      logger.info({ event: 'battery_storage_sign_confirmed', ...evidence });
+      return;
+    }
+    const previous = this.signEvidence.get(deviceId);
+    const prior = previous?.kind === 'inverted' ? previous : NO_INVERTED_STEPS;
+    const invertedSteps = prior.invertedSteps + 1;
+    const stepDownSeen = prior.stepDownSeen || record.setpointW > record.startSignedW;
+    this.signEvidence.set(deviceId, { kind: 'inverted', invertedSteps, stepDownSeen });
+    logger.warn({ event: 'battery_storage_sign_step_inverted', ...evidence, invertedSteps, stepDownSeen });
+    if (invertedSteps < SIGN_INVERTED_STEPS_REQUIRED || !stepDownSeen) return;
+    this.commands.delete(deviceId);
+    this.signEvidence.delete(deviceId);
+    this.deps.owner.verification.recordSignInverted(deviceId);
+  }
+}

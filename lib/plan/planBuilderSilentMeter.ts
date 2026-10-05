@@ -44,6 +44,7 @@ import { temperatureSetpointsFor } from './planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { runSilentMeterSurplusHold } from './planBuilderSurplus';
+import { NO_STORAGE_RELIEF, attachStorageDecisions, releaseStorageOnSilentMeter } from './battery/storageRelief';
 import {
   buildSheddingCandidates,
   resolveShedReason,
@@ -137,11 +138,18 @@ export class SilentMeterPlanBuilder {
       planDevices,
       context.temperatureSetpoints,
     );
+    // No measurement, no deficit to relieve: every battery PELS holds is handed
+    // back, and the loads are shed to their floor exactly as without one.
+    const storageRelief = this.deps.getCapacityDryRun()
+      ? NO_STORAGE_RELIEF
+      : releaseStorageOnSilentMeter(context.devices, this.state.storageLeverByDevice);
+    this.state.storageLeverByDevice = storageRelief.levers;
+    const decidedDevices = attachStorageDecisions(finalized.planDevices, storageRelief);
     // Recorded like any other shed: the first measured cycle after the meter
     // returns sees every device in shed posture, so each one resumes through
     // admission rather than everything at once.
     this.state.shedDecisions.recordPlannedShed(
-      finalized.planDevices, decoration, this.deps.pendingBinaryCommandStore, !this.deps.getCapacityDryRun(),
+      decidedDevices, decoration, this.deps.pendingBinaryCommandStore, !this.deps.getCapacityDryRun(),
     );
     this.deps.structuredLog?.info({
       event: 'plan_silent_meter_pass',
@@ -156,7 +164,7 @@ export class SilentMeterPlanBuilder {
       meta: buildUnmeasuredPlanMeta({
         context,
         reading,
-        planDevices: finalized.planDevices,
+        planDevices: decidedDevices,
         dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
         powerTracker,
         capacityGuard: this.deps.capacityGuard,
@@ -164,7 +172,7 @@ export class SilentMeterPlanBuilder {
         shortfallBudgetThresholdKw,
         hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       }),
-      devices: finalized.planDevices,
+      devices: decidedDevices,
     };
   }
 

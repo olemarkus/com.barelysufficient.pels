@@ -34,6 +34,7 @@ import {
   resolveSurplusPostureForDevice,
 } from './planInputDeviceHelpers';
 import { resolveEvTargetPowerPlannerProfile } from '../device/targetPowerReachability';
+import { resolveStorageCluster } from './storageProjection';
 
 /**
  * The owner's standing grants for a device, read from the same settings the
@@ -147,5 +148,6 @@ export const resolvePlanInputDeviceFacts = (
     hasStandingDemand,
     residualKw,
     budgetExempt: source.isBudgetExempt(device.id),
+    storageCluster: resolveStorageCluster(device, options),
   };
 };

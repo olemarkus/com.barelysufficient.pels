@@ -308,7 +308,7 @@ describe('initSettingsHandlerForApp', () => {
     delete ctx.batteryControl;
 
     expect(() => initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), HOOKS)).toThrow(
-      'Battery control must be initialized before settings handler setup.',
+      'Battery control must be initialized before the plan stack and settings handler setup.',
     );
   });
 

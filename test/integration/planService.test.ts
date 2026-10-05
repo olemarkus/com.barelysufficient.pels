@@ -1009,6 +1009,7 @@ describe('PlanService', () => {
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         syncSteppedCommands: () => false,
+        syncStorageCommands: () => undefined,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
@@ -1750,6 +1751,7 @@ describe('PlanService', () => {
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands: vi.fn(() => false),
         syncSteppedCommands: () => false,
+        syncStorageCommands: () => undefined,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
@@ -1832,6 +1834,7 @@ describe('PlanService', () => {
           return true;
         }),
         syncSteppedCommands: () => false,
+        syncStorageCommands: () => undefined,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
@@ -1966,6 +1969,7 @@ describe('PlanService', () => {
           return true;
         }),
         syncSteppedCommands: () => false,
+        syncStorageCommands: () => undefined,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),

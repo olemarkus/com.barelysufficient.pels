@@ -30,6 +30,7 @@ import { requireDeferredObjectivePlanHistoryRecorder } from '../appInit/deferred
  * restore anchor; see `getModeDeviceTargets` below.
  */
 import { requirePlanService } from '../appInit/contextGuards';
+import { mainStorageLane } from '../appInit/createBatteryControl';
 import { requireDeferredObjectiveEnergyDelivery } from '../appInit/deferredRecorders';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -285,6 +286,9 @@ export function buildMainHomeScope(
       // `buildHomePlanDevices`.
       return buildHomePlanDevices(ctx, homeId, {
         surplusPostureEnabled: true,
+        // Main's battery control owner: its startup step runs before the plan
+        // stack, so a plan input read finds it built.
+        storage: mainStorageLane(ctx),
         getPrioritiesForDevices,
         projectCommandability: binaryCommandReachability.project,
         pruneCommandability: binaryCommandReachability.prune,

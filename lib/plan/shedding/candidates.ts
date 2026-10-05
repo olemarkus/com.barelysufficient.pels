@@ -24,17 +24,48 @@ import {
   type ShedCandidate,
   type ShedCandidateParams,
   type SheddingDeps,
+  type StorageShedTerm,
 } from './types';
+import { SOFT_OVERSHOOT_DEADBAND_KW } from '../planConstants';
 
 /** One build's shed candidate walk, as selection and the shortfall verdict both ask it. */
+/**
+ * The deficit shedding answers, kW: the measured one less what home-battery
+ * relief counts against it (`StorageShedTerm`), which a hand-back can raise.
+ */
+export function resolveStorageAdjustedDeficitKw(power: MeasuredPower, storage: StorageShedTerm): number {
+  return Math.max(0, -power.headroomKw - storage.netCreditKw);
+}
+
+/**
+ * An exhausted hour sheds every candidate whatever the reading, because any
+ * import adds to a spent budget. A battery that holds the house at the pace
+ * answers that too: stored energy is spent before the owner's comfort,
+ * exhausted hour included (owner ruling, 2026-10-05). "At the pace" forgives
+ * the soft-overshoot deadband and the margin the battery deliberately leaves
+ * under the house's draw; anything more still sheds. Without a battery
+ * relieving, the hour sheds exactly as before.
+ */
+export function isExhaustedHourShedding(
+  state: PlanEngineState,
+  power: MeasuredPower,
+  storage: StorageShedTerm,
+): boolean {
+  if (!state.hourlyBudgetExhausted) return false;
+  if (!storage.relieving) return true;
+  const toleranceKw = SOFT_OVERSHOOT_DEADBAND_KW + storage.drawMarginKw;
+  return power.headroomKw + storage.netCreditKw < -toleranceKw;
+}
+
 export function buildShedCandidateParams(
   context: PlanContext,
   power: MeasuredPower,
   state: PlanEngineState,
   deps: SheddingDeps,
+  storage: StorageShedTerm,
 ): ShedCandidateParams {
-  const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
-  const needed = Math.max(0, -power.headroomKw);
+  const hourlyBudgetExhausted = isExhaustedHourShedding(state, power, storage);
+  const needed = resolveStorageAdjustedDeficitKw(power, storage);
   return {
     devices: context.devices,
     needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,

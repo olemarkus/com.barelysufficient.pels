@@ -62,6 +62,11 @@ export type PlanEngine = {
   ) => boolean;
   /** The stepped axis's twin of the above; see `lib/executor/syncSteppedCommands.ts`. */
   syncSteppedCommands: (getDevices: () => readonly SteppedSettleDevice[]) => boolean;
+  /**
+   * Judge the home-battery setpoints in flight against this reading
+   * (`lib/executor/batteryExecutor.ts`), before the build reads their verdicts.
+   */
+  syncStorageCommands: () => void;
   decoratePlanWithPendingTargetCommands: (plan: DevicePlan) => DevicePlan;
   hasPendingTargetCommands: () => boolean;
   hasPendingTargetCommandsOlderThan: (thresholdMs: number) => boolean;

@@ -116,6 +116,12 @@ export class ActuationRecord {
     this.lastDeviceRestoreMs[deviceId] = nowMs;
   }
 
+  /** Whether PELS shed or restored any device at or after `sinceMs` this run. */
+  hasShedOrRestoreSince(sinceMs: number): boolean {
+    return (this.lastRestoreMs !== null && this.lastRestoreMs >= sinceMs)
+      || Object.values(this.lastDeviceShedMs).some((shedMs) => shedMs >= sinceMs);
+  }
+
   /** Record a dual-control stepped load's binary activation attempt. */
   markSteppedBinaryRestoreAttempt(deviceId: string, nowMs: number): void {
     this.lastSteppedBinaryRestoreAttemptMs[deviceId] = nowMs;

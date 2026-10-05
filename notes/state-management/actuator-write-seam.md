@@ -181,13 +181,15 @@ battery's control surface: `storage_power` writes the claim value (on every
 setpoint: the write is idempotent, so transport keeps no record of it), then
 the setpoint; `storage_release` writes setpoint 0, then restores the value the
 owner recorded before PELS claimed the battery. The owner is the only issuer of
-`storage_release` (on opt-out and at boot recovery, exempt from Main's fence
-like the executor's lifecycle release) and issues no `storage_power`: once the
-planner commands batteries, the executor issues it through Main's fenced
-actuator, only for a battery the owner's `admitClaim` admitted. There is no
-hand-back at app stop: Homey ends the app some 15-20 ms after "Stopping...",
-before a capability write could complete, so the durable claim record and boot
-recovery are the hand-back after a stop, a crash or a restart.
+`storage_release` (when the plan releases the battery, on opt-out and at boot
+recovery, exempt from Main's fence like the executor's lifecycle release) and
+issues no `storage_power`: the executor's storage lane
+(`lib/executor/batteryExecutor.ts`) issues it through Main's fenced actuator
+for a plan's setpoint decision, only for a battery the owner's `admitClaim`
+admitted. There is no hand-back at app stop: Homey ends the app some 15-20 ms
+after "Stopping...", before a capability write could complete, so the durable
+claim record and boot recovery are the hand-back after a stop, a crash or a
+restart.
 
 The actuator is the single write seam. It forwards channel-blind intent to
 transport; transport performs the SDK translation. Executor consumes only the

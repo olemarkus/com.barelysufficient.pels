@@ -309,6 +309,7 @@ const buildHarness = (
     markSteppedLoadDesiredStepIssued: (params) => helpers.markSteppedLoadDesiredStepIssued(params),
     getSteppedLoadCommandSession: (deviceId) => helpers.getSteppedLoadCommandSession(deviceId),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    storageLane: { kind: 'none' },
   };
   return {
     executor: new PlanExecutor(deps, state),

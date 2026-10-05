@@ -299,6 +299,8 @@ function buildSubHomeScope(params: {
       // engine (not MAIN's via `ctx.planEngine`).
       return buildHomePlanDevices(ctx, homeId, {
         surplusPostureEnabled: false,
+        // Home-battery control is Main only (v1).
+        storage: { kind: 'none' },
         getPrioritiesForDevices: modeCatalog.getPrioritiesForDevices,
         clearRecentBinaryOffCommand: (id, observedOnAtMs) => getPlanEngineForCommandProvenance()
           ?.clearRecentBinaryOffCommand(id, observedOnAtMs),
@@ -468,7 +470,8 @@ function createBundlePlanningRuntime(params: {
   const { planEngine, planService } = createHomePlanRuntime(
     params.ctx,
     scope,
-    { capacityGuard: guard, isActuationFenced },
+    // Home-battery control is Main only (v1): a meter area builds no storage lane.
+    { capacityGuard: guard, isActuationFenced, storageLane: { kind: 'none' } },
   );
   const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline({
     ctx: params.ctx,

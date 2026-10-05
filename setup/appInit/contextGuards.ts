@@ -105,7 +105,7 @@ export function requireFlowHomey(ctx: AppContext): FlowHomeyLike {
 /** The Main home's battery control owner, built by its own startup step after the device transport. */
 export function requireBatteryControl(ctx: AppContext) {
   if (!ctx.batteryControl) {
-    throw new Error('Battery control must be initialized before settings handler setup.');
+    throw new Error('Battery control must be initialized before the plan stack and settings handler setup.');
   }
   return ctx.batteryControl;
 }

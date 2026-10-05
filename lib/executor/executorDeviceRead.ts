@@ -15,6 +15,7 @@
  */
 import type {
   EvObservedProbe,
+  HomeBatteryObservedProbe,
   MeasuredPowerObservedProbe,
   ObservedDeviceState,
   ReportedStepObservedProbe,
@@ -32,6 +33,7 @@ export type ObserverDeviceRead = ObservedDeviceState
   & ReportedStepObservedProbe
   & MeasuredPowerObservedProbe
   & EvObservedProbe
+  & HomeBatteryObservedProbe
   & { steppedLoadProfile?: SteppedLoadProfile };
 
 /**

@@ -933,7 +933,9 @@ export type HomeBatteryClaimObservation = { value: string; observedAtMs: number 
 
 /**
  * Home-battery observations as the OWNER seams carry them (transport, observer
- * projection). Omitted from `ObservedDeviceState`; no consumer reads them yet.
+ * projection). Omitted from `ObservedDeviceState`; the planner input reads them
+ * as the storage cluster (`lib/planInput/storageProjection.ts`) and the
+ * executor's storage lane verifies setpoints against `batteryPower`.
  * `batteryPower` keeps the sign the device reported; `measuredPowerKw` is the
  * draw view of the same reading, 0 while the battery discharges.
  * `batteryClaim` is observed only for a battery whose control surface is
