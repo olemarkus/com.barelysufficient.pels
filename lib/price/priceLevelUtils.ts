@@ -3,7 +3,6 @@ import {
   calculateThresholds,
   getPriceLevelFlags,
 } from './priceMath';
-import { resolvePlanningPrice } from './budgetPrice';
 import { PriceLevel } from './priceLevels';
 
 /** The owner's cheap/expensive band, as they configured it. */
@@ -17,8 +16,6 @@ type PriceEntry = {
   totalPrice: number;
   /** How long this price applies — 60 on an hourly source, 15 on a quarter-hour one. */
   durationMinutes: number;
-  /** Planning price (`budgetPrice ?? totalPrice`); absent for non-prosumers. */
-  budgetPrice?: number;
 };
 
 /**
@@ -41,11 +38,12 @@ export const getCurrentPricePeriod = (prices: PriceEntry[], nowMs: number = Date
 /**
  * The RESOLVED price level right now, from ONE pass over the series.
  *
- * Computed over the PLANNING price (`budgetPrice ?? totalPrice`), the average
- * and the current period alike, so the level agrees with what the planner
- * schedules against (thermostat price deltas, the `price_level` flow trigger,
- * the pels_insights level capability). Identical to a total-based
- * classification when no export price is configured.
+ * Computed over the IMPORT price (`totalPrice`), the average and the current
+ * period alike, so every level an owner sees (thermostat price deltas, the
+ * `price_level` flow trigger, the pels_insights level capability) matches the
+ * price curve they are billed on. Solar never changes a level (owner ruling
+ * 2026-10-05): the planning price (`budgetPrice`) steers daily-budget shaping
+ * and smart-task scheduling only, and solar surplus has its own controls.
  *
  * `getPriceLevelFlags` computes `isCheap` and `isExpensive` together, so one
  * pass answers both. The caller hands in `prices`, and on the PELS runtime the
@@ -82,13 +80,13 @@ const createPricePeriodClassifier = (
 ): (period: PriceEntry) => PriceLevel => {
   const avgPrice = calculateDurationWeightedAveragePrice(
     prices,
-    (entry) => resolvePlanningPrice(entry.budgetPrice, entry.totalPrice),
+    (entry) => entry.totalPrice,
     (entry) => entry.durationMinutes,
   );
   const thresholds = calculateThresholds(avgPrice, band.thresholdPercent);
   return (period) => {
     const flags = getPriceLevelFlags({
-      price: resolvePlanningPrice(period.budgetPrice, period.totalPrice),
+      price: period.totalPrice,
       avgPrice,
       thresholds,
       minDiff: band.minDiff,

@@ -89,7 +89,7 @@ describe('buildCombinedPricePayload (V2)', () => {
     expect(hours[2].budgetPrice).toBeUndefined();
   });
 
-  test('computes avg/thresholds/tier flags over the planning price (budgetPrice ?? totalPrice)', () => {
+  test('computes avg/thresholds/tier flags over the import price, ignoring budgetPrice', () => {
     const start = Date.UTC(2026, 2, 18, 23, 0, 0); // local Oslo 2026-03-19 00:00
     const payload = buildCombinedPricePayload({
       combined: [
@@ -104,17 +104,19 @@ describe('buildCombinedPricePayload (V2)', () => {
       now: new Date(start + 5 * 3600_000),
       timeZone: TZ,
     });
-    // Planning avg = (10 + 100) / 2 = 55; low = 41.25, high = 68.75.
-    expect(payload.avgPrice).toBeCloseTo(55, 9);
-    expect(payload.lowThreshold).toBeCloseTo(41.25, 9);
-    expect(payload.highThreshold).toBeCloseTo(68.75, 9);
+    // Import avg = (200 + 100) / 2 = 150; low = 112.5, high = 187.5. On the
+    // planning price (avg 55) the first hour would read cheap; solar never
+    // changes a level, so it stays expensive on what the owner is billed.
+    expect(payload.avgPrice).toBe(150);
+    expect(payload.lowThreshold).toBe(112.5);
+    expect(payload.highThreshold).toBe(187.5);
     const hours = payload.days['2026-03-19'].hours;
-    // Total-based flags would call the 200-total hour expensive-vs-avg-150 —
-    // the planning-price flags instead classify the blend it schedules at.
-    expect(hours[0].isCheap).toBe(true);
-    expect(hours[0].isExpensive).toBe(false);
-    expect(hours[1].isCheap).toBe(false);
-    expect(hours[1].isExpensive).toBe(true);
+    expect(hours[0].isCheap).toBe(false);
+    expect(hours[0].isExpensive).toBe(true);
+    expect(hours[1].isCheap).toBe(true);
+    expect(hours[1].isExpensive).toBe(false);
+    // The planning price is still carried for the schedulers.
+    expect(hours[0].budgetPrice).toBe(10);
   });
 
   test('invariance: no budgetPrice (or budgetPrice === totalPrice) yields the historical flags', () => {

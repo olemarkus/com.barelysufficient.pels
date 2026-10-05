@@ -24,7 +24,7 @@ const buildConfig = (overrides: Partial<PriceConfigState> = {}): PriceConfigStat
   powerhourStatus: null,
   powerhourDeviceId: null,
   currentPriceLevel: null,
-  liveSummary: { lastFetchedShort: null, exportText: null, planningReasonLine: null },
+  liveSummary: { lastFetchedShort: null, exportText: null },
   exportPriceEnabled: false,
   exportPriceSource: 'manual',
   exportSpotFactor: 0,
@@ -77,7 +77,6 @@ const buildProps = (
 const liveSummary = (overrides: Partial<LiveSummarySignals>): LiveSummarySignals => ({
   lastFetchedShort: null,
   exportText: null,
-  planningReasonLine: null,
   ...overrides,
 });
 
@@ -175,7 +174,7 @@ describe('ElectricityPricesView', () => {
     expect(summary?.textContent).toContain('—');
   });
 
-  it('adds the export-price row and "using your solar" reason line for a prosumer', () => {
+  it('adds the export-price row for a prosumer, with no solar note on the import-price level', () => {
     const mount = document.createElement('div');
     document.body.appendChild(mount);
 
@@ -185,18 +184,16 @@ describe('ElectricityPricesView', () => {
       liveSummary: liveSummary({
         lastFetchedShort: '14:05',
         exportText: '0.34 kr/kWh',
-        planningReasonLine: 'using your solar',
       }),
     }));
 
     const summary = mount.querySelector('.electricity-prices-live-summary');
     expect(summary?.textContent).toContain('Export price');
     expect(summary?.textContent).toContain('0.34 kr/kWh');
-    expect(summary?.querySelector('.electricity-prices-planning-reason')?.textContent)
-      .toBe('using your solar');
+    expect(summary?.textContent).not.toContain('using your solar');
   });
 
-  it('stays byte-identical for a non-prosumer: no export row, no reason line', () => {
+  it('stays byte-identical for a non-prosumer: no export row', () => {
     const mount = document.createElement('div');
     document.body.appendChild(mount);
 
@@ -207,7 +204,6 @@ describe('ElectricityPricesView', () => {
 
     const summary = mount.querySelector('.electricity-prices-live-summary');
     expect(summary?.textContent).not.toContain('Export price');
-    expect(summary?.querySelector('.electricity-prices-planning-reason')).toBeNull();
   });
 
   it('shows "Awaiting prices" (not "Normal") for the unknown level before prices arrive', () => {

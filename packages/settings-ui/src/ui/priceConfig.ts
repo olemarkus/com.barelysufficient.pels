@@ -84,7 +84,7 @@ let configState: PriceConfigState = {
   powerhourStatus: null,
   powerhourDeviceId: null,
   currentPriceLevel: null,
-  liveSummary: { lastFetchedShort: null, exportText: null, planningReasonLine: null },
+  liveSummary: { lastFetchedShort: null, exportText: null },
   exportPriceEnabled: false,
   exportPriceSource: EXPORT_PRICE_SOURCE_DEFAULT,
   exportSpotFactor: 0,
