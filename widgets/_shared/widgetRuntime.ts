@@ -1,4 +1,4 @@
-// Shared widget runtime. The five widgets (headroom, plan_budget, smart_tasks,
+// Shared widget runtime. The widgets (headroom, plan_budget, price, smart_tasks,
 // create_smart_task, starvation_rescue) each render a different surface, but the
 // host-integration scaffolding around them is identical: the Homey-client
 // bootstrap handshake, the preview-theme toggle, the controller shape, and (for
@@ -146,7 +146,7 @@ export const maybeReloadOnOrphan = (widgetWindow: Window): boolean => {
 export const reloadIfOrphaned = (error: unknown, widgetWindow: Window): boolean =>
   isWidgetNotFound(error) && maybeReloadOnOrphan(widgetWindow);
 
-// The host-integration bootstrap shared by all five widgets, verbatim:
+// The host-integration bootstrap shared by all the widgets, verbatim:
 //   1. resolve the widget's DOM targets; bail (return null) if the markup is
 //      missing — every widget's `installWidget` returns null in that case.
 //   2. build the controller from those targets.

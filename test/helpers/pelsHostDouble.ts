@@ -68,6 +68,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     rescueDeviceWithBudgetExemption: notWired('rescueDeviceWithBudgetExemption'),
     getDailyBudgetUiPayload: () => ({ kind: 'unavailable' }),
     getCombinedPricesForUi: () => null,
+    getPriceTimelineForUi: () => ({ state: 'unavailable', reason: 'no_prices' }),
     getDeferredObjectiveActivePlansUiPayload: () => null,
     getDeferredObjectivePlanHistoryRecentUiPayload: () => ({ version: 1, entriesByDeviceId: {} }),
     getDeferredObjectivePlanHistoryUiPayload: () => ({ version: 1, entriesByDeviceId: {} }),

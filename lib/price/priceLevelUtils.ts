@@ -4,6 +4,7 @@ import {
   getPriceLevelFlags,
 } from './priceMath';
 import { PriceLevel } from './priceLevels';
+import type { PriceTimelineLevel, PriceTimelineLines } from '../../packages/contracts/src/priceTimeline';
 
 /** The owner's cheap/expensive band, as they configured it. */
 export type PriceLevelBand = {
@@ -70,30 +71,88 @@ export const resolveCurrentPricePeriodLevel = (
 };
 
 /**
+ * The lines the owner's band actually draws over a series: a price at or below
+ * `cheapAtOrBelow` is cheap, one at or above `expensiveFrom` is expensive, and
+ * anything between is normal. Each line is the stricter of the percentage
+ * threshold and the minimum difference from the average, because a price must
+ * pass both (`getPriceLevelFlags`). A surface that states where the lines are
+ * shows these, so a price above the stated expensive line is never normal.
+ */
+export type PriceLevelLines = PriceTimelineLines;
+
+type PriceLevelBandModel = {
+  lines: PriceLevelLines;
+  classify: (period: PriceEntry) => PriceLevel;
+};
+
+/**
  * Classifies any period of `prices` against the owner's band, over the
  * duration-weighted average of the whole series. Built once per series, so the
- * current level and the look-ahead below answer from the same average.
+ * current level, the look-ahead and the timeline below answer from the same
+ * average.
  */
-const createPricePeriodClassifier = (
+const createPriceLevelBandModel = (
   prices: PriceEntry[],
   band: PriceLevelBand,
-): (period: PriceEntry) => PriceLevel => {
+): PriceLevelBandModel => {
   const avgPrice = calculateDurationWeightedAveragePrice(
     prices,
     (entry) => entry.totalPrice,
     (entry) => entry.durationMinutes,
   );
   const thresholds = calculateThresholds(avgPrice, band.thresholdPercent);
-  return (period) => {
-    const flags = getPriceLevelFlags({
-      price: period.totalPrice,
-      avgPrice,
-      thresholds,
-      minDiff: band.minDiff,
-    });
-    if (flags.isCheap) return PriceLevel.CHEAP;
-    if (flags.isExpensive) return PriceLevel.EXPENSIVE;
-    return PriceLevel.NORMAL;
+  return {
+    lines: {
+      average: avgPrice,
+      cheapAtOrBelow: Math.min(thresholds.low, avgPrice - band.minDiff),
+      expensiveFrom: Math.max(thresholds.high, avgPrice + band.minDiff),
+    },
+    classify: (period) => {
+      const flags = getPriceLevelFlags({
+        price: period.totalPrice,
+        avgPrice,
+        thresholds,
+        minDiff: band.minDiff,
+      });
+      if (flags.isCheap) return PriceLevel.CHEAP;
+      if (flags.isExpensive) return PriceLevel.EXPENSIVE;
+      return PriceLevel.NORMAL;
+    },
+  };
+};
+
+const createPricePeriodClassifier = (
+  prices: PriceEntry[],
+  band: PriceLevelBand,
+): (period: PriceEntry) => PriceLevel => createPriceLevelBandModel(prices, band).classify;
+
+/** Every period of a series with its level, and the lines that decided them. */
+export type PriceLevelTimeline<T extends PriceEntry> = {
+  periods: Array<T & { level: PriceTimelineLevel }>;
+  lines: PriceLevelLines;
+};
+
+/** A classified period's level in the timeline's vocabulary; the classifier never answers unknown. */
+const toTimelineLevel = (level: PriceLevel): PriceTimelineLevel => {
+  if (level === PriceLevel.CHEAP) return 'cheap';
+  if (level === PriceLevel.EXPENSIVE) return 'expensive';
+  return 'normal';
+};
+
+/**
+ * The whole series classified in one pass, for a surface that draws the levels
+ * over time (the price widget). Same average, band and classifier as
+ * {@link resolveCurrentPricePeriodLevel}, so the period in force here always
+ * carries the current level.
+ */
+export const resolvePriceLevelTimeline = <T extends PriceEntry>(
+  prices: T[],
+  band: PriceLevelBand,
+): PriceLevelTimeline<T> => {
+  const model = createPriceLevelBandModel(prices, band);
+  return {
+    periods: prices.map((period) => ({ ...period, level: toTimelineLevel(model.classify(period)) })),
+    lines: model.lines,
   };
 };
 

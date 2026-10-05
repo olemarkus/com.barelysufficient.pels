@@ -16,6 +16,7 @@ import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from './settingsUiApi.js';
 import type { SmartTaskHomeScope } from './smartTaskHomeScope.js';
+import type { PriceTimelineRead } from './priceTimeline.js';
 
 /**
  * Result of a widget-initiated deferred-objective write (create / rescue).
@@ -84,6 +85,11 @@ export type DailyBudgetHostApi = {
   getCombinedPricesForUi(): unknown;
 };
 
+/** price widget host surface. */
+export type PriceWidgetHostApi = {
+  getPriceTimelineForUi(): PriceTimelineRead;
+};
+
 /** smart_tasks widget host surface. */
 export type SmartTaskHistoryHostApi = {
   getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV1 | null;
@@ -107,4 +113,5 @@ export type PelsWidgetHostApi =
   & CreateSmartTaskHostApi
   & StarvationRescueHostApi
   & DailyBudgetHostApi
+  & PriceWidgetHostApi
   & SmartTaskHistoryHostApi;

@@ -1,11 +1,11 @@
 ---
 title: Dashboard Widgets
-description: Pin PELS widgets to a Homey dashboard to watch available power, today's budget, and Smart task progress, and start or release a device without opening the app.
+description: Pin PELS widgets to a Homey dashboard to watch available power, electricity prices, today's budget, and Smart task progress, and start or release a device without opening the app.
 ---
 
 # Dashboard Widgets
 
-PELS ships five small widgets you can pin to a Homey dashboard. Most show status at a glance and refresh on their own; two are interactive — **New smart task** lets you create a task and **Held-back devices** lets you release one — straight from the dashboard.
+PELS ships six small widgets you can pin to a Homey dashboard. Most show status at a glance and refresh on their own; two are interactive — **New smart task** lets you create a task and **Held-back devices** lets you release one — straight from the dashboard.
 
 Add any widget from your Homey dashboard's widget picker, then place it where you want.
 
@@ -23,6 +23,20 @@ The widget shows:
 - A price-level chip when prices are cheap or expensive (hidden when prices are normal).
 
 It refreshes about every 10 seconds. If no new reading has arrived recently — for example after a restart, during a meter outage, in a quiet stretch between Flow reports on the Flow power source, or while the reading seems stuck on one value — the widget keeps showing the last known reading (dimmed) rather than blanking, but it stops asserting the present: the coloured bar and state label go neutral and the bottom line reads **No recent power reading** instead of available power and held-back counts, so figures from before the gap are never presented as live. Once the meter has been silent, or stuck on one value, long enough for PELS to limit devices on that account (about ten minutes), the tile stops showing the old figures altogether and reads **No new power readings**. The next new reading returns it to normal on its own.
+
+## Electricity price
+
+Answers **"is power cheap or expensive right now, and when will that change?"**
+
+The widget draws the price curve from up to three hours ago (never before midnight) to the last price PELS knows, with the periods PELS counts as cheap or expensive shaded behind it. Above the chart it shows:
+
+- The current price and its level: **Price low**, **Price normal** or **Price high**.
+- Where the lines are, for example `High from 40.90 øre · low up to 24.60 øre`. When no period on the chart reaches a line, the widget says how close the prices come, so an unshaded day reads as a choice rather than a gap: PELS only changes the level when the difference is worth giving up some comfort for.
+- Until tomorrow's prices are published, a note that the lines can still move. The lines follow the average of today and tomorrow, so they shift when tomorrow's prices arrive.
+
+The levels are the same ones your devices and Flows act on, and they always follow the import price you are billed. Choose **Show** in the widget's settings to draw the import price, the export price, or both. The export price has no levels of its own. You set what counts as cheap or expensive under **Settings > Electricity prices**.
+
+The widget refreshes about every minute.
 
 ## Budget and Price
 
@@ -103,6 +117,7 @@ The one row without the button is a device that already has its own Smart task �
 ## When to use which
 
 - **Available power** — a constant read on capacity pressure when you run heavy loads (an EV charger, a sauna, a wallbox heater).
+- **Electricity price** — to see whether power is cheap or expensive now, and when that changes.
 - **Budget and Price** — to see where today's energy and cost will land, and which hours are cheapest.
 - **Smart tasks** — when you depend on smart-task deadlines; the widget turns red before you'd otherwise notice a miss.
 - **New smart task** — to set a one-off ready-by goal without opening the app or building a Flow.

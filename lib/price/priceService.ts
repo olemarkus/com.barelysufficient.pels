@@ -1,5 +1,4 @@
 import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
-import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW,
   POWERHOUR_PRICES_TODAY, POWERHOUR_PRICES_TOMORROW, PRICE_THRESHOLD_PERCENT, PRICE_MIN_DIFF_ORE,
@@ -7,13 +6,12 @@ import {
 import type { ResolvedPriceScheme, SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
 import {
   addDays,
-  fetchGridTariffWithDateFallback,
   getSpotPriceCacheDecision,
   getSpotPriceDates,
 } from './priceServiceUtils';
 import { DEFAULT_PERIOD_MINUTES, getFlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
-import { dropClearedGridCompanyTariff, shouldUseGridTariffCache } from './gridTariffUtils';
-import { NETTLEIE_FALLBACK_GENERATED_AT, resolveGridTariffFallback } from './staticGridTariffFallback';
+import { dropClearedGridCompanyTariff } from './gridTariffUtils';
+import { refreshGridTariff } from './gridTariffRefresh';
 import {
   buildHomeyEnergyDateInfo,
   fetchHomeyEnergyResults,
@@ -46,8 +44,9 @@ import {
   type NorwaySchemeSettings,
 } from './priceServiceNorway';
 import { mirrorPowerhourPrices, type PowerhourSourceUiStatus } from './powerhourScheme';
-import { applyExportPrices } from './exportPrice';
+import { applyExportPrices, type ExportPriceConfig } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
+import { buildPriceTimeline } from './priceTimeline';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import {
   resolveCurrentPricePeriodLevel,
@@ -67,12 +66,7 @@ import type { HomeyWebApiGet } from './homeyWebApiPort';
 import type { PriceDataStore } from './priceDataStore';
 import type { PricePayloadKey } from './priceCacheStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
-
-const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | 'noData', string> = {
-  keepCache: 'Keeping cached tariff data (NVE returned empty list)',
-  clearStaleFallback: 'Cleared stale fallback (NVE unavailable, no static fallback for current operator)',
-  noData: 'NVE unavailable and no static fallback for this operator',
-};
+import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 
 export default class PriceService {
   constructor(
@@ -247,71 +241,16 @@ export default class PriceService {
       this.skipGridTariffWithoutCompany();
       return;
     }
-    const requestSettings = {
-      countyCode: settings.countyCode, tariffGroup: settings.tariffGroup,
-      organizationNumber: settings.organizationNumber,
-    };
-
-    const todayDate = new Date();
-    const timeZone = this.getTimeZone();
-    const today = getDateKeyInTimeZone(todayDate, timeZone);
-    const existingData = this.priceDataStore.readNettleie() as
-      Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
-    if (!forceRefresh && shouldUseGridTariffCache(existingData, today, this.sinks.debugStructured)) {
-      this.updateCombinedPrices();
-      return;
-    }
-
-    const { data, attempts, logContext } = await fetchGridTariffWithDateFallback({
-      settings: requestSettings,
-      todayDate,
-      timeZone,
-      structuredInfo: (payload) => this.sinks.structuredLog?.info(payload),
-      errorLog: this.sinks.errorLog,
-    });
-    if (data) {
-      this.storeGridTariffData(data, logContext, requestSettings.organizationNumber);
-      return;
-    }
-
-    // All NVE attempts failed. Keep real cached data if any; otherwise — a new
-    // user with nothing cached — seed the static fallback so prices still work
-    // until NVE recovers. The fallback is flagged so it never suppresses the
-    // next NVE retry (see shouldUseGridTariffCache).
-    const outcome = resolveGridTariffFallback({
-      existingData,
-      organizationNumber: requestSettings.organizationNumber,
-      tariffGroup: requestSettings.tariffGroup,
-      date: todayDate,
-      timeZone,
-    });
-    if (outcome.kind === 'store') {
-      this.storeGridTariffData(
-        outcome.entries,
-        ` (static fallback — NVE unavailable, no cached tariff; snapshot ${NETTLEIE_FALLBACK_GENERATED_AT})`,
-        requestSettings.organizationNumber,
-      );
-      return;
-    }
-    if (outcome.kind === 'fallbackCurrent') {
-      // Fallback already matches today; recompute combined prices in memory but
-      // skip the redundant cache write while NVE stays down.
-      this.updateCombinedPrices();
-      return;
-    }
-    if (outcome.kind === 'clearStaleFallback') {
-      // The cached data is a stale fallback for an operator we can no longer
-      // serve (e.g. the org number changed). Clear it so combined prices don't
-      // keep using another operator's tariff.
-      this.priceDataStore.writeNettleie([]);
-      this.updateCombinedPrices();
-    }
-    this.sinks.errorLog?.(`Grid tariff: ${GRID_TARIFF_FAILURE_REASONS[outcome.kind]}`, {
-      attempts,
-      countyCode: requestSettings.countyCode,
-      organizationNumber: requestSettings.organizationNumber,
-      tariffGroup: requestSettings.tariffGroup,
-    });
+    const { countyCode, tariffGroup, organizationNumber } = settings;
+    const outcome = await refreshGridTariff(
+      { countyCode, tariffGroup, organizationNumber },
+      () => this.norwaySchemeSettings.organizationNumber,
+      this.priceDataStore,
+      this.getTimeZone(),
+      this.sinks,
+      forceRefresh,
+    );
+    if (outcome === 'rebuild') this.updateCombinedPrices();
   }
 
   /** No grid company, no grid tariff (see `dropClearedGridCompanyTariff`). */
@@ -319,16 +258,6 @@ export default class PriceService {
     this.sinks.structuredLog?.info({ event: 'grid_tariff_skipped', reason: 'no_organization_number' });
     const stored = this.getSettingValue(NORWAY_SETTING_KEYS.organizationNumber);
     if (dropClearedGridCompanyTariff(stored, this.priceDataStore)) this.updateCombinedPrices();
-  }
-
-  private storeGridTariffData(data: Array<Record<string, unknown>>, logContext: string, company: string): void {
-    // The owner chose another grid company, or cleared it, while NVE answered:
-    // this tariff is not theirs, and the refresh their change started stores
-    // the right one.
-    if (this.norwaySchemeSettings.organizationNumber !== company) return;
-    this.priceDataStore.writeNettleie(data);
-    this.sinks.structuredLog?.info({ event: 'grid_tariff_stored', entryCount: data.length, context: logContext });
-    this.updateCombinedPrices();
   }
 
   updateCombinedPrices(): void {
@@ -417,11 +346,13 @@ export default class PriceService {
   /**
    * The price series at the periods the source published, for the one consumer
    * that asks what the price is *right now* rather than this hour: the price
-   * level (and the temperature shift, the `price_level` trigger and the
-   * insights capability that follow it).
+   * level (and the temperature shift, the `price_level` trigger, the insights
+   * capability and the price widget's timeline that follow it).
    *
-   * The import price only: solar never changes a price level, so neither the
-   * export price nor the planning price is layered on here.
+   * The import price only: solar never changes a price level, so neither PELS's
+   * export model nor the planning price is layered on here. A Homey series that
+   * uses Homey's export terms still carries the export price its source
+   * attached; the level never reads it.
    */
   getCombinedPricePeriods(): CombinedPricePeriod[] {
     return this.buildImportPricePeriods();
@@ -433,13 +364,20 @@ export default class PriceService {
    * price level reads stays on the import price alone.
    */
   private withExportAndPlanningPrices<T extends CombinedPriceFields>(series: T[]): T[] {
-    const exportConfig = resolveExportConfigForScheme(
+    return applyBudgetPrices(
+      applyExportPrices(series, this.resolveExportConfig()),
+      this.budgetPriceInputs,
+      this.getTimeZone(),
+    );
+  }
+
+  private resolveExportConfig(): ExportPriceConfig {
+    return resolveExportConfigForScheme(
       this.homey.settings,
       this.getPriceScheme(),
       (key) => this.getSettingValue(key),
       (key, fallback) => this.getNumberSetting(key, fallback),
     );
-    return applyBudgetPrices(applyExportPrices(series, exportConfig), this.budgetPriceInputs, this.getTimeZone());
   }
 
   private buildImportPricePeriods(): CombinedPricePeriod[] {
@@ -580,6 +518,22 @@ export default class PriceService {
    */
   getPriceLevelChangesWithin(window: PriceLevelLookahead): PriceLevelChangesRead {
     return resolvePriceLevelChangesWithin(this.getCombinedPricePeriods(), this.priceLevelBand, window);
+  }
+
+  /**
+   * Every period with its level and the lines that decided them, from a
+   * SINGLE series build, for the price widget. The same series and classifier
+   * as the current level, so the widget can never show a level the Flow cards
+   * and devices disagree with. The export price rides along for display only.
+   */
+  getPriceTimeline(): PriceTimelineRead {
+    const series = this.getCombinedPricePeriods();
+    if (series.length === 0) return { state: 'unavailable', reason: 'no_prices' };
+    return {
+      state: 'ready',
+      ...buildPriceTimeline(series, this.priceLevelBand, this.resolveExportConfig()),
+      priceUnit: this.getPriceUnitLabel(),
+    };
   }
 
   private get norwaySchemeSettings(): NorwaySchemeSettings {
