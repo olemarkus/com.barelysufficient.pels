@@ -76,7 +76,7 @@ editLink: false
 
   ### Use more of your own solar
 
-  If you have solar panels, PELS sends your surplus to hot water, heating, a device that should only run on your own power, or your car's charging current, even behind an inverter that limits export to zero. The Usage tab shows what your panels produced, what you used yourself, what you exported and the grid cost you avoided. With a home battery, PELS charges it from the surplus your devices leave and discharges it to hold your limit before it turns anything down.
+  With solar panels, PELS puts your surplus to work in hot water, heating or the car, even behind an inverter limited to zero export, and the Usage tab shows what your panels produced and what that saved you. A home battery charges from the surplus your devices leave and discharges to hold your limit before anything is turned down.
 
   [Solar and Self-Consumption](./solar.md) · [Solar accounting](./technical.md#solar-accounting)
 
