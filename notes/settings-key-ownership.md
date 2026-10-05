@@ -143,7 +143,10 @@ and the `combined_prices` built from them live in the price cache.
 
 - **`homey.settings`** — configuration and mission-critical state: managed and
   controllable devices, priorities, mode targets and the mode-target ownership
-  state (a restore target the app cannot recover is not regenerable), device
+  state (a restore target the app cannot recover is not regenerable), the home
+  battery claim records (`battery_control_claim.<deviceId>`, owner
+  `lib/battery/batteryClaimStore.ts`: the claim value a battery held before PELS
+  took it over, which exists nowhere else once overwritten), device
   control profiles, smart-task definitions, price/budget/EV/weather settings,
   meter and source choice (including which Power by the Hour price device
   prices the home), small live latches. The SDK's `ManagerSettings.set`

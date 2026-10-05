@@ -5,9 +5,9 @@
  *
  * Ownership split:
  *  - **This module** owns the hold state, the opt-in read, and persistence. It is
- *    a pure observer leaf (`no-observer-to-peer`): its only import is the settings
- *    key registry, so `lib/device`, `lib/plan`, `lib/executor`, and `setup` may
- *    all depend on it.
+ *    a pure observer leaf (`no-observer-to-peer`): it imports only the settings
+ *    key registry and key-list reader, so `lib/device`, `lib/plan`,
+ *    `lib/executor`, and `setup` may all depend on it.
  *  - **`setup/externalOffHoldAdapter.ts`** binds `homey.settings` to the store
  *    port below and resolves the opt-in read. It knows Homey; this module does not.
  *  - **`setup/externalOffHoldDetection.ts`** owns the provenance question ("was
@@ -27,7 +27,8 @@
  *
  *  - **There is no value to validate.** An absent payload cannot be malformed,
  *    truncated, `NaN`, or tampered into an extra field. The only untrusted read
- *    left is the key LIST, classified once in `readKeyList`.
+ *    left is the key LIST, classified once by `readSettingsKeyList`
+ *    (`lib/utils/settingsKeyList.ts`).
  *  - **There is no shared document to clobber.** The previous shape kept every
  *    hold in one `external_off_holds` blob whose write full-replaced it, so a
  *    blob PELS could not read made *any* write a potential wipe of every other
@@ -60,6 +61,7 @@ import {
   EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED,
   PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
 } from '../utils/settingsKeys';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 
 /**
  * The minimal settings surface this store needs. Structurally matches the
@@ -173,31 +175,6 @@ const perDeviceKey = (deviceId: string): string => (
   `${PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX}${deviceId}`
 );
 
-/**
- * The key list, classified — the ONLY untrusted read this module makes. PELS
- * always has settings keys, so an empty list is the transient-empty-store flake
- * rather than a store with nothing in it. The SDK has returned nullish and
- * malformed values here as well as throwing, so the value is classified before
- * any array operation.
- */
-type KeyListRead =
-  | { status: 'resolved'; keys: readonly string[] }
-  | { status: 'unavailable' };
-
-const readKeyList = (store: ExternalOffHoldSettingsStore): KeyListRead => {
-  let raw: unknown;
-  try {
-    raw = store.getKeys();
-  } catch {
-    return { status: 'unavailable' };
-  }
-  if (!Array.isArray(raw) || !raw.every((key) => typeof key === 'string')) {
-    return { status: 'unavailable' };
-  }
-  if (raw.length === 0) return { status: 'unavailable' };
-  return { status: 'resolved', keys: raw };
-};
-
 export const createExternalOffHoldPolicy = (
   deps: ExternalOffHoldDeps,
 ): ExternalOffHoldPolicy => {
@@ -236,7 +213,7 @@ export const createExternalOffHoldPolicy = (
 
   const heldDeviceIds = (): string[] => {
     ensureMigrated();
-    const keyList = readKeyList(store);
+    const keyList = readSettingsKeyList(store);
     if (keyList.status !== 'resolved') return [];
     return keyList.keys
       .filter((key) => key.startsWith(PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX))
@@ -251,7 +228,7 @@ export const createExternalOffHoldPolicy = (
 
   const clearHold = (deviceId: string): boolean => {
     ensureMigrated();
-    const keyList = readKeyList(store);
+    const keyList = readSettingsKeyList(store);
     const wasHeld = keyList.status === 'resolved'
       && keyList.keys.includes(perDeviceKey(deviceId));
     try {
@@ -293,7 +270,7 @@ export const createExternalOffHoldPolicy = (
     isEnabledForDevice,
     isHeld: (deviceId) => {
       ensureMigrated();
-      const keyList = readKeyList(store);
+      const keyList = readSettingsKeyList(store);
       if (keyList.status === 'resolved') return keyList.keys.includes(perDeviceKey(deviceId));
       // The key list could not be read: an opted-in device may have a hold we
       // simply could not see, and answering "not held" is exactly the resume
@@ -306,7 +283,7 @@ export const createExternalOffHoldPolicy = (
     },
     startHold: (deviceId) => {
       ensureMigrated();
-      const keyList = readKeyList(store);
+      const keyList = readSettingsKeyList(store);
       if (keyList.status === 'resolved' && keyList.keys.includes(perDeviceKey(deviceId))) {
         return false;
       }
@@ -343,7 +320,7 @@ export const createExternalOffHoldPolicy = (
       // Not newly written: already held, or every write attempt failed. Only a
       // hold the key list SHOWS counts. `isHeld`'s fail-closed guess would claim
       // a hold that is not stored, and the device would resume once reads recover.
-      const keyList = readKeyList(store);
+      const keyList = readSettingsKeyList(store);
       return keyList.status === 'resolved' && keyList.keys.includes(perDeviceKey(deviceId))
         ? 'held'
         : 'unavailable';
@@ -385,7 +362,7 @@ export const migrateExternalOffHoldsToPerKey = (
   }
   if (marker === true) return;
 
-  const keyList = readKeyList(store);
+  const keyList = readSettingsKeyList(store);
   if (keyList.status !== 'resolved') return;
 
   if (!keyList.keys.includes(EXTERNAL_OFF_HOLDS)) {

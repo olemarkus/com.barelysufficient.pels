@@ -1,6 +1,7 @@
 import type { HomeyRuntime } from '../ports/homeyRuntime';
 import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import {
+  BATTERY_CONTROL_DEVICES,
   BUDGET_EXEMPT_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
   DEVICE_START_POLICIES,
@@ -120,6 +121,13 @@ export type SettingsHandlerDeps = {
    * until the next restart, which is precisely the bug this closes.
    */
   reloadExpectedPowerOverrides: () => void;
+  /**
+   * Hand the owner's `battery_control_devices` change to the battery control
+   * owner, which hands back every claimed battery the owner just turned off.
+   * REQUIRED for the same reason as `reloadExpectedPowerOverrides`: an unwired
+   * seam would leave an opted-out battery under PELS's control until restart.
+   */
+  applyBatteryControlSettings: () => void;
   /**
    * Synchronously observe a source settings event before it enters the async
    * settings queue. This closes per-home authorization for the new generation.
@@ -397,6 +405,12 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       // `externalOffHoldActive` is re-resolved from the cached snapshot by the
       // rebuild below.
       await rebuildPlanFromSettings(deps, RESPECT_EXTERNAL_OFF_DEVICES);
+    },
+    [BATTERY_CONTROL_DEVICES]: async () => {
+      // No snapshot refresh and no rebuild: the planner does not command
+      // batteries. The opt-out decides only what the battery owner may claim,
+      // and turning a battery off hands it back if PELS holds it.
+      deps.applyBatteryControlSettings();
     },
     [DEVICE_START_POLICIES]: async () => {
       // Reload FIRST: the policy map reaches the planner through the capacity

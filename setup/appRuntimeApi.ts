@@ -245,6 +245,7 @@ abstract class AppRuntimeApi extends Base {
   protected initPriceCoordinator(): Promise<void> { return this.serviceWiring.initPriceCoordinator(); }
   protected initDailyBudgetService(): void { this.serviceWiring.initDailyBudgetService(); }
   protected initDeviceManager(): Promise<void> { return this.serviceWiring.initDeviceManager(); }
+  protected initBatteryControl(): void { this.serviceWiring.initBatteryControl(); }
   protected initCapacityGuard(): void { this.serviceWiring.initCapacityGuard(); }
   protected initPlanRuntime(): void { this.serviceWiring.initPlanRuntime(); }
   protected initDeviceDiagnosticsService(): void { this.serviceWiring.initDeviceDiagnosticsService(); }

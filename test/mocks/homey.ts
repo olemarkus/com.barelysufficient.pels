@@ -24,7 +24,12 @@ type MockCapabilityMetadata = {
   min?: number;
   max?: number;
   step?: number;
+  /** A signed setpoint's exclude band (Homey coerces a write strictly inside it to 0). */
+  excludeMin?: number;
+  excludeMax?: number;
   setable?: boolean;
+  /** An enum capability's declared values, as the device API lists them. */
+  values?: ReadonlyArray<{ id: string }>;
 };
 
 const DEFAULT_API_WRITE_BEHAVIOR: Required<MockApiWriteBehavior> = {
@@ -310,6 +315,9 @@ export class MockDevice {
       if (typeof metadata?.min === 'number') entry.min = metadata.min;
       if (typeof metadata?.max === 'number') entry.max = metadata.max;
       if (typeof metadata?.step === 'number') entry.step = metadata.step;
+      if (typeof metadata?.excludeMin === 'number') entry.excludeMin = metadata.excludeMin;
+      if (typeof metadata?.excludeMax === 'number') entry.excludeMax = metadata.excludeMax;
+      if (metadata?.values) entry.values = metadata.values.map((value) => ({ ...value }));
       if (typeof metadata?.setable === 'boolean') entry.setable = metadata.setable;
       if (lastUpdated) entry.lastUpdated = lastUpdated;
       capabilitiesObj[cap] = entry;

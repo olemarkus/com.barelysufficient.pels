@@ -41,6 +41,7 @@ import type { PendingTargetObservationSource, ShedBehavior } from '../plan/planT
 import type { PlanService } from '../plan/planService';
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
+import type { BatteryControlOwner } from '../ports/batteryControlOwner';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceLevelChangesRead, PriceLevelLookahead } from '../price/priceLevelUtils';
 import type { PriceCoordinator } from '../price/priceCoordinator';
@@ -377,6 +378,12 @@ export type AppContext = {
   homeRuntimeRead?: HomeRuntimeReadPort;
   planEngine?: PlanEngine;
   lifecycleFallback?: LifecycleFallbackPort;
+  // The Main home's battery control owner: claim admission, claim records and
+  // hand-back. ASSIGNED by the `initBatteryControl` startup step
+  // (`AppServiceWiring.initBatteryControl`, after home membership), so boot
+  // recovery runs on the first committed snapshot; the settings handler
+  // reaches it here.
+  batteryControl?: BatteryControlOwner;
   // "Leave off until turned on again": the opt-in config plus the per-device
   // hold state recording that a device was turned off outside PELS, independent
   // of the current plan. ASSIGNED by `AppServiceWiring.initDeviceManager`

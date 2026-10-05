@@ -9,6 +9,7 @@ import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { ExecutableReleaseIntent } from '../../lib/executor/executablePlan';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 // Dispatch-level coverage for the binary lifecycle-disable path. Accounting is
 // intentionally absent here: every binary transport remains pending until the
@@ -43,6 +44,7 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestSteppedLoadStep: async () => ({ requested: false }),
+        ...noStorageTransport,
         requestBinaryControl: async (_deviceId: string, desired: boolean) => {
           setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
           return undefined;

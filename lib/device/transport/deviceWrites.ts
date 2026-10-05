@@ -7,6 +7,8 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import type { SteppedLoadWrite } from '../../ports/steppedLoadWrite';
+import type { StoragePowerCommand, StorageReleaseCommand } from '../../ports/storageCommand';
+import type { HomeBatteryControlSurface } from '../../../packages/contracts/src/types';
 import { getDebugEmitter } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
@@ -27,6 +29,8 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { Logger } from '../../utils/types';
 import type { TemperatureAdjustmentObserver } from '../temperatureAdjustmentObserver';
 import { isCanSetControl } from '../deviceActionProjection';
+import { HOME_BATTERY_SETPOINT_CAPABILITY_ID, toTargetPowerCapabilityValue } from '../batteryControlWiring';
+import { isHomeBatterySnapshot } from './homeBatteryObservation';
 import { TransportSnapshotStore } from './transportSnapshotStore';
 import { TransportObservationState } from './transportObservationState';
 
@@ -100,6 +104,25 @@ function resolveSwitchSdkWrite(
         return { write: easeeWrite.write, readBackAsWritten };
     }
     return { ...plain, readBackAsWritten };
+}
+
+/**
+ * The setpoint surface a storage intent's writes are resolved from. A device
+ * that is not a home battery, or one PELS can only observe, has no storage
+ * binding: the intent is refused, never improvised.
+ */
+function requireSetpointSurface(
+    snapshot: TransportDeviceSnapshot | undefined,
+    deviceId: string,
+): Extract<HomeBatteryControlSurface, { kind: 'setpoint' }> {
+    if (snapshot === undefined || !isHomeBatterySnapshot(snapshot)) {
+        throw new Error(`No home battery binding for device ${deviceId}`);
+    }
+    const surface = snapshot.homeBattery.controlSurface;
+    if (surface.kind !== 'setpoint') {
+        throw new Error(`Home battery ${deviceId} is observe-only (${surface.reason})`);
+    }
+    return surface;
 }
 
 function routeSwitchWrite(snapshot: TransportDeviceSnapshot, requested: CapabilityWrite): CapabilityWrite {
@@ -200,6 +223,38 @@ export class DeviceWriteService {
         value: normalizedValue,
     });
     return normalizedValue;
+  }
+
+  /**
+   * A home battery's signed setpoint: the claim capability is written to its
+   * Homey value first, on every setpoint (an idempotent write, so PELS holds no
+   * record of what it last wrote), then `target_power` takes the setpoint
+   * mapped onto the battery's declared range. Returns the watts written. A
+   * rejected write throws; the setpoint is never written after a claim write
+   * that failed.
+   */
+  async requestStoragePower(command: StoragePowerCommand): Promise<number> {
+    const { deviceId } = command;
+    const surface = requireSetpointSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
+    await this.setCapability(deviceId, surface.claim.capabilityId, surface.claim.homeyValue);
+    const setpointW = toTargetPowerCapabilityValue(command.setpointW, surface.range);
+    await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, setpointW);
+    return setpointW;
+  }
+
+  /**
+   * Hand a battery back: `target_power` 0 first, so the battery is idle before
+   * anyone else holds it, then the claim capability is restored to the value
+   * recorded before PELS claimed it. Whether the battery is still PELS's to
+   * hand back, and whether its claim capability declares that value, is the
+   * battery owner's call, made against its claim record; this writes
+   * unconditionally.
+   */
+  async releaseStorageControl(command: StorageReleaseCommand): Promise<void> {
+    const { deviceId, restoreClaimValue } = command;
+    const surface = requireSetpointSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
+    await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, 0);
+    await this.setCapability(deviceId, surface.claim.capabilityId, restoreClaimValue);
   }
 
   async requestSteppedLoadStep(

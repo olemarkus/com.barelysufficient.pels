@@ -373,7 +373,8 @@ export type DeviceDescriptor = {
      */
     isEvCharger: boolean;
     /**
-     * A tracked battery or panel PELS observes and never commands, resolved once
+     * A tracked battery or panel the planner observes and never commands (a
+     * battery is commanded only through the actuator's storage intents), resolved once
      * at parse from the class key (`isObserveOnlyRoleClassKey`). Required for the
      * same reason as `isEvCharger`.
      */
@@ -885,7 +886,8 @@ export type HomeBatteryObserveOnlyReason =
  * How PELS could drive a home battery, resolved once at parse from its declared
  * capabilities (`resolveBatteryControlSurface`, `lib/device/batteryControlWiring.ts`).
  * `setpoint` names the claim capability and the signed range; `observe_only`
- * says why there is none. A classification only: nothing reads it to write yet.
+ * says why there is none. The transport resolves the actuator's storage intents
+ * against it; a battery that is `observe_only` refuses them.
  */
 export type HomeBatteryControlSurface =
     | {

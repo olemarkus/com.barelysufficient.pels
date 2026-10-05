@@ -37,6 +37,7 @@ import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/pl
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../../lib/plan/planContext';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -233,6 +234,7 @@ const buildExecutorCtx = (held: boolean) => {
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestSteppedLoadStep: async () => ({ requested: false }),
+        ...noStorageTransport,
         requestBinaryControl: async (_deviceId: string, desired: boolean) => {
           setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
           return undefined;

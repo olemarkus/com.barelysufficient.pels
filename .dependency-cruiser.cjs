@@ -33,14 +33,14 @@ module.exports = {
       name: 'no-domain-to-app-layer',
       comment: 'Domain modules should not depend on app wiring.',
       severity: 'error',
-      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather|solar|home|thermostat)/' },
+      from: { path: '^lib/(battery|device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather|solar|home|thermostat)/' },
       to: { path: '^lib/app/' },
     },
     {
       name: 'no-domain-to-plan-input-integration',
       comment: 'Planner-input production is a one-way integration layer above peer domains; peers may not depend back on it.',
       severity: 'error',
-      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather|solar|home|thermostat)/' },
+      from: { path: '^lib/(battery|device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather|solar|home|thermostat)/' },
       to: { path: '^lib/planInput/' },
     },
     {
@@ -78,7 +78,7 @@ module.exports = {
         + 'mode targets, settings, direction and shed limit arrive as reads bound by setup wiring.',
       severity: 'error',
       from: { path: '^lib/thermostat/' },
-      to: { path: '^lib/(device|power|plan|dailyBudget|objectives|observer|executor|actuator|weather|solar|home)/' },
+      to: { path: '^lib/(battery|device|power|plan|dailyBudget|objectives|observer|executor|actuator|weather|solar|home)/' },
     },
     {
       name: 'no-solar-to-plan',
@@ -255,21 +255,21 @@ module.exports = {
       comment: 'Power is a producer; only the established power <-> objectives type cycle is allowed. All other peer edges forbidden.',
       severity: 'error',
       from: { path: '^lib/power/' },
-      to: { path: '^lib/(device|plan|price|dailyBudget|observer|executor|weather|home|thermostat)/' },
+      to: { path: '^lib/(battery|device|plan|price|dailyBudget|observer|executor|weather|home|thermostat)/' },
     },
     {
       name: 'no-device-to-peer-except-power',
       comment: 'Device is an SDK adapter; device may consume power (whole-home capacity/tracker types), nothing else. All other peer edges forbidden.',
       severity: 'error',
       from: { path: '^lib/device/' },
-      to: { path: '^lib/(plan|price|dailyBudget|objectives|observer|executor|weather|home|thermostat)/' },
+      to: { path: '^lib/(battery|plan|price|dailyBudget|objectives|observer|executor|weather|home|thermostat)/' },
     },
     {
       name: 'no-observer-to-peer',
       comment: 'Observer is a leaf module; consumed by plan/executor, must not consume any other peer.',
       severity: 'error',
       from: { path: '^lib/observer/' },
-      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|executor|weather|home|thermostat)/' },
+      to: { path: '^lib/(battery|device|power|plan|price|dailyBudget|objectives|executor|weather|home|thermostat)/' },
     },
     {
       name: 'no-actuator-to-peer',
@@ -280,7 +280,7 @@ module.exports = {
         + 'notes/state-management/actuator-write-seam.md.',
       severity: 'error',
       from: { path: '^lib/actuator/' },
-      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|weather|home|thermostat)/' },
+      to: { path: '^lib/(battery|device|power|plan|price|dailyBudget|objectives|observer|executor|weather|home|thermostat)/' },
     },
     {
       name: 'no-actuator-bypass',
@@ -306,18 +306,37 @@ module.exports = {
       to: { path: '^lib/actuator/' },
     },
     {
+      name: 'no-battery-to-peer',
+      comment: 'lib/battery owns home-battery control policy: the per-battery opt-out, the durable claim '
+        + 'record and the hand-back. It is a leaf domain: the write seam (the injected actuator), the '
+        + 'observer record and the settings store all arrive as ports from setup wiring, so it imports '
+        + 'only lib/ports, lib/utils, lib/logging and the shared packages.',
+      severity: 'error',
+      from: { path: '^lib/battery/' },
+      to: { path: '^lib/', pathNot: '^lib/(battery|ports|utils|logging)/' },
+    },
+    {
+      name: 'no-plan-to-battery',
+      comment: 'The planner decides outcomes from planner input; it never reaches the battery control '
+        + 'owner, whose claim records and hand-back are runtime state the planner must not see. When '
+        + 'batteries are planned, the decision crosses as planner input and an actuator storage intent.',
+      severity: 'error',
+      from: { path: '^lib/plan/' },
+      to: { path: '^lib/battery/' },
+    },
+    {
       name: 'no-price-to-peer',
       comment: 'Price is a leaf (consumed by plan and dailyBudget); must not depend on other peers.',
       severity: 'error',
       from: { path: '^lib/price/' },
-      to: { path: '^lib/(device|power|plan|dailyBudget|objectives|observer|executor|weather|home|thermostat)/' },
+      to: { path: '^lib/(battery|device|power|plan|dailyBudget|objectives|observer|executor|weather|home|thermostat)/' },
     },
     {
       name: 'no-objectives-to-peer-except-power',
       comment: 'Objectives is leafward; power <-> objectives type cycle is allowed, all other peer edges forbidden.',
       severity: 'error',
       from: { path: '^lib/objectives/' },
-      to: { path: '^lib/(device|plan|price|dailyBudget|observer|executor|weather|home|thermostat)/' },
+      to: { path: '^lib/(battery|device|plan|price|dailyBudget|observer|executor|weather|home|thermostat)/' },
     },
     {
       name: 'no-weather-to-peer',
@@ -325,14 +344,14 @@ module.exports = {
         + 'import any peer domain (notably lib/power — kWh totals arrive via injected getters).',
       severity: 'error',
       from: { path: '^lib/weather/' },
-      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|home|thermostat)/' },
+      to: { path: '^lib/(battery|device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|home|thermostat)/' },
     },
     {
       name: 'no-dailyBudget-to-peer',
       comment: 'DailyBudget is consumed by plan; may consume power and price, must not depend on any other peer.',
       severity: 'error',
       from: { path: '^lib/dailyBudget/' },
-      to: { path: '^lib/(plan|device|objectives|observer|executor|weather|home|thermostat)/' },
+      to: { path: '^lib/(battery|plan|device|objectives|observer|executor|weather|home|thermostat)/' },
     },
     {
       name: 'no-home-to-peer',
@@ -341,7 +360,7 @@ module.exports = {
         + 'data from the caller, so it must not import any other domain peer.',
       severity: 'error',
       from: { path: '^lib/home/' },
-      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|weather|solar|thermostat)/' },
+      to: { path: '^lib/(battery|device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|weather|solar|thermostat)/' },
     },
     {
       name: 'no-store-to-peer',
@@ -352,7 +371,7 @@ module.exports = {
         + 'type-only edge is the same coupling and is caught in review.',
       severity: 'error',
       from: { path: '^lib/store/' },
-      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|weather|solar|home|app|diagnostics|flowApi|thermostat)/' },
+      to: { path: '^lib/(battery|device|power|plan|price|dailyBudget|objectives|observer|executor|actuator|weather|solar|home|app|diagnostics|flowApi|thermostat)/' },
     },
     {
       name: 'no-sqlite-outside-store',

@@ -17,9 +17,11 @@ import { extractBatteryState, isHomeBatteryDevice } from './managerEnergy';
  *
  * There is NO retained value: a point-in-time successful observation is surfaced
  * purely as the structured event, nothing is held to go stale. The value is
- * awareness-only — it NEVER feeds the hard-cap import path; PELS never commands the
- * battery (a battery is `managed: true, controllable: false` and non-temperature,
- * so the existing planner gates keep it inert).
+ * awareness-only — it NEVER feeds the hard-cap import path. The planner never
+ * commands the battery (a battery is `managed: true, controllable: false` and
+ * non-temperature, so the existing planner gates keep it inert); it is commanded
+ * only through the actuator's storage intents (`lib/ports/storageCommand.ts`),
+ * never from here.
  *
  * The only state held is the detected battery-id SET (plus its narrowing-grace
  * counter). The AUTHORITATIVE managed observe-only resolution is STRUCTURAL at

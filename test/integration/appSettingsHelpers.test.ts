@@ -192,6 +192,9 @@ const buildContext = (): AppContext => {
     planService: {
       rebuildPlanFromCache: vi.fn(async () => undefined),
     } as never,
+    batteryControl: {
+      applyControlSettings: vi.fn(),
+    } as never,
     timers,
   } as unknown as AppContext;
 };
@@ -297,6 +300,15 @@ describe('initSettingsHandlerForApp', () => {
 
     expect(() => initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), HOOKS)).toThrow(
       'PlanService must be initialized before use.',
+    );
+  });
+
+  it('fails fast when battery control wiring is missing', () => {
+    const ctx = buildContext();
+    delete ctx.batteryControl;
+
+    expect(() => initSettingsHandlerForApp(ctx, () => homeModeCatalog.getOperatingMode(), HOOKS)).toThrow(
+      'Battery control must be initialized before settings handler setup.',
     );
   });
 

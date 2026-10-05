@@ -58,7 +58,7 @@ import type { PriceCoordinator } from '../lib/price/priceCoordinator';
 import type { SettingsHandler } from '../lib/utils/settingsHandlers';
 import type { AppContext } from '../lib/app/appContext';
 import { resolveTemperatureControlDisabled } from '../lib/device/temperatureControlSettings';
-import { requirePlanService } from './appInit/contextGuards';
+import { requireBatteryControl, requirePlanService } from './appInit/contextGuards';
 import type { CapacitySettings } from '../packages/contracts/src/capacitySettings';
 
 export type CapacitySettingsSnapshot = {
@@ -359,6 +359,7 @@ export function initSettingsHandlerForApp(
 ): { handle: SettingsHandler; stop: () => void } {
   const planService = requirePlanService(ctx);
   const dailyBudgetService = requireDailyBudgetService(ctx);
+  const batteryControl = requireBatteryControl(ctx);
   const settingsHandler = createSettingsHandler({
     homey: ctx.homey,
     onHomeScopedSettingChanged: options.onHomeScopedSettingChanged,
@@ -414,6 +415,7 @@ export function initSettingsHandlerForApp(
     reloadWeatherAdvisor: () => ctx.reloadWeatherCollector?.(),
     releaseDeOptedExternalOffHolds: () => ctx.externalOffHold?.releaseDeOptedHolds() ?? [],
     reloadExpectedPowerOverrides: () => ctx.reloadExpectedPowerOverrides(),
+    applyBatteryControlSettings: () => batteryControl.applyControlSettings(),
   });
   const onSettingsSet = async (key: string) => {
     if (options.consumeObservedModeTargetChange?.(key)) return;

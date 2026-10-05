@@ -27,6 +27,7 @@ import {
   type LooseInputDevice,
   type LooseOutputDevice,
 } from '../utils/planConvergenceFixtures';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 // The executor's in-flight binary command is passed alongside the observed
 // device, not folded into it: it belongs to a different layer and does not ride
@@ -966,6 +967,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
         requestBinaryControl: vi.fn(async () => undefined),
         requestTemperatureTarget: async (_deviceId, desired) => desired,
         requestSteppedLoadStep: vi.fn(async () => ({ requested: true, transport: 'native_capability' as const })),
+        ...noStorageTransport,
       }),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),

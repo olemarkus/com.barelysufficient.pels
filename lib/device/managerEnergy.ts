@@ -202,10 +202,11 @@ export const resolveLiveGeneration = (report: LiveEnergyReport): LiveGeneration 
  * flip its sign), and one invalid/out-of-range battery suppresses that field.
  *
  * READ-ONLY: surfaced for awareness only. It NEVER feeds the hard-cap import path —
- * capacity/shed/restore stay on net grid `cumulative.W`. PELS tracks the battery but
- * never sheds / price-optimizes / surplus-absorbs / actuates / starvation-tracks it
+ * capacity/shed/restore stay on net grid `cumulative.W`. The planner tracks the
+ * battery but never sheds / price-optimizes / surplus-absorbs / starvation-tracks it
  * (a battery is `managed: true, controllable: false` and non-temperature, so the
- * existing planner gates keep it inert).
+ * existing planner gates keep it inert). It is commanded only through the
+ * actuator's storage intents (`lib/ports/storageCommand.ts`).
  */
 export type BatteryStateAggregate = {
   /** Mean SoC (%, 0–100) across available battery devices, or `null` when absent. */

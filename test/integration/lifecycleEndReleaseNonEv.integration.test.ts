@@ -42,6 +42,7 @@ import type {
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
 import { createTargetCommandClaim } from '../../lib/executor/targetCommandClaim';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 // ---------------------------------------------------------------------------
 // Minimal mock device scaffolding (~80 LOC). The EaseeMockCharger pattern is
@@ -75,6 +76,7 @@ const buildActuatorTransport = (
     return desired;
   },
   requestSteppedLoadStep: async () => ({ requested: false }),
+  ...noStorageTransport,
 });
 
 const buildBinaryHeaterSnapshot = (): TargetDeviceSnapshot => ({

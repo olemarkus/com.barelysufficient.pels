@@ -83,6 +83,8 @@ export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
     requestTemperatureTarget: (deviceId, desired) => transport.requestTemperatureTarget(deviceId, desired),
     resolveTemperatureTarget: (deviceId, desired) => transport.resolveTemperatureTarget(deviceId, desired),
     requestSteppedLoadStep: transport.requestSteppedLoadStep.bind(transport),
+    requestStoragePower: (command) => transport.requestStoragePower(command),
+    releaseStorageControl: (command) => transport.releaseStorageControl(command),
   };
   return createTemperatureControlFencedActuator(
     createDeviceActuator(actuatorTransport),

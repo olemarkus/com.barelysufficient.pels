@@ -1,12 +1,14 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
+import type { StoragePowerCommand, StorageReleaseCommand } from '../ports/storageCommand';
 
 /**
  * A channel-blind control intent — what control outcome the caller wants, named
- * in domain terms (binary on/off, stepped step, target setpoint). It deliberately
- * names no Homey capability ID, flow card, or native/synthetic channel; the
- * actuator maps the intent onto transport's capability/channel writes.
+ * in domain terms (binary on/off, stepped step, target setpoint, a home
+ * battery's signed setpoint and its hand-back). It deliberately names no Homey
+ * capability ID, flow card, or native/synthetic channel; the actuator maps the
+ * intent onto transport's capability/channel writes.
  *
  * Transport resolves native-vs-Flow routing from its private binding. Every
  * accepted binary dispatch remains pending until observer telemetry confirms it.
@@ -35,7 +37,10 @@ export type DeviceCommand =
     planningPowerW: number;
     planningCurrentA: number;
     previousStepId?: string;
-  };
+  }
+  // A home battery's signed setpoint and its hand-back (`lib/ports/storageCommand.ts`).
+  | StoragePowerCommand
+  | StorageReleaseCommand;
 
 /**
  * The Homey SDK write surface the actuator delegates to. Transport stays the
@@ -53,6 +58,10 @@ export type ActuatorTransport = {
   /** Resolve the exact semantic setpoint before pending/retry preflight. */
   resolveTemperatureTarget: (deviceId: string, desired: number) => number;
   requestSteppedLoadStep: (request: SteppedLoadWrite) => Promise<SteppedLoadStepRequestResult>;
+  /** Claim the battery for Homey, then write the setpoint; returns the watts sent. */
+  requestStoragePower: (command: StoragePowerCommand) => Promise<number>;
+  /** Write a zero setpoint, then restore the recorded claim value. */
+  releaseStorageControl: (command: StorageReleaseCommand) => Promise<void>;
 };
 
 /**
@@ -87,4 +96,14 @@ export type ActuatorOutcome =
     requested: true;
     kind: 'step';
     steppedResult: SteppedLoadStepRequestResult;
+  }
+  | {
+    requested: true;
+    kind: 'storage_power';
+    /** The setpoint actually sent, after the battery's range, exclude band and step. */
+    requestedSetpointW: number;
+  }
+  | {
+    requested: true;
+    kind: 'storage_release';
   };

@@ -78,6 +78,7 @@ const sdkAllowlistFile = path.join(rootDir, 'scripts/setup-sdk-allowlist.txt');
 const PEERS = new Set([
   'device', 'power', 'objectives', 'plan', 'price', 'dailyBudget',
   'observer', 'executor', 'actuator', 'weather', 'solar', 'home', 'thermostat',
+  'battery',
 ]);
 
 const listFiles = async (dir, acc = []) => {

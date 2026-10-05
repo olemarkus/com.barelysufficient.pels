@@ -70,6 +70,7 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     onPvForecastSourceObserved: vi.fn(),
     loadCapacitySettings: vi.fn(),
     reloadExpectedPowerOverrides: vi.fn(),
+    applyBatteryControlSettings: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
     refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
     getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1, periodMinutes: 60 }),

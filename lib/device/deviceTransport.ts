@@ -23,6 +23,7 @@ import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDeli
 import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
+import type { StoragePowerCommand, StorageReleaseCommand } from '../ports/storageCommand';
 import type { FlowSteppedLoadAdmission } from '../ports/flowSteppedLoadAdmission';
 import { admitFlowSteppedLoadReport } from './transport/observationFlowStepped';
 import type {
@@ -134,7 +135,9 @@ export class DeviceTransport {
     // Read-only home-battery awareness producer. Holds the detected battery-id set
     // (the authoritative role-membership set the app's managed/controllable
     // resolution consults) and emits `battery_state_observed`; never feeds the
-    // hard-cap import path. See `batteryStateProducer.ts`. Constructed in the
+    // hard-cap import path. A battery is commanded only through the actuator's
+    // storage intents (`requestStoragePower` / `releaseStorageControl` below),
+    // never by this producer. See `batteryStateProducer.ts`. Constructed in the
     // constructor body (its emit needs the already-assigned logger).
     private readonly observationProducers: ObservationProducers;
     private readonly writeService: DeviceWriteService;
@@ -521,6 +524,16 @@ export class DeviceTransport {
         request: SteppedLoadWrite,
     ): Promise<SteppedLoadStepRequestResult> {
         return this.writeService.requestSteppedLoadStep(request);
+    }
+
+    /** A home battery's signed setpoint; the claim and the range stay this owner's binding. */
+    async requestStoragePower(command: StoragePowerCommand): Promise<number> {
+        return this.writeService.requestStoragePower(command);
+    }
+
+    /** Hand a home battery back to the claim value recorded before PELS claimed it. */
+    async releaseStorageControl(command: StorageReleaseCommand): Promise<void> {
+        return this.writeService.releaseStorageControl(command);
     }
 
     getLiveFeedHealth(): LiveFeedHealth | null { return this.deviceSdk.getHealth(); }
