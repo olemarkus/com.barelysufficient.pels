@@ -2,13 +2,15 @@
 
 Contributor- and agent-facing engineering notes that do not belong in the published user docs.
 Notes are either **design-of-record** (why a shipped subsystem is shaped the way it is) or
-**deferred-design** (a parked plan with a clear revisit trigger). Where a note describes shipped
-work it carries a status line; treat anything without one as still-forward design.
+**deferred-design** (a parked plan with a clear revisit trigger). Some files contain both
+shipped decisions and forward design. Read the file's status and section headings before
+treating a proposal as current behavior; the absence of a file-level status does not mean
+the whole note is forward design.
 
 Agent-context invariant digests live next to the code they protect, in per-module `AGENTS.md`
 files (`lib/device/AGENTS.md` for state management, `lib/observer/AGENTS.md` for observation
-quiescence, `lib/diagnostics/AGENTS.md` for starvation) — see the per-directory docs index in the
-root `AGENTS.md`. The notes here are the design-of-record behind those digests.
+quiescence, `lib/diagnostics/AGENTS.md` for starvation). The notes here are the
+design-of-record behind those digests.
 
 ## Conventions & references
 
@@ -41,8 +43,8 @@ root `AGENTS.md`. The notes here are the design-of-record behind those digests.
 - `state-management/README.md` — state-source trust, stale-data risks, reconcile pitfalls.
 - `state-management/observer-transport-split.md` — *(shipped)* observer/transport split
   design-of-record; the layering rationale that runtime code + `.dependency-cruiser.cjs` point to.
-- `state-management/deferred-objective-lifecycle-carveout.md` — lifecycle-release off the capacity
-  shed lane (increment 1 shipped; north-star relocation still pending).
+- `state-management/deferred-objective-lifecycle-carveout.md` — *(shipped)* smart-task
+  controller inversion and lifecycle release; remaining follow-ups are marked in the note.
 
 ## Settings UI
 
@@ -52,7 +54,8 @@ root `AGENTS.md`. The notes here are the design-of-record behind those digests.
 ## Deferred-load objectives & deadlines
 
 - `deferred-load-objectives/README.md` — the cluster ADR for the deadline-aware objective model
-  (soft temperature + horizon planner shipped; richer EV admission, contention handling deferred).
+  (soft temperature, horizon planning, EV pause/resume admission, and priority-ordered
+  multi-objective contention shipped; richer step escalation deferred).
 - `deferred-load-objectives/budget-bound-false-cannot-meet.md` — closed investigation: false
   `cannot_meet` under daily-budget binding.
 - `deferred-load-objectives/feasibility-confidence.md` — *(shipped)* learned-rate confidence fix
@@ -79,5 +82,3 @@ root `AGENTS.md`. The notes here are the design-of-record behind those digests.
 - `starvation/README.md` — temperature-device starvation model; detection + rescue widget shipped,
   flow cards / insights still the gap.
 - `restore-eagerness/README.md` — narrowed remaining restore-admission concern (late-ramp overshoot).
-- `competitive-landscape.md` — internal market analysis: what each market pays for, the peer apps on
-  the platform, an honest scorecard, and the plan that follows from it.
