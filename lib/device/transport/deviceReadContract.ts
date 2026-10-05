@@ -36,7 +36,7 @@ import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerCon
 import { applyNativeEvWiringOverlay } from '../nativeEvWiring';
 import { EASEE_CHARGER_CURRENT_CAPABILITY_ID, isEaseeChargerDevice } from '../nativeSteppedLoadWiring';
 import { isEvChargingState } from '../../../packages/shared-domain/src/evPlugState';
-import { resolveDeviceClassKey } from './managerHelpers';
+import { isObserveOnlyRoleClassKey, resolveDeviceClassKey } from './managerHelpers';
 
 type ModelValueType = 'boolean' | 'number' | 'string';
 
@@ -114,6 +114,15 @@ const EASEE_MODEL_CAPABILITY_TYPES: Readonly<Record<string, ModelValueType>> = {
 const NO_MODEL_CAPABILITIES: Readonly<Record<string, ModelValueType>> = {};
 
 /**
+ * A battery or panel is never a stepped load, so its `target_power` is not read
+ * as one. A home battery's `target_power` (and its claim capability, which is
+ * outside the model anyway) is read only to classify how PELS could drive it
+ * (`batteryControlWiring.ts`), and that reads the declared options, not the
+ * value: a battery whose setpoint Homey never set is still readable.
+ */
+const STEPPED_ONLY_CAPABILITY_IDS: ReadonlySet<string> = new Set(['target_power']);
+
+/**
  * The capabilities PELS reads from this device, by its role. A device whose
  * class PELS does not admit (a camera, a light, a sensor) is never parsed, so
  * nothing about it is PELS's to check.
@@ -127,9 +136,11 @@ function resolveModelCapabilityTypes(
     if (classKey === null) return NO_MODEL_CAPABILITIES;
     const withTemperatureFacet = readsTemperatureFacet(capabilities);
     const withStateOfCharge = STATE_OF_CHARGE_CLASS_KEYS.has(classKey);
+    const withSteppedControl = !isObserveOnlyRoleClassKey(classKey);
     const modelTypes = Object.fromEntries(Object.entries(DEVICE_MODEL_CAPABILITY_TYPES).filter(([capabilityId]) => (
         (withTemperatureFacet || !TEMPERATURE_FACET_CAPABILITY_IDS.has(capabilityId))
         && (withStateOfCharge || !STATE_OF_CHARGE_CAPABILITY_IDS.has(capabilityId))
+        && (withSteppedControl || !STEPPED_ONLY_CAPABILITY_IDS.has(capabilityId))
     )));
     return isEaseeChargerDevice(device) ? { ...modelTypes, ...EASEE_MODEL_CAPABILITY_TYPES } : modelTypes;
 }

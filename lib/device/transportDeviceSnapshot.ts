@@ -2,6 +2,8 @@ import type {
   BinaryControlCapabilityId,
   BinaryControlObservation,
   EvObservedProbe,
+  HomeBatteryDescriptorProbe,
+  HomeBatteryObservedProbe,
   MeasuredPowerObservedProbe,
   ReportedStepObservedProbe,
   StateOfChargeObservedProbe,
@@ -43,6 +45,9 @@ export type TransportBinaryControlObservation = BinaryControlObservation;
  *   (see `SteppedLoadDescriptorFields`).
  * - `ReportedStepObservedProbe` for `reportedStepId` and exact target-power
  *   evidence.
+ * - `HomeBatteryDescriptorProbe` / `HomeBatteryObservedProbe` for a home
+ *   battery's control surface, signed power and claim value (see
+ *   `HomeBatteryDescriptorFields` / `HomeBatteryObservedFields`).
  *
  * This shape is for the transport/observer OWNER seams only. It must not leak
  * across the producer boundary — consumers receive `TargetDeviceSnapshot` (the
@@ -81,4 +86,5 @@ export type TransportDeviceSnapshot =
   } & EvObservedProbe & TemperatureObservedProbe & ThermostatModeObservedProbe
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
+  & HomeBatteryDescriptorProbe & HomeBatteryObservedProbe
   & TransportControlBindingProbe;

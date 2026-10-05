@@ -1,4 +1,5 @@
 import type {
+    HomeBatteryObservedProbe,
     MeasuredPowerObservedProbe,
     ProjectedObservedDeviceState,
     ReportedStepObservedProbe,
@@ -46,6 +47,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         ...projectReportedStepObservation(snapshot),
         ...projectMeasuredPowerObservation(snapshot),
         ...projectSteppedLoadProfile(snapshot),
+        ...projectHomeBatteryObservation(snapshot),
     };
     if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
     if (snapshot.evCharging !== undefined) projected.evCharging = snapshot.evCharging;
@@ -99,6 +101,14 @@ function projectMeasuredPowerObservation(snapshot: TransportDeviceSnapshot): Mea
         } : {}),
         ...(snapshot.measuredPowerObservedAtMs !== undefined
             ? { measuredPowerObservedAtMs: snapshot.measuredPowerObservedAtMs } : {}),
+    };
+}
+
+/** The home-battery observed cluster, copied so the observer never aliases transport's bags. */
+function projectHomeBatteryObservation(snapshot: TransportDeviceSnapshot): HomeBatteryObservedProbe {
+    return {
+        ...(snapshot.batteryPower !== undefined ? { batteryPower: { ...snapshot.batteryPower } } : {}),
+        ...(snapshot.batteryClaim !== undefined ? { batteryClaim: { ...snapshot.batteryClaim } } : {}),
     };
 }
 

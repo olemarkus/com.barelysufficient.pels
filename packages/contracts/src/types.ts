@@ -851,6 +851,97 @@ export type ReportedStepObservedProbe = {
     reportedStepObservedAtMs?: number;
 };
 
+/**
+ * The capability that hands a home battery over to Homey (and so to PELS): the
+ * standard `target_power_mode` enum set to `homey`, or Sessy's custom
+ * `control_strategy` enum set to `POWER_STRATEGY_API` (Sessy declares no
+ * `target_power_mode`).
+ */
+export type HomeBatteryClaimCapabilityId = 'target_power_mode' | 'control_strategy';
+
+/**
+ * The signed `target_power` range a home battery accepts, in watts: positive
+ * charges, negative discharges, and `minW < 0 < maxW`. A write strictly inside
+ * the exclude band is coerced to 0 by Homey; the band always contains 0, and a
+ * device that declares no band resolves both edges to 0 (an empty band).
+ */
+export type HomeBatterySetpointRange = {
+    minW: number;
+    maxW: number;
+    stepW: number;
+    excludeMinW: number;
+    excludeMaxW: number;
+};
+
+/** Why a home battery is observed only, never commanded. */
+export type HomeBatteryObserveOnlyReason =
+    | 'no_target_power'
+    | 'target_power_not_setable'
+    | 'not_signed_range'
+    | 'no_claim_capability'
+    | 'claim_value_missing';
+
+/**
+ * How PELS could drive a home battery, resolved once at parse from its declared
+ * capabilities (`resolveBatteryControlSurface`, `lib/device/batteryControlWiring.ts`).
+ * `setpoint` names the claim capability and the signed range; `observe_only`
+ * says why there is none. A classification only: nothing reads it to write yet.
+ */
+export type HomeBatteryControlSurface =
+    | {
+        kind: 'setpoint';
+        claim: {
+            capabilityId: HomeBatteryClaimCapabilityId;
+            /** The claim capability's value that hands control to Homey. */
+            homeyValue: string;
+            /** Every value the claim capability declares. */
+            values: readonly string[];
+        };
+        range: HomeBatterySetpointRange;
+    }
+    | { kind: 'observe_only'; reason: HomeBatteryObserveOnlyReason };
+
+/**
+ * Home-battery descriptor cluster. Present exactly on a device whose class key
+ * is `battery`, so its presence IS the "is a home battery" test
+ * (`isHomeBatterySnapshot`, `lib/device/transport/homeBatteryObservation.ts`).
+ * Omitted from `DeviceDescriptor`, so a base-typed read is a compile error.
+ */
+export type HomeBatteryDescriptorFields = {
+    homeBattery: { controlSurface: HomeBatteryControlSurface };
+};
+
+/**
+ * Home-battery descriptor cluster as the OWNER seams carry it (transport stores
+ * the snapshot). Owner code narrows through `isHomeBatterySnapshot`.
+ */
+export type HomeBatteryDescriptorProbe = {
+    homeBattery?: HomeBatteryDescriptorFields['homeBattery'];
+};
+
+/** A home battery's own signed power reading: positive charging, negative discharging. */
+export type HomeBatteryPowerObservation = { signedW: number; observedAtMs: number };
+
+/**
+ * The last value a home battery's claim capability reported. It is always read
+ * off the claim capability of the same snapshot's `controlSurface`; the parse
+ * drops it when a battery is reclassified onto another capability.
+ */
+export type HomeBatteryClaimObservation = { value: string; observedAtMs: number };
+
+/**
+ * Home-battery observations as the OWNER seams carry them (transport, observer
+ * projection). Omitted from `ObservedDeviceState`; no consumer reads them yet.
+ * `batteryPower` keeps the sign the device reported; `measuredPowerKw` is the
+ * draw view of the same reading, 0 while the battery discharges.
+ * `batteryClaim` is observed only for a battery whose control surface is
+ * `setpoint`, once it reports a value.
+ */
+export type HomeBatteryObservedProbe = {
+    batteryPower?: HomeBatteryPowerObservation;
+    batteryClaim?: HomeBatteryClaimObservation;
+};
+
 /** Observer-maintained value after transport has projected every observed cluster. */
 export type ProjectedObservedDeviceState = ObservedDeviceState
     & EvObservedProbe
@@ -859,6 +950,7 @@ export type ProjectedObservedDeviceState = ObservedDeviceState
     & StateOfChargeObservedProbe
     & MeasuredPowerObservedProbe
     & ReportedStepObservedProbe
+    & HomeBatteryObservedProbe
     & { steppedLoadProfile?: SteppedLoadProfile };
 
 /**

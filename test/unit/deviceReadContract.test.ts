@@ -60,6 +60,36 @@ describe('device-read contract', () => {
       .toEqual({ reason: 'unexpected_value', capabilityId: 'target_charger_current' });
   });
 
+  it('reads a battery whose target_power Homey never set, but not a stepped load', () => {
+    const battery = (targetPower: unknown): HomeyDeviceLike => asRead({
+      id: 'battery-1',
+      name: 'Marstek Venus',
+      class: 'battery',
+      capabilities: ['measure_battery', 'measure_power', 'target_power', 'target_power_mode'],
+      capabilitiesObj: {
+        measure_battery: entry(55),
+        measure_power: entry(-2000),
+        target_power: entry(targetPower),
+        target_power_mode: entry(null),
+      },
+    });
+    expect(findDeviceReadContractViolation(battery(null))).toBeNull();
+    expect(findDeviceReadContractViolation(heater({
+      capabilities: ['onoff', 'measure_power', 'meter_power', 'target_power'],
+      capabilitiesObj: { ...HEATER_VALUES, target_power: entry(null) },
+    }))).toEqual({ reason: 'unexpected_value', capabilityId: 'target_power' });
+  });
+
+  it('reads a solar panel whose target_power Homey never set', () => {
+    expect(findDeviceReadContractViolation(asRead({
+      id: 'pv-1',
+      name: 'Inverter',
+      class: 'solarpanel',
+      capabilities: ['measure_power', 'target_power'],
+      capabilitiesObj: { measure_power: entry(3200), target_power: entry(null) },
+    }))).toBeNull();
+  });
+
   it('accepts a read that carries a value of the model type for every declared model capability', () => {
     expect(findDeviceReadContractViolation(heater())).toBeNull();
   });

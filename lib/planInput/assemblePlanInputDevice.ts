@@ -22,6 +22,10 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     evChargingState: _evChargingState,
     temperature: _temperature,
     thermostatMode: _thermostatMode,
+    // A home battery's signed power and claim value are observations nothing
+    // plans on yet; the battery itself is observe-only.
+    batteryPower: _batteryPower,
+    batteryClaim: _batteryClaim,
     ...deviceFields
   } = device;
   return deviceFields;
