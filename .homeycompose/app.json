@@ -13,7 +13,7 @@
     "fr": "PELS Gestionnaire d'énergie"
   },
   "description": {
-    "en": "Power control and cheaper-hour scheduling for EV charging, heating and hot water.",
+    "en": "Keeps your home under its power limit and runs EV charging, heating and hot water in cheap hours and on your own solar.",
     "no": "Effektstyring og bruk av billige timer for elbillading, varme og varmtvann.",
     "nl": "Lagere pieken, goedkopere uren en meer eigen zonnestroom voor je laadpaal, verwarming en boiler.",
     "fr": "Voiture électrique, chauffage et eau chaude aux heures les moins chères, sans dépasser votre limite de puissance."
@@ -53,7 +53,17 @@
       "priority control",
       "energy management",
       "load management",
-      "power control"
+      "power control",
+      "solar",
+      "solar surplus",
+      "self-consumption",
+      "feed-in",
+      "heat pump",
+      "smart charging",
+      "Easee",
+      "Zaptec",
+      "zero export",
+      "widgets"
     ],
     "no": [
       "effektledd",
@@ -82,7 +92,13 @@
       "daglig budsjett",
       "strømforbruk",
       "strømstyring",
-      "effektstyring"
+      "effektstyring",
+      "solceller",
+      "varmepumpe",
+      "hytte",
+      "smartlading",
+      "Easee",
+      "Zaptec"
     ],
     "nl": [
       "capaciteitstarief",
@@ -114,7 +130,11 @@
       "ventilatie",
       "dagbudget",
       "energiebeheer",
-      "energiemanagement"
+      "energiemanagement",
+      "Easee",
+      "warmtepomp",
+      "airco",
+      "Zaptec"
     ],
     "fr": [
       "tarif capacitaire",
@@ -144,7 +164,9 @@
       "ventilation",
       "budget quotidien",
       "pilotage énergétique",
-      "gestion de l'énergie"
+      "gestion de l'énergie",
+      "pompe à chaleur",
+      "climatisation"
     ]
   },
   "permissions": [
