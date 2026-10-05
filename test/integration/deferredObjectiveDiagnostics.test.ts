@@ -79,8 +79,7 @@ const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | und
   expect(plan).toBeDefined();
   expect(plan?.currentHourClaim).toBe(resolveCurrentHourClaim({
     currentBucketBookedKWh: plan?.currentBucket?.plannedUsefulEnergyKWh ?? null,
-    priceDeferralEligible: plan?.priceDeferralEligible === true,
-    coldStartReleaseEligible: plan?.coldStartReleaseEligible === true,
+    facts: plan?.currentHourFacts ?? { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false },
     floorShortfallCause: resolveFloorShortfallCause(diag?.reasonCode),
   }));
 };
@@ -2044,7 +2043,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic?.horizonPlan?.plannedBuckets.every((b) => b.id.startsWith('frozen-'))).toBe(true);
-    expect(diagnostic?.horizonPlan?.priceDeferralEligible).toBe(true);
+    expect(diagnostic?.horizonPlan?.currentHourFacts.aheadOfHourMilestone).toBe(true);
+    expect(diagnostic?.horizonPlan?.currentHourClaim).toBe('released');
   });
 
   it('settle milestone deferral uses latest.hours, not stale commitment.hours', () => {
@@ -2123,7 +2123,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
     expect(buckets.length).toBeGreaterThan(0);
     expect(buckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
-    expect(diagnostic?.horizonPlan?.priceDeferralEligible).toBe(true);
+    // Released from a booked hour on the price facts, not from the unbooked-hour path.
+    expect(diagnostic?.horizonPlan?.currentBucket?.plannedUsefulEnergyKWh ?? 0).toBeGreaterThan(0);
+    expect(diagnostic?.horizonPlan?.currentHourFacts).toMatchObject({ aheadOfHourMilestone: true, cheaperHourAhead: true });
+    expect(diagnostic?.horizonPlan?.currentHourClaim).toBe('released');
   });
 
   it('runs the allocator mid-hour when the commitment has no current-or-future hour (all elapsed)', () => {

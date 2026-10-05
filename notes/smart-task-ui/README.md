@@ -270,8 +270,8 @@ The immediate intent applies all three existing objective-scoped permissions as
 and make room from lower-priority managed devices without weakening the hard
 cap. These permissions are necessary but not sufficient: the current hour has
 to be included whenever it is physically and operationally available, and the
-immediate-intent discriminator must suppress both the `priceDeferralEligible`
-and `coldStartReleaseEligible` per-cycle release paths. Otherwise admission can
+immediate-intent discriminator must suppress both per-cycle release paths in
+`resolveCurrentHourClaim` (price deferral and cold-start). Otherwise admission can
 still idle a booked current bucket in favor of a later hour.
 
 The preview resolves one finite absolute deadline and create echoes that exact

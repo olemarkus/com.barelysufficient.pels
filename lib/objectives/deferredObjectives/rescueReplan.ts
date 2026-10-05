@@ -41,7 +41,7 @@ export const resolveHorizonPlanWithRescue = (params: {
   // Producer-resolved trajectory gate for mid-execution price deferral: `true`
   // when the measured value is already at/above the committed plan's
   // end-of-this-hour milestone (`isAheadOfHourMilestone`). Forwarded verbatim to
-  // the planner, which combines it with the relative-price test.
+  // the planner, which states it on `currentHourFacts` for `resolveCurrentHourClaim`.
   aheadOfHourMilestone: boolean;
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   priceOptimizationEnabled: boolean;

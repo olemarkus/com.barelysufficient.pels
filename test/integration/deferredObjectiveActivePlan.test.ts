@@ -86,7 +86,7 @@ const makeHorizon = (
     // never reads the claim; keep the plan internally valid and let the specs that
     // exercise admission own the claim semantics.
     currentHourClaim: 'released' as const,
-    priceDeferralEligible: false,
+    currentHourFacts: { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false },
     ...overrides,
   };
 };
@@ -4888,11 +4888,11 @@ describe('measured_deviation (learned energy-rate drift)', () => {
     expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('measured_deviation');
   });
 
-  it('records the committed plan identically regardless of priceDeferralEligible (recorder insulation)', () => {
+  it('records the committed plan identically regardless of the current-hour release facts (recorder insulation)', () => {
     // The price-deferral release is an admission-path control override; the recorder
-    // must NEVER read priceDeferralEligible (or the device's idling would churn
-    // revisions). Pin it: the same committed plan with the flag flipped produces an
-    // identical recorded revision + commitment. A future edit that wired the flag
+    // must NEVER read `currentHourFacts` (or the device's idling would churn
+    // revisions). Pin it: the same committed plan with the facts flipped produces an
+    // identical recorded revision + commitment. A future edit that wired the facts
     // into the recorder (e.g. buildHoursFromHorizonPlan) would break this.
     const buckets = (): DeferredObjectivePlannedBucket[] => [
       makeBucket(2 * HOUR_MS, 1.5),
@@ -4903,7 +4903,7 @@ describe('measured_deviation (learned energy-rate drift)', () => {
     rDeferred.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      horizonPlan: makeHorizon(buckets(), { priceDeferralEligible: true }),
+      horizonPlan: makeHorizon(buckets(), { currentHourFacts: { aheadOfHourMilestone: true, cheaperHourAhead: true, coldStartFeasible: false } }),
     })], HOUR_MS);
 
     const plain = buildPersistDeps();
@@ -4911,7 +4911,7 @@ describe('measured_deviation (learned energy-rate drift)', () => {
     rPlain.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      horizonPlan: makeHorizon(buckets(), { priceDeferralEligible: false }),
+      horizonPlan: makeHorizon(buckets(), { currentHourFacts: { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false } }),
     })], HOUR_MS);
 
     expect(rDeferred.getPlanForTests('dev')?.latest).toEqual(rPlain.getPlanForTests('dev')?.latest);

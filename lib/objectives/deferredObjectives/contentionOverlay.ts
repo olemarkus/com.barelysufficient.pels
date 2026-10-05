@@ -21,8 +21,7 @@ export const resolveHigherPriorityContentionEvaluation = (params: {
   // Claim and allocation cause change together so frozen and fresh admission agree.
   const currentHourClaim = resolveCurrentHourClaim({
     currentBucketBookedKWh: plan.currentBucket?.plannedUsefulEnergyKWh ?? null,
-    priceDeferralEligible: plan.priceDeferralEligible,
-    coldStartReleaseEligible: plan.coldStartReleaseEligible === true,
+    facts: plan.currentHourFacts,
     floorShortfallCause: resolveFloorShortfallCause('limited_by_higher_priority_task'),
   });
   return {
