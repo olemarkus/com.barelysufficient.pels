@@ -41,7 +41,7 @@ export type DeferredObjectiveHorizonStatusDetail =
  * - Exactly one of the three holds per cycle, and it is resolved once. Consumers
  *   (`admission.resolveDecision`, and through its decision
  *   `decorationController.resolveDeferredAvoidDeviceIds`) read it and must not re-derive it from
- *   `currentBucket.plannedUsefulEnergyKWh`, `priceDeferralEligible` or the status.
+ *   `currentBucket.plannedUsefulEnergyKWh`, `currentHourFacts` or the status.
  * - `claimed` ⇒ the hour carries booked energy and the device should be driven.
  * - `unclaimed` ⇒ the hour carries NO booked energy and the task cannot finish
  *   without it. The device is neither driven nor stood down: it goes to the planner
@@ -56,6 +56,36 @@ export type DeferredObjectiveHorizonStatusDetail =
  * not a stand-down".
  */
 export type DeferredObjectiveCurrentHourClaim = 'claimed' | 'released' | 'unclaimed';
+
+/**
+ * Per-cycle facts about the CURRENT hour that the release rules in
+ * `resolveCurrentHourClaim` read. Producers state facts here and never a release
+ * verdict, so every rule (and every exception to it) lives in that one resolver.
+ * Logged beside the resolved claim, so a reader sees what was true and what was
+ * decided without the two being able to disagree.
+ *
+ * Classification only: the active-plan recorder never reads these. It records the
+ * committed plan (a price-deferred current hour stays booked as a fallback), so a
+ * release never writes a revision; the device's idling (no progress) is what
+ * re-books the cheaper hours at the next `:58` settle. See
+ * notes/deferred-load-objectives/execution-adaptation.md work item 2.
+ */
+export type DeferredObjectiveCurrentHourFacts = {
+  // The device's measured value is at/above the committed plan's end-of-this-hour
+  // milestone in the objective's own unit. Producer-resolved
+  // (`isAheadOfHourMilestone`); the planner sees neither the measured value nor
+  // the committed rate.
+  aheadOfHourMilestone: boolean;
+  // A later, booked, non-reserve hour is cheaper than this one by more than the
+  // relative margin (`hasCheaperBookedHourAhead`). The frozen read replays the
+  // value the `:58` settle stamped onto the committed hour.
+  cheaperHourAhead: boolean;
+  // A `temperature` task's full buffered need fits the meaningfully cheaper future
+  // hours at its climbed (real-element) step (`resolveColdStartFeasible`). Fresh
+  // allocation only: the frozen read cannot prove it and states `false`. See
+  // notes/deferred-load-objectives/execution-adaptation.md (cold-start feasibility).
+  coldStartFeasible: boolean;
+};
 
 export type DeferredObjective = {
   id: string;
@@ -193,8 +223,7 @@ export type DeferredObjectiveHorizonInput = {
   // committed plan's future hours — i.e. the device is at/above this hour's
   // committed milestone (resolved by `isAheadOfHourMilestone`, which the planner
   // cannot compute itself — it sees neither the measured-driven `energyNeededKWh`
-  // nor the commitment). Combined with the relative-price test to set
-  // `priceDeferralEligible`.
+  // nor the commitment). Carried onto `currentHourFacts` for the price-deferral rule.
   aheadOfHourMilestone: boolean;
 };
 
@@ -254,20 +283,6 @@ export type DeferredObjectiveHorizonPlan = {
   // case: the shortfall is not purely physical, so the surface can name the
   // budget and offer the permission that would actually free the device.
   budgetContributedToShortfall: boolean;
-  // Per-cycle price-deferral control signal (mid-execution price deferral). True
-  // when BOTH hold for the current hour: (1) the device's measured value is
-  // already at/above the committed plan's end-of-this-hour milestone in the
-  // objective's own unit (`aheadOfHourMilestone`), so coasting this hour stays on
-  // a deadline-meeting trajectory; and (2) a later, non-reserve hour is cheaper
-  // than the current hour by more than the relative margin (raw-price ratio, so
-  // unit-invariant across currencies). Read ONLY by the decoration controller's
-  // admission path, which idles the device for this cycle so a cheaper hour
-  // carries the load. NOT read by the recorder — it records the committed plan
-  // (the current hour stays booked as a fallback), so this never writes a
-  // revision; the device's idling (no progress) is what re-books the cheaper
-  // hours at the next `:58` settle. See
-  // notes/deferred-load-objectives/execution-adaptation.md work item 2.
-  priceDeferralEligible: boolean;
   // Far edge of the AVAILABLE price data this plan was computed against, in epoch
   // ms — the end of the last published price hour that overlaps `[nowMs,
   // deadlineAtMs)` (i.e. `max(priceHorizonEntry.startMs) + 1h`, NOT re-clamped to
@@ -284,18 +299,9 @@ export type DeferredObjectiveHorizonPlan = {
   // (falling back to the legacy bucket-end value only when there is none) rather
   // than resetting it. Optional/back-compat: legacy diagnostics omit it.
   pricesAvailableUpToMs?: number | null;
-  // Per-cycle COLD-START price release. True when a later hour is meaningfully
-  // cheaper than the current hour AND the full buffered need fits into those
-  // cheaper future hours at the device's CLIMBED (real-element) step. The
-  // floor-step allocation spills the residual onto an expensive current hour
-  // whenever the floor can't fit the whole need, but for a device that can climb
-  // that spill is a false premise — the real element will finish in the cheaper
-  // window. Read by admission (idles the device this cycle) exactly like
-  // `priceDeferralEligible`, but does NOT require the device to be ahead of its
-  // milestone (cold start: it is behind). Re-evaluated each cycle. Optional/
-  // back-compat: absent ⇒ not released. See
-  // notes/deferred-load-objectives/execution-adaptation.md (cold-start feasibility).
-  coldStartReleaseEligible?: boolean;
+  // What was true about the current hour this cycle; the release rules read it.
+  // See `DeferredObjectiveCurrentHourFacts`.
+  currentHourFacts: DeferredObjectiveCurrentHourFacts;
   // What claim this task has on the CURRENT hour, resolved once by the producer
   // (`resolveCurrentHourClaim`) and mapped 1:1 onto an admission decision. Required,
   // deliberately: a new plan producer must answer it rather than inherit a default,

@@ -10,7 +10,7 @@ import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/t
 //            ▼                                                 ▼
 //   isAheadOfHourMilestone()  ──►  planDeferredObjectiveHorizon()  ──►  diagnostic
 //   (trajectory producer)         (combines the trajectory gate with the
-//                                  relative raw-price test → priceDeferralEligible)
+//                                  relative raw-price fact → currentHourClaim)
 //                                                  │
 //                                                  ▼
 //                                  applyDeferredObjectiveAdmission()
@@ -151,7 +151,7 @@ const device: PlanInputDevice = withFixtureResidualKw({ id: DEVICE_ID, control: 
 
 type CycleResult = {
   ahead: boolean;
-  priceDeferralEligible: boolean;
+  cheaperHourAhead: boolean;
   decisionKind: 'planned' | 'idle' | 'inactive';
   runs: boolean;
 };
@@ -191,7 +191,7 @@ const runCycle = (params: {
 
   return {
     ahead,
-    priceDeferralEligible: plan.priceDeferralEligible,
+    cheaperHourAhead: plan.currentHourFacts.cheaperHourAhead,
     decisionKind: decision.kind as CycleResult['decisionKind'],
     runs: decision.kind === 'planned',
   };
@@ -232,7 +232,7 @@ describe('smart-task price deferral — e2e (cheap hours actively preferred)', (
     const result = baseCycle([100, 50, 50, 50, 50, 50]);
 
     expect(result.ahead).toBe(true); // trajectory gate held constant vs the run case below
-    expect(result.priceDeferralEligible).toBe(true);
+    expect(result.cheaperHourAhead).toBe(true);
     expect(result.decisionKind).toBe('idle'); // held off — a cheaper hour carries the load
     expect(result.runs).toBe(false);
   });
@@ -243,7 +243,7 @@ describe('smart-task price deferral — e2e (cheap hours actively preferred)', (
     const result = baseCycle([50, 100, 100, 100, 100, 100]);
 
     expect(result.ahead).toBe(true); // SAME gate as the defer case — only price moved
-    expect(result.priceDeferralEligible).toBe(false);
+    expect(result.cheaperHourAhead).toBe(false);
     expect(result.decisionKind).toBe('planned'); // runs — this IS the cheap hour
     expect(result.runs).toBe(true);
   });

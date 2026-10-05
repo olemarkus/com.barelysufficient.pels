@@ -75,23 +75,6 @@ const buildFrozenPlannedBuckets = (
   plannedAdmissionPowerKw: hour.plannedAdmissionPowerKw ?? 0,
 }));
 
-// Price-deferral release, reusing the SAME frozen `cheaperHourAhead` the producer
-// stamped at `:58` — no live price series rescanned. A booked current hour is
-// released when the device is already ahead of its milestone AND a cheaper hour is
-// booked ahead. A 0-booked current hour is already released by admission's
-// `plannedUsefulEnergyKWh ≤ 0` branch.
-//
-// Cold-start release is NOT a mid-hour decision at all: "should the expensive
-// current hour be booked, or deferred into the cheaper window?" is the allocator's
-// `:58` call, recorded in the committed current-hour kWh (0 ⇒ deferred). The frozen
-// read just delivers up to whatever the commitment booked (current hour 0 ⇒ idle),
-// so it never asserts `coldStartReleaseEligible`.
-const resolveFrozenPriceDeferralEligible = (params: {
-  currentBooked: boolean;
-  cheaperHourAhead: boolean;
-  aheadOfHourMilestone: boolean;
-}): boolean => params.currentBooked && params.cheaperHourAhead && params.aheadOfHourMilestone;
-
 // Build a `DeferredObjectiveHorizonPlan` from the PERSISTED commitment + live
 // inputs, WITHOUT running the bucket allocator. Used on the per-cycle (mid-hour)
 // path: between hour settles the booked set, per-hour kWh, unit milestones and
@@ -100,16 +83,15 @@ const resolveFrozenPriceDeferralEligible = (params: {
 // status. The allocator runs only at the `:58` settle and at bootstrap (no
 // commitment), where a fresh plan is genuinely needed (the recorder re-commits).
 //
-// Release decision is the pure frozen read the design targets:
-//   - released ⟺ current hour booked 0 (idle) — admission's existing
-//     `plannedUsefulEnergyKWh ≤ 0` branch handles it, OR
-//   - `priceDeferralEligible`  = current hour booked AND `aheadOfHourMilestone`
-//     AND this hour's frozen `cheaperHourAhead`, OR
-//   - `coldStartReleaseEligible` = current hour booked AND temperature AND this
-//     hour's frozen `cheaperHourAhead` AND NOT ahead (the cold catch-up case:
-//     the device is behind but a cheaper window can carry the load).
-// Both reuse the SAME frozen `cheaperHourAhead` the producer stamped at `:58`
-// (`feedback_layering_resolution_in_producer`); no live price series is rescanned.
+// The release decision is `resolveCurrentHourClaim`'s, over the frozen facts:
+//   - `cheaperHourAhead` is this hour's value as the `:58` settle stamped it
+//     (`stampCheaperHourAhead`; `feedback_layering_resolution_in_producer`), so no
+//     live price series is rescanned;
+//   - `coldStartFeasible` is always `false`. Cold-start release is NOT a mid-hour
+//     decision: "should the expensive current hour be booked, or deferred into the
+//     cheaper window?" is the allocator's `:58` call, recorded in the committed
+//     current-hour kWh (0 ⇒ deferred). The frozen read just delivers up to whatever
+//     the commitment booked (current hour 0 ⇒ idle).
 export const buildFrozenHorizonPlan = (params: {
   nowMs: number;
   objectiveId: string;
@@ -157,11 +139,11 @@ export const buildFrozenHorizonPlan = (params: {
     }
     : null;
 
-  const priceDeferralEligible = resolveFrozenPriceDeferralEligible({
-    currentBooked: currentBookedKWh > 0,
-    cheaperHourAhead: currentHour?.cheaperHourAhead === true,
+  const currentHourFacts = {
     aheadOfHourMilestone,
-  });
+    cheaperHourAhead: currentHour?.cheaperHourAhead === true,
+    coldStartFeasible: false,
+  };
 
   const status = toPlannableStatus(planStatus);
   const plannedUsefulEnergyKWh = futureHours.reduce((sum, hour) => sum + Math.max(0, hour.plannedKWh), 0);
@@ -191,17 +173,13 @@ export const buildFrozenHorizonPlan = (params: {
     // exact reason is recomputed and persisted at `:58` (mid-hour this is not an
     // admission input — admission gates on `status`, not the detail/reserve flag).
     usesDeadlineReserve: status === 'at_risk',
-    priceDeferralEligible,
-    // Cold-start is the allocator's `:58` booking decision (current hour booked 0 ⇒
-    // deferred); the frozen read never asserts it mid-hour.
-    coldStartReleaseEligible: false,
+    currentHourFacts,
     // Resolved through the SAME function as the fresh path, on the settle's
     // persisted verdict — so the mid-hour answer cannot drift from the one the
     // allocator reached, and cannot move within the hour.
     currentHourClaim: resolveCurrentHourClaim({
       currentBucketBookedKWh: currentBucket?.plannedUsefulEnergyKWh ?? null,
-      priceDeferralEligible,
-      coldStartReleaseEligible: false,
+      facts: currentHourFacts,
       floorShortfallCause,
     }),
     // Declares "no new allocation here" to the recorder — see the field doc on

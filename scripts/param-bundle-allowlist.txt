@@ -141,8 +141,8 @@ lib/objectives/deferredObjectives/diagnosticAnnounce.ts 2
 lib/objectives/deferredObjectives/diagnosticFields.ts 3
 lib/objectives/deferredObjectives/freshDiagnostic.ts 3
 lib/objectives/deferredObjectives/frozenDiagnostic.ts 3
-lib/objectives/deferredObjectives/frozenHorizonPlan.ts 2
-lib/objectives/deferredObjectives/horizonPlanner.ts 10
+lib/objectives/deferredObjectives/frozenHorizonPlan.ts 1
+lib/objectives/deferredObjectives/horizonPlanner.ts 9
 lib/objectives/deferredObjectives/hoursRemainingCrossings.ts 3
 lib/objectives/deferredObjectives/objectiveWrite.ts 1
 lib/objectives/deferredObjectives/planPreview.ts 1

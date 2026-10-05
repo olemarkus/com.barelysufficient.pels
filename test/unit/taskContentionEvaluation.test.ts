@@ -7,7 +7,12 @@ import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredO
 import type { DeferredObjectivePriorityReservation } from '../../lib/objectives/deferredObjectives/policyHorizon';
 import { partialDouble } from '../helpers/partialDouble';
 
-const evaluation = (unplannedUsefulEnergyKWh: number, frozenRead = false): TaskEvaluation => ({
+const NO_RELEASE_FACTS = { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false };
+const evaluation = (
+  unplannedUsefulEnergyKWh: number,
+  frozenRead = false,
+  current: Partial<DeferredObjectiveHorizonPlan> = {},
+): TaskEvaluation => ({
   ...inactiveTaskEvaluation('lower-task', 3_600_000, 65),
   progress: { kind: 'known', value: 50, direction: 'increasing' },
   completion: { kind: 'unmet' },
@@ -15,7 +20,8 @@ const evaluation = (unplannedUsefulEnergyKWh: number, frozenRead = false): TaskE
     unplannedUsefulEnergyKWh,
     ...(frozenRead ? { frozenRead: true as const } : {}),
     status: 'at_risk', statusDetail: 'feasible_above_floor',
-    currentBucket: null, currentHourClaim: 'released', priceDeferralEligible: false,
+    currentBucket: null, currentHourClaim: 'released', currentHourFacts: NO_RELEASE_FACTS,
+    ...current,
   }) },
 });
 const reservations = [partialDouble<DeferredObjectivePriorityReservation>({})];
@@ -39,6 +45,23 @@ describe('operational task contention', () => {
       evaluation: result, trajectory: { kind: 'resolved', status: 'at_risk' },
       reasonCode: 'limited_by_higher_priority_task',
     });
+  });
+
+  it('keeps a booked hour it would price-defer once contention leaves it short, but still cold-start releases', () => {
+    const booked = { bucketId: 'h0', sourceBucketId: 'h0', plannedUsefulEnergyKWh: 1, expectedStepId: 'low' };
+    const claimUnderContention = (facts: DeferredObjectiveHorizonPlan['currentHourFacts']) => {
+      const result = resolveHigherPriorityContentionEvaluation({
+        evaluation: evaluation(1, false, { currentBucket: booked, currentHourFacts: facts }),
+        higherPriorityReservations: reservations,
+        buildWithoutReservations: () => evaluation(0),
+      });
+      return result.planning.kind === 'allocated' ? result.planning.plan.currentHourClaim : null;
+    };
+    // Short only because of a higher-priority task (`time_capacity`): coasting would
+    // widen the miss, so the price-deferral facts no longer release the hour.
+    expect(claimUnderContention({ ...NO_RELEASE_FACTS, aheadOfHourMilestone: true, cheaperHourAhead: true }))
+      .toBe('claimed');
+    expect(claimUnderContention({ ...NO_RELEASE_FACTS, coldStartFeasible: true })).toBe('released');
   });
 
   it('keeps the original allocation when the control still falls short or is inactive', () => {

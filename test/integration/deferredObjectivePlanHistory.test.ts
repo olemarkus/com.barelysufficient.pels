@@ -55,7 +55,7 @@ const makeHorizon = (
   usesDeadlineReserve: false,
   budgetContributedToShortfall: false,
   currentHourClaim: 'claimed' as const,
-  priceDeferralEligible: false,
+  currentHourFacts: { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false },
   ...overrides,
 });
 

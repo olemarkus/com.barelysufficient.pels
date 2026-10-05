@@ -237,6 +237,8 @@ type Cycle = {
   currentBookedKWh: number;
   // The producer's claim on the hour — read off the plan, never recomputed here.
   claim: string;
+  // Both price-deferral facts held: ahead of the milestone with a cheaper booked hour later.
+  priceDeferrable: boolean;
   kind: string;
   releaseIntent: string | undefined;
   kWh: number;
@@ -294,6 +296,8 @@ const runScenario = (startC: number): { cycles: Cycle[]; finalTempC: number } =>
       price: priceForHourOfDay(hod),
       currentBookedKWh: diag?.horizonPlan?.currentBucket?.plannedUsefulEnergyKWh ?? 0,
       claim: diag?.horizonPlan?.currentHourClaim ?? 'none',
+      priceDeferrable: diag?.horizonPlan?.currentHourFacts.aheadOfHourMilestone === true
+        && diag.horizonPlan.currentHourFacts.cheaperHourAhead,
       kind: decision?.kind ?? 'none',
       releaseIntent: decision?.releaseIntent,
       kWh,
@@ -303,7 +307,7 @@ const runScenario = (startC: number): { cycles: Cycle[]; finalTempC: number } =>
 };
 
 const summarise = (cycles: readonly Cycle[]): string => cycles
-  .map((c) => `  hod ${c.hod} @${c.price}  booked ${c.currentBookedKWh.toFixed(2)}  claim ${c.claim.padEnd(9)}  ${c.kind}`)
+  .map((c) => `  hod ${c.hod} @${c.price}  booked ${c.currentBookedKWh.toFixed(2)}  claim ${c.claim.padEnd(9)}  ${c.kind}${c.priceDeferrable ? '  deferrable' : ''}`)
   .join('\n');
 
 describe('an unbooked smart-task hour (SDK-boundary e2e)', () => {
@@ -335,13 +339,14 @@ describe('an unbooked smart-task hour (SDK-boundary e2e)', () => {
     });
 
     it('still releases from a BOOKED hour when price deferral says so', () => {
-      // The narrow reading matters: even a task that cannot finish gives up an hour
-      // it HAS booked once it is ahead of that hour's milestone and a cheaper hour
-      // is booked ahead — `priceDeferralEligible` carries its own justification. So
-      // "a task that cannot finish never releases" is only true of the
-      // unbooked-hour path, which is what the assertion above pins.
+      // The narrow reading matters: a BUDGET-bound task still gives up an hour it HAS
+      // booked once it is ahead of that hour's milestone and a cheaper hour is booked
+      // ahead. Only a physical shortfall (`time_capacity`) blocks price deferral
+      // (`CAUSES_THAT_BLOCK_PRICE_DEFERRAL`), so "a budget-bound task never releases"
+      // is only true of the unbooked-hour path, which is what the assertion above pins.
       const released = cycles.filter((c) => c.kind === 'idle');
       expect(released.length, summarise(cycles)).toBeGreaterThan(0);
+      expect(released.every((c) => c.priceDeferrable), summarise(cycles)).toBe(true);
       expect(released.every((c) => c.currentBookedKWh > 0)).toBe(true);
     });
   });

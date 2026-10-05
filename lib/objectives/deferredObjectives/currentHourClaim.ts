@@ -1,7 +1,7 @@
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectiveCurrentHourClaim } from './types';
+import type { DeferredObjectiveCurrentHourClaim, DeferredObjectiveCurrentHourFacts } from './types';
 
 // Shortfall causes the task cannot climb or re-estimate its way out of. An hour it
 // booked nothing into is then one it STILL NEEDS, and the claim resolves to
@@ -33,23 +33,50 @@ const CAUSES_THAT_KEEP_THE_HOUR: ReadonlySet<DeferredObjectiveActivePlanFloorSho
   'time_capacity',
 ]);
 
+// A task that physically cannot finish (`time_capacity`: the `cannot_meet` status,
+// or a shortfall a higher-priority task causes) never price-defers an hour it
+// booked. Being ahead of this hour's milestone proves nothing when the milestones
+// lead to a miss: the cheaper hours are already booked to their cap, so coasting
+// moves no load into them and only widens the miss.
+//
+// Cold-start release is deliberately NOT blocked. It exists for exactly the case
+// where the floor plan reports `cannot_meet` but a bang-bang thermostat's real
+// element finishes inside the cheaper hours (prod 2026-05-31: the catch-up ran at
+// full element through the two dearest hours). Its own probe proves that fit at
+// the climbed step, so the floor's verdict is the false premise there
+// (notes/deferred-load-objectives/execution-adaptation.md, work item 4).
+//
+// Deliberately narrower than `CAUSES_THAT_KEEP_THE_HOUR`: a `budget`-bound task
+// still price-defers a booked hour (pinned by
+// test/integration/smartTaskUnclaimedHourLifecycle.test.ts). Its shortfall is the
+// soft daily budget's forecast, and a thermostat kept on in an expensive hour runs
+// its full element there, not just the booked floor.
+const CAUSES_THAT_BLOCK_PRICE_DEFERRAL: ReadonlySet<DeferredObjectiveActivePlanFloorShortfallCause> = new Set([
+  'time_capacity',
+]);
+
 /**
  * What claim a smart task has on the CURRENT hour — the single producer-resolved
  * answer admission acts on (`admission.resolveDecision` maps it 1:1 onto a decision
  * kind, and `decorationController.resolveDeferredAvoidDeviceIds` reads that decision
  * rather than re-deriving).
  *
- * Both plan producers resolve it through this one function — `horizonPlanner`'s
- * fresh allocation and `frozenHorizonPlan`'s mid-hour read of the commitment — so
- * the two paths cannot drift into answering different questions.
+ * Every release rule lives here. The plan producers — `horizonPlanner`'s fresh
+ * allocation and `frozenHorizonPlan`'s mid-hour read of the commitment — and the
+ * higher-priority contention overlay supply facts (`DeferredObjectiveCurrentHourFacts`)
+ * and the settled shortfall cause, never a release verdict, so no path can drift
+ * into answering a different question.
  *
  * The three states, and why the middle one exists:
  *
  * - `claimed` — the hour carries booked energy and no release applies. Drive the
  *   device: floor-step target, deadline floor, and whatever rescue permissions the
  *   task holds.
- * - `released` — the task is not using this hour AND can finish without it. The
- *   deliberate deferral: hold the device in its configured release posture.
+ * - `released` — the task can finish without this hour: it booked nothing here,
+ *   or it is ahead of this hour's milestone with a cheaper booked hour later (price
+ *   deferral), or a cold-start thermostat's whole need fits the cheaper hours at
+ *   its real element (cold-start release). Hold the device in its configured
+ *   release posture.
  * - `unclaimed` — the task booked nothing here and cannot finish without it. It
  *   makes no claim on the hour and issues no stand-down; the device goes to the
  *   planner as managed and competes on its own priority, carrying none of the
@@ -68,11 +95,7 @@ export const resolveCurrentHourClaim = (params: {
   // Energy the plan booked into the current hour; `null` when there is no current
   // bucket at all (an hour the commitment skipped, or an empty horizon).
   currentBucketBookedKWh: number | null;
-  // Both are only asserted when the remaining need fits elsewhere, so they carry
-  // their own justification and release unconditionally — including out of a
-  // claimed hour.
-  priceDeferralEligible: boolean;
-  coldStartReleaseEligible: boolean;
+  facts: DeferredObjectiveCurrentHourFacts;
   // The producer's verdict on what bound the floor schedule. Deliberately the
   // SETTLED, hour-boundary-paced signal rather than a live energy comparison: the
   // fresh path derives it from the status detail it just resolved, and the frozen
@@ -85,8 +108,15 @@ export const resolveCurrentHourClaim = (params: {
   // `lastInstabilityMs`, so the 60-300 s restore back-off never engages).
   floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause;
 }): DeferredObjectiveCurrentHourClaim => {
-  const { currentBucketBookedKWh, priceDeferralEligible, coldStartReleaseEligible } = params;
-  if (priceDeferralEligible || coldStartReleaseEligible) return 'released';
-  if (currentBucketBookedKWh !== null && currentBucketBookedKWh > 0) return 'claimed';
-  return CAUSES_THAT_KEEP_THE_HOUR.has(params.floorShortfallCause) ? 'unclaimed' : 'released';
+  const { facts } = params;
+  // Proves the whole remaining need fits the cheaper hours at the real element, so
+  // it carries its own justification and outranks the booking and the cause.
+  if (facts.coldStartFeasible) return 'released';
+  const booked = params.currentBucketBookedKWh !== null && params.currentBucketBookedKWh > 0;
+  if (!booked) return CAUSES_THAT_KEEP_THE_HOUR.has(params.floorShortfallCause) ? 'unclaimed' : 'released';
+  // Price deferral: already ahead of this hour's milestone, and a later booked hour
+  // is meaningfully cheaper, so that hour carries the load instead.
+  const priceDeferral = facts.aheadOfHourMilestone && facts.cheaperHourAhead
+    && !CAUSES_THAT_BLOCK_PRICE_DEFERRAL.has(params.floorShortfallCause);
+  return priceDeferral ? 'released' : 'claimed';
 };

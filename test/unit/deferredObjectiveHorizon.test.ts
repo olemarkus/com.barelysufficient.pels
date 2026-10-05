@@ -87,8 +87,8 @@ describe('planDeferredObjectiveHorizon', () => {
       expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeLessThan(0.001);
       expect(plan.currentHourClaim).toBe('claimed');
       expect(plan.expectedStepId).toBe('low');
-      expect(plan.priceDeferralEligible).toBe(false);
-      expect(plan.coldStartReleaseEligible).toBe(false);
+      expect(plan.currentHourFacts.cheaperHourAhead).toBe(false);
+      expect(plan.currentHourFacts.coldStartFeasible).toBe(false);
     },
   );
 
@@ -1429,7 +1429,7 @@ describe('planDeferredObjectiveHorizon', () => {
     prices.map((price, hourOffset) => bucket(hourOffset, 'neutral', { price }))
   );
 
-  it('flags priceDeferralEligible when ahead of milestone and a later hour is >5% cheaper', () => {
+  it('price-defers the hour when ahead of milestone and a later booked hour is >5% cheaper', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }), // deadline NOW + 4h
@@ -1440,7 +1440,26 @@ describe('planDeferredObjectiveHorizon', () => {
     });
 
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
-    expect(plan.priceDeferralEligible).toBe(true);
+    expect(plan.currentHourFacts.cheaperHourAhead).toBe(true);
+    expect(plan.currentHourClaim).toBe('released');
+  });
+
+  it('keeps the hour claimed when ahead with a cheaper hour but the task cannot meet its target', () => {
+    // 20 kWh in 4 h exceeds even the max step (3 kW × 4 h), so the plan is
+    // `cannot_meet`. Coasting this hour cannot move the load into the cheaper
+    // hours, which are already booked; it only widens the miss.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 20 }),
+      steps: defaultSteps,
+      buckets: deferralBuckets([100, 50, 50, 50]),
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      aheadOfHourMilestone: true,
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.currentHourFacts).toMatchObject({ aheadOfHourMilestone: true, cheaperHourAhead: true });
+    expect(plan.currentHourClaim).toBe('claimed');
   });
 
   it('keeps an ahead EV price-released when its booked hour has only a sub-Wh remainder', () => {
@@ -1455,12 +1474,12 @@ describe('planDeferredObjectiveHorizon', () => {
 
     expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeGreaterThan(0);
     expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeLessThan(0.001);
-    expect(plan.priceDeferralEligible).toBe(true);
-    expect(plan.coldStartReleaseEligible).toBe(false);
+    expect(plan.currentHourFacts.cheaperHourAhead).toBe(true);
+    expect(plan.currentHourFacts.coldStartFeasible).toBe(false);
     expect(plan.currentHourClaim).toBe('released');
   });
 
-  it('does not flag priceDeferralEligible when not ahead of the milestone', () => {
+  it('keeps the hour when not ahead of the milestone', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }),
@@ -1470,10 +1489,11 @@ describe('planDeferredObjectiveHorizon', () => {
       aheadOfHourMilestone: false,
     });
 
-    expect(plan.priceDeferralEligible).toBe(false);
+    expect(plan.currentHourFacts.aheadOfHourMilestone).toBe(false);
+    expect(plan.currentHourClaim).toBe('claimed');
   });
 
-  it('does not flag priceDeferralEligible when no later hour beats the 5% margin', () => {
+  it('keeps the hour when no later hour beats the 5% margin', () => {
     // Later hours are cheaper, but only by <5% (current 100, threshold 95;
     // later hours 96/98) — keep the safer earlier slot.
     const plan = planDeferredObjectiveHorizon({
@@ -1485,7 +1505,8 @@ describe('planDeferredObjectiveHorizon', () => {
       aheadOfHourMilestone: true,
     });
 
-    expect(plan.priceDeferralEligible).toBe(false);
+    expect(plan.currentHourFacts.cheaperHourAhead).toBe(false);
+    expect(plan.currentHourClaim).toBe('claimed');
   });
 
   it('does not defer into the deadline-reserve hour even when it is cheaper', () => {
@@ -1500,10 +1521,11 @@ describe('planDeferredObjectiveHorizon', () => {
       aheadOfHourMilestone: true,
     });
 
-    expect(plan.priceDeferralEligible).toBe(false);
+    expect(plan.currentHourFacts.cheaperHourAhead).toBe(false);
+    expect(plan.currentHourClaim).toBe('claimed');
   });
 
-  it('does not flag priceDeferralEligible when the current hour price is free or negative', () => {
+  it('keeps the hour when the current hour price is free or negative', () => {
     // current ≤ 0 ⇒ heat now while it is free; never defer away from it.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
@@ -1514,10 +1536,11 @@ describe('planDeferredObjectiveHorizon', () => {
       aheadOfHourMilestone: true,
     });
 
-    expect(plan.priceDeferralEligible).toBe(false);
+    expect(plan.currentHourFacts.cheaperHourAhead).toBe(false);
+    expect(plan.currentHourClaim).toBe('claimed');
   });
 
-  it('flags priceDeferralEligible when a later hour has a negative price', () => {
+  it('price-defers the hour when a later hour has a negative price', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }),
@@ -1527,10 +1550,11 @@ describe('planDeferredObjectiveHorizon', () => {
       aheadOfHourMilestone: true,
     });
 
-    expect(plan.priceDeferralEligible).toBe(true);
+    expect(plan.currentHourFacts.cheaperHourAhead).toBe(true);
+    expect(plan.currentHourClaim).toBe('released');
   });
 
-  it('does not flag priceDeferralEligible when the only cheaper later hour carries no booked load', () => {
+  it('keeps the hour when the only cheaper later hour carries no booked load', () => {
     // h1 is cheaper but capped to zero by its daily-budget/headroom forecast, so
     // the allocation books nothing into it — it won't carry the deferred load, and
     // releasing toward it would just push the load into the pricier committed
@@ -1549,10 +1573,11 @@ describe('planDeferredObjectiveHorizon', () => {
       aheadOfHourMilestone: true,
     });
 
-    expect(plan.priceDeferralEligible).toBe(false);
+    expect(plan.currentHourFacts.cheaperHourAhead).toBe(false);
+    expect(plan.currentHourClaim).toBe('claimed');
   });
 
-  it('does not flag priceDeferralEligible when the current hour carries no booked energy', () => {
+  it('releases an unbooked current hour as idle, not as a price deferral', () => {
     // No commitment + the current hour is less preferred, so the allocator books
     // the preferred future hour and leaves the current hour at 0 kWh — it is
     // already idle, so there is nothing to defer.
@@ -1570,7 +1595,7 @@ describe('planDeferredObjectiveHorizon', () => {
     });
 
     expect(plan.currentBucket?.plannedUsefulEnergyKWh ?? 0).toBe(0);
-    expect(plan.priceDeferralEligible).toBe(false);
+    expect(plan.currentHourClaim).toBe('released');
   });
 
   // Cold-start release: the floor step (low = 1 kW) can't fit the need, so the
@@ -1578,7 +1603,7 @@ describe('planDeferredObjectiveHorizon', () => {
   // — but the device can climb (max = 3 kW) and the meaningfully-cheaper future
   // hours cover the FULL need at that step, so the current hour is released.
   // defaultSteps = off/low(1)/medium(2)/max(3); PRICE_BY_TIER avoid=100, preferred=10.
-  it('flags coldStartReleaseEligible: expensive current hour, need fits the cheaper future at the climbed step', () => {
+  it('cold-start releases: expensive current hour, need fits the cheaper future at the climbed step', () => {
     const plan = planDeferredObjectiveHorizon({
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
@@ -1591,10 +1616,11 @@ describe('planDeferredObjectiveHorizon', () => {
     // The floor allocation DID spill onto the expensive current hour (the false premise)…
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeGreaterThan(0);
     // …but the cold-start release fires so admission idles it.
-    expect(plan.coldStartReleaseEligible).toBe(true);
+    expect(plan.currentHourFacts.coldStartFeasible).toBe(true);
+    expect(plan.currentHourClaim).toBe('released');
   });
 
-  it('does not flag coldStartReleaseEligible when no future hour is meaningfully cheaper than now', () => {
+  it('is not cold-start feasible when no future hour is meaningfully cheaper than now', () => {
     const plan = planDeferredObjectiveHorizon({
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
@@ -1605,10 +1631,10 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: { kind: 'uncommitted' },
     });
 
-    expect(plan.coldStartReleaseEligible ?? false).toBe(false);
+    expect(plan.currentHourFacts.coldStartFeasible).toBe(false);
   });
 
-  it('does not flag coldStartReleaseEligible when the cheaper future cannot cover the need even at the climbed step', () => {
+  it('is not cold-start feasible when the cheaper future cannot cover the need even at the climbed step', () => {
     // Only one cheaper future hour (h1) at max 3 kW = 3 kWh < 5 kWh need → the
     // expensive current hour is genuinely needed, so do not release it.
     const plan = planDeferredObjectiveHorizon({
@@ -1620,10 +1646,10 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: { kind: 'uncommitted' },
     });
 
-    expect(plan.coldStartReleaseEligible ?? false).toBe(false);
+    expect(plan.currentHourFacts.coldStartFeasible).toBe(false);
   });
 
-  it('does not flag coldStartReleaseEligible for a single-step device (no climb capacity)', () => {
+  it('is not cold-start feasible for a single-step device (no climb capacity)', () => {
     const plan = planDeferredObjectiveHorizon({
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
@@ -1633,10 +1659,10 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: { kind: 'uncommitted' },
     });
 
-    expect(plan.coldStartReleaseEligible ?? false).toBe(false);
+    expect(plan.currentHourFacts.coldStartFeasible).toBe(false);
   });
 
-  it('does not flag coldStartReleaseEligible when the current hour is free or negative', () => {
+  it('is not cold-start feasible when the current hour is free or negative', () => {
     const plan = planDeferredObjectiveHorizon({
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
@@ -1646,6 +1672,6 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: { kind: 'uncommitted' },
     });
 
-    expect(plan.coldStartReleaseEligible ?? false).toBe(false);
+    expect(plan.currentHourFacts.coldStartFeasible).toBe(false);
   });
 });

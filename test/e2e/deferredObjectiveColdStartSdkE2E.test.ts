@@ -10,7 +10,7 @@ import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helper
 // the fresh/frozen dispatch, the allocator). An earlier reproduction pinned
 // `aheadOfHourMilestone = false`, which severed the price-deferral backstop and made
 // the cold-start case look like a catastrophe (device runs the whole expensive hour).
-// The real stack shows the opposite: the frozen read drops `coldStartReleaseEligible`,
+// The real stack shows the opposite: the frozen read never states `coldStartFeasible`,
 // but WI-2 price-deferral still releases the device once it crosses its low,
 // re-anchored milestone — so the residual peak consumption is only the floor
 // bookings that spilled onto the expensive hours, not the full bang-bang element run.
@@ -197,7 +197,7 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
   // 5-minute grid from the top of the hour: the bootstrap cycle runs the real
   // fresh allocator, and every later cycle is the frozen read (the grid never
   // lands on the :58 settle mark). That is exactly the cold-start frozen-read case
-  // under test — the frozen read drops coldStartReleaseEligible and WI-2 must carry
+  // under test — the frozen read never states coldStartFeasible and WI-2 must carry
   // the release. (A :58-resettle path is covered elsewhere.)
   for (let nowMs = START_MS; nowMs < END_MS; nowMs += STEP_MS) {
     const device = buildDevice(tempC, nowMs);
@@ -236,7 +236,13 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
     const outcome = byHour.get(hod) ?? { hod, price: priceForHourOfDay(hod), kWh: 0, minutesDriven: 0, priceDeferredHere: false };
     outcome.kWh += kWh;
     outcome.minutesDriven += driven ? 5 : 0;
-    if (diag?.horizonPlan?.priceDeferralEligible) outcome.priceDeferredHere = true;
+    const plan = diag?.horizonPlan;
+    // Released from a booked hour on the price facts, not as idle or cold-start.
+    const priceDeferred = plan?.currentHourClaim === 'released'
+      && (plan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0
+      && !plan.currentHourFacts.coldStartFeasible
+      && plan.currentHourFacts.aheadOfHourMilestone && plan.currentHourFacts.cheaperHourAhead;
+    if (priceDeferred) outcome.priceDeferredHere = true;
     byHour.set(hod, outcome);
   }
   return { hours: [...byHour.values()].sort((a, b) => a.hod - b.hod), finalTempC: tempC };
@@ -263,7 +269,7 @@ describe('cold-start ⇄ price-deferral (SDK-boundary e2e)', () => {
 
   it('price-deferral releases the device mid-hour in the peak hours (the backstop fires)', () => {
     // Every expensive hour ends up price-deferred once the device crosses its low,
-    // re-anchored milestone — the frozen read drops `coldStartReleaseEligible`, but
+    // re-anchored milestone — the frozen read never states `coldStartFeasible`, but
     // WI-2 still idles the device. If a future change pins `aheadOfHourMilestone`,
     // this assertion (and the bound above) is what catches the lost backstop.
     expect(peakHours.length).toBeGreaterThan(0);
