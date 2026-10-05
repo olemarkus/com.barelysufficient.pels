@@ -1,7 +1,7 @@
 ---
 title: "PELS — Power-limit control & cheap-hour load shifting for Homey Pro"
 titleTemplate: false
-description: PELS keeps your Homey Pro home under its hourly power limit and shifts EV charging, heating, and hot water into the cheapest hours — automatically, every hour.
+description: PELS keeps your Homey Pro home under its power limit, shifts EV charging, heating, and hot water into the cheapest hours, and puts your solar and home battery to work.
 aside: false
 outline: false
 editLink: false
@@ -12,7 +12,7 @@ editLink: false
     <p class="landing-kicker">For Homey Pro</p>
     <h1 class="landing-title">Intelligent, automatic power management for Homey Pro.</h1>
     <p class="landing-app-type">Homey app for Homey Pro</p>
-    <p class="landing-lead">PELS watches your total power usage and turns down heaters, water tanks, ventilation, and EV charging before you hit your capacity limit. The moment there is room again, it brings them back in priority order. It plans Smart tasks around deadlines and shifts flexible load into the cheapest hours of the day — automatically, every hour, without you watching the meter.</p>
+    <p class="landing-lead">PELS watches your total power usage and turns down heaters, water tanks, ventilation, and EV charging before you hit your capacity limit. The moment there is room again, it brings them back in priority order. It plans Smart tasks around deadlines and shifts flexible load into the cheapest hours of the day, automatically, every hour, without you watching the meter. With solar panels or a home battery, PELS sends your surplus to useful load and uses the battery to hold your limit before it turns anything down.</p>
     <div class="landing-actions">
       <a class="VPButton brand" href="https://homey.app/a/com.barelysufficient.pels">Get the app on the Homey App Store</a>
       <a class="VPButton alt" href="#is-pels-a-fit">See if PELS fits your home</a>
@@ -40,7 +40,7 @@ editLink: false
       </article>
       <article class="landing-card">
         <h3>You want to stay within your capacity limit</h3>
-        <p>If you are on a power-based grid tariff (effekttrinn in Norway, and similar power-tariff models in Sweden and Finland) where consumption above a chosen level costs more, PELS can keep your hourly draw under the limit automatically.</p>
+        <p>If you are on a power-based grid tariff (effekttrinn in Norway, similar power-tariff models in Sweden and Finland, or the quarter-hour capacity tariff in Flanders) where consumption above a chosen level costs more, PELS keeps your hourly or quarter-hour draw under the limit automatically.</p>
       </article>
       <article class="landing-card">
         <h3>You want flexible load to run when power is cheap</h3>
@@ -64,9 +64,9 @@ editLink: false
 
   ### Charge an EV without crossing your whole-home power limit
 
-  If your charger is paired in Homey, PELS can calculate the charging current while still protecting the house limit. Your Flow maps the PELS current value to the charger app. If the real goal is a battery target by morning, use deadline charging with state of charge.
+  If your charger is paired in Homey, PELS calculates the charging current while still protecting the house limit. Some chargers, such as Easee, take that current directly; for others a Flow passes it to the charger app. If the real goal is a battery target by morning, use deadline charging with state of charge.
 
-  [Read the EV charging use case](./use-cases/homey-ev-charging-power-limit.md) · [Deadline Charging With State of Charge](./how-to-deadline-charging-soc.md) · [Configure an EV charger](./ev-charger.md) · [Zaptec example](./zaptec-ev-charger.md)
+  [Read the EV charging use case](./use-cases/homey-ev-charging-power-limit.md) · [Deadline Charging With State of Charge](./how-to-deadline-charging-soc.md) · [Configure an EV charger](./ev-charger.md) · [Easee](./easee-ev-charger.md) · [Zaptec](./zaptec-ev-charger.md)
 
   ### Move hot water, heating or ventilation toward cheap hours
 
@@ -74,9 +74,9 @@ editLink: false
 
   [Read the hot water and heating use case](./use-cases/homey-water-heater-cheap-hours.md) · [Compare cost-saving functions](./cost-saving-functions.md) · [Smart Tasks](./smart-tasks.md) · [Book cheap hours with Flows](./how-to-book-cheap-hours-with-flows.md)
 
-  ### Use more of your own rooftop solar
+  ### Use more of your own solar
 
-  If you have solar panels, PELS protects your capacity for free when the sun is out and can nudge a heater to soak surplus instead of exporting it, while keeping your energy accounting honest under export.
+  If you have solar panels, PELS sends your surplus to hot water, heating, a device that should only run on your own power, or your car's charging current, even behind an inverter that limits export to zero. The Usage tab shows what your panels produced, what you used yourself, what you exported and the grid cost you avoided. With a home battery, PELS charges it from the surplus your devices leave and discharges it to hold your limit before it turns anything down.
 
   [Solar and Self-Consumption](./solar.md) · [Solar accounting](./technical.md#solar-accounting)
 
