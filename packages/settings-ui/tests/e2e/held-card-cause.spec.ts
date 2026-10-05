@@ -1,7 +1,6 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { renderTest as test, expect, type Page } from './fixtures/test';
+import { captureOutputDir, renderTest as test, expect, type Page } from './fixtures/test';
 
 // End-to-end proof of the 2026-08-02 split, driven through the UI seam with the
 // state observed in production: the daily budget is the binding ceiling, four
@@ -16,7 +15,7 @@ import { renderTest as test, expect, type Page } from './fixtures/test';
 // Prod reference (2026-08-02T12:34:42Z): softLimitSource `daily`, safe pace
 // 1.85 kW, house 0.82 kW, `Termostat hovedbad` shed with reason `daily_budget`,
 // expected draw 1.14 kW, admission short by 0.9 kW (need 1.36, available 1.03, two 0.25 kW reserves).
-const OUT_DIR = process.env.PELS_HELD_CARD_OUT_DIR ?? path.join(os.tmpdir(), 'pels-held-card-shots');
+const OUT_DIR = process.env.PELS_HELD_CARD_OUT_DIR ?? captureOutputDir('pels-held-card-shots');
 
 // The stub defaults to simulation mode, where the state word goes factual
 // (`Off`) because PELS acted on nothing. This spec is about the real-mode card.

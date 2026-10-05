@@ -1,6 +1,4 @@
-import os from 'node:os';
-import path from 'node:path';
-import { captureThemes, test, type Locator, type Page } from './fixtures/test';
+import { captureOutputDir, captureThemes, test, type Locator, type Page } from './fixtures/test';
 
 // Whole-surface capture matrix. Not a CI assertion — a reusable review harness.
 // Each main surface is rendered in the three contexts users actually meet
@@ -11,8 +9,8 @@ import { captureThemes, test, type Locator, type Page } from './fixtures/test';
 //   PELS_CAPTURE_THEMES=1 npx playwright test theme-matrix-screenshots \
 //     --project=chromium-mobile-width
 //
-// Output: <tmp>/pels-theme-matrix/<surface>.{light-desktop,dark-mobile,light-mobile}.png
-const OUT_DIR = process.env.PELS_THEME_MATRIX_OUT_DIR ?? path.join(os.tmpdir(), 'pels-theme-matrix');
+// Output: <caller tmp>/pels-theme-matrix/<surface>.{light-desktop,dark-mobile,light-mobile}.png
+const OUT_DIR = process.env.PELS_THEME_MATRIX_OUT_DIR ?? captureOutputDir('pels-theme-matrix');
 
 const FIXED_NOW_MS = Date.UTC(2026, 4, 15, 12, 0, 0);
 const HOUR = 3_600_000;
