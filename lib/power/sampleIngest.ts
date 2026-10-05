@@ -78,6 +78,11 @@ const NO_LOAD_EVIDENCE: ManagedLoadDraw = { totalW: 0, loadKey: resolveManagedLo
  * co-sampled production reading decides that; with none, a PV device in the
  * home may be producing unseen. A grid-tied inverter at night covers nothing,
  * so a PV home is judged like any other then.
+ *
+ * A battery whose `target_power` Homey never set is in `devices` too: the read
+ * contract does not ask a value of an observe-only class's `target_power`
+ * (`deviceReadContract.ts`), where it used to ignore the whole read. Such a
+ * home now counts as covered, as intended — the battery covers loads either way.
  */
 const mayCoverLoad = (
   devices: readonly DeviceSurfaces[],

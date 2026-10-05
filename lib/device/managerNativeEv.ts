@@ -45,6 +45,7 @@ import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 import { withoutTargetPowerReachability } from './targetPowerReachability';
 import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
+import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -94,26 +95,21 @@ export function resolveFlowCapabilityOverlay(params: {
     rawCapabilityObj,
     providers, logger,
   } = params;
-  const nativeEvOverlay = applyOverlaysWithDiagnostics(device, rawCapabilities, rawCapabilityObj, logger);
-  const overlayCapabilities = nativeEvOverlay.capabilities;
-  const overlayCapabilityObj = nativeEvOverlay.capabilityObj;
-  const targetPowerOverlay = applySyntheticTargetPowerOverlay({
+  const nativeEvOverlay = applyNativeEvWiringOverlay({
     device,
-    deviceId,
-    capabilities: overlayCapabilities,
-    capabilityObj: overlayCapabilityObj,
-    evPresetOnly: isNativeEvControlAdapterActive(nativeEvOverlay),
-    providers,
+    capabilities: rawCapabilities,
+    capabilityObj: rawCapabilityObj,
   });
-  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay({
-    device,
-    deviceId,
-    capabilities: targetPowerOverlay.capabilities,
-    capabilityObj: targetPowerOverlay.capabilityObj,
-    profileOverride: targetPowerOverlay.steppedLoadProfile,
-    targetPowerConfig: targetPowerOverlay.targetPowerConfig,
-    providers,
-  });
+  // A battery or panel is never a stepped load: a home battery's `target_power`
+  // is signed (negative discharges), so a 0..max ladder would misread it, and
+  // `batteryControlWiring.ts` classifies it instead. Gated once here, where the
+  // class key is known: no ladder-contract warning, no owner-configured or
+  // native ladder (so no control adapter, which is what every later stepped
+  // write and realtime path keys on), and its `target_power` is not stripped.
+  const steppedLoad = !isObserveOnlyRoleClassKey(deviceClassKey);
+  const { targetPowerOverlay, nativeSteppedOverlay }: SteppedLoadOverlays = steppedLoad
+    ? applySteppedLoadOverlays(device, deviceId, nativeEvOverlay, providers, logger)
+    : { targetPowerOverlay: nativeEvOverlay, nativeSteppedOverlay: {} };
   const targetCapabilityIds = targetPowerOverlay.capabilities
     .filter((capabilityId) => capabilityId === 'target_temperature');
   const flowAugmentedDeviceType = resolveFlowAugmentedDeviceType({
@@ -150,7 +146,9 @@ export function resolveFlowCapabilityOverlay(params: {
   const nativeWriteCapabilities = nativeSteppedOverlay.controlAdapter
     ? resolveCandidateNativeWriteCapabilities({ device, rawCapabilities, rawCapabilityObj })
     : undefined;
-  const finalCapabilities = stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj });
+  const finalCapabilities = steppedLoad
+    ? stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj })
+    : capabilities;
   const easeeBuiltInControl = isEaseeUnderBuiltInControl({ controlAdapter, capabilities: finalCapabilities });
   const finalCapabilityObj = easeeBuiltInControl
     ? withEaseeObservedCharging(capabilityObj)
@@ -207,24 +205,46 @@ function resolveCandidateNativeWriteCapabilities(params: {
   return owned.length > 0 ? owned : undefined;
 }
 
-function applyOverlaysWithDiagnostics(
+type SteppedLoadOverlays = {
+  targetPowerOverlay: ReturnType<typeof applySyntheticTargetPowerOverlay>;
+  nativeSteppedOverlay: ReturnType<typeof resolveNativeSteppedLoadOverlay>;
+};
+
+/**
+ * The stepped-load overlays on top of the native EV overlay: the ladder-contract
+ * warning, the owner-configured target-power ladder, then the native one.
+ */
+function applySteppedLoadOverlays(
   device: HomeyDeviceLike,
-  rawCapabilities: string[],
-  rawCapabilityObj: DeviceCapabilityMap,
+  deviceId: string,
+  nativeEvOverlay: ReturnType<typeof applyNativeEvWiringOverlay>,
+  providers: DeviceTransportParseProviders,
   logger: Logger,
-): ReturnType<typeof applyNativeEvWiringOverlay> {
-  const overlay = applyNativeEvWiringOverlay({
-    device,
-    capabilities: rawCapabilities,
-    capabilityObj: rawCapabilityObj,
-  });
+): SteppedLoadOverlays {
   warnIfTargetPowerCapabilityViolatesContract({
     logger,
     device,
-    capabilities: overlay.capabilities,
-    capabilityObj: overlay.capabilityObj,
+    capabilities: nativeEvOverlay.capabilities,
+    capabilityObj: nativeEvOverlay.capabilityObj,
   });
-  return overlay;
+  const targetPowerOverlay = applySyntheticTargetPowerOverlay({
+    device,
+    deviceId,
+    capabilities: nativeEvOverlay.capabilities,
+    capabilityObj: nativeEvOverlay.capabilityObj,
+    evPresetOnly: isNativeEvControlAdapterActive(nativeEvOverlay),
+    providers,
+  });
+  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay({
+    device,
+    deviceId,
+    capabilities: targetPowerOverlay.capabilities,
+    capabilityObj: targetPowerOverlay.capabilityObj,
+    profileOverride: targetPowerOverlay.steppedLoadProfile,
+    targetPowerConfig: targetPowerOverlay.targetPowerConfig,
+    providers,
+  });
+  return { targetPowerOverlay, nativeSteppedOverlay };
 }
 
 function shouldIgnoreFlowReports(params: {
@@ -300,13 +320,7 @@ function applySyntheticTargetPowerOverlay(params: {
 } {
   const config = params.providers.getDeviceTargetPowerConfig?.(params.deviceId)
     ?? resolveDeviceCompatibilityTargetPowerConfig(params.device);
-  if (params.evPresetOnly === true && !isEvTargetPowerPresetConfig(config)) {
-    return {
-      capabilities: params.capabilities,
-      capabilityObj: params.capabilityObj,
-    };
-  }
-  if (!config) {
+  if (!config || (params.evPresetOnly === true && !isEvTargetPowerPresetConfig(config))) {
     return {
       capabilities: params.capabilities,
       capabilityObj: params.capabilityObj,

@@ -129,7 +129,8 @@ type ProjectionEntry = {
  * so the freeze must reach every reachable sub-object a consumer could mutate:
  * the record, its `targets` array + each target entry, and the nested observation
  * bags (`binaryControl`, `stateOfCharge` — including its own nested `level`,
- * `report` and `source` — `binaryControlObservation` and its
+ * `report` and `source` — `batteryPower`, `batteryClaim`,
+ * `binaryControlObservation` and its
  * `observedCapabilityIds` array). The state-of-charge bag needs the inner three
  * named explicitly: they are objects, so the outer freeze leaves them writable,
  * and `report.percent` / `source.carId` would still be assignable through a
@@ -152,6 +153,8 @@ function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedD
         Object.freeze(value.stateOfCharge.source);
         Object.freeze(value.stateOfCharge);
     }
+    if (value.batteryPower) Object.freeze(value.batteryPower);
+    if (value.batteryClaim) Object.freeze(value.batteryClaim);
     if (value.binaryControlObservation) {
         Object.freeze(value.binaryControlObservation.observedCapabilityIds);
         Object.freeze(value.binaryControlObservation);

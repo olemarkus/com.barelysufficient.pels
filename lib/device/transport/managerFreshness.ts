@@ -8,6 +8,7 @@ import {
 } from './stateOfCharge';
 import type { RealtimeDeviceReconcileChange } from '../managerRuntime';
 import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
+import { applyHomeBatteryPowerObservation, isHomeBatterySnapshot } from './homeBatteryObservation';
 import {
   removeTemperatureObservation,
   updateTemperatureMeasurement,
@@ -19,7 +20,8 @@ export type FreshnessOnlyCapabilityUpdateResult = {
    * The reading was ACCEPTED and advanced an observation stamp, even though the
    * value itself did not move. Distinct from `changed`, which gates expensive
    * downstream work, and distinct from a REJECTED reading — junk (`NaN`,
-   * infinite, negative power), a capability this seam does not handle, or a
+   * infinite, negative power on anything but a home battery, which draws
+   * 0 kW while it discharges), a capability this seam does not handle, or a
    * guard that declined — which mutates nothing and must stay a no-op, not
    * become an event (root `AGENTS.md`: "A transient external failure is a
    * no-op, not an event"). The observer dispatch keys on this: a spurious
@@ -33,6 +35,17 @@ export type FreshnessOnlyCapabilityUpdateResult = {
   temperatureRecoveryRequested?: boolean;
   temperatureFacetRemoved?: boolean;
 };
+
+/** A realtime `measure_power` reading as a draw in kW, or `null` for junk. */
+const resolveRealtimeMeasuredPowerKw = (
+  snapshot: TransportDeviceSnapshot,
+  value: unknown,
+  observedAtMs: number,
+): number | null => (
+  isHomeBatterySnapshot(snapshot)
+    ? applyHomeBatteryPowerObservation(snapshot, value, observedAtMs)
+    : normalizeMeasuredPowerKw(typeof value === 'number' ? value / 1000 : value)
+);
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applyFreshnessOnlyCapabilityUpdate(params: {
@@ -50,8 +63,16 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
   // it falls through to the no-op return below with no write and no freshness
   // bump — and is never floored to 0, because "no reading" and "drawing nothing"
   // are different facts.
+  // A home battery keeps its signed reading (`batteryPower`) and draws 0 kW
+  // while it discharges; every other device goes through the draw-only rule.
+  // Each accepted battery reading, discharging included, is an observation: it
+  // dispatches and advances the observer projection's revision, so a fail-closed
+  // `hasExecutionWorkOutstanding` may decline one cycle. Accepted — it is real
+  // telemetry, and it never rebuilds the plan
+  // (`test/integration/observationLaneNoPlanRebuild.test.ts`).
+  const nowMs = Date.now();
   const measuredKw = capabilityId === 'measure_power'
-    ? normalizeMeasuredPowerKw(typeof value === 'number' ? value / 1000 : value)
+    ? resolveRealtimeMeasuredPowerKw(snapshot, value, nowMs)
     : null;
   if (measuredKw !== null) {
     // The observation timestamp travels WITH the reading — that is the stated
@@ -69,7 +90,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     // still a fresh observation. `changed` gates expensive downstream work
     // (calibration ingest, rebuild scheduling); it does not decide what was
     // observed, and a device holding a steady draw must not decay to "stale".
-    const observedAtMs = Date.now();
+    const observedAtMs = nowMs;
     snapshot.measuredPowerObservedAtMs = observedAtMs;
     snapshot.measuredPowerReading = {
       kind: 'instantaneous', powerKw: measuredKw, observedAtMs,

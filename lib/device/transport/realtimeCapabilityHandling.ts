@@ -5,6 +5,7 @@ import { formatBinaryState, formatTargetValue } from './managerRealtimeSupport';
 import { applyFreshnessOnlyCapabilityUpdate } from './managerFreshness';
 import {
   didMeasurePowerBecomeSignificantlyPositive,
+  type ObservedDeviceStateEvent,
   type PlanRealtimeUpdateEvent,
 } from './managerRealtimeHandlers';
 import { normalizeNativeEvCapabilityUpdate } from '../nativeEvWiring';
@@ -28,6 +29,7 @@ import {
   updateTemperatureTarget,
 } from './temperatureObservation';
 import { handleThermostatModeCapabilityUpdate } from './thermostatModeRealtime';
+import { handleHomeBatteryClaimCapabilityUpdate } from './homeBatteryObservation';
 
 const moduleLogger = getLogger('device/transport');
 
@@ -426,13 +428,7 @@ export function handleRealtimeCapabilityUpdate(
         recoverMissingTemperatureSnapshot(ingest, deviceId, capabilityId, value);
         return;
     }
-    // Neither an EV nor a stepped-load capability, and not a target PELS writes.
-    if (handleThermostatModeCapabilityUpdate(
-        (id) => ingest.observationBridge.nextCursor(id),
-        (event) => ingest.observationBridge.dispatchStateChanged(event),
-        (event) => ingest.observationBridge.dispatchControlStateChanged(event),
-        snapshot, capabilityId, value,
-    )) return;
+    if (handleObservedOnlyCapabilityUpdate(ingest, snapshot, capabilityId, value)) return;
 
     const normalizedEvents = normalizeNativeEvCapabilityUpdate({
         snapshot,
@@ -506,6 +502,29 @@ export function handleRealtimeCapabilityUpdate(
             snapshot,
         });
     }
+}
+
+/**
+ * Capabilities that are neither an EV nor a stepped-load capability, and not a
+ * target PELS writes: a thermostat mode, and a home battery's claim. True when
+ * the event was one of them.
+ */
+function handleObservedOnlyCapabilityUpdate(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: unknown,
+): boolean {
+    const nextCursor = (id: string) => ingest.observationBridge.nextCursor(id);
+    const dispatchStateChanged = (event: ObservedDeviceStateEvent) => (
+        ingest.observationBridge.dispatchStateChanged(event)
+    );
+    return handleThermostatModeCapabilityUpdate(
+        nextCursor,
+        dispatchStateChanged,
+        (event) => ingest.observationBridge.dispatchControlStateChanged(event),
+        snapshot, capabilityId, value,
+    ) || handleHomeBatteryClaimCapabilityUpdate(nextCursor, dispatchStateChanged, snapshot, capabilityId, value);
 }
 
 function recoverMissingTemperatureSnapshot(

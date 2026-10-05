@@ -6,6 +6,14 @@ import {
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/observer/controlCommandConfirmation';
 import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
 import type { PendingBinaryCommand } from '../../lib/observer/pendingBinaryCommandTypes';
+import Homey from 'homey';
+import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
+import type { PlanService } from '../../lib/plan/planService';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { subscribePlanObservedState } from '../../setup/appInit/planObservedStateSubscription';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { createTestDeviceTransport, onObservedState } from '../helpers/deviceTransportHarness';
+import { mockHomeyInstance } from '../mocks/homey';
 
 /**
  * An observation may drive the UI and the executor. It may NOT drive the
@@ -122,6 +130,71 @@ describe('the observation lane never requests an immediate plan rebuild', () => 
 
     expect(requestRebuild).not.toHaveBeenCalled();
     expect(scheduleRebuild).toHaveBeenCalledWith('charger', expect.any(Number));
+  });
+});
+
+describe('a discharging home battery on the observation lane', () => {
+  // Every accepted battery reading, discharging included, is an observation the
+  // lane receives (it advances the observer projection's revision). None of
+  // them may pick when the planner runs.
+  it('never rebuilds the plan or clears a rebuild suppression for negative readings', () => {
+    const noop = (): void => undefined;
+    const logger: Logger = {
+      log: noop,
+      error: noop,
+      structuredLog: { info: noop, error: noop, debug: noop, warn: noop } as unknown as Logger['structuredLog'],
+    };
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+      getManaged: () => true,
+    });
+    const lastUpdated = new Date().toISOString();
+    const battery: HomeyDeviceLike = {
+      id: 'battery-1',
+      name: 'Home Battery',
+      class: 'battery',
+      capabilities: ['measure_battery', 'measure_power'],
+      capabilitiesObj: {
+        measure_battery: { id: 'measure_battery', value: 60, lastUpdated },
+        measure_power: { id: 'measure_power', value: 1200, lastUpdated },
+      },
+    };
+    transport.setSnapshotForTests(transport.parseDeviceListForTests([battery]));
+
+    const syncLivePlanState = vi.fn().mockResolvedValue(false);
+    const rebuildPlanFromCache = vi.fn();
+    // The plan answers "this device can move the actionable load", so only the
+    // event itself stands between a reading and a suppression clear.
+    const ctx = createAppContextMock({
+      planService: {
+        syncLivePlanState, rebuildPlanFromCache, canDeviceChangeActionableLoad: () => true,
+      } as unknown as PlanService,
+    });
+    const laneEmitter = new ObservedStateEmitter();
+    const invalidateRebuildSuppression = vi.fn();
+    subscribePlanObservedState({
+      ctx,
+      syncLivePlanState: (event) => syncLivePlanState(event.source),
+      getObservedStateEmitter: () => laneEmitter,
+      syncExternalOffHold: vi.fn(),
+      invalidateRebuildSuppression,
+      getHomeRuntimeRegistry: () => undefined,
+    });
+    onObservedState(transport, (event) => laneEmitter.emitObservedStateChanged(event));
+
+    for (const watts of [-1500, -1500, -300, 0, -2500]) {
+      transport.injectCapabilityUpdateForTest('battery-1', 'measure_power', watts);
+    }
+
+    expect(syncLivePlanState).toHaveBeenCalledTimes(5);
+    expect(invalidateRebuildSuppression).not.toHaveBeenCalled();
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    // The wiring is live: a battery that starts drawing hard does clear the
+    // suppression, as any device would. Still no rebuild.
+    transport.injectCapabilityUpdateForTest('battery-1', 'measure_power', 2500);
+    expect(invalidateRebuildSuppression).toHaveBeenCalledWith('battery-1');
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 });
 

@@ -68,6 +68,7 @@ import type {
 } from './managerParseDevice';
 import { resolveDevicePowerState } from './managerParsePowerState';
 import { resolveParsedLastFreshDataMs } from './managerParseFreshness';
+import { withHomeBatteryParseFields } from './homeBatteryObservation';
 import {
     resolveTargetDeviceType,
     resolveTemperatureObservation,
@@ -320,7 +321,7 @@ export function assembleDeviceSnapshot(params: {
         reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
         measuredPowerObservedAtMs: measuredPower.observedAtMs,
     });
-    return buildParsedDeviceSnapshot({
+    const parsed = buildParsedDeviceSnapshot({
         device: effectiveDevice,
         deviceId,
         deviceClassKey,
@@ -372,6 +373,7 @@ export function assembleDeviceSnapshot(params: {
         lastFreshDataMs,
         lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
     });
+    return withHomeBatteryParseFields(parsed, effectiveDevice, deviceClassKey, overlay, previousSnapshot);
 }
 
 // `retainedSession` carries the session anchor the transport already holds for
