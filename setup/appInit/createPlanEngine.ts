@@ -6,6 +6,7 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import { PlanBuilder, type PlanBuilderDeps } from '../../lib/plan/planBuilder';
 import { PlanExecutor } from '../../lib/executor/planExecutor';
 import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
+import type { StorageLaneBinding } from '../../lib/ports/batteryControlOwner';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
@@ -36,6 +37,11 @@ export type CreatePlanEngineOptions = {
    * second-guessing the plan at the write.
    */
   isActuationFenced: (deviceId: string) => boolean;
+  /**
+   * The storage lane's binding: Main's battery control owner, or `none` for a
+   * meter area, which plans and commands no battery.
+   */
+  storageLane: StorageLaneBinding;
 };
 
 export type PlanEngineCompositionResult = {
@@ -116,6 +122,7 @@ const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult 
     syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
     deviceDiagnostics: deps.deviceDiagnostics,
     pendingBinaryCommandStore,
+    storageLane: deps.storageLane,
   };
   const executor = new PlanExecutor(executorDeps, state);
   return {
@@ -207,6 +214,7 @@ export function createPlanEngineComposition(
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
     getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
     getInferredSurplusKw: scope.getInferredSurplusKw,
+    storageLane: options.storageLane,
     getPowerTracker: scope.getPowerTracker,
     getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,
     // Smart-task decoration seam, owned by the scope (`buildMainHomeScope`

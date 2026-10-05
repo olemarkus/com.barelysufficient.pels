@@ -169,7 +169,8 @@ export function applyHomeBatteryPowerObservation(
  * was a claim event, whether or not it changed anything. Dated on arrival: the
  * live feed hands PELS no source time for it, which is why a pulled read that
  * disagrees wins (`resolveParsedClaim`). Published as an observed-state change
- * only: nothing decides on the claim yet, so it is not a control-state change.
+ * only: the claim is planner input (whether PELS's setpoint is engaged), never a
+ * reason to re-decide, so it is not a control-state change.
  */
 export function handleHomeBatteryClaimCapabilityUpdate(
     nextObservationCursor: (deviceId: string) => ObservationCursor,

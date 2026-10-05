@@ -315,3 +315,98 @@ describe('HomeBatteryControlOwner hand-back', () => {
     logs.restore();
   });
 });
+
+describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
+  it('reads a setpoint battery as admissible and unclaimed without recording anything', () => {
+    const { owner, settings } = buildOwner();
+
+    expect(owner.readControl(BATTERY)).toEqual({
+      kind: 'setpoint',
+      stepW: 1,
+      deliveryCeilingW: 2500,
+      claimHeld: false,
+      handBackDeferred: false,
+      claimEngaged: false,
+      admissible: true,
+      verdict: 'unverified',
+    });
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('reads a fenced battery as still admissible: the fence holds writes, it is no reason to hand back', () => {
+    const { owner } = buildOwner({ fenced: true });
+
+    expect(owner.readControl(BATTERY)).toMatchObject({ admissible: true });
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'actuation_fenced' });
+  });
+
+  it('reads a battery someone else holds as not admissible, and one PELS holds as held', () => {
+    expect(buildOwner({ batteries: { [BATTERY]: setpointBattery('homey') } }).owner.readControl(BATTERY))
+      .toMatchObject({ admissible: false, claimHeld: false, claimEngaged: true });
+
+    const settings = settingsStore({ [CLAIM_KEY]: record('anti_feed') });
+    const { owner } = buildOwner({ settings, batteries: { [BATTERY]: setpointBattery('homey') } });
+    expect(owner.readControl(BATTERY)).toMatchObject({ admissible: true, claimHeld: true, claimEngaged: true });
+  });
+
+  it('carries the verdict the storage lane recorded', () => {
+    const { owner } = buildOwner();
+    owner.verification.recordDeliveryCeiling(BATTERY, 900, T0);
+
+    expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'responding', deliveryCeilingW: 900 });
+  });
+
+  it('hands the battery back when the plan releases it', async () => {
+    const { owner, settings, commands } = buildOwner();
+    owner.admitClaim(BATTERY);
+
+    expect(await owner.releaseClaim(BATTERY, 'idle')).toBe('released');
+
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('honours a failed hand-back\'s back-off instead of retrying it on every plan release', async () => {
+    let fail = true;
+    const { owner, commands, settings } = buildOwner({
+      apply: async () => {
+        if (fail) throw new Error('battery unreachable');
+        return { requested: true };
+      },
+    });
+    owner.admitClaim(BATTERY);
+
+    expect(await owner.releaseClaim(BATTERY, 'idle')).toBe('not_released');
+    expect(owner.readControl(BATTERY)).toMatchObject({ handBackDeferred: true });
+    fail = false;
+    expect(await owner.releaseClaim(BATTERY, 'idle')).toBe('not_released');
+    expect(commands).toHaveLength(1);
+
+    vi.setSystemTime(T0 + BATTERY_RELEASE_RETRY_BACKOFF_MS[0]);
+    expect(owner.readControl(BATTERY)).toMatchObject({ handBackDeferred: false });
+    expect(await owner.releaseClaim(BATTERY, 'idle')).toBe('released');
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('hands a claimed battery back itself once capacity simulation is switched on', async () => {
+    let dryRun = false;
+    const settings = settingsStore();
+    const commands: StorageCommand[] = [];
+    const owner = new HomeBatteryControlOwner({
+      settings,
+      actuation: { apply: async (command) => { commands.push(command); return { requested: true }; } },
+      getBattery: () => setpointBattery('anti_feed'),
+      isMainHomeMember: () => true,
+      isActuationFenced: () => false,
+      isCapacityDryRun: () => dryRun,
+    });
+    owner.admitClaim(BATTERY);
+
+    dryRun = true;
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+});

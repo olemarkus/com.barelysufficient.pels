@@ -182,6 +182,7 @@ async function buildPlanForRebuild(
   const { planEngine } = host.deps;
   planEngine.syncPendingBinaryCommands(host.settleDevices(), 'rebuild');
   planEngine.syncSteppedCommands(() => host.steppedSettleDevices());
+  planEngine.syncStorageCommands();
   // Read BEFORE the inputs are captured. The build below awaits, so a realtime
   // observation can land mid-build; this is what lets the apply step tell that
   // the plan was decided against a world that has since moved.

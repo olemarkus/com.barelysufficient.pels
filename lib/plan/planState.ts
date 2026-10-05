@@ -184,6 +184,46 @@ export type SheddingOutcome =
 /** The one `none` outcome, shared: it carries nothing, so every quiet cycle answers the same object. */
 export const NO_SHEDDING_OUTCOME: SheddingOutcome = Object.freeze({ kind: 'none' });
 
+/**
+ * The storage relief stage's hold on one home battery
+ * (`lib/plan/battery/storageRelief.ts`). An entry exists exactly while the plan
+ * is driving the battery; releasing it deletes the entry. In memory: after a
+ * restart the owner's boot recovery hands a claimed battery back, and the next
+ * deficit claims it afresh.
+ */
+export type StorageLeverState = {
+  /** The discharge this plan asks of the battery, W (>= 0): the setpoint is its negation. */
+  dischargeW: number;
+  /** When the current increase was decided: its credit's settle window runs from here. */
+  increaseDecidedAtMs: number;
+  /**
+   * The discharge already accounted for when that increase was decided, W
+   * (signed: negative while the battery was charging). Only what the battery
+   * still has to deliver above it is credited to shedding, so an increase that
+   * never landed is not credited again by the next one.
+   */
+  creditBaseW: number;
+  /** When the setpoint last stepped down: decreases are paced, increases are not. */
+  lastDecreaseAtMs: number;
+  /** The last cycle with a deficit or a discharge held: the idle hand-back counts from here. */
+  lastNeedAtMs: number;
+  /**
+   * The battery's own signed power when the plan first claimed it, W. A battery
+   * stopped while it was charging would charge again at about this rate once
+   * handed back, so the hold at 0 W counts as needed while the house has no
+   * room for that.
+   */
+  preClaimSignedW: number;
+  /** The battery's setpoint grid, W, as last read: a hold kept while unread still names it. */
+  stepW: number;
+  /**
+   * Whether the battery read last cycle, or since when it has had no readable
+   * storage input while held. An unread hold is kept, uncredited, and released
+   * once it has lasted `STORAGE_INPUT_MISSING_RELEASE_MS`.
+   */
+  reading: { kind: 'read' } | { kind: 'unread'; sinceMs: number };
+};
+
 export type HeadroomCardState = {
   lastUsageKw?: number;
   deviceName?: string;
@@ -409,6 +449,10 @@ export class PlanEngineState {
   // — see `SURPLUS_TRACK_STEP_MIN_INTERVAL_MS`. In-memory, pruned in lockstep
   // with the decision itself.
   surplusTrackingRaisedMs: Record<string, number> = {};
+
+  // Per-device: the storage relief stage's hold on a home battery — see
+  // `StorageLeverState`. In-memory like its siblings.
+  storageLeverByDevice: Readonly<Record<string, StorageLeverState>> = {};
 
   steppedRestoreRejectedByDevice: Record<string, {
     requestedStepId: string;

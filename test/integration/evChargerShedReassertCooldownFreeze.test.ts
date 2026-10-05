@@ -246,6 +246,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
     pendingBinaryCommandStore,
+    storageLane: { kind: 'none' },
   };
   const executor = new PlanExecutor(deps, state);
   return {

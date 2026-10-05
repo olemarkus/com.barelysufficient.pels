@@ -12,7 +12,7 @@ import type { PlanEngineState } from '../planState';
 import { toMeteredUsageDevices } from '../planUsage';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { buildShedCandidateParams, buildSheddingCandidates } from './candidates';
-import type { PlanSheddingResult, ShedCandidate, SheddingDeps } from './types';
+import { NO_STORAGE_SHED_TERM, type PlanSheddingResult, type ShedCandidate, type SheddingDeps } from './types';
 
 /**
  * What one build tells the capacity guard about its reading. Over the hard-cap
@@ -111,7 +111,8 @@ function walkShedCandidates(
   deps: SheddingDeps,
 ): ShedCandidate[] {
   return buildSheddingCandidates({
-    ...buildShedCandidateParams(context, power, state, deps),
+    // The verdict reads the measurement alone: no battery credit or debit.
+    ...buildShedCandidateParams(context, power, state, deps, NO_STORAGE_SHED_TERM),
     deps: { ...deps, debugStructured: undefined },
   }).candidates;
 }

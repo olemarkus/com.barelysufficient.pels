@@ -337,6 +337,7 @@ const buildExecutor = (
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    storageLane: { kind: 'none' },
     ...depsOverrides,
   };
   return {

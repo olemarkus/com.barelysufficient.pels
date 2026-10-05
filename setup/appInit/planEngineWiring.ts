@@ -46,6 +46,7 @@ export type PlanEngineWiring = {
   getPriceOptimizationSettings: () => Record<string, PriceOptimizationSettings>;
   getCurrentHourPriceLevel: () => PriceLevel;
   getInferredSurplusKw: () => number;
+  storageLane: PlanExecutorDeps['storageLane'];
   /**
    * "Leave off until turned on again", resolved once for every home in
    * `createPlanEngine`. Required: a home wired without it would silently make

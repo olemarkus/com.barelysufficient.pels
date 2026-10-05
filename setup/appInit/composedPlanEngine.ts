@@ -50,7 +50,8 @@ export type PlanEngineComposition = {
     | 'hasStablePlanActuation'
     | 'handleConfirmedBinaryCommand'
     | 'driftObservationDeps'
-    | 'getObservationRevision'>;
+    | 'getObservationRevision'
+    | 'syncStorageCommands'>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   debugStructured?: StructuredDebugEmitter;
   structuredLog?: PinoLogger;
@@ -165,6 +166,10 @@ export class ComposedPlanEngine implements PlanEngine {
       store: this.steppedCommandStore,
       devices: getDevices(),
     });
+  }
+
+  public syncStorageCommands(): void {
+    this.executor.syncStorageCommands();
   }
 
   public syncPendingBinaryCommands(

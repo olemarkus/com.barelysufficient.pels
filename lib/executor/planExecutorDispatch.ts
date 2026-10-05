@@ -63,6 +63,8 @@ import {
 import { isSteppedLoadRestoreFromOff } from './planExecutorPredicates';
 import { isRequestedStepMaterialized } from './steppedLoadActuation';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
+import { hasStorageDecision } from '../planContract/storageDecision';
+import type { StorageLane } from './batteryExecutor';
 
 const logger = getLogger('executor/plan');
 /**
@@ -98,6 +100,8 @@ export type PlanExecutorCore = {
   readDevices: () => ExecutorDeviceRead[];
   capacityDryRun: () => boolean;
   state: PlanEngineState;
+  /** The storage lane: home-battery setpoints and hand-backs (`batteryExecutor.ts`); none in a meter area. */
+  storage: StorageLane;
   flushLastControlledPersistence: () => void;
   // Routes through the spyable instance method so `applyPlanActions` → binary shed
   // still hits any test spy on `executor.applySheddingToDevice`.
@@ -481,7 +485,40 @@ export const dispatchPlanActions = async (
       });
     }
   }
-  return { deviceWriteCount, commandRequestCount, deviceApplyFailureCount, writtenDeviceIds };
+  // Batteries after every shed: a slow cloud battery must never delay one.
+  const storage = await dispatchStorageDecisions(core, plan);
+  return {
+    deviceWriteCount,
+    commandRequestCount: commandRequestCount + storage.writtenDeviceIds.length,
+    deviceApplyFailureCount: deviceApplyFailureCount + storage.failureCount,
+    writtenDeviceIds: [...writtenDeviceIds, ...storage.writtenDeviceIds],
+  };
+};
+
+/** The plan's home-battery decisions, through the storage lane (none in a meter area). */
+const dispatchStorageDecisions = async (
+  core: PlanExecutorCore,
+  plan: DevicePlan,
+): Promise<{ writtenDeviceIds: string[]; failureCount: number }> => {
+  const writtenDeviceIds: string[] = [];
+  let failureCount = 0;
+  for (const device of plan.devices) {
+    if (!hasStorageDecision(device)) continue;
+    try {
+      // eslint-disable-next-line functional/immutable-data -- local accumulator
+      if (await core.storage.apply(device)) writtenDeviceIds.push(device.id);
+    } catch (error) {
+      failureCount += 1;
+      logger.error({
+        event: 'executor_plan_error',
+        reasonCode: 'storage_decision_failed',
+        deviceId: device.id,
+        deviceName: device.name,
+        err: error,
+      });
+    }
+  }
+  return { writtenDeviceIds, failureCount };
 };
 
 /**

@@ -48,6 +48,8 @@ import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measu
 import { resolveDeviceExecutionState } from './deviceExecutionState';
 import { buildDriftObservedSnapshot } from './driftObservedDevice';
 import { buildExecutableObservedDeviceStateFromSnapshot } from './executablePlanProjection';
+import { BatteryExecutor, NO_STORAGE_LANE, type StorageLane } from './batteryExecutor';
+import type { StorageLaneBinding } from '../ports/batteryControlOwner';
 
 const logger = getLogger('executor/plan');
 
@@ -107,6 +109,12 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
    * store).
    */
   pendingBinaryCommandStore: PendingBinaryCommandStore;
+  /**
+   * The storage lane's binding (`batteryExecutor.ts`): Main's battery control
+   * owner, built before the plan engine; `none` in a meter area, which builds
+   * no storage lane at all.
+   */
+  storageLane: StorageLaneBinding;
 };
 
 export class PlanExecutor {
@@ -114,8 +122,33 @@ export class PlanExecutor {
   private controlPersistenceBatchDepth = 0;
   private readonly shortfallExecutor: ShortfallExecutor;
 
+  /** The storage lane; a meter area builds none, and its plans carry no storage decision. */
+  private readonly storage: StorageLane;
+
   constructor(private deps: PlanExecutorDeps, private state: PlanEngineState) {
     this.shortfallExecutor = new ShortfallExecutor(deps, state);
+    this.storage = deps.storageLane.kind === 'none' ? NO_STORAGE_LANE : new BatteryExecutor({
+      owner: deps.storageLane.owner,
+      actuator: deps.actuator,
+      readBatteryPower: (deviceId) => deps.getObservedState(deviceId)?.batteryPower,
+      getPowerTracker: deps.getPowerTracker,
+      readManagedDrawW: () => this.readManagedDrawW(),
+      hasShedOrRestoreSince: (sinceMs) => this.state.actuation.hasShedOrRestoreSince(sinceMs),
+    });
+  }
+
+  /** The managed devices' own metered draw, W: everything metered but a battery or panel. */
+  private readManagedDrawW(): number {
+    return readExecutorDevices(this.deps).reduce((totalW, device) => (
+      this.deps.getDeviceConfiguration(device.id)?.observeOnly === true || !hasObservedMeasuredPower(device)
+        ? totalW
+        : totalW + device.measuredPowerKw * 1000
+    ), 0);
+  }
+
+  /** Judge the storage lane's setpoints in flight against this reading. */
+  public syncStorageCommands(): void {
+    this.storage.sync(Date.now());
   }
 
   private readonly boundGetShedBehavior = (deviceId: string) => this.getShedBehavior(deviceId);
@@ -423,6 +456,7 @@ export class PlanExecutor {
         readDevices: () => readExecutorDevices(this.deps),
         capacityDryRun: () => this.capacityDryRun,
         state: this.state,
+        storage: this.storage,
         flushLastControlledPersistence: () => this.flushLastControlledPersistence(),
         applySheddingToDevice: (deviceId, deviceName) => (
           this.applySheddingToDevice(deviceId, deviceName)
@@ -474,6 +508,7 @@ export class PlanExecutor {
         deviceId, this.deps.pendingBinaryCommandStore.get(deviceId),
       ),
       isExternalOffHeld: (deviceId) => this.state.isExternalOffHeld(deviceId),
+      hasStorageDrift: (device) => this.storage.hasDrift(device),
     };
   }
 

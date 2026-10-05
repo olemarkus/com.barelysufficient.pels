@@ -101,6 +101,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     markSteppedLoadDesiredStepIssued: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    storageLane: { kind: 'none' },
   };
   return {
     executor: new PlanExecutor(deps, state),

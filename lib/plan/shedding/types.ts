@@ -58,6 +58,38 @@ export type SheddingOvershootInput = {
   shedActionable: boolean;
 };
 
+/**
+ * What storage relief (`lib/plan/battery/storageRelief.ts`) hands shedding: a
+ * DECISION about the deficit, never a rewrite of the measurement. Shedding,
+ * and the overshoot grace that gates it, count it against the measured
+ * deficit; the shortfall verdict, incidents and every other stage see the
+ * measurement alone.
+ */
+export type StorageShedTerm = {
+  /**
+   * Relief to take off the measured deficit, kW: discharge a battery was just
+   * asked for and has not delivered yet, less the discharge of every battery
+   * handed back this cycle, whose import lands next. Negative when a hand-back
+   * outweighs the credit, so shedding is ready before the import step shows.
+   */
+  netCreditKw: number;
+  /** A battery holds a discharge this cycle, so it may answer an exhausted hour. */
+  relieving: boolean;
+  /**
+   * The import a relieving battery deliberately leaves under the house's draw
+   * (half its deadband, so relief never tips the house into export), kW. An
+   * exhausted hour forgives it.
+   */
+  drawMarginKw: number;
+};
+
+/** No battery relieving and none released: shedding exactly as without one. */
+export const NO_STORAGE_SHED_TERM: StorageShedTerm = Object.freeze({
+  netCreditKw: 0,
+  relieving: false,
+  drawMarginKw: 0,
+});
+
 export type OvershootStats = {
   needed: number;
   eligibleCandidateCount: number;

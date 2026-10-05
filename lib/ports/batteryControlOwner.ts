@@ -1,4 +1,9 @@
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
+import type { StorageVerdict } from '../../packages/planner-types/src/planInputDevice';
+import type { StorageReleaseReason } from '../planContract/storageDecision';
+
+/** Re-exported so `lib/battery`, a leaf domain, names the plan's hand-back reasons through its port. */
+export type { StorageReleaseReason } from '../planContract/storageDecision';
 
 /**
  * Why PELS may not claim a battery now:
@@ -48,6 +53,72 @@ export type BatteryClaimAdmission =
   | { status: 'refused'; reason: BatteryClaimRefusal };
 
 /**
+ * A battery's lever as the owner reads it for the planner and the executor's
+ * storage lane: `none` when the battery is not observed or can only be
+ * observed, else its setpoint surface and what PELS holds on it.
+ */
+export type BatteryLeverRead =
+  | { kind: 'none' }
+  | {
+    kind: 'setpoint';
+    /** The setpoint grid, W. */
+    stepW: number;
+    /**
+     * The most discharge PELS may ask for, W: the discharge range, or less
+     * while an increase that plateaued short of it is the lesson
+     * (`lib/battery/batteryVerification.ts`).
+     */
+    deliveryCeilingW: number;
+    /** PELS holds a recorded claim and owes the battery a hand-back. */
+    claimHeld: boolean;
+    /**
+     * A hand-back of this battery is running, waiting out its retry back-off, or
+     * stopped for good: asking for another now would do nothing.
+     */
+    handBackDeferred: boolean;
+    /** The battery reports Homey's claim value, so a setpoint written now steers it. */
+    claimEngaged: boolean;
+    /**
+     * PELS may hold the battery: `admitClaim` would admit it now, Main's write
+     * fence aside (a fence holds writes for a moment; it is no reason to hand the
+     * battery back). Side-effect free: nothing is recorded.
+     */
+    admissible: boolean;
+    verdict: StorageVerdict;
+  };
+
+/** What a confirmed setpoint showed: the discharge delivered, and the tolerance it was judged within, W. */
+export type BatteryDelivery = { dischargeW: number; toleranceW: number };
+
+/**
+ * What the executor's storage lane learns from each setpoint, written to the
+ * owner (`lib/battery/batteryVerification.ts`) and read back through
+ * `readControl` by the planner input.
+ */
+export type BatteryVerificationRecorder = {
+  /**
+   * The battery's own power reached the setpoint. A learned ceiling is lifted
+   * only by a delivery above it by more than the tolerance.
+   */
+  recordResponding(deviceId: string, delivery: BatteryDelivery, nowMs: number): void;
+  /** An increase in discharge plateaued short of its setpoint, at this discharge, W. */
+  recordDeliveryCeiling(deviceId: string, dischargeW: number, nowMs: number): void;
+  /**
+   * Whether this discharge, W, is within the tolerance of the last plateau the
+   * battery showed this run, held or expired: a re-probe that starts there and
+   * gets no further plateaued again rather than ignored the setpoint.
+   */
+  startsAtPlateau(deviceId: string, dischargeW: number, toleranceW: number): boolean;
+  /** The battery's own power did not move within the confirmation window. */
+  recordNotResponding(deviceId: string, nowMs: number): void;
+  /** The battery's reported power moved opposite to the whole-home meter across several steps. */
+  recordSignInverted(deviceId: string): void;
+};
+
+/** Whether `releaseClaim` handed the battery back. */
+export type BatteryHandBackOutcome = 'released' | 'not_released';
+
+/**
  * The Main home's battery control owner (`lib/battery/batteryControlOwner.ts`):
  * claim admission, the durable claim record, and the hand-back. It issues no
  * setpoint; the executor does, through Main's fenced actuator, after
@@ -60,6 +131,16 @@ export type BatteryControlOwner = {
    * battery holds, so a crash leaves something to hand back to.
    */
   admitClaim(deviceId: string): BatteryClaimAdmission;
+  /** The battery's lever as of now. */
+  readControl(deviceId: string): BatteryLeverRead;
+  /**
+   * Hand the battery back because the plan released it. Joins a hand-back
+   * already running, and honours one waiting out its back-off or stopped for
+   * good (`not_released`); a failed one is retried by the owner like any other.
+   */
+  releaseClaim(deviceId: string, reason: StorageReleaseReason): Promise<BatteryHandBackOutcome>;
+  /** Where the executor's storage lane records what each setpoint did. */
+  readonly verification: BatteryVerificationRecorder;
   /**
    * A committed device snapshot: prunes the record of a battery gone from
    * Homey, and retries every hand-back that is due (boot recovery and failed
@@ -69,3 +150,13 @@ export type BatteryControlOwner = {
   /** Re-read the owner's opt-out and hand back every claimed battery it now turns off. */
   applyControlSettings(): void;
 };
+
+/**
+ * A home's binding to home-battery control: Main's battery control owner, or
+ * `none` for a meter area, which projects no storage lever
+ * (`lib/planInput/storageProjection.ts`) and builds no storage lane
+ * (`lib/executor/batteryExecutor.ts`).
+ */
+export type StorageLaneBinding =
+  | { kind: 'battery_control'; owner: BatteryControlOwner }
+  | { kind: 'none' };

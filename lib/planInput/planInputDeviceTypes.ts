@@ -12,7 +12,11 @@ import type {
   EvBoostConfig,
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
-import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import type {
+  DeviceControlPosture,
+  StoragePlanInputKind,
+} from '../../packages/planner-types/src/planInputDevice';
+import type { StorageLaneBinding } from '../ports/batteryControlOwner';
 import type { PlanInputSnapshotDevice } from './runtimeDeviceRead';
 import type { ShedBehavior, SteppedClusterFields } from '../plan/planTypes';
 import type { PlanInputDevice } from '../plan/planTypes';
@@ -36,9 +40,14 @@ export type PlanInputProjectionSource = {
   isExternalOffHoldActive: (deviceId: string, device: ObservedCurrentStateInput) => boolean;
 };
 
+/** A home battery's storage cluster, or none: "no cluster" is the whole of "no lever". */
+export type StorageClusterFields = StoragePlanInputKind | Record<string, never>;
+
 /** Resolved main-home or capacity-only policy for one projection. */
 export type ToPlanDeviceOptions = {
   surplusPostureEnabled: boolean;
+  /** Home-battery control is Main only: a meter area projects no storage lever. */
+  storage: StorageLaneBinding;
   projectCommandability: (params: BinaryCommandabilityProjectionInput) => BinaryCommandabilityProjection;
 };
 
@@ -67,4 +76,5 @@ export type PlanInputDeviceProjectionFacts = {
   hasStandingDemand: boolean;
   residualKw: PlanInputDevice['residualKw'];
   budgetExempt: boolean;
+  storageCluster: StorageClusterFields;
 };

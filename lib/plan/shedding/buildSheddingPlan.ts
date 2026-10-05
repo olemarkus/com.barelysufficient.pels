@@ -10,6 +10,7 @@ import {
   type SheddingDeps,
   type SheddingOvershootInput,
   type SheddingPlan,
+  type StorageShedTerm,
 } from './types';
 import {
   emitOvershootEscalationBlocked,
@@ -24,7 +25,13 @@ import {
   type PendingShedRelief,
 } from './pendingRelief';
 import { resolveShedReason, selectShedDevices, type ShedSelection } from './selection';
-import { buildShedCandidateParams, buildSheddingCandidates, summarizeSheddingCandidates } from './candidates';
+import {
+  buildShedCandidateParams,
+  buildSheddingCandidates,
+  isExhaustedHourShedding,
+  resolveStorageAdjustedDeficitKw,
+  summarizeSheddingCandidates,
+} from './candidates';
 import { resolveSheddingLatch } from './sheddingLatch';
 import { reportShortfallToGuard } from './shortfallVerdict';
 
@@ -36,8 +43,14 @@ export async function buildSheddingPlan(
   deps: SheddingDeps,
   overshoot: SheddingOvershootInput,
   nowTs: number,
+  /**
+   * What home-battery relief counts against the measured deficit
+   * (`lib/plan/battery/storageRelief.ts`). `power` stays the measurement: the
+   * shortfall verdict and the latch read it alone.
+   */
+  storage: StorageShedTerm,
 ): Promise<SheddingPlan> {
-  const selection = planShedding(context, power, state, deps, overshoot.shedActionable, nowTs);
+  const selection = planShedding(context, power, state, deps, overshoot.shedActionable, nowTs, storage);
   const {
     shedSet,
     shedReasons,
@@ -93,20 +106,21 @@ function planShedding(
   deps: SheddingDeps,
   overshootActionable: boolean,
   nowTs: number,
+  storage: StorageShedTerm,
 ): PlanSheddingResult {
-  const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
-  if (!shouldAttemptShedding(hourlyBudgetExhausted, overshootActionable, power.headroomKw)) {
+  const hourlyBudgetExhausted = isExhaustedHourShedding(state, power, storage);
+  if (!shouldAttemptShedding(hourlyBudgetExhausted, overshootActionable, power.headroomKw + storage.netCreditKw)) {
     return emptySheddingResult(NO_SHEDDING_OUTCOME, null);
   }
 
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const measurementPowerW = resolveMeasurementPowerW(deps.powerTracker);
-  const needed = Math.max(0, -power.headroomKw);
+  const needed = resolveStorageAdjustedDeficitKw(power, storage);
   const measurementDecision = resolveSameMeasurementSheddingDecision(
     state, context.devices, measurementTs, measurementPowerW, nowTs, power.capacityBreached,
   );
 
-  const candidateParams = buildShedCandidateParams(context, power, state, deps);
+  const candidateParams = buildShedCandidateParams(context, power, state, deps, storage);
   // An exhausted hour sheds on every cycle regardless of the sample: the
   // deficit is the whole hour's, not this reading's.
   if (!hourlyBudgetExhausted && measurementDecision.kind === 'skip_same_sample') {

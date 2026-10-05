@@ -24,6 +24,7 @@
 import type { DevicePlan } from '../plan/planTypes';
 import type { DriftObservationDeps } from './driftObservedDevice';
 import { hasPlanDeviceExecutionDrift } from './planExecutionDrift';
+import { hasStorageDecision } from '../planContract/storageDecision';
 
 /**
  * Does the executor have work to do against this plan?
@@ -40,6 +41,7 @@ export function hasPlanExecutionDriftAgainstIntent(
   deps: DriftObservationDeps,
 ): boolean {
   for (const planDevice of plan.devices) {
+    if (hasStorageDecision(planDevice) && deps.hasStorageDrift(planDevice)) return true;
     const observed = deps.getObservedState(planDevice.id);
     if (!observed) continue;
     if (hasPlanDeviceExecutionDrift({

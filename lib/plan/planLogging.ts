@@ -1,3 +1,4 @@
+import { hasStorageDecision } from '../planContract/storageDecision';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import {
   buildEmptyCapacityStateSummary,
@@ -283,6 +284,9 @@ function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unkn
     shedAction: device.shedAction,
     deferredReleaseIntent: device.deferredReleaseIntent,
     commandAuthority: device.control.commandAuthority,
+    // A home battery's setpoint or hand-back is an action like any other: a
+    // changed one must reach the executor (`lib/executor/batteryExecutor.ts`).
+    storageDecision: hasStorageDecision(device) ? device.storageDecision : undefined,
   };
 }
 
@@ -387,6 +391,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       pendingTargetRetryCount: d.pendingTargetCommand?.retryCount ?? null,
       pendingTargetNextRetryAtMs: d.pendingTargetCommand?.nextRetryAtMs ?? null,
       pendingTargetStatus: d.pendingTargetCommand?.status ?? null,
+      storageDecision: hasStorageDecision(d) ? d.storageDecision : null,
     })),
   );
 }

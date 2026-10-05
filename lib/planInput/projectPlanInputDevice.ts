@@ -18,6 +18,8 @@ export type {
 /** Main-home projection policy; sub-homes provide their capacity-only policy. */
 export const createDefaultToPlanDeviceOptions = (): ToPlanDeviceOptions => ({
   surplusPostureEnabled: true,
+  // The default serves the settings passes, which plan nothing: no lever.
+  storage: { kind: 'none' },
   projectCommandability: ({ base }) => ({ commandableNow: base, reason: 'none' }),
 });
 

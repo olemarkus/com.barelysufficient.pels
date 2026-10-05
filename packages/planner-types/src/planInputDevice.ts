@@ -161,6 +161,74 @@ export type MeteredPlanInputKind = {
   currentDrawKw: number;
 };
 
+/**
+ * How a home battery has answered PELS's setpoints this run, owned by
+ * `lib/battery` (`batteryVerification.ts`) and written from the executor's
+ * storage lane:
+ *
+ * - `unverified` — nothing has been judged yet.
+ * - `responding` — the battery's own signed power reached a setpoint (or an
+ *   increase plateaued short of it, which is its learned delivery ceiling).
+ * - `not_responding` — a setpoint did not move the battery's own power within
+ *   the confirmation window. The plan hands the battery back until the
+ *   back-off ends.
+ * - `reprobing` — the back-off ended and the battery may be driven again, but
+ *   it has not answered since: its setpoints earn no credit.
+ * - `sign_inverted` — the battery's reported power moved opposite to the
+ *   whole-home meter across several setpoint steps. Control stays off until the
+ *   app restarts.
+ */
+export type StorageVerdict = 'unverified' | 'responding' | 'not_responding' | 'reprobing' | 'sign_inverted';
+
+/** A battery PELS can read this cycle: its own signed power is observed. */
+export type ObservedStorageInput = {
+  reading: 'observed';
+  /** The setpoint grid, W. */
+  stepW: number;
+  /** The battery's own signed power, W: positive charging, negative discharging. */
+  signedPowerW: number;
+  /** PELS holds a recorded claim on the battery (it owes a hand-back). */
+  claimHeld: boolean;
+  /** PELS may hold the battery: control on, Main home, claim recordable, not in simulation. */
+  admissible: boolean;
+  verdict: StorageVerdict;
+  /**
+   * The most discharge PELS may ask for, W: the discharge range, or less once
+   * an increase plateaued short of what it asked.
+   */
+  deliveryCeilingW: number;
+};
+
+/**
+ * A battery PELS holds a claim on but cannot read this cycle: Homey reports it
+ * unavailable, or its own power is not observed. Enough to keep or release the
+ * hold, never enough to credit it.
+ */
+export type MissingStorageInput = {
+  reading: 'missing';
+  claimHeld: true;
+  admissible: boolean;
+};
+
+/**
+ * Home-battery (storage) field cluster for the plan-input contract. Like the
+ * metered cluster it is ORTHOGONAL and omitted from the base: present only on a
+ * Main-home battery whose control surface is a signed setpoint, and either
+ * readable or held by PELS. "No cluster" is the whole of "no lever", so the
+ * planner never reads a zero it did not measure. Reach it through
+ * `hasStorageInput` (`lib/plan/battery/storageRelief.ts`).
+ *
+ * The device stays `observeOnly` with no command authority: no shed, restore or
+ * surplus lane sees it. Only the storage relief stage reads this cluster.
+ *
+ * State of charge is not here: the battery's own floor applies (owner ruling,
+ * 2026-10-05), so nothing decides on it. A battery that stops delivering near
+ * empty is caught by its verdict and learned delivery ceiling instead.
+ */
+export type StoragePlanInputKind = {
+  storage: ObservedStorageInput | MissingStorageInput;
+};
+
 export type PlanInputDevice =
   | (PlanInputDeviceBase & SteppedPlanInputKind)
   | (PlanInputDeviceBase & NonSteppedPlanInputKind);

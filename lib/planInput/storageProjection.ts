@@ -1,0 +1,43 @@
+import type { StorageClusterFields, ToPlanDeviceInput, ToPlanDeviceOptions } from './planInputDeviceTypes';
+
+const NO_STORAGE_CLUSTER: StorageClusterFields = {};
+
+/**
+ * A home battery's storage cluster (`StoragePlanInputKind`), or none when the
+ * plan has no lever on it this cycle. Found by presence, never by class: the
+ * home's battery control owner must read a setpoint surface for it (Main only:
+ * a meter area's binding is `none`).
+ *
+ * A battery whose own signed power is observed, and which Homey does not report
+ * unavailable, is `observed`. One PELS holds a claim on but cannot read is
+ * `missing`, so the planner can keep or release the hold rather than lose it
+ * silently; one it does not hold and cannot read has no lever at all.
+ *
+ * The delivery ceiling is the owner's resolved one, so the planner reads one
+ * number: the discharge range, or less once an increase plateaued short of it.
+ */
+export const resolveStorageCluster = (
+  device: ToPlanDeviceInput,
+  options: ToPlanDeviceOptions,
+): StorageClusterFields => {
+  if (options.storage.kind === 'none') return NO_STORAGE_CLUSTER;
+  const control = options.storage.owner.readControl(device.id);
+  if (control.kind === 'none') return NO_STORAGE_CLUSTER;
+  const power = device.batteryPower;
+  if (!device.available || power === undefined) {
+    return control.claimHeld
+      ? { storage: { reading: 'missing', claimHeld: true, admissible: control.admissible } }
+      : NO_STORAGE_CLUSTER;
+  }
+  return {
+    storage: {
+      reading: 'observed',
+      stepW: control.stepW,
+      signedPowerW: power.signedW,
+      claimHeld: control.claimHeld,
+      admissible: control.admissible,
+      verdict: control.verdict,
+      deliveryCeilingW: control.deliveryCeilingW,
+    },
+  };
+};

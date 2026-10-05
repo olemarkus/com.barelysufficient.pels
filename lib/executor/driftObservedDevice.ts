@@ -25,6 +25,7 @@
  * collapsing `observed` into `commanded`. This type joins them at the point of
  * comparison without merging their meanings.
  */
+import type { StorageDecidedDevice } from '../planContract/storageDecision';
 import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
@@ -60,6 +61,12 @@ export type DriftObservationDeps = {
    * as a flat boolean so this layer never asks why a device is off.
    */
   isExternalOffHeld: (deviceId: string) => boolean;
+  /**
+   * Whether a home battery's storage decision still has work in the storage
+   * lane (`BatteryExecutor.hasDrift`): a setpoint unsent or unverified, or a
+   * release while the claim is held.
+   */
+  hasStorageDrift: (device: StorageDecidedDevice) => boolean;
 };
 
 /**
