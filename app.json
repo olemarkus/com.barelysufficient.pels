@@ -14,8 +14,8 @@
     "fr": "PELS Gestionnaire d'énergie"
   },
   "description": {
-    "en": "Stay under your power limit and use cheap hours, solar and batteries for EV, heating and hot water.",
-    "no": "Lavere effekttrinn og billigere strøm for elbil, varme og varmtvann.",
+    "en": "Stay under your power limit and run EV charging, heating and hot water on cheap power, solar and batteries.",
+    "no": "Lavere effekttrinn og billigere strøm til elbil, varme og varmtvann.",
     "nl": "Lagere pieken, goedkopere uren en meer eigen zonnestroom voor je laadpaal, verwarming, boiler en thuisbatterij.",
     "fr": "Heures creuses et pointes maîtrisées pour la voiture électrique, le chauffage et l'eau chaude."
   },
