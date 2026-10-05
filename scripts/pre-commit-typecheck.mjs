@@ -1,5 +1,6 @@
 import path from 'node:path';
 import process from 'node:process';
+import { tscCheck } from './lib/local-check-cache.mjs';
 import { runBounded } from './lib/run-parallel.mjs';
 
 const files = process.argv.slice(2)
@@ -29,7 +30,7 @@ if (matches([
   'vitest.config.tz.mts',
   'vitest-env.d.ts',
 ])) {
-  commands.push({ label: 'tsc:runtime', command: 'npx', args: ['tsc', '--noEmit'] });
+  commands.push(tscCheck('tsc:runtime'));
 }
 
 if (matches([
@@ -37,7 +38,7 @@ if (matches([
   'packages/contracts/src/',
   'packages/shared-domain/src/',
 ])) {
-  commands.push({ label: 'tsc:settings-ui', command: 'npx', args: ['tsc', '-p', 'packages/settings-ui/tsconfig.json', '--noEmit'] });
+  commands.push(tscCheck('tsc:settings-ui', ['-p', 'packages/settings-ui/tsconfig.json']));
 }
 
 // The src project covers `src/**` only, so a spec-only change needs the tests
@@ -49,15 +50,11 @@ if (matches([
   'packages/contracts/src/',
   'packages/shared-domain/src/',
 ])) {
-  commands.push({
-    label: 'tsc:settings-ui-tests',
-    command: 'npx',
-    args: ['tsc', '-p', 'packages/settings-ui/tsconfig.tests.json', '--noEmit'],
-  });
+  commands.push(tscCheck('tsc:settings-ui-tests', ['-p', 'packages/settings-ui/tsconfig.tests.json']));
 }
 
 if (matches(['widgets/'])) {
-  commands.push({ label: 'tsc:widgets', command: 'npx', args: ['tsc', '-p', 'tsconfig.widgets.json', '--noEmit'] });
+  commands.push(tscCheck('tsc:widgets', ['-p', 'tsconfig.widgets.json']));
 }
 
 if (commands.length > 0) {
