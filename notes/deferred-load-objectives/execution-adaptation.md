@@ -143,10 +143,14 @@ producer-resolved flag + the same per-cycle admission release:
 - The producer resolves a trajectory gate `aheadOfHourMilestone` (`isAheadOfHourMilestone`,
   `trajectoryMilestone.ts`), computed in `taskEvaluationCoordinator.ts` where the RAW measured value and
   the committed rate live (the planner sees neither).
-- The horizon planner combines it with a relative raw-price test to set `priceDeferralEligible`
-  (`resolvePriceDeferralEligible`, `horizonPlanner.ts`).
-- The producer folds the flag into `currentHourClaim` (`resolveCurrentHourClaim`,
-  `currentHourClaim.ts`), which answers `released` when it is set. Admission maps that claim 1:1
+- The horizon planner states it, with the relative raw-price fact `cheaperHourAhead`
+  (`hasCheaperBookedHourAhead`, `bucketAllocation.ts`), on the plan's `currentHourFacts`. The
+  frozen read states the same two facts, replaying the `cheaperHourAhead` the `:58` settle stamped.
+- `resolveCurrentHourClaim` (`currentHourClaim.ts`) owns the rule: a booked hour is `released` when
+  both facts hold, unless the task is under `time_capacity` (it cannot finish at all, or a
+  higher-priority task's claims leave it short). Being ahead of a
+  milestone proves nothing when the milestones lead to a miss: the cheaper hours are already booked
+  to their cap, so coasting moves no load into them and only widens the miss. Admission maps that claim 1:1
   (`admission.ts`) and adds only the release ROUTING, idling the device this cycle
   (binary_release / shed_release / plain idle by device kind) and reusing the existing release
   posture. No executor change — limiting is "request nothing."
@@ -315,9 +319,9 @@ genuine `reservedHeadroomKw` scarcity. The device's real element far exceeds the
 commitment is sized at, so the floor's "can't fit → run the expensive hour now" is a **false
 premise** for a climbable device.
 
-**The fix** (`lib/objectives/deferredObjectives/coldStartRelease.ts`, `resolveColdStartReleaseEligible`,
-producer-resolved flag `coldStartReleaseEligible` on the plan, folded into `currentHourClaim`
-exactly like `priceDeferralEligible`): for a **`temperature` objective**
+**The fix** (`lib/objectives/deferredObjectives/coldStartRelease.ts`,
+`resolveColdStartFeasible`, stated as `currentHourFacts.coldStartFeasible` and turned into a
+`released` claim by `resolveCurrentHourClaim`): for a **`temperature` objective**
 (bang-bang cap-off thermostat — PELS sets only the target, the element runs at full power, so the
 climb step equals the real deliverable rate), release (idle) the current hour when a later hour is
 **meaningfully cheaper** (the shared `isMeaningfullyCheaper` band) AND the **full buffered need fits
@@ -350,7 +354,7 @@ bringing them in safely needs observed-rate feasibility, not yet built. Two inde
 After the per-cycle commitment collapse (the allocator runs only at the `:58` settle / bootstrap;
 between settles a frozen read serves the committed plan — see `frozenHorizonPlan.ts`), it *looks*
 like cold-start release is defeated mid-hour: `buildFrozenHorizonPlan` hardcodes
-`coldStartReleaseEligible: false`, and `resolveColdStartReleaseEligible` runs only on the fresh
+`coldStartFeasible: false`, and `resolveColdStartFeasible` runs only on the fresh
 path. A reviewer reading just that code concludes "the booked expensive current hour is driven the
 whole hour until the next `:58`, reintroducing the WI-4 catastrophe." **This conclusion is wrong**,
 and it is wrong for a non-obvious reason, so it keeps being re-raised (with a reproduction that
@@ -364,8 +368,11 @@ settled `latest.hours` revision, not a loose fallback to `commitment.hours`, so 
 refinements can update the control milestone without rewriting the commitment envelope. The
 device is driven at its real element (≫ the floor step), so it crosses that low milestone after
 delivering only its **floor booking** (~`FLOOR_KW` for the hour). The moment it crosses,
-`isAheadOfHourMilestone` flips true; with a meaningfully cheaper hour ahead, `priceDeferralEligible`
-fires and admission idles the device for the rest of the hour. So:
+`isAheadOfHourMilestone` flips true; with a meaningfully cheaper hour ahead, the claim resolves to
+`released` and admission idles the device for the rest of the hour. (Price deferral does not apply
+under `time_capacity`, when the task cannot finish at all or is limited by a higher-priority task:
+then the device keeps heating through the hour, because coasting would only widen the miss. The
+common cold start is climbable, `step_power`, and keeps it.) So:
 
 - The residual peak draw is only the **floor bookings that spilled onto the expensive hours**
   (~`FLOOR_KW` per peak hour), **not** the full bang-bang element run. On the prod replay shape

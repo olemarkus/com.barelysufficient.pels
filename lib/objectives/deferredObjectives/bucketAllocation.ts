@@ -11,7 +11,7 @@ const HOUR_MS = 60 * 60 * 1000;
 // priced for fill ordering. RELATIVE (ratio-based), not a fixed offset, so it is
 // invariant to the price currency — the price series carries no unit at this
 // layer. The same constant gates the mid-execution deferral
-// (`horizonPlanner.resolvePriceDeferralEligible` via `isMeaningfullyCheaper`):
+// (`hasCheaperBookedHourAhead` via `isMeaningfullyCheaper`):
 // both express "a later hour must be more than ~5% cheaper to be worth shifting
 // load to". Below the margin, the earlier hour wins (heat early; don't churn
 // load between near-equal hours).
@@ -64,6 +64,34 @@ export const isMeaningfullyCheaper = (
   if (typeof candidatePrice !== 'number' || !Number.isFinite(candidatePrice)) return false;
   return candidatePrice <= referencePrice * (1 - PRICE_BAND_MARGIN);
 };
+
+// Whether a later, booked, non-reserve hour is cheaper than the `reference` hour by
+// more than the relative margin: the "a cheaper
+// hour can carry this hour's load" fact behind price deferral. One definition for
+// both clocks: the fresh planner reads it for the current hour every cycle, and the
+// `:58` settle stamps it per committed hour (`stampCheaperHourAhead`) for the frozen
+// read to replay.
+//
+// The cheaper hour must be one the plan actually carries load in. A bucket the
+// allocation booked nothing into (zero-capacity, or simply not part of the
+// committed/expanded set) is cheap on paper but won't take the deferred energy:
+// the committed reallocation fills the planned hours first, so releasing toward it
+// would just push the load into the remaining (possibly pricier) committed hours at
+// the next settle. Deadline-reserve hours are excluded so we never defer into the
+// reserve. "Later" means starting at or after the reference bucket ends, which
+// holds for raw price-hour starts in fractional-offset timezones too; a same-hour
+// segment after the reference is either the reserve split (excluded) or a
+// reservation-boundary split carrying the same price (never meaningfully cheaper).
+export const hasCheaperBookedHourAhead = (
+  buckets: readonly DeferredObjectivePlannedBucket[],
+  reference: DeferredObjectivePlannedBucket,
+  epsilonKWh: number,
+): boolean => buckets.some((bucket) => (
+  !bucket.reserve
+  && bucket.startMs >= reference.endMs
+  && bucket.plannedUsefulEnergyKWh > epsilonKWh
+  && isMeaningfullyCheaper(bucket.price, reference.price)
+));
 
 // Currency-relative fill-ordering key. Cheaper hours sort first. Returned as a
 // `(tier, key)` pair compared lexicographically — a single total order, so the

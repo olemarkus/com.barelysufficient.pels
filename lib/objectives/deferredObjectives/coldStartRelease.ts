@@ -17,14 +17,15 @@ import type { DeferredObjectiveKind, DeferredObjectiveStep } from './types';
 // FULL buffered need fits into those cheaper future hours at the climbed step,
 // release the current hour so a cheaper hour carries the load.
 //
-// Unlike `resolvePriceDeferralEligible` this does NOT require the device to be
+// Unlike price deferral (`resolveCurrentHourClaim`) this does NOT require the device to be
 // ahead of its milestone (at cold start it is behind) and does NOT require the
 // cheaper hours to already be booked at the floor step — it proves they can
 // absorb the need at the device's real step. Re-evaluated every cycle, so a
 // shrinking cheap window or a device slower than its climb step naturally resumes
 // driving. Reserve hours are excluded so we never lean on the deadline reserve. A
 // non-positive current price makes `isMeaningfullyCheaper` false (run now rather
-// than defer on a meaningless ratio). Classification only — never writes a revision.
+// than defer on a meaningless ratio). A fact, not a verdict: `resolveCurrentHourClaim`
+// decides the release. Classification only — never writes a revision.
 //
 // SCOPE: only bang-bang setpoint-controlled devices (`temperature` thermostats).
 // There PELS sets just the target and the element runs at full power, so the climb
@@ -33,7 +34,7 @@ import type { DeferredObjectiveKind, DeferredObjectiveStep } from './types';
 // capacity-shed in the cheaper hours, so releasing on that upper bound could keep
 // deferring until the window can no longer finish — excluded until observed-rate
 // feasibility lands.
-export const resolveColdStartReleaseEligible = (params: {
+export const resolveColdStartFeasible = (params: {
   objectiveKind: DeferredObjectiveKind;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
   stepForBucket: StepForBucket;

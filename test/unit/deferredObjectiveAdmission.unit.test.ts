@@ -102,7 +102,7 @@ const buildHorizonPlan = (overrides: Partial<DeferredObjectiveHorizonPlan> = {})
   plannedBuckets: [],
   usesDeadlineReserve: false,
   budgetContributedToShortfall: false,
-  priceDeferralEligible: false,
+  currentHourFacts: { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false },
   // Self-consistent with the booked current bucket above. Cases that mean "the task
   // booked nothing here" override the bucket and the claim together — the producer
   // resolves both from the same allocation, so a fixture that moved only one would
@@ -578,7 +578,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('idles a price-deferred current hour and emits shed_release for a cap-off device', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
-      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true, currentHourClaim: 'released' }),
+      horizonPlan: buildHorizonPlan({ currentHourFacts: { aheadOfHourMilestone: true, cheaperHourAhead: true, coldStartFeasible: false }, currentHourClaim: 'released' }),
     });
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
@@ -588,7 +588,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('idles a price-deferred current hour with no release intent for a cap-on device', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
-      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true, currentHourClaim: 'released' }),
+      horizonPlan: buildHorizonPlan({ currentHourFacts: { aheadOfHourMilestone: true, cheaperHourAhead: true, coldStartFeasible: false }, currentHourClaim: 'released' }),
     });
     const device = buildEvDevice({ id: 'heater1', controllable: true });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
@@ -599,7 +599,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'ev1',
       objectiveKind: 'ev_soc',
-      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', priceDeferralEligible: true, currentHourClaim: 'released' }),
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', currentHourFacts: { aheadOfHourMilestone: true, cheaperHourAhead: true, coldStartFeasible: false }, currentHourClaim: 'released' }),
     });
     const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
@@ -651,7 +651,7 @@ describe('planned admission temperature floor', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       targetTemperatureC: 65,
-      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true, currentHourClaim: 'released' }),
+      horizonPlan: buildHorizonPlan({ currentHourFacts: { aheadOfHourMilestone: true, cheaperHourAhead: true, coldStartFeasible: false }, currentHourClaim: 'released' }),
     });
     expect(applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation)).get(diagnostic.deviceId)).not.toHaveProperty('deadlineFloorTargetC');
   });
@@ -675,7 +675,7 @@ describe('resolveDeferredAvoidDeviceIds', () => {
       horizonPlan: buildHorizonPlan({
         status: 'at_risk',
         statusDetail: 'feasible_above_floor',
-        priceDeferralEligible: true,
+        currentHourFacts: { aheadOfHourMilestone: true, cheaperHourAhead: true, coldStartFeasible: false },
         currentHourClaim: 'released',
       }),
     });

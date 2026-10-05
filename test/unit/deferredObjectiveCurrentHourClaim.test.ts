@@ -4,11 +4,21 @@ import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
-const claim = (overrides: Partial<Parameters<typeof resolveCurrentHourClaim>[0]> = {}) => (
+type ClaimParams = Parameters<typeof resolveCurrentHourClaim>[0];
+const NO_RELEASE_FACTS: ClaimParams['facts'] = {
+  aheadOfHourMilestone: false,
+  cheaperHourAhead: false,
+  coldStartFeasible: false,
+};
+const PRICE_DEFERRAL_FACTS: ClaimParams['facts'] = {
+  ...NO_RELEASE_FACTS,
+  aheadOfHourMilestone: true,
+  cheaperHourAhead: true,
+};
+const claim = (overrides: Partial<ClaimParams> = {}) => (
   resolveCurrentHourClaim({
     currentBucketBookedKWh: 1,
-    priceDeferralEligible: false,
-    coldStartReleaseEligible: false,
+    facts: NO_RELEASE_FACTS,
     floorShortfallCause: 'none',
     ...overrides,
   })
@@ -19,12 +29,40 @@ describe('resolveCurrentHourClaim', () => {
     expect(claim()).toBe('claimed');
   });
 
-  it('releases a booked hour when a price release applies', () => {
-    // Both are only asserted when the remaining need fits elsewhere, so they carry
-    // their own justification and outrank the booking — including for a task whose
-    // shortfall would otherwise keep every unbooked hour.
-    expect(claim({ priceDeferralEligible: true, floorShortfallCause: 'budget' })).toBe('released');
-    expect(claim({ coldStartReleaseEligible: true, floorShortfallCause: 'time_capacity' })).toBe('released');
+  it('price-defers a booked hour when ahead with a cheaper booked hour later', () => {
+    expect(claim({ facts: PRICE_DEFERRAL_FACTS })).toBe('released');
+    // Ahead alone, or a cheaper hour alone, is not enough.
+    expect(claim({ facts: { ...NO_RELEASE_FACTS, aheadOfHourMilestone: true } })).toBe('claimed');
+    expect(claim({ facts: { ...NO_RELEASE_FACTS, cheaperHourAhead: true } })).toBe('claimed');
+  });
+
+  // Coasting a task that physically cannot finish moves no load into the cheaper hours
+  // (they are booked to their cap); it only widens the miss. A budget-bound task
+  // still defers: see `CAUSES_THAT_BLOCK_PRICE_DEFERRAL`.
+  const priceDeferralByCause: Array<[DeferredObjectiveActivePlanFloorShortfallCause, string]> = [
+    ['budget', 'released'],
+    ['time_capacity', 'claimed'],
+    ['step_power', 'released'],
+    ['estimate', 'released'],
+    ['none', 'released'],
+  ];
+  it.each(priceDeferralByCause)('resolves a price-deferrable booked hour with cause %s to %s', (cause, expected) => {
+    expect(claim({ facts: PRICE_DEFERRAL_FACTS, floorShortfallCause: cause })).toBe(expected);
+  });
+
+  it('cold-start releases even a task whose floor plan cannot finish', () => {
+    // Cold-start feasibility proves the need fits the cheaper hours at the real
+    // element, which is exactly where the floor's `cannot_meet` is a false premise
+    // (see `CAUSES_THAT_BLOCK_PRICE_DEFERRAL`). It outranks the booking and the cause.
+    const facts = { ...NO_RELEASE_FACTS, coldStartFeasible: true };
+    expect(claim({ facts, floorShortfallCause: 'time_capacity' })).toBe('released');
+    expect(claim({ facts, currentBucketBookedKWh: 0, floorShortfallCause: 'budget' })).toBe('released');
+  });
+
+  it('never price-defers an unbooked hour', () => {
+    // Nothing booked ⇒ the unbooked rule decides; the price facts do not apply.
+    expect(claim({ facts: PRICE_DEFERRAL_FACTS, currentBucketBookedKWh: 0, floorShortfallCause: 'time_capacity' }))
+      .toBe('unclaimed');
   });
 
   // The whole precision of the rule: only a shortfall the task cannot climb or
