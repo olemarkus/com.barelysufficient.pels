@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveBatteryControlSurface } from '../../lib/device/batteryControlWiring';
+import {
+  resolveBatteryControlSurface,
+  toTargetPowerCapabilityValue,
+} from '../../lib/device/batteryControlWiring';
+import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 
@@ -190,5 +194,49 @@ describe('resolveBatteryControlSurface', () => {
       kind: 'setpoint',
       range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: -100, excludeMaxW: 100 },
     });
+  });
+});
+
+const range = (overrides: Partial<HomeBatterySetpointRange> = {}): HomeBatterySetpointRange => ({
+  minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0, ...overrides,
+});
+
+describe('toTargetPowerCapabilityValue', () => {
+  it.each([
+    // Inside the band: to the nearer of 0 and the edge on its side.
+    { setpointW: 990, range: range({ excludeMinW: -1000, excludeMaxW: 1000 }), expected: 1000 },
+    { setpointW: -990, range: range({ excludeMinW: -1000, excludeMaxW: 1000 }), expected: -1000 },
+    { setpointW: 300, range: range({ excludeMinW: -1000, excludeMaxW: 1000 }), expected: 0 },
+    { setpointW: 500, range: range({ excludeMinW: -1000, excludeMaxW: 1000 }), expected: 0 },
+    // The band is decided before the step: the edge, snapped away from zero.
+    { setpointW: 140, range: range({ stepW: 100, excludeMinW: -150, excludeMaxW: 150 }), expected: 200 },
+    { setpointW: -140, range: range({ stepW: 100, excludeMinW: -150, excludeMaxW: 150 }), expected: -200 },
+    // A value just outside the band whose nearest step lies inside it.
+    { setpointW: 125, range: range({ stepW: 100, excludeMinW: -120, excludeMaxW: 120 }), expected: 200 },
+    // Half away from zero, symmetric for both signs.
+    { setpointW: 250, range: range({ stepW: 100 }), expected: 300 },
+    { setpointW: -250, range: range({ stepW: 100 }), expected: -300 },
+    { setpointW: 249, range: range({ stepW: 100 }), expected: 200 },
+    { setpointW: 40, range: range({ stepW: 100 }), expected: 0 },
+    // Clamped to the declared range.
+    { setpointW: 9000, range: range(), expected: 2500 },
+    { setpointW: -9000, range: range(), expected: -2500 },
+    // A fractional step is rounded to its own decimals, without float noise.
+    { setpointW: 123.456, range: range({ stepW: 0.1 }), expected: 123.5 },
+    { setpointW: 0.25, range: range({ stepW: 0.1 }), expected: 0.3 },
+    { setpointW: -0.25, range: range({ stepW: 0.1 }), expected: -0.3 },
+    { setpointW: 0.3, range: range({ stepW: 0.1 }), expected: 0.3 },
+    { setpointW: 0, range: range({ excludeMinW: -1000, excludeMaxW: 1000 }), expected: 0 },
+    // The edge is snapped onto the grid first: ±60 on a 50 W grid is ±100, so 35 is nearer 0.
+    { setpointW: 35, range: range({ stepW: 50, excludeMinW: -60, excludeMaxW: 60 }), expected: 0 },
+    { setpointW: -35, range: range({ stepW: 50, excludeMinW: -60, excludeMaxW: 60 }), expected: 0 },
+    { setpointW: 55, range: range({ stepW: 50, excludeMinW: -60, excludeMaxW: 60 }), expected: 100 },
+    // A band wider than the range leaves 0 as the only writable answer.
+    { setpointW: 90, range: range({ minW: -100, maxW: 100, excludeMinW: -150, excludeMaxW: 150 }), expected: 0 },
+    { setpointW: -100, range: range({ minW: -100, maxW: 100, excludeMinW: -150, excludeMaxW: 150 }), expected: 0 },
+  ])('maps $setpointW W onto $range.stepW W steps and band [$range.excludeMinW, $range.excludeMaxW] as $expected', ({
+    setpointW, range: setpointRange, expected,
+  }) => {
+    expect(toTargetPowerCapabilityValue(setpointW, setpointRange)).toBe(expected);
   });
 });

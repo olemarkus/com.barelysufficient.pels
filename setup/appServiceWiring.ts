@@ -9,11 +9,7 @@ import type { PlanService } from '../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
 import type { SettingsUiDeviceReads } from '../lib/device/settingsUiDeviceReads';
-import {
-  createRootLogger,
-  setRootLogger,
-  type Logger as PinoLogger,
-} from '../lib/logging/logger';
+import { createRootLogger, setRootLogger, type Logger as PinoLogger } from '../lib/logging/logger';
 import { createHomeyDestination } from '../lib/logging/homeyDestination';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
@@ -32,6 +28,8 @@ import {
   flushDeferredObjectiveRecorders,
   createDailyBudgetService,
   createDeviceDiagnosticsService,
+  BATTERY_CONTROL_TEARDOWN_KEY,
+  initMainBatteryControl,
   createPriceCoordinator,
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
@@ -50,15 +48,12 @@ import { wireDeviceTransport } from './appInit/wireDeviceTransport';
 import type { HomeMembershipWiring } from './homeMembershipWiring';
 import type { PvForecastController } from './appInit/createPvForecastService';
 import type {
-  HomeySolarForecastController,
-  HomeySolarForecastLifecycle,
+  HomeySolarForecastController, HomeySolarForecastLifecycle,
 } from '../lib/solar/homeySolarForecastController';
 import { flushDailyBudgetStateOnUninit, runStartupStep, startAppServices } from './appLifecycleHelpers';
 import { wireHomeMembership } from './appInit/wireHomeMembership';
 import {
-  buildAppHomeMembershipOptions,
-  createPreparedMainReconcileFence,
-  type StableSampleRevisionReader,
+  buildAppHomeMembershipOptions, createPreparedMainReconcileFence, type StableSampleRevisionReader,
 } from './appInit/appHomeMembershipOptions';
 import { registerSettingsHandler } from './appInit/registerSettingsHandler';
 import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackgroundTasks';
@@ -67,9 +62,7 @@ import type { AppNativeWiring } from './appNativeWiring';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
 import {
-  invalidateOwningHomeRebuildSuppression,
-  syncOwningHomeLivePlanState,
-  syncExternalOffHoldForObservation,
+  invalidateOwningHomeRebuildSuppression, syncOwningHomeLivePlanState, syncExternalOffHoldForObservation,
 } from './appObservedControlStateRuntime';
 export { createHomeRuntimeRegistryForApp };
 
@@ -277,8 +270,7 @@ export class AppServiceWiring {
       () => this.deps.loadPowerCalibrationStore(),
       logStartupStepFailure,
     );
-    await runStartupStep('initDeviceManager', () => this.deps.initDeviceManager(), logStartupStepFailure);
-    await runStartupStep('initHomeMembership', () => this.initHomeMembership(), logStartupStepFailure);
+    await this.runDeviceStartupSteps(logStartupStepFailure);
     const startupBootstrap: StartupBootstrapConfig = {
       snapshotPlanBootstrapDelayMs: deferStartupBootstrap ? 1200 : 0,
       runSnapshotPlanBootstrapInBackground: deferStartupBootstrap,
@@ -550,6 +542,21 @@ export class AppServiceWiring {
   }
 
   /**
+   * The device transport and what is built directly over it, in order: home
+   * membership joins its snapshots, and battery control writes through it and
+   * reads the membership to keep claims to Main.
+   */
+  private async runDeviceStartupSteps(logStartupStepFailure: (label: string, error: Error) => void): Promise<void> {
+    await runStartupStep('initDeviceManager', () => this.deps.initDeviceManager(), logStartupStepFailure);
+    await runStartupStep('initHomeMembership', () => this.initHomeMembership(), logStartupStepFailure);
+    await runStartupStep('initBatteryControl', () => this.initBatteryControl(), logStartupStepFailure);
+  }
+
+  // Body in `setup/appInit/createBatteryControl.ts`; a method so the thin
+  // `PelsApp.initBatteryControl` delegator and the integration boot helper reach it.
+  initBatteryControl(): void { initMainBatteryControl(this.deps, () => this.isMainActuationFenced()); }
+
+  /**
    * The plan stack, in the one order that works: the engine, then the service,
    * then the observed-state listeners that reach it.
    *
@@ -694,6 +701,9 @@ export class AppServiceWiring {
     ctx.homeRuntimeRead = undefined;
     this.clearUninitTimers();
     this.stopUninitServices();
+    // Detach battery control's snapshot feed. Nothing is handed back here:
+    // boot recovery from the claim records is the hand-back after a stop.
+    this.deps.teardown.clear(BATTERY_CONTROL_TEARDOWN_KEY);
     // Detach the membership recompute triggers BEFORE the transport teardown
     // so a still-in-flight refresh dispatch or detached zone-tree commit can
     // no longer recompute; clearing `ctx.homeMembership` also kills the lazy

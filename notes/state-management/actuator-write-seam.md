@@ -31,7 +31,7 @@ box the original split did not name — the actuator.
 | **transport** (`lib/device/**`) | The only module that talks to the Homey SDK, in **both** directions. Produces normalized snapshots (read) and executes capability/channel writes (write). Resolves native-vs-flow internally because it owns the snapshot + SDK knowledge. | Homey capabilities, channels, flow cards |
 | **observer** (`lib/observer/**`) | Consolidated state: snapshot store, freshness/staleness, alive/idle, settle resolution, and pure plan-blind interpretation. The single place anyone asks "what is true right now?" | `fresh / stale / unknown`, observed draw, observed on/off |
 | **plan** (`lib/plan/**`) | Decides desired state ("what should run") and owns **cooldown admission** (shed/restore windows). | planned state, headroom, cooldowns |
-| **actuator** (`lib/actuator/**`, new) | The single semantic write seam and the only runtime module allowed to request transport writes. It forwards SDK-blind commands; transport privately maps them onto native capabilities or Flow cards. | `{ binary / step / target }` control intents |
+| **actuator** (`lib/actuator/**`, new) | The single semantic write seam and the only runtime module allowed to request transport writes. It forwards SDK-blind commands; transport privately maps them onto native capabilities or Flow cards. | `{ binary / step / target / storage_power / storage_release }` control intents |
 
 The executor (`lib/executor/**`) keeps its existing mandate — *issue / retry /
 wait / skip + drift* — but on the write side it now hands a `DeviceCommand` to
@@ -168,8 +168,26 @@ type DeviceCommand =
   | { kind: 'binary'; deviceId: string; desired: boolean }
   | { kind: 'target'; deviceId: string; target: 'temperature'; value: number; contextInfo?: string }
   | { kind: 'step';   deviceId: string; profile: SteppedLoadProfile; desiredStepId: string;
-      planningPowerW: number; planningCurrentA: number; previousStepId?: string };
+      planningPowerW: number; planningCurrentA: number; previousStepId?: string }
+  | { kind: 'storage_power';   deviceId: string; setpointW: number }
+  | { kind: 'storage_release'; deviceId: string; restoreClaimValue: string };
 ```
+
+The two storage intents drive a home battery. Their shapes live in
+`lib/ports/storageCommand.ts` so the battery control owner (`lib/battery/`),
+which imports no peer, can name what it dispatches. Transport resolves the
+claim capability, its Homey value and the signed `target_power` range from the
+battery's control surface: `storage_power` writes the claim value (on every
+setpoint: the write is idempotent, so transport keeps no record of it), then
+the setpoint; `storage_release` writes setpoint 0, then restores the value the
+owner recorded before PELS claimed the battery. The owner is the only issuer of
+`storage_release` (on opt-out and at boot recovery, exempt from Main's fence
+like the executor's lifecycle release) and issues no `storage_power`: once the
+planner commands batteries, the executor issues it through Main's fenced
+actuator, only for a battery the owner's `admitClaim` admitted. There is no
+hand-back at app stop: Homey ends the app some 15-20 ms after "Stopping...",
+before a capability write could complete, so the durable claim record and boot
+recovery are the hand-back after a stop, a crash or a restart.
 
 The actuator is the single write seam. It forwards channel-blind intent to
 transport; transport performs the SDK translation. Executor consumes only the

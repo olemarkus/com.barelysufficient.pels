@@ -179,7 +179,8 @@ describe('disabled temperature control', () => {
       if (command.kind === 'step') {
         return { requested: true, kind: 'step', steppedResult: { requested: true, transport: 'native_capability' } };
       }
-      return { requested: true, kind: 'target', requestedTargetValue: command.value };
+      if (command.kind === 'target') return { requested: true, kind: 'target', requestedTargetValue: command.value };
+      throw new Error(`No ${command.kind} command in this spec`);
     });
     let disabled = true;
     const actuator = createTemperatureControlFencedActuator(

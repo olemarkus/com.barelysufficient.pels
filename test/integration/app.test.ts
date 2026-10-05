@@ -149,6 +149,7 @@ const initApp = async (app: MyApp) => {
   app.dailyBudgetService.updateState({ refreshObservedStats: false });
   app['loadPriceOptimizationSettings']();
   await app['initDeviceManager']();
+  app['initBatteryControl']();
   app['initCapacityGuard']();
   app['initPlanRuntime']();
   app['subscribePlanObservedState']();

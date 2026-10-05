@@ -25,6 +25,7 @@ import {
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 /**
  * The shed PELS undoes when it loses its authority, driven through real plan
@@ -159,6 +160,7 @@ const releaseLane = (state: PlanEngineState) => {
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestSteppedLoadStep: async () => ({ requested: false }),
+        ...noStorageTransport,
         requestBinaryControl: async (_deviceId: string, desired: boolean) => {
           turnOnCalls.push(desired);
           return undefined;

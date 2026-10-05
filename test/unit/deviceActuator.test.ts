@@ -1,12 +1,14 @@
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 
-const buildTransport = (overrides: Partial<ActuatorTransport> = {}) => ({
+const buildTransport = (overrides: Partial<ActuatorTransport> = {}): ActuatorTransport => ({
   requestBinaryControl: vi.fn(async () => undefined),
   requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
   canTurnOnDevice: () => true,
   resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
   requestSteppedLoadStep: vi.fn(async () => ({ requested: false as const })),
+  requestStoragePower: vi.fn(async () => 0),
+  releaseStorageControl: vi.fn(async () => undefined),
   ...overrides,
 });
 
@@ -80,5 +82,22 @@ describe('createDeviceActuator — intent → transport mapping', () => {
       desiredStepId: 'low', planningPowerW: 1000, planningCurrentA: 0,
     });
     expect(outcome).toEqual({ requested: false, reason: 'flow_trigger_timeout' });
+  });
+
+  it('passes a battery setpoint to transport and surfaces the watts it sent', async () => {
+    const requestStoragePower = vi.fn(async () => 1000);
+    const actuator = createDeviceActuator(buildTransport({ requestStoragePower }));
+    const outcome = await actuator.apply({ kind: 'storage_power', deviceId: 'b1', setpointW: 990 });
+    expect(requestStoragePower).toHaveBeenCalledWith({ kind: 'storage_power', deviceId: 'b1', setpointW: 990 });
+    expect(outcome).toEqual({ requested: true, kind: 'storage_power', requestedSetpointW: 1000 });
+  });
+
+  it('passes a battery hand-back to transport', async () => {
+    const releaseStorageControl = vi.fn(async () => undefined);
+    const actuator = createDeviceActuator(buildTransport({ releaseStorageControl }));
+    const command = { kind: 'storage_release' as const, deviceId: 'b1', restoreClaimValue: 'anti_feed' };
+    const outcome = await actuator.apply(command);
+    expect(releaseStorageControl).toHaveBeenCalledWith(command);
+    expect(outcome).toEqual({ requested: true, kind: 'storage_release' });
   });
 });

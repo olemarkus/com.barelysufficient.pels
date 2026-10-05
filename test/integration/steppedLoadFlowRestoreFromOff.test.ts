@@ -64,6 +64,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'easee-1';
@@ -291,6 +292,7 @@ const buildHarness = (
       },
       requestTemperatureTarget: async (_deviceId, desired) => desired,
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
+      ...noStorageTransport,
     }),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),

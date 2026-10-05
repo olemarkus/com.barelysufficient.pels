@@ -33,6 +33,7 @@ import {
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { deviceSurfacesFixture } from '../utils/deviceSnapshotFixture';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
@@ -83,6 +84,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestSteppedLoadStep: async () => ({ requested: false }),
+        ...noStorageTransport,
       requestBinaryControl: async (deviceId, desired) => {
         await deviceManager.setCapability(deviceId, 'onoff', desired);
         return undefined;

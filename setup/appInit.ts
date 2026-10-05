@@ -30,6 +30,7 @@ export {
 } from './appInit/contextGuards';
 export { createDeviceDiagnosticsService } from './appInit/deviceDiagnosticsService';
 export { createDailyBudgetService } from './appInit/createDailyBudgetService';
+export { BATTERY_CONTROL_TEARDOWN_KEY, initMainBatteryControl } from './appInit/createBatteryControl';
 export { createPlanEngine, createPlanEngineComposition } from './appInit/createPlanEngine';
 export { createPlanService } from './appInit/createPlanService';
 export { createPriceCoordinator, createPriceFlowTagPublisher } from './appInit/priceServices';

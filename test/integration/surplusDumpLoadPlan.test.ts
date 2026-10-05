@@ -50,6 +50,7 @@ import type { DeferredDecorationBundle } from '../../packages/planner-types/src/
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 const PUMP = 'pool-pump';
 const PUMP_DRAW_KW = 1;
@@ -645,6 +646,7 @@ const buildExecutorCtx = (snapshot: TargetDeviceSnapshot, state: PlanEngineState
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestSteppedLoadStep: async () => ({ requested: false }),
+        ...noStorageTransport,
         requestBinaryControl: async (_deviceId: string, desired: boolean) => {
           setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
           return undefined;

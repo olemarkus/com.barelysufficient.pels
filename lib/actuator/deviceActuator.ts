@@ -56,6 +56,22 @@ const applyStep = async (
   return { requested: true, kind: 'step', steppedResult: result };
 };
 
+const applyStoragePower = async (
+  transport: ActuatorTransport,
+  command: Extract<DeviceCommand, { kind: 'storage_power' }>,
+): Promise<ActuatorOutcome> => {
+  const requestedSetpointW = await transport.requestStoragePower(command);
+  return { requested: true, kind: 'storage_power', requestedSetpointW };
+};
+
+const applyStorageRelease = async (
+  transport: ActuatorTransport,
+  command: Extract<DeviceCommand, { kind: 'storage_release' }>,
+): Promise<ActuatorOutcome> => {
+  await transport.releaseStorageControl(command);
+  return { requested: true, kind: 'storage_release' };
+};
+
 const applyCommand = (transport: ActuatorTransport, command: DeviceCommand): Promise<ActuatorOutcome> => {
   switch (command.kind) {
     case 'binary':
@@ -64,6 +80,10 @@ const applyCommand = (transport: ActuatorTransport, command: DeviceCommand): Pro
       return applyTarget(transport, command);
     case 'step':
       return applyStep(transport, command);
+    case 'storage_power':
+      return applyStoragePower(transport, command);
+    case 'storage_release':
+      return applyStorageRelease(transport, command);
     default: {
       const exhaustive: never = command;
       return exhaustive;

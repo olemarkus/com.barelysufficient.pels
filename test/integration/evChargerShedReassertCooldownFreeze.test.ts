@@ -71,6 +71,7 @@ import {
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 const SHED_REASON = fixtureDeviceReason('shed due to daily budget')!;
 const DEVICE_ID = 'elbillader-1';
@@ -232,6 +233,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
       },
       requestTemperatureTarget: async (_deviceId, desired) => desired,
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
+      ...noStorageTransport,
     }),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),

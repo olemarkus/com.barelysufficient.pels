@@ -13,6 +13,7 @@ import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/observer/controlComma
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 let logs: LoggerCapture;
 beforeEach(() => { logs = captureLogger(); });
@@ -31,6 +32,7 @@ const buildTransport = (
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestSteppedLoadStep: vi.fn(async () => ({ requested: false as const })),
+      ...noStorageTransport,
     }),
   };
   return { requestBinaryControl, state, transport };
@@ -232,6 +234,7 @@ describe('binary command dispatch', () => {
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestSteppedLoadStep: async () => ({ requested: false }),
+      ...noStorageTransport,
     });
     const transport: BinaryControlTransport = {
       getObservedBinaryControl: () => undefined,

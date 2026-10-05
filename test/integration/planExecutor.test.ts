@@ -65,6 +65,7 @@ import {
   withMaterializedEvPlugState,
 } from '../utils/planTestUtils';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
+import { noStorageTransport } from '../helpers/storageTransportStub';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const CAPACITY_REASON = fixtureDeviceReason('shed due to capacity')!;
@@ -323,6 +324,7 @@ const buildExecutor = (
         return requested;
       },
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
+      ...noStorageTransport,
     }),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),

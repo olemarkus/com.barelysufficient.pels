@@ -141,6 +141,15 @@ export const EXTERNAL_OFF_HOLDS_INITIALIZED = 'external_off_holds_initialized';
 export const PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX = 'external_off_hold.';
 // Set once the blob above has been copied into per-device keys and consumed.
 export const EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED = 'external_off_holds_perkey_migrated';
+// Per-battery opt-out of PELS's home-battery control: `Record<deviceId, boolean>`
+// (absent entry or key = on; `false` = opted out). Read policy lives with the
+// key's owner, `lib/battery/batteryControlSettings.ts`.
+export const BATTERY_CONTROL_DEVICES = 'battery_control_devices';
+// Runtime state PELS owes a battery: one key per battery PELS has claimed,
+// `battery_control_claim.<deviceId>`, holding the claim value to hand it back
+// to. Owned by `lib/battery/batteryClaimStore.ts`, which says why it is a
+// settings key and not a `/userdata` row.
+export const PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX = 'battery_control_claim.';
 export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 /** Learned measured peaks, `{ kw, observedAtMs }` per device (`lib/device/devicePowerPeak.ts`). */
 export const DEVICE_POWER_PEAKS = 'device_power_peaks';

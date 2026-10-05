@@ -485,6 +485,11 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       resetLearning: vi.fn(),
       getSnapshot: vi.fn(() => null),
     } as never,
+    batteryControl: {
+      admitClaim: vi.fn(() => ({ status: 'refused' as const, reason: 'not_drivable' as const })),
+      onSnapshotCommitted: vi.fn(),
+      applyControlSettings: vi.fn(),
+    },
     priceCoordinator: {
       // The reader every combined-prices consumer takes from the coordinator,
       // over an empty in-memory price cache.
