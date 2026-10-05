@@ -492,6 +492,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       verification: {
         recordResponding: vi.fn(),
         recordDeliveryCeiling: vi.fn(),
+        recordChargeCeiling: vi.fn(),
         startsAtPlateau: vi.fn(() => false),
         recordNotResponding: vi.fn(),
         recordSignInverted: vi.fn(),

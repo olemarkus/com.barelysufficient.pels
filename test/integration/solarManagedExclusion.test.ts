@@ -161,6 +161,8 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       state,
       signedNetKw: -3,
       inferredSurplusKw: 0,
+      storageSurplusKw: 0,
+      excludeIds: new Set(),
       getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
       nowTs: Date.UTC(2025, 0, 1, 12, 0, 0),
     });

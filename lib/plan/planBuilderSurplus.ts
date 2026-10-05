@@ -1,28 +1,29 @@
 /**
- * Surplus pass for the plan builder (PR-7): one call that (1) runs the
- * priority-greedy surplus allocator (`resolveSurplusEligibility` — hoisted here
- * from `buildInitialPlanDevices` so eligibility exists when the shed set is
- * assembled; `planDevices` only READS the resulting state), (2) resolves the
- * standing "Run on solar surplus" dump-load hold (`resolveSurplusHold`) with the
- * smart-task precedence exclusions, and (3) merges the post-shedding holds
- * into the shed set and clears stale posture bookkeeping. Extracted from
- * `planBuilder.ts` so the builder keeps a single statement for the whole pass.
+ * Standing-posture pass for the plan builder (PR-7): one call that (1)
+ * resolves the standing "Run on solar surplus" dump-load hold
+ * (`resolveSurplusHold`) with the smart-task precedence exclusions, and (2)
+ * merges the post-shedding holds into the shed set and clears stale posture
+ * bookkeeping. Extracted from `planBuilder.ts` so the builder keeps a single
+ * statement for the whole pass. The priority-greedy surplus allocator
+ * (`resolveSurplusEligibility`) runs earlier in the build, before storage
+ * relief and shedding, with the same exclusions: eligibility then exists when
+ * the shed set is assembled (`planDevices` only READS it), and what the willing
+ * devices leave goes to the home batteries.
  *
  * Order-neutral for non-solar homes: with no willing device the allocator writes
  * no state and the hold is empty — pinned by the byte-identity integration test
  * in `test/integration/surplusDumpLoadPlan.test.ts`.
  */
-import type { StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngineState } from './planState';
 import type { BaselineOffPosture, ShedDecisions } from './shedDecisions';
-import type { MeasuredPower, PlanContext } from './planContext';
+import type { PlanContext } from './planContext';
 import type { PlanInputDevice } from './planTypes';
 import type { SheddingPlan } from './shedding/types';
 import type { ReleaseHoldOutcome } from '../observer/externalOffHold';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
-import { resolveSurplusEligibility, withdrawSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
+import { withdrawSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
 import { resolveSurplusHold } from './shedding/surplusHold';
 import { resolveStartPolicyHold } from './shedding/startPolicyHold';
 
@@ -56,7 +57,7 @@ export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray
  *   and read "Waiting for solar surplus"; excluded, it reads as held, and
  *   turning it on releases the hold and hands it back to surplus control.
  */
-function resolvePostureExcludeIds(
+export function resolvePostureExcludeIds(
   decoration: Pick<DeferredDecorationBundle, 'admittedDeviceIds'>,
   admittedDevices: readonly PlanInputDevice[],
 ): Set<string> {
@@ -67,54 +68,31 @@ function resolvePostureExcludeIds(
 }
 
 /**
- * Whole surplus + post-shedding-hold pass for the plan builder: resolve the
- * priority-greedy surplus allocator (hoisted here so eligibility exists when the
- * shed set is assembled), resolve the standing dump-load hold with smart-task
- * precedence, then merge the post-shedding holds into `shedSet` and clear
- * the stale posture bookkeeping. Returns the dump-load `reasonById` for the
- * downstream reason normalization. `shedSet` is mutated in place.
+ * Standing-posture + post-shedding-hold pass for the plan builder: resolve the
+ * standing dump-load hold with smart-task precedence, then merge the
+ * post-shedding holds into `shedSet` and clear the stale posture bookkeeping.
+ * Returns the dump-load `reasonById` for the downstream reason normalization.
+ * `shedSet` is mutated in place.
  */
 export function runStandingPostureHolds(params: {
-  context: PlanContext;
-  power: MeasuredPower;
   state: PlanEngineState;
   admittedDevices: PlanInputDevice[];
   shedSet: Set<string>;
   /** The shedding plan's decided rungs; a solar stop clears its own. */
   shedStepTargets: Map<string, string>;
-  decoration: Pick<DeferredDecorationBundle, 'forceShedSet' | 'admittedDeviceIds'>;
+  decoration: Pick<DeferredDecorationBundle, 'forceShedSet'>;
+  // Smart-task precedence set (`resolvePostureExcludeIds`), applied at BOTH the
+  // allocation stage (`resolveSurplusEligibility` — so a governed device never
+  // reserves the pool) AND the hold stage (`resolveSurplusHold`). Resolved once
+  // by the builder and shared, so the two stages can never disagree about
+  // which devices a deferred objective governs.
+  excludeIds: ReadonlySet<string>;
   getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
-  // Zero-export inferred curtailed-surplus term (kW, >= 0; producer:
-  // `lib/solar/curtailmentSurplus.ts`), injected flat through the plan deps and
-  // enlarging the same pool as measured export. 0 ⇒ measured export only.
-  getInferredSurplusKw: () => number;
-  // Structured emitter for the `surplus_pool` composition log (debug-gated).
-  debugStructured?: StructuredDebugEmitter;
   // "Leave off until turned on again" at the moment a standing posture is
   // released (`PlanBuilderDeps.leaveOffOnRelease`).
   leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome;
-  // One timestamp for the whole build, so the settle/dwell clocks agree on the
-  // millisecond.
-  nowTs: number;
 }): StandingPostureHolds {
-  const { context, power, state, admittedDevices, decoration } = params;
-  // Smart-task precedence set, applied at BOTH the allocation stage
-  // (`resolveSurplusEligibility` — so a governed device never reserves the pool)
-  // AND the hold stage (`resolveSurplusHold`). Computed once so the two stages
-  // can never disagree about which devices a deferred objective governs.
-  const excludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
-  resolveSurplusEligibility({
-    devices: context.devices,
-    state,
-    // Producer-resolved pair: the signed net is always a number (the carried
-    // reading), and the allocator gates every raise on the measured flag.
-    signedNetKw: power.drawKw,
-    inferredSurplusKw: params.getInferredSurplusKw(),
-    excludeIds,
-    getConfig: params.getConfig,
-    debugStructured: params.debugStructured,
-    nowTs: params.nowTs,
-  });
+  const { state, admittedDevices, decoration, excludeIds } = params;
   const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
   // The second standing posture. It reads each device's own `startPolicyHoldLifted`
   // rather than `excludeIds`: a device its own task left idle this hour must stay

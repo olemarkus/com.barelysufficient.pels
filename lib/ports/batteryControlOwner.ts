@@ -69,6 +69,11 @@ export type BatteryLeverRead =
      * (`lib/battery/batteryVerification.ts`).
      */
     deliveryCeilingW: number;
+    /**
+     * The most charge PELS may ask for, W: the charge range, or less while a
+     * charge that stopped short of it is the lesson.
+     */
+    chargeCeilingW: number;
     /** PELS holds a recorded claim and owes the battery a hand-back. */
     claimHeld: boolean;
     /**
@@ -87,8 +92,12 @@ export type BatteryLeverRead =
     verdict: StorageVerdict;
   };
 
-/** What a confirmed setpoint showed: the discharge delivered, and the tolerance it was judged within, W. */
-export type BatteryDelivery = { dischargeW: number; toleranceW: number };
+/**
+ * What a followed setpoint showed: the battery's own signed power then
+ * (negative discharging, positive charging), and the tolerance it was judged
+ * within, W.
+ */
+export type BatteryDelivery = { signedW: number; toleranceW: number };
 
 /**
  * What the executor's storage lane learns from each setpoint, written to the
@@ -97,12 +106,18 @@ export type BatteryDelivery = { dischargeW: number; toleranceW: number };
  */
 export type BatteryVerificationRecorder = {
   /**
-   * The battery's own power reached the setpoint. A learned ceiling is lifted
-   * only by a delivery above it by more than the tolerance.
+   * The battery followed a setpoint. A learned ceiling, discharge or charge, is
+   * lifted only by a delivery past it by more than the tolerance.
    */
   recordResponding(deviceId: string, delivery: BatteryDelivery, nowMs: number): void;
   /** An increase in discharge plateaued short of its setpoint, at this discharge, W. */
   recordDeliveryCeiling(deviceId: string, dischargeW: number, nowMs: number): void;
+  /**
+   * An increase in charge stopped short of its setpoint, at this charge, W. It
+   * teaches the charge ceiling and says nothing about whether the battery
+   * follows: a full battery stops charging every sunny afternoon.
+   */
+  recordChargeCeiling(deviceId: string, chargeW: number, nowMs: number): void;
   /**
    * Whether this discharge, W, is within the tolerance of the last plateau the
    * battery showed this run, held or expired: a re-probe that starts there and

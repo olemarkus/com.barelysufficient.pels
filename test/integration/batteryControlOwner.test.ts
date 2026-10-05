@@ -324,6 +324,7 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
       kind: 'setpoint',
       stepW: 1,
       deliveryCeilingW: 2500,
+      chargeCeilingW: 2500,
       claimHeld: false,
       handBackDeferred: false,
       claimEngaged: false,
@@ -354,6 +355,9 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
     owner.verification.recordDeliveryCeiling(BATTERY, 900, T0);
 
     expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'responding', deliveryCeilingW: 900 });
+
+    owner.verification.recordChargeCeiling(BATTERY, 0, T0);
+    expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'responding', chargeCeilingW: 0 });
   });
 
   it('hands the battery back when the plan releases it', async () => {

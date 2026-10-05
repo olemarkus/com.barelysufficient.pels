@@ -204,7 +204,8 @@ const allocatorPass = (params: {
   state: params.state,
   signedNetKw: params.signedNetKw,
   inferredSurplusKw: 0,
-  excludeIds: params.excludeIds,
+  storageSurplusKw: 0,
+  excludeIds: params.excludeIds ?? new Set(),
   getConfig: (deviceId) => params.configs?.[deviceId],
   nowTs: params.nowTs,
 });

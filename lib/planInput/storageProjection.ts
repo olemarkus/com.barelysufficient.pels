@@ -13,8 +13,9 @@ const NO_STORAGE_CLUSTER: StorageClusterFields = {};
  * `missing`, so the planner can keep or release the hold rather than lose it
  * silently; one it does not hold and cannot read has no lever at all.
  *
- * The delivery ceiling is the owner's resolved one, so the planner reads one
- * number: the discharge range, or less once an increase plateaued short of it.
+ * The delivery and charge ceilings are the owner's resolved ones, so the
+ * planner reads one number for each: the range, or less once an increase
+ * plateaued short of it.
  */
 export const resolveStorageCluster = (
   device: ToPlanDeviceInput,
@@ -38,6 +39,7 @@ export const resolveStorageCluster = (
       admissible: control.admissible,
       verdict: control.verdict,
       deliveryCeilingW: control.deliveryCeilingW,
+      chargeCeilingW: control.chargeCeilingW,
     },
   };
 };
