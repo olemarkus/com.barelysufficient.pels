@@ -1,7 +1,7 @@
 import { h } from 'preact';
-import type { JSX, ComponentChildren } from 'preact';
+import type { HTMLAttributes, ComponentChildren } from 'preact';
 
-type MdBaseProps = JSX.HTMLAttributes<HTMLElement> & {
+type MdBaseProps = HTMLAttributes<HTMLElement> & {
   children?: ComponentChildren;
   [key: string]: unknown;
 };

@@ -127,7 +127,7 @@ type MountEchartsParams = {
 // changing behavior.
 export const useEchartsMount = (
   params: MountEchartsParams,
-): RefObject<HTMLDivElement> => {
+): RefObject<HTMLDivElement | null> => {
   const { buildOption, resolveSize, deps, onChartInit } = params;
   const chartRef = useRef<HTMLDivElement>(null);
   // The `ResizeObserver` / tab-shown handler are long-lived (re-created only on

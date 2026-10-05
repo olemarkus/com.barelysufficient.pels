@@ -73,7 +73,7 @@ export const PlanSteppedCard = ({
   const displayName = formatDisplayDeviceName(dev.name);
 
   return (
-    <article
+    <div
       class={cardClasses}
       data-device-id={dev.id}
       data-state-kind={stateKind}
@@ -114,6 +114,6 @@ export const PlanSteppedCard = ({
 
         {status.rail && <StepRail dev={displayDev} />}
       </div>
-    </article>
+    </div>
   );
 };
