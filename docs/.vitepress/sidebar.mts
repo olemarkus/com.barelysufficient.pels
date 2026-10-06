@@ -46,6 +46,10 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
         text: 'Home, Away, Night and Vacation energy modes',
         link: '/use-cases/homey-home-away-night-energy-modes',
       },
+      {
+        text: 'Solar and a home battery',
+        link: '/use-cases/homey-solar-home-battery',
+      },
     ],
   },
   {

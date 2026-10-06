@@ -143,10 +143,21 @@ your source publishes 15-minute prices.
 ## Solar
 
 ### Solar surplus
-Solar power available beyond what your home is using right now — either exported to
+Solar power available beyond what your home is using right now: either exported to
 the grid or inferred when a zero-export inverter throttles production to match the
 house. PELS can steer flexible devices to soak it up instead of exporting it cheaply.
+Devices and home batteries share it in [priority](#priority) order: with the battery
+last, the default, your devices get the sun first, then the battery, then the grid.
 See [Solar and Self-Consumption](/solar).
+
+### Home battery
+A battery paired with Homey whose app lets PELS set how much it charges or
+discharges. It is a managed device with its own Overview card (**Supplying**,
+**Charging**, **Limited · Charging** or **Own mode**) and a place in your priority list, last by default.
+PELS uses it to share your solar surplus and, on its turn, to hold your limit:
+first by capping its charge, then by discharging. **Managed by PELS** turns this
+on or off, and **Power-limit control** decides whether it may hold your limit. See
+[Solar and a home battery](/use-cases/homey-solar-home-battery).
 
 ### Use solar surplus / Run on solar surplus
 Per-device settings for prosumers. **Use solar surplus** lifts a device's target

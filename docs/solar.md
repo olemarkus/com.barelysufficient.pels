@@ -7,7 +7,7 @@ description: Use more of your own rooftop solar with PELS, with capacity protect
 
 If you have rooftop solar (PV), this page explains what PELS does with it today.
 
-**Short version:** your solar protects your capacity for free, and PELS puts your surplus to work: it raises a heater's target, runs an on/off load such as a pool pump only while you export, or matches an EV charger's current to your surplus, instead of sending it to the grid. With a home battery, your surplus goes down your priority order, the battery included: last in the list (the default), your devices get the solar first and the battery stores the rest. When your home goes over its limit, the battery takes its turn in your priority order, and last in the list (the default) it covers your home before any device is limited. PELS also shows what your solar did: production, self-consumption, export, and the grid cost it avoided.
+**Short version:** your solar protects your capacity for free, and PELS puts your surplus to work: it raises a heater's target, runs an on/off load such as a pool pump only while you export, or matches an EV charger's current to your surplus, instead of sending it to the grid. With a home battery, your surplus goes down your priority order, the battery included, and when your home nears its limit the battery discharges on its turn. Left last in the list, the default, your devices get the sun first and the battery covers your whole home before any device is limited. PELS also shows what your solar did: production, self-consumption, export, and the grid cost it avoided.
 
 ::: warning Needs a signal that you export
 The solar features below need a signal that you are exporting — either a solar device that reports production, or a meter that shows your solar export.
@@ -35,7 +35,7 @@ How much this helps depends on your home and the weather.
 
 PELS watches your **net** grid power. When your panels cover part of the load, your net draw is lower, so there is more available power and PELS limits your managed devices less — exactly when the sun is out. This follows from how PELS measures power; there is nothing to turn on. See [Solar Accounting](./technical.md#solar-accounting).
 
-In Norway, exported solar still earns roughly the spot price, so self-consumption is a modest gain — here the bigger win from panels is this automatic capacity protection. Where exported energy earns little, or costs you (see below), using your own solar matters much more.
+Where exported solar earns roughly the spot price, self-consumption is a modest gain, and the bigger win from panels is this automatic capacity protection. Where exported energy earns little, or costs you (see below), using your own solar matters much more.
 
 ### Use solar surplus to heat your home
 
@@ -114,23 +114,43 @@ Three honest edges to know about:
 
 ### Home batteries
 
-PELS can work with a home battery whose Homey app lets Homey set how much the battery charges or discharges. Such an app usually has a control mode for this, called something like "Homey" or "API". PELS takes the battery over in that mode only while it has a job for it, and otherwise leaves it in the mode you chose in the battery's app, so the battery's own self-consumption or trading keeps working.
+PELS makes your home battery part of your priority list. Your sun goes to your devices and the battery in the order you choose, and when your home nears its limit, the battery takes its turn: PELS caps its charge, then has it discharge to cover the peak. Left last in the list, the default, the battery covers your whole home before a single device is turned down. For a full walkthrough with a sunny day and an evening, see [Solar and a home battery](./use-cases/homey-solar-home-battery.md).
 
-**Your mode choice takes precedence.** If you change the battery's control mode in its own app while PELS holds it, PELS leaves that choice alone, turns the battery's **Managed** switch off and stops controlling that battery until you turn Managed on again. Simulation mode stops PELS controlling all devices.
+<figure class="docs-figure">
+  <img class="docs-screenshot" src="/screenshots/battery/overview-supplying.png" alt="PELS Overview with the hero line Sessy battery is supplying 2.4 kW to hold your limit, and the battery card reading Supplying 2.4 kW, 62 % charged, Holding your limit so your devices keep running." />
+  <figcaption>The Overview while the battery holds your limit.</figcaption>
+</figure>
 
-**Solar surplus follows your priority order.** The battery's place in the priority list (described below) also decides who gets your surplus: it goes down the list, and what is left goes to the grid. Last in the list, the default, your devices get the solar first, then the battery. A battery's own mode usually stores any surplus before your devices see it, so PELS counts the solar the battery is storing as surplus the devices above the battery may use. When a device set to use surplus (a heater with "Use solar surplus", an on/off device that runs only on surplus, or a charger matching your surplus) ranks above the battery, is waiting to start, and that power could run it, PELS takes the battery over and lowers its charge by what the device needs. Once the device runs, the battery keeps the rest, and its charge drops at once if the surplus shrinks. A device ranked below the battery only gets the solar the battery leaves: PELS never lowers the battery's charge for it. Charging only uses solar you would otherwise export, so it never takes your home over its limit. PELS leaves the battery to its own mode in every other case: when no device above it is waiting, when the battery is discharging (stored energy is never offered to your devices), when it charges from the grid, for example in cheap night hours, and when it is full.
+**What it works with.** PELS works with a home battery whose Homey app lets Homey set how much it charges or discharges, and offers a Homey or API control mode. Sessy and Marstek Venus are examples. A Sessy needs its local login in the Sessy Homey app, so PELS can switch it to API control.
 
-**The battery takes its turn in your priority order.** The battery has a place in each mode's priority list, like your devices, and it is last by default. When your home goes over its limit, whether that is the capacity limit or your daily budget, PELS limits devices from the bottom of the list up. PELS may wait up to a minute before limiting a device when a device it just turned back on may still be starting up; a battery that comes before every device in that order is not kept waiting. When the battery's turn comes, PELS first caps its charge (grid charging counts against your limit and budget like any load), and then asks it to discharge enough to cover the rest. Devices below the battery in the list are limited before it; the devices above it are the ones its discharge protects. Last in the list, it covers your whole home before any device is limited. The battery protects what is already running: PELS does not use its discharge to turn more devices on. PELS gives a battery about 30 seconds to follow what it asks. If the battery has not followed by then, PELS stops counting on it and does not ask it for more: your devices are limited as they would be without it, and a battery that keeps ignoring PELS is handed back.
+**A managed device like any other.** The battery has a card on the Overview, a row in the device list and its own device page. The card leads with what the battery is doing (`Supplying`, `Charging`, `Limited · Charging` or `Own mode`), shows how full it is, and gives one reason line, such as `Holding your limit so your devices keep running`. While the battery holds your limit, the Overview hero says so: `Sessy battery is supplying 2.4 kW to hold your limit.`
 
-**Power-limit control.** The battery's device page has a Power-limit control switch, on by default. Turned off, PELS never limits the battery: it never caps its charge and never asks it to discharge for your limit. While Managed is on, its surplus works as above: it still stores spare solar, and still gives the devices above it the solar it would store. With Managed off, PELS leaves the battery out of your surplus entirely.
+**Its own mode keeps running until PELS needs it.** PELS takes the battery over in its Homey or API mode only while it has a job for it, and hands it back to the mode it was in when the job is done. The battery's own self-consumption, schedule or price trading keeps working the rest of the time.
 
-**Handing the battery back.** When PELS took the battery for a device, it switches it back to the mode it was in before about two minutes after no device above the battery needs that power any more: the device is satisfied, the surplus ended, or you moved the battery above the device in your priority list. It hands back a full battery at once. When it limited the battery, it hands it back like it resumes a device: in your priority order, once your home has room for the battery to charge again in its own mode. If PELS did not see the battery charging when it took it over, it waits for room for the battery's full charge rate. Devices below the battery in the list wait for the battery's turn. It also hands back a battery that leaves the Main home's plan after about two minutes. It hands back at once if the meter stops reporting, if the battery stops responding, or if you turn simulation mode on. If PELS restarts while it holds the battery, it hands the battery back when it starts again. A battery PELS holds at the moment you disable or uninstall PELS stays in Homey mode until you change it in the battery's app.
+**Solar surplus follows your priority order.** Your surplus goes down the list to your devices and batteries, and only what is left goes to the grid. With the battery last, your devices get the sun first, then the battery, then the grid. A battery's own mode usually stores the sun before your devices see it, so PELS counts what the battery is storing as surplus for the devices above it: when a device set to use surplus (a heater with **Use solar surplus**, an on/off device with **Run on solar surplus**, or a charger with **Charge on solar surplus**) ranks above the battery and is waiting to start, PELS lowers the battery's charge so the device can run. A battery above a device keeps its charge, and the device gets what the battery leaves. Stored energy is never spent on surplus: PELS only moves solar you would otherwise export, so sharing it never takes your home over its limit.
 
-PELS controls a supported battery in your Main home by default, for as long as the battery stays opted in; a battery in a [meter area](/meter-areas) keeps to its own mode. It uses the battery's own limits: how far the battery charges or discharges is up to the battery and its app. Simulation mode leaves the battery in its own mode too.
+**The battery holds your limit on its turn.** When your home goes over its limit, whether that is the capacity limit or your daily budget pace, PELS limits in priority order, from the bottom of the list up. When the battery's turn comes, PELS first caps its charge, then asks it to discharge enough to cover the rest. Devices below the battery are limited before it, and its discharge protects every device above it. Grid charging counts against your limit and your daily budget like any other load, so a battery that starts its own cheap-hour charging while your car charges is capped before the car is slowed. An empty battery, or one that does not follow, delivers nothing, and PELS moves straight on to the next device.
+
+**Bringing it back.** After a limit, the battery comes back like any device: in your priority order, once your home has room for it to charge in its own mode again, PELS hands it back to the mode it was in. After sharing solar, PELS hands it back about two minutes after no device above it needs that power, and a full battery at once.
+
+**You stay in charge.** On the battery's device page:
+
+<figure class="docs-figure">
+  <img class="docs-screenshot" src="/screenshots/battery/device-page.png" alt="PELS device page for a Sessy battery: Supplying 2.4 kW, Managed by PELS on, Power-limit control on, Priority 9 of 9 in Home with a Reorder button." />
+  <figcaption>The battery's device page.</figcaption>
+</figure>
+
+- **Managed by PELS** is the battery's main switch. Off, PELS hands the battery back and leaves it alone.
+- **Power-limit control** is on by default. Off, PELS never caps the battery's charge or calls on it for your limit, and the battery still stores your spare solar in priority order. The **Enable power-limit control for device** and **Disable power-limit control for device** Flow cards work on batteries too.
+- **Priority** shows the battery's place in the current mode, and **Reorder** moves it.
+
+If you change the battery's mode in its own app while PELS holds it, PELS takes that as your decision: it turns **Managed by PELS** off for that battery, says so on its device page, and leaves it alone until you turn it on again.
+
+PELS also hands the battery back at once if your meter stops reporting or the battery stops responding, and when PELS restarts it hands back every battery it held. If you uninstall PELS while it holds the battery, switch the battery's mode back in its own app. A battery in a [meter area](/meter-areas) keeps its own mode, and Simulation mode leaves every battery in its own mode too.
 
 ## Export pricing
 
-In some markets, exported solar is worth far less than the power you would otherwise buy — and in some it can cost you. In the Netherlands, the end of net metering (*salderingsregeling*) from 2027 means suppliers increasingly charge for exported power (*terugleverkosten*): exporting can actively cost money, so using your own solar becomes a direct saving rather than a smaller return.
+Exported solar is often worth far less than the power you would otherwise buy, and on some contracts it costs you: when net metering ends or your supplier charges a fee for feeding in, every kilowatt-hour you export can cost money, so using your own solar becomes a direct saving rather than a smaller return.
 
 PELS lets you tell it what exported power is worth to you. Under **Settings > Electricity prices**, turn on **"Use an export price"** (the section appears once PELS can see your solar, meaning a managed solar device reports production or your meter has recorded about a kilowatt-hour of grid export, and stays visible if you already have an export price configured).
 
@@ -158,3 +178,4 @@ Your money figures stay honest: receipts, usage costs, and the budget's money vi
 - [Cost-Saving Functions](./cost-saving-functions.md)
 - [Configure an EV Charger](./ev-charger.md)
 - [Smart Tasks](./smart-tasks.md)
+- [Solar and a home battery](./use-cases/homey-solar-home-battery.md)

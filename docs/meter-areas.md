@@ -222,6 +222,10 @@ priorities. The Budget and Smart tasks pages say so once you have meter areas,
 and PELS tells you if you set a smart task on a device that lives in a meter
 area.
 
+A [home battery](/glossary#home-battery) in a meter area keeps its own mode.
+PELS shares solar with home batteries and calls on them to hold your limit in
+the Main home; in an area, the battery's own app stays in charge.
+
 Flow cards split three ways. Cards that act on a **device** work wherever that
 device lives, including inside a meter area: turning power-limit control on or
 off for it, budget exemptions, **Is device managed by PELS?**, expected power

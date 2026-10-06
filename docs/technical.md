@@ -175,6 +175,20 @@ For EV chargers, resume is only attempted while the charger can actually be driv
 
 ---
 
+## Home Battery
+
+A managed home battery is a limiting candidate at its place in the mode's priority list (last by default). When the [Limiting Order](#limiting-order) reaches it, PELS first caps its charge, then raises its discharge to cover the remaining overshoot. The discharge always leaves a small import under the house's draw (half the battery's own power step, at least 100 W), so holding the limit never pushes the house into export.
+
+- **Credit while the battery settles.** A battery needs a moment to follow a new setpoint. For up to **30 seconds** after PELS caps a charge or raises a discharge, the relief it asked for counts as already delivered, so PELS does not limit extra devices for power that is on its way.
+- **No credit for a battery that does not follow.** Once those 30 seconds pass, a limit the battery has not followed counts for nothing: PELS stops asking it for more and limits the next devices as it would without a battery. A battery that keeps ignoring PELS is handed back. An empty battery delivers nothing, so PELS moves on in the same way.
+- **Hand-back through resume.** Leaving a limit is a resume in priority order, under the same gates as any device: the resume cooldowns, meter settling, one resume per cycle, and the hysteresis buffer. PELS hands the battery back once the house has room for the charge its own mode will take; if PELS did not see it charging when it took over, it waits for room for the battery's full charge rate. Devices below the battery wait for its turn, so a smaller device lower in the order cannot take the room first every cycle. The discharge PELS holds is never spent on a hand-back: the battery steps its discharge down first.
+- **Restart record.** Before PELS first switches a battery to its Homey or API mode, it saves the mode the battery was in. The record is removed only after the battery has been handed back, so after a restart or a crash PELS hands back every battery it still holds, to the mode it saved.
+- **Power-limit control.** On by default. Off, the battery is never a limiting candidate, and while **Managed by PELS** is on it still takes part in sharing solar surplus in priority order. The **Enable/Disable power-limit control for device** Flow cards set it like any device's.
+
+Grid charging counts toward the hard cap and the daily budget like any load. On a meter outage the one-time fail-closed pass hands the battery back instead of raising its discharge, and Simulation mode hands it back too.
+
+---
+
 ## Power Estimation
 
 PELS needs to estimate how much power a device will draw when turned on. One ordered ladder decides it, and it always produces a number — there is no "unknown" left for a consumer to interpret:

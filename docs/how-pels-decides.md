@@ -62,6 +62,19 @@ the least important device (highest priority number) goes first, the most
 important stays running longest. Priorities are per [mode](/glossary#mode), so
 your bedroom can outrank the water heater at night and not during the day.
 
+### Where a home battery fits
+
+A [home battery](/glossary#home-battery) has a place in that same list, last by
+default. When its turn comes, PELS first caps the battery's charge, then asks it
+to discharge enough to cover the rest. Discharge happens only on the battery's
+turn: the devices below it are limited first, and every device above it is
+protected. Left last, the battery's turn comes before any device's, so it covers
+the whole house before anything is turned down. An empty battery delivers
+nothing, and PELS moves on to the next device. The same order shares your
+[solar surplus](/glossary#solar-surplus): devices above the battery get the sun
+first, then the battery, then the grid. See
+[Solar and a home battery](/use-cases/homey-solar-home-battery).
+
 ## How PELS brings devices back
 
 As power frees up, PELS resumes devices in the **opposite** order — most important

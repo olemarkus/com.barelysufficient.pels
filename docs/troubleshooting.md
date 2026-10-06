@@ -231,6 +231,67 @@ The banner above the Overview tells you which state you are in:
 - **Battery percentage doesn't appear:** if the value lives on the car device
   rather than the charger, use **Report battery level for charger**.
 
+## My battery is stuck in Homey or API mode
+
+While PELS holds your home battery, the battery's own app shows its Homey or API
+mode. That is PELS at work: the battery's card on the Overview reads
+**Supplying**, **Charging** or **Limited · Charging** and says why. When the
+job is done, PELS hands it back to the mode it was in; after a limit, that
+happens at the battery's turn in your priority order, once your home has room
+for it to charge again. PELS also hands it back at once if your meter stops
+reporting, and when PELS restarts.
+
+- **Want it back now?** Turn off **Managed by PELS** on the battery's device
+  page (Settings → Devices → the battery). PELS hands it back and leaves it alone.
+- **Changed the mode in the battery's app?** PELS takes that as your decision and
+  turns **Managed by PELS** off for the battery. Turn it on again when you want
+  PELS to use the battery.
+- **Uninstalled PELS while it held the battery?** Switch the mode back in the
+  battery's own app.
+
+## PELS isn't using my battery
+
+Check these, in order:
+
+- **Managed by PELS is off.** Turn it on for the battery (Settings → Devices).
+  If the device page shows a notice that you changed its mode in the battery
+  app, PELS stepped back on purpose; turning **Managed by PELS** on again hands
+  the battery to PELS.
+- **Power-limit control is off.** The battery then only stores your spare solar,
+  and its card reads `PELS uses it only to store spare solar`. Turn on
+  **Power-limit control** so it can hold your limit on its turn.
+- **The battery is in a [meter area](/meter-areas).** A battery in a meter area
+  keeps its own mode; PELS uses batteries in the Main home.
+- **Simulation mode is on.** PELS leaves every battery in its own mode while
+  simulating (Settings → Simulation mode).
+- **A Sessy signed in with its cloud login.** PELS needs the local login in the
+  Sessy Homey app to switch the battery to API control. Switch the battery to
+  its local login in that app.
+- **The battery's app cannot take commands from Homey.** PELS needs an app that
+  lets Homey set the battery's charge and discharge power, and offers a Homey or
+  API mode. Sessy and Marstek Venus are examples of apps that do.
+
+The card reads `PELS takes over when your limit or solar needs it` when
+everything is set up and PELS simply has no job for the battery right now. Its
+place in your priority order matters too: a battery high in the list only
+discharges once the devices below it are limited. See
+[Solar and a home battery](/use-cases/homey-solar-home-battery).
+
+## My battery's night charge stopped
+
+If your battery charges from the grid on its own schedule, for example in cheap
+night hours, that charging is a load like any other. When your home nears its
+limit, PELS limits in priority order, and the battery's charging is capped at its
+place in the list: its card reads **Limited · Charging** with
+`Waiting to charge faster`. This is how your car or heating keeps running instead.
+The charge comes back in priority order once your home has room, and the battery
+returns to its own schedule.
+
+To let the night charge go ahead of other devices, move the battery up in your
+priority list (its device page → **Reorder**, or the **Modes** page). To keep
+PELS from ever capping it, turn off **Power-limit control** on the battery; it
+still stores your spare solar.
+
 ## A device doesn't appear in PELS
 
 - The device must expose a supported capability and device class (a temperature
