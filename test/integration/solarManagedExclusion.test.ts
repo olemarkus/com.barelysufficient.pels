@@ -27,7 +27,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
-import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture } from '../utils/planTestUtils';
+import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -163,7 +163,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       state,
       signedNetKw: -3,
       inferredSurplusKw: 0,
-      storageSurplusKw: 0,
+      storage: NO_STORAGE_SURPLUS,
       excludeIds: new Set(),
       getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
       nowTs: Date.UTC(2025, 0, 1, 12, 0, 0),

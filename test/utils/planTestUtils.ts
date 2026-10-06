@@ -24,6 +24,7 @@ import {
 } from '../../lib/plan/planTypes';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
+import type { StorageSurplus } from '../../lib/plan/planSurplusAbsorb';
 import type {
   DeviceDescriptorRead,
   DeviceStateOfChargeSnapshot,
@@ -73,6 +74,9 @@ import {
 import type { ToPlanDeviceInput } from '../../lib/planInput/planInputDeviceTypes';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
 import { type DescriptorIdentity, resolveFixtureDescriptorIdentity } from './deviceSnapshotFixture';
+
+/** A home without a battery, as the surplus allocator sees it: no claimant, no discharge. */
+export const NO_STORAGE_SURPLUS: StorageSurplus = { claimants: [], dischargeW: 0 };
 
 /**
  * Mirror the production producer: a binary fixture's `currentOn` is the resolved

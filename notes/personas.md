@@ -223,10 +223,11 @@ folding into Cost/Climate. The first solar surfaces have now **shipped** (see th
 Today column below), so this is no longer a pure placeholder — but the headline
 *self-consumption maximiser* (export-to-zero, inverter control) is still
 roadmap. A home battery PELS can set the power of is now controlled (Main home):
-it charges from the surplus the willing devices leave and discharges before
-devices are limited, and is handed back to its own mode when idle.
-**Signature:** PV (a home battery as the last surplus sink and the first lever
-against the limit), EV + heat pump + VVB as surplus sinks; cares about
+it takes surplus and is limited at its own place in the priority order (last
+by default: it stores what the willing devices leave, and covers the house
+before any device is limited), and is handed back to its own mode when idle.
+**Signature:** PV (a home battery, by default the last surplus sink and the
+first lever against the limit), EV + heat pump + VVB as surplus sinks; cares about
 self-consumption rate as the headline KPI.
 **Absorbs:** new — the market signal behind the solar direction. Strongest in
 NL (net-metering phase-out) and DE; nascent in NO.

@@ -29,7 +29,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
-import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture } from '../utils/planTestUtils';
+import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
@@ -219,7 +219,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       state,
       signedNetKw: -3, // 3 kW export available
       inferredSurplusKw: 0,
-      storageSurplusKw: 0,
+      storage: NO_STORAGE_SURPLUS,
       excludeIds: new Set(),
       // Even if a (nonsensical) surplus config were present, the temperature-boost
       // filter drops the battery before allocation.

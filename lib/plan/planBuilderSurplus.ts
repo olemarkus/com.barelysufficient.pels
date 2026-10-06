@@ -7,8 +7,8 @@
  * statement for the whole pass. The priority-greedy surplus allocator
  * (`resolveSurplusEligibility`) runs earlier in the build, before storage
  * relief and shedding, with the same exclusions: eligibility then exists when
- * the shed set is assembled (`planDevices` only READS it), and what the willing
- * devices leave goes to the home batteries.
+ * the shed set is assembled (`planDevices` only READS it), and each home
+ * battery is offered what the consumers ranked above it leave.
  *
  * Order-neutral for non-solar homes: with no willing device the allocator writes
  * no state and the hold is empty — pinned by the byte-identity integration test

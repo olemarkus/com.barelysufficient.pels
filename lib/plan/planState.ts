@@ -195,7 +195,8 @@ export type StorageLeverState = {
    * The signed power this plan holds the battery at, W: negative discharges,
    * positive charges. Under a `limit` hold it is the battery's place on its
    * limiting ladder (max charge, then 0 W, then max discharge); under a
-   * `surplus` hold the charge the willing devices leave it.
+   * `surplus` hold the charge the consumers ranked above it leave it
+   * (`StorageSurplusOffer`).
    */
   setpointW: number;
   /**

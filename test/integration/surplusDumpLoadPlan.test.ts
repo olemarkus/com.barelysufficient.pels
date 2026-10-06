@@ -42,11 +42,12 @@ import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { buildSwapCandidates } from '../../lib/plan/swap/candidates';
-import { buildPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
+import type { StoragePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
@@ -607,6 +608,71 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     expect(planA.storageReleases).toEqual([]);
     expect(planA.devices.every((device) => device.storageHold.kind === 'none' && !('storageDecision' in device)))
       .toBe(true);
+  });
+});
+
+describe('surplus by priority without a battery (byte-identity)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'setInterval'] });
+    vi.setSystemTime(new Date('2026-07-01T10:30:00.000Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** A battery PELS may claim that neither charges nor discharges, at this priority. */
+  const idleBattery = (priority: number): PlanInputDevice & StoragePlanInputKind => ({
+    ...buildPlanInputDevice({
+      id: 'battery',
+      name: 'Battery',
+      isBatteryOrSolar: true,
+      commandAuthority: false,
+      binaryControllable: false,
+      currentDrawKw: 0,
+      priority,
+    }),
+    storage: {
+      reading: 'observed',
+      range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
+      handBackDeferred: false,
+      stepW: 5,
+      signedPowerW: 0,
+      claimHeld: false,
+      admissible: true,
+      verdict: 'unverified',
+      deliveryCeilingW: 2500,
+      chargeCeilingW: 2500,
+      powerLimitControl: true,
+    },
+  });
+
+  it('engages and holds the dump load exactly as beside an idle battery, wherever it ranks', async () => {
+    // A heater ranked above the pump, the pump on 3 kW of export, then a cloud.
+    const heater = () => buildInputDevice({ id: 'heater', name: 'Heater', currentDrawKw: 0.8, priority: 1 });
+    const pumpAt = () => ({ ...buildPump({ on: false }), priority: 5 });
+    const withoutBattery = (plan: DevicePlan): string => JSON.stringify({
+      meta: plan.meta,
+      devices: plan.devices.filter((device) => device.id !== 'battery'),
+      storageReleases: plan.storageReleases,
+    });
+    const run = async (battery: PlanInputDevice[]) => {
+      vi.setSystemTime(new Date('2026-07-01T10:30:00.000Z'));
+      const h = makeHarness({ totalKw: -3 });
+      const devices = () => [heater(), pumpAt(), ...battery];
+      const plans = [await engagePump(h, devices)];
+      h.setTotalKw(1.5);
+      await vi.advanceTimersByTimeAsync(10_000);
+      plans.push(await h.builder.buildDevicePlanSnapshot(devices()));
+      return { plans: plans.map(withoutBattery), eligibility: h.state.surplusEligibilityByDevice, h };
+    };
+    const without = await run([]);
+    expect(without.eligibility[PUMP]?.eligible).toBe(true);
+    // Without a battery no surplus offer exists to make: the storage stages stay inert.
+    expect(without.h.state.storageLeverByDevice).toEqual({});
+    for (const priority of [1, 3, 9]) {
+      const beside = await run([idleBattery(priority)]);
+      expect(beside.plans).toEqual(without.plans);
+      expect(beside.eligibility).toEqual(without.eligibility);
+      expect(beside.h.state.storageLeverByDevice).toEqual({});
+    }
   });
 });
 

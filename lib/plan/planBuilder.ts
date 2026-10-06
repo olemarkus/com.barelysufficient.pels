@@ -52,7 +52,7 @@ import {
   attachStorageDecisions,
   collectAbsentStorageReleases,
   decideStorageRelief,
-  sumStorageSurplusW,
+  resolveStorageSurplus,
   withoutStorageWithheld,
   type StorageRelief,
 } from './battery/storageRelief';
@@ -65,7 +65,7 @@ import {
   withHeldOffOnRelease,
   type PriceOptDeviceConfig,
 } from './planBuilderSurplus';
-import { resolveSurplusEligibility, type SurplusLeftover } from './planSurplusAbsorb';
+import { resolveSurplusEligibility, type StorageSurplusOffer } from './planSurplusAbsorb';
 import { sumBudgetExemptProjectedUsageKw, toMeteredUsageDevices } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
 import type { RestorePlanResult } from './restore';
@@ -85,8 +85,8 @@ import type { CapacitySettings } from '../../packages/contracts/src/capacitySett
 
 export type { PlanBuilderDeps } from './planBuilderDeps';
 const SOFT_LIMIT_EPSILON = 1e-3;
-/** The leftover surplus moves the `storage_relief_state` log only by a step this large, W. */
-const STORAGE_LOG_LEFTOVER_STEP_W = 500;
+/** A battery's surplus offer moves the `storage_relief_state` log only by a step this large, W. */
+const STORAGE_LOG_OFFER_STEP_W = 500;
 
 type DailySoftLimitResolution = {
   dailySoftLimitKw: number;
@@ -251,13 +251,13 @@ export class PlanBuilder {
     // Smart-task precedence for the standing postures, shared by the
     // allocator and the hold so the two can never disagree.
     const postureExcludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
-    const surplus = this.allocateSurplus(context, power, postureExcludeIds, nowTs);
+    const surplusOffers = this.allocateSurplus(context, power, postureExcludeIds, nowTs);
     // Restore and admission never spend the discharge PELS holds, nor a charge
     // increase not measured yet (`admissionPower`): the battery protects what
     // is running, it does not make room for more.
     const {
       sheddingPlan, overshootDecision, storageRelief: limitedStorage, admissionPower,
-    } = await this.decideShedding(context, power, surplus, shortfallBudgetThresholdKw, nowTs);
+    } = await this.decideShedding(context, power, surplusOffers, shortfallBudgetThresholdKw, nowTs);
     // The "Run on solar surplus" dump-load hold + the post-shedding hold
     // merges; returns the dump-load reason map for reason normalization.
     const postureHolds = trackPlanStage('plan_posture_holds_ms', () => runStandingPostureHolds({
@@ -284,7 +284,7 @@ export class PlanBuilder {
       planDevices, heldContext, admissionPower, sheddingPlan,
     );
     planDevices = restoreResult.planDevices;
-    const storageRelief = this.handBackStorage(limitedStorage, restoreResult, power, surplus);
+    const storageRelief = this.handBackStorage(limitedStorage, restoreResult, power, surplusOffers);
 
     const holdResult = this.stages.applyHoldPlan(
       planDevices,
@@ -380,26 +380,27 @@ export class PlanBuilder {
 
   /**
    * The priority-greedy surplus allocator, between measurement and storage
-   * relief: eligibility exists as the shed set is assembled, and what the
-   * willing devices leave is the surplus a home battery may store (devices
-   * first, then the battery, then export). The batteries' term in the pool is
-   * resolved here, so the allocator reads no battery: under capacity simulation
-   * no battery is held or claimable, so it carries only their discharge.
+   * relief: eligibility exists as the shed set is assembled, and each home
+   * battery is offered what the consumers ranked above it left (surplus by
+   * priority; a battery last is devices, then the battery, then export). The
+   * batteries are resolved here, so the allocator reads no battery: under
+   * capacity simulation no battery is claimable, so they carry only their
+   * discharge.
    */
   private allocateSurplus(
     context: PlanContext,
     power: MeasuredPower,
     excludeIds: ReadonlySet<string>,
     nowTs: number,
-  ): SurplusLeftover {
-    const storageSurplusW = sumStorageSurplusW(context.devices, this.state.storageLeverByDevice, power.drawKw * 1000);
+  ): ReadonlyMap<string, StorageSurplusOffer> {
+    const storage = resolveStorageSurplus(context.devices, this.state.storageLeverByDevice, power.drawKw * 1000);
     return trackPlanStage('plan_surplus_eligibility_ms', () => resolveSurplusEligibility({
       devices: context.devices,
       state: this.state,
       // Producer-resolved: the signed net is always a number (the carried reading).
       signedNetKw: power.drawKw,
       inferredSurplusKw: this.deps.getInferredSurplusKw(),
-      storageSurplusKw: storageSurplusW / 1000,
+      storage,
       excludeIds,
       getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
       debugStructured: this.deps.debugStructured,
@@ -410,7 +411,7 @@ export class PlanBuilder {
   private async decideShedding(
     context: PlanContext,
     power: MeasuredPower,
-    surplus: SurplusLeftover,
+    surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
     shortfallBudgetThresholdKw: number,
     nowTs: number,
   ): Promise<{
@@ -419,15 +420,15 @@ export class PlanBuilder {
     storageRelief: StorageRelief;
     admissionPower: MeasuredPower;
   }> {
-    // The batteries' holds as this reading leaves them, and the surplus a
-    // battery stores (`lib/plan/battery/storageRelief.ts`). A held discharge
+    // The batteries' holds as this reading leaves them, and the surplus each
+    // battery stores from its offer (`lib/plan/battery/storageRelief.ts`). A held discharge
     // still settling is credited as a decision, not a measurement: shedding and
     // the overshoot grace that gates it count it as their own term, and
     // everything else keeps the measured draw. Whether a battery is limited
     // further is shedding's choice, at its place in the priority order.
     const heldStorage = this.deps.getCapacityDryRun()
       ? NO_STORAGE_RELIEF
-      : decideStorageRelief(context.devices, power, this.state.storageLeverByDevice, surplus, nowTs);
+      : decideStorageRelief(context.devices, power, this.state.storageLeverByDevice, surplusOffers, nowTs);
     // Shedding prices a held battery from its hold.
     this.state.storageLeverByDevice = heldStorage.levers;
     const overshootDecision = this.state.overshoot.decideSoft(
@@ -476,11 +477,11 @@ export class PlanBuilder {
     limitedStorage: StorageRelief,
     restoreResult: RestorePlanResult,
     power: MeasuredPower,
-    surplus: SurplusLeftover,
+    surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
   ): StorageRelief {
     const storageRelief = applyStorageHandBacks(limitedStorage, restoreResult.storageHandedBack);
     this.state.storageLeverByDevice = storageRelief.levers;
-    this.logStorageRelief(storageRelief, power, surplus);
+    this.logStorageRelief(storageRelief, power, surplusOffers);
     return storageRelief;
   }
 
@@ -488,9 +489,13 @@ export class PlanBuilder {
    * Why a deficit was or was not shed, and why a battery charges, from the
    * logs alone: the credit or hand-back debit shedding counted whenever it
    * moved the measured deficit, and each battery's hold whenever it changes,
-   * with the surplus the willing devices left that a charge came from.
+   * with the surplus offer a charge came from.
    */
-  private logStorageRelief(relief: StorageRelief, power: MeasuredPower, surplus: SurplusLeftover): void {
+  private logStorageRelief(
+    relief: StorageRelief,
+    power: MeasuredPower,
+    surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
+  ): void {
     const { netCreditKw } = relief.shed;
     if (netCreditKw !== 0 && (power.headroomKw < 0 || netCreditKw < 0)) {
       this.deps.structuredLog?.info({
@@ -501,13 +506,17 @@ export class PlanBuilder {
         relieving: relief.shed.relieving,
       });
     }
-    // Speaks on a changed hold or claim reason, a changed device demand, or a
-    // leftover that moved by a step of `STORAGE_LOG_LEFTOVER_STEP_W`; never in
-    // a home without a battery, and once when the last one leaves the plan.
+    // Speaks on a changed hold or claim reason, a changed demand above a
+    // battery, or an offer that moved by a step of `STORAGE_LOG_OFFER_STEP_W`;
+    // never in a home without a battery, and once when the last one leaves the plan.
+    const surplusOffersLog = [...surplusOffers].map(([deviceId, offer]) => ({
+      deviceId, availableW: Math.round(offer.availableW), demandAbove: offer.demandAbove,
+    }));
     const stateKey = relief.batteries.length === 0 ? '' : JSON.stringify({
       batteries: relief.batteries.map(({ creditW: _creditW, withheldW: _withheldW, ...battery }) => battery),
-      deviceDemand: surplus.deviceDemand,
-      leftoverStep: Math.round(surplus.leftoverW / STORAGE_LOG_LEFTOVER_STEP_W),
+      offers: surplusOffersLog.map(({ availableW, ...offer }) => ({
+        ...offer, availableStep: Math.round(availableW / STORAGE_LOG_OFFER_STEP_W),
+      })),
     });
     if (stateKey === this.lastStorageStateKey) return;
     this.lastStorageStateKey = stateKey;
@@ -519,8 +528,7 @@ export class PlanBuilder {
       // discharge until it follows a step down.
       heldDischargeKw: relief.batteries.reduce((totalW, battery) => totalW + Math.max(0, -battery.setpointW), 0) / 1000,
       heldChargeKw: relief.batteries.reduce((totalW, battery) => totalW + Math.max(0, battery.setpointW), 0) / 1000,
-      surplusLeftoverW: Math.round(surplus.leftoverW),
-      deviceDemand: surplus.deviceDemand,
+      surplusOffers: surplusOffersLog,
     });
   }
 
