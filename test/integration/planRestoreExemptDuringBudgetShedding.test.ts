@@ -93,6 +93,7 @@ const runLane = (params: {
 }) => {
   const state = params.state ?? createPlanEngineState();
   return applyRestorePlan({
+    storageLevers: {},
     planDevices: params.devices,
     ...cycleArgsFor(buildContext(params.context)),
     state,

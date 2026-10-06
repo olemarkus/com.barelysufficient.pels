@@ -551,7 +551,6 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
 
     expect(owner.readControl(BATTERY)).toEqual({
       kind: 'setpoint',
-      stepW: 1,
       range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
       deliveryCeilingW: 2500,
       chargeCeilingW: 2500,

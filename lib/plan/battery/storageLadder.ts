@@ -1,16 +1,17 @@
 /**
  * The arithmetic every home-battery stage shares: the battery's deadband, its
  * own charge and discharge, and whether a setpoint step is one it could
- * visibly answer. The storage stage (`storageRelief.ts`), the shedding
- * candidate (`lib/plan/shedding/storageCandidate.ts`), the limit step
- * (`storageLimit.ts`) and the restore hand-back all read the battery through
- * these, so they agree on what a step is worth.
+ * visibly answer; and whether PELS may drive it at all. The storage stage
+ * (`storageRelief.ts`), the shedding candidate
+ * (`lib/plan/shedding/storageCandidate.ts`), the limit step (`storageLimit.ts`)
+ * and the restore hand-back all read the battery through these, so they agree
+ * on what a step is worth and on which battery PELS may take over.
  */
 import type {
   ObservedStorageInput,
   StoragePlanInputKind,
 } from '../../../packages/planner-types/src/planInputDevice';
-import { storageSetpointToleranceW } from '../../planContract/storageDecision';
+import { storageSetpointToleranceW, type StorageReleaseReason } from '../../planContract/storageDecision';
 
 /**
  * How long a battery limit's undelivered relief is credited: a discharge
@@ -27,9 +28,43 @@ export function hasStorageInput<T extends object>(device: T): device is T & Stor
   return 'storage' in device;
 }
 
+/**
+ * Why PELS may not take this battery over, as the reason it hands back a hold
+ * for: its verdict (`not_responding`, `sign_inverted`), not admissible
+ * (Managed off, not the Main home, claim not recordable, or simulation), or
+ * its Power-limit control off (`limit_off`; owner ruling, 2026-10-06: then
+ * PELS never takes it over at all, with no charge cap, no discharge and no
+ * surplus claim). `holdable` when none applies.
+ */
+export type StorageHoldBlock = Extract<
+  StorageReleaseReason, 'not_responding' | 'sign_inverted' | 'not_admissible' | 'limit_off'
+>;
+
+/**
+ * The one answer to "may PELS hold this battery": every battery stage asks it
+ * here. A battery that is not holdable is no limit candidate, no surplus
+ * claimant, and any hold on it is handed back.
+ */
+export function resolveStorageHoldBlock(storage: ObservedStorageInput): StorageHoldBlock | 'holdable' {
+  if (storage.verdict === 'not_responding' || storage.verdict === 'sign_inverted') return storage.verdict;
+  if (!storage.admissible) return 'not_admissible';
+  if (!storage.powerLimitControl) return 'limit_off';
+  return 'holdable';
+}
+
+/**
+ * Whether PELS may drive the battery to a new setpoint now: holdable
+ * (`resolveStorageHoldBlock`), and no hand-back of it running or waiting. A
+ * hold PELS already has is kept while a hand-back is deferred; it is never
+ * asked deeper, and no new claim starts.
+ */
+export function isStorageDrivable(storage: ObservedStorageInput): boolean {
+  return resolveStorageHoldBlock(storage) === 'holdable' && !storage.handBackDeferred;
+}
+
 /** The battery's deadband, W: its step, and never less than `STORAGE_MIN_DEADBAND_W`. */
-export const deadbandWFor = (storage: Pick<ObservedStorageInput, 'stepW'>): number => (
-  Math.max(storage.stepW, STORAGE_MIN_DEADBAND_W)
+export const deadbandWFor = (storage: Pick<ObservedStorageInput, 'range'>): number => (
+  Math.max(storage.range.stepW, STORAGE_MIN_DEADBAND_W)
 );
 
 /**
@@ -38,7 +73,7 @@ export const deadbandWFor = (storage: Pick<ObservedStorageInput, 'stepW'>): numb
  * candidate bounds its ladder by it, the storage term reports it, and an
  * exhausted hour forgives it.
  */
-export const drawMarginWFor = (storage: Pick<ObservedStorageInput, 'stepW'>): number => deadbandWFor(storage) / 2;
+export const drawMarginWFor = (storage: Pick<ObservedStorageInput, 'range'>): number => deadbandWFor(storage) / 2;
 
 /** The battery's own charge, W: 0 while it is idle or discharging. */
 export const ownChargeWOf = (storage: ObservedStorageInput): number => Math.max(0, storage.signedPowerW);
@@ -47,13 +82,13 @@ export const ownChargeWOf = (storage: ObservedStorageInput): number => Math.max(
 export const ownDischargeWOf = (storage: ObservedStorageInput): number => Math.max(0, -storage.signedPowerW);
 
 /** Whether raising from `fromW` to `toW` (either side of 0 W) is a step the battery could visibly answer. */
-export const isRaiseVisible = (storage: Pick<ObservedStorageInput, 'stepW'>, fromW: number, toW: number): boolean => (
-  toW - fromW >= storageSetpointToleranceW(toW, storage.stepW)
+export const isRaiseVisible = (storage: Pick<ObservedStorageInput, 'range'>, fromW: number, toW: number): boolean => (
+  toW - fromW >= storageSetpointToleranceW(toW, storage.range.stepW)
 );
 
 /** Whether lowering from `fromW` to `toW` (either side of 0 W) is a step the battery could visibly answer. */
-export const isLowerVisible = (storage: Pick<ObservedStorageInput, 'stepW'>, fromW: number, toW: number): boolean => (
-  fromW - toW >= storageSetpointToleranceW(toW, storage.stepW)
+export const isLowerVisible = (storage: Pick<ObservedStorageInput, 'range'>, fromW: number, toW: number): boolean => (
+  fromW - toW >= storageSetpointToleranceW(toW, storage.range.stepW)
 );
 
 /** The signed setpoint for a discharge, W: its negation, and a plain 0 rather than -0. */

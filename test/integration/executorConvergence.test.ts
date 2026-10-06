@@ -794,6 +794,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
   const buildPlanWith = (device: DevicePlan['devices'][number]): DevicePlan => ({
     meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
     devices: [device],
+    storageReleases: [],
   });
 
   // Test 4.1: stepped turn_off shed → expected binary state is always 'off'.

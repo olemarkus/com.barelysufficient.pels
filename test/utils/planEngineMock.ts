@@ -48,6 +48,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
       softLimitKw: 0,
       headroomKw: 0}),
     devices: [],
+    storageReleases: [],
   } satisfies DevicePlan),
   computeDynamicSoftLimit: vi.fn(() => 0),
   computeShortfallThreshold: vi.fn(() => 0),

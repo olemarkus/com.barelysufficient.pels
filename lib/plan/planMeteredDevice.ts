@@ -1,4 +1,5 @@
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import { hasStorageInput } from './battery/storageLadder';
 import type { MeteredPlanInputKind } from '../../packages/planner-types/src/planInputDevice';
 
 /**
@@ -26,12 +27,15 @@ export function isMeteredPlanDevice(device: object): boolean {
 
 /**
  * Can the plan do anything for this device? It can when the device has a power
- * axis (it can be limited and resumed for power) or a temperature axis (its mode
- * target and price shift can be set). A temperature device without a power
- * reading therefore enters the plan for its setpoints only; a device with
- * neither — a plug that has not reported power yet — has nothing the plan could
- * decide, and waits outside it for its first reading.
+ * axis (it can be limited and resumed for power), a temperature axis (its mode
+ * target and price shift can be set), or a home battery's storage cluster
+ * (`hasStorageInput`). A temperature device without a power reading therefore
+ * enters the plan for its setpoints only, and a battery PELS holds stays
+ * planned without a power reading (its storage cluster then reads `missing`),
+ * so the hold is kept or released, never lost. A device with none of them (a
+ * plug that has not reported power yet) has nothing the plan could decide,
+ * and waits outside it for its first reading.
  */
 export function isPlannableDevice(device: { deviceType?: string }): boolean {
-  return isMeteredPlanDevice(device) || isTemperaturePlanDevice(device);
+  return isMeteredPlanDevice(device) || isTemperaturePlanDevice(device) || hasStorageInput(device);
 }

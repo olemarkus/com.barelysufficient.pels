@@ -107,7 +107,7 @@ function applyRestoreCandidate(
 ): RestoreLoopState {
   if (candidate.kind === 'storage') {
     const battery = cycle.deviceMap.get(candidate.device.id);
-    return battery === undefined ? loop : planStorageHandBack(cycle, battery, candidate.handBack, loop);
+    return battery === undefined ? loop : planStorageHandBack(cycle, battery, candidate.lever, loop);
   }
   const dev = cycle.deviceMap.get(candidate.device.id);
   // The candidate was chosen with a power axis (`isRestoreLiveEligibleDevice`);

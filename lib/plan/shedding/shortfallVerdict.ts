@@ -13,6 +13,7 @@ import { toMeteredUsageDevices } from '../planUsage';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { buildShedCandidateParams, buildSheddingCandidates } from './candidates';
 import { NO_STORAGE_SHED_TERM, type PlanSheddingResult, type ShedCandidate, type SheddingDeps } from './types';
+import type { StorageRelief } from '../battery/storageRelief';
 
 /**
  * What one build tells the capacity guard about its reading. Over the hard-cap
@@ -35,6 +36,8 @@ export async function reportShortfallToGuard(
   state: PlanEngineState,
   selection: PlanSheddingResult,
   deps: SheddingDeps,
+  /** This cycle's storage stage: the holds a battery's candidate is priced from. */
+  storage: StorageRelief,
 ): Promise<void> {
   if (!applyShortfallPeriodCoverage(deps.capacityGuard, context.capacityPeriodCoverageComplete)) return;
   if (!isOverShortfallThreshold(power.drawKw, deps.shortfallThresholdKw)) {
@@ -45,7 +48,7 @@ export async function reportShortfallToGuard(
     power.drawKw,
     deps.shortfallThresholdKw,
     // Walked only over the threshold, not on every rebuild.
-    buildShortfallCapacityStateSummary(context, power, state, selection, deps),
+    buildShortfallCapacityStateSummary(context, power, state, selection, deps, storage),
   );
 }
 
@@ -55,6 +58,7 @@ function buildShortfallCapacityStateSummary(
   state: PlanEngineState,
   selection: PlanSheddingResult,
   deps: SheddingDeps,
+  storage: StorageRelief,
 ): PlanInputCapacityStateSummary {
   const { devices } = context;
   const { shedSet } = selection;
@@ -71,7 +75,7 @@ function buildShortfallCapacityStateSummary(
     limitSource: state.hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
     capacityBreached: power.capacityBreached,
   }));
-  const candidates = walkShedCandidates(context, power, state, deps);
+  const candidates = walkShedCandidates(context, power, state, deps, storage);
   const remainingActionableControlledLoadW = roundPowerW(
     candidates.reduce((sumKw, candidate) => sumKw + resolveReliefLeftKw(candidate, selection), 0),
   );
@@ -109,10 +113,12 @@ function walkShedCandidates(
   power: MeasuredPower,
   state: PlanEngineState,
   deps: SheddingDeps,
+  storage: StorageRelief,
 ): ShedCandidate[] {
   return buildSheddingCandidates({
-    // The verdict reads the measurement alone: no battery credit or debit.
-    ...buildShedCandidateParams(context, power, state, deps, NO_STORAGE_SHED_TERM),
+    // The verdict reads the measurement alone: no battery credit or debit. A
+    // held battery is still priced from its hold.
+    ...buildShedCandidateParams(context, power, state, deps, { ...storage, shed: NO_STORAGE_SHED_TERM }),
     deps: { ...deps, debugStructured: undefined },
   }).candidates;
 }

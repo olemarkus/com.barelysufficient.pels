@@ -13,6 +13,7 @@ import {
   type StorageSetpoint,
   type StorageShedTerm,
 } from './types';
+import type { StorageRelief } from '../battery/storageRelief';
 import {
   emitOvershootEscalationBlocked,
   resolveSameMeasurementSheddingDecision,
@@ -44,11 +45,12 @@ export async function buildSheddingPlan(
   overshoot: SheddingOvershootInput,
   nowTs: number,
   /**
-   * What home-battery relief counts against the measured deficit
-   * (`lib/plan/battery/storageRelief.ts`). `power` stays the measurement: the
-   * shortfall verdict and the latch read it alone.
+   * This cycle's storage stage (`lib/plan/battery/storageRelief.ts`): what
+   * home-battery relief counts against the measured deficit (`shed`), and the
+   * holds a battery's candidate is priced from (`levers`). `power` stays the
+   * measurement: the shortfall verdict and the latch read it alone.
    */
-  storage: StorageShedTerm,
+  storage: StorageRelief,
 ): Promise<SheddingPlan> {
   const selection = planShedding(context, power, state, deps, overshoot, nowTs, storage);
   const {
@@ -67,7 +69,7 @@ export async function buildSheddingPlan(
   const sheddingActive = resolveSheddingLatch(
     power, state, overshoot, new Set([...shedSet, ...storageSetpoints.keys()]),
   );
-  await reportShortfallToGuard(context, power, state, selection, deps);
+  await reportShortfallToGuard(context, power, state, selection, deps, storage);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = sheddingActive;
   const guardInShortfall = deps.capacityGuard.isInShortfall();
@@ -112,9 +114,9 @@ function planShedding(
   deps: SheddingDeps,
   overshoot: SheddingOvershootInput,
   nowTs: number,
-  storage: StorageShedTerm,
+  storage: StorageRelief,
 ): PlanSheddingResult {
-  const entry = resolveShedEntry(context, power, state, overshoot, storage);
+  const entry = resolveShedEntry(context, power, state, overshoot, storage.shed);
   if (entry.kind === 'none') return emptySheddingResult(NO_SHEDDING_OUTCOME, null);
   const { hourlyBudgetExhausted, shedsEverything, leadingStorageOnly } = entry;
 
@@ -128,7 +130,7 @@ function planShedding(
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const measurementPowerW = resolveMeasurementPowerW(deps.powerTracker);
   const measurementDecision = resolveSameMeasurementSheddingDecision(
-    state, context.devices, measurementTs, measurementPowerW, nowTs, power.capacityBreached,
+    state, context.devices, measurementTs, measurementPowerW, nowTs, power.capacityBreached, storage.levers,
   );
   // Shedding every candidate goes on every cycle regardless of the sample: the
   // deficit is the whole hour's, not this reading's. An hour a battery answers

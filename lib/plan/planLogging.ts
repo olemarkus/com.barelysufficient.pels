@@ -294,7 +294,7 @@ export function buildPlanSignature(plan: DevicePlan): string {
   return JSON.stringify(
     [
       ...plan.devices.map((device) => buildPlanSignatureDevice(device)),
-      ...(plan.storageReleases ?? []).map((intent) => ({
+      ...plan.storageReleases.map((intent) => ({
         id: intent.deviceId, storageDecision: { kind: 'release', reason: intent.reason },
       })),
     ],
@@ -398,7 +398,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       pendingTargetStatus: d.pendingTargetCommand?.status ?? null,
       storageDecision: hasStorageDecision(d) ? d.storageDecision : null,
       storageHold: d.storageHold,
-    })), ...(plan.storageReleases ?? [])],
+    })), ...plan.storageReleases],
   );
 }
 

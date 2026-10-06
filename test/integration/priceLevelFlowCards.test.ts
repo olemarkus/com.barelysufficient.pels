@@ -152,6 +152,7 @@ describe('Price level flow cards', () => {
     planService.updatePelsStatus({
       meta: buildPlanMeta({ totalKw: 0, softLimitKw: 0, headroomKw: 0 }),
       devices: [],
+      storageReleases: [],
     });
 
     const triggers = mockHomeyInstance.flow._triggerCardTriggers.price_level_changed;

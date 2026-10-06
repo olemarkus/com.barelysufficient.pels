@@ -66,7 +66,6 @@ const battery = (
     reading: 'observed',
     range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false,
-    stepW: 5,
     signedPowerW: 0,
     claimHeld: false,
     admissible: true,
@@ -995,10 +994,38 @@ describe('storage charge from surplus in the plan build', () => {
       expect(last.state.surplusEligibilityByDevice.tank).toBeDefined();
     });
 
-    it('with Power-limit control off, still gives a waiting device the solar it stores', async () => {
-      const { build } = buildHarness({ paceKw: 10 });
-      const plan = await build(0, [pump(false, 1.5), battery({ signedPowerW: 2000, powerLimitControl: false })]);
-      expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 400, stepW: 5 });
+    it('with Power-limit control off, makes no claim: the devices are planned byte-identically to a home without it', async () => {
+      // Owner ruling, 2026-10-06: PELS never takes it over, so its 2 kW of charge is household load.
+      const shedOnly = (plan: DevicePlan): string => JSON.stringify({
+        meta: plan.meta,
+        devices: plan.devices.filter((device) => device.id !== 'battery'),
+        storageReleases: plan.storageReleases,
+      });
+      const without = buildHarness({ paceKw: 10 });
+      const beside = buildHarness({ paceKw: 10 });
+      for (let reading = 0; reading < 12; reading += 1) {
+        const plain = await without.build(0, [pump(false, 1.5)], reading * 10_000);
+        const plan = await beside.build(0, [
+          pump(false, 1.5), battery({ signedPowerW: 2000, powerLimitControl: false }),
+        ], reading * 10_000);
+        expect(storageDecision(plan)).toBeUndefined();
+        expect(plan.devices.find((device) => device.id === 'battery')?.storageHold).toEqual({ kind: 'power_limit_off' });
+        expect(shedOnly(plan)).toBe(shedOnly(plain));
+      }
+      expect(beside.state.storageLeverByDevice).toEqual({});
+      expect(beside.state.surplusEligibilityByDevice).toEqual(without.state.surplusEligibilityByDevice);
+    });
+
+    it('hands a surplus hold back when the owner turns Power-limit control off', async () => {
+      const { build, state } = buildHarness({ paceKw: 10 });
+      const capped = await build(0, [pump(false, 1.5), battery({ signedPowerW: 2000 })]);
+      expect(storageDecision(capped)).toEqual({ kind: 'setpoint', setpointW: 400, stepW: 5 });
+
+      const off = await build(0, [
+        pump(false, 1.5), battery({ signedPowerW: 400, claimHeld: true, powerLimitControl: false }),
+      ], 10_000);
+      expect(storageDecision(off)).toEqual({ kind: 'release', reason: 'limit_off' });
+      expect(state.storageLeverByDevice).toEqual({});
     });
 
     it('with Managed off, makes no claim: its charge is household load', async () => {

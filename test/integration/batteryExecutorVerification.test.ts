@@ -48,7 +48,6 @@ const buildLane = () => {
     readControl: vi.fn((): BatteryLeverRead => ({
       kind: 'setpoint',
       range: RANGE,
-      stepW: 5,
       claimHeld: owned.held,
       handBackDeferred: owned.deferred,
       claimEngaged: owned.held && !owned.takenOver,

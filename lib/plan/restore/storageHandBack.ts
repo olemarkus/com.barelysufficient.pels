@@ -16,11 +16,16 @@
  * (`isBehindWaitingHandBack`): a smaller device lower in the order would
  * otherwise take the room first, every cycle, and the battery never swaps.
  *
+ * The hand-back is sized as the charge its own mode takes once handed back
+ * (`StorageLeverState.ownModeChargeW`); the discharge PELS holds is withheld
+ * from restore already, so the hand-back never spends it.
+ *
  * The battery is not a load: nothing here touches its plan device. A hand-back
  * the lane admits joins `storageHandedBack`, and the battery stage releases
  * the hold (`applyStorageHandBacks`, reason `restored`).
  */
 import type { DevicePlanDevice } from '../planTypes';
+import type { StorageLeverState } from '../planState';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { resolveReserveAdmission } from '../admission';
 import { computeRestoreBufferKw } from './accounting';
@@ -29,18 +34,17 @@ import { shouldWaitForOtherRecovery } from './coordination';
 import { resolveCapacityRestoreBlockReason, resolveMeterSettlingRemainingSec } from './timing';
 import type { RestoreCycle, RestoreLoopState } from './types';
 
-/** A battery the restore lane may hand back, and the charge its own mode takes once it is, kW. */
-export type StorageHandBack = { needKw: number };
-
-/** Hand the battery back if the lane admits it now. */
+/** Hand the battery back if the lane admits it now: its limit hold (`resolveStorageHandBack`). */
 export function planStorageHandBack(
   cycle: RestoreCycle,
   dev: DevicePlanDevice,
-  handBack: StorageHandBack,
+  lever: StorageLeverState,
   loop: RestoreLoopState,
 ): RestoreLoopState {
   const { state, deviceMap, timing, batchState, headroomReserves, phase } = cycle;
   const { availableHeadroom, restoredOneThisCycle } = loop;
+  /** The charge its own mode takes once handed back, kW. */
+  const ownModeChargeKw = lever.ownModeChargeW / 1000;
   const debugKey = `storage:${dev.id}`;
   const reject = (rejectionReason: string): RestoreLoopState => {
     emitRestoreDebugEventOnChange({
@@ -52,7 +56,7 @@ export function planStorageHandBack(
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        neededKw: handBack.needKw,
+        neededKw: ownModeChargeKw,
         availableKw: availableHeadroom,
         decision: 'rejected',
         rejectionReason,
@@ -76,7 +80,7 @@ export function planStorageHandBack(
   });
   if (gateReason) return reject(gateReason.code);
 
-  const neededKw = handBack.needKw + computeRestoreBufferKw(handBack.needKw);
+  const neededKw = ownModeChargeKw + computeRestoreBufferKw(ownModeChargeKw);
   if (batchContinuation && !canAdmitWithinBatch(batchState, neededKw)) return reject('batch_full');
   const reserved = resolveReserveAdmission({
     dev, availableHeadroom, neededKw, reserves: headroomReserves,
@@ -85,7 +89,8 @@ export function planStorageHandBack(
   if (reserved.kind !== 'admitted') {
     // Waiting for room: the restores ranked below it wait behind it, as they
     // would behind a waiting load, so a smaller one never takes the room first.
-    cycle.storageHandBackWaitingAt.add(dev.priority);
+    // eslint-disable-next-line no-param-reassign, functional/immutable-data -- the pass's own running fact
+    cycle.storageHandBackWaitingAt = Math.min(cycle.storageHandBackWaitingAt, dev.priority);
     return reject('insufficient_headroom');
   }
   emitRestoreDebugEventOnChange({
@@ -109,5 +114,5 @@ export function planStorageHandBack(
 
 /** Whether a battery hand-back ranked above this device is waiting for room this pass. */
 export function isBehindWaitingHandBack(cycle: RestoreCycle, dev: Pick<DevicePlanDevice, 'priority'>): boolean {
-  return [...cycle.storageHandBackWaitingAt].some((priority) => priority < dev.priority);
+  return cycle.storageHandBackWaitingAt < dev.priority;
 }

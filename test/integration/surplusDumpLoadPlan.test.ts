@@ -633,7 +633,6 @@ describe('surplus by priority without a battery (byte-identity)', () => {
       reading: 'observed',
       range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
       handBackDeferred: false,
-      stepW: 5,
       signedPowerW: 0,
       claimHeld: false,
       admissible: true,

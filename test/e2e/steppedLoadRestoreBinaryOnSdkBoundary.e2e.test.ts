@@ -272,6 +272,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     desiredStepId: 'low',
     reason: KEEP_REASON,
   })))) as DevicePlan['devices'][number]],
+  storageReleases: [],
 });
 
 let logCapture: LoggerCapture;

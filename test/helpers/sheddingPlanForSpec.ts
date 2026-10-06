@@ -1,9 +1,8 @@
 import { buildSheddingPlan } from '../../lib/plan/shedding';
 import type { PlanContext, MeasuredPower } from '../../lib/plan/planContext';
 import type { PlanEngineState } from '../../lib/plan/planState';
-import {
-  NO_STORAGE_SHED_TERM, type SheddingDeps, type SheddingOvershootInput, type SheddingPlan,
-} from '../../lib/plan/shedding/types';
+import type { SheddingDeps, SheddingOvershootInput, SheddingPlan } from '../../lib/plan/shedding/types';
+import { NO_STORAGE_RELIEF } from '../../lib/plan/battery/storageRelief';
 
 /**
  * `buildSheddingPlan` for specs that are not about the soft-overshoot decision.
@@ -20,4 +19,4 @@ export const buildSheddingPlanForSpec = (
     actionable: power.headroomKw < 0,
     shedActionable: power.headroomKw < 0,
   },
-): Promise<SheddingPlan> => buildSheddingPlan(context, power, state, deps, overshoot, Date.now(), NO_STORAGE_SHED_TERM);
+): Promise<SheddingPlan> => buildSheddingPlan(context, power, state, deps, overshoot, Date.now(), NO_STORAGE_RELIEF);

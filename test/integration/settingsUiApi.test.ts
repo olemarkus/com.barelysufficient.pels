@@ -32,7 +32,7 @@ describe('settingsUiApi', () => {
   const overviewFixture = (
     device: Parameters<typeof executionStateFixture>[0],
     meta = buildPlanMeta(),
-  ) => buildSettingsOverviewReadModel({ generatedAtMs: 123456789, meta, devices: [device] }, {
+  ) => buildSettingsOverviewReadModel({ generatedAtMs: 123456789, meta, devices: [device], storageReleases: [] }, {
     nowMs: 123456789,
     dryRun: false,
     getDeviceExecutionState: () => executionStateFixture(device),

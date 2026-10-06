@@ -47,7 +47,7 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
   deficitKw: 1,
   limitSource: 'capacity',
   capacityBreached: true,
-  storageLimit: { kind: 'measured' as const, drawKw: 5 },
+  storageLimit: { kind: 'measured' as const, drawKw: 5, levers: {} },
   temperatureSetpoints: new Map(),
   state: createPlanEngineState(),
   deps: {

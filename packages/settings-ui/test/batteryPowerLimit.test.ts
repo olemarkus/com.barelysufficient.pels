@@ -249,7 +249,7 @@ describe('Modes priority note', () => {
       .toBe('Marstek: devices below it are limited first, so it protects only those above it.');
     state.controllableMap = { 'battery-2': false };
     expect(resolvePriorityBatteryNote(['heater-1', 'battery-2']))
-      .toBe('Marstek: turn on Power-limit control to let it hold your limit when its turn comes.');
+      .toBe('Marstek: turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.');
     expect(resolvePriorityBatteryNote(['heater-1', 'battery-1'])).toBeNull();
   });
 });

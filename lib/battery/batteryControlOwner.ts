@@ -344,7 +344,6 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     const record = claims.status === 'loaded' ? claims.records.get(deviceId) : undefined;
     return {
       kind: 'setpoint',
-      stepW: surface.range.stepW,
       range: surface.range,
       deliveryCeilingW: verification.deliveryCeilingW,
       chargeCeilingW: verification.chargeCeilingW,

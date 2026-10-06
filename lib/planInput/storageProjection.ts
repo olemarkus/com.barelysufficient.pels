@@ -43,7 +43,6 @@ export const resolveStorageCluster = (
       reading: 'observed',
       range: control.range,
       handBackDeferred: control.handBackDeferred,
-      stepW: control.stepW,
       signedPowerW: power.signedW,
       claimHeld: control.claimHeld,
       admissible: control.admissible,

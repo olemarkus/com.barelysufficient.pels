@@ -54,6 +54,7 @@ const buildPlan = (
     binaryCapabilityId: 'onoff',
     ...overrides,
   }))) as DevicePlanDevice],
+  storageReleases: [],
 });
 
 const buildContext = (device: PlanInputDevice): PlanCycle => buildPlanCycleObject({

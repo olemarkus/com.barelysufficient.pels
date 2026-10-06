@@ -19,7 +19,7 @@
 import type { DevicePlanDevice, MeteredDevicePlanDevice, ShedBehavior } from './planTypes';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { PlanEngineState } from './planState';
+import type { PlanEngineState, StorageLeverState } from './planState';
 import type { MeasuredPower, PlanContext } from './planContext';
 import type { SheddingPlan } from './shedding';
 import type { PriceOptDeviceConfig } from './planBuilderSurplus';
@@ -105,11 +105,14 @@ export class PlanMaterializationStages {
     context: PlanContext,
     power: MeasuredPower,
     sheddingPlan: SheddingPlan,
+    /** The holds PELS keeps on home batteries after this build's limit step (`StorageRelief.levers`). */
+    storageLevers: Readonly<Record<string, StorageLeverState>>,
   ): RestorePlanResult {
     return trackPlanStage('plan_restore_ms', () => this.applyRestorePlanAndUpdateState({
       planDevices,
       context,
       power,
+      storageLevers,
       sheddingActive: sheddingPlan.sheddingActive,
       guardInShortfall: sheddingPlan.guardInShortfall,
     }));
@@ -281,17 +284,19 @@ export class PlanMaterializationStages {
     planDevices: DevicePlanDevice[];
     context: PlanContext;
     power: MeasuredPower;
+    storageLevers: Readonly<Record<string, StorageLeverState>>;
     sheddingActive: boolean;
     guardInShortfall: boolean;
   }): RestorePlanResult {
     const {
-      planDevices, context, power, sheddingActive, guardInShortfall,
+      planDevices, context, power, storageLevers, sheddingActive, guardInShortfall,
     } = params;
     const restoreResult = applyRestorePlan({
       planDevices,
       context,
       power,
       state: this.state,
+      storageLevers,
       sheddingActive,
       guardInShortfall,
       deps: {

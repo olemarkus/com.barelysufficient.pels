@@ -281,7 +281,7 @@ export class PlanBuilder {
       resolveShortfallOffState(sheddingPlan.guardInShortfall, power.headroomKw),
     );
     const restoreResult = this.stages.applyRestorePlan(
-      planDevices, heldContext, admissionPower, sheddingPlan,
+      planDevices, heldContext, admissionPower, sheddingPlan, limitedStorage.levers,
     );
     planDevices = restoreResult.planDevices;
     const storageRelief = this.handBackStorage(limitedStorage, restoreResult, power, surplusOffers);
@@ -429,8 +429,6 @@ export class PlanBuilder {
     const heldStorage = this.deps.getCapacityDryRun()
       ? NO_STORAGE_RELIEF
       : decideStorageRelief(context.devices, power, this.state.storageLeverByDevice, surplusOffers, nowTs);
-    // Shedding prices a held battery from its hold.
-    this.state.storageLeverByDevice = heldStorage.levers;
     const overshootDecision = this.state.overshoot.decideSoft(
       power.headroomKw + heldStorage.shed.netCreditKw,
       // Stamped by `stampCapacityPace` in `resolvePlanLimits`, from the same
@@ -454,14 +452,15 @@ export class PlanBuilder {
       'plan_shedding_ms',
       () => buildSheddingPlan(
         context, power, this.state, buildSheddingDeps(this.deps, shortfallBudgetThresholdKw),
-        overshootDecision, nowTs, heldStorage.shed,
+        // Shedding prices a held battery from its hold (`heldStorage.levers`).
+        overshootDecision, nowTs, heldStorage,
       ),
     );
     this.applySheddingOutcome(sheddingPlan);
     // The battery limits shedding chose at their place in the priority order.
-    // The restore lane reads the holds next, to hand back in that order.
-    const storageRelief = applyStorageLimits(heldStorage, context.devices, sheddingPlan.storageSetpoints, nowTs);
-    this.state.storageLeverByDevice = storageRelief.levers;
+    // The restore lane reads the holds next (`storageRelief.levers`), to hand
+    // back in that order.
+    const storageRelief = applyStorageLimits(heldStorage, sheddingPlan.storageSetpoints, nowTs);
 
     return {
       sheddingPlan, overshootDecision, storageRelief, admissionPower: withoutStorageWithheld(power, storageRelief),
@@ -469,9 +468,12 @@ export class PlanBuilder {
   }
 
   /**
-   * Release the battery limit holds the restore pass handed back. The restore
-   * clocks are stamped by the executor's storage lane once the owner has
-   * actually handed the battery back, as a confirmed load restore is.
+   * Release the battery limit holds the restore pass handed back, and keep
+   * the holds this build leaves for the next one: the one write of
+   * `PlanEngineState.storageLeverByDevice` in a measured build. Every stage
+   * before it is handed the holds it reads. The restore clocks are stamped by
+   * the executor's storage lane once the owner has actually handed the
+   * battery back, as a confirmed load restore is.
    */
   private handBackStorage(
     limitedStorage: StorageRelief,
@@ -524,7 +526,7 @@ export class PlanBuilder {
       event: 'storage_relief_state',
       batteries: relief.batteries,
       // The holds this cycle decided, not what restore withholds
-      // (`StorageRelief.withheldKw`), which still counts a battery's observed
+      // (`StorageStateSummary.withheldW`), which still counts a battery's observed
       // discharge until it follows a step down.
       heldDischargeKw: relief.batteries.reduce((totalW, battery) => totalW + Math.max(0, -battery.setpointW), 0) / 1000,
       heldChargeKw: relief.batteries.reduce((totalW, battery) => totalW + Math.max(0, battery.setpointW), 0) / 1000,

@@ -194,6 +194,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     desiredStepId: 'off',
     reason: SHED_REASON,
   })))) as DevicePlan['devices'][number]],
+  storageReleases: [],
 });
 
 // ── The executor harness (mirrors steppedLoadRestoreBinaryOnSdkBoundary) ─────

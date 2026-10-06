@@ -172,7 +172,7 @@ describe('home battery in the settings UI', () => {
     const { resolveBatteryPriorityHint } = await import('../src/ui/deviceDetail/batterySection.ts');
     for (const position of [{ rank: 5, total: 5 }, { rank: 3, total: 5 }]) {
       expect(resolveBatteryPriorityHint(position, false))
-        .toBe('Turn on Power-limit control to let it hold your limit when its turn comes.');
+        .toBe('Turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.');
     }
   });
 });

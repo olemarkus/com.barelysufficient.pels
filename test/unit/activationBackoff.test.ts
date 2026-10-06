@@ -449,6 +449,7 @@ describe('activation backoff', () => {
     state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: Date.now() - ACTIVATION_SETBACK_RESTORE_BLOCK_MS };
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-1',
@@ -485,6 +486,7 @@ describe('activation backoff', () => {
     recordActivationSetback(state, 'dev-1', now - 5_000);
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-1',
@@ -579,6 +581,7 @@ describe('activation backoff', () => {
     recordActivationSetback(state, 'dev-1', now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1_000);
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-1',

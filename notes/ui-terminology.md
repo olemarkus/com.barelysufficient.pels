@@ -597,7 +597,7 @@ keeps the word for what PELS holds it to do.
 | Reason while PELS caps its charge so a device can use the solar | `Charging less so a device can use the solar` |
 | Reason while PELS caps its charge | `Waiting to charge faster · 2.4 kW more needed` (the charge its own mode would take that the cap holds back; `Waiting to charge faster` alone under 0.05 kW) |
 | Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |
-| Reason in its own mode, Power-limit control off | `PELS uses it only to store spare solar` |
+| Reason in its own mode, Power-limit control off (PELS never takes it over: no charge cap, no discharge, no surplus claim) | `Power-limit control is off: its own app is in charge` |
 | Reason in its own mode, its app rejected PELS's claim (a Sessy on its cloud login), for 6 h, or until PELS restarts or its controls change | `PELS can only watch it: its app does not accept control` |
 | Reason in its own mode, a battery PELS cannot claim (no usable signed power setpoint, or no Homey/API mode to switch to) | `PELS can only watch it: its app does not give Homey control` |
 | Battery section subtitle on the device page: drivable / one PELS can only watch | `Control and priority` / `What PELS sees` |
@@ -608,13 +608,13 @@ keeps the word for what PELS holds it to do.
 | Overview hero, a battery supplying while devices are also limited | `Sessy battery is supplying 2.4 kW to hold your limit. Holding back 2 devices…` |
 | Device page, Managed hint | `PELS takes it over to hold your limit or store spare solar, then hands it back.` |
 | Device page, Managed hint, a battery PELS cannot drive | `PELS reads its power and charge level and shows it on the Overview.` |
-| Device page, Power-limit control hint (greyed out while Managed is off) | `PELS may cap its charge and call on it to hold your limit when its turn comes in your priority order.` |
+| Device page, Power-limit control hint (greyed out while Managed is off) | `PELS may cap its charge, call on it to hold your limit and share your solar between it and your devices, each at its turn in your priority order.` |
 | Device page, takeover notice (amber) | `You changed its mode in the battery app` / `PELS has stepped back and leaves it alone. Turn on Managed when you want PELS to use it again.` |
 | Device-list row, takeover notice (Managed off) | `You changed its mode in the battery app. PELS leaves it alone until you turn on Managed.` |
 | Device page, priority value | `N of M in <mode>` (e.g. `9 of 9 in Home`) |
 | Device page, priority hint, battery last in the mode | `Last in the list, it covers the whole house before any device is limited.` |
 | Device page, priority hint, battery above other devices | `Devices below it are limited first, so it protects only those above it.` |
-| Device page, priority hint, Power-limit control off (the priority readout stays) | `Turn on Power-limit control to let it hold your limit when its turn comes.` |
+| Device page, priority hint, Power-limit control off (the priority readout stays) | `Turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.` |
 | Modes page note, under a list holding a battery PELS can drive (none for a battery it can only watch) | `<battery>: <priority hint for its place in this list>`, e.g. `Sessy battery: last in the list, it covers the whole house before any device is limited.`; one per such battery |
 
 A battery PELS cannot drive (watch-only or no setpoint) is shown while

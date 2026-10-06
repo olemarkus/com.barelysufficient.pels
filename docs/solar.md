@@ -141,7 +141,7 @@ PELS makes your home battery part of your priority list. Your sun goes to your d
 </figure>
 
 - **Managed by PELS** is the battery's main switch. Off, PELS hands the battery back and leaves it alone.
-- **Power-limit control** is on by default for a battery PELS can drive. Off, PELS never caps the battery's charge or calls on it for your limit, and the battery still stores your spare solar in priority order. The **Enable power-limit control for device** and **Disable power-limit control for device** Flow cards work on batteries too.
+- **Power-limit control** is on by default for a battery PELS can drive. Off, PELS never takes the battery over: no charge cap, no call on it for your limit, and no steering of its charge for your solar. Its own app stays in charge, PELS still counts its power and charge level, and its card reads `Power-limit control is off: its own app is in charge`. The **Enable power-limit control for device** and **Disable power-limit control for device** Flow cards work on batteries too.
 - **Priority** shows the battery's place in the current mode, and **Reorder** moves it.
 
 If you change the battery's mode in its own app while PELS holds it, PELS takes that as your decision: it turns **Managed by PELS** off for that battery, says so on its device page and in the device list, and leaves it alone until you turn it on again.

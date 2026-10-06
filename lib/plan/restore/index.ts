@@ -1,5 +1,5 @@
 import type { DevicePlanDevice } from '../planTypes';
-import type { PlanEngineState } from '../planState';
+import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
 import {
   getOnDevices,
@@ -47,11 +47,15 @@ export function applyRestorePlan(params: {
   context: PlanContext;
   power: MeasuredPower;
   state: PlanEngineState;
+  /** The holds PELS keeps on home batteries after this build's limit step (`StorageRelief.levers`). */
+  storageLevers: Readonly<Record<string, StorageLeverState>>;
   sheddingActive: boolean;
   guardInShortfall?: boolean;
   deps: RestoreDeps;
 }): RestorePlanResult {
-  const { planDevices, context, power, state, sheddingActive, guardInShortfall = false, deps } = params;
+  const {
+    planDevices, context, power, state, storageLevers, sheddingActive, guardInShortfall = false, deps,
+  } = params;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapLedger = state.swapLedger;
   const headroomReserves = resolveCycleHeadroomReserves(planDevices, state);
@@ -105,7 +109,8 @@ export function applyRestorePlan(params: {
     timing: effectiveTiming,
     restoredThisCycle,
     storageHandedBack,
-    storageHandBackWaitingAt: new Set<number>(),
+    storageLevers,
+    storageHandBackWaitingAt: Number.POSITIVE_INFINITY,
     headroomReserves,
     batchState,
     phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
@@ -219,7 +224,7 @@ function applyFullRestorePass(
   // the same priority order (`storageHandBack.ts`).
   const restoreCandidates = sortRestoreCandidates([
     ...getRestoreCandidates(snapshot, cycle.state.shedDecisions),
-    ...getStorageHandBackCandidates(snapshot, cycle.state.storageLeverByDevice),
+    ...getStorageHandBackCandidates(snapshot, cycle.storageLevers),
   ]);
   const onDevices = getOnDevices(snapshot, deps.getShedBehavior, deps.temperatureSetpoints);
   const lane: RestoreLane = {

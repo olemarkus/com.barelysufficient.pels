@@ -17,7 +17,6 @@ import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ShedDecisions } from '../shedDecisions';
 import type { StorageLeverState } from '../planState';
-import type { StorageHandBack } from './storageHandBack';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
@@ -41,7 +40,7 @@ export type OffDeviceReasonTiming = {
 
 export type RestoreCandidate =
   | { kind: 'binary' | 'stepped'; device: MeteredDevicePlanDevice }
-  | { kind: 'storage'; device: DevicePlanDevice; handBack: StorageHandBack };
+  | { kind: 'storage'; device: DevicePlanDevice; lever: StorageLeverState };
 
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
   // Resuming a device is admitting its draw into available power, which only a
@@ -63,19 +62,18 @@ export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is
 /**
  * The storage branch beside `isRestoreLiveEligibleDevice`: a managed home
  * battery PELS holds for the limit (`StorageLeverState` purpose `limit`) and
- * read this cycle, which the lane may hand back. Never a load restore
- * candidate: it has no generic command authority. Sized as the charge its own
- * mode takes once handed back; the discharge PELS holds is withheld from
- * restore already, so the hand-back never spends it.
+ * read this cycle, which the lane may hand back, and its hold. Never a load
+ * restore candidate: it has no generic command authority. The lane sizes the
+ * hand-back on the hold (`planStorageHandBack`).
  */
 export function resolveStorageHandBack(
   device: DevicePlanDevice,
   levers: Readonly<Record<string, StorageLeverState>>,
-): StorageHandBack | null {
+): StorageLeverState | null {
   const lever = levers[device.id];
   if (!device.isBatteryOrSolar || !device.control.managed || lever === undefined) return null;
   if (lever.purpose !== 'limit' || lever.reading.kind !== 'read') return null;
-  return { needKw: lever.ownModeChargeW / 1000 };
+  return lever;
 }
 
 /** Every battery the lane may hand back, as restore candidates (`resolveStorageHandBack`). */
@@ -84,8 +82,8 @@ export function getStorageHandBackCandidates(
   levers: Readonly<Record<string, StorageLeverState>>,
 ): RestoreCandidate[] {
   return planDevices.flatMap((device): RestoreCandidate[] => {
-    const handBack = resolveStorageHandBack(device, levers);
-    return handBack === null ? [] : [{ kind: 'storage', device, handBack }];
+    const lever = resolveStorageHandBack(device, levers);
+    return lever === null ? [] : [{ kind: 'storage', device, lever }];
   });
 }
 
