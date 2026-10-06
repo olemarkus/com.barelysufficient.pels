@@ -583,5 +583,8 @@
   },
   "3.10.2": {
     "en": "Smart task pages now show the recorded starting temperature or battery level instead of estimating it from energy use. When no starting reading is available, they show only the current reading.\n\nClearing a manually set power figure now updates PELS correctly. Settings changes made close together are also handled more reliably."
+  },
+  "3.10.3": {
+    "en": "Smart tasks that cannot reach their target by the ready-by time no longer pause to wait for cheaper hours, and keep charging or heating whenever power is available. A task also keeps hours that are cheaper than its planned hours, or that it needs to finish, even when PELS expects no spare power there. The device then runs in those hours when power turns out to be available.\n\nIn hours a task keeps without planned energy, it does not limit or pause lower-priority devices. Those hours are not counted as planned charging hours in Flows, the widget or the task page."
   }
 }
