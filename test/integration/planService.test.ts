@@ -227,7 +227,7 @@ describe('PlanService', () => {
     { homeId: 'h_11111111', shown: [] },
   ] as const)('shows a home battery on the overview of $homeId only when it is Main', async ({ homeId, shown }) => {
     const battery = buildPlanDevice({ id: 'battery-1', name: 'Sessy battery', isBatteryOrSolar: true,
-      storageHold: 'relief' });
+      storageHold: { kind: 'relief' } });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [battery] };
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[battery.id, executionStateFixture(battery)]])) };
@@ -575,7 +575,7 @@ describe('PlanService', () => {
           confirmedNotDrawing: false,
           isEvCharger: false,
           isBatteryOrSolar: false,
-          storageHold: 'none' as const,
+          storageHold: { kind: 'none' as const },
           deviceType: 'onoff' as const,
           binaryCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
@@ -601,7 +601,7 @@ describe('PlanService', () => {
           confirmedNotDrawing: false,
           isEvCharger: false,
           isBatteryOrSolar: false,
-          storageHold: 'none' as const,
+          storageHold: { kind: 'none' as const },
           deviceType: 'onoff' as const,
           binaryCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
@@ -627,7 +627,7 @@ describe('PlanService', () => {
           confirmedNotDrawing: false,
           isEvCharger: false,
           isBatteryOrSolar: false,
-          storageHold: 'none' as const,
+          storageHold: { kind: 'none' as const },
           deviceType: 'onoff' as const,
           binaryCapabilityId: 'onoff' as const,
           binaryControl: { on: false },

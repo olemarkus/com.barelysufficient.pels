@@ -134,6 +134,7 @@ export class PlanExecutor {
       getPowerTracker: deps.getPowerTracker,
       readManagedDrawW: () => this.readManagedDrawW(),
       hasShedOrRestoreSince: (sinceMs) => this.state.actuation.hasShedOrRestoreSince(sinceMs),
+      recordRestore: (deviceId, name, nowMs) => this.recordRestoreActuation(deviceId, name, nowMs),
     });
   }
 

@@ -201,18 +201,20 @@ describe('home battery relief (SDK-boundary e2e)', () => {
       .toMatchObject({ deviceId: BATTERY, reason: 'meter_silent' });
   });
 
-  it('hands the battery back after ten minutes with nothing to do', async () => {
+  it('hands the battery back through the restore lane once the house has room for it', async () => {
     const home = await startHome({ houseW: 4500, following: true });
     await home.advance(6);
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
 
     // The heater's need passes: the house falls well under the pace, the
-    // setpoint steps back to 0 W, and ten minutes later the battery goes back.
-    home.setHouseW(1000);
-    await home.advance(80);
+    // discharge steps back to 0 W, and the restore lane hands the battery back
+    // once its cooldowns allow and the house has room for its full charge
+    // (it was idle when PELS took it), with no idle wait.
+    home.setHouseW(0);
+    await home.advance(36);
 
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
     expect(home.events.find((event) => event.event === 'battery_storage_released'))
-      .toMatchObject({ deviceId: BATTERY, reason: 'idle' });
+      .toMatchObject({ deviceId: BATTERY, reason: 'restored' });
   });
 });

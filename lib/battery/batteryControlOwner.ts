@@ -250,12 +250,16 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
       this.applyControlSettings();
       return true;
     }
+    // Turning Managed off applies at once, and its opted-out hand-back finds the
+    // same takeover in the same turn: that one is already recorded and logged.
+    if (this.takenOver.has(deviceId) && !this.isManaged(deviceId)) return true;
+    this.takenOver.add(deviceId);
     try {
       this.setControlEnabled(deviceId, false);
-      this.takenOver.add(deviceId);
       logger.info({ event: 'battery_control_claim_lost', deviceId });
       return true;
     } catch (error) {
+      this.takenOver.delete(deviceId);
       logger.warn({ event: 'battery_control_opt_out_failed', deviceId, err: normalizeError(error) });
       return false;
     }

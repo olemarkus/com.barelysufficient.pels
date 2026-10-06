@@ -38,7 +38,9 @@ export function resolveSameMeasurementSheddingDecision(
 ): SameMeasurementSheddingDecision {
   const alreadyShedThisSample = measurementTs !== null
     && measurementTs === state.lastShedPlanMeasurementTs;
-  const pending = resolvePendingShedRelief(state.shedPlanLatch, devices, measurementPowerW, nowTs);
+  const pending = resolvePendingShedRelief(
+    state.shedPlanLatch, devices, measurementPowerW, nowTs, state.storageLeverByDevice,
+  );
   if (!alreadyShedThisSample) {
     // With nothing outstanding the reading is believed as it stands; the pending
     // answer still rides along, so the retirements it found are committed.

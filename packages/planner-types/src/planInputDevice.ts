@@ -194,6 +194,14 @@ export type ObservedStorageInput = {
   claimHeld: boolean;
   /** PELS may hold the battery: control on, Main home, claim recordable, not in simulation. */
   admissible: boolean;
+  /**
+   * The owner's Power-limit control for this battery, read through the
+   * battery's own gate (`isBatteryPowerLimitEnabled`), never as a load's
+   * command authority. Off: PELS never limits it (no charge cap, no discharge
+   * for the limit), and it is no shed candidate. It still stores spare solar
+   * while Managed is on.
+   */
+  powerLimitControl: boolean;
   verdict: StorageVerdict;
   /**
    * The most discharge PELS may ask for, W: the discharge range, or less once
@@ -225,13 +233,15 @@ export type MissingStorageInput = {
  * Main-home battery whose control surface is a signed setpoint, and either
  * readable or held by PELS. "No cluster" is the whole of "no lever", so the
  * planner never reads a zero it did not measure. Reach it through
- * `hasStorageInput` (`lib/plan/battery/storageRelief.ts`).
+ * `hasStorageInput` (`lib/plan/battery/storageLadder.ts`).
  *
- * The device is `isBatteryOrSolar` with no generic command authority: no shed,
- * restore or surplus lane sees it. Only the storage stage reads this cluster, and the
- * builder through the batteries' term in the surplus pool
- * (`sumStorageSurplusW`): the solar a battery stores that PELS can free, less
- * its discharge.
+ * The device is `isBatteryOrSolar` with no generic command authority: no
+ * generic shed, restore or surplus lane commands it. The storage stage reads
+ * this cluster (`lib/plan/battery/`), the shedding walk offers the battery as
+ * its own ranked candidate (`lib/plan/shedding/storageCandidate.ts`), the
+ * restore lane hands it back (`lib/plan/restore/storageHandBack.ts`), and the
+ * builder reads the batteries' term in the surplus pool (`sumStorageSurplusW`):
+ * the solar a battery stores that PELS can free, less its discharge.
  *
  * State of charge is not here: the battery's own floor applies (owner ruling,
  * 2026-10-05), so nothing decides on it. A battery that stops delivering near

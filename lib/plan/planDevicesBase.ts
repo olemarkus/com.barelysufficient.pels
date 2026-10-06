@@ -207,7 +207,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     name: dev.name,
     isEvCharger: dev.isEvCharger,
     isBatteryOrSolar: dev.isBatteryOrSolar,
-    storageHold: 'none',
+    storageHold: { kind: 'none' },
     deviceType: dev.deviceType,
     currentState,
     plannedState,

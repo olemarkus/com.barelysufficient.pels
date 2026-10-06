@@ -98,6 +98,7 @@ const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const emptyRestoreResult: RestorePlanResult = {
   planDevices: [],
   restoredThisCycle: new Set<string>(),
+  storageHandedBack: new Set<string>(),
   headroomReserves: [],
   availableHeadroom: 1,
   capacityAvailableKw: 1,
@@ -139,6 +140,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       deficitKw: 5,
       limitSource: 'capacity',
       capacityBreached: context.capacityBreached,
+      storageLimit: { kind: 'measured' as const, drawKw: 5 },
       state: createPlanEngineState(),
       deps: {
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),

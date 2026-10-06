@@ -177,7 +177,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     deviceType: 'onoff' as const,
     isEvCharger: true,
     isBatteryOrSolar: false,
-    storageHold: 'none' as const,
+    storageHold: { kind: 'none' as const },
     binaryControl: snapshot.binaryControl,
     currentState: snapshot.binaryControl?.on === false ? 'off' : 'on',
     plannedState: 'shed' as const,

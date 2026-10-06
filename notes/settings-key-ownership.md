@@ -112,6 +112,14 @@ read ever has; the UI marks the map `unreadable`, shows each battery's Managed
 as off, and does not offer the switch until the value is repaired. A battery's
 Managed is this key, never `managed_devices`.
 
+A home battery's Power-limit control is its `controllable_devices` entry, read
+through its own gate, `packages/shared-domain/src/settings/batteryPowerLimit.ts`
+(`isBatteryPowerLimitEnabled`): absent means on (a battery was always limited
+before the switch existed), `false` means off. The runtime reads it for the
+planner input's storage cluster, never through `isCapacityControlEnabled`, which
+vetoes every battery; the settings UI's switch and the capacity-control Flow
+cards write it.
+
 `mode_aliases` belongs to `packages/shared-domain/src/settings/modeAliases.ts`.
 Runtime and settings UI both lowercase alias keys and ignore malformed entries;
 both retain their last-good aliases if the stored value is not a record (the UI

@@ -8,7 +8,11 @@
  * - **Supplying** / **Charging**: the battery's own reading, PELS holding it.
  *   The word follows the observed sign, never the plan: a battery PELS has
  *   just asked to supply that still charges reads Charging until it turns.
- * - **Own mode**: it runs the mode chosen in its own app.
+ * - **Limited · Charging**: PELS caps its charge at its place in the priority
+ *   order, with the load's `Limited` word; the reason line says how much more
+ *   charge its own mode would take.
+ * - **Own mode**: it runs the mode chosen in its own app. With its Power-limit
+ *   control off, the reason line says PELS only stores spare solar in it.
  *
  * Power is shown without a sign: the state word gives the direction. Below
  * `DIRECTION_MIN_W` either way the battery is doing nothing worth naming, so
@@ -19,11 +23,11 @@ import type { DeviceStatus } from '../../packages/contracts/src/deviceStatus';
 import type { SettingsUiPlanHomeBattery } from '../../packages/contracts/src/settingsUiApi';
 import { displayStateLabel, displayStateTone } from '../../packages/shared-domain/src/planCardGrammar';
 import type { HomeBatteryCardRead } from '../observer/observedDeviceStateProjection';
-import type { DevicePlanDevice } from './planTypes';
+import type { StorageHold } from './planTypes';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 export type HomeBatteryCard = Extract<HomeBatteryCardRead, { kind: 'battery' }>;
-type StorageHold = DevicePlanDevice['storageHold'];
+type StorageHoldKind = StorageHold['kind'];
 type Direction = 'supplying' | 'charging';
 
 const NO_BATTERY_CARD: HomeBatteryCardRead = { kind: 'none' };
@@ -51,19 +55,28 @@ export const BATTERY_STATE_LABELS = {
   own_mode: 'Own mode',
 } as const;
 
+/** The state word while PELS caps the battery's charge: the load's `Limited`, and what it limits. */
+export const BATTERY_CHARGE_LIMITED_LABEL = `${displayStateLabel('held')} · ${BATTERY_STATE_LABELS.charging}`;
+
 export const BATTERY_REASON_LINES = {
   relief: 'Holding your limit so your devices keep running',
+  charge_limit: 'Waiting to charge faster',
   surplus: 'Storing the solar power your devices leave',
   cap_for_device: 'Charging less so a device can use the solar',
   none: 'PELS takes over when your limit or solar needs it',
-} as const satisfies Record<StorageHold, string>;
+  solar_only: 'PELS uses it only to store spare solar',
+} as const satisfies Record<StorageHoldKind, string>;
+
+/** Below this, the charge a cap holds back is not worth naming, kW. */
+const HELD_BACK_MIN_KW = 0.05;
 
 /** The direction a held battery is meant to go, named while its own reading shows none. */
 const INTENDED_DIRECTION = {
   relief: 'supplying',
+  charge_limit: 'charging',
   surplus: 'charging',
   cap_for_device: 'charging',
-} as const satisfies Record<Exclude<StorageHold, 'none'>, Direction>;
+} as const satisfies Record<Exclude<StorageHoldKind, 'none' | 'solar_only'>, Direction>;
 
 /** What the battery itself reports doing, or `null` when it reports too little to name. */
 const resolveObservedDirection = (battery: HomeBatteryCard): Direction | null => {
@@ -90,15 +103,16 @@ export function buildSettingsUiPlanHomeBattery(
   // Only a battery PELS holds for relief that is supplying holds the limit: a
   // surplus or capped hold, or a battery in its own mode, discharges for
   // reasons of its own.
-  const holdsLimit = hold === 'relief' && direction === 'supplying';
-  if (hold === 'none') return { activity: 'own_mode', power, holdsLimit };
-  return { activity: direction ?? INTENDED_DIRECTION[hold], power, holdsLimit };
+  // A capped charge holds nothing: only a discharge for the limit does.
+  const holdsLimit = hold.kind === 'relief' && direction === 'supplying';
+  if (hold.kind === 'none' || hold.kind === 'solar_only') return { activity: 'own_mode', power, holdsLimit };
+  return { activity: direction ?? INTENDED_DIRECTION[hold.kind], power, holdsLimit };
 }
 
 const resolveFactText = (battery: HomeBatteryCard, hold: StorageHold): string | null => {
   const parts = [
     battery.level.kind === 'observed' ? `${Math.round(battery.level.percent)} % charged` : null,
-    hold === 'none' ? resolveObservedDirection(battery) : null,
+    hold.kind === 'none' || hold.kind === 'solar_only' ? resolveObservedDirection(battery) : null,
   ].filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(' · ') : null;
 };
@@ -106,8 +120,11 @@ const resolveFactText = (battery: HomeBatteryCard, hold: StorageHold): string | 
 const resolveReason = (battery: HomeBatteryCard, hold: StorageHold, dryRun: boolean): DeviceStatus['reason'] => {
   // A battery PELS cannot drive, or one PELS is only simulating, has nothing
   // more to say than its own reading.
-  if (hold === 'none' && (!battery.drivable || dryRun)) return null;
-  return { text: BATTERY_REASON_LINES[hold] };
+  if ((hold.kind === 'none' || hold.kind === 'solar_only') && (!battery.drivable || dryRun)) return null;
+  if (hold.kind === 'charge_limit' && hold.heldBackKw >= HELD_BACK_MIN_KW) {
+    return { text: `${BATTERY_REASON_LINES.charge_limit} · ${hold.heldBackKw.toFixed(1)} kW more needed` };
+  }
+  return { text: BATTERY_REASON_LINES[hold.kind] };
 };
 
 export function buildHomeBatteryStatus(
@@ -138,6 +155,17 @@ export function buildHomeBatteryStatus(
     };
   }
   const { activity, power } = buildSettingsUiPlanHomeBattery(battery, hold);
+  if (hold.kind === 'charge_limit') {
+    return {
+      ...common,
+      kind: 'held',
+      tone: displayStateTone('held'),
+      label: BATTERY_CHARGE_LIMITED_LABEL,
+      limited: true,
+      powerText: power.kind === 'observed' && activity === 'charging' ? `${power.kw.toFixed(1)} kW` : null,
+      reason: resolveReason(battery, hold, dryRun),
+    };
+  }
   const kind = activity === 'own_mode' ? 'idle' : 'active';
   return {
     ...common,

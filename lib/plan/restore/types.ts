@@ -61,6 +61,10 @@ export type RestoreCycle = {
   readonly swapLedger: SwapLedger;
   readonly timing: RestoreTiming;
   readonly restoredThisCycle: Set<string>;
+  /** Home batteries the pass handed back (`storageHandBack.ts`): never loads, so never in `restoredThisCycle`. */
+  readonly storageHandedBack: Set<string>;
+  /** The ranks of battery hand-backs waiting for room this pass: the restores ranked below wait behind them. */
+  readonly storageHandBackWaitingAt: Set<number>;
   /** Resolved exactly once per cycle — the resolver advances arming state. */
   readonly headroomReserves: readonly HeadroomReserve[];
   readonly batchState: RestoreBatchState;
@@ -110,6 +114,12 @@ export type RestoreDeviceTiming = Pick<RestoreTiming,
 export type RestorePlanResult = {
   planDevices: DevicePlanDevice[];
   restoredThisCycle: Set<string>;
+  /**
+   * Home batteries this pass handed back, in priority order with the loads
+   * (`storageHandBack.ts`); the battery stage releases their holds
+   * (`applyStorageHandBacks`).
+   */
+  storageHandedBack: ReadonlySet<string>;
   // Post-pass NON-EXEMPT view (min of capacity and measured-exempt budget axes
   // from the per-axis ledger) — no longer the binding-axis scalar. Consumers:
   // batch throttle sizing and shed-temperature hold decisions; both conservative.

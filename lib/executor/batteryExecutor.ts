@@ -147,6 +147,12 @@ export type BatteryExecutorDeps = {
   readManagedDrawW: () => number;
   /** Whether PELS shed or restored any device at or after this time. */
   hasShedOrRestoreSince: (sinceMs: number) => boolean;
+  /**
+   * A hand-back the restore lane decided (`restored`) went out: stamp the
+   * restore clocks, as a confirmed load restore does. Only on a hand-back the
+   * owner actually made: one it declined restored nothing.
+   */
+  recordRestore: (deviceId: string, name: string, nowMs: number) => void;
 };
 
 /** What the plan executor asks of a home's storage lane. */
@@ -337,6 +343,7 @@ export class BatteryExecutor {
     logger.info({
       event: 'battery_storage_released', deviceId: device.id, deviceName: device.name, reason: decision.reason,
     });
+    if (decision.reason === 'restored') this.deps.recordRestore(device.id, device.name, Date.now());
     return true;
   }
 

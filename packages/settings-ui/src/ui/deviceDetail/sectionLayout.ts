@@ -22,9 +22,9 @@ import { resolveDeviceDetailKind, type DeviceDetailKind } from '../deviceKind.ts
 //   after installation; the limiting choice follows it.
 // - Binary: almost nothing to configure — the limiting statement up top and
 //   Setup auto-expanded (see autoExpandSetupWhenBare).
-// - Battery: its Managed switch and its place in the priority order; none of
-//   a load's sections apply, so they are hidden here rather than by their own
-//   gates (`applyBatteryKindVisibility`).
+// - Battery: its Managed and Power-limit control switches and its place in
+//   the priority order; none of a load's sections apply, so they are hidden
+//   here rather than by their own gates (`applyBatteryKindVisibility`).
 // Every list carries all eleven sections so hidden, inapplicable ones keep a
 // stable DOM position (their own gates keep them hidden).
 const SECTION_IDS = {
@@ -107,6 +107,24 @@ const placeManagedRow = (kind: DeviceDetailKind): void => {
   if (anchor?.parentElement && row.nextElementSibling !== anchor) anchor.parentElement.insertBefore(row, anchor);
 };
 
+// The Power-limit control switch is a singleton too: a battery's page carries
+// it under Managed in its own section, every other page in Setup, ahead of the
+// start-policy row (its place in the markup). Runs after placeManagedRow, so
+// the battery's Managed row is already in place to anchor it.
+const placeControllableRow = (kind: DeviceDetailKind): void => {
+  const row = document.getElementById('device-detail-controllable-row');
+  if (!row) return;
+  if (kind === 'battery') {
+    const managedRow = document.getElementById('device-detail-managed-row');
+    if (managedRow?.parentElement && managedRow.nextElementSibling !== row) {
+      managedRow.parentElement.insertBefore(row, managedRow.nextSibling);
+    }
+    return;
+  }
+  const anchor = document.getElementById('device-detail-start-policy-row');
+  if (anchor?.parentElement && row.nextElementSibling !== anchor) anchor.parentElement.insertBefore(row, anchor);
+};
+
 // A battery's page shows its own section and none of a load's: Setup holds
 // nothing else that applies to it once Managed has moved out. Resolved with the
 // kind, so a page that re-kinds (never for a battery) gets them back.
@@ -123,6 +141,7 @@ export const applyDeviceDetailSectionLayout = (
 ): void => {
   const kind = resolveDeviceDetailKind(device);
   placeManagedRow(kind);
+  placeControllableRow(kind);
   applyBatteryKindVisibility(kind);
   if (appliedKind === kind) return;
 

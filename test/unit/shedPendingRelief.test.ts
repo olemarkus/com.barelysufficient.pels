@@ -58,7 +58,7 @@ const pendingFor = (
   devices: PlanInputDevice[],
   powerW = 6_378,
 ): PendingShedRelief => {
-  const pending = resolvePendingShedRelief(latch, devices, powerW, NOW);
+  const pending = resolvePendingShedRelief(latch, devices, powerW, NOW, {});
   if (pending === null) throw new Error('expected relief to be pending');
   return pending;
 };
@@ -172,6 +172,7 @@ describe('resolvePendingShedRelief', () => {
       shedSet: new Set(['vvb']),
       shedReasons: new Map(),
       shedStepTargets: new Map([['vvb', 'low']]),
+      storageSetpoints: new Map(),
       creditedKw: new Map([['vvb', 0.1]]),
     };
     const relatched = latchShedDecision(deeper, pending, 6_378, NOW);
@@ -312,8 +313,8 @@ describe('resolvePendingShedRelief', () => {
   });
 
   it('answers nothing without a latch or without watts on the sample', () => {
-    expect(resolvePendingShedRelief(null, [charger()], 6_378, NOW)).toBeNull();
-    expect(resolvePendingShedRelief(chargerLatch(), [charger()], null, NOW)).toBeNull();
+    expect(resolvePendingShedRelief(null, [charger()], 6_378, NOW, {})).toBeNull();
+    expect(resolvePendingShedRelief(chargerLatch(), [charger()], null, NOW, {})).toBeNull();
   });
 });
 
@@ -322,6 +323,7 @@ describe('latchShedDecision', () => {
     shedSet: new Set([deviceId]),
     shedReasons: new Map(),
     shedStepTargets: new Map(stepId === undefined ? [] : [[deviceId, stepId]]),
+    storageSetpoints: new Map(),
     creditedKw: new Map([[deviceId, creditedKw]]),
   });
 
@@ -404,6 +406,7 @@ describe('latchShedDecision', () => {
       [charger({ steppedLoadProfile: ladder, selectedStepId: '6a', currentDrawKw: 1.38 }), heaterOff],
       LATCHED_READING_W - 5_980,
       NOW + 10_000,
+      {},
     );
     expect(landed?.totalKw).toBe(0);
     expect(landed?.held.size).toBe(0);

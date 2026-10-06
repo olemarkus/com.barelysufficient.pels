@@ -71,6 +71,7 @@ const buildLane = () => {
   let power: HomeBatteryPowerObservation = { signedW: 0, observedAtMs: START_MS - 1_000 };
   let managedW = 2000;
   const tracker: PowerTrackerState = { lastPowerW: 4000, lastTimestamp: START_MS };
+  const recordRestore = vi.fn();
   const lane = new BatteryExecutor({
     owner,
     actuator,
@@ -78,10 +79,12 @@ const buildLane = () => {
     getPowerTracker: () => tracker,
     readManagedDrawW: () => managedW,
     hasShedOrRestoreSince: (sinceMs) => lastActionAtMs >= sinceMs,
+    recordRestore,
   });
   const at = (afterMs: number) => vi.setSystemTime(new Date(START_MS + afterMs));
   return {
     lane,
+    recordRestore,
     owner,
     owned,
     apply,
@@ -444,5 +447,25 @@ describe('battery storage lane', () => {
     expect(await lane.apply(release)).toBe(true);
     expect(owner.releaseClaim).toHaveBeenLastCalledWith(BATTERY, 'idle');
     expect(lane.hasDrift(release)).toBe(false);
+  });
+
+  it('stamps the restore clocks only for a restore hand-back the owner made', async () => {
+    const { lane, owned, send, recordRestore } = buildLane();
+    const restored = decided({ kind: 'release', reason: 'restored' });
+    await send(-1500, 0);
+
+    owned.releaseOutcome = 'not_released';
+    expect(await lane.apply(restored)).toBe(false);
+    expect(recordRestore).not.toHaveBeenCalled();
+
+    owned.releaseOutcome = 'released';
+    expect(await lane.apply(restored)).toBe(true);
+    expect(recordRestore).toHaveBeenCalledTimes(1);
+    expect(recordRestore).toHaveBeenCalledWith(BATTERY, expect.any(String), expect.any(Number));
+
+    await send(-1500, 60_000);
+    owned.held = true;
+    expect(await lane.apply(decided({ kind: 'release', reason: 'idle' }))).toBe(true);
+    expect(recordRestore).toHaveBeenCalledTimes(1);
   });
 });

@@ -569,7 +569,7 @@ describe('settingsOverviewReadModel home battery card', () => {
       }
       : { kind: 'none' as const }),
   });
-  const batteryDevice = (storageHold: DevicePlanDevice['storageHold'] = 'none') => buildPlanDevice({
+  const batteryDevice = (storageHold: DevicePlanDevice['storageHold'] = { kind: 'none' }) => buildPlanDevice({
     id: 'battery-1',
     name: 'Sessy battery',
     isBatteryOrSolar: true,
@@ -577,7 +577,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says a battery PELS holds for the limit is supplying, without a sign', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('relief'), battery());
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'relief' }), battery());
     expect(card.status).toMatchObject({
       label: 'Supplying',
       kind: 'active',
@@ -590,7 +590,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('names what a battery held for the limit still does, not what the plan asked', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('relief'), battery({ signedW: 1500 }));
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'relief' }), battery({ signedW: 1500 }));
     expect(card.status).toMatchObject({
       label: 'Charging',
       powerText: '1.5 kW',
@@ -604,13 +604,13 @@ describe('settingsOverviewReadModel home battery card', () => {
     { name: 'too little to name', signedW: -30 },
     { name: 'no power reading', signedW: null },
   ])('gives a held battery reporting $name no power, so the hero has no figure', ({ signedW }) => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('relief'), battery({ signedW }));
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'relief' }), battery({ signedW }));
     expect(card.status).toMatchObject({ label: 'Supplying', powerText: null });
     expect(card.homeBattery).toEqual({ activity: 'supplying', power: { kind: 'absent' }, holdsLimit: false });
   });
 
   it('says a battery PELS holds to store solar is charging from solar', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('surplus'), battery({ signedW: 1800, percent: 41 }));
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'surplus' }), battery({ signedW: 1800, percent: 41 }));
     expect(card.status).toMatchObject({
       label: 'Charging',
       powerText: '1.8 kW',
@@ -619,11 +619,38 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says a battery PELS caps for a device is charging less, never storing solar', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('cap_for_device'), battery({ signedW: 600 }));
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'cap_for_device' }), battery({ signedW: 600 }));
     expect(card.status).toMatchObject({
       label: 'Charging',
       powerText: '0.6 kW',
       reason: { text: 'Charging less so a device can use the solar' },
+    });
+  });
+
+  it('says a battery whose charge PELS caps is Limited · Charging, with the charge it waits for', () => {
+    const card = buildSettingsOverviewDeviceReadModel(
+      batteryDevice({ kind: 'charge_limit', heldBackKw: 2.4 }),
+      battery({ signedW: 600, percent: 52 }),
+    );
+    expect(card.status).toMatchObject({
+      label: 'Limited · Charging',
+      kind: 'held',
+      powerText: '0.6 kW',
+      factText: '52 % charged',
+      reason: { text: 'Waiting to charge faster · 2.4 kW more needed' },
+      limited: true,
+    });
+    // A capped charge holds nothing up: the hero names only a battery supplying for the limit.
+    expect(card.homeBattery).toEqual({ activity: 'charging', power: { kind: 'observed', kw: 0.6 }, holdsLimit: false });
+  });
+
+  it('says a battery capped at its full charge waits to charge faster, without a figure', () => {
+    const card = buildSettingsOverviewDeviceReadModel(
+      batteryDevice({ kind: 'charge_limit', heldBackKw: 0 }),
+      battery({ signedW: 0 }),
+    );
+    expect(card.status).toMatchObject({
+      label: 'Limited · Charging', powerText: null, reason: { text: 'Waiting to charge faster' },
     });
   });
 
@@ -639,6 +666,19 @@ describe('settingsOverviewReadModel home battery card', () => {
     expect(card.homeBattery).toEqual({ activity: 'own_mode', power: { kind: 'observed', kw: 0.4 }, holdsLimit: false });
   });
 
+  it('says PELS only stores spare solar in a battery whose Power-limit control is off', () => {
+    const card = buildSettingsOverviewDeviceReadModel(
+      batteryDevice({ kind: 'solar_only' }), battery({ signedW: -400, percent: 78 }),
+    );
+    expect(card.status).toMatchObject({
+      label: 'Own mode',
+      kind: 'idle',
+      factText: '78 % charged · supplying',
+      reason: { text: 'PELS uses it only to store spare solar' },
+    });
+    expect(card.homeBattery).toEqual({ activity: 'own_mode', power: { kind: 'observed', kw: 0.4 }, holdsLimit: false });
+  });
+
   it('gives a battery PELS cannot drive no promise of taking over', () => {
     const card = buildSettingsOverviewDeviceReadModel(batteryDevice(), battery({ drivable: false }));
     expect(card.status.reason).toBeNull();
@@ -648,7 +688,7 @@ describe('settingsOverviewReadModel home battery card', () => {
     const readModel = buildSettingsOverviewReadModel({
       meta: buildPlanMeta({}),
       devices: [
-        batteryDevice('relief'),
+        batteryDevice({ kind: 'relief' }),
         buildPlanDevice({ id: 'pv-1', name: 'Roof', isBatteryOrSolar: true }),
       ],
     }, battery());

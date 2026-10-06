@@ -459,3 +459,12 @@ A newer external mode change persists an opt-out in `battery_control_devices`;
 the regular-device follow-up will map it onto the battery's Managed setting.
 Deferred hand-backs still reserve held discharge
 against new starts, without adding that discharge to the shedding deficit.
+
+A battery is limited only by shedding, at its own place in the priority order
+(`lib/plan/shedding/storageCandidate.ts`; owner ruling 2026-10-06): there is no
+battery write ahead of shedding selection. It is never in the shed set, so the
+executor never sees a `shedAction` for it: its setpoint leaves selection as
+`storageSetpoints`, becomes a limit hold in `lib/plan/battery/storageLimit.ts`,
+and reaches the storage lane as an ordinary `StorageDecision`. The restore
+lane hands a limit hold back in priority order (release reason `restored`);
+there is no idle-timer hand-back.

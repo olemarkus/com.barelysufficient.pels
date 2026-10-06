@@ -211,6 +211,8 @@ export class SilentMeterPlanBuilder {
       limitSource: 'capacity',
       capacityBreached: false,
       temperatureSetpoints: context.temperatureSetpoints,
+      // No measurement to bound a battery's discharge by: every battery is handed back instead.
+      storageLimit: { kind: 'unmeasured' },
       state: this.state,
       deps,
     });

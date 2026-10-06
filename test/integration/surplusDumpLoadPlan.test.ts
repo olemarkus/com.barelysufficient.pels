@@ -602,6 +602,11 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const planB = await nonWilling.builder.buildDevicePlanSnapshot(devices());
     expect(JSON.stringify(planA)).toBe(JSON.stringify(planB));
     expect(empty.state.surplusEligibilityByDevice).toEqual({});
+    // Without a battery the storage stages are inert: no hold, no decision, no release.
+    expect(empty.state.storageLeverByDevice).toEqual({});
+    expect(planA.storageReleases).toEqual([]);
+    expect(planA.devices.every((device) => device.storageHold.kind === 'none' && !('storageDecision' in device)))
+      .toBe(true);
   });
 });
 

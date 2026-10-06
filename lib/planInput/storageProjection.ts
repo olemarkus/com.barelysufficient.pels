@@ -1,4 +1,7 @@
-import type { StorageClusterFields, ToPlanDeviceInput, ToPlanDeviceOptions } from './planInputDeviceTypes';
+import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
+import type {
+  PlanInputProjectionSource, StorageClusterFields, ToPlanDeviceInput, ToPlanDeviceOptions,
+} from './planInputDeviceTypes';
 
 const NO_STORAGE_CLUSTER: StorageClusterFields = {};
 
@@ -15,9 +18,12 @@ const NO_STORAGE_CLUSTER: StorageClusterFields = {};
  *
  * The delivery and charge ceilings are the owner's resolved ones, so the
  * planner reads one number for each: the range, or less once an increase
- * plateaued short of it.
+ * plateaued short of it. Power-limit control is the battery's own gate on
+ * `controllable_devices` (`isBatteryPowerLimitEnabled`), never a load's
+ * command authority.
  */
 export const resolveStorageCluster = (
+  source: PlanInputProjectionSource,
   device: ToPlanDeviceInput,
   options: ToPlanDeviceOptions,
 ): StorageClusterFields => {
@@ -41,6 +47,7 @@ export const resolveStorageCluster = (
       signedPowerW: power.signedW,
       claimHeld: control.claimHeld,
       admissible: control.admissible,
+      powerLimitControl: isBatteryPowerLimitEnabled(source.getControllableDevices(), device.id),
       verdict: control.verdict,
       deliveryCeilingW: control.deliveryCeilingW,
       chargeCeilingW: control.chargeCeilingW,

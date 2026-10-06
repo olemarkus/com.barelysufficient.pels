@@ -26,7 +26,7 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import { isPlannableDevice } from '../../lib/plan/planMeteredDevice';
-import { hasStorageInput } from '../../lib/plan/battery/storageRelief';
+import { hasStorageInput } from '../../lib/plan/battery/storageLadder';
 
 type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
   /** Owning-home cleanup for a pull-observed ON after an outside-off hold. */

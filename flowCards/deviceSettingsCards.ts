@@ -3,13 +3,17 @@ import { formatDeviceMustBeProvidedMessage } from '../packages/shared-domain/src
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from './registerFlowCards';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
+import { isHomeBatteryClassKey } from '../packages/shared-domain/src/batteryOrSolarRole';
+import { isBatteryPowerLimitEnabled } from '../packages/shared-domain/src/settings/batteryPowerLimit';
 import { readFlowDeviceArg } from './flowArgParsers';
 
 // A home battery or solar device is never offered in these device pickers. A
 // solar device is not a user-facing device at all. A home battery is, but its
-// switch is its own Managed toggle (`battery_control_devices`), and the
-// capacity-control and budget-exemption settings these cards write do not apply
-// to it yet; writing one would be a no-op settings row.
+// Managed switch is its own setting (`battery_control_devices`), and the
+// budget-exemption setting does not apply to it. The capacity-control cards are
+// the exception: a battery's Power-limit control lives in `controllable_devices`
+// like a load's (`isBatteryPowerLimitEnabled`), so those cards, and the
+// capacity-control condition, accept it (`isCapacityControlDevice`).
 //
 // Keyed on the device's ROLE (`deviceClass` is 'battery'/'solarpanel'), NOT on
 // its CURRENT `controllable`/`managed` flags: a normal device the user has not
@@ -18,6 +22,15 @@ import { readFlowDeviceArg } from './flowArgParsers';
 // flag would block that real enable flow.
 const isUserSelectableDevice = (device: DeviceDescriptorRead): boolean => (
   !device.isBatteryOrSolar
+);
+
+// A home battery: its Power-limit control is the capacity-control setting too.
+const isHomeBattery = (device: DeviceDescriptorRead): boolean => isHomeBatteryClassKey(device.deviceClass);
+
+// The devices the capacity-control cards may name: every user-selectable
+// device, and a home battery.
+const isCapacityControlDevice = (device: DeviceDescriptorRead): boolean => (
+  isUserSelectableDevice(device) || isHomeBattery(device)
 );
 
 // The gate an action card applies to the device its Flow names, and — over the
@@ -35,6 +48,12 @@ const recordsForUntrackedDevice: DeviceWriteGate = (device) => (
   device === undefined || isUserSelectableDevice(device)
 );
 
+// Disabling capacity control records for an untracked device as above, and
+// for a home battery: turning its Power-limit control off.
+const mayRevokeCapacityControl: DeviceWriteGate = (device) => (
+  device === undefined || isCapacityControlDevice(device)
+);
+
 // ENABLING capacity control grants control authority, so it requires a device PELS
 // can actually limit. The transport only admits devices with positive support
 // evidence; `powerCapable === false` refuses an enable while that evidence is
@@ -48,9 +67,12 @@ const recordsForUntrackedDevice: DeviceWriteGate = (device) => (
 // controllable. A Flow arg is untrusted input, so an unresolvable one is a no-op.
 // `getFlowSnapshot` refreshes an empty snapshot before answering, so this does not
 // turn the boot window into a refusal. `!== false`, not `=== true`: a descriptor
-// without the flag is not a verdict.
+// without the flag is not a verdict. A home battery is granted on its role: its
+// limit is priced from its own storage reading, never a load's power support.
 const mayGrantCapacityControl: DeviceWriteGate = (device) => (
-  device !== undefined && isUserSelectableDevice(device) && device.powerCapable !== false
+  device !== undefined && (
+    isHomeBattery(device) || (isUserSelectableDevice(device) && device.powerCapable !== false)
+  )
 );
 
 export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
@@ -69,7 +91,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
     settingKind: 'capacity_control',
-    deviceFilter: recordsForUntrackedDevice,
+    deviceFilter: mayRevokeCapacityControl,
     deps,
   });
 }
@@ -106,7 +128,17 @@ export function registerManagedDeviceCondition(deps: FlowCardDeps): void {
 export function registerCapacityControlCondition(deps: FlowCardDeps): void {
   registerDeviceSnapshotCondition({
     cardId: 'is_device_capacity_controlled',
-    predicate: (device) => device.controllable === true,
+    // A home battery's descriptor never reads controllable (the generic gate
+    // vetoes it): its Power-limit control is its own gate on the same setting,
+    // and like a load's it counts only while the battery is managed.
+    predicate: (device) => (
+      isHomeBattery(device)
+        ? device.managed === true && isBatteryPowerLimitEnabled(
+          getBooleanSettingsRecord(deps.homey.settings.get(CONTROLLABLE_DEVICES)), device.id,
+        )
+        : device.controllable === true
+    ),
+    offers: isCapacityControlDevice,
     deps,
   });
 }
@@ -127,7 +159,7 @@ function registerDeviceBooleanActionCard(params: {
   settingKind: string;
   // Optional eligibility gate. When present, the autocomplete only offers — and the
   // write only acts on — devices that pass it. Used by the capacity-control cards to keep
-  // battery and solar devices (`controllable: false`) out of the picker.
+  // solar devices, and devices PELS cannot limit, out of the picker.
   deviceFilter?: DeviceWriteGate;
   deps: FlowCardDeps;
 }): void {
@@ -151,9 +183,11 @@ function registerDeviceBooleanActionCard(params: {
 function registerDeviceSnapshotCondition(params: {
   cardId: string;
   predicate: (device: DeviceDescriptorRead) => boolean;
+  /** The devices the autocomplete offers; every user-selectable device unless a card says otherwise. */
+  offers?: (device: DeviceDescriptorRead) => boolean;
   deps: FlowCardDeps;
 }): void {
-  const { cardId, predicate, deps } = params;
+  const { cardId, predicate, offers = isUserSelectableDevice, deps } = params;
   const card = deps.homey.flow.getConditionCard(cardId);
   // The run listener answers truthfully for whatever device the flow references — a
   // battery's `managed` is its Managed toggle, so an existing flow that already
@@ -166,7 +200,7 @@ function registerDeviceSnapshotCondition(params: {
   });
   card.registerArgumentAutocompleteListener(
     'device',
-    async (query: string) => getDeviceOptions(deps, query, isUserSelectableDevice),
+    async (query: string) => getDeviceOptions(deps, query, offers),
   );
 }
 

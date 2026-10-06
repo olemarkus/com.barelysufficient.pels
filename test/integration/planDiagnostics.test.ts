@@ -65,6 +65,7 @@ type RestoreResultOverrides = Partial<Omit<RestorePlanResult, 'timing'>> & { tim
 const buildRestoreResult = ({ timing, ...overrides }: RestoreResultOverrides = {}): RestorePlanResult => ({
   planDevices: [],
   restoredThisCycle: new Set<string>(),
+  storageHandedBack: new Set<string>(),
   headroomReserves: [],
   availableHeadroom: 1,
   capacityAvailableKw: 1,

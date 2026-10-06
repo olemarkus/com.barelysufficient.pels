@@ -110,6 +110,20 @@ describe('HomeBatteryControlOwner admission', () => {
       .toEqual({ status: 'refused', reason: 'control_disabled' });
   });
 
+  it('logs a takeover once, though turning Managed off hands the battery back in the same turn', async () => {
+    const { owner, batteries } = buildOwner();
+    owner.admitClaim(BATTERY);
+    batteries[BATTERY] = setpointBattery('manual', T0 + 1000);
+    vi.setSystemTime(T0 + 2000);
+    const logs = captureLogger('info');
+    owner.admitClaim(BATTERY);
+    await settle();
+
+    expect(logs.findEvents('battery_control_claim_lost')).toHaveLength(1);
+    expect(logs.findEvents('battery_control_claim_superseded')).toHaveLength(1);
+    logs.restore();
+  });
+
   it('turns Managed off after a takeover and adopts the battery\'s new mode when the owner turns it back on', async () => {
     const { owner, batteries, settings } = buildOwner();
     owner.admitClaim(BATTERY);

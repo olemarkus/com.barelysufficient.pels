@@ -68,6 +68,9 @@ B, C — starving them. The **fit-test** forecloses this:
   whose own mode discharges to hold the meter at 0 W hides the import a surplus
   device causes; the hard-off counts that discharge as import, so the device
   yields as it would to visible import and the battery is never claimed for it.
+  On a deficit a surplus hold is kept where it is: limiting the battery further
+  (capping its charge, then discharging it) is shedding's choice at the
+  battery's own place in the priority order, never a surplus decision.
 - The capacity shed layer remains the ceiling regardless: the lift is
   **capacity-independent** (`applySurplusAbsorbDelta` is documented as such), so
   if the home genuinely were near the cap, capacity shedding still applies on top

@@ -35,6 +35,7 @@ import {
   appendRedesignDisabledReasons,
   countManagedInGroup,
   groupDevicesByClass,
+  isLimitToggleOn,
   resolveDeviceManageability,
   resolveGroupManagedState,
   type DeviceGroup,
@@ -287,7 +288,7 @@ const buildRedesignRowSwitches = (
   const limitToggle = createIconToggle({
     iconTemplateId: 'pels-icon-limit',
     title: titles.limit,
-    checked: manageability.supportsPower && state.controllableMap[device.id] === true,
+    checked: isLimitToggleOn(device, manageability),
     disabled: disabled.limit,
     onChange: buildControllableToggleHandler(device.id),
   });
@@ -363,9 +364,9 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
 
   const nameCell = buildRedesignNameCell(device);
   const reasons = getRowDisabledReasons({ isLoadingComplete, manageability, disabled });
-  // A battery's Limit and Price cells are not applicable, not waiting on the owner.
+  // A battery's Price cell is not applicable, not waiting on the owner.
   appendRedesignDisabledReasons(nameCell, isHomeBatteryClassKey(device.deviceClass)
-    ? { ...reasons, limit: null, price: null }
+    ? { ...reasons, price: null }
     : reasons);
 
   row.append(

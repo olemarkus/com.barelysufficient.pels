@@ -120,11 +120,18 @@ function walkShedCandidates(
 /**
  * What a shed candidate can still relieve once selection has chosen. An
  * unchosen candidate keeps all of it. A chosen one keeps only the deeper rungs
- * of its ladder below the one it was parked at: limiting a charger to its
+ * of its ladder below the one it was parked at (a battery, the rest of its
+ * discharge below its setpoint): limiting a charger to its
  * middle step leaves the step to off still on the table, and reading that as
  * nothing left would open an incident with an option in hand.
  */
 function resolveReliefLeftKw(candidate: ShedCandidate, selection: PlanSheddingResult): number {
+  if (candidate.kind === 'storage') {
+    // A battery chosen keeps the rest of its ladder below the setpoint it was spent at.
+    const chosen = selection.storageSetpoints.get(candidate.id);
+    if (chosen === undefined) return candidate.effectivePower;
+    return Math.max(0, candidate.effectivePower - (candidate.baseW - chosen.setpointW) / 1000);
+  }
   if (!selection.shedSet.has(candidate.id)) return candidate.effectivePower;
   if (candidate.kind !== 'stepped') return 0;
   const parkedAt = selection.shedStepTargets.get(candidate.id);

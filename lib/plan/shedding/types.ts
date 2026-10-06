@@ -7,6 +7,7 @@ import type { MeteredPlanInputDevice, PlanInputDevice, ShedBehavior } from '../p
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import type { ShedCandidateSkipSummary } from './candidateSkipLog';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
+import type { ObservedStorageInput } from '../../../packages/planner-types/src/planInputDevice';
 
 export type SheddingPlan = {
   shedSet: Set<string>;
@@ -27,6 +28,19 @@ export type SheddingPlan = {
    * off that follows rather than a step change.
    */
   shedStepTargets: Map<string, string>;
+  /**
+   * Per home battery chosen this cycle, the signed setpoint its limit was
+   * priced at, W (`StorageShedCandidate`): a capped charge, or a discharge;
+   * and whether selection banked its relief. An unbanked ask (a re-probing
+   * battery, or one not following its limit) opens no credit window.
+   * The same kind of boundary `shedStepTargets` crosses, a fact about a device
+   * this module already selected, and like it the delivered decision: the
+   * battery stage (`lib/plan/battery/storageLimit.ts`) holds the battery
+   * there and never re-prices it. A battery is never in `shedSet`, so the
+   * executor never sees a shed for it; this map is the only way its limit
+   * leaves shedding. Required, so a carrier that drops it does not compile.
+   */
+  storageSetpoints: Map<string, StorageSetpoint>;
   sheddingActive: boolean;
   guardInShortfall: boolean;
   outcome: SheddingOutcome;
@@ -34,6 +48,9 @@ export type SheddingPlan = {
   recoveredAtMs: number | null;
   overshootStats: OvershootStats | null;
 };
+
+/** The setpoint a battery's limit was spent at, W, and whether its relief was banked. */
+export type StorageSetpoint = { setpointW: number; banked: boolean };
 
 /**
  * The two overshoot questions `resolveSoftOvershootDecision` keeps apart
@@ -59,17 +76,18 @@ export type SheddingOvershootInput = {
 };
 
 /**
- * What storage relief (`lib/plan/battery/storageRelief.ts`) hands shedding: a
- * DECISION about the deficit, never a rewrite of the measurement. Shedding,
- * and the overshoot grace that gates it, count it against the measured
- * deficit; the shortfall verdict, incidents and every other stage see the
- * measurement alone.
+ * What the battery stage before shedding (`lib/plan/battery/storageRelief.ts`)
+ * hands shedding: a DECISION about the deficit, never a rewrite of the
+ * measurement. Shedding, and the overshoot grace that gates it, count it
+ * against the measured deficit; the shortfall verdict, incidents and every
+ * other stage see the measurement alone. Only discharge is here: a charge a
+ * battery limit stopped is pending relief's credit (`pendingRelief.ts`).
  */
 export type StorageShedTerm = {
   /**
-   * Relief to take off the measured deficit, kW: discharge a battery was just
-   * asked for and has not delivered yet, less the discharge of every battery
-   * handed back this cycle, whose import lands next. Negative when a hand-back
+   * Relief to take off the measured deficit, kW: discharge a battery's limit
+   * hold asked for and has not delivered yet, less the discharge of every
+   * battery handed back this cycle, whose import lands next. Negative when a hand-back
    * outweighs the credit, so shedding is ready before the import step shows.
    */
   netCreditKw: number;
@@ -121,6 +139,7 @@ export type PlanSheddingResult = {
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
   shedStepTargets: SheddingPlan['shedStepTargets'];
+  storageSetpoints: SheddingPlan['storageSetpoints'];
   outcome: SheddingOutcome;
   overshootStats: SheddingPlan['overshootStats'];
   /**
@@ -164,9 +183,20 @@ export type ShedCandidateParams = {
   capacityBreached: boolean;
   /** The build's resolved setpoints (`PlanContext.temperatureSetpoints`): whether a setpoint limit releases demand. */
   temperatureSetpoints: TemperatureSetpointsByDevice;
+  /**
+   * Whether a home battery may be offered as a candidate, and the house draw
+   * its discharge is bounded by: only on a measured cycle. The silent-meter
+   * pass has no draw to bound a discharge by and hands every battery back.
+   */
+  storageLimit: StorageLimitInput;
   state: PlanEngineState;
   deps: SheddingDeps;
 };
+
+/** See `ShedCandidateParams.storageLimit`. */
+export type StorageLimitInput =
+  | { kind: 'measured'; drawKw: number }
+  | { kind: 'unmeasured' };
 
 export type BaseShedCandidate = MeteredPlanInputDevice & {
   priority: number;
@@ -212,4 +242,41 @@ export type TemperatureShedCandidate = BaseShedCandidate & {
   shedTemperature: number;
 };
 
-export type ShedCandidate = BinaryShedCandidate | SteppedShedCandidate | TemperatureShedCandidate;
+/** A load candidate: a device the generic shed lanes command. */
+export type LoadShedCandidate = BinaryShedCandidate | SteppedShedCandidate | TemperatureShedCandidate;
+
+/**
+ * A home battery, offered at its own place in the priority order
+ * (`storageCandidate.ts`). Its limiting ladder runs from its charge, through
+ * 0 W, to its deepest discharge: limiting it first caps its charge, then
+ * discharges it, in one decision. It carries no load fields: it is never in
+ * the shed set and the executor never sees a shed for it.
+ */
+export type StorageShedCandidate = {
+  kind: 'storage';
+  id: string;
+  name: string;
+  priority: number;
+  /** Everything its ladder can release below `baseW`, kW: ranking and stats read it. */
+  effectivePower: number;
+  recentlyRestored: boolean;
+  /**
+   * A re-probing battery, or one that has not followed its limit within the
+   * credit's window: still asked, but its relief is not banked.
+   */
+  unconfirmedRelief: boolean;
+  /**
+   * The limit hold PELS keeps on it already, or none: an unconfirmed battery
+   * PELS holds is re-asserted at that setpoint, never asked deeper.
+   */
+  hold: { kind: 'none' } | { kind: 'limit'; setpointW: number };
+  storage: ObservedStorageInput;
+  /**
+   * Where the ladder is priced from, W: the battery's own signed power, or the
+   * setpoint PELS already holds it at when that is lower (relief already
+   * decided is credited elsewhere, never offered again).
+   */
+  baseW: number;
+};
+
+export type ShedCandidate = LoadShedCandidate | StorageShedCandidate;

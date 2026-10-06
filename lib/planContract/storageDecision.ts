@@ -1,19 +1,26 @@
 /**
  * The planner's decision for a home battery, as the executor's storage lane
  * reads it off the plan device (`lib/executor/batteryExecutor.ts`). Decided by
- * the storage relief stage (`lib/plan/battery/storageRelief.ts`); a battery the
- * plan is not driving and holds no claim on carries no decision at all.
+ * the storage stages in `lib/plan/battery/` (the battery's limit chosen by
+ * shedding at its place in the priority order, its surplus hold, and its
+ * hand-backs); a battery the plan is not driving and holds no claim on carries
+ * no decision at all.
  *
- * - `setpoint` — hold the battery at this signed power, W (negative
- *   discharges for relief, positive charges from the surplus the willing
+ * - `setpoint` — hold the battery at this signed power, W (a capped charge or
+ *   a discharge to hold the limit, or a charge from the surplus the willing
  *   devices left). `stepW` is the battery's setpoint grid, which the
  *   executor's confirmation tolerance is sized against.
  * - `release` — hand the battery back to its own mode, saying which rule
- *   fired: `idle` (a relief hold with nothing to do), `surplus_dwell` (a
- *   surplus hold no device needs any more), `full` (a surplus hold on a
- *   battery that stopped taking charge), or why it may not be held.
+ *   fired: `restored` (the restore lane handed a limit hold back in priority
+ *   order), `limit_off` (the owner turned Power-limit control off under a
+ *   limit hold), `idle` (a claim PELS holds the battery for nothing),
+ *   `surplus_dwell` (a surplus hold no device needs any more), `full` (a
+ *   surplus hold on a battery that stopped taking charge), or why it may not
+ *   be held.
  */
 export type StorageReleaseReason =
+  | 'restored'
+  | 'limit_off'
   | 'idle'
   | 'surplus_dwell'
   | 'full'

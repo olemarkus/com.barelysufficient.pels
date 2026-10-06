@@ -16,6 +16,8 @@ import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ShedDecisions } from '../shedDecisions';
+import type { StorageLeverState } from '../planState';
+import type { StorageHandBack } from './storageHandBack';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
@@ -37,10 +39,9 @@ export type OffDeviceReasonTiming = {
   restoreCooldownTotalSec?: number | null;
 };
 
-export type RestoreCandidate = {
-  kind: 'binary' | 'stepped';
-  device: MeteredDevicePlanDevice;
-};
+export type RestoreCandidate =
+  | { kind: 'binary' | 'stepped'; device: MeteredDevicePlanDevice }
+  | { kind: 'storage'; device: DevicePlanDevice; handBack: StorageHandBack };
 
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is MeteredDevicePlanDevice {
   // Resuming a device is admitting its draw into available power, which only a
@@ -57,6 +58,46 @@ export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is
     // beneficiary selection at once. The device stays managed and its measured
     // draw still counts toward whole-home power — PELS just never resumes it.
     && device.externalOffHoldActive !== true;
+}
+
+/**
+ * The storage branch beside `isRestoreLiveEligibleDevice`: a managed home
+ * battery PELS holds for the limit (`StorageLeverState` purpose `limit`) and
+ * read this cycle, which the lane may hand back. Never a load restore
+ * candidate: it has no generic command authority. Sized as the charge its own
+ * mode takes once handed back; the discharge PELS holds is withheld from
+ * restore already, so the hand-back never spends it.
+ */
+export function resolveStorageHandBack(
+  device: DevicePlanDevice,
+  levers: Readonly<Record<string, StorageLeverState>>,
+): StorageHandBack | null {
+  const lever = levers[device.id];
+  if (!device.isBatteryOrSolar || !device.control.managed || lever === undefined) return null;
+  if (lever.purpose !== 'limit' || lever.reading.kind !== 'read') return null;
+  return { needKw: lever.ownModeChargeW / 1000 };
+}
+
+/** Every battery the lane may hand back, as restore candidates (`resolveStorageHandBack`). */
+export function getStorageHandBackCandidates(
+  planDevices: DevicePlanDevice[],
+  levers: Readonly<Record<string, StorageLeverState>>,
+): RestoreCandidate[] {
+  return planDevices.flatMap((device): RestoreCandidate[] => {
+    const handBack = resolveStorageHandBack(device, levers);
+    return handBack === null ? [] : [{ kind: 'storage', device, handBack }];
+  });
+}
+
+/** Restore candidates in priority order, most important first. */
+export function sortRestoreCandidates(candidates: readonly RestoreCandidate[]): RestoreCandidate[] {
+  return candidates.slice().sort((a, b) => {
+    const byPriority = a.device.priority - b.device.priority;
+    if (byPriority !== 0) return byPriority;
+    // Defensive tiebreak for partial/legacy inputs, shared with shed. Normal
+    // active-home plan inputs already carry unique relative ranks.
+    return compareDeviceIdAsc(a.device, b.device);
+  });
 }
 
 type RestoreObservedState = 'off' | 'on' | 'target_only' | 'unknown';
@@ -198,13 +239,7 @@ export function getRestoreCandidates(
       ))
       .map((device) => ({ kind: 'stepped' as const, device })),
   ];
-  return candidates.slice().sort((a, b) => {
-    const byPriority = a.device.priority - b.device.priority;
-    if (byPriority !== 0) return byPriority;
-    // Defensive tiebreak for partial/legacy inputs, shared with shed. Normal
-    // active-home plan inputs already carry unique relative ranks.
-    return compareDeviceIdAsc(a.device, b.device);
-  });
+  return sortRestoreCandidates(candidates);
 }
 
 export function getOnDevices(

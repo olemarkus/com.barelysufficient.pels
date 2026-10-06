@@ -233,6 +233,23 @@ export type LooseDevicePlanDevice = DevicePlanDeviceBase
 
 export type SteppedPlanDevice = DevicePlanDeviceBase & SteppedLoadKind;
 export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
+/**
+ * Why PELS holds a home battery: discharging to hold the limit (`relief`);
+ * its charge capped at its place in the priority order (`charge_limit`, with
+ * the charge its own mode would take that the cap holds back, kW); its own
+ * mode's charge capped so a device can use the solar (`cap_for_device`); or
+ * storing solar the devices leave (`surplus`). A battery it does not hold:
+ * `solar_only` when its Power-limit control is off (PELS only stores spare
+ * solar in it), `none` otherwise.
+ */
+export type StorageHold =
+  | { kind: 'none' }
+  | { kind: 'solar_only' }
+  | { kind: 'relief' }
+  | { kind: 'charge_limit'; heldBackKw: number }
+  | { kind: 'cap_for_device' }
+  | { kind: 'surplus' };
+
 export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
 
 /**
@@ -477,12 +494,10 @@ type DevicePlanDeviceBase = {
   // A home battery or solar device: never a load the shed/restore lanes command.
   // The overview shows a managed battery with its own card, never a solar device.
   isBatteryOrSolar: boolean;
-  // Why PELS holds a home battery this cycle: to hold the limit (`relief`), to
-  // cap its own mode's charge so a device can use the solar (`cap_for_device`),
-  // or to store solar the devices leave (`surplus`). `none` while it runs its
-  // own mode, and on every device that is not a battery. Stamped by the
-  // storage relief stage (`attachStorageDecisions`).
-  storageHold: 'none' | 'relief' | 'cap_for_device' | 'surplus';
+  // Why PELS holds a home battery this cycle (`StorageHold`). `none` while it
+  // runs its own mode, and on every device that is not a battery. Stamped by
+  // the storage stages (`attachStorageDecisions`).
+  storageHold: StorageHold;
   // `binaryControl` is split off onto the orthogonal `BinaryControlKind` cluster;
   // reach it through the `isBinaryPlanDevice` guard (`lib/plan/planBinaryDevice.ts`).
   // Present iff the producer resolved a binary `currentOn` value.

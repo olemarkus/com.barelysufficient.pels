@@ -1,5 +1,7 @@
 import type { DevicePlanDevice } from '../planTypes';
-import { getRestoreCandidates, markOffDevicesStayOff } from './devices';
+import {
+  getRestoreCandidates, getStorageHandBackCandidates, markOffDevicesStayOff, sortRestoreCandidates,
+} from './devices';
 import { markSteppedDevicesStayAtCurrentLevel, setRestorePlanDevice as setDevice } from './helpers';
 import type { RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState } from './batch';
@@ -64,10 +66,11 @@ export function applyBudgetExemptRestorePass(
     deviceFilter: (dev) => !isBudgetExempt(dev),
   });
 
-  const restoreCandidates = getRestoreCandidates(
-    Array.from(deviceMap.values()),
-    state.shedDecisions,
-  )
+  const snapshot = Array.from(deviceMap.values());
+  const restoreCandidates = sortRestoreCandidates([
+    ...getRestoreCandidates(snapshot, state.shedDecisions),
+    ...getStorageHandBackCandidates(snapshot, state.storageLeverByDevice),
+  ])
     .filter((candidate) => isBudgetExempt(candidate.device));
   ({ restoredOneThisCycle } = applyRestoreCandidates(
     laneCycle, lane, restoreCandidates, ledger, restoredOneThisCycle,

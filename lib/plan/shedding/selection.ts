@@ -2,7 +2,8 @@ import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-d
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { PlanContext } from '../planContext';
 import { chooseShedRung } from './steppedCandidates';
-import type { ShedCandidate } from './types';
+import { resolveStorageSpend } from './storageCandidate';
+import type { LoadShedCandidate, ShedCandidate, StorageSetpoint, StorageShedCandidate } from './types';
 
 /**
  * Greedy pick over the ranked candidates: take them in order until the deficit
@@ -34,13 +35,18 @@ import type { ShedCandidate } from './types';
  * before selection runs (`pendingRelief.ts`) and never reaches this loop as an
  * unconfirmed candidate to be re-sized.
  *
- * Four parallel maps leave here, all keyed by device id and all decided by this
+ * Five parallel maps leave here, all keyed by device id and all decided by this
  * loop: membership (`shedSet`), why (`shedReasons`), — for a stepped step-down —
- * WHERE the device is parked (`shedStepTargets`), and how much relief each
- * banked (`creditedKw`). The third is what makes the credited rung the delivered
- * rung: materialization commands the step this map names, so the deficit
- * selection just spent is the deficit the cycle actually frees. The fourth is
- * what the next cycle credits while the meter has not caught up.
+ * WHERE the device is parked (`shedStepTargets`), the setpoint a home battery
+ * is held at (`storageSetpoints`), and how much relief each banked
+ * (`creditedKw`). The third and fourth are what make the credited relief the
+ * delivered relief: materialization commands the step, and the battery stage
+ * the setpoint, these maps name. The last is what the next cycle credits while
+ * the meter has not caught up; for a battery only its stopped charge, which its
+ * own reading shows falling (its discharge is the storage term's credit).
+ *
+ * A battery is spent like any candidate at its place in the order, but never
+ * joins `shedSet`: the executor never sees a shed for it.
  */
 export function selectShedDevices(
   candidates: ShedCandidate[],
@@ -52,11 +58,19 @@ export function selectShedDevices(
   const shedSet = new Set<string>();
   const shedReasons = new Map<string, DeviceReason>();
   const shedStepTargets = new Map<string, string>();
+  const storageSetpoints = new Map<string, StorageSetpoint>();
   const creditedKw = new Map<string, number>();
   let remaining = needed;
   for (const nextCandidate of candidates) {
     if (shouldStopSelection(shedAllCandidates, remaining)) break;
     if (nextCandidate.effectivePower <= 0) continue;
+    if (nextCandidate.kind === 'storage') {
+      const spent = spendStorageCandidate(nextCandidate, remaining, storageSetpoints, debugStructured);
+      if (spent === null || nextCandidate.unconfirmedRelief) continue;
+      remaining -= spent.reliefKw;
+      creditedKw.set(nextCandidate.id, spent.chargeReliefKw);
+      continue;
+    }
     const spend = resolveCandidateSpend(nextCandidate, remaining);
     shedSet.add(nextCandidate.id);
     shedReasons.set(nextCandidate.id, reason);
@@ -67,7 +81,7 @@ export function selectShedDevices(
     creditedKw.set(nextCandidate.id, spend.reliefKw);
   }
   return {
-    shedSet, shedReasons, shedStepTargets, creditedKw,
+    shedSet, shedReasons, shedStepTargets, storageSetpoints, creditedKw,
   };
 }
 
@@ -76,8 +90,43 @@ export type ShedSelection = {
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
   shedStepTargets: Map<string, string>;
+  storageSetpoints: Map<string, StorageSetpoint>;
   creditedKw: Map<string, number>;
 };
+
+/**
+ * Spend a battery for what is still open: its setpoint joins
+ * `storageSetpoints`, or nothing when it could not visibly answer what is left.
+ * An unconfirmed battery PELS already holds is held where it is: asking a
+ * battery that does not follow for more would be one more write per reading
+ * for relief nobody tracks.
+ */
+function spendStorageCandidate(
+  candidate: StorageShedCandidate,
+  remainingKw: number,
+  storageSetpoints: Map<string, StorageSetpoint>,
+  debugStructured: StructuredDebugEmitter | undefined,
+): ReturnType<typeof resolveStorageSpend> {
+  const banked = !candidate.unconfirmedRelief;
+  if (!banked && candidate.hold.kind === 'limit') {
+    storageSetpoints.set(candidate.id, { setpointW: candidate.hold.setpointW, banked });
+    return null;
+  }
+  const spend = resolveStorageSpend(candidate, remainingKw);
+  if (spend === null) return null;
+  storageSetpoints.set(candidate.id, { setpointW: spend.setpointW, banked });
+  debugStructured?.({
+    event: 'plan_shed_storage_limit',
+    deviceId: candidate.id,
+    deviceName: candidate.name,
+    fromSignedW: candidate.baseW,
+    setpointW: spend.setpointW,
+    reliefKw: spend.reliefKw,
+    chargeReliefKw: spend.chargeReliefKw,
+    banked,
+  });
+  return spend;
+}
 
 /** What this candidate is taken FOR: how much it frees, and where it parks. */
 type CandidateSpend = {
@@ -92,7 +141,7 @@ type CandidateSpend = {
   toStepId?: string;
 };
 
-function resolveCandidateSpend(candidate: ShedCandidate, remainingKw: number): CandidateSpend {
+function resolveCandidateSpend(candidate: LoadShedCandidate, remainingKw: number): CandidateSpend {
   if (candidate.kind !== 'stepped') return { reliefKw: candidate.effectivePower };
   const rung = chooseShedRung(candidate.rungs, remainingKw);
   if (!rung) return { reliefKw: candidate.effectivePower };
@@ -104,7 +153,7 @@ function shouldStopSelection(shedAllCandidates: boolean, remaining: number): boo
 }
 
 function logSelectedCandidate(
-  candidate: ShedCandidate,
+  candidate: LoadShedCandidate,
   spend: CandidateSpend,
   debugStructured?: StructuredDebugEmitter,
 ): void {

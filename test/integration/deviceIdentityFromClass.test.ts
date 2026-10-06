@@ -141,6 +141,7 @@ const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const emptyRestoreResult: RestorePlanResult = {
   planDevices: [],
   restoredThisCycle: new Set<string>(),
+  storageHandedBack: new Set<string>(),
   headroomReserves: [],
   availableHeadroom: 8,
   capacityAvailableKw: 8,

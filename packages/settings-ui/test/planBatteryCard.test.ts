@@ -6,6 +6,7 @@ import {
   buildSettingsUiPlanHomeBattery,
   type HomeBatteryCard,
 } from '../../../lib/plan/batteryStatusReadModel.ts';
+import type { StorageHold } from '../../../lib/plan/planTypes.ts';
 import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
 // A home battery's Overview card: the state word and its power on one row,
 // then the charge level, then why PELS holds it. Vocabulary source:
@@ -25,7 +26,7 @@ const battery = (signedW: number, percent: number): HomeBatteryCard => ({
   level: { kind: 'observed', percent },
 });
 
-const batteryDevice = (card: HomeBatteryCard, hold: 'none' | 'relief'): PlanDeviceSnapshot => ({
+const batteryDevice = (card: HomeBatteryCard, hold: StorageHold): PlanDeviceSnapshot => ({
   ...uiDeviceFixture({ id: 'battery-1', name: 'Sessy battery', controllable: false }),
   status: buildHomeBatteryStatus(card, hold, true, false),
   homeBattery: buildSettingsUiPlanHomeBattery(card, hold),
@@ -41,7 +42,7 @@ const renderCard = (dev: PlanDeviceSnapshot): HTMLDivElement => {
 
 describe('home battery Overview card', () => {
   it('shows the state and power, then the charge level, then the reason', () => {
-    const card = renderCard(batteryDevice(battery(-2400, 64), 'relief'));
+    const card = renderCard(batteryDevice(battery(-2400, 64), { kind: 'relief' }));
     const lines = [...card.querySelectorAll('.plan-card__state-row > span, .plan-card__secondary-line, p')].map((el) => el.textContent);
     expect(lines).toEqual([
       'Supplying',
@@ -51,8 +52,19 @@ describe('home battery Overview card', () => {
     ]);
   });
 
+  it('shows a capped charge as Limited · Charging, with the charge it waits for', () => {
+    const card = renderCard(batteryDevice(battery(600, 52), { kind: 'charge_limit', heldBackKw: 2.4 }));
+    const lines = [...card.querySelectorAll('.plan-card__state-row > span, .plan-card__secondary-line, p')].map((el) => el.textContent);
+    expect(lines).toEqual([
+      'Limited · Charging',
+      '0.6 kW',
+      '52 % charged',
+      'Waiting to charge faster · 2.4 kW more needed',
+    ]);
+  });
+
   it('adds what a battery in its own mode is doing to the charge level', () => {
-    const card = renderCard(batteryDevice(battery(900, 71), 'none'));
+    const card = renderCard(batteryDevice(battery(900, 71), { kind: 'none' }));
     expect(card.querySelector('.plan-card__secondary-line')?.textContent).toBe('71 % charged · charging');
   });
 
