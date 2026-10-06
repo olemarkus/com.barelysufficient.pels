@@ -328,10 +328,25 @@ export class PlanEngineState {
    *
    * Read here rather than off the plan device on purpose: a cold, stale, or
    * absent plan must not resume a device the user turned off. It is backed by
-   * persistence, so the guard also holds across a restart. Assigned by the
-   * wiring for main and by each sub-home bundle.
+   * persistence, so the guard also holds across a restart. The stored read is
+   * assigned by the wiring for main and by each sub-home bundle.
+   *
+   * The one exception is a smart task: a device whose task books the latest
+   * build's hour is not held (`externalOffHoldLiftedIds`).
    */
-  readonly isExternalOffHeld: (deviceId: string) => boolean;
+  readonly isExternalOffHeld = (deviceId: string): boolean => (
+    this.isStoredExternalOffHeld(deviceId) && !this.externalOffHoldLiftedIds.has(deviceId)
+  );
+
+  private readonly isStoredExternalOffHeld: (deviceId: string) => boolean;
+
+  /**
+   * Held devices the latest build's smart task drives this hour: a task wins
+   * over "Leave off until turned on again" (owner ruling, 2026-10-06). Replaced
+   * wholesale every build, so the lift ends with the booked hour; the stored
+   * hold itself ends only when the device is observed on.
+   */
+  externalOffHoldLiftedIds: ReadonlySet<string> = new Set();
 
 
   /**
@@ -506,7 +521,7 @@ export class PlanEngineState {
     isExternalOffHeld: (deviceId: string) => boolean,
   ) {
     this.appStartedAtMs = nowTs;
-    this.isExternalOffHeld = isExternalOffHeld;
+    this.isStoredExternalOffHeld = isExternalOffHeld;
   }
 
   /** Record a stepped-load keep-invariant shed block for a device. */

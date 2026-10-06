@@ -23,6 +23,7 @@ export function buildIdentityDecorationBundle(devices: PlanInputDevice[]): Defer
     admittedDeviceIds: new Set<string>(),
     drivingDeviceIds: new Set<string>(),
     lentAuthorityDeviceIds: new Set<string>(),
+    externalOffHoldLiftedDeviceIds: new Set<string>(),
   };
 }
 

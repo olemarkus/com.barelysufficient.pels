@@ -1,192 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { applyDeferredAdmissionToInput } from '../../lib/objectives/deferredObjectives/admission';
-import { resolveDiagnosticReasonCode } from '../../lib/objectives/deferredObjectives/activePlanDiagnosticReason';
-import { resolveFloorShortfallCause } from '../../lib/objectives/deferredObjectives/floorShortfallCause';
 import {
   resolveEffectivePlanStatus,
   resolveSmartTaskListStatus,
   resolveSmartTaskLiveCause,
-  resolveSmartTaskWidgetDetailCopy,
 } from '../../packages/shared-domain/src/deadlineLabels';
 import { withBinaryDiscriminant, type PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DeferredAdmissionDecision } from '../../lib/objectives/deferredObjectives/admission';
-import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 
-// An explicit off action beats a smart task, but the deadline consequence has to
-// stay visible: the task reports risk with a reason naming the device, rather
-// than claiming it is on track because future hours are still scheduled.
-
-describe('external-off hold — smart-task cause and copy', () => {
-  it('never disturbs the frozen shortfall cause', () => {
-    // The hold is transient — the user can turn the device on at any moment —
-    // and this value is frozen into a committed revision. The overlay therefore
-    // travels on its OWN field and leaves the planner's verdict, and the cause
-    // derived from it, completely alone.
-    expect(resolveFloorShortfallCause('limited_by_daily_budget')).toBe('budget');
-    expect(resolveFloorShortfallCause('objective_device_left_off')).toBe('none');
-  });
-
-  it('leaves the existing shortfall causes untouched', () => {
-    expect(resolveFloorShortfallCause('limited_by_daily_budget')).toBe('budget');
-    expect(resolveFloorShortfallCause('target_cannot_be_met')).toBe('time_capacity');
-    expect(resolveFloorShortfallCause(null)).toBe('none');
-  });
-
-  it('names the device rather than the budget or the clock', () => {
-    const copy = resolveSmartTaskWidgetDetailCopy({
-      statusId: 'at_risk',
-      diagnosticReasonCode: 'objective_device_left_off',
-    });
-    expect(copy.whyLabel).toBe('Device is staying off until turned on again.');
-    // No recourse hint: the fix is turning the device on, which the reason
-    // already says — a budget/cap hint here would send the user the wrong way.
-    expect(copy.recourseHint).toBeNull();
-  });
-
-  it('still disambiguates budget vs time when the device is not held', () => {
-    expect(resolveSmartTaskWidgetDetailCopy({
-      statusId: 'at_risk',
-      floorShortfallCause: 'budget',
-    }).whyLabel).toContain('daily budget');
-    expect(resolveSmartTaskWidgetDetailCopy({
-      statusId: 'at_risk',
-      floorShortfallCause: 'time_capacity',
-    }).whyLabel).toContain('Limited time');
-  });
-});
-
-// The status downgrade reaches only the LIVE diagnostic. Everything the user
-// actually looks at — the settings list, the widget — reads the PERSISTED active
-// plan, whose `planStatus` is not rewritten until the next `:58` settle. Without
-// the per-cycle reason code the chip would keep saying "On track" for most of an
-// hour, then keep saying "At risk" for most of an hour after the device is
-// turned back on.
-describe('external-off hold — the persisted plan, not just the live diagnostic', () => {
-  const cachedOnTrackPlan = {
-    pending: false,
-    pendingReason: undefined,
-    planStatus: 'on_track' as const,
-    firstActionAtMs: null,
-    nowMs: 1_000_000,
-    carChargeLimit: null,
-  };
-  const leftOff = {
-    diagnosticReasonCode: 'objective_device_left_off' as const, liveCompletion: { kind: 'unavailable' as const },
-    targetValue: 55,
-  };
-
-  it('routes the cause onto the plan every cycle', () => {
-    expect(resolveDiagnosticReasonCode({
-      externalOffHoldActive: true,
-    } as DeferredObjectiveDiagnostic)).toBe('objective_device_left_off');
-  });
-
-  // A device held off in its claimed hour is `uncontrolled` to the delivery
-  // owner, and its evidence may carry a device-side cause from before the hold.
-  // The owner's off action is still the cause to name.
-  it.each([
-    'objective_not_accepting_energy', 'objective_device_limit', 'objective_device_schedule',
-    'planned_with_margin',
-  ] as const)('names the off action ahead of a %s diagnostic in a claimed hour', (reasonCode) => {
-    expect(resolveDiagnosticReasonCode({
-      externalOffHoldActive: true, reasonCode,
-    } as DeferredObjectiveDiagnostic)).toBe('objective_device_left_off');
-  });
-
-  it('names the cause even when the reported status does not change', () => {
-    // A budget-bound at-risk task whose device is then switched off must stop
-    // blaming the budget: the status stays At risk, but the recourse changes
-    // completely, and admission has already dropped its rescue claims.
-    expect(resolveEffectivePlanStatus('at_risk', leftOff)).toBe('at_risk');
-    expect(resolveSmartTaskWidgetDetailCopy({
-      statusId: 'at_risk',
-      diagnosticReasonCode: 'objective_device_left_off',
-      floorShortfallCause: 'budget',
-    }).whyLabel).toBe('Device is staying off until turned on again.');
-  });
-
-  it('keeps the committed verdict itself untouched, so nothing outlives the hold', () => {
-    // `resolveEffectivePlanStatus` overlays; it never rewrites. The persisted
-    // `planStatus` stays the trajectory truth, which is what makes recovery
-    // immediate instead of stranded until the next settle.
-    expect(resolveEffectivePlanStatus('on_track', leftOff)).toBe('at_risk');
-    expect(resolveEffectivePlanStatus('on_track', { liveCompletion: { kind: 'unavailable' }, targetValue: 55 }))
-      .toBe('on_track');
-    expect(resolveEffectivePlanStatus('satisfied', leftOff)).toBe('satisfied');
-    expect(resolveEffectivePlanStatus('cannot_meet', leftOff)).toBe('cannot_meet');
-  });
-
-  it('overrides a cached on-track verdict rather than waiting for the settle', () => {
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' },
-      ...cachedOnTrackPlan,
-      diagnosticReasonCode: 'objective_device_left_off',
-    })).toBe('at_risk');
-  });
-
-  // A browser can read a stored plan before the runtime rewrites it, so the
-  // retired v3.9.3 code must be inert in every resolver too.
-  it('ignores the retired objective_delivery_restricted code on every surface', () => {
-    const retired = 'objective_delivery_restricted' as never;
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' }, ...cachedOnTrackPlan, diagnosticReasonCode: retired,
-    })).toBe('on_track');
-    expect(resolveEffectivePlanStatus('on_track', {
-      liveCompletion: { kind: 'unavailable' }, targetValue: 55, diagnosticReasonCode: retired,
-    })).toBe('on_track');
-    expect(resolveSmartTaskLiveCause(retired, null, 'none')).toBeNull();
-  });
-
-  it('returns to on track the moment the device is turned on again', () => {
-    // The recorder clears the code on the same per-cycle refresh, so the chip
-    // recovers without waiting for a replan.
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' },
-      ...cachedOnTrackPlan,
-      diagnosticReasonCode: undefined,
-    })).toBe('on_track');
-  });
-
-  it('leaves a finished or already-failed task alone', () => {
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' },
-      ...cachedOnTrackPlan,
-      planStatus: 'satisfied',
-      diagnosticReasonCode: 'objective_device_left_off',
-    })).toBe('satisfied');
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' },
-      ...cachedOnTrackPlan,
-      planStatus: 'cannot_meet',
-      diagnosticReasonCode: 'objective_device_left_off',
-    })).toBe('cannot_meet');
-  });
-
-  it('keeps unplugged as the more immediate state for an EV', () => {
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' },
-      ...cachedOnTrackPlan,
-      diagnosticReasonCode: 'objective_invalid_session',
-    })).toBe('paused_unplugged');
-  });
-
-  it('explains the risk with the device, not the budget or the clock', () => {
-    // Reached via the live code alone: `floorShortfallCause` is settle-time and
-    // is still `budget`/undefined at this point.
-    expect(resolveSmartTaskWidgetDetailCopy({
-      statusId: 'at_risk',
-      diagnosticReasonCode: 'objective_device_left_off',
-    })).toEqual({
-      whyLabel: 'Device is staying off until turned on again.',
-      recourseHint: null,
-    });
-  });
-});
-
-// A held device will not start, so anything claimed on its behalf is spent on a
-// device that cannot use it — and every one of those claims costs OTHER devices.
-describe('external-off hold — no rescue claims for a device that will not start', () => {
+// "Leave off until turned on again" against a smart task: the task wins (owner
+// ruling, 2026-10-06). An hour the task books ends the hold; an hour it does not
+// book leaves the hold alone, since both want the device off.
+describe('external-off hold — a booked smart-task hour ends it', () => {
   const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => (
     withBinaryDiscriminant(withFixtureResidualKw({
       id: 'heater-1',
@@ -205,26 +31,66 @@ describe('external-off hold — no rescue claims for a device that will not star
     engageBoost: true,
     reservesStartupPower: true,
   };
+  const idle: DeferredAdmissionDecision = { kind: 'idle', budgetExempt: false };
 
-  const admit = (device: PlanInputDevice): PlanInputDevice => (
-    applyDeferredAdmissionToInput([device], new Map([[device.id, plannedRescue]])).devices[0]!
+  const admit = (device: PlanInputDevice, decision: DeferredAdmissionDecision) => (
+    applyDeferredAdmissionToInput([device], new Map([[device.id, decision]]))
   );
 
-  it('drops every claim while the hold is active', () => {
-    const device = admit(buildDevice({ externalOffHoldActive: true }));
-    // `reservesStartupPower` is the costly one: it holds available power out of every
-    // lower-priority device's reach on behalf of a device that will not run.
-    expect(device.reservesStartupPower).toBeUndefined();
-    expect(device.forceBoostActive).toBeUndefined();
-    expect(device.budgetExempt).toBeUndefined();
-    expect(device.control.commandAuthority).toBe(false);
-  });
-
-  it('control case: the same task still claims what it needs when nothing is held', () => {
-    const device = admit(buildDevice());
+  it('ends the hold and claims what the task needs in a booked hour', () => {
+    const admission = admit(buildDevice({ externalOffHoldActive: true }), plannedRescue);
+    const device = admission.devices[0]!;
+    expect(admission.externalOffHoldLiftedDeviceIds).toEqual(new Set(['heater-1']));
+    expect(device.externalOffHoldActive).toBeUndefined();
     expect(device.reservesStartupPower).toBe(true);
     expect(device.forceBoostActive).toBe(true);
     expect(device.budgetExempt).toBe(true);
     expect(device.control.commandAuthority).toBe(true);
+  });
+
+  it('claims the same for a device that was never held', () => {
+    const admission = admit(buildDevice(), plannedRescue);
+    const device = admission.devices[0]!;
+    expect(admission.externalOffHoldLiftedDeviceIds.size).toBe(0);
+    expect(device.reservesStartupPower).toBe(true);
+    expect(device.forceBoostActive).toBe(true);
+    expect(device.budgetExempt).toBe(true);
+    expect(device.control.commandAuthority).toBe(true);
+  });
+
+  it('leaves the hold in place in an hour the task does not book', () => {
+    const admission = admit(buildDevice({ externalOffHoldActive: true }), idle);
+    const device = admission.devices[0]!;
+    expect(admission.externalOffHoldLiftedDeviceIds.size).toBe(0);
+    expect(device.externalOffHoldActive).toBe(true);
+    // Already off by its owner's hand: the task lends no authority to release it.
+    expect(device.control.commandAuthority).toBe(false);
+    expect(admission.lentAuthorityDeviceIds.size).toBe(0);
+  });
+});
+
+// Earlier builds persisted `objective_device_left_off` while the hold was on.
+// A booked hour now ends the hold, so it is no risk to the task: the stored code
+// is dropped on load (`deferredObjectiveActivePlan.test.ts`) and inert in every
+// resolver a browser may reach first.
+describe('external-off hold — the retired objective_device_left_off code', () => {
+  const retired = 'objective_device_left_off' as never;
+  const cachedOnTrackPlan = {
+    pending: false,
+    pendingReason: undefined,
+    planStatus: 'on_track' as const,
+    firstActionAtMs: null,
+    nowMs: 1_000_000,
+    carChargeLimit: null,
+  };
+
+  it('is ignored by every resolver', () => {
+    expect(resolveSmartTaskListStatus({
+      liveCompletion: { kind: 'unavailable' }, ...cachedOnTrackPlan, diagnosticReasonCode: retired,
+    })).toBe('on_track');
+    expect(resolveEffectivePlanStatus('on_track', {
+      liveCompletion: { kind: 'unavailable' }, targetValue: 55, diagnosticReasonCode: retired,
+    })).toBe('on_track');
+    expect(resolveSmartTaskLiveCause(retired, null, 'none')).toBeNull();
   });
 });

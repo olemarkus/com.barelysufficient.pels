@@ -69,9 +69,9 @@ cannot see these. Everything else is recorded as evidence only:
 - `control_pending` is a settle in progress.
 - `control_failed` is a per-tick executor fact with no hold. A failure that
   persists costs progress, which the next settle re-plans against.
-- `uncontrolled` is either the owner's "Leave off until turned on again", which
-  reaches every surface as `objective_device_left_off` from the diagnostic
-  itself (and outranks the delivery codes), or a PELS policy hold the plan owns.
+- `uncontrolled` is a hold the plan owns: a PELS policy hold, or the owner's
+  "Leave off until turned on again" outside a booked hour. A booked hour ends
+  that hold, so it is never a risk to the task.
 
 The surfaces read the codes from the active plan through
 `resolveEffectivePlanStatus` and explain them through `resolveSmartTaskLiveCause`
@@ -83,8 +83,9 @@ short of it. A car unplugged before it reached that limit is just unplugged
 managed) and a pending plan outrank every overlay.
 
 v3.9.3 also persisted `objective_delivery_restricted` for capacity, budget and
-priority limiting. The active-plan loader drops it (`activePlanSettings.ts`), and
-the resolvers ignore it if a browser reads a stored plan first.
+priority limiting, and earlier builds persisted `objective_device_left_off` for
+the hold. The active-plan loader drops both (`activePlanSettings.ts`), and the
+resolvers ignore them if a browser reads a stored plan first.
 
 ## Recorded explanations
 

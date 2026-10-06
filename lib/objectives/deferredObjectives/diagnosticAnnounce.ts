@@ -56,9 +56,8 @@ export type DeferredObjectiveAnnounce = {
 };
 
 // Bits the shared payload carries on BOTH arms, each moving independently of the
-// cause — so suppressing on the cause alone would hide the owner turning the
-// device off outside PELS, a rescue permission engaging, or the live step ladder
-// vanishing, behind an unchanged reason code.
+// cause — so suppressing on the cause alone would hide a rescue permission
+// engaging, or the live step ladder vanishing, behind an unchanged reason code.
 //
 // `liveStepsUnavailable` is the frozen-serve marker
 // (`lib/objectives/deferredObjectives/AGENTS.md` § "The step-ladder gap is the
@@ -67,7 +66,6 @@ export type DeferredObjectiveAnnounce = {
 // `null`, so a ladder gap that opens and closes inside one heartbeat would emit
 // at neither edge — defeating the marker's whole purpose.
 const sharedPayloadSignature = (diagnostic: DeferredObjectiveDiagnostic): string => [
-  diagnostic.externalOffHoldActive === true ? 'hold' : '-',
   diagnostic.budgetExemptApplied === true ? 'budget' : '-',
   diagnostic.limitLowerPriorityApplied === true ? 'limit' : '-',
   diagnostic.pauseLowerPriorityApplied === true ? 'pause' : '-',

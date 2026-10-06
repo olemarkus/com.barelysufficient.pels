@@ -27,7 +27,6 @@ import {
 } from '../../lib/plan/restore/devices';
 import { applyOffStateReason } from '../../lib/plan/planOffStateReason';
 import {
-  isDeferredRestoreBlockedReason,
   resolveStarvationSuppressionSemantics,
 } from '../../lib/planContract/planDecisionSemantics';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -125,10 +124,6 @@ describe('external-off hold — plan reason', () => {
 });
 
 describe('external-off hold — plan contract classification', () => {
-  it('blocks a smart-task binary restore from lifting the hold', () => {
-    expect(isDeferredRestoreBlockedReason({ code: PLAN_REASON_CODES.externalOffHold })).toBe(true);
-  });
-
   it('is not classified as starvation counting or a starvation pause', () => {
     expect(resolveStarvationSuppressionSemantics({ code: PLAN_REASON_CODES.externalOffHold }))
       .toEqual({ state: 'none', countingCause: null, pauseReason: null });

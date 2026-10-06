@@ -171,6 +171,12 @@ it would set anyway, even while it is leaving the device off; only **Keep the
 new temperature** (under *When the temperature changes outside PELS*) stops
 that.
 
+A smart task wins over this setting. In the hours the task books, PELS can turn
+the device on for it when there is available power, and once the device is on, the
+hold has ended: it is back under normal PELS control. In the hours the task does not book, the device stays off.
+Turning the device off during a booked hour does not stop the task; PELS can turn it
+back on. To keep the device off, remove the task with the **Clear smart task** Flow card.
+
 A Flow that turns the device off counts as turning it off elsewhere. That
 matters if you book hours with Flows: when the Flow that ends a booked hour turns
 the device off, PELS leaves it off, and turning **Power-limit control** back on
@@ -183,7 +189,7 @@ control** off, since both stop PELS resuming a device:
 | | Power-limit control off | Leave off until turned on again |
 | --- | --- | --- |
 | May PELS limit the device? | No | Yes |
-| May PELS resume it? | No, until you switch control back on | Yes, except while it has been switched off outside PELS |
+| May PELS resume it? | No, until you switch control back on | Yes, except while it has been switched off outside PELS, unless a smart task books the hour |
 | How does it go back to normal? | Re-enable Power-limit control | Turn the device on |
 | What it is for | Handing the device to another automation entirely | A temporary override, by you or another automation |
 

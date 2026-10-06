@@ -71,6 +71,7 @@ import { PlanMaterializationStages } from './planBuilderMaterialization';
 import type { RestorePlanResult } from './restore';
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import { incPerfCounter } from '../utils/perfCounters';
 import { resolveDailySoftLimitBucket } from './planDailyBudgetWindow';
 import {
@@ -123,6 +124,18 @@ export class PlanBuilder {
 
   private get powerTracker(): PowerTrackerState {
     return this.deps.getPowerTracker();
+  }
+
+  // Records the held devices a smart task drives this hour on the engine state,
+  // where the executor's hold gate reads them (`PlanEngineState.isExternalOffHeld`).
+  private decorateDeferredObjectives(
+    devices: PlanInputDevice[], dailyBudgetSnapshot: DailyBudgetUiPayload | null, nowTs: number,
+  ): DeferredDecorationBundle {
+    const decoration = trackPlanStage('plan_deferred_objective_observe_ms', () => (
+      this.deps.decorateDeferredObjectives({ devices, dailyBudgetSnapshot, nowTs })
+    ));
+    this.state.externalOffHoldLiftedIds = decoration.externalOffHoldLiftedDeviceIds;
+    return decoration;
   }
 
   private get dailyBudgetSnapshot(): DailyBudgetUiPayload | null {
@@ -216,9 +229,7 @@ export class PlanBuilder {
     // lifecycle clock, not on this plan cycle. A home with no smart tasks binds
     // `decorateWithoutDeferredObjectives`, so the identity case arrives through
     // the seam like any other answer.
-    const decoration = trackPlanStage('plan_deferred_objective_observe_ms', () => (
-      this.deps.decorateDeferredObjectives({ devices, dailyBudgetSnapshot, nowTs })
-    ));
+    const decoration = this.decorateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs);
     const { admittedDevices } = decoration;
 
     // One reading per build, resolved by `lib/power` — pure: the silence

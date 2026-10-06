@@ -3964,88 +3964,6 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     return { ...params, activePlans: establishedPlans(deadlineAtMs) };
   };
 
-  it('marks an on_track task with the left-off cause without rewriting its status', () => {
-    // An explicit off action beats the task, but the task must not keep claiming
-    // it is on track just because future hours are still scheduled — those hours
-    // cannot run while the device stays off.
-    const [before] = buildDeferredObjectiveDiagnostics(onTrackParams());
-    expect(before?.externalOffHoldActive).toBeUndefined();
-
-    const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      ...onTrackParams(),
-      devices: [buildDevice({ externalOffHoldActive: true })],
-    });
-    expect(diagnostic?.externalOffHoldActive).toBe(true);
-    // The planner's own verdict is untouched: it is frozen into the committed
-    // revision (it resolves `floorShortfallCause`), so overwriting it would
-    // erase a budget-bound task's real cause the moment the hold spans a settle.
-    expect(diagnostic?.reasonCode).toBe(before?.reasonCode);
-    // `status` is what the recorder FREEZES into a committed revision at the
-    // settle. Rewriting it here would outlive the hold: turning the device back
-    // on clears the live cause, but the frozen verdict would keep every surface
-    // reporting risk for up to an hour. Consumers overlay it per cycle instead
-    // (`resolveEffectivePlanStatus`), which is live in both directions.
-    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
-    expect(diagnostic?.horizonPlan?.status).toBe('on_track');
-  });
-
-  it('carries the hold through a diagnostic data gap', () => {
-    // Stale temperature/SoC, capacity, or charge-step data degrades the live
-    // verdict to `unknown`. Dropping the flag there cleared the cause on the
-    // committed plan, so every surface reverted to the cached `on_track` while
-    // the device was still held off — and no status-change event fired, possibly
-    // for the whole outage. A data gap is not the user turning the device on.
-    const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      ...onTrackParams(),
-      // A stale SoC reading is one of the data gaps that degrades the live
-      // verdict; the committed plan and the hold are both unaffected by it.
-      devices: [buildDevice({
-        externalOffHoldActive: true,
-        stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS - 86_400_000, unavailable: 'not_reported' }),
-      })],
-    });
-    // Guard the guard: if this ever stops degrading the live verdict, the case
-    // is no longer being exercised and the assertion below means nothing.
-    expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBeUndefined();
-    expect(diagnostic?.externalOffHoldActive).toBe(true);
-  });
-
-  // Flagged independently by the runtime-reality lens and by Codex on #2182.
-  // An earlier revision suppressed this on `!isCommandableNow`, which is false
-  // for a merely unavailable device — so a thermostat the owner had turned off
-  // outside PELS would drop `externalOffHoldActive` on one flaky SDK read,
-  // `resolveDiagnosticReasonCode` would clear the persisted
-  // `objective_device_left_off`, and every surface would revert to a cached
-  // "On track" while the device was still held off. The suppression is scoped to
-  // the SESSION question, which is `false` for every non-EV device.
-  it('keeps the external-off hold on a non-EV device that is merely unavailable', () => {
-    const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      // `commandableNow: false` mirrors what the producer emits for an
-      // unavailable device — the exact state the earlier gate tripped on.
-      devices: [buildTemperatureDevice({
-        externalOffHoldActive: true, available: false, commandableNow: false,
-      })],
-      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
-      powerTracker: buildTemperaturePowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
-    });
-    expect(diagnostic?.externalOffHoldActive).toBe(true);
-  });
-
-  it('keeps the unplugged reason for a held charger that is also unplugged', () => {
-    // "Paused — unplugged" is the more immediate thing for the user to act on;
-    // the hold is still stored and reappears once the car is reconnected.
-    const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      ...onTrackParams(),
-      devices: [buildDevice({ externalOffHoldActive: true, evChargingState: 'plugged_out' })],
-    });
-    expect(diagnostic?.externalOffHoldActive).toBeUndefined();
-  });
-
   // Regression, prod 2026-08-19/20: an EV smart task on a charger with no car
   // plugged in reported `objective_progress_stale` — a READING problem — for two
   // full 10-hour task windows, 2354 log lines, and finalized `abandoned`. The
@@ -4201,9 +4119,9 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
     expect(emitted).toHaveLength(2);
   });
 
-  // The unavailable payload is not constant: the external-off hold moves
-  // independently of the cause, so suppressing on the cause alone would hide the
-  // owner turning the device off outside PELS behind an unchanged reason code.
+  // The unavailable payload is not constant: a rescue permission moves
+  // independently of the cause, so suppressing on the cause alone would hide it
+  // engaging behind an unchanged reason code.
   it('re-announces when a payload bit moves under an unchanged cause', () => {
     let announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
     const emitted: Record<string, unknown>[] = [];
@@ -4213,13 +4131,13 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
     announced = emitDeferredObjectiveDiagnostics({
       diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announced,
     });
-    const held = base.map((diagnostic) => ({ ...diagnostic, externalOffHoldActive: true as const }));
+    const exempt = base.map((diagnostic) => ({ ...diagnostic, budgetExemptApplied: true }));
     emitDeferredObjectiveDiagnostics({
-      diagnostics: held, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
+      diagnostics: exempt, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
     });
 
     expect(emitted).toHaveLength(2);
-    expect(emitted[1]?.externalOffHoldActive).toBe(true);
+    expect(emitted[1]?.budgetExemptApplied).toBe(true);
   });
 
   // Without this an all-night stall is one line at 22:00, and an operator cannot
@@ -4298,12 +4216,12 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
     announced = emitDeferredObjectiveDiagnostics({
       diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announced,
     });
-    const held = base.map((diagnostic) => ({ ...diagnostic, externalOffHoldActive: true as const }));
+    const exempt = base.map((diagnostic) => ({ ...diagnostic, budgetExemptApplied: true }));
     emitDeferredObjectiveDiagnostics({
-      diagnostics: held, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
+      diagnostics: exempt, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
     });
 
     expect(emitted).toHaveLength(2);
-    expect(emitted[1]?.externalOffHoldActive).toBe(true);
+    expect(emitted[1]?.budgetExemptApplied).toBe(true);
   });
 });

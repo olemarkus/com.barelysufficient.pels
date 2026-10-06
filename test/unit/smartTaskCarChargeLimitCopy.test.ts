@@ -249,11 +249,6 @@ describe('a known car limit below the target reads the same on every surface', (
     });
   });
 
-  it('lets a device the owner left off outrank the car limit', () => {
-    expect(resolveSmartTaskLiveCause('objective_device_left_off', stopped, 'none')?.why)
-      .toBe('Device is staying off until turned on again.');
-  });
-
   it('lets a confirmed stop outrank a limit the car has not reached', () => {
     const charging = resolveSmartTaskCarChargeLimit({ limitValue: 70, reached: false }, 80);
     expect(resolveSmartTaskLiveCause('objective_not_accepting_energy', charging, 'none')?.why)

@@ -58,7 +58,7 @@ export const resolveObjectiveProgressDirectionRead = (params: {
  * died silently once `toPlanDevice` began stripping the raw plug-state — tsc
  * saw a satisfied contract while an unplugged charger went a whole night
  * reported as a stale reading. Prefer a producer-resolved answer
- * (`objectiveSessionInactive`, `steppedLadderMissing`, `externalOffHoldActive`)
+ * (`objectiveSessionInactive`, `steppedLadderMissing`)
  * over a raw observed value, and never widen this type on the strength of a
  * comment upstream: check the producer.
  *
@@ -103,10 +103,6 @@ export type ObjectiveDeviceInput = {
   objectiveSessionInactive: boolean;
   /** Observer-resolved direction of temperature demand, attached at the objective boundary. */
   thermalDirection: ThermalDirection;
-  // Producer-resolved "Leave off until turned on again" posture: the user turned
-  // the device off outside PELS and asked PELS to respect that. Structurally
-  // assignable from `PlanInputDevice`, which carries the same flat bit.
-  externalOffHoldActive?: true;
   /**
    * Producer-resolved step-ladder gap, structurally assignable from
    * `PlanInputDevice`: `true` when the device is configured as a stepped load but

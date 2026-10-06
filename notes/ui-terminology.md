@@ -720,6 +720,7 @@ device again. Do not write copy that recommends the hold for Flow-booked hours;
 |---|---|
 | Power-limit control is off (disables the switch) | `Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.` |
 | The device has a temperature target (information only) | `This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.` |
+| The device has an active smart task (information only) | `This device has an active smart task. In its booked hours, PELS can turn the device on when there is available power, even after it was turned off elsewhere.` |
 
 The hold is the on/off axis only and says nothing about a setpoint
 (`notes/temperature-ownership.md`). The temperature hint exists because an
@@ -840,7 +841,6 @@ the device or in the car.
 
 | Cause (reason code) | Widget why-line | List card line | Hero reason line | Widget recourse |
 |---|---|---|---|---|
-| Leave off until turned on again (`objective_device_left_off`) | `Device is staying off until turned on again.` | `Device is staying off until turned on again` | `Device is staying off until turned on again.` | none |
 | Car's known charge limit below the target | see the section above | see above | see above | `Raise the car’s charge limit to reach the target.` |
 | Car stopped at its own limit, value unknown (`objective_device_limit`) | `Your car stopped at its own charge limit.` | `Car stopped at its own limit` | `Your car stopped at its own charge limit, below this smart task’s target. Raise the car’s charge limit to let it continue.` | `Raise the car’s charge limit to reach the target.` |
 | Car delaying charging (`objective_device_schedule`) | `Your car is delaying charging on its own schedule.` | `Car is delaying charging` | `Your car is delaying charging, for example on its own charging schedule or smart charging. Turn that off in the car so PELS can charge it before the deadline.` | `Turn off the car’s own charging schedule or smart charging.` |

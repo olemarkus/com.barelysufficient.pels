@@ -1,6 +1,7 @@
 // SDK-boundary e2e for "Leave off until turned on again": once a hold exists,
 // PELS must not turn the device back on — including across a restart, and
-// including the capacity-control-off force-ON lane.
+// including the capacity-control-off force-ON lane. The one exception is a smart
+// task: an hour it books ends the hold (owner ruling, 2026-10-06).
 //
 // Nothing internal is mocked. The hold and the opt-in enter as persisted Homey
 // settings (exactly the state a previous session would have left behind), the
@@ -19,6 +20,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  COMBINED_PRICES,
   EXTERNAL_OFF_HOLDS,
   PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
   OPERATING_MODE_SETTING,
@@ -32,6 +34,8 @@ const cap = (deviceId: string, capability: string) =>
 const DEVICE = 'water-heater';
 const LOAD_W = 2000;
 const HOLD_AT_MS = Date.UTC(2026, 6, 25, 11, 0, 0);
+const NOW_MS = Date.UTC(2026, 6, 25, 12, 0, 0);
+const HOUR_MS = 60 * 60 * 1000;
 
 const buildHeater = async () => {
   const device = new MockDevice(DEVICE, 'Water heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
@@ -99,7 +103,7 @@ describe('Leave off until turned on again (SDK-boundary e2e)', () => {
     vi.useFakeTimers({
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
-    vi.setSystemTime(Date.UTC(2026, 6, 25, 12, 0, 0));
+    vi.setSystemTime(NOW_MS);
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.flow._actionCardListeners = {};
@@ -181,5 +185,68 @@ describe('Leave off until turned on again (SDK-boundary e2e)', () => {
     await drainPending();
 
     expect(onoffPuts(putSpy)).not.toContain(true);
+  });
+
+  // 4 kWh by 14:00 on a 2 kW element needs every hour left, this one included.
+  const seedBookedSmartTask = () => {
+    mockHomeyInstance.settings.set(COMBINED_PRICES, {
+      version: 2,
+      days: {
+        '2026-07-25': {
+          hours: Array.from({ length: 24 }, (_, hour) => ({
+            startsAt: new Date(Date.UTC(2026, 6, 25, hour)).toISOString(),
+            total: 70,
+            isCheap: false,
+            isExpensive: false,
+          })),
+        },
+      },
+      avgPrice: 70,
+      lowThreshold: 60,
+      highThreshold: 80,
+      priceScheme: 'norway',
+      priceUnit: 'øre/kWh',
+    });
+    mockHomeyInstance.settings.set(`deferred_objective.${DEVICE}`, {
+      enabled: true,
+      kind: 'energy',
+      enforcement: 'soft',
+      targetEnergyKWh: 4,
+      deadlineAtMs: NOW_MS + 2 * HOUR_MS,
+    });
+  };
+  const holdKey = `${PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX}${DEVICE}`;
+
+  it('turns a held device on for an hour its smart task books, which ends the hold', async () => {
+    setMockDrivers({ driverA: new MockDriver('driverA', [await buildHeater()]) });
+    seedSettings({ optedIn: true, held: true });
+    seedBookedSmartTask();
+
+    const putSpy = await startApp();
+    await advancePolls(60);
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: true });
+    await advancePolls(6);
+    await drainPending();
+
+    expect(onoffPuts(putSpy)).toContain(true);
+    // Ended by the device being on, the way any hold ends.
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(holdKey);
+  });
+
+  it('keeps the hold through a booked hour in which PELS never turns the device on', async () => {
+    // A capacity dry run plans the hour but sends nothing. The hold must not be
+    // spent on an hour the device never ran in, or PELS would start it later
+    // as an ordinary device once the task is gone.
+    setMockDrivers({ driverA: new MockDriver('driverA', [await buildHeater()]) });
+    seedSettings({ optedIn: true, held: true });
+    seedBookedSmartTask();
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
+
+    const putSpy = await startApp();
+    await advancePolls(60);
+    await drainPending();
+
+    expect(onoffPuts(putSpy)).not.toContain(true);
+    expect(mockHomeyInstance.settings.getKeys()).toContain(holdKey);
   });
 });

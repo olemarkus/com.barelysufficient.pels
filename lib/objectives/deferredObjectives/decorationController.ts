@@ -100,6 +100,7 @@ export class DeferredObjectiveDecorationController {
       admittedDeviceIds: resolveAdmittedDeviceIds(decisions),
       drivingDeviceIds: buildDeferredDemandDeviceIds(decisions),
       lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,
+      externalOffHoldLiftedDeviceIds: admission.externalOffHoldLiftedDeviceIds,
     };
   }
 

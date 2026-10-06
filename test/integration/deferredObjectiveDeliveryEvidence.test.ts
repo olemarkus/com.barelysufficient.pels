@@ -422,24 +422,6 @@ describe('task delivery evidence at the device boundary', () => {
     expect(scenario.activePlan().diagnosticReasonCode).toBe('objective_not_accepting_energy');
   });
 
-  it('names the owner\'s off action for a device held off in its claimed hour', () => {
-    // "Leave off until turned on again" reaches the delivery owner as
-    // `uncontrolled`. The surfaces must still say the device is being left off,
-    // not report a generic delivery restriction or limited time.
-    const scenario = createScenario(claimedEnergySettings());
-    scenario.tick(START_MS, [relay(HIGH_ID, 2, START_MS)]);
-    scenario.setPlanDecision({ kind: 'uncontrolled' });
-    for (let minutes = 5; minutes <= 30; minutes += 5) {
-      const atMs = START_MS + minutes * MIN_MS;
-      scenario.tick(atMs, [{ ...relay(HIGH_ID, 0, atMs), externalOffHoldActive: true as const }]);
-    }
-    const plan = scenario.activePlan();
-    expect(plan.diagnosticReasonCode).toBe('objective_device_left_off');
-    expect(effectivePlanStatusOf(plan)).toBe('at_risk');
-    expect(resolveSmartTaskWidgetDetailCopy({ statusId: 'at_risk', diagnosticReasonCode: plan.diagnosticReasonCode }))
-      .toEqual({ whyLabel: 'Device is staying off until turned on again.', recourseHint: null });
-  });
-
   it('persists a relay cutoff cause across restart and misses without inventing capacity pressure', () => {
     const scenario = createScenario(energySettings());
     for (let minutes = 0; minutes <= 20; minutes += 5) {

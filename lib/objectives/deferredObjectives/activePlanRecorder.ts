@@ -428,8 +428,8 @@ export class DeferredObjectiveActivePlanRecorder {
       latest: revision,
     };
     // The live cause survives the reconstruction. Dropping it would publish an
-    // ordinary `on_track` first revision for a task whose device is already being
-    // left off — the Flow would report Waiting -> On track, the UI would show
+    // ordinary `on_track` first revision for a task whose device has already
+    // stopped taking power — the Flow would report Waiting -> On track, the UI would show
     // that false status until the next cycle, and that cycle would then fire a
     // second transition to At risk.
     const written = withCarChargeLimit(
