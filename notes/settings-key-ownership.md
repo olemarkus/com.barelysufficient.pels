@@ -84,6 +84,11 @@ Its reader rejects an invalid catalog and retains the last good preferences.
 `ModePriorityCatalog` keeps those preferences private and publishes complete orders
 for every known device and mode, including new devices and target-only modes.
 Consumers receive numeric priorities; they do not distinguish saved and filled ranks.
+Filled ranks are temporary: when a home's mode catalog reloads after a fresh read of
+this key, its owner (`lib/home/homeModeCatalog.ts`) persists a rank once for every
+managed device of that home that has none, after the ranked ones, in the order the
+fill already used. It never writes back a retained generation, and it waits until
+device ownership is settled.
 
 `mode_aliases` belongs to `packages/shared-domain/src/settings/modeAliases.ts`.
 Runtime and settings UI both lowercase alias keys and ignore malformed entries;

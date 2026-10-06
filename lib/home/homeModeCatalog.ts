@@ -209,7 +209,33 @@ const readCatalog = (
   };
 };
 
-const readMainCatalog = (settings: SettingsPort, previous: HomeModeCatalogSnapshot): HomeModeCatalogSnapshot => {
+/**
+ * Main's catalog read: the accepted snapshot, and how its priorities were read
+ * (`PrioritiesFreshness`). Only a fresh or never-written read may be written
+ * back: a retained one could be the empty boot default.
+ */
+type MainCatalogRead = { snapshot: HomeModeCatalogSnapshot; priorities: PrioritiesFreshness };
+
+/**
+ * How a home's priorities were read: from a stored value (`fresh`), as a key
+ * never written (`never_written`, a fresh read of no preferences), or retained
+ * from the previous generation because the key could not be read or did not
+ * parse (`retained`).
+ */
+type PrioritiesFreshness = 'fresh' | 'never_written' | 'retained';
+
+const readMainPriorities = (
+  read: ReturnType<typeof readHomeModeSetting>,
+  previous: ModePriorityCatalog,
+): { catalog: ModePriorityCatalog; freshness: MainCatalogRead['priorities'] } => {
+  if (read.state !== 'resolved') return { catalog: previous, freshness: 'retained' };
+  // A key never written is a fresh read of no preferences, not a failure.
+  if (read.value === undefined) return { catalog: new ModePriorityCatalog(), freshness: 'never_written' };
+  const parsed = readModePriorityCatalog(read.value);
+  return parsed === null ? { catalog: previous, freshness: 'retained' } : { catalog: parsed, freshness: 'fresh' };
+};
+
+const readMainCatalog = (settings: SettingsPort, previous: HomeModeCatalogSnapshot): MainCatalogRead => {
   const aliasesRead = readHomeModeSetting(settings, MODE_ALIASES);
   const prioritiesRead = readHomeModeSetting(settings, CAPACITY_PRIORITIES);
   const targetsRead = readHomeModeSetting(settings, MODE_DEVICE_TARGETS);
@@ -217,9 +243,9 @@ const readMainCatalog = (settings: SettingsPort, previous: HomeModeCatalogSnapsh
   const aliases = aliasesRead.state === 'resolved' && aliasesRead.value !== undefined
     ? readModeAliases(aliasesRead.value) ?? previous.aliases
     : previous.aliases;
-  const priorityCatalog = prioritiesRead.state === 'resolved' && prioritiesRead.value !== undefined
-    ? readModePriorityCatalog(prioritiesRead.value) ?? previous.modePriorityCatalog
-    : previous.modePriorityCatalog;
+  const { catalog: priorityCatalog, freshness: prioritiesFreshness } = readMainPriorities(
+    prioritiesRead, previous.modePriorityCatalog,
+  );
   const targets = targetsRead.state === 'resolved' && targetsRead.value !== undefined
     ? sanitizeModeDeviceTargets(targetsRead.value) ?? previous.targets
     : previous.targets;
@@ -239,9 +265,12 @@ const readMainCatalog = (settings: SettingsPort, previous: HomeModeCatalogSnapsh
     getAllModes('', priorityCatalog.resolve([], []), targets),
   );
   return {
-    ...catalog,
-    operatingMode,
-    priorities: priorityCatalog.resolveConfiguration({}, targets, operatingMode),
+    snapshot: {
+      ...catalog,
+      operatingMode,
+      priorities: priorityCatalog.resolveConfiguration({}, targets, operatingMode),
+    },
+    priorities: prioritiesFreshness,
   };
 };
 
@@ -379,8 +408,10 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     if (this.initializing) return;
     try {
       if (this.homeId === MAIN_HOME_ID) {
-        this.lastGood = readMainCatalog(this.settings, this.lastGood);
+        const read = readMainCatalog(this.settings, this.lastGood);
+        this.lastGood = read.snapshot;
         this.initialized = true;
+        if (read.priorities !== 'retained') this.persistMissingRanks(read.priorities);
       } else if (!this.reloadSubHome(allowPendingOwnershipGeneration)) {
         return;
       }
@@ -405,6 +436,7 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
         return false;
       }
       this.lastGood = next;
+      this.persistMissingRanks('fresh');
       return true;
     }
 
@@ -431,6 +463,53 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     } finally {
       this.initializing = false;
     }
+  }
+
+  /**
+   * Give every managed device of this home a persisted rank in each stored
+   * mode, once, instead of inferring its place on every read. Runs only after a
+   * fresh read of this home's priorities, never from a retained generation,
+   * and writes nothing when every device is already ranked, so the reload its
+   * own write triggers ends here.
+   *
+   * Only modes already stored in the priorities are filled. A mode present
+   * only in the targets is either mid-delete or mid-rename (the settings UI
+   * writes the priorities first) or not configured at all, and writing it
+   * would bring it back. A home whose priorities were never written is seeded
+   * from its configured (target) modes.
+   *
+   * Device ownership must be settled first, Main included: a rank written into
+   * the wrong home's catalog would outlive the boot window. Main first loads
+   * before membership exists and is reloaded once membership is published
+   * (`AppServiceWiring.initHomeMembership`); if ownership is not settled yet,
+   * the write waits for the next capacity settings change, and the inferred
+   * order applies until then.
+   */
+  private persistMissingRanks(freshness: Exclude<PrioritiesFreshness, 'retained'>): void {
+    const membership = this.getMembership();
+    if (!membership?.isOwnershipReady() || membership.hasPendingOwnershipGeneration()) return;
+    const ownsDevice = (deviceId: string): boolean => membership.getHomeIdForDevice(deviceId) === this.homeId;
+    const managedDevices = this.getManagedDevices();
+    const deviceIds = Object.keys(managedDevices).filter((deviceId) => (
+      managedDevices[deviceId] === true && ownsDevice(deviceId)
+    ));
+    const { operatingMode, targets } = this.lastGood;
+    const seedModes = freshness === 'never_written' ? Object.keys(targets) : [];
+    const next = this.lastGood.modePriorityCatalog.withMissingRanks(deviceIds, seedModes);
+    if (next === null) return;
+    try {
+      this.settings.set(homeScopedSettingsKey(CAPACITY_PRIORITIES, this.homeId), next);
+    } catch (error) {
+      this.getLogger()?.warn({ event: 'mode_priority_ranks_persist_failed', homeId: this.homeId, err: error });
+      return;
+    }
+    const modePriorityCatalog = new ModePriorityCatalog(next);
+    this.lastGood = {
+      ...this.lastGood,
+      modePriorityCatalog,
+      priorities: modePriorityCatalog.resolveConfiguration({}, targets, operatingMode),
+    };
+    this.getLogger()?.info({ event: 'mode_priority_ranks_persisted', homeId: this.homeId, modes: Object.keys(next) });
   }
 
   private logFailure(error?: unknown): void {

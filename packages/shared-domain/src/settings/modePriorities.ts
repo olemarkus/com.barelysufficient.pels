@@ -103,6 +103,26 @@ export class ModePriorityCatalog {
 
   modes(): readonly string[] { return Object.keys(this.preferences); }
 
+  /**
+   * The preferences with a rank appended for every device that has none in a
+   * mode, or `null` when every device is already ranked in every mode. Ranked
+   * devices keep their order; new devices go after them, in device-id order,
+   * which is the order `rankActiveDevicePriorities` already infers for them.
+   */
+  withMissingRanks(deviceIds: readonly string[], modes: readonly string[]): ModePriorities | null {
+    const sortedIds = [...new Set(deviceIds)].sort();
+    const allModes = [...new Set([...Object.keys(this.preferences), ...modes])];
+    const appended = allModes.map((mode) => {
+      const ranks = this.preferences[mode] ?? {};
+      const missing = sortedIds.filter((deviceId) => ranks[deviceId] === undefined);
+      const lastRank = Math.max(0, ...Object.values(ranks));
+      const added = Object.fromEntries(missing.map((deviceId, index) => [deviceId, lastRank + index + 1]));
+      return { mode, ranks: { ...ranks, ...added }, missingCount: missing.length };
+    });
+    if (appended.every(({ missingCount }) => missingCount === 0)) return null;
+    return Object.fromEntries(appended.map(({ mode, ranks }) => [mode, ranks]));
+  }
+
   getOrder(mode: string, deviceIds: readonly string[]): ModePriorityOrder {
     return createPriorityOrder(rankActiveDevicePriorities(
       deviceIds, (deviceId) => this.preferences[mode]?.[deviceId],
