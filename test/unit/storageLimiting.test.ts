@@ -12,6 +12,7 @@ import {
 } from '../../lib/plan/battery/storageRelief';
 import { resolveStorageHandBack } from '../../lib/plan/restore/devices';
 import type { StorageLeverState } from '../../lib/plan/planState';
+import type { StorageSurplusOffer } from '../../lib/plan/planSurplusAbsorb';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ShedCandidate, StorageShedCandidate } from '../../lib/plan/shedding/types';
 import type { ObservedStorageInput } from '../../packages/planner-types/src/planInputDevice';
@@ -21,6 +22,10 @@ import { buildMeasuredPower } from '../utils/planContextPowerFixture';
 import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
 
 const NOW = 10_000_000;
+/** No willing device, and the house short of its pace: nothing offered to the battery. */
+const NO_OFFERS: ReadonlyMap<string, StorageSurplusOffer> = new Map([
+  ['battery', { availableW: -5000, demandAbove: 'none', belowW: 0 }],
+]);
 
 const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice & { storage: ObservedStorageInput } => ({
   ...buildPlanInputDevice({
@@ -211,22 +216,21 @@ describe('an unconfirmed battery PELS already holds', () => {
     const held = lever({ setpointW: -1300, lastNeedAtMs: NOW - 40_000, increaseDecidedAtMs: NOW - 40_000 });
     const relief = applyStorageLimits(
       decideStorageRelief([device], buildMeasuredPower({ drawKw: 6, headroomKw: -2 }), { battery: held },
-        { leftoverW: -5000, deviceDemand: 'none' }, NOW),
+        NO_OFFERS, NOW),
       [device], new Map([['battery', { setpointW: -1300, banked: false }]]), NOW,
     );
     expect(relief.levers.battery).toMatchObject({ lastNeedAtMs: NOW - 40_000, creditBaseW: 1300 });
     const next = decideStorageRelief(
       [device], buildMeasuredPower({ drawKw: 6, headroomKw: -2 }), relief.levers,
-      { leftoverW: -5000, deviceDemand: 'none' }, NOW + 5_000,
+      NO_OFFERS, NOW + 5_000,
     );
     expect(next.shed.netCreditKw).toBe(0);
   });
 });
 
 describe('the limit hold and its credit', () => {
-  const NO_SURPLUS = { leftoverW: -5000, deviceDemand: 'none' as const };
   const held = (device: PlanInputDevice, levers: Record<string, StorageLeverState> = {}): StorageRelief => (
-    decideStorageRelief([device], buildMeasuredPower({ drawKw: 6, headroomKw: -2 }), levers, NO_SURPLUS, NOW)
+    decideStorageRelief([device], buildMeasuredPower({ drawKw: 6, headroomKw: -2 }), levers, NO_OFFERS, NOW)
   );
 
   it('turns the chosen setpoint into a limit hold, keeping the charge its own mode took', () => {
@@ -246,7 +250,7 @@ describe('the limit hold and its credit', () => {
     const limited = applyStorageLimits(held(device), [device], new Map([['battery', { setpointW: -1300, banked: true }]]), NOW);
     // Five seconds on the battery has not moved yet.
     const later = decideStorageRelief(
-      [device], buildMeasuredPower({ drawKw: 6, headroomKw: -2.3 }), limited.levers, NO_SURPLUS, NOW + 5_000,
+      [device], buildMeasuredPower({ drawKw: 6, headroomKw: -2.3 }), limited.levers, NO_OFFERS, NOW + 5_000,
     );
     expect(later.shed.netCreditKw).toBeCloseTo(1.3);
 
@@ -294,14 +298,14 @@ describe('the restore hand-back', () => {
     const idle = battery({ signedPowerW: 0, chargeCeilingW: 2500 });
     const relief = applyStorageLimits(
       decideStorageRelief([idle], buildMeasuredPower({ drawKw: 6, headroomKw: -2 }), {},
-        { leftoverW: -5000, deviceDemand: 'none' }, NOW),
+        NO_OFFERS, NOW),
       [idle], new Map([['battery', { setpointW: -1300, banked: true }]]), NOW,
     );
     expect(relief.levers.battery?.ownModeChargeW).toBe(2500);
     const charging = battery({ signedPowerW: 1500, chargeCeilingW: 2500 });
     const capped = applyStorageLimits(
       decideStorageRelief([charging], buildMeasuredPower({ drawKw: 6, headroomKw: -1 }), {},
-        { leftoverW: -5000, deviceDemand: 'none' }, NOW),
+        NO_OFFERS, NOW),
       [charging], new Map([['battery', { setpointW: 400, banked: true }]]), NOW,
     );
     expect(capped.levers.battery?.ownModeChargeW).toBe(1500);
@@ -311,7 +315,7 @@ describe('the restore hand-back', () => {
     const discharging = battery({ signedPowerW: -2000 });
     const relief = applyStorageLimits(
       decideStorageRelief([discharging], buildMeasuredPower({ drawKw: 6, headroomKw: -1 }), {},
-        { leftoverW: -5000, deviceDemand: 'none' }, NOW),
+        NO_OFFERS, NOW),
       [discharging], new Map([['battery', { setpointW: -2500, banked: true }]]), NOW,
     );
     expect(relief.levers.battery?.ownModeChargeW).toBe(0);
@@ -328,7 +332,7 @@ describe('the restore hand-back', () => {
     const device = battery({ signedPowerW: 0, claimHeld: true });
     const relief = decideStorageRelief(
       [device], buildMeasuredPower({ drawKw: 1, headroomKw: 4 }), { battery: lever() },
-      { leftoverW: -1000, deviceDemand: 'none' }, NOW,
+      NO_OFFERS, NOW,
     );
     const handedBack = applyStorageHandBacks(relief, new Set(['battery']));
 

@@ -17,7 +17,7 @@ import {
 } from '../../lib/plan/admission/surplusAbsorb';
 import { type PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
+import { buildPlanInputDevice, steppedProfile, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 
 const CHARGER_ID = 'charger';
@@ -59,7 +59,7 @@ const resolve = (params: {
     state: params.state,
     signedNetKw: params.signedNetKw,
     inferredSurplusKw: 0,
-    storageSurplusKw: 0,
+    storage: NO_STORAGE_SURPLUS,
     excludeIds: new Set(),
     getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
     debugStructured: params.debugStructured,

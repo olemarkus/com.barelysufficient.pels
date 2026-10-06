@@ -240,8 +240,9 @@ export type MissingStorageInput = {
  * this cluster (`lib/plan/battery/`), the shedding walk offers the battery as
  * its own ranked candidate (`lib/plan/shedding/storageCandidate.ts`), the
  * restore lane hands it back (`lib/plan/restore/storageHandBack.ts`), and the
- * builder reads the batteries' term in the surplus pool (`sumStorageSurplusW`):
- * the solar a battery stores that PELS can free, less its discharge.
+ * builder ranks the batteries in the surplus pool (`resolveStorageSurplus`):
+ * the solar a battery stores that PELS can free, at its priority, and its
+ * discharge, which is never surplus.
  *
  * State of charge is not here: the battery's own floor applies (owner ruling,
  * 2026-10-05), so nothing decides on it. A battery that stops delivering near

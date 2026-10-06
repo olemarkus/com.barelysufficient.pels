@@ -188,19 +188,13 @@ export function resolveSurplusTrackingPosture(params: {
 // The import counted is the one the surplus devices cause, hidden or not. A
 // battery whose own mode holds the meter at 0 W discharges to cover a device
 // the solar no longer funds, so the meter shows no import while stored energy
-// runs a surplus device. Its discharge (the negative part of the batteries'
-// term, `storageSurplusKw`) counts as import here, so the device yields
-// exactly as it would to visible import; the battery is not claimed for it.
-const isHardOffCondition = (signedNetKw: number, storageSurplusKw: number): boolean => (
-  signedNetKw + Math.max(0, -storageSurplusKw) > SURPLUS_ABSORB_HARD_OFF_IMPORT_KW
+// runs a surplus device. Its discharge (`StorageSurplus.dischargeW`) counts as
+// import here, so the device yields exactly as it would to visible import; the
+// battery is not claimed for it.
+const isHardOffCondition = (signedNetKw: number, storageDischargeKw: number): boolean => (
+  signedNetKw + storageDischargeKw > SURPLUS_ABSORB_HARD_OFF_IMPORT_KW
 );
 
-// Compose the whole-home surplus budget: measured export + the add-back of
-// already-absorbing willing devices + the home batteries' term (the solar they
-// store that PELS can free, less what they discharge) + the producer-resolved
-// inferred curtailed surplus (max(0, term)). Emits the `surplus_pool`
-// composition record — the only place the inferred term is distinguishable
-// from measured export (downstream sees only the flat pool).
 /**
  * Does this device's own draw belong back in the pool?
  *
@@ -231,44 +225,59 @@ const addsBackOwnDraw = (state: PlanEngineState, dev: MeteredPlanInputDevice): b
   return state.surplusTrackingByDevice[dev.id] !== undefined;
 };
 
-/** The pool, kW, and the part of it that is the willing devices' own add-back. */
-type SurplusPool = { poolKw: number; deviceAddBackKw: number };
+/**
+ * The pool, kW, the part of it that is the willing devices' own add-back, and
+ * the devices whose measured draw is in it.
+ */
+type SurplusPool = { poolKw: number; deviceAddBackKw: number; addedBackIds: ReadonlySet<string> };
 
+/**
+ * Compose the whole-home surplus budget: measured export + the add-back of
+ * already-absorbing willing devices + the charge the home batteries store that
+ * PELS can free, less what they discharge + the producer-resolved inferred
+ * curtailed surplus (max(0, term)). Every battery's charge is in it, so the
+ * consumers ranked above a battery may take that charge; the battery reserves
+ * it again at its own turn (`StorageSurplusClaimant.reservedW`). Emits the `surplus_pool` composition record — the
+ * only place the inferred term is distinguishable from measured export
+ * (downstream sees only the flat pool).
+ */
 function composeSurplusPool(params: {
   willing: MeteredPlanInputDevice[];
   state: PlanEngineState;
   signedNetKw: number;
-  // The home batteries' term (`sumStorageSurplusW`, decided by the builder):
-  // the solar they store that PELS can free, less what they discharge. The
-  // battery comes after every willing device, so its charge is surplus a
-  // device may still claim, and its discharge is stored energy, never surplus.
-  storageSurplusKw: number;
+  storage: StorageSurplus;
   inferredSurplusKw: number;
   debugStructured?: StructuredDebugEmitter;
 }): SurplusPool {
   let deviceAddBackKw = 0;
+  const addedBackIds = new Set<string>();
   for (const dev of params.willing) {
-    if (addsBackOwnDraw(params.state, dev)) deviceAddBackKw += positiveOrZero(dev.currentDrawKw);
+    if (!addsBackOwnDraw(params.state, dev)) continue;
+    deviceAddBackKw += positiveOrZero(dev.currentDrawKw);
+    addedBackIds.add(dev.id);
   }
   const measuredExportKw = -params.signedNetKw;
-  // No clamp: the producer already answers a finite kW >= 0 for every state it
-  // can be in, so re-guarding it here would be the hedging consumer AGENTS.md
-  // rules out. The four components therefore sum to poolKw by construction.
-  const { inferredSurplusKw, storageSurplusKw } = params;
-  const poolKw = measuredExportKw + deviceAddBackKw + storageSurplusKw + inferredSurplusKw;
+  const storageChargeW = params.storage.claimants.reduce((totalW, claimant) => totalW + claimant.chargeW, 0);
+  // No clamp: the producers already answer a finite kW >= 0 for every state
+  // they can be in, so re-guarding them here would be the hedging consumer
+  // AGENTS.md rules out. The components therefore sum to poolKw by construction.
+  const storageTermKw = (storageChargeW - params.storage.dischargeW) / 1000;
+  const { inferredSurplusKw } = params;
+  const poolKw = measuredExportKw + deviceAddBackKw + storageTermKw + inferredSurplusKw;
   // Only when there is something to allocate it to: a willing device, or a
   // battery whose charge is in it.
-  if (params.willing.length > 0 || storageSurplusKw > 0) {
+  if (params.willing.length > 0 || storageChargeW > 0) {
     params.debugStructured?.({
       event: 'surplus_pool',
       measuredExportKw,
       addBackKw: deviceAddBackKw,
-      storageSurplusKw,
+      storageChargeKw: storageChargeW / 1000,
+      storageDischargeKw: params.storage.dischargeW / 1000,
       inferredSurplusKw,
       poolKw,
     });
   }
-  return { poolKw, deviceAddBackKw };
+  return { poolKw, deviceAddBackKw, addedBackIds };
 }
 
 /**
@@ -278,8 +287,8 @@ function composeSurplusPool(params: {
 const couldFund = (availableKw: number, runKw: number): boolean => availableKw >= runKw + SURPLUS_ABSORB_RESERVE_KW;
 
 /**
- * What a willing device wants of the surplus this cycle, as the home
- * battery's claim reads it (`battery/storageRelief.ts`):
+ * What a willing device wants of the surplus this cycle, as a home battery
+ * ranked below it reads it (`battery/storageRelief.ts`):
  *
  * - `running` — it runs on surplus and draws, and the pool it was offered
  *   covers that draw. Its draw is measured, so it is already out of the export.
@@ -312,30 +321,89 @@ const waitingWant = (availableKw: number, runKw: number): SurplusWant => (
 );
 
 /**
- * The strongest demand the willing devices put on a home battery this cycle:
- * a device `waiting` for power its charge could free, else one `running` on
- * surplus, else `none`.
+ * The strongest demand the devices ranked above a home battery put on it this
+ * cycle: a device `waiting` for power its charge could free, else one
+ * `running` on surplus, else `none`.
  */
 export type SurplusDemand = SurplusWant['kind'];
 
 const DEMAND_RANK: Readonly<Record<SurplusDemand, number>> = { none: 0, running: 1, waiting: 2 };
 
 /**
- * What the surplus allocator leaves for the home batteries
- * (`battery/storageRelief.ts`): devices first, then the battery, then export.
+ * A home battery as the allocator ranks it: an ordinary surplus consumer at
+ * its own place in the priority order (owner ruling, 2026-10-06). Resolved by
+ * the builder (`resolveStorageSurplus`, `battery/storageRelief.ts`), so this
+ * allocator reads no battery. Only a battery PELS may claim is one: Managed
+ * on, readable, and drivable.
  */
-export type SurplusLeftover = {
+export type StorageSurplusClaimant = {
+  deviceId: string;
+  /** Its place in the priority order (`1` is highest), as a device's. */
+  priority: number;
   /**
-   * What the batteries may store, W: measured export, plus the batteries' term
-   * (`sumStorageSurplusW`), plus any inferred curtailed production, less the
-   * smallest runnable step of every `waiting` device. A running device's
-   * measured draw is already out of the export; a reservation for a device
-   * that draws nothing is never taken from the battery. Negative when the
-   * waiting devices outrun it.
+   * The charge it stores that PELS can free, W: added back into the pool for
+   * the consumers ranked above it.
    */
-  leftoverW: number;
-  deviceDemand: SurplusDemand;
+  chargeW: number;
+  /**
+   * The charge it keeps at its own turn, W, at least `chargeW`: under a hold,
+   * the setpoint PELS holds it at, or the charge its own mode takes once
+   * handed back if that is more, so a raise the battery has not followed yet,
+   * or the own-mode charge a hold is keeping from it, is never offered to the
+   * consumers ranked below it.
+   */
+  reservedW: number;
 };
+
+/** The home batteries as the surplus pool counts them. */
+export type StorageSurplus = {
+  claimants: readonly StorageSurplusClaimant[];
+  /**
+   * Every battery's own discharge, W: stored energy, never surplus. Out of the
+   * pool, and counted as import by the hard-off.
+   */
+  dischargeW: number;
+};
+
+/**
+ * What the allocator offers one home battery at its turn
+ * (`battery/storageRelief.ts`).
+ */
+export type StorageSurplusOffer = {
+  /**
+   * What the consumers ranked above it left for it, W: measured export, plus
+   * the charge of every battery not reached yet (its own included), less what
+   * every battery discharges, plus any inferred curtailed production, less the
+   * smallest runnable step of every `waiting` device above it and what each
+   * battery above it reserved. A running device's measured draw is already
+   * out of the export; a reservation for a device that draws nothing is never
+   * taken from a battery. Negative when the waiting devices outrun it.
+   */
+  availableW: number;
+  demandAbove: SurplusDemand;
+  /**
+   * What the consumers ranked below it take out of `availableW`, W: the
+   * smallest runnable step of every `waiting` device, what every other device
+   * reserves beyond its measured draw, and the charge of every battery below
+   * it. A raise past the battery's own mode's charge comes only out of what is
+   * left, so no watt is funded twice.
+   */
+  belowW: number;
+};
+
+/** A consumer in the priority order: a willing device, or a home battery. */
+type RankedSurplusConsumer =
+  | { kind: 'device'; priority: number; dev: MeteredPlanInputDevice }
+  | { kind: 'storage'; priority: number; claimant: StorageSurplusClaimant };
+
+/**
+ * Top priority first (PELS priority `1` is highest — ascending order). A
+ * battery sharing a device's priority comes after it: devices, then the
+ * battery, as with the battery last.
+ */
+const compareConsumers = (a: RankedSurplusConsumer, b: RankedSurplusConsumer): number => (
+  a.priority - b.priority || Number(a.kind === 'storage') - Number(b.kind === 'storage')
+);
 
 /**
  * Drop every per-device surplus map entry for a device that is still in the
@@ -621,12 +689,19 @@ const resolveHeldStep = (
  * remainder keeps flowing down the priority order instead of being thrown away
  * (see {@link claimForTrackingDevice}).
  *
- * After the last willing device comes the home battery, then export (owner
- * ruling, 2026-10-05). The allocator answers what the devices left for it
- * (`SurplusLeftover`) and the strongest demand they put on it to the storage
- * stage (`battery/storageRelief.ts`). The pool is composed even with no
- * willing device, so a battery PELS already holds keeps storing the export
- * until it is handed back.
+ * A home battery is a consumer in the same order, at its own priority (owner
+ * ruling, 2026-10-06: surplus by priority; last, the default, is devices, then
+ * the battery, then export). Its charge is in the pool, so a device ranked
+ * above it may take that charge, which the storage stage answers by capping
+ * the battery for it; at its turn the battery reserves that charge (under a
+ * hold, the setpoint PELS holds or its own mode's charge if more), as far as
+ * the consumers above it left it, so a device ranked below it only sees what
+ * is left. The allocator answers each battery's offer (`StorageSurplusOffer`)
+ * to the storage stage (`battery/storageRelief.ts`), with what the consumers
+ * below it take (`belowW`), so a raise past the battery's own mode's charge
+ * never funds a watt they were offered. The pool is composed even
+ * with no willing device, so a battery PELS already holds keeps storing the
+ * export until it is handed back.
  */
 /**
  * The silent-meter pass's half of eligibility: with no measurement there is no
@@ -677,9 +752,9 @@ export function resolveSurplusEligibility(params: {
   // and reports no export — a positive inferred term is precisely what opens
   // the pool. It only ever adds.
   inferredSurplusKw: number;
-  // The home batteries' term, kW (`sumStorageSurplusW`): resolved by the
-  // builder, so this allocator never reads a battery.
-  storageSurplusKw: number;
+  // The home batteries (`resolveStorageSurplus`): resolved by the builder, so
+  // this allocator never reads a battery.
+  storage: StorageSurplus;
   getConfig: (deviceId: string) => SurplusConfig | undefined;
   // Smart-task precedence at the ALLOCATION stage (mirrors the hold exclusion):
   // a device an active deferred objective currently governs must never be
@@ -693,8 +768,8 @@ export function resolveSurplusEligibility(params: {
   // One timestamp for the whole admission pass, so a single plan build cannot
   // flip devices on different milliseconds at the settle/dwell threshold.
   nowTs: number;
-}): SurplusLeftover {
-  const { state, getConfig, excludeIds, nowTs } = params;
+}): ReadonlyMap<string, StorageSurplusOffer> {
+  const { state, getConfig, excludeIds, nowTs, storage } = params;
   // See the twin filter above: the pool is measured power, so only metered devices take part.
   const willing = params.devices.filter(
     (dev): dev is MeteredPlanInputDevice => isMeteredPlanDevice(dev)
@@ -706,34 +781,59 @@ export function resolveSurplusEligibility(params: {
 
   pruneNonCandidateSurplusState(state, new Set(willing.map((dev) => dev.id)));
 
-  const hardOff = isHardOffCondition(params.signedNetKw, params.storageSurplusKw);
+  const hardOff = isHardOffCondition(params.signedNetKw, storage.dischargeW / 1000);
 
   const pool = composeSurplusPool({
     willing,
     state,
     signedNetKw: params.signedNetKw,
-    storageSurplusKw: params.storageSurplusKw,
+    storage,
     inferredSurplusKw: params.inferredSurplusKw,
     debugStructured: params.debugStructured,
   });
   let { poolKw } = pool;
-  // The battery's share starts without the devices' own add-back: a running
+  // A battery's share starts without the devices' own add-back: a running
   // device's measured draw is already out of the export.
   let storageKw = pool.poolKw - pool.deviceAddBackKw;
-  let deviceDemand: SurplusDemand = 'none';
+  let demandAbove: SurplusDemand = 'none';
+  // What every consumer so far takes of a battery's share, kW, and each
+  // battery's offer at its turn with that running total: what the consumers
+  // after it take is the difference at the end.
+  let takenKw = 0;
+  const turns = new Map<string, { availableW: number; demandAbove: SurplusDemand; takenAtTurnKw: number }>();
 
-  // Top priority first (PELS priority `1` is highest — ascending order).
-  const ordered = [...willing].sort((a, b) => a.priority - b.priority);
-  for (const dev of ordered) {
+  const ranked: RankedSurplusConsumer[] = [
+    ...willing.map((dev) => ({ kind: 'device' as const, priority: dev.priority, dev })),
+    ...storage.claimants.map((claimant) => ({ kind: 'storage' as const, priority: claimant.priority, claimant })),
+  ].sort(compareConsumers);
+  for (const consumer of ranked) {
+    if (consumer.kind === 'storage') {
+      const { claimant } = consumer;
+      const availableW = storageKw * 1000;
+      // It keeps its charge as far as the consumers above it left it; past
+      // that, the storage stage caps it to what they left.
+      const reservedKw = Math.min(claimant.reservedW / 1000, Math.max(0, storageKw));
+      poolKw -= reservedKw;
+      storageKw -= reservedKw;
+      takenKw += Math.max(claimant.chargeW / 1000, reservedKw);
+      turns.set(claimant.deviceId, { availableW, demandAbove, takenAtTurnKw: takenKw });
+      continue;
+    }
+    const { dev } = consumer;
     const claim = dev.surplusTracking
       ? claimForTrackingDevice({ dev, state, poolKw, nowTs })
       : claimForFixedDevice(dev, state, poolKw, hardOff, nowTs);
     poolKw -= claim.claimKw;
     if (claim.want.kind === 'waiting') storageKw -= claim.want.runKw;
-    if (DEMAND_RANK[claim.want.kind] > DEMAND_RANK[deviceDemand]) deviceDemand = claim.want.kind;
+    if (DEMAND_RANK[claim.want.kind] > DEMAND_RANK[demandAbove]) demandAbove = claim.want.kind;
+    // What it takes of a battery's share above it: its smallest step while it
+    // waits, else what it reserves beyond the draw already out of the export.
+    const measuredKw = pool.addedBackIds.has(dev.id) ? positiveOrZero(dev.currentDrawKw) : 0;
+    takenKw += claim.want.kind === 'waiting' ? claim.want.runKw : Math.max(0, claim.claimKw - measuredKw);
   }
-  // The battery comes after the last willing device: what the devices left.
-  return { leftoverW: storageKw * 1000, deviceDemand };
+  return new Map([...turns].map(([deviceId, { takenAtTurnKw, ...offer }]): [string, StorageSurplusOffer] => (
+    [deviceId, { ...offer, belowW: (takenKw - takenAtTurnKw) * 1000 }]
+  )));
 }
 
 /**

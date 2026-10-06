@@ -26,7 +26,7 @@ import {
   formatDeviceReasonUserFacing,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildPlanDevice, buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanInputDevice, steppedProfile, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
 import { reasonContext } from '../helpers/reasonContext';
 
 const AWAITING: DeviceReason = { code: PLAN_REASON_CODES.awaitingSolarSurplus };
@@ -204,7 +204,7 @@ const allocatorPass = (params: {
   state: params.state,
   signedNetKw: params.signedNetKw,
   inferredSurplusKw: 0,
-  storageSurplusKw: 0,
+  storage: NO_STORAGE_SURPLUS,
   excludeIds: params.excludeIds ?? new Set(),
   getConfig: (deviceId) => params.configs?.[deviceId],
   nowTs: params.nowTs,

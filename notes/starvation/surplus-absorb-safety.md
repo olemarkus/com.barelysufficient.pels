@@ -57,17 +57,29 @@ B, C — starving them. The **fit-test** forecloses this:
   engaged device's draw from the shared pool before offering it to the next, so
   two willing devices cannot both claim the same surplus and oscillate; a
   lower-priority device only ever sees surplus the higher-priority ones left.
-  A home battery comes after the last willing device. The pool counts the
-  solar a battery stores that PELS can free (its own mode's charge less any
-  import, or the charge PELS holds it at) and never its discharge
-  (`sumStorageSurplusW`, `lib/plan/battery/storageRelief.ts`), so a battery
-  never hides surplus from a device and stored energy never boosts one. PELS
-  claims the battery only to cap that charge for a device waiting to start, and
-  its held charge follows what the devices leave (`SurplusLeftover`), bounded by
-  the headroom, so it stays net-neutral on the same terms as a lift. A battery
+  A home battery is a consumer in the same order, at its own priority (owner
+  ruling, 2026-10-06; last, the default, is devices, then the battery, then
+  export). The pool counts the solar a battery stores that PELS can free (its
+  own mode's charge less any import, or the charge PELS holds it at) and never
+  its discharge (`resolveStorageSurplus`, `lib/plan/battery/storageRelief.ts`),
+  so a battery never hides surplus from a device ranked above it and stored
+  energy never boosts one. At its turn the battery reserves that charge, as far
+  as the consumers above it left it, so a device ranked below it never claims
+  the same watts. PELS claims the battery only to cap that charge for a device
+  ranked above it that is waiting to start, and its held charge follows what
+  the consumers above it leave (`StorageSurplusOffer`), bounded by the
+  headroom, so it stays net-neutral on the same terms as a lift. A held
+  battery reserves the setpoint PELS holds (or its own mode's charge, if more),
+  so a raise it has not followed yet, or the charge a limit hold keeps from its
+  own mode, is never offered below it; and a raise past its own mode's charge
+  comes only out of what the consumers ranked below it do not take
+  (`StorageSurplusOffer.belowW`), so no watt is funded twice. A battery
   whose own mode discharges to hold the meter at 0 W hides the import a surplus
   device causes; the hard-off counts that discharge as import, so the device
   yields as it would to visible import and the battery is never claimed for it.
+  With several batteries it counts every one's discharge, never netted against
+  another battery's charge: stored energy covering a device is import whatever
+  another battery stores.
   On a deficit a surplus hold is kept where it is: limiting the battery further
   (capping its charge, then discharging it) is shedding's choice at the
   battery's own place in the priority order, never a surplus decision.

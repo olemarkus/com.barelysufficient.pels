@@ -936,4 +936,199 @@ describe('storage charge from surplus in the plan build', () => {
     expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 600, stepW: 5 });
     expect(plannedState(plan, 'heater')).toBe('keep');
   });
+
+  describe('by priority', () => {
+    /** A second "Run on solar surplus" load, 1 kW, at this priority. */
+    const dumpTank = (priority: number, on = false): PlanInputDevice => buildPlanInputDevice({
+      id: 'tank',
+      name: 'tank',
+      controllable: true,
+      binaryControl: { on },
+      currentDrawKw: on ? 1 : 0,
+      expectedPowerKw: 1,
+      surplusOnly: true,
+      priority,
+    });
+    const ranked = (device: PlanInputDevice, priority: number): PlanInputDevice => ({ ...device, priority });
+
+    it('ranked above a waiting device, keeps its own mode\'s charge: no cap, and the device waits', async () => {
+      const { build, state } = buildHarness({ paceKw: 10 });
+      // 2 kW of solar, all of it stored by the battery's own mode: the meter reads 0.
+      for (let reading = 0; reading < 30; reading += 1) {
+        const plan = await build(0, [
+          ranked(pump(false, 1.5), 5), battery({ signedPowerW: 2000 }, { priority: 1 }),
+        ], reading * 10_000);
+        expect(storageDecision(plan)).toBeUndefined();
+        expect(plannedState(plan, 'pump')).toBe('shed');
+      }
+      expect(state.storageLeverByDevice).toEqual({});
+      expect(state.surplusEligibilityByDevice.pump).toBeUndefined();
+    });
+
+    it.each([3, BATTERY_LAST])('ranked %s, below a waiting device, caps its charge so the device starts', async (priority) => {
+      const { build } = buildHarness({ paceKw: 10 });
+      const plan = await build(0, [ranked(pump(false, 1.5), 1), battery({ signedPowerW: 2000 }, { priority })]);
+      expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 400, stepW: 5 });
+
+      const after = await run(build, { solarW: -2000, pumpKw: 1.5, fromMs: 0, readings: 30, batteryW: 400, pumpOn: false });
+      expect(after.pumpOn).toBe(true);
+      expect(after.batteryW).toBe(400);
+    });
+
+    it('between two devices, caps its charge for the one above it, never for the one below', async () => {
+      // 1 kW exported past the 2 kW its own mode stores; a 1.5 kW pump ranks first and a 1 kW tank last.
+      const between = buildHarness({ paceKw: 10 });
+      const plan = await between.build(-1000, [
+        pump(false, 1.5), battery({ signedPowerW: 2000 }, { priority: 5 }), dumpTank(9),
+      ]);
+      // The pump's 1.5 kW comes out of the battery's charge, less half its deadband; the tank gets nothing.
+      expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 1400, stepW: 5 });
+      expect(between.state.surplusEligibilityByDevice.pump).toBeDefined();
+      expect(between.state.surplusEligibilityByDevice.tank).toBeUndefined();
+
+      // Last in the order, it is capped for both.
+      const last = buildHarness({ paceKw: 10 });
+      const lastPlan = await last.build(-1000, [
+        pump(false, 1.5), battery({ signedPowerW: 2000 }, { priority: BATTERY_LAST }), dumpTank(9),
+      ]);
+      expect(storageDecision(lastPlan)).toEqual({ kind: 'setpoint', setpointW: 400, stepW: 5 });
+      expect(last.state.surplusEligibilityByDevice.tank).toBeDefined();
+    });
+
+    it('with Power-limit control off, still gives a waiting device the solar it stores', async () => {
+      const { build } = buildHarness({ paceKw: 10 });
+      const plan = await build(0, [pump(false, 1.5), battery({ signedPowerW: 2000, powerLimitControl: false })]);
+      expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 400, stepW: 5 });
+    });
+
+    it('with Managed off, makes no claim: its charge is household load', async () => {
+      const { build, state } = buildHarness({ paceKw: 10 });
+      for (let reading = 0; reading < 12; reading += 1) {
+        const plan = await build(0, [
+          pump(false, 1.5), battery({ signedPowerW: 2000, admissible: false }, { managed: false }),
+        ], reading * 10_000);
+        expect(storageDecision(plan)).toBeUndefined();
+        expect(plannedState(plan, 'pump')).toBe('shed');
+      }
+      expect(state.surplusEligibilityByDevice.pump).toBeUndefined();
+    });
+
+    it('never offers its discharge to a device ranked below it either', async () => {
+      const { build, state } = buildHarness({ paceKw: 10 });
+      // Its own mode trades: it discharges 5 kW and the house exports all of it.
+      for (let reading = 0; reading < 12; reading += 1) {
+        const plan = await build(-5000, [
+          ranked(pump(false), 5), battery({ signedPowerW: -5000 }, { priority: 1 }),
+        ], reading * 10_000);
+        expect(storageDecision(plan)).toBeUndefined();
+        expect(plannedState(plan, 'pump')).toBe('shed');
+      }
+      expect(state.surplusEligibilityByDevice.pump).toBeUndefined();
+    });
+
+
+    /** A battery's hold, as the state carries it. */
+    const hold = (overrides: Partial<StorageLeverState>): StorageLeverState => ({
+      setpointW: 0, purpose: 'limit', increaseDecidedAtMs: START_MS - 10 * 60_000, creditBaseW: 0,
+      lastDecreaseAtMs: START_MS - 10 * 60_000, chargeRaisedAtMs: START_MS - 10 * 60_000,
+      lastNeedAtMs: START_MS, preClaimSignedW: 0, ownModeChargeW: 2500, stepW: 5, reading: { kind: 'read' },
+      ...overrides,
+    });
+    /** Whether the allocator has a device settling toward, or engaged on, the surplus. */
+    const claims = (state: ReturnType<typeof buildHarness>['state'], id: string): boolean => {
+      const entry = state.surplusEligibilityByDevice[id];
+      return entry?.eligible === true || entry?.pendingSinceMs !== undefined;
+    };
+
+    it('ranked above a dump load, keeps the export its own mode takes back while a limit hold waits for room', async () => {
+      // A limit hold at 0 W the restore lane cannot hand back yet: its own mode
+      // would charge 2.5 kW, and the pace leaves only 2.3 kW of room. 2 kW of solar returns.
+      const { build, state } = buildHarness({ paceKw: 0.3 });
+      state.storageLeverByDevice = { battery: hold({}) };
+      for (let atMs = 0; atMs <= 4 * 60_000; atMs += 10_000) {
+        const plan = await build(-2000, [
+          ranked(pump(false), 5), battery({ signedPowerW: 0, claimHeld: true }, { priority: 1 }),
+        ], atMs);
+        expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 0, stepW: 5 });
+        expect(plannedState(plan, 'pump')).toBe('shed');
+        // The pump ranked below is offered none of it: the order agrees with the hand-back's.
+        expect(claims(state, 'pump')).toBe(false);
+      }
+    });
+
+    describe('between two devices, a raise funds no watt twice', () => {
+      const SOLAR_W = 5200;
+      const PUMP_W = 1500;
+      /** The pump above runs on surplus; the battery was raised to 2.4 kW past its own mode's 2 kW. */
+      const start = () => {
+        const harness = buildHarness({ paceKw: 10 });
+        harness.state.surplusEligibilityByDevice.pump = { eligible: true, sinceMs: START_MS - 10 * 60_000 };
+        harness.state.storageLeverByDevice = {
+          battery: hold({ setpointW: 2400, purpose: 'surplus', preClaimSignedW: 2000, ownModeChargeW: 2000 }),
+        };
+        return harness;
+      };
+      const roomy = { range: { minW: -5000, maxW: 5000, stepW: 5, excludeMinW: 0, excludeMaxW: 0 }, chargeCeilingW: 5000 };
+
+      /**
+       * Readings every 10 s for 100 s (inside the dwell). The battery reads
+       * the setpoint it was asked for one reading late when `lagging`, as a
+       * battery whose answer to a write has not arrived yet does.
+       */
+      const run = async (lagging: boolean) => {
+        const { build, state } = start();
+        let tankOn = false;
+        let askedW = 2400;
+        let observedW = 2400;
+        const funded: number[] = [];
+        for (let atMs = 0; atMs <= 100_000; atMs += 10_000) {
+          const houseW = -SOLAR_W + observedW + PUMP_W + (tankOn ? 1000 : 0);
+          const plan = await build(houseW, [
+            pump(true, PUMP_W / 1000), battery({ ...roomy, signedPowerW: observedW, claimHeld: true }, { priority: 5 }),
+            dumpTank(9, tankOn),
+          ], atMs);
+          const decision = storageDecision(plan);
+          const nextW = decision?.kind === 'setpoint' ? decision.setpointW : askedW;
+          // What this build funded: the battery's charge, the pump's draw, and the tank once it claims.
+          funded.push(nextW + PUMP_W + (claims(state, 'tank') ? 1000 : 0));
+          observedW = lagging ? askedW : nextW;
+          askedW = nextW;
+          tankOn = plannedState(plan, 'tank') === 'keep';
+        }
+        return { funded, askedW, tankOn };
+      };
+
+      it('holds the raise while the device below waits, within the solar', async () => {
+        // 1.3 kW exported past the raise: the tank below claims 1 kW of it, so
+        // the battery may raise only into the 0.3 kW left, too little to be a step.
+        const { funded, askedW, tankOn } = await run(false);
+        expect(Math.max(...funded)).toBeLessThanOrEqual(SOLAR_W);
+        expect(askedW).toBe(2400);
+        expect(tankOn).toBe(true);
+      });
+
+      it('stays within the solar while the battery\'s reading lags its last write', async () => {
+        const { funded } = await run(true);
+        expect(Math.max(...funded)).toBeLessThanOrEqual(SOLAR_W);
+      });
+    });
+
+    it('hands a cap back after the dwell once the owner ranks the battery above the device it was for', async () => {
+      const { build } = buildHarness({ paceKw: 10 });
+      const first = await build(0, [pump(false, 1.5), battery({ signedPowerW: 2000 })]);
+      expect(storageDecision(first)).toEqual({ kind: 'setpoint', setpointW: 400, stepW: 5 });
+
+      // Ranked first now: it takes the solar first, and the pump below it waits.
+      const decisions: Array<StorageDecision | undefined> = [];
+      for (let atMs = 10_000; atMs <= STORAGE_SURPLUS_RELEASE_DWELL_MS + 10_000; atMs += 10_000) {
+        const plan = await build(-1600, [
+          ranked(pump(false, 1.5), 5), battery({ signedPowerW: 400, claimHeld: true }, { priority: 1 }),
+        ], atMs);
+        decisions.push(storageDecision(plan));
+        expect(plannedState(plan, 'pump')).toBe('shed');
+      }
+      expect(decisions.slice(0, -2).every((decision) => decision?.kind === 'setpoint')).toBe(true);
+      expect(decisions).toContainEqual({ kind: 'release', reason: 'surplus_dwell' });
+    });
+  });
 });

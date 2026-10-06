@@ -237,8 +237,8 @@ export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
  * Why PELS holds a home battery: discharging to hold the limit (`relief`);
  * its charge capped at its place in the priority order (`charge_limit`, with
  * the charge its own mode would take that the cap holds back, kW); its own
- * mode's charge capped so a device can use the solar (`cap_for_device`); or
- * storing solar the devices leave (`surplus`). A battery it does not hold:
+ * mode's charge capped so a device ranked above it can use the solar
+ * (`cap_for_device`); or storing solar the devices above it leave (`surplus`). A battery it does not hold:
  * `solar_only` when its Power-limit control is off (PELS only stores spare
  * solar in it), `none` otherwise.
  */

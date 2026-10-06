@@ -21,11 +21,11 @@ import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerF
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
-import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
+import { resolveSurplusEligibility, type StorageSurplus } from '../../lib/plan/planSurplusAbsorb';
 import { type PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { buildPlanInputDevice, sheddingPlanFixture } from '../utils/planTestUtils';
+import { buildPlanInputDevice, sheddingPlanFixture, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import {
   SURPLUS_ABSORB_MIN_DWELL_MS,
@@ -110,13 +110,14 @@ const buildDevices = (params: {
   context: PlanCycle;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
+  storage?: StorageSurplus;
 }) => {
   resolveSurplusEligibility({
     devices: params.context.devices,
     state: params.state,
     signedNetKw: params.context.drawKw,
     inferredSurplusKw: 0,
-    storageSurplusKw: 0,
+    storage: params.storage ?? NO_STORAGE_SURPLUS,
     excludeIds: new Set(),
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
     nowTs: Date.now(),
@@ -287,6 +288,33 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
     expect(cycle(state, 0, true, EXPECTED_DRAW_KW)).toBe(MODE_C + SURPLUS_DELTA_C);
   });
 
+  it('byte-identity: lifts and releases exactly the same beside an idle battery anywhere in the order', () => {
+    // A battery PELS may claim that stores nothing: neither the lift nor its
+    // release may tell whether it is there, or where it ranks.
+    const run = (storage: StorageSurplus): string => {
+      vi.setSystemTime(0);
+      const state = createPlanEngineState();
+      const steps: Array<[number, number]> = [
+        [0, EXPORTING_KW],
+        [SURPLUS_ABSORB_SETTLE_MS, EXPORTING_KW],
+        [SURPLUS_ABSORB_SETTLE_MS + 10_000, IMPORTING_KW],
+        [SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS + 20_000, IMPORTING_KW],
+      ];
+      const plans = steps.map(([atMs, signedNetKw]) => {
+        vi.setSystemTime(atMs);
+        return buildDevices({ context: buildContext(signedNetKw), state, deps: deps(true), storage });
+      });
+      return JSON.stringify({ plans, state });
+    };
+    const idle = (priority: number): StorageSurplus => ({
+      claimants: [{ deviceId: 'battery', priority, chargeW: 0, reservedW: 0 }], dischargeW: 0,
+    });
+    const without = run(NO_STORAGE_SURPLUS);
+    expect(without).toContain(String(MODE_C + SURPLUS_DELTA_C));
+    expect(run(idle(1))).toBe(without);
+    expect(run(idle(100))).toBe(without);
+  });
+
   it('never lifts a non-willing device, even with ample export', () => {
     const state = createPlanEngineState();
     expect(cycle(state, EXPORTING_KW, false)).toBe(MODE_C);
@@ -336,7 +364,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         state,
         signedNetKw: context.drawKw,
         inferredSurplusKw,
-        storageSurplusKw: 0,
+        storage: NO_STORAGE_SURPLUS,
         excludeIds: new Set(),
         getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
         debugStructured: options.debugStructured,
