@@ -1,5 +1,5 @@
 import type { DeviceTransportParseProviders, ParseDevicePurpose } from './managerParseDevice';
-import { isObserveOnlyRoleClassKey } from './managerHelpers';
+import { isBatteryOrSolarClassKey } from './managerHelpers';
 
 export type ManagedFilterDecision = {
   hasOracle: boolean;
@@ -22,15 +22,28 @@ export function resolveManagedFilterDecision(params: {
   };
 }
 
-export function shouldDropEarly(params: {
-  purpose: ParseDevicePurpose;
-  decision: ManagedFilterDecision;
-}): boolean {
-  const { purpose, decision } = params;
+/**
+ * "Tracked": the runtime keeps this device in its snapshot and on its realtime
+ * feed. A managed device is tracked, and so is a home battery whatever its
+ * Managed setting: a battery PELS still holds must stay readable, and its
+ * claim and power must keep updating, for it to be handed back. The planner,
+ * not the transport, decides that an unmanaged battery is ignored. The one
+ * predicate both the snapshot filter (`shouldDropEarly`) and realtime tracking
+ * (`DeviceSnapshotReader.shouldTrackRealtimeDevice`) answer with.
+ */
+export function isRuntimeTrackedDevice(decision: ManagedFilterDecision, isHomeBattery: boolean): boolean {
+  return !decision.hasOracle || decision.isManaged || isHomeBattery;
+}
+
+export function shouldDropEarly(
+  purpose: ParseDevicePurpose,
+  decision: ManagedFilterDecision,
+  isHomeBattery: boolean,
+): boolean {
   if (purpose === 'unfiltered') return false;
   if (purpose === 'runtime') {
     if (!decision.filterActive) return false;
-    return !decision.isManaged;
+    return !isRuntimeTrackedDevice(decision, isHomeBattery);
   }
   // ui_picker: drop only when there's nothing to pick from. Defer the
   // managed/unmanaged split to the late gate (after control-state parse),
@@ -46,15 +59,15 @@ export function shouldDropAfterControlState(params: {
   deviceClassKey?: string;
 }): boolean {
   const { purpose, decision, currentOn, deviceClassKey } = params;
-  // A home battery or solar device is a FORCE-MANAGED observe-only device with no
-  // on/off control capability, so its `currentOn` is legitimately `undefined`.
-  //   - RUNTIME: keep it (it rides the managed snapshot for SoC/power or production
+  // A home battery or solar device has no on/off control capability, so its
+  // `currentOn` is legitimately `undefined`.
+  //   - RUNTIME: keep it (it rides the runtime snapshot for SoC/power or production
   //     tracking) — it must NOT be dropped on the `currentOn === undefined` basis.
-  //   - UI PICKER: drop it. The picker offers devices the user can opt into managing;
-  //     an observe-only device is always managed, so its "manage" toggle is a no-op.
-  //     Dropping it here keeps it OUT of the unmanaged-eligible picker list, so it
-  //     renders exactly once in the settings UI (the managed list), never twice.
-  if (isObserveOnlyRoleClassKey(deviceClassKey)) return purpose === 'ui_picker';
+  //   - UI PICKER: drop it. The runtime snapshot always carries it (a battery is
+  //     tracked whatever its Managed setting, a solar device is always read), so
+  //     dropping it here keeps it rendered exactly once in the settings UI, never
+  //     twice.
+  if (isBatteryOrSolarClassKey(deviceClassKey)) return purpose === 'ui_picker';
   if (purpose !== 'ui_picker') return currentOn === undefined;
   // Drop managed devices with a resolved `currentOn` in the picker — they are
   // already in the runtime snapshot. One whose `currentOn` is undefined is not

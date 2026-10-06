@@ -140,7 +140,7 @@ export class PlanExecutor {
   /** The managed devices' own metered draw, W: everything metered but a battery or panel. */
   private readManagedDrawW(): number {
     return readExecutorDevices(this.deps).reduce((totalW, device) => (
-      this.deps.getDeviceConfiguration(device.id)?.observeOnly === true || !hasObservedMeasuredPower(device)
+      this.deps.getDeviceConfiguration(device.id)?.isBatteryOrSolar === true || !hasObservedMeasuredPower(device)
         ? totalW
         : totalW + device.measuredPowerKw * 1000
     ), 0);

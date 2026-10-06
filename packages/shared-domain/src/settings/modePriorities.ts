@@ -104,28 +104,63 @@ export class ModePriorityCatalog {
   modes(): readonly string[] { return Object.keys(this.preferences); }
 
   /**
-   * The preferences with a rank appended for every device that has none in a
-   * mode, or `null` when every device is already ranked in every mode. Ranked
-   * devices keep their order; new devices go after them, in device-id order,
-   * which is the order `rankActiveDevicePriorities` already infers for them.
+   * The preferences with a rank for every device that has none in a mode, or
+   * `null` when every device is already ranked in every mode. Ranked devices
+   * keep their order. New devices go after them in device-id order, which is
+   * the order `rankActiveDevicePriorities` already infers, except that a
+   * device `sortsLastWhenUnranked` marks (a home battery) keeps the bottom: new
+   * devices go above the batteries at the bottom of a mode, and new batteries
+   * go last. A battery the owner moved up is not at the bottom, so new devices
+   * go to the true end below it.
+   *
+   * The bottom is found from the devices that count: a stored rank for a
+   * device in neither `deviceIds` nor the batteries (one no longer managed, or
+   * removed) does not mark where the batteries end, so new devices still go
+   * just after the last counted device above them.
    */
-  withMissingRanks(deviceIds: readonly string[], modes: readonly string[]): ModePriorities | null {
+  withMissingRanks(
+    deviceIds: readonly string[],
+    modes: readonly string[],
+    sortsLastWhenUnranked: (deviceId: string) => boolean,
+  ): ModePriorities | null {
     const sortedIds = [...new Set(deviceIds)].sort();
+    const listed = new Set(sortedIds);
+    const anchorsTop = (id: string): boolean => listed.has(id) && !sortsLastWhenUnranked(id);
     const allModes = [...new Set([...Object.keys(this.preferences), ...modes])];
-    const appended = allModes.map((mode) => {
+    const filled = allModes.map((mode) => {
       const ranks = this.preferences[mode] ?? {};
       const missing = sortedIds.filter((deviceId) => ranks[deviceId] === undefined);
-      const lastRank = Math.max(0, ...Object.values(ranks));
-      const added = Object.fromEntries(missing.map((deviceId, index) => [deviceId, lastRank + index + 1]));
-      return { mode, ranks: { ...ranks, ...added }, missingCount: missing.length };
+      const ranked = Object.keys(ranks).sort((a, b) => (ranks[a] ?? 0) - (ranks[b] ?? 0));
+      // Everything after the last counted non-battery device is the bottom,
+      // when a battery is there; with none, new devices go to the true end.
+      const lastAnchorEnd = ranked.reduce((end, id, index) => (anchorsTop(id) ? index + 1 : end), 0);
+      const bottomStart = ranked.slice(lastAnchorEnd).some(sortsLastWhenUnranked) ? lastAnchorEnd : ranked.length;
+      const top = ranked.slice(0, bottomStart);
+      const bottom = ranked.slice(bottomStart);
+      const order = [
+        ...top,
+        ...missing.filter((id) => !sortsLastWhenUnranked(id)),
+        ...bottom,
+        ...missing.filter(sortsLastWhenUnranked),
+      ];
+      const filledRanks = Object.fromEntries(order.map((id, index) => [id, index + 1]));
+      return { mode, ranks: filledRanks, missingCount: missing.length };
     });
-    if (appended.every(({ missingCount }) => missingCount === 0)) return null;
-    return Object.fromEntries(appended.map(({ mode, ranks }) => [mode, ranks]));
+    if (filled.every(({ missingCount }) => missingCount === 0)) return null;
+    return Object.fromEntries(filled.map(({ mode, ranks }) => [mode, ranks]));
   }
 
-  getOrder(mode: string, deviceIds: readonly string[]): ModePriorityOrder {
+  /**
+   * `sortsLastWhenUnranked` marks the devices that go after every other
+   * unranked device (a home battery): see `rankActiveDevicePriorities`.
+   */
+  getOrder(
+    mode: string,
+    deviceIds: readonly string[],
+    sortsLastWhenUnranked: (deviceId: string) => boolean,
+  ): ModePriorityOrder {
     return createPriorityOrder(rankActiveDevicePriorities(
-      deviceIds, (deviceId) => this.preferences[mode]?.[deviceId],
+      deviceIds, (deviceId) => this.preferences[mode]?.[deviceId], sortsLastWhenUnranked,
     ));
   }
 

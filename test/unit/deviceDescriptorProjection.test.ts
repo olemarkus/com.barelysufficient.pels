@@ -39,10 +39,10 @@ describe('projectDeviceDescriptor', () => {
       'expectedPowerKw',
       'expectedPowerSource',
       'id',
+      'isBatteryOrSolar',
       'isEvCharger',
       'managed',
       'name',
-      'observeOnly',
       'steppedLoadProfile',
     ]);
     expect(descriptor).not.toBe(snapshot);

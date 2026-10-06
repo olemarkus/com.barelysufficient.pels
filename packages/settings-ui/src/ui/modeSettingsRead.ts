@@ -1,10 +1,12 @@
 import { isDeviceStartPolicyMap } from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
+import { parseBatteryControlDevices } from '../../../shared-domain/src/settings/batteryControlDevices.ts';
 import { readModeAliases as readSharedModeAliases } from '../../../shared-domain/src/settings/modeAliases.ts';
 import {
   readTemperatureControlModes, temperatureControlDisabledDevices,
 } from '../../../shared-domain/src/settings/temperatureControl.ts';
 import { state } from './state.ts';
 import {
+  BATTERY_CONTROL_DEVICES,
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_PRIORITIES,
   MODE_ALIASES,
@@ -32,6 +34,7 @@ export type ModeSettingsRead = {
   temperatureControlModes: unknown;
   nativeWiring: unknown;
   aliases: unknown;
+  batteryControl: unknown;
 };
 
 export const readBooleanSettingMap = (value: unknown): Record<string, boolean> => (
@@ -68,18 +71,34 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
     getSetting(TEMPERATURE_CONTROL_MODES),
     getSetting(NATIVE_EV_WIRING_DEVICES),
     getSetting(homeScopedSettingsKey(MODE_ALIASES, homeId)),
+    getSetting(BATTERY_CONTROL_DEVICES),
   ]);
   const [
     mode, priorities, targets, controllables, managed,
     budgetExempt, respectExternalOff, deviceStartPolicies,
-    temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases,
+    temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases, batteryControl,
   ] = values;
   return {
     mode, priorities, targets, controllables, managed,
     budgetExempt, respectExternalOff, deviceStartPolicies,
-    temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases,
+    temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases, batteryControl,
   };
 };
+
+/**
+ * A home battery's Managed map. Never written reads as every battery on. A
+ * stored value that does not parse is `unreadable`: the runtime reads it as
+ * every battery unmanaged (fail closed), so the UI shows each battery's
+ * Managed as off and does not offer the switch until the value is repaired.
+ */
+export function applyBatteryControlSettings(read: ModeSettingsRead): void {
+  if (read.batteryControl === undefined || read.batteryControl === null) {
+    state.batteryControl = { status: 'resolved', devices: {} };
+    return;
+  }
+  const devices = parseBatteryControlDevices(read.batteryControl);
+  state.batteryControl = devices === null ? { status: 'unreadable' } : { status: 'resolved', devices };
+}
 
 /**
  * All-or-nothing, and a rejected read keeps the last good map — the same policy

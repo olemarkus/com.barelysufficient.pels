@@ -12,6 +12,7 @@ import type {
   SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
 import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
+import { readHomeBatteryCardForHome } from './batteryStatusReadModel';
 import {
   createIdleClassifier,
   type IdleClassifier,
@@ -125,6 +126,7 @@ const buildOverviewPublication = (
     getAssociatedCarChargingState: (deviceId) => deps.getAssociatedCarChargingState?.(deviceId),
     getObservedStateOfCharge: deps.getObservedStateOfCharge,
     getObservedTemperature: deps.getObservedTemperature,
+    getHomeBatteryCard: (deviceId) => readHomeBatteryCardForHome(deps.homeId, deps.getHomeBatteryCard, deviceId),
     getSteppedLoadProfileById: deps.getSteppedLoadProfileById,
   });
   return snapshot ? { snapshot, plan, execution } : null;

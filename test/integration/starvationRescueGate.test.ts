@@ -160,7 +160,7 @@ const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscrimin
   surplusTracking: false,
   confirmedNotDrawing: false,
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   starvationSupported: false,
   control: fixtureControlPosture({ controllable: true }), // capacity-based control is ON — the budget-starvation scenario
   controlModel: 'stepped_load',

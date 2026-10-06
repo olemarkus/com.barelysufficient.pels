@@ -7,6 +7,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import type { SettingsOverviewReadModelDeps } from '../../lib/plan/settingsOverviewReadModel';
+import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 
 
@@ -30,6 +31,7 @@ const buildSettingsOverviewReadModel = (
 // an un-wired accessor stopped being a third way of saying "no reading".
 const absentStateOfCharge = {
   getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+  getHomeBatteryCard: () => ({ kind: 'none' } as const),
   getObservedEvChargingState: () => ({ kind: 'absent' } as const),
 };
 
@@ -115,8 +117,8 @@ describe('settingsOverviewReadModel', () => {
   it('excludes auto-tracked observe-only role devices (battery / solar) from the overview devices', () => {
     const keepReason = { code: PLAN_REASON_CODES.keep, detail: null } as const;
     const heater = buildPlanDevice({ id: 'heater', reason: keepReason });
-    const battery = buildPlanDevice({ id: 'home-battery', observeOnly: true, reason: keepReason });
-    const solar = buildPlanDevice({ id: 'solar', observeOnly: true, reason: keepReason });
+    const battery = buildPlanDevice({ id: 'home-battery', isBatteryOrSolar: true, reason: keepReason });
+    const solar = buildPlanDevice({ id: 'solar', isBatteryOrSolar: true, reason: keepReason });
 
     const readModel = buildSettingsOverviewReadModel({
       meta: buildPlanMeta({
@@ -299,6 +301,7 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device, {
       ...absentTemperature,
       getObservedStateOfCharge: () => ({
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
         kind: 'observed' as const,
         value: {
           level: stateOfChargeFixture({
@@ -549,5 +552,106 @@ describe('settingsOverviewReadModel', () => {
       }), absentTemperature);
       expect(device.boostActive).toBe(false);
     });
+  });
+});
+
+describe('settingsOverviewReadModel home battery card', () => {
+  const battery = (overrides: { signedW?: number | null; percent?: number; drivable?: boolean } = {}) => ({
+    ...absentTemperature,
+    getHomeBatteryCard: (deviceId: string) => (deviceId === 'battery-1'
+      ? {
+        kind: 'battery' as const,
+        drivable: overrides.drivable ?? true,
+        power: overrides.signedW === null
+          ? { kind: 'absent' as const }
+          : { kind: 'observed' as const, signedW: overrides.signedW ?? -2400 },
+        level: { kind: 'observed' as const, percent: overrides.percent ?? 64 },
+      }
+      : { kind: 'none' as const }),
+  });
+  const batteryDevice = (storageHold: DevicePlanDevice['storageHold'] = 'none') => buildPlanDevice({
+    id: 'battery-1',
+    name: 'Sessy battery',
+    isBatteryOrSolar: true,
+    storageHold,
+  });
+
+  it('says a battery PELS holds for the limit is supplying, without a sign', () => {
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('relief'), battery());
+    expect(card.status).toMatchObject({
+      label: 'Supplying',
+      kind: 'active',
+      powerText: '2.4 kW',
+      factText: '64 % charged',
+      reason: { text: 'Holding your limit so your devices keep running' },
+      limited: false,
+    });
+    expect(card.homeBattery).toEqual({ activity: 'supplying', power: { kind: 'observed', kw: 2.4 }, holdsLimit: true });
+  });
+
+  it('names what a battery held for the limit still does, not what the plan asked', () => {
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('relief'), battery({ signedW: 1500 }));
+    expect(card.status).toMatchObject({
+      label: 'Charging',
+      powerText: '1.5 kW',
+      reason: { text: 'Holding your limit so your devices keep running' },
+    });
+    // The hero names only a battery that is supplying.
+    expect(card.homeBattery).toEqual({ activity: 'charging', power: { kind: 'observed', kw: 1.5 }, holdsLimit: false });
+  });
+
+  it.each([
+    { name: 'too little to name', signedW: -30 },
+    { name: 'no power reading', signedW: null },
+  ])('gives a held battery reporting $name no power, so the hero has no figure', ({ signedW }) => {
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('relief'), battery({ signedW }));
+    expect(card.status).toMatchObject({ label: 'Supplying', powerText: null });
+    expect(card.homeBattery).toEqual({ activity: 'supplying', power: { kind: 'absent' }, holdsLimit: false });
+  });
+
+  it('says a battery PELS holds to store solar is charging from solar', () => {
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('surplus'), battery({ signedW: 1800, percent: 41 }));
+    expect(card.status).toMatchObject({
+      label: 'Charging',
+      powerText: '1.8 kW',
+      reason: { text: 'Storing the solar power your devices leave' },
+    });
+  });
+
+  it('says a battery PELS caps for a device is charging less, never storing solar', () => {
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice('cap_for_device'), battery({ signedW: 600 }));
+    expect(card.status).toMatchObject({
+      label: 'Charging',
+      powerText: '0.6 kW',
+      reason: { text: 'Charging less so a device can use the solar' },
+    });
+  });
+
+  it('says a battery in its own mode is in its own mode, with what it is doing', () => {
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice(), battery({ signedW: -400, percent: 78 }));
+    expect(card.status).toMatchObject({
+      label: 'Own mode',
+      kind: 'idle',
+      powerText: '0.4 kW',
+      factText: '78 % charged · supplying',
+      reason: { text: 'PELS takes over when your limit or solar needs it' },
+    });
+    expect(card.homeBattery).toEqual({ activity: 'own_mode', power: { kind: 'observed', kw: 0.4 }, holdsLimit: false });
+  });
+
+  it('gives a battery PELS cannot drive no promise of taking over', () => {
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice(), battery({ drivable: false }));
+    expect(card.status.reason).toBeNull();
+  });
+
+  it('shows a managed battery on the overview and never a solar device', () => {
+    const readModel = buildSettingsOverviewReadModel({
+      meta: buildPlanMeta({}),
+      devices: [
+        batteryDevice('relief'),
+        buildPlanDevice({ id: 'pv-1', name: 'Roof', isBatteryOrSolar: true }),
+      ],
+    }, battery());
+    expect(readModel?.devices?.map((device) => device.id)).toEqual(['battery-1']);
   });
 });

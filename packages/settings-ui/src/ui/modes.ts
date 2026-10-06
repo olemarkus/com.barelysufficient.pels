@@ -9,6 +9,7 @@ import {
   modeSelect,
   priorityList,
   priorityEmpty,
+  priorityBatteryNote,
   modeNewInput,
 } from './dom.ts';
 import {
@@ -24,7 +25,8 @@ import {
   homeScopedSettingsKey,
 } from '../../../contracts/src/settingsKeys.ts';
 import { showToast, showToastError } from './toast.ts';
-import { resolveManagedState, state } from './state.ts';
+import { isHomeBatteryDeviceId, resolveManagedState, state } from './state.ts';
+import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
@@ -45,7 +47,7 @@ import { applyCurrentModeRename } from './currentModes.ts';
 import { assertWritableModeDeviceTargets, readModeCatalogPair } from './modeCatalogMaps.ts';
 import {
   readBooleanSettingMap, readModeAliases, readModeSettings,
-  applyTemperatureControlSettings, applyDeviceStartPolicySettings,
+  applyTemperatureControlSettings, applyDeviceStartPolicySettings, applyBatteryControlSettings,
   readStrictBooleanSettingMap, type ModeSettingsRead,
 } from './modeSettingsRead.ts';
 import { prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
@@ -127,6 +129,7 @@ const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
     ?? state.respectExternalOffMap;
   applyDeviceStartPolicySettings(read);
   applyTemperatureControlSettings(read);
+  applyBatteryControlSettings(read);
   state.nativeWiringMap = readBooleanSettingMap(read.nativeWiring);
   state.modeAliases = readModeAliases(read.aliases) ?? (keepEditingMode ? state.modeAliases : {});
   renderModeOptions();
@@ -259,6 +262,9 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
     resolveManagedState(device.id)
     && getHomeIdForUiDevice(device.id) === selectedHomeId
   ));
+  if (priorityBatteryNote) {
+    priorityBatteryNote.hidden = !managedDevices.some((device) => isHomeBatteryClassKey(device.deviceClass));
+  }
   if (!managedDevices.length) {
     priorityEmpty.hidden = false;
     return;
@@ -266,7 +272,11 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   priorityEmpty.hidden = true;
 
   const editingMode = state.editingMode || DEFAULT_MODE_NAME;
-  const order = state.modePriorityCatalog.getOrder(editingMode, managedDevices.map(({ id }) => id));
+  const order = state.modePriorityCatalog.getOrder(
+    editingMode,
+    managedDevices.map(({ id }) => id),
+    isHomeBatteryDeviceId,
+  );
   [...managedDevices].sort((a, b) => order.getPriority(a.id) - order.getPriority(b.id))
     .forEach((d) => priorityList.appendChild(buildPriorityRow(d)));
 

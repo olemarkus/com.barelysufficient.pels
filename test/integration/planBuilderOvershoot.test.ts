@@ -40,7 +40,7 @@ const buildDevice = (
     // ordinary on/off load unless the spec says otherwise.
     deviceType: 'onoff' as const,
     isEvCharger: false,
-    observeOnly: false,
+    isBatteryOrSolar: false,
     starvationSupported: false,
     ...overrides,
   };

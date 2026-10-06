@@ -3,7 +3,8 @@ import {
   deviceDetailManaged,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
-import { state } from '../state.ts';
+import { isHomeBatteryDeviceId, state } from '../state.ts';
+import { writeBatteryManaged } from '../batteryManaged.ts';
 import { showToast } from '../toast.ts';
 import { ensureChargerPhasePresetsRead } from '../chargerPhasePresets.ts';
 import {
@@ -66,6 +67,13 @@ export function initDeviceDetailManagedControlHandlers(
 
     const nextChecked = deviceDetailManaged.selected;
     const intentGeneration = beginManagedControlIntent(deviceId);
+    if (isHomeBatteryDeviceId(deviceId)) {
+      await writeBatteryManaged(deviceId, nextChecked, 'device detail', () => {
+        refreshSharedDeviceViews();
+        refreshCurrentDeviceControlStates();
+      }, refreshCurrentDeviceControlStates);
+      return;
+    }
     const device = state.latestDevices.find((entry) => entry.id === deviceId);
     const phaseRead = nextChecked && device?.isEvCharger === true
       ? await ensureChargerPhasePresetsRead()

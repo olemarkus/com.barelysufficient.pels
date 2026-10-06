@@ -80,7 +80,7 @@ const NO_LOAD_EVIDENCE: ManagedLoadDraw = { totalW: 0, loadKey: resolveManagedLo
  * so a PV home is judged like any other then.
  *
  * A battery whose `target_power` Homey never set is in `devices` too: the read
- * contract does not ask a value of an observe-only class's `target_power`
+ * contract does not ask a value of a battery or solar class's `target_power`
  * (`deviceReadContract.ts`), where it used to ignore the whole read. Such a
  * home now counts as covered, as intended — the battery covers loads either way.
  */
@@ -111,7 +111,7 @@ const resolveManagedLoadDraw = (
   if (mayCoverLoad(devices, generationW)) return NO_LOAD_EVIDENCE;
   const measured = devices
     .filter(hasObservedMeasuredPower)
-    .filter((device) => device.measuredPowerIsDirectMeasurement && !device.observeOnly);
+    .filter((device) => device.measuredPowerIsDirectMeasurement && !device.isBatteryOrSolar);
   let totalW = 0;
   for (const device of measured) totalW += device.measuredPowerKw * 1000;
   return { totalW, loadKey: resolveManagedLoadKey(measured.map((device) => device.id)) };

@@ -1,5 +1,7 @@
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
 import { capacityPeriodNoun } from './capacityPeriodCopy.ts';
+import type { SettingsUiPlanDeviceSnapshot } from '../../../contracts/src/settingsUiApi.ts';
+import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 
 /**
  * The hero's input, resolved. Every power figure is a plain number: the caller
@@ -262,7 +264,25 @@ export type DecisionSentenceInput = {
   // over the hard cap, the managed shed cascade is exhausted — the only
   // remaining draw is whatever PELS cannot touch.
   sheddableManagedRunningCount?: number;
+  // Home batteries PELS has discharging to hold the limit right now, with the
+  // power each supplies. The battery's discharge is the limit holding without
+  // a device limited, which the sentence names instead of a quiet hour.
+  supplyingBatteries?: readonly SupplyingBattery[];
 };
+
+export type SupplyingBattery = { name: string; kw: number };
+
+/**
+ * The batteries the hero names as holding the limit: the producer's
+ * `holdsLimit` (held for relief and supplying), with the power each reports.
+ */
+export const resolveSupplyingBatteries = (
+  devices: readonly Pick<SettingsUiPlanDeviceSnapshot, 'name' | 'homeBattery'>[],
+): SupplyingBattery[] => devices.flatMap((device) => {
+  const battery = device.homeBattery;
+  if (battery?.holdsLimit !== true || battery.power.kind !== 'observed') return [];
+  return [{ name: formatDisplayDeviceName(device.name), kw: battery.power.kw }];
+});
 
 export type DecisionSentenceResult = {
   text: string;
@@ -307,6 +327,15 @@ const resolveLimitingDecisionSentence = (input: DecisionSentenceInput): Decision
     ? ` so the house stays under ${formatKw(input.safePaceKw)}`
     : '';
   return { text: `Holding back ${devicesText}${safePaceText}.`, positive: false };
+};
+
+// The batteries holding the limit, as one clause: one battery by name, several
+// by count with their combined power.
+const formatBatterySupply = (batteries: readonly SupplyingBattery[]): string => {
+  const totalKw = batteries.reduce((sum, battery) => sum + battery.kw, 0);
+  const [only] = batteries;
+  if (batteries.length === 1 && only) return `${only.name} is supplying ${formatKw(totalKw)}`;
+  return `${batteries.length} batteries are supplying ${formatKw(totalKw)}`;
 };
 
 // Resolve the on-pace-over-hard-cap decision sentence (rule 2 of
@@ -378,9 +407,17 @@ export const buildDecisionSentence = (
     };
   }
 
+  const batteries = input.dryRun ? [] : input.supplyingBatteries ?? [];
+
   // 4. Actively limiting. Pick the most-specific framing that honestly
-  // describes why the limited devices are being held.
-  if (input.limitedCount > 0) return resolveLimitingDecisionSentence(input);
+  // describes why the limited devices are being held, after the batteries
+  // already supplying power toward the same limit.
+  if (input.limitedCount > 0) {
+    const limiting = resolveLimitingDecisionSentence(input);
+    return batteries.length > 0
+      ? { text: `${formatBatterySupply(batteries)} to hold your limit. ${limiting.text}`, positive: limiting.positive }
+      : limiting;
+  }
 
   // 5. Resuming.
   if (input.resumingCount > 0) {
@@ -399,7 +436,12 @@ export const buildDecisionSentence = (
     };
   }
 
-  // 7. On track.
+  // 7. A battery holds the limit, so no device needs to be limited.
+  if (batteries.length > 0) {
+    return { text: `${formatBatterySupply(batteries)} to hold your limit.`, positive: true };
+  }
+
+  // 8. On track.
   return { text: 'Quiet hour. Nothing to do.', positive: true };
 };
 

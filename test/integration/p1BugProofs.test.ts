@@ -178,7 +178,7 @@ describe('P1 bug proofs', () => {
           currentDrawKw: 0,
           deviceType: 'onoff',
           isEvCharger: false,
-          observeOnly: false,
+          isBatteryOrSolar: false,
           starvationSupported: false,
         })) as PlanInputDevice,
         withBinaryDiscriminant(withFixtureResidualKw({
@@ -201,7 +201,7 @@ describe('P1 bug proofs', () => {
           binaryCapabilityId: 'onoff',
           deviceType: 'onoff',
           isEvCharger: false,
-          observeOnly: false,
+          isBatteryOrSolar: false,
           starvationSupported: false,
         })) as PlanInputDevice,
       ],

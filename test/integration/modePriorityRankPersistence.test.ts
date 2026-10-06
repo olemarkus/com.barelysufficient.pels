@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createHomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import type { HomeMembershipPort } from '../../lib/home/membership';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
+import type { HomeBatteryDevicesRead } from '../../lib/ports/homeBatteryDevices';
 import { CAPACITY_PRIORITIES, MAIN_HOME_ID, homeScopedSettingsKey } from '../../lib/utils/settingsKeys';
 
 const createSettings = (initial: Record<string, unknown>): SettingsPort & { writes: string[] } => {
@@ -27,10 +28,13 @@ const settledMembership = (homeByDevice: Record<string, string> = {}): HomeMembe
   hasPendingOwnershipGeneration: () => false,
 } as unknown as HomeMembershipPort);
 
+const NO_BATTERIES = (): HomeBatteryDevicesRead => ({ status: 'resolved', deviceIds: new Set() });
+
 const createMainCatalog = (
   settings: SettingsPort,
   managed: Record<string, boolean>,
   membership: HomeMembershipPort | undefined = settledMembership(),
+  readHomeBatteries: () => HomeBatteryDevicesRead = () => ({ status: 'resolved', deviceIds: new Set(['battery-1']) }),
 ) => createHomeModeCatalog(
   MAIN_HOME_ID,
   settings,
@@ -38,6 +42,7 @@ const createMainCatalog = (
   () => managed,
   () => membership,
   () => undefined,
+  readHomeBatteries,
 );
 
 describe('persisting ranks for unranked managed devices', () => {
@@ -117,6 +122,7 @@ describe('persisting ranks for unranked managed devices', () => {
     const catalog = createHomeModeCatalog(
       MAIN_HOME_ID, settings, () => { throw new Error('unused'); },
       () => ({ heater: true, charger: true }), () => ownership.membership, () => undefined,
+      NO_BATTERIES,
     );
     expect(settings.writes).toEqual([]);
     ownership.membership = settledMembership();
@@ -159,9 +165,33 @@ describe('persisting ranks for unranked managed devices', () => {
       area, settings, main.getSnapshot,
       () => ({ heater: true, sauna: true, kitchen: true }),
       () => settledMembership({ heater: area, sauna: area }), () => undefined,
+      NO_BATTERIES,
     );
     catalog.reload();
     expect(settings.get(homeScopedSettingsKey(CAPACITY_PRIORITIES, area))).toEqual({ Home: { heater: 1, sauna: 2 } });
     expect(settings.writes).toEqual([homeScopedSettingsKey(CAPACITY_PRIORITIES, area)]);
+  });
+
+  it('inserts a newly managed device above a home battery at the bottom', () => {
+    const settings = createSettings({
+      [CAPACITY_PRIORITIES]: { Home: { heater: 1, 'battery-1': 2 } },
+      mode_device_targets: { Home: {} },
+    });
+    createMainCatalog(settings, { heater: true, charger: true });
+    expect(settings.get(CAPACITY_PRIORITIES)).toEqual({ Home: { heater: 1, charger: 2, 'battery-1': 3 } });
+  });
+
+  it('waits to persist while the home batteries are not known yet', () => {
+    const settings = createSettings({
+      [CAPACITY_PRIORITIES]: { Home: { heater: 1, 'battery-1': 2 } },
+      mode_device_targets: { Home: {} },
+    });
+    let batteries: HomeBatteryDevicesRead = { status: 'unavailable' };
+    const catalog = createMainCatalog(settings, { heater: true, charger: true }, settledMembership(), () => batteries);
+    expect(settings.writes).toEqual([]);
+
+    batteries = { status: 'resolved', deviceIds: new Set(['battery-1']) };
+    catalog.reload();
+    expect(settings.get(CAPACITY_PRIORITIES)).toEqual({ Home: { heater: 1, charger: 2, 'battery-1': 3 } });
   });
 });

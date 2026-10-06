@@ -44,7 +44,7 @@ const solarInputDevice = (overrides: Partial<MeteredPlanInputDevice> = {}): Mete
     id: SOLAR_ID,
     expectedPowerKw: 1,
     name: 'Solar Panel',
-    observeOnly: true,
+    isBatteryOrSolar: true,
     deviceType: 'onoff',
     managed: true,
     controllable: false,

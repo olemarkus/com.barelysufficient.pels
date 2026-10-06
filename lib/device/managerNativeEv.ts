@@ -45,7 +45,7 @@ import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 import { withoutTargetPowerReachability } from './targetPowerReachability';
 import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
-import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
+import { isBatteryOrSolarClassKey } from '../../packages/shared-domain/src/batteryOrSolarRole';
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -106,7 +106,7 @@ export function resolveFlowCapabilityOverlay(params: {
   // class key is known: no ladder-contract warning, no owner-configured or
   // native ladder (so no control adapter, which is what every later stepped
   // write and realtime path keys on), and its `target_power` is not stripped.
-  const steppedLoad = !isObserveOnlyRoleClassKey(deviceClassKey);
+  const steppedLoad = !isBatteryOrSolarClassKey(deviceClassKey);
   const { targetPowerOverlay, nativeSteppedOverlay }: SteppedLoadOverlays = steppedLoad
     ? applySteppedLoadOverlays(device, deviceId, nativeEvOverlay, providers, logger)
     : { targetPowerOverlay: nativeEvOverlay, nativeSteppedOverlay: {} };

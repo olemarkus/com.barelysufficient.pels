@@ -33,7 +33,7 @@ import {
 // temperature device; the per-mode and price sections only for one PELS manages.
 type DeviceGate = (device: DeviceDescriptorRead) => boolean;
 
-const isTemperatureDevice: DeviceGate = (device) => !device.observeOnly && device.deviceType === 'temperature';
+const isTemperatureDevice: DeviceGate = (device) => !device.isBatteryOrSolar && device.deviceType === 'temperature';
 
 const isManagedTemperatureDevice: DeviceGate = (device) => isTemperatureDevice(device) && device.managed === true;
 

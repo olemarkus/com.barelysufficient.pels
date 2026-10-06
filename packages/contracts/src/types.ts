@@ -373,12 +373,12 @@ export type DeviceDescriptor = {
      */
     isEvCharger: boolean;
     /**
-     * A tracked battery or panel the planner observes and never commands (a
+     * A home battery or solar device: never a load the generic lanes command (a
      * battery is commanded only through the actuator's storage intents), resolved once
-     * at parse from the class key (`isObserveOnlyRoleClassKey`). Required for the
+     * at parse from the class key (`isBatteryOrSolarClassKey`). Required for the
      * same reason as `isEvCharger`.
      */
-    observeOnly: boolean;
+    isBatteryOrSolar: boolean;
     // `steppedLoadProfile`/`targetPowerConfig` are deliberately NOT here
     // (stepped-descriptor slice of the discriminated-types refactor): they live on
     // `SteppedLoadDescriptorFields`, regrouped onto the snapshot by the
@@ -924,6 +924,9 @@ export type HomeBatteryDescriptorProbe = {
 /** A home battery's own signed power reading: positive charging, negative discharging. */
 export type HomeBatteryPowerObservation = { signedW: number; observedAtMs: number };
 
+/** A home battery's own charge level (`measure_battery`), 0-100 %. Shown on its card; nothing decides on it. */
+export type HomeBatteryLevelObservation = { percent: number; observedAtMs: number };
+
 /**
  * The last value a home battery's claim capability reported. It is always read
  * off the claim capability of the same snapshot's `controlSurface`; the parse
@@ -939,11 +942,13 @@ export type HomeBatteryClaimObservation = { value: string; observedAtMs: number 
  * `batteryPower` keeps the sign the device reported; `measuredPowerKw` is the
  * draw view of the same reading, 0 while the battery discharges.
  * `batteryClaim` is observed only for a battery whose control surface is
- * `setpoint`, once it reports a value.
+ * `setpoint`, once it reports a value. `batteryLevel` is for display only: no
+ * PELS decision reads a battery's level (owner ruling, 2026-10-05).
  */
 export type HomeBatteryObservedProbe = {
     batteryPower?: HomeBatteryPowerObservation;
     batteryClaim?: HomeBatteryClaimObservation;
+    batteryLevel?: HomeBatteryLevelObservation;
 };
 
 /** Observer-maintained value after transport has projected every observed cluster. */

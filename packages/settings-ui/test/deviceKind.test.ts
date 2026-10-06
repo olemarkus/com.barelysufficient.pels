@@ -119,3 +119,52 @@ describe('resolveDeviceDetailKind', () => {
     expect(resolveDeviceDetailKind(undefined)).toBe('binary');
   });
 });
+
+describe('home battery in the settings UI', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('resolves a home battery as its own device page kind', async () => {
+    const { resolveDeviceDetailKind } = await import('../src/ui/deviceKind.ts');
+    expect(resolveDeviceDetailKind(buildDevice({ deviceClass: 'battery', isBatteryOrSolar: true })))
+      .toBe('battery');
+  });
+
+  it('reads a battery\'s Managed from its own setting: on unless turned off', async () => {
+    const { state, resolveManagedState } = await import('../src/ui/state.ts');
+    state.latestDevices = [buildDevice({ id: 'battery-1', deviceClass: 'battery', isBatteryOrSolar: true })];
+    state.managedMap = {};
+    state.batteryControl = { status: 'resolved', devices: {} };
+    expect(resolveManagedState('battery-1')).toBe(true);
+    state.batteryControl = { status: 'resolved', devices: { 'battery-1': false } };
+    expect(resolveManagedState('battery-1')).toBe(false);
+    // `managed_devices` has no say over a battery.
+    state.managedMap = { 'battery-1': true };
+    expect(resolveManagedState('battery-1')).toBe(false);
+  });
+
+  it('shows a battery unmanaged and its switch unavailable while the stored map does not parse', async () => {
+    const { state, resolveManagedState } = await import('../src/ui/state.ts');
+    const { applyBatteryControlSettings } = await import('../src/ui/modeSettingsRead.ts');
+    const { resolveDeviceManageability } = await import('../src/ui/deviceListPresentation.ts');
+    const battery = buildDevice({ id: 'battery-1', deviceClass: 'battery', isBatteryOrSolar: true });
+    state.latestDevices = [battery];
+    applyBatteryControlSettings({ batteryControl: { 'battery-1': 'yes' } } as never);
+
+    expect(state.batteryControl).toEqual({ status: 'unreadable' });
+    expect(resolveManagedState('battery-1')).toBe(false);
+    expect(resolveDeviceManageability(battery)).toMatchObject({ canManage: false, isManaged: false });
+
+    applyBatteryControlSettings({ batteryControl: null } as never);
+    expect(resolveManagedState('battery-1')).toBe(true);
+  });
+
+  it('claims whole-house cover only for a battery last in the list', async () => {
+    const { resolveBatteryPriorityHint } = await import('../src/ui/deviceDetail/batterySection.ts');
+    expect(resolveBatteryPriorityHint({ rank: 5, total: 5 }))
+      .toBe('Last in the list, it covers the whole house before any device is limited.');
+    expect(resolveBatteryPriorityHint({ rank: 3, total: 5 }))
+      .toBe('Its place decides who it protects: the devices above it.');
+  });
+});

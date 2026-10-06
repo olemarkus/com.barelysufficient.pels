@@ -397,6 +397,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       pendingTargetNextRetryAtMs: d.pendingTargetCommand?.nextRetryAtMs ?? null,
       pendingTargetStatus: d.pendingTargetCommand?.status ?? null,
       storageDecision: hasStorageDecision(d) ? d.storageDecision : null,
+      storageHold: d.storageHold,
     })), ...(plan.storageReleases ?? [])],
   );
 }

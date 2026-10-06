@@ -15,7 +15,9 @@ import {
   primeApiCache,
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
-import { defaultPriceOptimizationConfig, state } from './state.ts';
+import { defaultPriceOptimizationConfig, isHomeBatteryDeviceId, state } from './state.ts';
+import { writeBatteryManaged } from './batteryManaged.ts';
+import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { renderPriorities } from './modes.ts';
 import { refreshPlan } from './plan.ts';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization.ts';
@@ -78,7 +80,7 @@ const hasResolvedAvailability = (value: unknown): value is SettingsUiDeviceListI
   // Required on the wire: the charger and on/off checks read them straight.
   && typeof (value as { isEvCharger?: unknown }).isEvCharger === 'boolean'
   && typeof (value as { binaryControllable?: unknown }).binaryControllable === 'boolean'
-  && typeof (value as { observeOnly?: unknown }).observeOnly === 'boolean'
+  && typeof (value as { isBatteryOrSolar?: unknown }).isBatteryOrSolar === 'boolean'
   && typeof (value as { deviceClass?: unknown }).deviceClass === 'string'
   && isDeviceType((value as { deviceType?: unknown }).deviceType)
   && hasValidFlowConflict((value as { flowConflict?: unknown }).flowConflict)
@@ -160,6 +162,14 @@ const withInitialLoadGuard = (
 
 const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('managed', async (checked) => {
   const intentGeneration = beginManagedControlIntent(deviceId);
+  if (isHomeBatteryDeviceId(deviceId)) {
+    const rerender = () => {
+      renderDevices(state.latestDevices);
+      renderPriorities(state.latestDevices);
+    };
+    await writeBatteryManaged(deviceId, checked, 'device list', rerender, rerender);
+    return;
+  }
   const device = state.latestDevices.find((entry) => entry.id === deviceId);
   const phaseRead = checked && device?.isEvCharger === true
     ? await ensureChargerPhasePresetsRead()
@@ -352,11 +362,11 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
   };
 
   const nameCell = buildRedesignNameCell(device);
-  appendRedesignDisabledReasons(nameCell, getRowDisabledReasons({
-    isLoadingComplete,
-    manageability,
-    disabled,
-  }));
+  const reasons = getRowDisabledReasons({ isLoadingComplete, manageability, disabled });
+  // A battery's Limit and Price cells are not applicable, not waiting on the owner.
+  appendRedesignDisabledReasons(nameCell, isHomeBatteryClassKey(device.deviceClass)
+    ? { ...reasons, limit: null, price: null }
+    : reasons);
 
   row.append(
     nameCell,

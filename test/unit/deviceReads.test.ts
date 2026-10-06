@@ -28,7 +28,7 @@ describe('device reads', () => {
     const [device] = readsOver([snapshot('a')]).descriptors();
     expect(Object.keys(device!).sort()).toEqual([
       'binaryControllable', 'capabilities', 'deviceClass', 'deviceType', 'expectedPowerKw',
-      'expectedPowerSource', 'id', 'isEvCharger', 'name', 'observeOnly',
+      'expectedPowerSource', 'id', 'isBatteryOrSolar', 'isEvCharger', 'name',
     ]);
     expect(readsOver([snapshot('a')]).descriptor('a')).toEqual(device);
     expect(readsOver([snapshot('a')]).descriptor('missing')).toBeUndefined();

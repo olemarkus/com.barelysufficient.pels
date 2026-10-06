@@ -474,8 +474,15 @@ type DevicePlanDeviceBase = {
   // settings-overview read model forwards rather than re-deriving it from
   // whether a plug-state reading existed.
   isEvCharger: boolean;
-  // A tracked battery or panel: the overview leaves it out.
-  observeOnly: boolean;
+  // A home battery or solar device: never a load the shed/restore lanes command.
+  // The overview shows a managed battery with its own card, never a solar device.
+  isBatteryOrSolar: boolean;
+  // Why PELS holds a home battery this cycle: to hold the limit (`relief`), to
+  // cap its own mode's charge so a device can use the solar (`cap_for_device`),
+  // or to store solar the devices leave (`surplus`). `none` while it runs its
+  // own mode, and on every device that is not a battery. Stamped by the
+  // storage relief stage (`attachStorageDecisions`).
+  storageHold: 'none' | 'relief' | 'cap_for_device' | 'surplus';
   // `binaryControl` is split off onto the orthogonal `BinaryControlKind` cluster;
   // reach it through the `isBinaryPlanDevice` guard (`lib/plan/planBinaryDevice.ts`).
   // Present iff the producer resolved a binary `currentOn` value.

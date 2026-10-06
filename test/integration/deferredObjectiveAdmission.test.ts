@@ -152,7 +152,7 @@ const buildDevice = (params: {
   surplusTracking: false,
   confirmedNotDrawing: false,
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   starvationSupported: false,
   // capacity-based control toggle is OFF for this scenario
   control: fixtureControlPosture({ controllable: false }),
@@ -211,7 +211,7 @@ const buildBuilder = (
   const deferredController = new DeferredObjectiveDecorationController({
     getThermalDirection: () => 'heating',
     getPrioritiesForDevices: (deviceIds) => new ModePriorityCatalog(overrides.priorityByModeRef?.current)
-      .getOrder(overrides.modeRef?.current ?? 'Home', deviceIds),
+      .getOrder(overrides.modeRef?.current ?? 'Home', deviceIds, () => false),
     getDeferredObjectiveSettings: () => buildSettings(),
     getTimeZone: () => 'UTC',
     getPowerTracker: () => powerTrackerRef.current,
@@ -274,7 +274,7 @@ const buildContender = (params: {
   surplusTracking: false,
   confirmedNotDrawing: false,
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   starvationSupported: false,
   deviceType: 'onoff',
   control: fixtureControlPosture(params),

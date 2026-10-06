@@ -17,7 +17,7 @@ import type { DeviceCapabilityMap } from './managerControl';
  * A battery is NOT a stepped load. Its `target_power` is signed, so the 0..max
  * ladder `nativeSteppedLoadWiring.ts` builds for a heater or charger would
  * silently drop discharge, and the stepped overlays are gated off for the
- * observe-only role classes (`resolveFlowCapabilityOverlay`).
+ * battery and solar classes (`resolveFlowCapabilityOverlay`).
  */
 
 // Homey's standard signed setpoint. Spelled here rather than borrowed from the

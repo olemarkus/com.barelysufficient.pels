@@ -42,6 +42,8 @@ import type { PlanService } from '../plan/planService';
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { BatteryControlOwner } from '../ports/batteryControlOwner';
+import type { BatteryManagedSettings } from '../battery/batteryControlSettings';
+import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceLevelChangesRead, PriceLevelLookahead } from '../price/priceLevelUtils';
 import type { PriceCoordinator } from '../price/priceCoordinator';
@@ -191,6 +193,9 @@ export type AppContext = {
   getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
   emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
   resolveManagedState: (deviceId: string) => boolean;
+  // The home batteries the device layer knows, `unavailable` before it exists
+  // or has settled them (`lib/device/deviceRoleReads.ts`).
+  readHomeBatteryDevices: () => HomeBatteryDevicesRead;
   // Observer-owned maintained observed truth for a device, fed by the dispatcher
   // push (`lib/observer/observedDeviceStateProjection.ts`). `undefined` until the
   // first observation lands.
@@ -384,6 +389,9 @@ export type AppContext = {
   // recovery runs on the first committed snapshot; the settings handler
   // reaches it here.
   batteryControl?: BatteryControlOwner;
+  // The owner's Managed map per home battery: one answer from app start, before
+  // the battery control owner exists, which delegates to it once it does.
+  batteryManaged: BatteryManagedSettings;
   // "Leave off until turned on again": the opt-in config plus the per-device
   // hold state recording that a device was turned off outside PELS, independent
   // of the current plan. ASSIGNED by `AppServiceWiring.initDeviceManager`

@@ -24,6 +24,12 @@ export const MODE_CATALOG_INITIALIZED = 'mode_catalog_initialized';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
+// A home battery's Managed toggle: `Record<deviceId, boolean>` (absent entry or
+// key = on; `false` = off). Parse lives in
+// `packages/shared-domain/src/settings/batteryControlDevices.ts`. Mirror of
+// BATTERY_CONTROL_DEVICES in lib/utils/settingsKeys.ts — keep both in sync (the
+// settings UI can't import lib).
+export const BATTERY_CONTROL_DEVICES = 'battery_control_devices';
 // Opt-in for "Leave off until turned on again": `Record<deviceId, true>` (absent
 // = off). Mirror of RESPECT_EXTERNAL_OFF_DEVICES in lib/utils/settingsKeys.ts —
 // keep both in sync (the settings UI can't import lib).

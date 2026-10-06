@@ -1,7 +1,7 @@
 import type { DeviceDescriptor } from '../../../contracts/src/types.ts';
-import { isObserveOnlyRoleClassKey } from '../../../shared-domain/src/observeOnlyRole.ts';
+import { isBatteryOrSolarClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 
-type DescriptorIdentityKey = 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'observeOnly';
+type DescriptorIdentityKey = 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar';
 
 /** The identity facts the parse producer resolves for every inventory device. */
 type DescriptorIdentity = Pick<DeviceDescriptor, DescriptorIdentityKey>;
@@ -28,7 +28,7 @@ type DescriptorIdentityFixture<T extends DescriptorIdentity> = Omit<T, Descripto
  *   deriving it from `binaryControl` would switch on surfaces (start policy,
  *   external-off row, temperature policy copy) the fixture never asked for.
  * - `isEvCharger`: class `evcharger`, as the producer resolves it.
- * - `observeOnly`: a battery or panel class key (`isObserveOnlyRoleClassKey`).
+ * - `isBatteryOrSolar`: a battery or panel class key (`isBatteryOrSolarClassKey`).
  * - `deviceClass`: a fixture that names none gets `'other'`, the key the device
  *   list already files a class-less device under (`groupDevicesByClass`), and a
  *   class that implies no further fact: not a charger, not observe-only, no
@@ -43,7 +43,7 @@ const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIdentity> &
   deviceClass: fixture.deviceClass ?? 'other',
   deviceType: fixture.deviceType ?? ((fixture.targets?.length ?? 0) > 0 ? 'temperature' : 'onoff'),
   isEvCharger: fixture.isEvCharger ?? fixture.deviceClass === 'evcharger',
-  observeOnly: fixture.observeOnly ?? isObserveOnlyRoleClassKey(fixture.deviceClass ?? 'other'),
+  isBatteryOrSolar: fixture.isBatteryOrSolar ?? isBatteryOrSolarClassKey(fixture.deviceClass ?? 'other'),
   binaryControllable: fixture.binaryControllable ?? false,
 });
 

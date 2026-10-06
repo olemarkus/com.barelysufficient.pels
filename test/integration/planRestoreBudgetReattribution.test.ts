@@ -108,7 +108,7 @@ const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant(wit
   surplusTracking: false,
   confirmedNotDrawing: false,
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   starvationSupported: false,
   deviceType: 'onoff',
   control: fixtureControlPosture({ controllable: true }),

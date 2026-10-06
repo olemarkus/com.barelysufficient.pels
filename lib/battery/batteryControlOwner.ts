@@ -51,11 +51,8 @@ import type { StorageActuation } from '../ports/storageCommand';
 import { normalizeError } from '../utils/errorUtils';
 import { BATTERY_CONTROL_DEVICES } from '../utils/settingsKeys';
 import { BatteryClaimStore, type BatteryClaimRecord } from './batteryClaimStore';
-import {
-  isBatteryControlEnabled,
-  readBatteryControlSettings,
-  type BatteryControlDevicesRead,
-} from './batteryControlSettings';
+import { isBatteryControlEnabled } from '../../packages/shared-domain/src/settings/batteryControlDevices';
+import type { BatteryManagedSettings } from './batteryControlSettings';
 import { backoffDelayMs } from './retryBackoff';
 import { BatteryVerificationLedger } from './batteryVerification';
 
@@ -103,6 +100,8 @@ export type BatteryControlRead =
 
 export type BatteryControlOwnerDeps = {
   settings: SettingsPort;
+  /** The owner's Managed map; the owner's `isManaged` and admission answer from it. */
+  managed: BatteryManagedSettings;
   /** The write seam. The owner dispatches only hand-backs through it. */
   actuation: StorageActuation;
   getBattery: (deviceId: string) => BatteryControlRead;
@@ -185,16 +184,18 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   private readonly pending = new Map<string, PendingHandBack>();
   /** Complete refreshes in a row each recorded battery has been missing from. */
   private readonly absentRefreshes = new Map<string, number>();
-  /** The opt-out map, read at construction and on every change to it. */
-  private controlDevices: BatteryControlDevicesRead;
   /** Hand-backs running now, each answering whether the battery went back. */
   private readonly releasing = new Map<string, Promise<boolean>>();
+  /** Batteries whose Managed PELS turned off this run because the owner took them over. */
+  private readonly takenOver = new Set<string>();
   private readonly writes = new Map<string, Promise<void>>();
   readonly verification = new BatteryVerificationLedger();
 
   constructor(private readonly deps: BatteryControlOwnerDeps) {
     this.store = new BatteryClaimStore(deps.settings);
-    this.controlDevices = readBatteryControlSettings(deps.settings);
+    // Settle the map the owner starts from, so the first change to it is told
+    // apart from it (`applyControlSettings`).
+    deps.managed.read();
   }
 
   admitClaim(deviceId: string): BatteryClaimAdmission {
@@ -222,32 +223,49 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     });
   }
 
+  wasTakenOver(deviceId: string): boolean {
+    return this.takenOver.has(deviceId);
+  }
+
+  isManaged(deviceId: string): boolean {
+    return this.deps.managed.isManaged(deviceId);
+  }
+
+  /** Store the owner's Managed choice for this battery, then apply it as any settings change is applied. */
   setControlEnabled(deviceId: string, enabled: boolean): void {
-    const control = readBatteryControlSettings(this.deps.settings);
+    const control = this.deps.managed.reload();
     if (control.status !== 'resolved') throw new Error('Battery control settings could not be read. Try again.');
-    // Explicit re-enabling adopts the new controller's mode on the next claim.
-    const claims = this.loadClaims();
-    const battery = this.deps.getBattery(deviceId);
-    const record = claims.status === 'loaded' ? claims.records.get(deviceId) : undefined;
-    if (enabled && claims.status === 'loaded' && record !== undefined
-      && battery.kind === 'setpoint' && isTakenOver(record, battery)) {
-      if (!this.store.remove(deviceId)) throw new Error('Battery claim could not be cleared. Try again.');
-      claims.records.delete(deviceId);
-      this.pending.delete(deviceId);
-    }
     this.deps.settings.set(BATTERY_CONTROL_DEVICES, { ...control.devices, [deviceId]: enabled });
     this.applyControlSettings();
   }
 
+  /**
+   * Turn Managed off for a battery someone else took over. An owner's re-enable
+   * that is stored but not applied yet (its settings event is still on its way)
+   * overrules the takeover: it is applied, which adopts the battery's new mode,
+   * rather than overwritten with off.
+   */
   private disableAfterTakeover(deviceId: string): boolean {
+    if (this.hasUnappliedReenable(deviceId)) {
+      this.applyControlSettings();
+      return true;
+    }
     try {
       this.setControlEnabled(deviceId, false);
+      this.takenOver.add(deviceId);
       logger.info({ event: 'battery_control_claim_lost', deviceId });
       return true;
     } catch (error) {
       logger.warn({ event: 'battery_control_opt_out_failed', deviceId, err: normalizeError(error) });
       return false;
     }
+  }
+
+  private hasUnappliedReenable(deviceId: string): boolean {
+    const held = this.deps.managed.read();
+    const stored = this.deps.managed.readStored();
+    return held.status === 'resolved' && stored.status === 'resolved'
+      && !isBatteryControlEnabled(held.devices, deviceId) && isBatteryControlEnabled(stored.devices, deviceId);
   }
 
   private serializeWrite<T>(deviceId: string, write: () => Promise<T>): Promise<T> {
@@ -322,13 +340,44 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   }
 
   applyControlSettings(): void {
-    this.controlDevices = readBatteryControlSettings(this.deps.settings);
-    if (this.controlDevices.status !== 'resolved') return;
+    // A failed read keeps the last map that read cleanly (`BatteryManagedSettings`),
+    // so a battery PELS holds stays managed, and stays in the plan, through it.
+    const previous = this.deps.managed.read();
+    const control = this.deps.managed.reload();
+    if (control.status !== 'resolved') return;
+    const { devices } = control;
+    for (const deviceId of [...this.takenOver]) {
+      if (isBatteryControlEnabled(devices, deviceId)) this.takenOver.delete(deviceId);
+    }
     const claims = this.loadClaims();
     if (claims.status !== 'loaded') return;
-    for (const deviceId of claims.records.keys()) {
-      if (!isBatteryControlEnabled(this.controlDevices.devices, deviceId)) void this.release(deviceId, 'opted_out');
+    for (const deviceId of [...claims.records.keys()]) {
+      if (!isBatteryControlEnabled(devices, deviceId)) {
+        void this.release(deviceId, 'opted_out');
+      } else if (previous.status === 'resolved' && !isBatteryControlEnabled(previous.devices, deviceId)) {
+        this.adoptAfterReenable(claims, deviceId);
+      }
     }
+  }
+
+  /**
+   * The owner turned Managed back on. A record still naming a takeover is the
+   * one the owner just overruled: it would otherwise read as the takeover again
+   * and turn Managed straight back off. Dropping it lets the next claim record
+   * the mode the battery runs now, which is the one PELS hands back to.
+   */
+  private adoptAfterReenable(claims: LoadedClaimRecords, deviceId: string): void {
+    const record = claims.records.get(deviceId);
+    const battery = this.deps.getBattery(deviceId);
+    if (record === undefined || battery.kind !== 'setpoint' || !isTakenOver(record, battery)) return;
+    const recordRemoved = this.forget(claims, deviceId);
+    if (!recordRemoved) {
+      // The record stays stored and would read as the takeover again at the
+      // next boot, turning Managed straight back off.
+      logger.warn({ event: 'battery_control_takeover_record_remove_failed', deviceId });
+      return;
+    }
+    logger.info({ event: 'battery_control_reenabled_after_takeover', deviceId });
   }
 
   /**
@@ -345,7 +394,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   private checkClaim(deviceId: string, fence: FencePolicy): BatteryClaimRefusal | ClaimCheck {
     const battery = this.deps.getBattery(deviceId);
     if (battery.kind !== 'setpoint') return 'not_drivable';
-    const control = this.readControlDevices();
+    const control = this.deps.managed.read();
     if (control.status !== 'resolved') return 'control_setting_unreadable';
     if (!isBatteryControlEnabled(control.devices, deviceId)) return 'control_disabled';
     if (!this.deps.isMainHomeMember(deviceId)) return 'not_main_home';
@@ -391,17 +440,6 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
       previousClaimValue: record.previousValue,
     });
     return 'admitted';
-  }
-
-  /**
-   * The opt-out map. Until a read has resolved, each admission reads again, so
-   * a flaked read refuses claims (fail closed) only until the store answers.
-   */
-  private readControlDevices(): BatteryControlDevicesRead {
-    if (this.controlDevices.status !== 'resolved') {
-      this.controlDevices = readBatteryControlSettings(this.deps.settings);
-    }
-    return this.controlDevices;
   }
 
   /**

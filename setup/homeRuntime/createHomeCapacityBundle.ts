@@ -550,6 +550,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     () => ctx.managedDevices,
     () => ctx.homeMembership,
     () => ctx.getStructuredLogger('homes'),
+    () => ctx.readHomeBatteryDevices(),
   );
   let scheduleSourceActuationRetry = (): void => undefined;
   const isMeterSourceAuthorizedForExecution = (): boolean => {

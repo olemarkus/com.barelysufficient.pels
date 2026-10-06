@@ -70,6 +70,23 @@ describe('structural battery-role resolution at parse', () => {
     expect(parsed.controllable).toBe(false);
   });
 
+  it('stamps a battery the owner turned Managed off as unmanaged, still non-controllable', () => {
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, {
+      ...adversarialProviders,
+      getManaged: (deviceId: string) => deviceId !== 'battery-off',
+    });
+    const [parsed] = transport.parseDeviceListForTests([{
+      id: 'battery-off',
+      name: 'Home Battery',
+      class: 'battery',
+      capabilities: ['measure_battery', 'measure_power'],
+      capabilitiesObj: batteryCaps,
+    }]);
+
+    expect(parsed?.managed).toBe(false);
+    expect(parsed?.controllable).toBe(false);
+  });
+
   it('detects AND survives an energy-role-only battery (class not "battery") via the homeBattery role', () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     const [parsed] = transport.parseDeviceListForTests([{
@@ -161,7 +178,7 @@ describe('home battery control surface at parse', () => {
     expect(parsed.controlModel).not.toBe('stepped_load');
     expect(parsed.nativeWriteCapabilities ?? []).not.toContain('target_power');
     expect(parsed.targetPowerConfig).toBeUndefined();
-    expect(parsed.observeOnly).toBe(true);
+    expect(parsed.isBatteryOrSolar).toBe(true);
     expect(parsed.controllable).toBe(false);
   });
 
@@ -207,6 +224,8 @@ describe('home battery control surface at parse', () => {
     expect(parsed.measuredPowerKw).toBe(0);
     expect(parsed.measuredPowerObservedAtMs).toBe(observedAtMs);
     expect(parsed.batteryClaim).toEqual({ value: 'anti_feed', observedAtMs });
+    // The level the battery card shows: read, never decided on.
+    expect(parsed.batteryLevel).toEqual({ percent: 55, observedAtMs });
   });
 
   it('keeps a battery without a claim capability observe-only, still with its signed power', () => {
@@ -266,6 +285,21 @@ describe('home battery control surface at parse', () => {
     expect(observed.at(-1)?.batteryPower?.signedW).toBe(-1500);
     expect(observed.at(-1)?.measuredPowerKw).toBe(0);
     expect(observed.at(-1)?.batteryClaim?.value).toBe('homey');
+  });
+
+  it('updates the battery level from a realtime event, and keeps it through a report out of range', () => {
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
+    transport.setSnapshotForTests(transport.parseDeviceListForTests([signedTargetPowerBattery()]));
+    const observed: ProjectedObservedDeviceState[] = [];
+    onObservedState(transport, (event) => {
+      if (event.observed) observed.push(event.observed as ProjectedObservedDeviceState);
+    });
+
+    transport.injectCapabilityUpdateForTest('battery-setpoint', 'measure_battery', 61);
+    transport.injectCapabilityUpdateForTest('battery-setpoint', 'measure_battery', 140);
+
+    expect(transport.getSnapshotByDeviceId('battery-setpoint')?.batteryLevel?.percent).toBe(61);
+    expect(observed.at(-1)?.batteryLevel?.percent).toBe(61);
   });
 
   it.each([Number.NaN, null])('rejects a %s battery reading without dispatching it', (junk) => {

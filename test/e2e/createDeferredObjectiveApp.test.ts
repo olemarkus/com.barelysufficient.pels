@@ -29,7 +29,7 @@ const buildPlannedHeater = (): TargetDeviceSnapshot & MeasuredPowerObservedField
     deviceType: 'temperature',
     isEvCharger: false,
     binaryControllable: false,
-    observeOnly: false,
+    isBatteryOrSolar: false,
     capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
     targets: [target],
     temperature: { currentTemperature: 45, target },

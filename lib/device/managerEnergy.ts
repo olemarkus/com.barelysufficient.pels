@@ -217,8 +217,9 @@ export type BatteryStateAggregate = {
   batteryDeviceCount: number;
   /**
    * IDs of every role-detected home-battery device (INCLUDING offline ones). The
-   * authoritative role-membership set: a device in this set resolves managed +
-   * non-controllable, so it rides the managed snapshot as an observe-only device.
+   * authoritative role-membership set: a device in this set resolves
+   * non-controllable, its Managed from the owner's battery-control setting, and
+   * stays in the runtime snapshot whatever that setting says.
    */
   batteryDeviceIds: string[];
 };
@@ -228,15 +229,15 @@ export type BatteryStateAggregate = {
  * Deliberately availability-agnostic: an offline battery is still a home battery.
  * Whether it is AVAILABLE gates EMISSION, not membership (see `extractBatteryState`).
  *
- * This is the SINGLE rule that makes a battery managed observe-only, applied
+ * This is the SINGLE rule that makes a device a home battery, applied
  * STRUCTURALLY from the device object during PARSE (on every parse path — full
  * refresh AND realtime `device.update`):
  *   - `resolveDeviceClassKey` (managerHelpers) normalizes a detected battery to the
  *     'battery' class-key, so it survives identity and every `deviceClassKey ===
  *     'battery'` snapshot-survival gate fires — detection and survival use this one
  *     predicate, so an energy-role-only battery is detected, stamped, AND survives.
- *   - `resolveParsedDeviceSettings` (managerParseDevice) stamps `managed: true,
- *     controllable: false` directly from the device — independent of any async id set,
+ *   - `resolveParsedDeviceSettings` (managerParseDevice) stamps `controllable: false`
+ *     directly from the device — independent of any async id set,
  *     so there is no window where a present battery resolves `controllable: true`.
  * The deviceId-only `resolveManagedState`/`isCapacityControlEnabled` consumers
  * (autocomplete, shortfall-hint) agree via the transport's battery-id set
@@ -270,26 +271,13 @@ export const isHomeBatteryDevice = (device: HomeyDeviceLike): boolean => (
  * is still a solar device (whether it is AVAILABLE gates EMISSION, not membership — see
  * `extractSolarProductionState`).
  *
- * This is the SINGLE rule that makes a solar device managed observe-only, applied via the
- * shared `isObserveOnlyRoleDevice` predicate at the same four parse seams the battery uses
- * (class-key normalization, the structural managed/controllable stamp, the managed-filter
- * exemption, and the flow-card guard).
+ * This is the SINGLE rule that makes a solar device a tracked, never-commanded device: its
+ * class key ('solarpanel') carries the `isBatteryOrSolar` type flag through the same parse
+ * seams the battery uses (class-key normalization, the structural managed/controllable stamp,
+ * the managed-filter exemption, and the flow-card guard).
  */
 export const isSolarPanelDevice = (device: HomeyDeviceLike): boolean => (
   device.class === 'solarpanel'
-);
-
-/**
- * Shared OBSERVE-ONLY ROLE predicate: a battery OR a solar device. PELS TRACKS such a
- * device (it rides the managed snapshot, telemetry observed + logged) but NEVER
- * controls it — it resolves `managed: true, controllable: false`. Battery and solar
- * share this one predicate at every generalizable parse seam so the observe-only
- * machinery is defined once. Battery behaviour is unchanged: an observe-only-role
- * device is exactly `isHomeBatteryDevice || isSolarPanelDevice`, so the battery arm is
- * byte-identical to the pre-generalization battery-only check.
- */
-export const isObserveOnlyRoleDevice = (device: HomeyDeviceLike): boolean => (
-  isHomeBatteryDevice(device) || isSolarPanelDevice(device)
 );
 
 const readCapabilityValue = (device: HomeyDeviceLike, capabilityId: string): unknown => {

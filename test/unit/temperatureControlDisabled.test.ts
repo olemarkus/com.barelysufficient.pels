@@ -43,7 +43,7 @@ const thermostat = (): TargetDeviceSnapshot & TemperatureObservedProbe => ({
   deviceClass: 'thermostat',
   deviceType: 'temperature',
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   controlModel: 'temperature_target',
   temperature: { currentTemperature: 21, target: { id: 'target_temperature', value: 21, unit: '°C' } },
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],

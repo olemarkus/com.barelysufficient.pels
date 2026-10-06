@@ -45,7 +45,7 @@ import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
 import {
   buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp, wirePlanStatusRealtime,
 } from './appInit/wireHomeRuntimeRegistry';
-import { wireDeviceTransport } from './appInit/wireDeviceTransport';
+import { wireDeviceTransport, type DeviceTransportWiringDeps } from './appInit/wireDeviceTransport';
 import type { HomeMembershipWiring } from './homeMembershipWiring';
 import type { PvForecastController } from './appInit/createPvForecastService';
 import type {
@@ -187,7 +187,7 @@ export type AppServiceWiringDeps = {
   subscribePlanObservedState: () => void;
   captureDefaultDynamicSoftLimit: () => void;
   initSettingsHandler: () => void;
-};
+} & Pick<DeviceTransportWiringDeps, 'reloadMainModeCatalog'>;
 
 /**
  * Boot/teardown orchestration and per-service construction extracted from

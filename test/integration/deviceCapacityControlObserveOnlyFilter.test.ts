@@ -18,8 +18,8 @@ const SOLAR_ID = 'solar';
 
 const snapshot = [
   { id: HEATER_ID, name: 'Heater', targets: [], deviceClass: 'heater', controllable: true },
-  { id: BATTERY_ID, name: 'Home Battery', targets: [], deviceClass: 'battery', observeOnly: true, controllable: false },
-  { id: SOLAR_ID, name: 'Solar Panel', targets: [], deviceClass: 'solarpanel', observeOnly: true, controllable: false },
+  { id: BATTERY_ID, name: 'Home Battery', targets: [], deviceClass: 'battery', isBatteryOrSolar: true, controllable: false },
+  { id: SOLAR_ID, name: 'Solar Panel', targets: [], deviceClass: 'solarpanel', isBatteryOrSolar: true, controllable: false },
 ] as unknown as DecoratedDeviceSnapshot[];
 
 const infoSpy = vi.fn();

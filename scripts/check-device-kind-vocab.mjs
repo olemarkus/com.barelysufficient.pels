@@ -34,7 +34,7 @@
 // producer. The kind vocabulary legitimately lives ONLY in the transport
 // producer (`lib/device/**`) and the browser-safe predicates in
 // `packages/shared-domain/**` (e.g. `isEvDevice`, `isTemperatureControlDevice`),
-// or is resolved by the producer into a flag (`isEvCharger`, `observeOnly`,
+// or is resolved by the producer into a flag (`isEvCharger`, `isBatteryOrSolar`,
 // `starvationSupported`); consumers call those predicates or read the flags.
 //
 // Detection is AST-based (not raw regex) and deliberately NARROW so legitimate
@@ -333,7 +333,7 @@ if (offenders.length > 0) {
     + 'lib/plan/**, lib/objectives/** and lib/executor/** must not branch on device\n'
     + 'KIND (deviceClass family names or the deviceType discriminant). Use the\n'
     + 'shared-domain predicates (isEvDevice, isTemperatureControlDevice) or\n'
-    + 'producer-resolved bits (isEvCharger, observeOnly, starvationSupported). Kind\n'
+    + 'producer-resolved bits (isEvCharger, isBatteryOrSolar, starvationSupported). Kind\n'
     + 'vocabulary lives only in lib/device/** (transport) and packages/shared-domain/**.\n'
     + 'Offending site(s):\n',
   );

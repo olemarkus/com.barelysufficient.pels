@@ -44,7 +44,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
   ...buildPlanInputDevice({
     id: 'battery',
     name: 'Battery',
-    observeOnly: true,
+    isBatteryOrSolar: true,
     commandAuthority: false,
     binaryControllable: false,
     currentDrawKw: 0,
@@ -325,7 +325,7 @@ describe('storage relief in the plan build', () => {
     // The battery delivered, then stopped reporting: no power reading, still held.
     const unread: PlanInputDevice & StoragePlanInputKind = {
       ...buildPlanInputDevice({
-        id: 'battery', name: 'Battery', observeOnly: true, commandAuthority: false, binaryControllable: false, unmetered: true,
+        id: 'battery', name: 'Battery', isBatteryOrSolar: true, commandAuthority: false, binaryControllable: false, unmetered: true,
       }),
       storage: { reading: 'missing', handBackDeferred: false, claimHeld: true, admissible: true },
     };

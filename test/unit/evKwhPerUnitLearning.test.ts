@@ -41,7 +41,7 @@ const evDevice = (
   deviceClass: 'evcharger',
   deviceType: 'onoff',
   isEvCharger: true,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   binaryControllable: true,
   binaryControl: { on: true },
   measuredPowerKw: 7,

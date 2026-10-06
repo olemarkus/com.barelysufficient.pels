@@ -1079,6 +1079,8 @@
       isEvCharger: device.isEvCharger ?? false, stateOfCharge: device.stateOfCharge,
       currentDrawKw: device.currentDrawKw, budgetExempt: device.budgetExempt, starvation: device.starvation,
       status: device.status ?? device.fixtureStatus?.[settings.capacity_dry_run ? 'simulation' : 'live'],
+      // A home battery's card carries its activity and power for the hero.
+      ...(device.homeBattery ? { homeBattery: device.homeBattery } : {}),
     })) };
   };
 
@@ -1797,10 +1799,10 @@
     };
   };
 
-  // Mirror of `OBSERVE_ONLY_ROLE_CLASS_KEYS` in
-  // `packages/shared-domain/src/observeOnlyRole.ts` — the stub is injected into
+  // Mirror of `BATTERY_OR_SOLAR_CLASS_KEYS` in
+  // `packages/shared-domain/src/batteryOrSolarRole.ts` — the stub is injected into
   // the WebView as a plain script and cannot import it. Keep the two in sync.
-  const OBSERVE_ONLY_ROLE_CLASS_KEYS = new Set(['battery', 'solarpanel']);
+  const BATTERY_OR_SOLAR_CLASS_KEYS = new Set(['battery', 'solarpanel']);
 
   // The producer resolves both on every device it serves (`managerParseDeviceFields`),
   // and the list parser requires them: default them the way it does, so a spec's
@@ -1808,7 +1810,7 @@
   const withResolvedIdentity = (device) => ({
     isEvCharger: device.deviceClass === 'evcharger',
     binaryControllable: false,
-    observeOnly: OBSERVE_ONLY_ROLE_CLASS_KEYS.has(device.deviceClass),
+    isBatteryOrSolar: BATTERY_OR_SOLAR_CLASS_KEYS.has(device.deviceClass),
     deviceClass: 'other',
     deviceType: (device.targets?.length ?? 0) > 0 ? 'temperature' : 'onoff',
     ...device,
@@ -1825,7 +1827,7 @@
       // computing the solar flag from the UNFILTERED member set — mirror both,
       // or scoped specs would render management controls production never offers.
       devices: members
-        .filter((device) => !OBSERVE_ONLY_ROLE_CLASS_KEYS.has(device.deviceClass))
+        .filter((device) => !BATTERY_OR_SOLAR_CLASS_KEYS.has(device.deviceClass))
         .map(withResolvedIdentity),
       chargerPhasePresets: { state: 'resolved', presets: settings.ui_devices_charger_phase_presets ?? {} },
       hasManagedSolarDevice: members.some((device) => device.deviceClass === 'solarpanel'),

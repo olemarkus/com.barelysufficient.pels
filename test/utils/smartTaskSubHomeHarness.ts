@@ -31,7 +31,7 @@ export const buildPlannedHeater = (id: string, name: string, zoneId: string): Ta
     deviceType: 'temperature',
     isEvCharger: false,
     binaryControllable: false,
-    observeOnly: false,
+    isBatteryOrSolar: false,
     capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
     measuredPowerKw: 0,
     targets: [target],

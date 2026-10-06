@@ -150,6 +150,7 @@ export const modeDeleteMessage = document.querySelector<HTMLElement>('#mode-dele
 export const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 export const priorityList = qs('#priority-list');
 export const priorityEmpty = qs('#priority-empty');
+export const priorityBatteryNote = document.getElementById('priority-battery-note');
 
 export const electricityPricesSurface = document.querySelector('#electricity-prices-surface') as HTMLElement;
 export const priceAwareDevicesSurface = document.querySelector('#price-aware-devices-surface') as HTMLElement;

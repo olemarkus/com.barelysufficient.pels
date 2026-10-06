@@ -514,7 +514,7 @@ describe('devices list home badges', () => {
       deviceType: 'temperature',
       isEvCharger: false,
       binaryControllable: false,
-      observeOnly: false,
+      isBatteryOrSolar: false,
     });
     const homey = createHomeyMock({ uiState: { devices: [device] } });
     const homeyModule = await import('../src/ui/homey.ts');
@@ -529,8 +529,8 @@ describe('devices list home badges', () => {
     ['isEvCharger', 'non-boolean', () => withField('isEvCharger', 'yes')],
     ['binaryControllable', 'missing', () => omitField('binaryControllable')],
     ['binaryControllable', 'non-boolean', () => withField('binaryControllable', 1)],
-    ['observeOnly', 'missing', () => omitField('observeOnly')],
-    ['observeOnly', 'non-boolean', () => withField('observeOnly', 'false')],
+    ['isBatteryOrSolar', 'missing', () => omitField('isBatteryOrSolar')],
+    ['isBatteryOrSolar', 'non-boolean', () => withField('isBatteryOrSolar', 'false')],
     ['deviceClass', 'missing', () => omitField('deviceClass')],
     ['deviceClass', 'non-string', () => withField('deviceClass', 42)],
     ['deviceType', 'missing', () => omitField('deviceType')],

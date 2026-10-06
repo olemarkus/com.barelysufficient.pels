@@ -488,7 +488,7 @@ export const withDeviceConfiguration = <T extends {
   const fields = {
     ...descriptor,
     binaryControllable: configuration.binaryControllable,
-    observeOnly: configuration.observeOnly,
+    isBatteryOrSolar: configuration.isBatteryOrSolar,
     isEvCharger: configuration.isEvCharger,
     starvationSupported: configuration.starvationSupported,
     expectedPowerKw: configuration.expectedPowerKw,
@@ -877,7 +877,8 @@ export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): Dev
     // read as "not a charger" or "not observe-only". A fixture that says nothing
     // is an ordinary commandable load.
     isEvCharger: overrides.isEvCharger ?? false,
-    observeOnly: overrides.observeOnly ?? false,
+    isBatteryOrSolar: overrides.isBatteryOrSolar ?? false,
+    storageHold: overrides.storageHold ?? 'none',
     // The plan device's one boost truth, REQUIRED for the same reason: the
     // planner resolves it for every device, so a fixture that omits it would let
     // a consumer read absence as "not boosting" — which is a decision, not a gap.
@@ -1132,7 +1133,7 @@ export function buildPlanInputDevice(overrides: PlanInputDeviceFixtureOverrides 
     // commandable load with no starvation reporting; a spec whose subject is one
     // of them says so.
     isEvCharger: overrides.isEvCharger ?? false,
-    observeOnly: overrides.observeOnly ?? false,
+    isBatteryOrSolar: overrides.isBatteryOrSolar ?? false,
     starvationSupported: overrides.starvationSupported ?? false,
     // The two producer-resolved boost bits, materialized from the fixture's own
     // config and readings by the SAME resolvers `toPlanDevice` calls, so a

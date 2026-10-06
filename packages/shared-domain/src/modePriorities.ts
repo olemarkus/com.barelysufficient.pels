@@ -87,6 +87,7 @@ export const normalizeModePriorities = (
 export const rankActiveDevicePriorities = (
   deviceIds: readonly string[],
   getBasePriority: (deviceId: string) => unknown,
+  sortsLastWhenUnranked: (deviceId: string) => boolean = () => false,
 ): ModePriorityMap => {
   const uniqueDeviceIds = [...new Set(deviceIds)];
   // Read each producer once. Apart from avoiding repeated settings lookups,
@@ -95,10 +96,18 @@ export const rankActiveDevicePriorities = (
   const basePriorityByDeviceId = new Map(
     uniqueDeviceIds.map((deviceId) => [deviceId, coercePriority(getBasePriority(deviceId))]),
   );
+  // Among devices with no usable stored rank, the ones the caller marks (a home
+  // battery, whose charging is the owner's natural last choice) go after the
+  // rest, so a device added later never sorts below an unplaced battery.
+  const unrankedLast = new Set(uniqueDeviceIds.filter((deviceId) => (
+    basePriorityByDeviceId.get(deviceId) === Number.POSITIVE_INFINITY && sortsLastWhenUnranked(deviceId)
+  )));
   const ordered = uniqueDeviceIds.sort((a, b) => {
     const pa = basePriorityByDeviceId.get(a) ?? Number.POSITIVE_INFINITY;
     const pb = basePriorityByDeviceId.get(b) ?? Number.POSITIVE_INFINITY;
     if (pa !== pb) return pa < pb ? -1 : 1;
+    const la = unrankedLast.has(a);
+    if (la !== unrankedLast.has(b)) return la ? 1 : -1;
     if (a === b) return 0;
     return a < b ? -1 : 1;
   });

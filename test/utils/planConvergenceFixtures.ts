@@ -59,7 +59,7 @@ export const asOutputDevice = (
     // as "no": a fixture that says nothing is an ordinary on/off load.
     deviceType: semantic.deviceType ?? 'onoff',
     isEvCharger: semantic.isEvCharger ?? false,
-    observeOnly: semantic.observeOnly ?? false,
+    isBatteryOrSolar: semantic.isBatteryOrSolar ?? false,
     control: fixtureControlPosture(loose),
     // Resolved from the UN-stripped bag: `binaryCapabilityId` and
     // `binaryControl` are destructured out above, and the producer's residual
@@ -131,7 +131,7 @@ export const inputDevice = (
     // planner input; a fixture that says nothing is an ordinary on/off load.
     deviceType: materialized.deviceType ?? 'onoff',
     isEvCharger: materialized.isEvCharger ?? false,
-    observeOnly: materialized.observeOnly ?? false,
+    isBatteryOrSolar: materialized.isBatteryOrSolar ?? false,
     starvationSupported: materialized.starvationSupported ?? false,
     residualKw: fixtureResidualKw(materialized),
     control: fixtureControlPosture(materialized),

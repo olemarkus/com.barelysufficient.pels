@@ -59,6 +59,12 @@ import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
 import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
 import { resolveCurrentMonthQuarterPeakKw } from '../lib/power/capacityPeak';
+import {
+  isBatteryOrSolarDeviceId,
+  readHomeBatteryDevices,
+  resolveDeviceManagedState,
+} from '../lib/device/deviceRoleReads';
+import type { HomeBatteryDevicesRead } from '../lib/ports/homeBatteryDevices';
 import type { CapacityScalarSettings } from '../packages/contracts/src/capacitySettings';
 import type { PriceOptimizationSetupRead } from '../packages/contracts/src/priceOptimizationSettings';
 
@@ -272,12 +278,12 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.requirePriceCoordinator().storeFlowPriceData(kind, raw);
   }
 
-  protected isObserveOnlyRoleDevice = (deviceId: string): boolean => (
-    this.context.deviceManager?.isBatteryDevice(deviceId) === true
-    || this.context.deviceManager?.isSolarDevice(deviceId) === true
-  );
-  public resolveManagedState = (deviceId: string): boolean => (
-    this.isObserveOnlyRoleDevice(deviceId) || this.context.managedDevices[deviceId] === true
+  public readHomeBatteryDevices = (): HomeBatteryDevicesRead => readHomeBatteryDevices(this.context.deviceManager);
+  public resolveManagedState = (deviceId: string): boolean => resolveDeviceManagedState(
+    this.context.deviceManager,
+    this.context.batteryManaged,
+    this.context.managedDevices,
+    deviceId,
   );
   protected isManagedFilterActive = (): boolean => (
     Object.values(this.context.managedDevices).some((value) => value === true)
@@ -287,7 +293,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return override || undefined;
   };
   public isCapacityControlEnabled = (deviceId: string): boolean => (
-    !this.isObserveOnlyRoleDevice(deviceId)
+    !isBatteryOrSolarDeviceId(this.context.deviceManager, deviceId)
     && this.context.managedDevices[deviceId] === true
     && this.context.controllableDevices[deviceId] === true
   );

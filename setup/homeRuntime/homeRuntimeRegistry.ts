@@ -446,6 +446,11 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     return true;
   }
 
+  /** Reload every live area's mode catalog: the home batteries became known, so held rank writes may run. */
+  reloadModeCatalogs(): void {
+    for (const bundle of this.getLiveBundles()) bundle.reloadModeCatalog();
+  }
+
   /** Keep only pre-migration areas following a Main catalog change. */
   onModeSettingsChanged(): void {
     for (const bundle of this.getLiveBundles()) {

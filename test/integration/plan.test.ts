@@ -4053,7 +4053,7 @@ describe('Dry run mode', () => {
       deviceClass: 'socket',
       deviceType: 'onoff',
       isEvCharger: false,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       binaryControllable: true,
       targets: [],
       available: true,

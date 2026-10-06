@@ -16,7 +16,7 @@ const descriptor = (id: string, name = id): DeviceDescriptorRead => ({
   deviceClass: 'heater',
   deviceType: 'onoff',
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   binaryControllable: true,
   capabilities: ['onoff'],
   expectedPowerKw: 2,
@@ -47,7 +47,7 @@ describe('joinObservedDeviceDescriptors', () => {
       deviceClass: 'heater',
       deviceType: 'onoff',
       isEvCharger: false,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       binaryControllable: true,
       capabilities: ['onoff'],
       expectedPowerKw: 2,
@@ -71,8 +71,8 @@ describe('projectDeviceSurfaces', () => {
     const [surfaces] = projectDeviceSurfaces([parsed]);
     expect(Object.keys(surfaces!).sort()).toEqual([
       'available', 'binaryControl', 'binaryControllable', 'capabilities', 'deviceClass', 'deviceType',
-      'expectedPowerKw', 'expectedPowerSource', 'id', 'isEvCharger', 'measuredPowerIsDirectMeasurement',
-      'measuredPowerKw', 'name', 'observeOnly', 'targets',
+      'expectedPowerKw', 'expectedPowerSource', 'id', 'isBatteryOrSolar', 'isEvCharger',
+      'measuredPowerIsDirectMeasurement', 'measuredPowerKw', 'name', 'targets',
     ]);
     expect(surfaces).not.toBe(parsed);
     expect(projectDeviceSurfaces([])).toEqual([]);

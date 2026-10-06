@@ -43,6 +43,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     const deps = {
       getDeviceExecutionState: () => executionStateFixture(plan.devices[0]), dryRun: false, nowMs: 0,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'observed' as const,
         value: { currentTarget: 16, currentTemperature: 20.8 } }),
@@ -78,6 +79,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     const deps = {
       getDeviceExecutionState: () => executionStateFixture(updatedDevice), dryRun: false, nowMs: 0,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed' as const,

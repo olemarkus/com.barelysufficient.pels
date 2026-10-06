@@ -8,7 +8,8 @@ import {
 } from './deviceUtils.ts';
 import { PLAN_CARD_BUDGET_EXEMPT_CHIP_LABEL } from '../../../shared-domain/src/planCardGrammar.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
-import { resolveManagedState, state } from './state.ts';
+import { isBatteryControlReadable, resolveManagedState, state } from './state.ts';
+import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { LEGEND_ONLY_REASONS, type RowDisabledReasons } from './deviceControlAvailability.ts';
 
 export type DeviceGroup = {
@@ -95,6 +96,22 @@ export const appendRedesignDisabledReasons = (
 };
 
 export const resolveDeviceManageability = (device: SettingsUiDeviceListItem) => {
+  // A home battery listed here is one PELS can manage (the runtime lists only
+  // a Main-home battery), unless its Managed map does not parse: the runtime
+  // then treats it as unmanaged, so the switch shows off and unavailable. Its
+  // charging is not a load the row's Limit and Price switches act on, so both
+  // read as not applicable.
+  if (isHomeBatteryClassKey(device.deviceClass)) {
+    const canManage = isBatteryControlReadable();
+    return {
+      supportsTemperature: false,
+      supportsPower: false,
+      supportsManage: true,
+      nativeWiringRequired: false,
+      canManage,
+      isManaged: canManage && resolveManagedState(device.id),
+    };
+  }
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
   const supportsManage = supportsPower || supportsTemperature;

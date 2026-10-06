@@ -2,6 +2,8 @@ import type {
   ObservedStateOfCharge,
   EvChargingState,
   EvObservedProbe,
+  HomeBatteryDescriptorProbe,
+  HomeBatteryObservedProbe,
   ObservedDeviceState,
   ProjectedObservedDeviceState,
   StateOfChargeObservedProbe,
@@ -75,6 +77,43 @@ export function readObservedStateOfCharge(
 }
 
 /**
+ * A home battery as its overview card reads it: whether PELS could drive it
+ * (a `setpoint` control surface), and its own power and level, each explicit
+ * when the battery has not reported one. `none`: the device is not a home
+ * battery.
+ */
+export type HomeBatteryCardRead =
+    | { kind: 'none' }
+    | {
+        kind: 'battery';
+        drivable: boolean;
+        power: { kind: 'observed'; signedW: number } | { kind: 'absent' };
+        level: { kind: 'observed'; percent: number } | { kind: 'absent' };
+    };
+
+/**
+ * Owner read of a home battery's card facts for producer wiring: the
+ * descriptor the transport resolved at parse (`homeBattery`), and the signed
+ * power and level the observer projection carries. Nothing here decides on
+ * either reading.
+ */
+export function readHomeBatteryCard(
+    descriptor: HomeBatteryDescriptorProbe | undefined,
+    state: (ObservedDeviceState & HomeBatteryObservedProbe) | undefined,
+): HomeBatteryCardRead {
+    const surface = descriptor?.homeBattery?.controlSurface;
+    if (surface === undefined) return { kind: 'none' };
+    const power = state?.batteryPower;
+    const level = state?.batteryLevel;
+    return {
+        kind: 'battery',
+        drivable: surface.kind === 'setpoint',
+        power: power === undefined ? { kind: 'absent' } : { kind: 'observed', signedW: power.signedW },
+        level: level === undefined ? { kind: 'absent' } : { kind: 'observed', percent: level.percent },
+    };
+}
+
+/**
  * The observed temperature PAIR, as the observer hands it to producer wiring.
  * Named (not spelled inline at each consumer) so a rename cannot drift between
  * the projection, the plan-service dep, the read-model dep, and the idle
@@ -129,7 +168,7 @@ type ProjectionEntry = {
  * so the freeze must reach every reachable sub-object a consumer could mutate:
  * the record, its `targets` array + each target entry, and the nested observation
  * bags (`binaryControl`, `stateOfCharge` — including its own nested `level`,
- * `report` and `source` — `batteryPower`, `batteryClaim`,
+ * `report` and `source` — `batteryPower`, `batteryClaim`, `batteryLevel`,
  * `binaryControlObservation` and its
  * `observedCapabilityIds` array). The state-of-charge bag needs the inner three
  * named explicitly: they are objects, so the outer freeze leaves them writable,
@@ -155,6 +194,7 @@ function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedD
     }
     if (value.batteryPower) Object.freeze(value.batteryPower);
     if (value.batteryClaim) Object.freeze(value.batteryClaim);
+    if (value.batteryLevel) Object.freeze(value.batteryLevel);
     if (value.binaryControlObservation) {
         Object.freeze(value.binaryControlObservation.observedCapabilityIds);
         Object.freeze(value.binaryControlObservation);

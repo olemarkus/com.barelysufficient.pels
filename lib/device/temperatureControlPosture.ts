@@ -52,14 +52,16 @@ export function hasStandingCommandGrant(
  *
  * `capacityControlEnabled` is passed rather than rebuilt from `managed` and the
  * owner's Power-limit toggle, and that is load-bearing. It leads with
- * `!isObserveOnlyRoleDevice(id)` — the transport's ID-SET role membership —
- * while `resolveManagedState` returns `true` for exactly those devices. Deriving
- * the conjunction here would turn the id-set veto into a term that can SUPPLY
- * `managed: true`, so a device the id set still holds as a battery whose current
- * parse yields an ordinary class key could be granted authority off a stale
- * `controllable_devices` entry. The two vetoes are independent on purpose
- * (`managerParseDeviceFields.ts`: "no window where a present battery/solar
- * device ... enters the planner controllable/actuated") and both are kept.
+ * `!isBatteryOrSolarDeviceId(id)` — the transport's ID-SET role membership —
+ * while `resolveManagedState` answers those devices from their role (always
+ * for a solar device, the Managed toggle for a battery), not from the
+ * managed-devices map. Deriving the conjunction here would turn the id-set veto
+ * into a term that can SUPPLY `managed: true`, so a device the id set still
+ * holds as a battery whose current parse yields an ordinary class key could be
+ * granted authority off a stale `controllable_devices` entry. The two vetoes
+ * are independent on purpose (`managerParseDeviceFields.ts`: "no window where a
+ * present battery/solar device ... enters the planner controllable/actuated")
+ * and both are kept.
  */
 export function resolveDeviceControlPosture(
   device: ControlPostureDevice & DeviceConfigurationRead,
@@ -67,11 +69,12 @@ export function resolveDeviceControlPosture(
   capacityControlEnabled: boolean,
   startPolicy: DeviceStartPolicy,
 ): DeviceControlPosture {
-  if (device.observeOnly) {
+  if (device.isBatteryOrSolar) {
     // The structural veto, resolved from the parse-time class key before this
-    // boundary. A battery or panel
-    // is tracked and never commanded, whatever the settings say. `managed` reads
-    // the snapshot's own stamp because the managed FILTER must keep observing it.
+    // boundary. A battery or panel is never commanded by a generic lane,
+    // whatever the settings say (a battery only through the storage stage).
+    // `managed` reads the snapshot's own stamp: always on for a panel, the
+    // owner's Managed toggle for a battery.
     return { managed: device.managed !== false, commandAuthority: false };
   }
   return {

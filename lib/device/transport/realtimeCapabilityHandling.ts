@@ -29,7 +29,10 @@ import {
   updateTemperatureTarget,
 } from './temperatureObservation';
 import { handleThermostatModeCapabilityUpdate } from './thermostatModeRealtime';
-import { handleHomeBatteryClaimCapabilityUpdate } from './homeBatteryObservation';
+import {
+    handleHomeBatteryClaimCapabilityUpdate,
+    handleHomeBatteryLevelCapabilityUpdate,
+} from './homeBatteryObservation';
 
 const moduleLogger = getLogger('device/transport');
 
@@ -506,8 +509,8 @@ export function handleRealtimeCapabilityUpdate(
 
 /**
  * Capabilities that are neither an EV nor a stepped-load capability, and not a
- * target PELS writes: a thermostat mode, and a home battery's claim. True when
- * the event was one of them.
+ * target PELS writes: a thermostat mode, and a home battery's claim and level.
+ * True when the event was one of them.
  */
 function handleObservedOnlyCapabilityUpdate(
     ingest: RealtimeIngestService,
@@ -524,7 +527,8 @@ function handleObservedOnlyCapabilityUpdate(
         dispatchStateChanged,
         (event) => ingest.observationBridge.dispatchControlStateChanged(event),
         snapshot, capabilityId, value,
-    ) || handleHomeBatteryClaimCapabilityUpdate(nextCursor, dispatchStateChanged, snapshot, capabilityId, value);
+    ) || handleHomeBatteryClaimCapabilityUpdate(nextCursor, dispatchStateChanged, snapshot, capabilityId, value)
+        || handleHomeBatteryLevelCapabilityUpdate(nextCursor, dispatchStateChanged, snapshot, capabilityId, value);
 }
 
 function recoverMissingTemperatureSnapshot(
