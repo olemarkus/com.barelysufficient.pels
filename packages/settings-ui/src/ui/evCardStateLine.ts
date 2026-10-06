@@ -1,5 +1,6 @@
 import { resolveEvCardStateLine } from '../../../shared-domain/src/deadlineLabels.ts';
 import { state } from './state.ts';
+import { hoursWithPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 
 const formatEvCardTime = (ms: number): string => (
   new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -19,7 +20,7 @@ export const resolveEvCardStateLines = (nowMs: number): ReadonlyMap<string, stri
     if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= nowMs) continue;
     const activePlan = state.deferredObjectiveActivePlans?.plansByDeviceId?.[deviceId];
     const stateLine = resolveEvCardStateLine({
-      hours: activePlan?.latest?.hours ?? [],
+      hours: hoursWithPlannedEnergy(activePlan?.latest?.hours ?? []),
       nowMs,
       isPlugOutPaused: activePlan?.diagnosticReasonCode === 'objective_invalid_session',
       formatTime: formatEvCardTime,

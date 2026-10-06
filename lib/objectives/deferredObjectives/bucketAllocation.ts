@@ -1,126 +1,15 @@
 import type {
   DeferredObjectiveCommittedHour,
   DeferredObjectiveHorizonBucket,
-  DeferredObjectivePlannedBucket,
+  DeferredObjectiveAllocatedBucket,
   DeferredObjectiveStep,
 } from './types';
+import { comparePrice, resolvePriceAnchor } from './priceBand';
+import { hasPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 
 const HOUR_MS = 60 * 60 * 1000;
 
-// Relative price margin (~5%) below which two hours are treated as equally
-// priced for fill ordering. RELATIVE (ratio-based), not a fixed offset, so it is
-// invariant to the price currency — the price series carries no unit at this
-// layer. The same constant gates the mid-execution deferral
-// (`hasCheaperBookedHourAhead` via `isMeaningfullyCheaper`):
-// both express "a later hour must be more than ~5% cheaper to be worth shifting
-// load to". Below the margin, the earlier hour wins (heat early; don't churn
-// load between near-equal hours).
-export const PRICE_BAND_MARGIN = 0.05;
-
-// Width of one relative price band on the log grid `priceFillBand` quantises
-// positive prices onto. Quantisation is what makes the fill order a transitive
-// total order (a pairwise within-margin comparator is NOT transitive on a price
-// ramp: a≈b and b≈c does not imply a≈c). The trade-off is that the grid only
-// APPROXIMATES the margin at its edges: two prices within `PRICE_BAND_MARGIN` can
-// fall in adjacent bands (treated as a real difference) and two prices up to
-// ~2× the margin apart can share a band (treated as a tie). So the build-time
-// fill order (this grid) and the live deferral (the exact `isMeaningfullyCheaper`
-// ratio) can disagree near a band edge for spreads close to the margin. That is
-// an accepted approximation, not a bug — both still express "~5% relative".
-const PRICE_BAND_LOG_BASE = Math.log(1 + PRICE_BAND_MARGIN);
-
-// The minimum positive price across the buckets being ordered. The band grid is
-// anchored here so band membership depends only on PRICE RATIOS (`price / min`),
-// never on the absolute magnitude — i.e. the same price curve produces the same
-// fill order whether the feed is in øre, eurocents, or €/kWh. (A fixed grid
-// anchored at `1` would, e.g., tie `100` vs `96` but split `1.00` vs `0.96` for
-// the same ~4% spread — the currency-dependence this avoids.) `null` when no
-// bucket carries a positive price, in which case there are no tier-1 buckets to
-// rank against each other.
-const resolvePriceAnchor = (buckets: readonly { price: number | null }[]): number | null => {
-  let min: number | null = null;
-  for (const bucket of buckets) {
-    const price = bucket.price;
-    if (typeof price === 'number' && Number.isFinite(price) && price > 0 && (min === null || price < min)) {
-      min = price;
-    }
-  }
-  return min;
-};
-
-// True when `candidatePrice` is cheaper than `referencePrice` by MORE than the
-// relative margin (a pure ratio, so unit-invariant). Used by the live deferral
-// to decide a later hour is worth shifting load into. A non-finite or
-// non-positive reference makes the ratio meaningless (you cannot be "5% cheaper
-// than free/negative"), so it returns false — run now rather than defer on a
-// meaningless comparison. A non-finite candidate is non-comparable → false.
-export const isMeaningfullyCheaper = (
-  candidatePrice: number | null,
-  referencePrice: number | null,
-): boolean => {
-  if (typeof referencePrice !== 'number' || !Number.isFinite(referencePrice) || referencePrice <= 0) {
-    return false;
-  }
-  if (typeof candidatePrice !== 'number' || !Number.isFinite(candidatePrice)) return false;
-  return candidatePrice <= referencePrice * (1 - PRICE_BAND_MARGIN);
-};
-
-// Whether a later, booked, non-reserve hour is cheaper than the `reference` hour by
-// more than the relative margin: the "a cheaper
-// hour can carry this hour's load" fact behind price deferral. One definition for
-// both clocks: the fresh planner reads it for the current hour every cycle, and the
-// `:58` settle stamps it per committed hour (`stampCheaperHourAhead`) for the frozen
-// read to replay.
-//
-// The cheaper hour must be one the plan actually carries load in. A bucket the
-// allocation booked nothing into (zero-capacity, or simply not part of the
-// committed/expanded set) is cheap on paper but won't take the deferred energy:
-// the committed reallocation fills the planned hours first, so releasing toward it
-// would just push the load into the remaining (possibly pricier) committed hours at
-// the next settle. Deadline-reserve hours are excluded so we never defer into the
-// reserve. "Later" means starting at or after the reference bucket ends, which
-// holds for raw price-hour starts in fractional-offset timezones too; a same-hour
-// segment after the reference is either the reserve split (excluded) or a
-// reservation-boundary split carrying the same price (never meaningfully cheaper).
-export const hasCheaperBookedHourAhead = (
-  buckets: readonly DeferredObjectivePlannedBucket[],
-  reference: DeferredObjectivePlannedBucket,
-  epsilonKWh: number,
-): boolean => buckets.some((bucket) => (
-  !bucket.reserve
-  && bucket.startMs >= reference.endMs
-  && bucket.plannedUsefulEnergyKWh > epsilonKWh
-  && isMeaningfullyCheaper(bucket.price, reference.price)
-));
-
-// Currency-relative fill-ordering key. Cheaper hours sort first. Returned as a
-// `(tier, key)` pair compared lexicographically — a single total order, so the
-// induced sort is transitive (a pairwise within-margin comparator would NOT be:
-// a≈b and b≈c does not imply a≈c on a price ramp).
-//
-//   tier 0 — non-positive price (free / paid-to-consume): always cheaper than
-//            any priced hour. `key` is the raw price so a deeper-negative hour
-//            still sorts ahead of a shallow one (genuinely cheaper).
-//   tier 1 — positive price: `key` is `price / anchor` quantised onto a log grid
-//            of relative width `(1 + PRICE_BAND_MARGIN)`, where `anchor` is the
-//            set's min positive price. Banding on the RATIO makes it
-//            currency-invariant (see `resolvePriceAnchor`); two hours within ~5%
-//            of each other land in the same band → they tie on price and the time
-//            tiebreak (earlier first) decides.
-//   tier 2 — missing/non-finite price: sorts last (fill only as a last resort).
-const priceFillBand = (
-  price: number | null,
-  anchor: number | null,
-): { tier: number; key: number } => {
-  if (typeof price !== 'number' || !Number.isFinite(price)) return { tier: 2, key: 0 };
-  if (price <= 0) return { tier: 0, key: price };
-  // `anchor` (set min positive price) is `null` only when there are no positive
-  // prices — then this is the sole tier-1 bucket and the key is irrelevant.
-  const ratio = anchor === null ? 1 : price / anchor;
-  return { tier: 1, key: Math.round(Math.log(ratio) / PRICE_BAND_LOG_BASE) };
-};
-
-type NormalizedBucket = Omit<DeferredObjectivePlannedBucket,
+type NormalizedBucket = Omit<DeferredObjectiveAllocatedBucket,
 | 'plannedUsefulEnergyKWh'
 | 'plannedAdmissionPowerKw'
 | 'usefulEnergyCapacityKWh'
@@ -174,7 +63,7 @@ type BucketSegment = {
 };
 
 export type BucketAllocationResult = {
-  plannedBuckets: DeferredObjectivePlannedBucket[];
+  plannedBuckets: DeferredObjectiveAllocatedBucket[];
   plannedUsefulEnergyKWh: number;
   unplannedUsefulEnergyKWh: number;
   usesDeadlineReserve: boolean;
@@ -430,18 +319,17 @@ const expandCommittedAllocation = (params: {
   };
 };
 
-// Shared between phase-1 and phase-2: the hour-aligned set of timestamps
-// that name the commitment's hours. Built from the RAW `committedHours`
-// array so a commitment entry with `plannedKWh: 0` (synthetic test case,
-// not reachable via `buildHoursFromHorizonPlan`) still counts as committed
-// — phase-2 must not double-allocate against a slot phase-1 already
-// considered, regardless of the floor's kWh value.
+// Shared between phase-1 and phase-2: the hour-aligned set of timestamps that
+// carry a committed energy floor. A saved hour booked at 0 kWh promises nothing,
+// so it is not in the set: phase-1 must not fill it ahead of cheaper committed
+// hours just because it is earlier, and phase-2 may fill it cheapest-first like
+// any other uncommitted hour when the need grows.
 const buildCommittedHourSet = (
   committedHours: readonly DeferredObjectiveCommittedHour[],
 ): Set<number> => {
   const set = new Set<number>();
   for (const hour of committedHours) {
-    if (!Number.isFinite(hour.startsAtMs)) continue;
+    if (!Number.isFinite(hour.startsAtMs) || !hasPlannedEnergy(hour)) continue;
     set.add(Math.floor(hour.startsAtMs / HOUR_MS) * HOUR_MS);
   }
   return set;
@@ -665,20 +553,6 @@ const compareReserve = (
   return left.reserve ? 1 : -1;
 };
 
-// Cheapest-first on the currency-relative band (`priceFillBand`). Hours within
-// ~`PRICE_BAND_MARGIN` of each other tie here and fall through to the time
-// tiebreak (earlier first), so the allocator never churns load between
-// near-equal hours for a sub-margin saving.
-const comparePrice = (
-  left: Pick<NormalizedBucket, 'price'>,
-  right: Pick<NormalizedBucket, 'price'>,
-  anchor: number | null,
-): number => {
-  const a = priceFillBand(left.price, anchor);
-  const b = priceFillBand(right.price, anchor);
-  return a.tier - b.tier || a.key - b.key;
-};
-
 // Per-hour kWh ceiling. Three caps stacked via Math.min:
 //   - `step.usefulPowerKw × durationHours`: device-side step capacity.
 //   - `bucket.dailyBudgetCapKWh`: daily-budget per-bucket pacing slice
@@ -732,7 +606,7 @@ const buildPlannedBuckets = (params: {
   buckets: NormalizedBucket[];
   stepForBucket: StepForBucket;
   plannedByBucketId: ReadonlyMap<string, number>;
-}): DeferredObjectivePlannedBucket[] => {
+}): DeferredObjectiveAllocatedBucket[] => {
   const {
     buckets,
     stepForBucket,

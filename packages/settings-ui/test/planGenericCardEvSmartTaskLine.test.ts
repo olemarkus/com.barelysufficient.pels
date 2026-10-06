@@ -12,7 +12,10 @@ const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 1, 30, 0);
 const CHARGER_ID = 'zaptec-1';
 
-const seedEvTask = (hours: number[], options: { diagnosticReasonCode?: string; enabled?: boolean } = {}): void => {
+const seedEvTask = (
+  hours: number[],
+  options: { diagnosticReasonCode?: string; enabled?: boolean; plannedKWh?: (startsAtMs: number) => number } = {},
+): void => {
   state.deferredObjectiveSettings = {
     version: 1,
     objectivesByDeviceId: {
@@ -24,7 +27,7 @@ const seedEvTask = (hours: number[], options: { diagnosticReasonCode?: string; e
     version: 1,
     plansByDeviceId: {
       [CHARGER_ID]: {
-        latest: { hours: hours.map((startsAtMs) => ({ startsAtMs })) },
+        latest: { hours: hours.map((startsAtMs) => ({ startsAtMs, plannedKWh: options.plannedKWh?.(startsAtMs) ?? 1 })) },
         ...(options.diagnosticReasonCode ? { diagnosticReasonCode: options.diagnosticReasonCode } : {}),
       },
     },
@@ -51,6 +54,15 @@ describe('resolveEvCardStateLines', () => {
   it('names the next planned start between planned hours', () => {
     const nextHour = Date.UTC(2026, 0, 1, 3, 0, 0);
     seedEvTask([nextHour]);
+    expect(resolveEvCardStateLines(NOW_MS).get(CHARGER_ID)).toBe(`Waiting · charging starts ${formatTime(nextHour)}`);
+  });
+
+  it('does not call a hour booked at 0 kWh charging', () => {
+    // Booked on price with no forecast room: the task may run there, but nothing is
+    // promised, so the card names the next hour that does promise energy.
+    const currentHour = Date.UTC(2026, 0, 1, 1, 0, 0);
+    const nextHour = currentHour + 2 * HOUR_MS;
+    seedEvTask([currentHour, nextHour], { plannedKWh: (startsAtMs) => (startsAtMs === currentHour ? 0 : 1) });
     expect(resolveEvCardStateLines(NOW_MS).get(CHARGER_ID)).toBe(`Waiting · charging starts ${formatTime(nextHour)}`);
   });
 

@@ -72,6 +72,13 @@ export type DeferredObjectiveActivePlanFloorShortfallCause =
   | 'time_capacity'
   | 'none';
 
+// One BOOKING of the plan: an hour the task holds. `plannedKWh` is what the booking
+// promises and may be 0 — an hour wanted on price, or needed because the task falls
+// short, that the forecast left no room for. The task claims such an hour and runs
+// there if capacity turns out to be free. Readers that mean "the hours the device is
+// planned to run" (counts, first start, run bands) read only the hours with energy
+// (`hoursWithPlannedEnergy`, packages/shared-domain/src/deferredPlanBookedHours.ts);
+// only those are commitment floors.
 export type DeferredObjectiveActivePlanHourV1 = {
   startsAtMs: number;
   plannedKWh: number;

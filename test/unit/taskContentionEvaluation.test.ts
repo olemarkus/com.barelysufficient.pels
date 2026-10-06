@@ -20,7 +20,7 @@ const evaluation = (
     unplannedUsefulEnergyKWh,
     ...(frozenRead ? { frozenRead: true as const } : {}),
     status: 'at_risk', statusDetail: 'feasible_above_floor',
-    currentBucket: null, currentHourClaim: 'released', currentHourFacts: NO_RELEASE_FACTS,
+    currentBucket: null, plannedBuckets: [], currentHourClaim: 'released', currentHourFacts: NO_RELEASE_FACTS,
     ...current,
   }) },
 });
@@ -34,7 +34,7 @@ describe('operational task contention', () => {
       buildWithoutReservations: () => evaluation(0),
     });
     expect(result.planning).toMatchObject({ kind: 'allocated', plan: {
-      status: 'at_risk', statusDetail: 'limited_by_higher_priority_task', currentHourClaim: 'unclaimed',
+      status: 'at_risk', statusDetail: 'limited_by_higher_priority_task', currentHourClaim: 'claimed',
     } });
     expect(result.completion).toEqual({ kind: 'unmet' });
     const misleadingReport = partialDouble<DeferredObjectiveDiagnostic>({
@@ -48,7 +48,7 @@ describe('operational task contention', () => {
   });
 
   it('keeps a booked hour it would price-defer once contention leaves it short, but still cold-start releases', () => {
-    const booked = { bucketId: 'h0', sourceBucketId: 'h0', plannedUsefulEnergyKWh: 1, expectedStepId: 'low' };
+    const booked = { bucketId: 'h0', sourceBucketId: 'h0', plannedUsefulEnergyKWh: 1, booked: true, expectedStepId: 'low' };
     const claimUnderContention = (facts: DeferredObjectiveHorizonPlan['currentHourFacts']) => {
       const result = resolveHigherPriorityContentionEvaluation({
         evaluation: evaluation(1, false, { currentBucket: booked, currentHourFacts: facts }),

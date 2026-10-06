@@ -32,8 +32,10 @@ sustained useful draw per 15-minute window confirms device non-delivery after
 schedule remain intact. Only this confirmed device-side non-delivery suppresses
 its priority reservation. Capacity restrictions and pending restoration retain
 reservations. Resumed draw clears the blocker and suppression; lower tasks
-receive the released allocation at the ordinary settle. An unclaimed or
-released hour cannot start this timer.
+receive the released allocation at the ordinary settle. A released hour
+cannot start this timer. A claimed hour can, also one booked at 0 kWh:
+permitted and not drawing is a device-side stop either way, and a hour the
+planner holds back reads as restricted, not permitted.
 
 Once confirmed, the stop is latched for the status (`stopped`, then
 `rechecking`, in `taskDeliveryState.ts`) until the device draws again, the

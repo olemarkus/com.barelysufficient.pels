@@ -1,8 +1,5 @@
-import {
-  allocateEnergyToBuckets,
-  isMeaningfullyCheaper,
-  type StepForBucket,
-} from './bucketAllocation';
+import { allocateEnergyToBuckets, type StepForBucket } from './bucketAllocation';
+import { isMeaningfullyCheaper } from './priceBand';
 import type { DeferredObjectiveKind, DeferredObjectiveStep } from './types';
 
 // Cold-start price release. The floor-step allocation force-books the current

@@ -8,11 +8,11 @@ import { partialDouble } from '../helpers/partialDouble';
 it('keeps admission, reservations and requested completion independent of reporting columns', () => {
   const plan = partialDouble<DeferredObjectiveHorizonPlan>({
     currentHourClaim: 'claimed',
-    currentBucket: { bucketId: 'now', sourceBucketId: 'now', expectedStepId: 'on', plannedUsefulEnergyKWh: 1 },
+    currentBucket: { bucketId: 'now', sourceBucketId: 'now', expectedStepId: 'on', plannedUsefulEnergyKWh: 1, booked: true },
     plannedBuckets: [{
       id: 'now', sourceBucketId: 'now', startMs: 0, endMs: 3_600_000, durationHours: 1,
       price: null, reserve: false, current: true, usefulEnergyCapacityKWh: 1,
-      plannedUsefulEnergyKWh: 1, plannedAdmissionPowerKw: 1,
+      plannedUsefulEnergyKWh: 1, plannedAdmissionPowerKw: 1, booked: true,
     }],
   });
   const evaluation: TaskEvaluation = {

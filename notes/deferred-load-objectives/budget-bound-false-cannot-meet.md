@@ -26,14 +26,16 @@ for every kWh that climbing the ladder unlocked.
 **Prong E (2026-08-09): the squeeze no longer stands the device down.** A second
 consequence of the same mechanism: an hour squeezed to a 0 cap was read by
 admission as a deliberate deferral, so the device was commanded off in an hour
-nothing physical was withholding. The producer now resolves a flat
-`currentHourClaim` that separates an *unclaimed* hour (booked 0 and the task cannot
-finish without it — the device stays managed and competes on its own priority) from
-a *released* one (booked 0 and the task can finish anyway — stand down as before).
-It keys on the very `floorShortfallCause` this note is about: `budget` and
-`time_capacity` keep the hour, `step_power` and `estimate` give it up. Only the copy
-half above is now closed too. Design of record:
-`notes/deferred-load-objectives/README.md` § "An unbooked hour is not a stand-down".
+nothing physical was withholding. The fix then resolved a flat `currentHourClaim`
+that separated an *unclaimed* hour (booked 0 and the task could not finish without
+it — the device stayed managed and competed on its own priority) from a *released*
+one (booked 0 and the task could finish anyway — stand down as before), keyed on the
+very `floorShortfallCause` this note is about: `budget` and `time_capacity` kept the
+hour, `step_power` and `estimate` gave it up. Superseded 2026-10-06 by booking hours
+by price: a task whose cause is `budget` or `time_capacity` books every hour, claims
+the empty ones at 0 kWh, and the `unclaimed` state is gone.
+Design of record: `notes/deferred-load-objectives/README.md` § "Booking is decided
+by price, not by forecast room".
 
 ## Symptom (prod, 2026-05-22, commit `d280c1ed`)
 

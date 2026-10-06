@@ -1,5 +1,6 @@
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
+import { hoursWithPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
@@ -105,7 +106,7 @@ const buildCard = (params: {
 }): DeadlinesListCard => {
   const { deviceId, plan, objective, device, nowMs } = params;
   const pending = plan.pending || plan.latest === null;
-  const firstHour = plan.latest?.hours[0]?.startsAtMs ?? null;
+  const firstHour = hoursWithPlannedEnergy(plan.latest?.hours ?? [])[0]?.startsAtMs ?? null;
   const carChargeLimit = resolveReportedCarChargeLimit(plan);
   const statusId = resolveSmartTaskListStatus({
     pending,

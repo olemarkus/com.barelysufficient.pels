@@ -28,6 +28,7 @@ import type {
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import { hoursWithPlannedEnergy } from '../../packages/shared-domain/src/deferredPlanBookedHours';
 import {
   fixtureCurrentDrawKw,
   type FixtureBoostFields,
@@ -406,7 +407,9 @@ describe('previewDeferredObjectivePlan', () => {
       activePlans: null,
       sustainableRateKw: 1.5,
     });
-    const highHours = new Set((buildHoursFromHorizonPlan(highDiagnostic!.evaluation) ?? []).map((hour) => hour.startsAtMs));
+    // Hours the high task promises energy in; a 0 kWh booking reserves nothing.
+    const highHours = new Set(hoursWithPlannedEnergy(buildHoursFromHorizonPlan(highDiagnostic!.evaluation) ?? [])
+      .map((hour) => hour.startsAtMs));
 
     expect(estimate.status).toBe('at_risk');
     expect(estimate.scheduledHours.every((hour) => !highHours.has(hour.startsAtMs))).toBe(true);
@@ -440,7 +443,7 @@ describe('previewDeferredObjectivePlan', () => {
     recorder.observe([highDiagnostic!], NOW_MS);
     const activePlans = recorder.getActivePlansSnapshot();
     const highHours = new Set(
-      activePlans.plansByDeviceId['z-high']?.latest?.hours.map((hour) => hour.startsAtMs),
+      hoursWithPlannedEnergy(activePlans.plansByDeviceId['z-high']?.latest?.hours ?? []).map((hour) => hour.startsAtMs),
     );
 
     const estimate = runPreview({

@@ -14,25 +14,16 @@ export type DeferredAdmissionDecision =
       // power back from lower-priority devices' admission until it starts. Distinct from
       // engageBoost — it reserves power, it does not escalate this device or shed anyone.
       reservesStartupPower: boolean;
-      expectedStepId: string | null;
       deadlineFloorTargetC?: number;
       releaseIntent?: 'binary_restore';
     }
-  | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'binary_release' | 'shed_release' }
-  // The task booked nothing into this hour but is still short on the hours it did
-  // book, so it neither claims the hour nor gives it up. The device is handed to
-  // the planner as managed and then competes on its own priority like any other
-  // load — no forced shed, no release intent, no deadline floor, and none of the
-  // rescue claims a planned hour carries. See `resolveCurrentHourClaim`.
-  // `releaseIntent?: never` is the load-bearing half: not claiming an hour must never
-  // command the device anywhere, so this kind cannot carry one even by accident.
-  | { kind: 'unclaimed'; budgetExempt: false; releaseIntent?: never };
+  | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'binary_release' | 'shed_release' };
 
 export const buildDeferredDemandDeviceIds = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
 ): ReadonlySet<string> => new Set(
   [...decisions]
-    .filter(([, decision]) => decision.kind === 'planned' || decision.kind === 'unclaimed')
+    .filter(([, decision]) => decision.kind === 'planned')
     .map(([deviceId]) => deviceId),
 );
 
@@ -56,15 +47,10 @@ const resolveDecision = (
     || evaluation.planning.kind === 'inactive') return { kind: 'inactive', budgetExempt: false };
   const horizonPlan = evaluation.planning.plan;
   const releasesViaBinary = usesBinaryReleaseControl(device);
-  // The producer resolved which of the three claims this hour carries
-  // (`resolveCurrentHourClaim`); admission maps it 1:1 and adds only the release
-  // ROUTING, which is a device-modality question the producer cannot answer.
-  if (horizonPlan.currentHourClaim !== 'claimed') {
-    // Unclaimed: nothing booked here, and the task cannot finish without the hour —
-    // so there is nothing to defer into. Hand the device to the planner as managed
-    // and let it compete on its own priority; the task takes whatever the normal
-    // shed/restore lane gives it rather than commanding a stand-down.
-    if (horizonPlan.currentHourClaim === 'unclaimed') return { kind: 'unclaimed', budgetExempt: false };
+  // The producer resolved the claim this hour carries (`resolveCurrentHourClaim`);
+  // admission maps it 1:1 and adds only the release ROUTING, which is a
+  // device-modality question the producer cannot answer.
+  if (horizonPlan.currentHourClaim === 'released') {
     // Released bucket: hold the device in its configured release posture. Besides
     // genuine idle hours (nothing booked here and nothing left to deliver), the claim
     // resolver (`resolveCurrentHourClaim`) also releases a booked hour for price
@@ -91,12 +77,17 @@ const resolveDecision = (
     }
     return { kind: 'idle', budgetExempt: false };
   }
+  // Taking capacity from other loads (boost past the shed invariant, holding startup
+  // power back from lower-priority admission) backs a promise, so it applies only
+  // where the hour books energy. A hour booked at 0 kWh runs on capacity that turns
+  // out to be free; escalating there would let a task take an hour a
+  // higher-priority task reserved, because the boost bypasses are priority-blind.
+  const promisesEnergy = (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0;
   return {
     kind: 'planned',
     budgetExempt: evaluation.permissions.budgetExempt,
-    engageBoost: evaluation.permissions.limitLowerPriority,
-    reservesStartupPower: evaluation.permissions.pauseLowerPriority,
-    expectedStepId: horizonPlan.currentBucket?.expectedStepId ?? null,
+    engageBoost: evaluation.permissions.limitLowerPriority && promisesEnergy,
+    reservesStartupPower: evaluation.permissions.pauseLowerPriority && promisesEnergy,
     ...(evaluation.targetControl.kind === 'temperature'
       ? { deadlineFloorTargetC: evaluation.targetControl.value } : {}),
     ...(releasesViaBinary ? { releaseIntent: 'binary_restore' as const } : {}),
@@ -229,7 +220,6 @@ const resolveHourClaims = (
 ): DeferredHourClaims => {
   const heldOff = rescueBlockedByExternalOffHold(device);
   const planned = !heldOff && decision.kind === 'planned';
-  const unclaimed = !heldOff && decision.kind === 'unclaimed';
   return {
     // The rescue budget exemption applies cap-agnostically, but only during the
     // planned current bucket. It should not turn idle/background cycles into the
@@ -246,12 +236,10 @@ const resolveHourClaims = (
     // as engageBoost); it never sets forceBoostActive and never sheds anyone.
     reservesStartupPower: planned && decision.reservesStartupPower,
     // "Only PELS starts this device" means a smart task and nothing else, so a
-    // task that needs this hour is the one thing that lifts the baseline of off:
-    // `planned` (energy booked here), and `unclaimed` (nothing booked, yet the task
-    // cannot finish without the hour — a forecast left it no room). Lifting on
-    // `unclaimed` only hands the device to the live planner, which still admits it
-    // on real capacity, daily-budget pace and priority, so it runs only when the
-    // house has room (owner ruling, 2026-09-24; it reverses 2026-09-10's).
+    // task that books this hour is the one thing that lifts the baseline of off,
+    // also when it booked it at 0 kWh (wanted on price, but the forecast left no
+    // room). Lifting only hands the device to the live planner, which still admits
+    // it on real capacity, so it runs only when the house has room.
     // `idle` / `released` stay held: the task decided it can finish without the
     // hour, typically waiting for a cheaper one, and lifting there would let the
     // ordinary restore lane start a device its own task chose to leave alone.
@@ -261,7 +249,7 @@ const resolveHourClaims = (
     // `isStartPolicyHeldDevice` (`lib/plan/shedding/startPolicyHold.ts`) — the
     // boundary that separates these two readers is why the comparison is
     // duplicated, and shared-domain is not a legal home for it.
-    liftsStartPolicyHold: (planned || unclaimed) && device.startPolicyInForce === 'pels_only',
+    liftsStartPolicyHold: planned && device.startPolicyInForce === 'pels_only',
   };
 };
 

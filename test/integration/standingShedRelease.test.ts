@@ -410,7 +410,6 @@ describe('the shed PELS undoes when it loses authority over a device', () => {
       budgetExempt: false,
       engageBoost: false,
       reservesStartupPower: false,
-      expectedStepId: null,
       releaseIntent: 'binary_restore',
     }));
     h.setMeter({ totalKw: 5, limitKw: 2 });

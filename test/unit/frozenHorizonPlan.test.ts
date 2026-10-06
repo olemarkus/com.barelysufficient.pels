@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
 import type { DeferredObjectiveActivePlanFloorShortfallCause, DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveStep } from '../../lib/objectives/deferredObjectives/types';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
+import { partialDouble } from '../helpers/partialDouble';
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0); // hour-aligned
@@ -20,19 +22,21 @@ const build = (overrides: {
   floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
 }) => buildFrozenHorizonPlan({
   nowMs: NOW_MS,
-  objectiveId: 'dev:temperature',
-  objectiveKind: overrides.objectiveKind ?? 'temperature',
-  enforcement: 'soft',
-  deadlineAtMs: NOW_MS + 6 * HOUR_MS,
-  deadlineMarginMs: HOUR_MS,
-  committedHours: overrides.committedHours,
-  floorShortfallCause: overrides.floorShortfallCause ?? 'none',
-  budgetContributedToShortfall: false,
-  planStatus: overrides.planStatus ?? 'on_track',
+  deviceId: 'dev',
+  objective: partialDouble<DeferredObjectiveSettingsEntry>({
+    kind: overrides.objectiveKind ?? 'temperature',
+    enforcement: 'soft',
+    deadlineAtMs: NOW_MS + 6 * HOUR_MS,
+  }),
+  frozenRead: {
+    hours: overrides.committedHours,
+    floorShortfallCause: overrides.floorShortfallCause ?? 'none',
+    budgetContributedToShortfall: false,
+    planStatus: overrides.planStatus ?? 'on_track',
+  },
   energyNeededKWh: 3,
   aheadOfHourMilestone: overrides.aheadOfHourMilestone ?? false,
   steps: STEPS,
-  epsilonKWh: 0.001,
 });
 
 describe('buildFrozenHorizonPlan', () => {
@@ -95,6 +99,36 @@ describe('buildFrozenHorizonPlan', () => {
       committedHours: [
         { startsAtMs: NOW_MS, plannedKWh: 1, cheaperHourAhead: true },
         { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
+      ],
+    });
+    expect(plan.currentHourFacts).toMatchObject({ aheadOfHourMilestone: true, cheaperHourAhead: true });
+    expect(plan.currentHourClaim).toBe('claimed');
+  });
+
+  it('claims a saved hour booked at 0 kWh, with nothing promised', () => {
+    // Every saved hour is a booking. One the forecast left no room for carries 0 kWh:
+    // the task claims it and runs on capacity that turns out to be free.
+    const plan = build({
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 0 },
+        { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
+      ],
+    });
+    expect(plan.currentBucket).toMatchObject({ plannedUsefulEnergyKWh: 0, booked: true, expectedStepId: null });
+    expect(plan.currentHourClaim).toBe('claimed');
+  });
+
+  it('does not price-defer a saved 0 kWh hour for a budget-bound task that is ahead', () => {
+    // Its milestone is the previous hour's, so the device is "ahead" as soon as it met
+    // that; a cheaper hour with energy follows. Deferring would switch the charger off.
+    const plan = build({
+      objectiveKind: 'ev_soc',
+      planStatus: 'at_risk',
+      floorShortfallCause: 'budget',
+      aheadOfHourMilestone: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 0, cheaperHourAhead: true },
+        { startsAtMs: NOW_MS + 3 * HOUR_MS, plannedKWh: 2 },
       ],
     });
     expect(plan.currentHourFacts).toMatchObject({ aheadOfHourMilestone: true, cheaperHourAhead: true });
