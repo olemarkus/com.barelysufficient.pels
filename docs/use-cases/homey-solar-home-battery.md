@@ -65,6 +65,7 @@ If you change the battery's mode in its own app while PELS holds it, PELS takes 
 | `Charging` · `Charging less so a device can use the solar` | PELS lowered the battery's charge so a device above it can run on the sun. |
 | `Limited · Charging` · `Waiting to charge faster` | PELS capped the battery's charge at its place in the priority order, and gives the rest back as the house has room. |
 | `Own mode` · `PELS takes over when your limit or solar needs it` | PELS has no job for the battery right now; its own app is in charge. |
+| `Own mode` · `PELS can only watch it: its app does not accept control` | The battery's app refused PELS (for example a Sessy on its cloud login). PELS tries again after six hours or when PELS restarts. |
 | `Own mode` · `PELS uses it only to store spare solar` | **Power-limit control** is off for the battery. |
 
 The fact line shows how full the battery is, such as `62 % charged`. While PELS holds the battery, its own app shows Homey or API mode. That is PELS at work, and the mode you chose returns when PELS hands it back.

@@ -225,7 +225,8 @@ Today column below), so this is no longer a pure placeholder — but the headlin
 roadmap. A home battery PELS can set the power of is now controlled (Main home):
 it takes surplus and is limited at its own place in the priority order (last
 by default: it stores what the willing devices leave, and covers the house
-before any device is limited), and is handed back to its own mode when idle.
+before any device is limited), and is handed back to its own mode through the
+normal restore in priority order, or after the surplus dwell.
 **Signature:** PV (a home battery, by default the last surplus sink and the
 first lever against the limit), EV + heat pump + VVB as surplus sinks; cares about
 self-consumption rate as the headline KPI.
@@ -335,7 +336,7 @@ persona ordering. P0/P1 weight goes to the highest-emotion, least-served cells
 6. **Solar self-consumption** (Prosumer) — the first surfaces shipped (Usage Solar
    card, Overview "Solar now" subline, "Use solar surplus" boost, export-price
    config + planning-price scheduling, and home-battery charge from surplus and
-   discharge before limiting); the export-to-zero **maximiser**, a
+   discharge on its turn in the priority order); the export-to-zero **maximiser**, a
    self-consumption-rate KPI, month-money history, and inverter control remain.
    *roadmap (partially shipped).*
 

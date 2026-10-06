@@ -455,8 +455,8 @@ replacement setpoints have their own settling window, with a bounded overall
 wait for an unanswered battery. The planner sizes writable setpoints before
 credit or surplus funding. A release whose battery left Main travels as a
 plan-level `StorageReleaseIntent`; the owner keeps failed hand-back recovery.
-A newer external mode change persists an opt-out in `battery_control_devices`;
-the regular-device follow-up will map it onto the battery's Managed setting.
+A newer external mode change persists an opt-out in `battery_control_devices`,
+which is the battery's Managed setting.
 Deferred hand-backs still reserve held discharge
 against new starts, without adding that discharge to the shedding deficit.
 

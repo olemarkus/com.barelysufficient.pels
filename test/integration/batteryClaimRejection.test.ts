@@ -129,7 +129,8 @@ describe('a battery whose app rejects PELS\'s claim', () => {
 
     expect(writes()).toEqual([['control_strategy', 'POWER_STRATEGY_API']]);
     expect(owner.isWatchOnly(BATTERY)).toBe(true);
-    expect(owner.readControl(BATTERY)).toEqual({ kind: 'none' });
+    // Still read, so its discharge counts against surplus devices, but never admissible.
+    expect(owner.readControl(BATTERY)).toMatchObject({ kind: 'setpoint', admissible: false, claimHeld: false });
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'watch_only' });
     // The rejected write changed nothing: there is no claim to hand back.
     expect(settings.get(CLAIM_KEY)).toBeNull();
