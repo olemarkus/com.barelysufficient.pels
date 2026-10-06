@@ -12,6 +12,7 @@ import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
 import { callApi, getApiReadModel } from './homey.ts';
 import { getHomeScope, readHomeMembership } from './homeScope.ts';
 import { setPlanUnmeasured } from './planMeasurementSignal.ts';
+import { hoursWithPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 import { readAreaSimulationPosture, readOverviewPlan } from './overviewPlanRead.ts';
 import { readOverviewDevices } from './overviewDevicesRead.ts';
 import type { OverviewDeviceRowsRead, SettingsUiOverviewDevice } from './overviewDeviceRows.ts';
@@ -369,7 +370,7 @@ const toRowStatus = (params: {
       diagnosticReasonCode: plan.diagnosticReasonCode,
       planStatus: plan.latest?.planStatus,
       firstActionAtMs: Array.isArray(plan.latest?.hours)
-        ? plan.latest.hours[0]?.startsAtMs ?? null
+        ? hoursWithPlannedEnergy(plan.latest.hours)[0]?.startsAtMs ?? null
         : null,
       nowMs,
       carChargeLimit: resolveReportedCarChargeLimit(plan),

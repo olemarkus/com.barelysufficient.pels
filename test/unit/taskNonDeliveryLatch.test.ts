@@ -19,7 +19,6 @@ describe('the non-delivery latch', () => {
   it.each([
     ['a capacity or budget hold', { obligation: 'claimed', control: 'restricted', draw: 'not_drawing' }],
     ['a settle', { obligation: 'claimed', control: 'pending', draw: 'not_drawing' }],
-    ['an hour the plan does not book', { obligation: 'unclaimed', control: 'permitted', draw: 'not_drawing' }],
     ['a released hour', { obligation: 'deferred', control: 'permitted', draw: 'not_drawing' }],
     ['a missing power reading', { obligation: 'claimed', control: 'permitted', draw: 'unobserved' }],
   ] as const)('keeps a confirmed stop for the status through %s', (_label, input) => {
@@ -45,7 +44,7 @@ describe('the non-delivery latch', () => {
   });
 
   it.each([
-    ['the device draws power', { obligation: 'unclaimed', control: 'restricted', draw: 'drawing' }],
+    ['the device draws power', { obligation: 'claimed', control: 'restricted', draw: 'drawing' }],
     ['the task is met', { obligation: 'satisfied', control: 'permitted', draw: 'not_drawing' }],
     ['the plan goes inactive, such as an unplugged car', { obligation: 'inactive', control: 'permitted', draw: 'not_drawing' }],
   ] as const)('ends the stop when %s', (_label, input) => {

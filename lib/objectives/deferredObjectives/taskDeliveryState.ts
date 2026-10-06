@@ -22,7 +22,7 @@ export type TaskNonDeliveryState =
 export type TaskReservationReader = (deviceId: string, deadlineAtMs: number) => boolean;
 export type TaskControlState = 'permitted' | 'restricted' | 'pending' | 'failed' | 'uncontrolled';
 export type TaskDeliveryInput = {
-  obligation: 'claimed' | 'unclaimed' | 'inactive' | 'deferred' | 'satisfied' | 'expired';
+  obligation: 'claimed' | 'inactive' | 'deferred' | 'satisfied' | 'expired';
   control: TaskControlState;
   draw: 'drawing' | 'not_drawing' | 'unobserved';
 };

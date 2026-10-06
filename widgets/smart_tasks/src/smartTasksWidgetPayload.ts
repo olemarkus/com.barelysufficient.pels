@@ -14,6 +14,7 @@ import type {
   TemperatureObservedProbe,
 } from '../../../packages/contracts/src/types';
 import { hasObservedTemperature } from '../../../packages/shared-domain/src/temperatureObservedState';
+import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import { hasObservedStateOfCharge } from '../../../packages/shared-domain/src/stateOfChargeObservedState';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import { resolveActivePlanChartData } from '../../../packages/shared-domain/src/deferredActivePlanChartData';
@@ -138,8 +139,9 @@ const resolveCurrentValue = (
 };
 
 const resolvePlannerEtaMs = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => {
-  const hours = plan.latest?.hours;
-  const last = hours?.[hours.length - 1];
+  // The last hour the device is planned to run; a trailing 0 kWh booking promises nothing.
+  const hours = hoursWithPlannedEnergy(plan.latest?.hours ?? []);
+  const last = hours[hours.length - 1];
   if (!last) return null;
   return isFiniteNumber(last.startsAtMs) ? last.startsAtMs + 60 * 60 * 1000 : null;
 };
@@ -343,7 +345,7 @@ const resolveStatusId = (
     pendingReason: plan.pendingReason,
     diagnosticReasonCode: plan.diagnosticReasonCode,
     planStatus: plan.latest?.planStatus,
-    firstActionAtMs: plan.latest?.hours[0]?.startsAtMs ?? null,
+    firstActionAtMs: hoursWithPlannedEnergy(plan.latest?.hours ?? [])[0]?.startsAtMs ?? null,
     nowMs,
     carChargeLimit: resolveReportedCarChargeLimit(plan),
     liveCompletion: plan.liveCompletion,
@@ -412,7 +414,7 @@ const buildRow = (params: {
 }): SmartTasksWidgetRow => {
   const { deviceId, plan, device, targetValue, statusId, finishMs, nowMs, timeZone } = params;
   const finiteFinish = isFiniteNumber(finishMs) ? finishMs : null;
-  const firstHourMs = plan.latest?.hours[0]?.startsAtMs ?? null;
+  const firstHourMs = hoursWithPlannedEnergy(plan.latest?.hours ?? [])[0]?.startsAtMs ?? null;
   const firstPlannedTimeLabel = isFiniteNumber(firstHourMs)
     ? formatLocalHHMM(firstHourMs, timeZone)
     : null;

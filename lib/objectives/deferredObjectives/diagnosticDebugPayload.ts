@@ -15,16 +15,16 @@ const horizonPlanFields = (
   // release rules decided from it.
   currentHourFacts: horizonPlan?.currentHourFacts ?? null,
   // The producer's claim on the current hour, and therefore the admission decision:
-  // `claimed` runs the device, `released` stands it down, `unclaimed` leaves it to
-  // the planner's own priority call. Without it a log reader cannot tell "on because
-  // its task claimed the hour" from "on because its task could not claim the hour
-  // but still needs it" — the exact discrimination the investigation that produced
-  // this state needed and could not make.
+  // `claimed` runs the device, `released` stands it down. Whether a claimed hour
+  // promises energy is on the current bucket (`plannedUsefulEnergyKWh`): 0 means it
+  // is booked with nothing promised (wanted on price, or needed because the task
+  // falls short, with no forecast room), and a claim with no current bucket at all
+  // comes from a shortfall cause that needs every hour.
   currentHourClaim: horizonPlan?.currentHourClaim ?? null,
   plannedBuckets: horizonPlan?.plannedBuckets.map((bucket) => ({
     id: bucket.id, startMs: bucket.startMs, endMs: bucket.endMs,
     price: bucket.price, reserve: bucket.reserve, current: bucket.current,
-    plannedUsefulEnergyKWh: bucket.plannedUsefulEnergyKWh,
+    plannedUsefulEnergyKWh: bucket.plannedUsefulEnergyKWh, booked: bucket.booked,
   })) ?? null,
 });
 

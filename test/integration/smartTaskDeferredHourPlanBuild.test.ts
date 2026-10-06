@@ -64,7 +64,6 @@ const plannedDecision: DeferredAdmissionDecision = {
   budgetExempt: false,
   engageBoost: false,
   reservesStartupPower: false,
-  expectedStepId: null,
 };
 
 const buildBuilderDeps = (

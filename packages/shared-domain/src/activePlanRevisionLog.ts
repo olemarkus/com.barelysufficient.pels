@@ -21,6 +21,7 @@ import type {
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
 import { resolveRevisionReason, type RevisionReasonDisambiguation } from './deadlineLabels';
 import { formatTimeInTimeZone } from './utils/dateUtils';
+import { hoursWithPlannedEnergy } from './deferredPlanBookedHours';
 
 // Resolved shape of a single row in the live-plan revision panel. Mirrors
 // `PlanHistoryRevisionLogRow` deliberately — the visual binding on the page
@@ -122,8 +123,9 @@ const diffHourCounts = (
   rev: DeferredObjectiveActivePlanRevisionV1,
   prior: DeferredObjectiveActivePlanRevisionV1,
 ): { added: number; removed: number } => {
-  const curr = new Set(rev.hours.map((h) => h.startsAtMs));
-  const old = new Set(prior.hours.map((h) => h.startsAtMs));
+  // Hours the device is planned to run; a 0 kWh booking promises nothing.
+  const curr = new Set(hoursWithPlannedEnergy(rev.hours).map((h) => h.startsAtMs));
+  const old = new Set(hoursWithPlannedEnergy(prior.hours).map((h) => h.startsAtMs));
   let added = 0;
   let removed = 0;
   for (const k of curr) if (!old.has(k)) added += 1;

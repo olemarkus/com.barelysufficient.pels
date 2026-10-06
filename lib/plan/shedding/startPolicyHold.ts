@@ -35,10 +35,9 @@ import {
  * is still held after one.
  *
  * The lift is `PlanInputDevice.startPolicyHoldLifted`, stamped by deferred
- * admission on a `planned` decision — the task has booked energy into this hour
- * and wants the device running — or an `unclaimed` one, where the task booked
- * nothing only because a forecast left no room, yet cannot finish without the
- * hour. A lift is not a start: the device then goes through ordinary admission,
+ * admission on a `planned` decision — the task books this hour and wants the
+ * device running, also when it booked it at 0 kWh because the forecast left no
+ * room. A lift is not a start: the device then goes through ordinary admission,
  * so it runs only when the house has room. That exclusion is not a detail: it is what makes
  * the policy mean "only PELS starts it" rather than "never runs", because a
  * smart task is the one thing in PELS that positively starts a device (the

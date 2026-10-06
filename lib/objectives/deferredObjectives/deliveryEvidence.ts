@@ -17,7 +17,7 @@ export const LEGACY_DELIVERY_EVIDENCE: TaskDeliveryEvidence = {
 };
 
 export type TaskDeliveryFacts = {
-  obligation: 'claimed' | 'unclaimed' | 'unavailable' | 'deferred' | 'satisfied' | 'expired';
+  obligation: 'claimed' | 'unavailable' | 'deferred' | 'satisfied' | 'expired';
   control: TaskDeliveryControl;
   observation: { kind: 'drawing'; kw: number } | { kind: 'not_drawing' } | { kind: 'unavailable' };
   progress: { kind: 'known'; value: number } | { kind: 'unavailable' };
@@ -84,7 +84,7 @@ const deviceConstraintBlocker = (facts: TaskDeliveryFacts): TaskDeliveryBlocker 
 };
 const resolveBlocker = (facts: TaskDeliveryFacts, confirmed: boolean): TaskDeliveryBlocker => {
   if (facts.obligation === 'deferred' || facts.obligation === 'satisfied') return { kind: 'clear' };
-  if (facts.obligation === 'claimed' || facts.obligation === 'unclaimed') {
+  if (facts.obligation === 'claimed') {
     const control = controlBlocker(facts.control);
     if (control.kind === 'blocked') return control;
   }

@@ -441,8 +441,9 @@ export type PlanInputDeviceBase = {
   /**
    * Producer-resolved deadline floor for the thermostat setpoint, °C — the
    * deadline-target plus learned over-command. Stamped by
-   * `applyDeferredAdmissionToInput` for temperature objectives whose current
-   * bucket has planned energy. `resolvePlannedTarget` lifts the commanded
+   * `applyDeferredAdmissionToInput` for temperature objectives in a booked
+   * (`planned`) hour, also one booked at 0 kWh, where the floor is what lets the
+   * thermostat heat if capacity turns out to be free. `resolvePlannedTarget` lifts the commanded
    * setpoint to `max(modeTarget + priceOptDelta, deadlineFloorTargetC)` so the
    * device's local thermostat can actually reach the deadline target; outside
    * planned hours the field is absent and the override drops out.
@@ -590,11 +591,11 @@ export type PlanInputDeviceBase = {
   /**
    * A smart task is ACTIVELY DRIVING this device this cycle, so its
    * start-policy baseline of off does not apply — the one thing in PELS that
-   * positively starts a device has booked energy into this hour and wants it
-   * running.
+   * positively starts a device has booked this hour (with or without energy
+   * promised) and wants it running.
    *
-   * Stamped by `applyDeferredAdmissionToInput` on a `planned` or `unclaimed`
-   * admission decision, and only there. It is a per-cycle DERIVATION,
+   * Stamped by `applyDeferredAdmissionToInput` on a `planned` admission
+   * decision, and only there. It is a per-cycle DERIVATION,
    * deliberately not a rewrite of {@link startPolicyInForce} above: runtime code
    * overwriting a producer-resolved setting mid-cycle is the exact shape the
    * `controllable: true` admission write was removed for — every downstream
@@ -607,9 +608,8 @@ export type PlanInputDeviceBase = {
    * Narrower than `admittedDeviceIds` on purpose: a device its own task left
    * `idle` or `inactive` this hour stays held, because an hour the task decided
    * it can do without is not an hour the task is driving it (owner rulings,
-   * 2026-09-10). An `unclaimed` hour does lift it: the task booked nothing only
-   * because a forecast left no room, and cannot finish without the hour (owner
-   * ruling, 2026-09-24).
+   * 2026-09-10). An hour booked at 0 kWh does lift it: the task wants the hour on
+   * price, or cannot finish without it, and the forecast only left no room.
    */
   startPolicyHoldLifted?: true;
   /**

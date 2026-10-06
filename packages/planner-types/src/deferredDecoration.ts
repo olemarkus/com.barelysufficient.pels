@@ -49,9 +49,8 @@ export type DeferredDecorationInput = {
  *   cycle — not `inactive`). The planner's surplus dump-load hold excludes
  *   these ids so a standing "Run on solar surplus" hold can never fight an
  *   active smart task (smart-task precedence, plan-side).
- * - `drivingDeviceIds`: devices whose task needs energy in this hour: either it
- *   booked the hour (`planned`) or it could not book enough energy and left the
- *   hour to the ordinary planner (`unclaimed`). This is the task's demand signal
+ * - `drivingDeviceIds`: devices whose task books this hour (`planned`), with or
+ *   without energy promised for it. This is the task's demand signal
  *   for diagnostics, including binary loads such as EV chargers that have no
  *   thermostat-style standing-demand fact.
  * - `lentAuthorityDeviceIds`: devices PELS holds no authority over of its own,

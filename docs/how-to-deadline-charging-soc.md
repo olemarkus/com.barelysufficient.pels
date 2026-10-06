@@ -83,9 +83,9 @@ For deadline charging, many homes use this default:
 - **Power-limit control**: off by default.
 - A Smart task makes the charger available during planned charging hours.
 
-That prevents ordinary run-when-power-is-available behavior when no active task controls the charger. During planned task hours, PELS can make room for it while staying under the hard cap. An active task can also use an unbooked hour when it still needs that hour and live admission allows it; a deferred hour is held off whether power-limit control is on or off.
+That prevents ordinary run-when-power-is-available behavior when no active task controls the charger. During planned task hours, PELS can make room for it while staying under the hard cap. An active task can also charge in an hour it keeps without planned energy, when power turns out to be available; a deferred hour is held off whether power-limit control is on or off.
 
-If you also want normal "charge when there is room" behavior when no active Smart task controls the charger, leave **Power-limit control** on. During an active task, hours the task defers stay off; an unbooked hour the task still needs may run if live capacity, budget, and priority allow it.
+If you also want normal "charge when there is room" behavior when no active Smart task controls the charger, leave **Power-limit control** on. During an active task, hours the task defers stay off; an hour the task keeps without planned energy may run when power turns out to be available.
 
 ## Step 2: Give PELS The Battery Percentage
 
@@ -200,7 +200,7 @@ Use deadline charging when the car's final battery level matters.
 | The charger is not offered in **New smart task** | Confirm it is paired in Homey, visible in PELS, **Managed by PELS**, and configured as **EV 1-phase** or **EV 3-phase**. |
 | Battery percentage does not appear | Check whether the value is on the charger or on a separate car device. If it is on the car device, select the car in the charger's **Car** section (Path A) and wait for PELS to match it. If the car is not listed there, report its battery percentage with **Report battery level for charger** (Path C). |
 | The task stays at **Building plan…** | Check that price data is available through the ready-by time. Tomorrow's prices may not be published yet. |
-| The charger starts in an hour outside the plotted task plan | The task may still need an unbooked hour, which remains eligible through live planner admission. A deferred hour is held off. Turn **Power-limit control** off to prevent normal run-when-power-is-available behavior when no active task controls the charger. |
+| The charger starts in an hour outside the plotted task plan | The task keeps that hour without planned energy, because it is cheaper than the planned hours or the task cannot finish otherwise, and charges there when power is available. A deferred hour is held off. Turn **Power-limit control** off to prevent normal run-when-power-is-available behavior when no active task controls the charger. |
 | The task is **At risk** | Check that the car is plugged in, the charger current is correct, and the target is realistic for the time left. If other devices take the room, grant the task permission to limit lower-priority devices. If the reason names the car's own schedule or smart charging, turn that off in the car. |
 | The car's own charge limit is below the target | The task keeps your target. As soon as PELS knows the car's limit is lower, the task shows **At risk** (or **Cannot finish**) with the limit as the reason, and it ends as missed if the car stops there. Raise the charge limit in the car, or lower the task's target to the car's limit. While the car is still below its limit, the daily budget is named instead when it is what holds the task back. A car unplugged before it reaches the limit shows **Paused — unplugged**; plug it in. |
 | The task is **Cannot finish** | Lower the target, move the ready-by time later, plug in earlier, reduce competing load, or review the charger setup. Raising the hard cap is only correct if your grid tariff step is actually higher. |

@@ -1,14 +1,12 @@
 import { buildAllocatedTaskEvaluation } from './taskEvaluationProducer';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
-  DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlansV1,
-  DeferredObjectiveActivePlanStatusV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
 import type { DeferredObjectiveProgressResolution } from './diagnosticProgress';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
-import { buildFrozenHorizonPlan } from './frozenHorizonPlan';
+import { buildFrozenHorizonPlan, type FrozenReadInputs } from './frozenHorizonPlan';
 import {
   buildDeferredObjectivePolicyHorizon,
   type DeferredObjectivePolicyHorizonResult,
@@ -22,36 +20,7 @@ import {
   mergeProgressFields,
 } from './diagnosticFields';
 
-// Frozen mid-hour metadata sourced from the coherent active committed-plan view.
-// Present ⇒ the per-cycle path reads the frozen plan instead of running the
-// allocator (see `buildFrozenHorizonPlan`).
-export type FrozenReadInputs = {
-  planStatus: DeferredObjectiveActivePlanStatusV1;
-  // The settled revision's verdict on what bound the floor schedule. Read rather
-  // than recomputed so the mid-hour claim (`resolveCurrentHourClaim`) stays on the
-  // hour-boundary clock the two-clock design puts control decisions on. Absent on
-  // revisions an older build persisted, which resolve to `'none'` — the "task can
-  // finish without this hour" reading, i.e. the pre-change release posture.
-  floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause;
-  // The settled revision's verdict on whether the soft daily budget had a hand
-  // in the shortfall. Resolved at this boundary like the cause above it:
-  // revisions an older build persisted carry no flag, which reads as `false` —
-  // "the budget was not implicated", the pre-change posture.
-  budgetContributedToShortfall: boolean;
-  // The SETTLED revision's hours (`latest.hours`), NOT the schedule-floor
-  // `commitment.hours`. A `:58` revision that refines kWh on the same hour set
-  // (`rate_refined`, `measured_deviation`) updates `latest` but not `commitment`
-  // (the merge only re-commits on a schedule change), so reading `commitment`
-  // would serve stale energy / `cheaperHourAhead`. `latest.hours` is the
-  // Math.max-merged floored plan — the freshest thing the device should follow.
-  hours: readonly DeferredObjectiveActivePlanHourV1[];
-};
 
-// Metadata-only deadline reserve for the frozen plan (matches rescueReplan's
-// `DEFAULT_DEADLINE_RESERVE_MS`); used for `planningEndMs`/`horizonEndMs`, which no
-// frozen-path consumer reads. The `:58` settle recomputes the authoritative plan.
-const FROZEN_DEADLINE_RESERVE_MS = 60 * 60 * 1000;
-const FROZEN_EPSILON_KWH = 0.001;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 // Persisted-cause classification for the frozen read. `isOptionalFloorShortfallCause`
@@ -149,7 +118,6 @@ export const buildFrozenDiagnostic = (params: {
   progress: Extract<DeferredObjectiveProgressResolution, { reasonCode: null }>;
   objective: DeferredObjectiveSettingsEntry;
   deviceId: string;
-  deadlineAtMs: number;
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
   aheadOfHourMilestone: boolean;
   steps: DeferredObjectiveStep[];
@@ -159,24 +127,17 @@ export const buildFrozenDiagnostic = (params: {
   liveStepsUnavailable?: boolean;
 }): DeferredObjectiveDiagnostic => {
   const {
-    nowMs, base, progress, objective, deviceId, deadlineAtMs,
+    nowMs, base, progress, objective, deviceId,
     profileEnergy, aheadOfHourMilestone, steps, frozenRead,
   } = params;
   const horizonPlan = buildFrozenHorizonPlan({
     nowMs,
-    objectiveId: `${deviceId}:${objective.kind}`,
-    objectiveKind: objective.kind,
-    enforcement: objective.enforcement,
-    deadlineAtMs,
-    deadlineMarginMs: FROZEN_DEADLINE_RESERVE_MS,
-    committedHours: frozenRead.hours,
-    planStatus: frozenRead.planStatus,
-    floorShortfallCause: frozenRead.floorShortfallCause,
-    budgetContributedToShortfall: frozenRead.budgetContributedToShortfall,
+    deviceId,
+    objective,
+    frozenRead,
     energyNeededKWh: profileEnergy.energyNeededKWh,
     aheadOfHourMilestone,
     steps,
-    epsilonKWh: FROZEN_EPSILON_KWH,
   });
   const evaluation = buildAllocatedTaskEvaluation(deviceId, objective, progress, horizonPlan);
   return {

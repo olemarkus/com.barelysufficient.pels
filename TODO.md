@@ -404,7 +404,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       and irregular under `power_source = flow`). The two-clock design says a control decision moves
       only at the settle; this is the one seam where it can move repeatedly within one. The
       asymmetry is what makes it worth closing: `released` fires a lifecycle release with no
-      cooldown gate, while `unclaimed` can only re-admit through the 60-300 s restore cooldown, so
+      cooldown gate, while `claimed` can only re-admit through the 60-300 s restore cooldown, so
       an alternation is not symmetric churn. Resolve the claim once on the first fresh pass at/after
       the mark and reuse it for the rest of the window, the way `cheaperHourAhead` is stamped once
       at the booking revision. Also covers the no-commitment case, where no frozen fallback exists

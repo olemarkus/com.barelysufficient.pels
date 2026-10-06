@@ -1,41 +1,42 @@
 import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
-// Integration-tier proof that a task which no longer needs an hour keeps only its
-// CHEAPEST allocated hours in play — the price half of what an unbooked hour means.
+// Integration-tier proof that booking is decided by price, not by forecast room: a
+// task books the hours it wants on price (or every hour, when it cannot finish),
+// claims them even when the forecast left no room (booked at 0 kWh), and gives up
+// only the dearer hours it can finish without.
 //
 // Integration rather than e2e per `notes/testing-taxonomy.md` § "The border cases":
 // it spans the planner and admission layers with nothing internal mocked, but it
 // drives them by calling `planDeferredObjectiveHorizon` /
 // `applyDeferredObjectiveAdmission` and asserts on the returned decision, so it is
-// integration, not SDK-in/logs-out. An SDK-boundary companion driving the real
-// bridge + recorder + frozen dispatch does not exist yet — nothing yet pins that
-// the daily-budget pace still holds an `unclaimed` smart-task device.
-// This spec earns its place either way, because it can name the expected hours
-// EXACTLY, which an aggregate energy comparison through the full stack cannot.
+// integration, not SDK-in/logs-out. The SDK-boundary companion is
+// `smartTaskHourBookingLifecycle.test.ts`. This spec earns its place because it can
+// name the expected hours EXACTLY, which an aggregate energy comparison through the
+// full stack cannot.
 //
-// An hour books 0 for two unrelated reasons. Either the fill already met the need
-// and the hour is genuinely surplus — the price decision, "don't use an hour we
+// An hour carries 0 kWh for two unrelated reasons. Either the fill already met the
+// need and the hour is genuinely surplus — the price decision, "don't use an hour we
 // don't have to" — or the soft daily budget's forecast controlled share for that
 // hour was 0, so the allocator had no room to promise anything
-// (`policyHorizon.resolveMaxUsefulEnergyKWh`). Admission used to treat both the
-// same and stand the device down, which stops a task that is behind for no reason
-// the physical world imposed.
+// (`policyHorizon.resolveMaxUsefulEnergyKWh`). The second is a forecast, not a
+// reason to stand the device down: the hour stays booked when the task wants it on
+// price or cannot finish without it.
 //
 // It drives the REAL pipeline, nothing mocked in the middle:
 //
 //   per-bucket budget share + price curve
 //                 │
 //                 ▼
-//   planDeferredObjectiveHorizon()  ──►  plan (booked hours + canSkipUnbookedHours)
+//   planDeferredObjectiveHorizon()  ──►  plan (booked hours, some at 0 kWh)
 //                 │
 //                 ▼
-//   applyDeferredObjectiveAdmission()  ──►  planned / unclaimed / idle
+//   applyDeferredObjectiveAdmission()  ──►  planned / idle
 //                 │
 //                 ▼
 //   applyDeferredAdmissionToInput()    ──►  what the planner actually receives
 //
-// The two scenarios differ ONLY in `energyNeededKWh`. Same prices, same per-hour
-// budget shares, same device — so any difference in the device's treatment is
-// attributable to whether the task can finish without the hour.
+// The first two scenarios differ ONLY in `energyNeededKWh`. Same prices, same
+// per-hour budget shares, same device — so any difference in the device's treatment
+// is attributable to whether the task can finish without the hour.
 //
 // `aheadOfHourMilestone` comes from the REAL producer, never pinned
 // (`lib/objectives/deferredObjectives/AGENTS.md`). These scenarios re-plan afresh
@@ -91,7 +92,7 @@ const objective = (energyNeededKWh: number): DeferredObjective => ({
   deadlineMarginMs: 0,
 });
 
-const buildBuckets = (nowMs: number): DeferredObjectiveHorizonBucket[] => {
+const buildBuckets = (nowMs: number, zeroShareHours: ReadonlySet<number>): DeferredObjectiveHorizonBucket[] => {
   const buckets: DeferredObjectiveHorizonBucket[] = [];
   for (let hour = Math.floor(nowMs / HOUR_MS) * HOUR_MS;
     hour < BASE_MS + DEADLINE_HOUR * HOUR_MS;
@@ -102,7 +103,7 @@ const buildBuckets = (nowMs: number): DeferredObjectiveHorizonBucket[] => {
       startMs: Math.max(hour, nowMs),
       endMs: hour + HOUR_MS,
       price: PRICES[hourIndex] ?? null,
-      ...(ZERO_SHARE_HOURS.has(hourIndex) ? { maxUsefulEnergyKWh: 0 } : {}),
+      ...(zeroShareHours.has(hourIndex) ? { maxUsefulEnergyKWh: 0 } : {}),
     });
   }
   return buckets;
@@ -146,8 +147,8 @@ const diagnosticFor = (
 }));
 
 // A cap-off water heater: the smart task is the only reason PELS drives it, so
-// every difference between claimed / unclaimed / released is visible in what the
-// planner is handed.
+// every difference between claimed and released is visible in what the planner is
+// handed.
 const device: PlanInputDevice = withFixtureResidualKw({ id: DEVICE_ID, control: fixtureControlPosture({ controllable: false }) }) as PlanInputDevice;
 
 type HourOutcome = {
@@ -155,8 +156,8 @@ type HourOutcome = {
   price: number;
   kind: string;
   bookedKWh: number;
-  // What the planner receives for the hour. `forceShed` is the stand-down; an
-  // unclaimed hour hands over a managed device and nothing else.
+  // What the planner receives for the hour. `forceShed` is the stand-down; a claimed
+  // hour hands over a managed device the planner runs on free capacity.
   managed: boolean;
   forceShed: boolean;
   releaseIntent: string | undefined;
@@ -171,7 +172,10 @@ type HourOutcome = {
 // yields a part-hour, which would spread a whole-kWh need across more hours than
 // the price curve alone would choose; starting on the boundary keeps price the
 // only thing deciding which hours are used.
-const runTask = (energyNeededKWh: number): HourOutcome[] => {
+const runTask = (
+  energyNeededKWh: number,
+  zeroShareHours: ReadonlySet<number> = ZERO_SHARE_HOURS,
+): HourOutcome[] => {
   const outcomes: HourOutcome[] = [];
   let remainingKWh = energyNeededKWh;
   for (let hourIndex = 0; hourIndex < DEADLINE_HOUR; hourIndex += 1) {
@@ -188,7 +192,7 @@ const runTask = (energyNeededKWh: number): HourOutcome[] => {
       nowMs,
       objective: objective(remainingKWh),
       steps: [STEP],
-      buckets: buildBuckets(nowMs),
+      buckets: buildBuckets(nowMs, zeroShareHours),
       // Bootstrap/settle path: the allocator picks the hours afresh from price,
       // which is the decision the "only the cheapest hours" claim is about.
       commitment: { kind: 'uncommitted' },
@@ -200,9 +204,9 @@ const runTask = (energyNeededKWh: number): HourOutcome[] => {
     const applied = applyDeferredAdmissionToInput([device], decisions);
 
     const bookedKWh = plan.currentBucket?.plannedUsefulEnergyKWh ?? 0;
-    // A claimed hour runs the device at its committed step for the whole hour; an
-    // unclaimed hour is left to the planner, which here has no competing load and
-    // no capacity pressure, so the device runs. A released hour delivers nothing.
+    // A claimed hour runs the device for the whole hour: the planner here has no
+    // competing load and no capacity pressure, so also a hour booked at 0 kWh runs.
+    // A released hour delivers nothing.
     const deliveredKWh = decision.kind === 'idle' || decision.kind === 'inactive'
       ? 0
       : STEP.usefulPowerKw;
@@ -226,22 +230,22 @@ const table = (outcomes: readonly HourOutcome[]): string => outcomes
   .map((o) => `  h${o.hourIndex} @${String(o.price).padStart(3)}  ${o.kind.padEnd(9)} booked ${o.bookedKWh.toFixed(2)} kWh  delivered ${o.deliveredKWh.toFixed(2)} kWh`)
   .join('\n');
 
-describe('an hour the smart task booked nothing into', () => {
+describe('booking a smart-task hour by price, not by forecast room', () => {
   describe('while the booked hours cannot cover the need', () => {
     // 20 kWh against six usable hours of a 1 kW element: the task is short in every
     // hour of the horizon, so there is never a later hour to defer into.
     const outcomes = runTask(20);
 
-    it('is left unclaimed rather than released', () => {
-      const unbooked = outcomes.filter((o) => o.bookedKWh <= 0);
-      // Fixture guard: the zero-share hours really are the ones that booked nothing,
-      // so the assertion below is about the budget share and not about the fill
+    it('claims the hours the forecast left no room for, booked at 0 kWh', () => {
+      const empty = outcomes.filter((o) => o.bookedKWh <= 0);
+      // Fixture guard: the zero-share hours really are the ones without energy, so
+      // the assertion below is about the budget share and not about the fill
       // running out of need.
-      expect(unbooked.map((o) => o.hourIndex)).toEqual([...ZERO_SHARE_HOURS]);
+      expect(empty.map((o) => o.hourIndex)).toEqual([...ZERO_SHARE_HOURS]);
       expect(
-        unbooked.map((o) => o.kind),
+        empty.map((o) => o.kind),
         `a task 20 kWh short must not stand its device down.\n${table(outcomes)}`,
-      ).toEqual(['unclaimed', 'unclaimed']);
+      ).toEqual(['planned', 'planned']);
     });
 
     it('never commands the device off', () => {
@@ -250,10 +254,9 @@ describe('an hour the smart task booked nothing into', () => {
       expect(outcomes.map((o) => o.releaseIntent)).toEqual(outcomes.map(() => undefined));
     });
 
-    it('still hands the device to the planner as managed, so it competes on priority', () => {
-      // This is the whole point of `unclaimed`: PELS keeps control of the device and
-      // decides by capacity, budget and priority, instead of the task pre-empting
-      // that decision with a stand-down.
+    it('hands the device to the planner as managed, so capacity decides', () => {
+      // PELS keeps control of the device and the live planner decides by real
+      // capacity, instead of a forecast pre-empting that decision with a stand-down.
       expect(outcomes.every((o) => o.managed)).toBe(true);
     });
   });
@@ -281,12 +284,29 @@ describe('an hour the smart task booked nothing into', () => {
       expect(dearer.every((o) => o.deliveredKWh === 0)).toBe(true);
     });
 
-    it('gives up a zero-share hour the same way as a dear one, now that it can', () => {
-      // The exact hours that were `unclaimed` while the task was short. Nothing about
-      // the budget share changed between the two scenarios — only whether the task
-      // could finish without them.
+    it('gives up a dear zero-share hour the same way as any dear one, now that it can', () => {
+      // The exact hours that were claimed while the task was short. Nothing about the
+      // budget share changed between the two scenarios — only whether the task could
+      // finish without them, and they are dearer than every hour it books.
       const zeroShare = outcomes.filter((o) => ZERO_SHARE_HOURS.has(o.hourIndex));
       expect(zeroShare.map((o) => o.kind)).toEqual(['idle', 'idle']);
+    });
+  });
+
+  describe('when the forecast leaves no room in an hour cheaper than the ones it books', () => {
+    // h2 (30) is the cheapest hour but has no budget share, so the 2 kWh go to h6
+    // (35) and h3 (70). h2 is cheaper than h3, so it is booked at 0 kWh: the task
+    // runs there if capacity turns out to be free, and then no longer needs h3.
+    const outcomes = runTask(2, new Set([2]));
+
+    it('claims the cheap hour with nothing promised and runs there', () => {
+      const cheap = outcomes.find((o) => o.hourIndex === 2)!;
+      expect(cheap, table(outcomes)).toMatchObject({ kind: 'planned', bookedKWh: 0, deliveredKWh: 1 });
+    });
+
+    it('finishes in the cheapest hours, so the dearer booked hour is given up', () => {
+      const ran = outcomes.filter((o) => o.deliveredKWh > 0).map((o) => o.hourIndex);
+      expect(ran, table(outcomes)).toEqual([2, 6]);
     });
   });
 });

@@ -40,7 +40,7 @@ test('cannot-finish outranks steady and swaps Ready by → Due', async ({ page }
           deviceName: 'Connected 300',
           latest: {
             planStatus: 'cannot_meet',
-            hours: [{ startsAtMs: Date.now() + 3_600_000 }],
+            hours: [{ startsAtMs: Date.now() + 3_600_000, plannedKWh: 2 }],
           },
         },
       },

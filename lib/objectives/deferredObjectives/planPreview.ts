@@ -1,4 +1,5 @@
 import { resolveFloorShortfallCause } from './floorShortfallCause';
+import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import type { TaskReservationReader } from './taskDeliveryState';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
@@ -280,7 +281,10 @@ const buildEstimateFromDiagnostic = (
       ...(grantedRescuePermissions ? { grantedRescuePermissions } : {}),
     };
   }
-  const scheduledHours: DeferredObjectivePlanPreviewHour[] = buildHoursFromHorizonPlan(diag.evaluation) ?? [];
+  // The hours the device is planned to run; a 0 kWh booking promises nothing to show.
+  const scheduledHours: DeferredObjectivePlanPreviewHour[] = hoursWithPlannedEnergy(
+    buildHoursFromHorizonPlan(diag.evaluation) ?? [],
+  );
   const cost = resolveCostEstimate({ diag, dailyBudgetSnapshot });
   // `costEstimate` is a TOTAL amount (Σ kWh × price), so it must be labelled
   // with the money unit, never the per-kWh rate label `priceRateLabel` carries.

@@ -26,6 +26,8 @@ import {
 } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { buildReservationSegmentsFromHorizonPlan } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
 import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
+import { partialDouble } from '../helpers/partialDouble';
 
 // Legacy persisted revisions predate the `energyNeededKWh`/`planStatus` fields;
 // the backfill path tolerates their absence. Cast each legacy fixture revision
@@ -40,6 +42,9 @@ const HOUR_MS = 60 * 60 * 1000;
 // SUBSEQUENT (replan) observe must land past :58 of a distinct hour to settle —
 // so replan observe times below are `N * HOUR_MS + SETTLE_OFFSET_MS`.
 const SETTLE_OFFSET_MS = 58 * 60 * 1000;
+const TEMPERATURE_OBJECTIVE = partialDouble<DeferredObjectiveSettingsEntry>({
+  kind: 'temperature', enforcement: 'soft', deadlineAtMs: 6 * HOUR_MS,
+});
 
 const makeBucket = (
   startMs: number,
@@ -56,6 +61,7 @@ const makeBucket = (
   current: false,
   usefulEnergyCapacityKWh: 3,
   plannedUsefulEnergyKWh,
+  booked: plannedUsefulEnergyKWh > 0,
   ...overrides,
 });
 
@@ -349,16 +355,47 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const latest = restored.plansByDeviceId.dev!.latest!;
     expect(latest.budgetContributedToShortfall).toBe(true);
     const frozen = buildFrozenHorizonPlan({
-      nowMs: HOUR_MS, objectiveId: 'dev:temperature', objectiveKind: 'temperature',
-      enforcement: 'soft', deadlineAtMs: 6 * HOUR_MS, deadlineMarginMs: 0,
-      committedHours: latest.hours, planStatus: latest.planStatus,
-      floorShortfallCause: latest.floorShortfallCause!,
-      budgetContributedToShortfall: latest.budgetContributedToShortfall === true,
+      nowMs: HOUR_MS, deviceId: 'dev', objective: TEMPERATURE_OBJECTIVE,
+      frozenRead: {
+        hours: latest.hours, planStatus: latest.planStatus,
+        floorShortfallCause: latest.floorShortfallCause!,
+        budgetContributedToShortfall: latest.budgetContributedToShortfall === true,
+      },
       energyNeededKWh: latest.energyNeededKWh, aheadOfHourMilestone: false,
-      steps: [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }], epsilonKWh: 0.001,
+      steps: [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }],
     });
     expect(frozen.budgetContributedToShortfall).toBe(true);
     expect(frozen.status).toBe('cannot_meet');
+  });
+
+  it('saves a 0 kWh booking and serves it as a claimed hour after a reload', () => {
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      displayConfidence: 'high',
+      kwhPerUnitAcceptedSamples: 8,
+      kwhPerUnitLastAcceptedAtMs: HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(HOUR_MS, 0, { current: true, booked: true }),
+        makeBucket(2 * HOUR_MS, 1.5),
+      ]),
+    })], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const latest = normalizeDeferredObjectiveActivePlans(persist.saved()).plansByDeviceId.dev!.latest!;
+    // The booking survives the round trip with nothing promised, and reserves no
+    // physical power for lower-priority tasks.
+    expect(latest.hours.map((hour) => [hour.startsAtMs, hour.plannedKWh])).toEqual([[HOUR_MS, 0], [2 * HOUR_MS, 1.5]]);
+    expect(latest.reservationSegments?.every((segment) => segment.startMs >= 2 * HOUR_MS)).toBe(true);
+    const frozen = buildFrozenHorizonPlan({
+      nowMs: HOUR_MS + 1000, deviceId: 'dev', objective: TEMPERATURE_OBJECTIVE,
+      frozenRead: { hours: latest.hours, planStatus: latest.planStatus, floorShortfallCause: 'none', budgetContributedToShortfall: false },
+      energyNeededKWh: 1.5, aheadOfHourMilestone: false,
+      steps: [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }],
+    });
+    expect(frozen.currentHourClaim).toBe('claimed');
   });
 
   it('preserves a sub-Wh booking and its physical reservation across persistence and frozen serving', () => {
@@ -393,19 +430,17 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     });
     const frozen = buildFrozenHorizonPlan({
       nowMs: nowMs + 500,
-      objectiveId: 'dev:temperature',
-      objectiveKind: 'temperature',
-      enforcement: 'soft',
-      deadlineAtMs: 6 * HOUR_MS,
-      deadlineMarginMs: 0,
-      committedHours: latest.hours,
-      planStatus: latest.planStatus,
-      floorShortfallCause: 'none',
-      budgetContributedToShortfall: false,
+      deviceId: 'dev',
+      objective: TEMPERATURE_OBJECTIVE,
+      frozenRead: {
+        hours: latest.hours,
+        planStatus: latest.planStatus,
+        floorShortfallCause: 'none',
+        budgetContributedToShortfall: false,
+      },
       energyNeededKWh: 0.5,
       aheadOfHourMilestone: false,
       steps: [{ id: 'low', usefulPowerKw: 1.25, admissionPowerKw: 1.25 }],
-      epsilonKWh: 0.001,
     });
     expect(frozen.currentHourClaim).toBe('claimed');
     expect(frozen.expectedStepId).toBe('low');

@@ -151,14 +151,10 @@ export class DeferredObjectiveDecorationController {
 // `inactive` (task disabled, satisfied, or otherwise not plannable) is excluded so
 // a finished smart task cannot keep a device out of the hold forever.
 //
-// `unclaimed` is excluded too, and that is a decision rather than an inheritance.
-// The task is explicitly NOT claiming this hour, so it is not governing the device
-// during it — and the whole point of the state is that the device falls back to how
-// it would behave anyway. For a device the user put on "Run on solar surplus", how
-// it behaves anyway is: wait for surplus. Admitting it here would instead let the
-// ordinary restore lane start it on GRID import in exactly the hour the budget
-// forecast zeroed, which is usually the dearest one — defeating the feature the
-// user turned on, and doing so silently.
+// A `planned` hour booked at 0 kWh is governed too: the task booked it on price (or
+// needs every hour because it cannot finish), so during an active task it decides
+// whether the device runs, also on grid import for a "Run on solar surplus" device
+// (owner ruling 2026-09-25: during an active smart task, the task decides).
 const resolveAdmittedDeviceIds = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
 ): ReadonlySet<string> => {
@@ -178,8 +174,7 @@ const resolveAdmittedDeviceIds = (
 // It reads the decision, not the task's status: an `at_risk` task (the normal state of
 // a stepped water heater, `feasible_above_floor`) holds its device in a released hour
 // just as an `on_track` one does, so the same words apply. The task's own status is
-// shown on the task. An `unclaimed` hour is a different decision: the task still needs
-// it, the device competes as managed, and no framing is stamped.
+// shown on the task.
 export const resolveDeferredAvoidDeviceIds = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
 ): Set<string> => {
