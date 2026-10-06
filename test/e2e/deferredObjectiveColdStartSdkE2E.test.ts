@@ -22,7 +22,7 @@ import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { describe, expect, it } from 'vitest';
 import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
-import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
@@ -202,7 +202,7 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
   for (let nowMs = START_MS; nowMs < END_MS; nowMs += STEP_MS) {
     const device = buildDevice(tempC, nowMs);
     const activePlans = recorder.getActivePlansSnapshot();
-    const [diag] = buildDeferredObjectiveDiagnostics({
+    const [diag] = buildFixtureDiagnostics({
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
       isReservationSuppressed: () => false,

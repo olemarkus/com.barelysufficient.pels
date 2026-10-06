@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
-import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
@@ -153,7 +153,7 @@ const runScenario = (tankFullAfterKWh: number, meterOnlyHourOfDay: number | null
     const drawKw = relayOn && deliveredKWh < tankFullAfterKWh ? ELEMENT_KW : 0;
     const device = buildRelay(drawKw, relayOn, nowMs);
     tracker.observe([device], settings, nowMs);
-    const [diag] = buildDeferredObjectiveDiagnostics({
+    const [diag] = buildFixtureDiagnostics({
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
       isReservationSuppressed: () => false,

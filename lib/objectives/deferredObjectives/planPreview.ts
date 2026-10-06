@@ -36,6 +36,7 @@ import type {
   DeferredObjectiveSettingsV1,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeliveredEnergyReader } from './energyDelivery';
+import { PriorityAllocationTracker } from './priorityAllocation';
 
 export type PreviewDeferredObjectivePlanParams = {
   getThermalDirection: (deviceId: string) => ThermalDirection;
@@ -116,17 +117,22 @@ export const previewDeferredObjectivePlan = (
     },
     powerTracker: params.powerTracker,
     dailyBudgetSnapshot: params.dailyBudgetSnapshot,
-    buildPriceHorizon: params.buildPriceHorizon,
     priceOptimizationEnabled: params.priceOptimizationEnabled,
     activePlans: params.activePlans,
     sustainableRateKw: resolveUsableCapacityKw(params.capacitySettings),
+  }, {
+    buildPriceHorizon: params.buildPriceHorizon,
     getPrioritiesForDevices: params.getPrioritiesForDevices,
     resolveDeviceExclusion: params.resolveDeviceExclusion,
     getStallClassification: params.getStallClassification,
     getDeliveredEnergyKWh: params.getDeliveredEnergyKWh,
     isReservationSuppressed: params.isReservationSuppressed,
-    forceFreshDeviceId: params.deviceId,
-  }).find((diagnostic) => diagnostic.deviceId === params.deviceId);
+  },
+  // A preview keeps no device history between requests: a tracker that has seen
+  // nothing reserves a missing device only on its persisted commitment.
+  new PriorityAllocationTracker(),
+  { kind: 'preview', candidateDeviceId: params.deviceId },
+  ).find((diagnostic) => diagnostic.deviceId === params.deviceId);
   if (!diag) throw new Error(`Preview candidate ${params.deviceId} missing from its own roster`);
   return buildEstimateFromDiagnostic(diag, params);
 };

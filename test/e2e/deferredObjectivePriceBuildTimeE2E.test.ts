@@ -196,6 +196,7 @@ const runBuildTime = (horizonPrices: readonly number[], energyNeededKWh: number)
     priceHorizon: buildPriceHorizonFromCombined(combinedFor(snapshot), NOW_MS, DEADLINE_MS),
     dailyBudgetSnapshot: snapshot,
     exemptFromBudget: true, // lift the daily-budget cap so PRICE is the only allocation lever
+    higherPriorityReservations: [],
   });
   expect(horizon.reasonCode).toBeNull(); // the producer accepted the price horizon
 
@@ -243,6 +244,7 @@ const runBuildTimeSingleHour = (price: number): number => {
     priceHorizon: buildPriceHorizonFromCombined(combinedFor(snapshot), singleHourNowMs, singleHourDeadlineMs),
     dailyBudgetSnapshot: snapshot,
     exemptFromBudget: true,
+    higherPriorityReservations: [],
   });
   expect(horizon.reasonCode).toBeNull();
   const plan = planDeferredObjectiveHorizon({
@@ -354,6 +356,8 @@ describe('smart-task horizon does not bridge gaps in the price feed', () => {
       priceOptimizationEnabled: true,
       priceHorizon: [0, 1, 2].map((h) => ({ startMs: gapNowMs + h * HOUR_MS, price: 50 })),
       dailyBudgetSnapshot: null,
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
     expect(horizon.reasonCode).toBeNull();
     expect(horizon.buckets).toHaveLength(3);
@@ -373,6 +377,8 @@ describe('smart-task horizon does not bridge gaps in the price feed', () => {
         { startMs: gapNowMs + 2 * HOUR_MS, price: 50 },
       ],
       dailyBudgetSnapshot: null,
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
     expect(horizon.reasonCode).toBe('objective_missing_price_horizon');
   });

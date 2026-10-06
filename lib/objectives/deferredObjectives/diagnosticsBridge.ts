@@ -1,4 +1,17 @@
-import { buildDeferredObjectiveTaskResults } from './taskEvaluationCoordinator';
+import {
+  buildDeferredObjectiveTaskResults,
+  type TaskEvaluationLane,
+  type TaskEvaluationReaders,
+  type TaskEvaluationSnapshot,
+} from './taskEvaluationCoordinator';
+
+export {
+  LIVE_LANE,
+  type TaskEvaluationLane,
+  type TaskEvaluationReaders,
+  type TaskEvaluationSnapshot,
+} from './taskEvaluationCoordinator';
+import type { PriorityAllocationTracker } from './priorityAllocation';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import type { TaskEvaluation } from './taskEvaluation';
 
@@ -10,9 +23,17 @@ export { emitDeferredObjectiveDiagnostics, type DeferredObjectiveAnnounce } from
 
 /** Reporting consumes task results; operational decisions were already established. */
 export const buildDeferredObjectiveDiagnostics = (
-  params: Parameters<typeof buildDeferredObjectiveTaskResults>[0],
-): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveTaskResults(params).map((result) => result.diagnostic);
+  snapshot: TaskEvaluationSnapshot,
+  readers: TaskEvaluationReaders,
+  tracker: PriorityAllocationTracker,
+  lane: TaskEvaluationLane,
+): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveTaskResults(snapshot, readers, tracker, lane)
+  .map((result) => result.diagnostic);
 
 export const buildDeferredObjectiveEvaluations = (
-  params: Parameters<typeof buildDeferredObjectiveTaskResults>[0],
-): TaskEvaluation[] => buildDeferredObjectiveTaskResults(params).map((result) => result.evaluation);
+  snapshot: TaskEvaluationSnapshot,
+  readers: TaskEvaluationReaders,
+  tracker: PriorityAllocationTracker,
+  lane: TaskEvaluationLane,
+): TaskEvaluation[] => buildDeferredObjectiveTaskResults(snapshot, readers, tracker, lane)
+  .map((result) => result.evaluation);

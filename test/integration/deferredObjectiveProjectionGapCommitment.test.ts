@@ -18,7 +18,7 @@ import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjective
 import { describe, expect, it } from 'vitest';
 import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
-import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
@@ -231,7 +231,7 @@ const buildDiagnostic = (
   nowMs: number,
   device: MeteredPlanInputDevice & { thermalDirection: 'heating' },
   activePlans: DeferredObjectiveActivePlansV1 | null,
-): DeferredObjectiveDiagnostic | undefined => buildDeferredObjectiveDiagnostics({
+): DeferredObjectiveDiagnostic | undefined => buildFixtureDiagnostics({
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
   isReservationSuppressed: noReservationSuppression,

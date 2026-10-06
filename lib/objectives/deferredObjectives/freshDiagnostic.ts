@@ -1,20 +1,15 @@
 import { buildAllocatedTaskEvaluation, buildUnallocatedTaskEvaluation } from './taskEvaluationProducer';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
-import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
-import type { DeferredObjectiveActivePlanHourV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { ObjectiveDeviceInput } from '../../objectives/types';
-import { resolveHorizonPlanWithRescue } from './rescueReplan';
+import type { OrderedDeferredObjective } from './priorityAllocation';
 import type { DeferredObjectiveProgressResolution } from './diagnosticProgress';
 import {
   resolvePriceHorizonAvailableUpToMs,
   type DeferredObjectivePolicyHorizonResult,
   type DeferredObjectivePolicyHorizonUnavailableReason,
-  type DeferredObjectivePriorityReservation,
   type PriceHorizonEntry,
 } from './policyHorizon';
-import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import type { DeferredObjectiveHorizonPlan, DeferredObjectiveStep } from './types';
+import type { DeferredObjectiveHorizonPlan } from './types';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import {
   buildKnownEnergyFields,
@@ -28,9 +23,10 @@ export const buildPolicyGatedKnownInputs = (
   base: DeferredObjectiveDiagnostic,
   progress: DeferredObjectiveProgressResolution,
   policyReasonCode: DeferredObjectivePolicyHorizonUnavailableReason,
-  ctx: { powerTracker: PowerTrackerState; deviceId: string; objective: DeferredObjectiveSettingsEntry },
+  task: OrderedDeferredObjective,
+  powerTracker: PowerTrackerState,
 ): DeferredObjectiveDiagnostic => {
-  const { powerTracker, deviceId, objective } = ctx;
+  const { deviceId, objective } = task;
   const { remainingUnits } = progress;
   const evaluation = buildUnallocatedTaskEvaluation(deviceId, objective, progress);
   if (!canReportFreshProgressWhileUnknown(policyReasonCode)) {
@@ -64,60 +60,25 @@ export const buildHorizonUnavailableDiagnostic = (
   base: DeferredObjectiveDiagnostic,
   progress: DeferredObjectiveProgressResolution,
   rawPolicyHorizon: UnavailablePolicyHorizon,
-  ctx: { powerTracker: PowerTrackerState; deviceId: string; objective: DeferredObjectiveSettingsEntry },
+  task: OrderedDeferredObjective,
+  powerTracker: PowerTrackerState,
 ): DeferredObjectiveDiagnostic => withUnavailableTrajectory({
-  ...buildPolicyGatedKnownInputs(base, progress, rawPolicyHorizon.reasonCode, ctx),
+  ...buildPolicyGatedKnownInputs(base, progress, rawPolicyHorizon.reasonCode, task, powerTracker),
   horizonBucketCount: rawPolicyHorizon.horizonBucketCount,
 }, rawPolicyHorizon.reasonCode);
 
-// Fresh-path diagnostic: run the allocator (via the rescue resolver) and shape the
-// result. The bootstrap / `:58`-settle counterpart to `buildFrozenDiagnostic`.
-export const buildFreshDiagnostic = (params: {
-  nowMs: number;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  device: ObjectiveDeviceInput;
-  base: DeferredObjectiveDiagnostic;
-  progress: Extract<DeferredObjectiveProgressResolution, { reasonCode: null }>;
-  policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
-  deadlineAtMs: number;
-  priceOptimizationEnabled: boolean;
-  priceHorizon: PriceHorizonEntry[];
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-  steps: DeferredObjectiveStep[];
-  commitment: DeferredObjectiveActivePlanHourV1[] | undefined;
-  aheadOfHourMilestone: boolean;
-  profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
-  sustainableRateKw: number;
-  higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
-}): DeferredObjectiveDiagnostic => {
-  const {
-    nowMs, deviceId, objective, device, base, progress, policyHorizon, deadlineAtMs,
-    priceOptimizationEnabled, priceHorizon, dailyBudgetSnapshot, steps, commitment,
-    aheadOfHourMilestone, profileEnergy,
-  } = params;
-  const horizonPlan = resolveHorizonPlanWithRescue({
-    nowMs,
-    deviceId,
-    objective,
-    energyNeededKWh: profileEnergy.energyNeededKWh,
-    energyExpectedKWh: profileEnergy.energyExpectedKWh,
-    deadlineAtMs,
-    steps,
-    commitment,
-    aheadOfHourMilestone,
-    policyHorizon,
-    priceOptimizationEnabled,
-    priceHorizon,
-    dailyBudgetSnapshot,
-    sustainableRateKw: params.sustainableRateKw,
-    // Strict top-priority gate for Slice-2 floor promotion; see comment in
-    // rescueReplan.ts. Lower number = more important on PELS's planSort scale;
-    // `=== 1` is the only safe v1 floor for the reserved-headroom forecast.
-    devicePriority: device.priority,
-    higherPriorityReservations: params.higherPriorityReservations,
-  });
-
+// Fresh-path diagnostic: shape the plan the allocator produced (via the rescue
+// resolver). The bootstrap / `:58`-settle counterpart to `buildFrozenDiagnostic`.
+export const buildFreshDiagnostic = (
+  task: OrderedDeferredObjective,
+  base: DeferredObjectiveDiagnostic,
+  progress: Extract<DeferredObjectiveProgressResolution, { reasonCode: null }>,
+  profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>,
+  policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>,
+  horizonPlan: DeferredObjectiveHorizonPlan,
+  priceHorizon: readonly PriceHorizonEntry[],
+): DeferredObjectiveDiagnostic => {
+  const { deviceId, objective } = task;
   // Stamp the price-availability watermark from the SOURCE price horizon (not the
   // deadline-clamped allocator buckets), so the recorder can tell a genuine
   // price-publication advance (`prices_revised`) from an internal schedule

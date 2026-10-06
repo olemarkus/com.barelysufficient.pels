@@ -85,11 +85,12 @@ const limitGrantStandsOrUnknown = (storedState: StoredObjectiveState): boolean =
  * (`limitLowerPriorityApplied` keys on it alone, `freshDiagnostic.ts`), and the
  * Flow card writes limit-only grants verbatim.
  *
- * NOT gated on `priority === 1`. That conjunct belongs to the planner's
- * `fullyReserved` FLOOR PROMOTION (`rescueReplan.ts`), where it is load-bearing
- * because the reserved-headroom forecast (`hardCap − uncontrolled`) assumes
- * every controlled watt is displaceable — true only at the top. Persisting the
- * permission is a different question: limiting lower-priority devices helps at
+ * NOT gated on priority. Rank belongs to the planner's `fullyReserved` FLOOR
+ * PROMOTION (`rescueReplan.ts`), where it is load-bearing because the
+ * reserved-headroom forecast (`hardCap − uncontrolled − higher bookings`) leaves
+ * out controlled load, which is sound only when every higher-ranked device is a
+ * booked smart-task device. Persisting the permission is a different question:
+ * limiting lower-priority devices helps at
  * any priority, because the two paths that actually take load off another
  * device both compare priority STRICTLY, against the same priority source
  * (`lib/plan/planDevices.ts`):

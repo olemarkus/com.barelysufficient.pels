@@ -30,10 +30,8 @@ import {
 } from '../../setup/appInit/smartTaskHomeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
-import {
-  buildDeferredObjectiveDiagnostics,
-  DeferredObjectiveDecorationController,
-} from '../../lib/objectives/deferredObjectives';
+import { DeferredObjectiveDecorationController } from '../../lib/objectives/deferredObjectives';
+import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import {
@@ -265,7 +263,7 @@ const buildDiagnosticsParams = (overrides: {
 
 describe('diagnostics: existing task whose device is in a sub-home', () => {
   it('resolves the dedicated objective_device_in_sub_home unknown code when the device is present', () => {
-    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+    const diagnostics = buildFixtureDiagnostics(buildDiagnosticsParams({
       devices: [buildHeaterDevice()],
       isDeviceInSubHome: (deviceId) => deviceId === 'heater-sub',
     }));
@@ -278,7 +276,7 @@ describe('diagnostics: existing task whose device is in a sub-home', () => {
   });
 
   it('beats the misleading objective_missing_device even when main-only planner scoping dropped the device', () => {
-    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+    const diagnostics = buildFixtureDiagnostics(buildDiagnosticsParams({
       devices: [],
       isDeviceInSubHome: () => true,
     }));
@@ -286,7 +284,7 @@ describe('diagnostics: existing task whose device is in a sub-home', () => {
   });
 
   it('without the predicate (no sub-homes) the diagnostic never carries the sub-home code', () => {
-    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+    const diagnostics = buildFixtureDiagnostics(buildDiagnosticsParams({
       devices: [buildHeaterDevice()],
     }));
     expect(diagnostics[0].reasonCode).not.toBe('objective_device_in_sub_home');
@@ -294,7 +292,7 @@ describe('diagnostics: existing task whose device is in a sub-home', () => {
 
   it('admission treats the sub-home diagnostic as inactive — the task never governs the device', () => {
     const devices = [buildHeaterDevice()];
-    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+    const diagnostics = buildFixtureDiagnostics(buildDiagnosticsParams({
       devices,
       isDeviceInSubHome: () => true,
     }));

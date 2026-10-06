@@ -37,7 +37,7 @@ it('keeps admission, reservations and requested completion independent of report
     return {
       admission: [...applyDeferredObjectiveAdmission([operational])],
       reservations: buildPriorityReservations({
-        evaluation: operational, objective, device: undefined, activePlans: null, sustainableRateKw: 10,
+        evaluation: operational, objective, device: undefined, activePlans: null, sustainableRateKw: 10, nowMs: 0,
       }),
       completion: resolveTaskCompletion({
         currentValue: operational.progress.value, requestedTarget: operational.requestedTarget,

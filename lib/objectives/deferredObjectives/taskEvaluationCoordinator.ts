@@ -26,10 +26,11 @@ import {
   type DeferredObjectiveProgressResolution,
 } from './diagnosticProgress';
 import {
+  type DeferredObjectivePolicyHorizonInputs,
   type DeferredObjectivePolicyHorizonResult,
   type DeferredObjectivePriorityReservation,
-  type PriceHorizonEntry,
 } from './policyHorizon';
+import { resolveHorizonPlanWithRescue } from './rescueReplan';
 import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
@@ -39,6 +40,8 @@ import {
   buildPriorityReservations,
   buildTaskAllocationContextSignature,
   orderDeferredObjectives,
+  type CoordinatedDeferredObjective,
+  type OrderedDeferredObjective,
   type PriorityAllocationTracker,
 } from './priorityAllocation';
 import {
@@ -103,27 +106,27 @@ const completionWithEvidence = (
   });
 };
 
-export const buildDeferredObjectiveTaskResults = (params: {
+// What one evaluation cycle observed, shared by every task evaluated in it.
+export type TaskEvaluationSnapshot = {
   nowMs: number;
   timeZone: string;
   devices: ObjectiveDeviceInput[];
   settings: DeferredObjectiveSettingsV1;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-  // Price-layer source for the allocation horizon (price + grid), injected by
-  // the wiring layer. The daily-budget snapshot above is now only the optional
-  // budget overlay.
-  buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
   activePlans: DeferredObjectiveActivePlansV1 | null;
   sustainableRateKw: number;
-  priorityAllocationTracker?: PriorityAllocationTracker;
+};
+
+// The readers an evaluation consults, supplied once by the lane that owns them.
+export type TaskEvaluationReaders = {
+  // Price-layer source for the allocation horizon (price + grid). The snapshot's
+  // daily budget is only the optional budget overlay.
+  buildPriceHorizon: BuildPriceHorizon;
   // Current mode-catalog priority producer. The batch allocator projects its
   // complete visible-plus-grace roster to unique relative ranks on every read.
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
-  // Preview-only override: solve the candidate fresh while allowing tasks
-  // ahead of it to keep their settled commitments.
-  forceFreshDeviceId?: string;
   // Idle-classifier reader. A task whose device is parked at its target (the
   // stall verdict below) reserves nothing against lower-priority tasks: the
   // device is not drawing its booking, so holding step power for it only
@@ -135,48 +138,86 @@ export const buildDeferredObjectiveTaskResults = (params: {
   // reservation ledger. It never changes a status here: see
   // `reportStalledTasksAsSatisfied`.
   getStallClassification: DeferredObjectiveStallClassificationReader;
-  // Durable device-exclusion resolver, injected by the wiring layer (this
-  // leafward subsystem reads neither home membership nor the managed-device map
-  // itself). A non-null answer short-circuits the diagnostic to `unknown` with
-  // that exclusion's dedicated code (see `deviceExclusion.ts`); answering `null`
-  // everywhere changes nothing.
+  // Durable device-exclusion resolver (this leafward subsystem reads neither
+  // home membership nor the managed-device map itself). A non-null answer
+  // short-circuits the diagnostic to `unknown` with that exclusion's dedicated
+  // code (see `deviceExclusion.ts`); answering `null` everywhere changes nothing.
   resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
   getDeliveredEnergyKWh: DeliveredEnergyReader;
   isReservationSuppressed: TaskReservationReader;
-}): TaskEvaluationReport[] => {
-  const deviceById = new Map(params.devices.map((device) => [device.id, device]));
-  const isDeviceExcluded = buildObjectiveDeviceExclusionPredicate(params.resolveDeviceExclusion);
-  params.priorityAllocationTracker?.observe({
-    devices: params.devices,
-    nowMs: params.nowMs,
-    isDeviceExcluded,
-  });
+};
+
+// Which lane evaluates. The live lanes (lifecycle emitter, decoration) serve
+// settled commitments between settles. A preview solves its candidate fresh while
+// the tasks ahead of it keep their settled commitments; the recorder never writes it.
+export type TaskEvaluationLane =
+  | { kind: 'live' }
+  | { kind: 'preview'; candidateDeviceId: string };
+
+export const LIVE_LANE: TaskEvaluationLane = { kind: 'live' };
+
+const isPreviewCandidate = (lane: TaskEvaluationLane, deviceId: string): boolean => (
+  lane.kind === 'preview' && lane.candidateDeviceId === deviceId
+);
+
+// A task holds its bookings against the tasks below while it may reserve, has not
+// been accepted as finished at its target, and its reservations are not
+// suppressed. Short-circuits so the suppression reader runs only for such a task.
+const holdsItsBookings = (
+  task: OrderedDeferredObjective,
+  completion: TaskEvaluation['completion'],
+  readers: TaskEvaluationReaders,
+): boolean => task.reservationEligible && completion.kind !== 'accepted_near_target'
+  && !readers.isReservationSuppressed(task.deviceId, task.objective.deadlineAtMs);
+
+// A task that holds its bookings counts toward a lower one's booked ranks only
+// while it governs its device through its plan: allocated, unfinished and before
+// its deadline. Otherwise the device is back under ordinary control and its draw
+// reaches the tasks below as nothing, like a plain device's.
+const governsItsDevice = (
+  task: OrderedDeferredObjective,
+  evaluation: TaskEvaluation,
+  nowMs: number,
+): boolean => task.objective.deadlineAtMs > nowMs
+  && evaluation.planning.kind === 'allocated'
+  && evaluation.completion.kind !== 'target_reached';
+
+export const buildDeferredObjectiveTaskResults = (
+  snapshot: TaskEvaluationSnapshot,
+  readers: TaskEvaluationReaders,
+  tracker: PriorityAllocationTracker,
+  lane: TaskEvaluationLane,
+): TaskEvaluationReport[] => {
+  const { nowMs, activePlans } = snapshot;
+  const deviceById = new Map(snapshot.devices.map((device) => [device.id, device]));
+  const isDeviceExcluded = buildObjectiveDeviceExclusionPredicate(readers.resolveDeviceExclusion);
+  tracker.observe({ devices: snapshot.devices, nowMs, isDeviceExcluded });
   const ordered = orderDeferredObjectives({
-    settings: params.settings,
+    settings: snapshot.settings,
     deviceById,
     isDeviceExcluded,
-    tracker: params.priorityAllocationTracker,
-    activePlans: params.activePlans,
-    nowMs: params.nowMs,
-    getPrioritiesForDevices: params.getPrioritiesForDevices,
+    tracker,
+    activePlans,
+    nowMs,
+    getPrioritiesForDevices: readers.getPrioritiesForDevices,
   });
   const reservations: DeferredObjectivePriorityReservation[] = [];
   let higherTaskBootstrapped = false;
-  const results = ordered.map(({
-    deviceId,
-    objective,
-    device,
-    priority,
-    reservationEligible,
-  }, index) => {
+  // Tasks ahead that govern their device. Active ranks are unique and dense over
+  // the whole roster, so the devices above a task number exactly `priority - 1`:
+  // when the governing tasks ahead account for all of them, every load this task
+  // cannot displace reaches it as bookings, which gates its floor promotion.
+  let governingTasksAhead = 0;
+  const results = ordered.map((orderedTask, index) => {
+    const task = { ...orderedTask, higherRankedLoadBooked: governingTasksAhead === orderedTask.priority - 1 };
+    const { deviceId, objective, device } = task;
     // Lower-priority edits cannot churn an already-committed higher task.
     const rosterSignature = buildAllocationContextSignature(ordered.slice(0, index + 1));
     const allocationContextSignature = buildTaskAllocationContextSignature({
       rosterSignature,
       higherPriorityReservations: reservations,
     });
-    const latestSignature = params.activePlans?.plansByDeviceId[deviceId]
-      ?.latest?.allocationContextSignature;
+    const latestSignature = activePlans?.plansByDeviceId[deviceId]?.latest?.allocationContextSignature;
     // Legacy single-task revisions have no coordination signature, but their
     // frozen commitment is still safe to serve until the ordinary :58 settle.
     // Legacy lower tasks must replan immediately to prevent residual overbooking.
@@ -189,70 +230,57 @@ export const buildDeferredObjectiveTaskResults = (params: {
     // leaving lower commitments frozen would double-book that claim, and (2) a
     // legacy lower revision has no coordination signature and therefore predates
     // residual allocation entirely. These are bootstrap/migration reseeds, not a
-    // second per-cycle allocator clock. The preview-only candidate override is
-    // also explicitly fresh because it is never written by the recorder.
+    // second per-cycle allocator clock. The preview's candidate is also
+    // explicitly fresh because it is never written by the recorder.
     const forceFreshAllocation = shouldForceFreshAllocation(
       higherTaskBootstrapped,
       latestSignature === undefined && reservations.length > 0,
-      params.forceFreshDeviceId === deviceId,
+      isPreviewCandidate(lane, deviceId),
     );
-    const diagnostic = buildDeferredObjectiveDiagnostic({
-      ...params,
-      deviceId,
-      objective,
-      device,
-      higherPriorityReservations: reservations,
-      forceFreshAllocation,
-    });
+    const diagnostic = buildDeferredObjectiveDiagnostic(snapshot, readers, task, reservations, forceFreshAllocation);
     const contentionEvaluation = resolveHigherPriorityContentionEvaluation({
       evaluation: diagnostic.evaluation,
       higherPriorityReservations: reservations,
-      buildWithoutReservations: () => buildDeferredObjectiveDiagnostic({
-        ...params,
-        deviceId,
-        objective,
-        device,
-        higherPriorityReservations: [],
-        forceFreshAllocation: true,
-      }).evaluation,
+      buildWithoutReservations: () => buildDeferredObjectiveDiagnostic(snapshot, readers, task, [], true).evaluation,
     });
     const contentionResolved = reportHigherPriorityContention(diagnostic, contentionEvaluation);
     const freshAllocation = contentionEvaluation.planning.kind === 'allocated'
       && contentionEvaluation.planning.plan.frozenRead !== true;
     const coordinated: DeferredObjectiveDiagnostic = {
       ...contentionResolved,
-      devicePriority: priority,
       allocationContextSignature,
       ...(shouldReplaceCommitment(freshAllocation, allocationContextChanged, reservations.length)
         ? { replaceCommitment: true as const }
         : {}),
     };
     const evaluation = coordinated.evaluation;
-    const thermalEvidence = canAcceptThermalCompletion(objective, params.activePlans, deviceId)
-      ? params.getStallClassification(deviceId) : undefined;
+    const thermalEvidence = canAcceptThermalCompletion(objective, activePlans, deviceId)
+      ? readers.getStallClassification(deviceId) : undefined;
     const acceptedCompletion = completionWithEvidence(evaluation, thermalEvidence);
-    if (reservationEligible && acceptedCompletion.kind !== 'accepted_near_target'
-      && !params.isReservationSuppressed(deviceId, objective.deadlineAtMs)) {
+    const evaluationResult = { ...evaluation, completion: acceptedCompletion };
+    const holdsBookings = holdsItsBookings(task, acceptedCompletion, readers);
+    if (holdsBookings) {
       const previousReservationCount = reservations.length;
       reservations.push(...buildPriorityReservations({
         evaluation: coordinated.evaluation,
         objective,
         device,
-        activePlans: params.activePlans,
-        sustainableRateKw: params.sustainableRateKw,
+        activePlans,
+        sustainableRateKw: snapshot.sustainableRateKw,
+        nowMs,
       }));
       if (freshAllocation && reservations.length > previousReservationCount) {
         higherTaskBootstrapped = true;
       }
     }
-    const evaluationResult = { ...evaluation, completion: acceptedCompletion };
+    if (holdsBookings && governsItsDevice(task, evaluationResult, nowMs)) governingTasksAhead += 1;
     return {
       evaluation: evaluationResult,
       diagnostic: { ...coordinated, evaluation: evaluationResult, completion: acceptedCompletion },
     };
   });
   results.push(...buildExcludedObjectiveDiagnostics(
-    params.settings, params.resolveDeviceExclusion, deviceById, params.timeZone, params.powerTracker,
+    snapshot.settings, readers.resolveDeviceExclusion, deviceById, snapshot.timeZone, snapshot.powerTracker,
   ).map((diagnostic) => ({ evaluation: diagnostic.evaluation, diagnostic })));
   return results;
 };
@@ -288,72 +316,58 @@ const shouldForceFreshAllocation = (
   higherTaskBootstrapped: boolean, legacyCommitmentNeedsMigration: boolean, previewForced: boolean,
 ): boolean => [higherTaskBootstrapped, legacyCommitmentNeedsMigration, previewForced].includes(true);
 
+// A task whose device is in this cycle's roster.
+type PresentDeferredObjective = CoordinatedDeferredObjective & { device: ObjectiveDeviceInput };
+
+const hasDevice = (task: CoordinatedDeferredObjective): task is PresentDeferredObjective => task.device !== undefined;
+
+const buildTaskDiagnosticBase = (
+  snapshot: TaskEvaluationSnapshot,
+  task: CoordinatedDeferredObjective,
+): DeferredObjectiveDiagnostic => buildDiagnosticBase({
+  deviceId: task.deviceId,
+  device: task.device,
+  objective: task.objective,
+  timeZone: snapshot.timeZone,
+  powerTracker: snapshot.powerTracker,
+  ...UNRESOLVED_PROGRESS,
+});
+
 // One objective, given the reservations of the tasks ahead of it. Every caller
-// goes through `buildDeferredObjectiveDiagnostics`, which supplies that ledger.
-const buildDeferredObjectiveDiagnostic = (params: {
-  nowMs: number;
-  timeZone: string;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  // `undefined` when the device is missing from this cycle's roster.
-  device: ObjectiveDeviceInput | undefined;
-  powerTracker: PowerTrackerState;
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-  buildPriceHorizon: BuildPriceHorizon;
-  priceOptimizationEnabled: boolean;
-  activePlans: DeferredObjectiveActivePlansV1 | null;
-  sustainableRateKw: number;
-  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
-  forceFreshAllocation: boolean;
-  getDeliveredEnergyKWh: DeliveredEnergyReader;
-}): DeferredObjectiveDiagnostic => {
-  const {
-    nowMs,
-    timeZone,
-    deviceId,
-    objective,
-    device,
-    powerTracker,
-    dailyBudgetSnapshot,
-    buildPriceHorizon,
-    priceOptimizationEnabled,
-    activePlans,
-  } = params;
-  const base = buildDiagnosticBase({
-    deviceId,
-    device,
-    objective,
-    timeZone,
-    powerTracker,
-    ...UNRESOLVED_PROGRESS,
-  });
-  if (!device) return withUnavailableTrajectory(base, 'objective_missing_device');
+// goes through `buildDeferredObjectiveTaskResults`, which supplies that ledger.
+const buildDeferredObjectiveDiagnostic = (
+  snapshot: TaskEvaluationSnapshot,
+  readers: TaskEvaluationReaders,
+  task: CoordinatedDeferredObjective,
+  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[],
+  forceFreshAllocation: boolean,
+): DeferredObjectiveDiagnostic => {
+  const { nowMs, powerTracker, activePlans } = snapshot;
+  const { deviceId, objective } = task;
+  // Built on the path that returns it; the policy-horizon path builds its own.
+  if (!hasDevice(task)) {
+    return withUnavailableTrajectory(buildTaskDiagnosticBase(snapshot, task), 'objective_missing_device');
+  }
 
   if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= 0) {
-    return withUnavailableTrajectory(base, 'objective_invalid_deadline');
+    return withUnavailableTrajectory(buildTaskDiagnosticBase(snapshot, task), 'objective_invalid_deadline');
   }
-  const withDeadline = base;
-  // Allocation-horizon price source, resolved by the wiring-injected producer.
-  const priceHorizon = buildPriceHorizon(nowMs, objective.deadlineAtMs);
-  const progress = resolveObjectiveProgress(objective, device, params.getDeliveredEnergyKWh);
+  const horizonInputs: DeferredObjectivePolicyHorizonInputs = {
+    nowMs,
+    deadlineAtMs: objective.deadlineAtMs,
+    priceOptimizationEnabled: snapshot.priceOptimizationEnabled,
+    // Allocation-horizon price source, resolved by the wiring-injected producer.
+    priceHorizon: readers.buildPriceHorizon(nowMs, objective.deadlineAtMs),
+    dailyBudgetSnapshot: snapshot.dailyBudgetSnapshot,
+    sustainableRateKw: snapshot.sustainableRateKw,
+    exemptFromBudget: false,
+    higherPriorityReservations,
+  };
+  const progress = resolveObjectiveProgress(objective, task.device, readers.getDeliveredEnergyKWh);
   if (isObjectiveProgressSatisfied(progress)) {
-    return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon({
-      nowMs,
-      deviceId,
-      objective,
-      device,
-      powerTracker,
-      base: withDeadline,
-      progress,
-      policyHorizon: EMPTY_POLICY_HORIZON,
-      deadlineAtMs: objective.deadlineAtMs,
-      priceOptimizationEnabled,
-      priceHorizon,
-      dailyBudgetSnapshot,
-      activePlans,
-      sustainableRateKw: params.sustainableRateKw,
-      higherPriorityReservations: params.higherPriorityReservations,
-    }));
+    return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon(
+      snapshot, task, progress, EMPTY_POLICY_HORIZON, horizonInputs, null, true,
+    ));
   }
 
   // Per-cycle (mid-hour) frozen read: between hour settles the committed set,
@@ -374,61 +388,40 @@ const buildDeferredObjectiveDiagnostic = (params: {
     progressDirection: progress.progressDirection,
     nowMs,
   });
-  const rawPolicyHorizon = buildDeadlineAwarePolicyHorizon({
-    nowMs,
-    deadlineAtMs: objective.deadlineAtMs,
-    priceOptimizationEnabled,
-    priceHorizon,
-    dailyBudgetSnapshot,
-    sustainableRateKw: params.sustainableRateKw,
-    higherPriorityReservations: params.higherPriorityReservations,
-  });
+  const rawPolicyHorizon = buildDeadlineAwarePolicyHorizon(horizonInputs);
   // Price optimization turned OFF is a deliberate config state, not a transient data
   // gap: the deferred objective is price-dependent, so it goes inactive (the device
   // returns to normal control) — exactly as before C. We must NOT keep serving the
   // stale price-optimized commitment frozen here. Only a transient
   // `objective_missing_price_horizon` (SDK read gap) is served frozen below.
-  const unavailableCtx = { powerTracker, deviceId, objective };
   if (rawPolicyHorizon.reasonCode === 'objective_price_feature_disabled') {
-    return buildHorizonUnavailableDiagnostic(withDeadline, progress, rawPolicyHorizon, unavailableCtx);
+    return buildHorizonUnavailableDiagnostic(
+      buildTaskDiagnosticBase(snapshot, task), progress, rawPolicyHorizon, task, powerTracker,
+    );
   }
   const horizonAvailable = rawPolicyHorizon.reasonCode === null;
   const replanRequested = [
-    params.forceFreshAllocation, !frozenFallback, isPastHourSettleMark(nowMs),
+    forceFreshAllocation, !frozenFallback, isPastHourSettleMark(nowMs),
   ].includes(true);
   const replan = replanRequested && horizonAvailable;
   if (!frozenFallback && rawPolicyHorizon.reasonCode !== null) {
     // Bootstrap (or empty/all-elapsed commitment) with no usable horizon (transient
     // `objective_missing_price_horizon`): nothing to serve frozen, can't allocate → unknown.
-    return buildHorizonUnavailableDiagnostic(withDeadline, progress, rawPolicyHorizon, unavailableCtx);
+    return buildHorizonUnavailableDiagnostic(
+      buildTaskDiagnosticBase(snapshot, task), progress, rawPolicyHorizon, task, powerTracker,
+    );
   }
   const policyHorizon = rawPolicyHorizon.reasonCode === null ? rawPolicyHorizon : EMPTY_POLICY_HORIZON;
 
-  return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon({
-    nowMs,
-    deviceId,
-    objective,
-    device,
-    powerTracker,
-    base: withDeadline,
-    progress,
-    policyHorizon,
-    deadlineAtMs: objective.deadlineAtMs,
-    priceOptimizationEnabled,
-    priceHorizon,
-    dailyBudgetSnapshot,
-    activePlans,
-    sustainableRateKw: params.sustainableRateKw,
-    higherPriorityReservations: params.higherPriorityReservations,
-    // Serve frozen unless we are re-planning; `replan` already required the horizon
-    // to be available, so the fresh path always has a usable `policyHorizon`.
-    frozenRead: replan ? null : frozenFallback,
-    // Degradation fallback for a live step-ladder gap: when the fresh path cannot
-    // allocate (no executable steps), a committed task is served frozen even on a
-    // replan-due cycle — the replan is deferred, not the commitment dropped. Null
-    // exactly when there is no commitment to serve.
-    frozenFallback,
-  }));
+  // Serve frozen unless we are re-planning; `replan` already required the horizon
+  // to be available, so the fresh path always has a usable `policyHorizon`.
+  // `frozenFallback` also covers a live step-ladder gap: when the fresh path cannot
+  // allocate (no executable steps), a committed task is served frozen even on a
+  // replan-due cycle — the replan is deferred, not the commitment dropped. Null
+  // exactly when there is no commitment to serve.
+  return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon(
+    snapshot, task, progress, policyHorizon, horizonInputs, frozenFallback, replan,
+  ));
 };
 
 // Raw requested-target completion alone controls task release.
@@ -440,56 +433,29 @@ const withRawActuationSatisfaction = (
 });
 
 // Which frozen read (if any) this cycle serves. Normal path: the caller's replan
-// decision (`frozenRead`). Step-gap degradation: a committed task whose live step
-// ladder is missing serves its commitment even on a replan-due cycle, because
-// re-planning without steps is impossible. Null ⇒ fresh path (or, when steps are
-// missing with no commitment to serve, the caller resolves `unknown`).
+// decision serves the commitment unless it re-plans. Step-gap degradation: a
+// committed task whose live step ladder is missing serves its commitment even on a
+// replan-due cycle, because re-planning without steps is impossible. Null ⇒ fresh
+// path (or, when steps are missing with no commitment to serve, the caller
+// resolves `unknown`).
 const resolveServedFrozenRead = (
   liveStepsUnavailable: boolean,
-  frozenRead: FrozenReadInputs | null | undefined,
-  frozenFallback: FrozenReadInputs | null | undefined,
-): FrozenReadInputs | null => {
-  if (frozenRead) return frozenRead;
-  if (liveStepsUnavailable) return frozenFallback ?? null;
-  return null;
-};
+  frozenFallback: FrozenReadInputs | null,
+  replan: boolean,
+): FrozenReadInputs | null => (!replan || liveStepsUnavailable ? frozenFallback : null);
 
-const buildDiagnosticWithPolicyHorizon = (params: {
-  nowMs: number;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  device: ObjectiveDeviceInput;
-  powerTracker: PowerTrackerState;
-  base: DeferredObjectiveDiagnostic;
-  progress: DeferredObjectiveProgressResolution;
-  policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
-  deadlineAtMs: number;
-  priceOptimizationEnabled: boolean;
-  priceHorizon: PriceHorizonEntry[];
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
-  sustainableRateKw: number;
-  higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
-  frozenRead?: FrozenReadInputs | null;
-  frozenFallback?: FrozenReadInputs | null;
-}): DeferredObjectiveDiagnostic => {
-  const {
-    nowMs,
-    deviceId,
-    objective,
-    device,
-    powerTracker,
-    base,
-    progress,
-    policyHorizon,
-    deadlineAtMs,
-    priceOptimizationEnabled,
-    priceHorizon,
-    dailyBudgetSnapshot,
-    activePlans,
-    frozenRead,
-    frozenFallback,
-  } = params;
+const buildDiagnosticWithPolicyHorizon = (
+  snapshot: TaskEvaluationSnapshot,
+  task: PresentDeferredObjective,
+  progress: DeferredObjectiveProgressResolution,
+  policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>,
+  horizonInputs: DeferredObjectivePolicyHorizonInputs,
+  frozenFallback: FrozenReadInputs | null,
+  replan: boolean,
+): DeferredObjectiveDiagnostic => {
+  const { nowMs, powerTracker } = snapshot;
+  const { deviceId, objective, device } = task;
+  const base = buildTaskDiagnosticBase(snapshot, task);
   const unknownWithProgress = (
     reasonCode: DeferredObjectiveDiagnosticReasonCode,
     extra?: ReturnType<typeof buildKnownEnergyFields>,
@@ -524,13 +490,13 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   // Only a task with no commitment to serve (bootstrap/new objective) still
   // resolves `unknown`.
   const liveStepsUnavailable = profileEnergy.energyNeededKWh > 0 && steps.length === 0;
-  const effectiveFrozenRead = resolveServedFrozenRead(liveStepsUnavailable, frozenRead, frozenFallback);
+  const effectiveFrozenRead = resolveServedFrozenRead(liveStepsUnavailable, frozenFallback, replan);
   if (liveStepsUnavailable && !effectiveFrozenRead) {
     return unknownWithProgress('objective_missing_charge_rate', buildKnownEnergyFields({ objective, profileEnergy }));
   }
 
   const activeCommittedPlan = resolveActiveCommittedPlan({
-    activePlans,
+    activePlans: snapshot.activePlans,
     deviceId,
     objective,
     progressDirection: progress.progressDirection,
@@ -582,24 +548,10 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       liveStepsUnavailable,
     });
   }
-  return buildFreshDiagnostic({
-    nowMs,
-    deviceId,
-    objective,
-    device,
-    base,
-    progress,
-    policyHorizon,
-    deadlineAtMs,
-    priceOptimizationEnabled,
-    priceHorizon,
-    dailyBudgetSnapshot,
-    steps,
-    commitment,
-    aheadOfHourMilestone,
-    profileEnergy,
-    sustainableRateKw: params.sustainableRateKw,
-    higherPriorityReservations: params.higherPriorityReservations,
-  });
+  const horizonPlan = resolveHorizonPlanWithRescue(
+    task, profileEnergy, steps, commitment, aheadOfHourMilestone, policyHorizon, horizonInputs,
+  );
+  return buildFreshDiagnostic(
+    task, base, progress, profileEnergy, policyHorizon, horizonPlan, horizonInputs.priceHorizon,
+  );
 };
-

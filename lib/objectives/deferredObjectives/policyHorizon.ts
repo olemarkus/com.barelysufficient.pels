@@ -84,7 +84,11 @@ export const resolvePriceHorizonAvailableUpToMs = (
   return latestStartMs === null ? null : latestStartMs + HOUR_MS;
 };
 
-export const buildDeferredObjectivePolicyHorizon = (params: {
+// What a smart task's policy horizon is built from: its window, the price and
+// budget layers, the admissible rate, and the bookings ranked above it. The fresh
+// path keeps it so the budget-exempt rescue can rebuild the same horizon with the
+// cap lifted.
+export type DeferredObjectivePolicyHorizonInputs = {
   nowMs: number;
   deadlineAtMs: number;
   priceOptimizationEnabled: boolean;
@@ -104,23 +108,27 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   // may schedule into otherwise budget-exhausted buckets. This relaxes only the
   // soft daily-budget throttle; physical capacity stays enforced downstream at
   // admission and the capacity guard.
-  exemptFromBudget?: boolean;
+  exemptFromBudget: boolean;
   // The rate the capacity guard will admit (`limitKw - marginKw`), which bounds
   // each bucket's reserved headroom. Always supplied by the producer.
   sustainableRateKw: number;
   // Hourly claims already made by higher-priority smart tasks. Physical power
   // is always deducted; planned energy is deducted only for non-exempt tasks.
-  higherPriorityReservations?: readonly DeferredObjectivePriorityReservation[];
-}): DeferredObjectivePolicyHorizonResult => {
+  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
+};
+
+export const buildDeferredObjectivePolicyHorizon = (
+  params: DeferredObjectivePolicyHorizonInputs,
+): DeferredObjectivePolicyHorizonResult => {
   const {
     nowMs,
     deadlineAtMs,
     priceOptimizationEnabled,
     priceHorizon,
     dailyBudgetSnapshot,
-    exemptFromBudget = false,
+    exemptFromBudget,
     sustainableRateKw,
-    higherPriorityReservations = [],
+    higherPriorityReservations,
   } = params;
   if (!priceOptimizationEnabled) {
     return unavailable('objective_price_feature_disabled');

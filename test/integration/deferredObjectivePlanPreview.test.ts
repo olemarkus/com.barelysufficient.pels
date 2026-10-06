@@ -1,3 +1,4 @@
+import { buildFixtureDiagnostics, type TaskEvaluationFixture } from '../helpers/taskEvaluationFixture';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
@@ -254,7 +255,7 @@ const previewDeferredObjectivePlan = (
   buildPriceHorizon: priceHorizonBuilderFor(params.dailyBudgetSnapshot),
 });
 
-type RawDiagnosticsParams = Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0];
+type RawDiagnosticsParams = TaskEvaluationFixture;
 // Fixture defaults for the live-wiring inputs: no committed plans, no excluded
 // devices, and no device parked at its target.
 type DefaultedDiagnosticsParam =
@@ -267,7 +268,7 @@ type DefaultedDiagnosticsParam =
 const buildDeferredObjectiveDiagnostics = (
   params: Omit<RawDiagnosticsParams, 'buildPriceHorizon' | DefaultedDiagnosticsParam>
     & Partial<Pick<RawDiagnosticsParams, DefaultedDiagnosticsParam>>,
-): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => buildDeferredObjectiveDiagnosticsRaw({
+): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => buildFixtureDiagnostics({
   ...params,
   activePlans: params.activePlans ?? null,
   resolveDeviceExclusion: params.resolveDeviceExclusion ?? noDeviceExclusion,
@@ -407,12 +408,17 @@ describe('previewDeferredObjectivePlan', () => {
       activePlans: null,
       sustainableRateKw: 1.5,
     });
-    // Hours the high task promises energy in; a 0 kWh booking reserves nothing.
-    const highHours = new Set(hoursWithPlannedEnergy(buildHoursFromHorizonPlan(highDiagnostic!.evaluation) ?? [])
-      .map((hour) => hour.startsAtMs));
+    // kWh the high task promises per hour; a 0 kWh booking reserves nothing.
+    const highKWhByHour = new Map(hoursWithPlannedEnergy(buildHoursFromHorizonPlan(highDiagnostic!.evaluation) ?? [])
+      .map((hour) => [hour.startsAtMs, hour.plannedKWh]));
 
     expect(estimate.status).toBe('at_risk');
-    expect(estimate.scheduledHours.every((hour) => !highHours.has(hour.startsAtMs))).toBe(true);
+    // Both EVs plan at the same 1 kW rung and the 1.5 kW limit cannot hold the two
+    // together, so in any hour they share their energy must fit one after the
+    // other: kWh at 1 kW is hours of draw.
+    expect(estimate.scheduledHours.every((hour) => (
+      (highKWhByHour.get(hour.startsAtMs) ?? 0) + hour.plannedKWh <= 1 + 1e-6
+    ))).toBe(true);
   });
 
   it('keeps a missing higher commitment ahead of a compacted preview candidate', () => {

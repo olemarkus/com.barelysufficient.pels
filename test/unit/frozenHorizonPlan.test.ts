@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
 import type { DeferredObjectiveActivePlanFloorShortfallCause, DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { FrozenDrawWindow } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
 import type { DeferredObjectiveStep } from '../../lib/objectives/deferredObjectives/types';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import { partialDouble } from '../helpers/partialDouble';
@@ -20,8 +21,12 @@ const build = (overrides: {
   // The settle's verdict the frozen read replays. `'none'` (no floor shortfall) is
   // the covered case, so an hour the commitment skipped is one the task can give up.
   floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
+  // The saved segments; by default one full-hour window per booked hour, the shape
+  // a revision saved before exact segments resolves to.
+  drawWindows?: FrozenDrawWindow[];
+  nowMs?: number;
 }) => buildFrozenHorizonPlan({
-  nowMs: NOW_MS,
+  nowMs: overrides.nowMs ?? NOW_MS,
   deviceId: 'dev',
   objective: partialDouble<DeferredObjectiveSettingsEntry>({
     kind: overrides.objectiveKind ?? 'temperature',
@@ -33,6 +38,9 @@ const build = (overrides: {
     floorShortfallCause: overrides.floorShortfallCause ?? 'none',
     budgetContributedToShortfall: false,
     planStatus: overrides.planStatus ?? 'on_track',
+    drawWindows: overrides.drawWindows ?? overrides.committedHours
+      .filter((hour) => hour.plannedKWh > 0)
+      .map((hour) => ({ startMs: hour.startsAtMs, endMs: hour.startsAtMs + HOUR_MS, plannedKWh: hour.plannedKWh })),
   },
   energyNeededKWh: 3,
   aheadOfHourMilestone: overrides.aheadOfHourMilestone ?? false,
@@ -61,6 +69,37 @@ describe('buildFrozenHorizonPlan', () => {
     expect(plan.plannedBuckets.find((b) => b.current)?.startMs).toBe(NOW_MS);
     expect(plan.plannedBuckets.find((b) => b.current)?.plannedAdmissionPowerKw).toBe(2.4);
     expect(plan.plannedUsefulEnergyKWh).toBe(3);
+  });
+
+  // Regression, prod 2026-10-06: a lower task booked only the part of an hour a
+  // higher-priority water heater left free. Its frozen read must promise that
+  // energy in its own window only, so admission does not boost it while the
+  // heater draws (`admission.resolveDecision`).
+  it('promises a shared hour\'s energy only inside the task\'s own saved window', () => {
+    const committedHours = [{ startsAtMs: NOW_MS, plannedKWh: 1.2 }];
+    const ownWindow = { startMs: NOW_MS + 24 * 60 * 1000, endMs: NOW_MS + HOUR_MS, plannedKWh: 1.2 };
+    const beforeWindow = build({ committedHours, drawWindows: [ownWindow], nowMs: NOW_MS + 10 * 60 * 1000 });
+    expect(beforeWindow.currentBucket?.plannedUsefulEnergyKWh).toBe(0);
+    expect(beforeWindow.expectedStepId).toBeNull();
+    // Booked at 0 kWh here: still claimed, running on whatever is free.
+    expect(beforeWindow.currentHourClaim).toBe('claimed');
+
+    const insideWindow = build({ committedHours, drawWindows: [ownWindow], nowMs: NOW_MS + 30 * 60 * 1000 });
+    expect(insideWindow.currentBucket?.plannedUsefulEnergyKWh).toBe(1.2);
+    // 1.2 kWh over the window's 36 minutes is 2 kW: the 'low' step.
+    expect(insideWindow.expectedStepId).toBe('low');
+  });
+
+  it('reads the step off the saved window, not the whole hour', () => {
+    const committedHours = [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }];
+    // 1.5 kWh in a 30-minute window needs 3 kW: 'high' (4 kW), where the whole hour
+    // would read 1.5 kW and pick 'low'.
+    const plan = build({
+      committedHours,
+      drawWindows: [{ startMs: NOW_MS + 30 * 60 * 1000, endMs: NOW_MS + HOUR_MS, plannedKWh: 1.5 }],
+      nowMs: NOW_MS + 40 * 60 * 1000,
+    });
+    expect(plan.expectedStepId).toBe('high');
   });
 
   it('releases (currentBucket null) when the current hour is not in the commitment', () => {

@@ -360,6 +360,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         hours: latest.hours, planStatus: latest.planStatus,
         floorShortfallCause: latest.floorShortfallCause!,
         budgetContributedToShortfall: latest.budgetContributedToShortfall === true,
+        drawWindows: latest.reservationSegments!,
       },
       energyNeededKWh: latest.energyNeededKWh, aheadOfHourMilestone: false,
       steps: [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }],
@@ -391,7 +392,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(latest.reservationSegments?.every((segment) => segment.startMs >= 2 * HOUR_MS)).toBe(true);
     const frozen = buildFrozenHorizonPlan({
       nowMs: HOUR_MS + 1000, deviceId: 'dev', objective: TEMPERATURE_OBJECTIVE,
-      frozenRead: { hours: latest.hours, planStatus: latest.planStatus, floorShortfallCause: 'none', budgetContributedToShortfall: false },
+      frozenRead: {
+        hours: latest.hours, planStatus: latest.planStatus, floorShortfallCause: 'none',
+        budgetContributedToShortfall: false, drawWindows: latest.reservationSegments!,
+      },
       energyNeededKWh: 1.5, aheadOfHourMilestone: false,
       steps: [{ id: 'on', usefulPowerKw: 3, admissionPowerKw: 3 }],
     });
@@ -437,6 +441,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         planStatus: latest.planStatus,
         floorShortfallCause: 'none',
         budgetContributedToShortfall: false,
+        drawWindows: latest.reservationSegments!,
       },
       energyNeededKWh: 0.5,
       aheadOfHourMilestone: false,
@@ -445,7 +450,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(frozen.currentHourClaim).toBe('claimed');
     expect(frozen.expectedStepId).toBe('low');
 
-    for (const activePlans of [undefined, restored, {
+    for (const activePlans of [null, restored, {
       ...restored,
       plansByDeviceId: { dev: {
         ...restored.plansByDeviceId.dev!,
@@ -464,12 +469,13 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         device: undefined,
         activePlans,
         sustainableRateKw: 10,
+        nowMs: 0,
       });
       expect(reservations[0]).toMatchObject({ plannedKWh: bookedKWh, admissionPowerKw: 1.25 });
     }
   });
 
-  it('persists allocation context without persisting the runtime-derived priority', () => {
+  it('persists allocation context and exact reservation segments', () => {
     const persist = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
     const diagnostic = makeDiag({
@@ -478,7 +484,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       displayConfidence: 'high',
       kwhPerUnitAcceptedSamples: 4,
       kwhPerUnitLastAcceptedAtMs: 0,
-      devicePriority: 2,
       allocationContextSignature: 'ctx-1',
       horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5, { plannedAdmissionPowerKw: 1.8 })]),
     });
@@ -495,7 +500,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         plannedAdmissionPowerKw: 1.8,
       }],
     });
-    expect(persist.saved()?.plansByDeviceId.dev?.latest).not.toHaveProperty('devicePriority');
   });
 
   it('round-trips exact fractional-grid reservations and reuses them after restart', () => {
@@ -560,6 +564,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       device: undefined,
       activePlans: null,
       sustainableRateKw: 10,
+      nowMs: 0,
     });
     expect(freshReservations.map((reservation) => reservation.admissionPowerKw)).toEqual([1, 2]);
     const reservations = buildPriorityReservations({
@@ -568,6 +573,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       device: undefined,
       activePlans: normalized,
       sustainableRateKw: 10,
+      nowMs: 0,
     });
     expect(reservations.flatMap((reservation) => reservation.energySegments)).toEqual([
       { startMs: firstStartMs, endMs: splitMs, plannedKWh: 0.4 },
@@ -590,7 +596,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       planning: { kind: 'allocated' as const, plan: makeHorizon([makeBucket(2 * HOUR_MS, 1)]) },
       permissions: { budgetExempt: true, limitLowerPriority: false, pauseLowerPriority: false },
     };
-    const input = { evaluation, objective, device: undefined, activePlans: null, sustainableRateKw: 10 };
+    const input = { evaluation, objective, device: undefined, activePlans: null, sustainableRateKw: 10, nowMs: 0 };
     expect(buildPriorityReservations(input)).toMatchObject([{ plannedKWh: 1, exemptFromBudget: true }]);
     for (const kind of ['target_reached', 'accepted_near_target'] as const) {
       expect(buildPriorityReservations({
@@ -665,6 +671,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       device: undefined,
       activePlans: normalized,
       sustainableRateKw: 10,
+      nowMs: 0,
     });
     expect(restartReservations).toMatchObject([{ admissionPowerKw: 2 }]);
   });
