@@ -1,9 +1,9 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 const buildDevice = (
-  overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+  overrides: Partial<SettingsUiDeviceSnapshot> = {},
+): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Device',
   targets: [],
@@ -165,7 +165,7 @@ describe('home battery in the settings UI', () => {
     expect(resolveBatteryPriorityHint({ rank: 5, total: 5 }, true))
       .toBe('Last in the list, it covers the whole house before any device is limited.');
     expect(resolveBatteryPriorityHint({ rank: 3, total: 5 }, true))
-      .toBe('Its place decides who it protects: the devices above it.');
+      .toBe('Devices below it are limited first, so it protects only those above it.');
   });
 
   it('promises no cover from its place while Power-limit control is off', async () => {

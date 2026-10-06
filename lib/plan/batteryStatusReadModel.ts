@@ -13,7 +13,8 @@
  *   charge its own mode would take.
  * - **Own mode**: it runs the mode chosen in its own app. With its Power-limit
  *   control off, the reason line says PELS only stores spare solar in it. One
- *   whose app refused PELS's claim says PELS can only watch it.
+ *   PELS cannot drive says PELS can only watch it, and why: its app refused
+ *   PELS's claim, or gives Homey no power setting.
  *
  * Power is shown without a sign: the state word gives the direction. Below
  * `DIRECTION_MIN_W` either way the battery is doing nothing worth naming, so
@@ -23,6 +24,7 @@
 import type { DeviceStatus } from '../../packages/contracts/src/deviceStatus';
 import type { SettingsUiPlanHomeBattery } from '../../packages/contracts/src/settingsUiApi';
 import { displayStateLabel, displayStateTone } from '../../packages/shared-domain/src/planCardGrammar';
+import { resolveBatteryUndrivableLine } from '../../packages/shared-domain/src/batteryControlCopy';
 import type { HomeBatteryCardRead } from '../observer/observedDeviceStateProjection';
 import type { StorageHold } from './planTypes';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
@@ -68,8 +70,6 @@ export const BATTERY_REASON_LINES = {
   solar_only: 'PELS uses it only to store spare solar',
 } as const satisfies Record<StorageHoldKind, string>;
 
-/** The reason line of a battery in its own mode whose app refused PELS's claim (`watch_only`). */
-export const BATTERY_WATCH_ONLY_REASON_LINE = 'PELS can only watch it: its app does not accept control';
 
 /** Below this, the charge a cap holds back is not worth naming, kW. */
 const HELD_BACK_MIN_KW = 0.05;
@@ -123,11 +123,13 @@ const resolveFactText = (battery: HomeBatteryCard, hold: StorageHold): string | 
 
 const resolveReason = (battery: HomeBatteryCard, hold: StorageHold, dryRun: boolean): DeviceStatus['reason'] => {
   if (hold.kind === 'none' || hold.kind === 'solar_only') {
-    // One whose app refused control is told apart from one PELS may take over.
-    if (battery.control === 'watch_only') return { text: BATTERY_WATCH_ONLY_REASON_LINE };
-    // A battery PELS cannot drive, or one PELS is only simulating, has nothing
-    // more to say than its own reading.
-    if (battery.control === 'observe_only' || dryRun) return null;
+    // A battery PELS cannot drive says why: its app refused control, or gives
+    // Homey no power setting. The same line its device page and device-list
+    // row show in place of a Power-limit control.
+    const undrivableLine = resolveBatteryUndrivableLine(battery.control);
+    if (undrivableLine !== null) return { text: undrivableLine };
+    // One PELS is only simulating has nothing more to say than its own reading.
+    if (dryRun) return null;
   }
   if (hold.kind === 'charge_limit' && hold.heldBackKw >= HELD_BACK_MIN_KW) {
     return { text: `${BATTERY_REASON_LINES.charge_limit} · ${hold.heldBackKw.toFixed(1)} kW more needed` };

@@ -1,5 +1,6 @@
 import type {
   HomeBatteryClaimObservation,
+  HomeBatteryControlCapability,
   HomeBatteryControlSurface,
   HomeBatterySetpointRange,
 } from '../../packages/contracts/src/types';
@@ -259,6 +260,13 @@ export type BatteryControlOwner = {
    * again; it stays Managed and on its card.
    */
   isWatchOnly(deviceId: string): boolean;
+  /**
+   * Whether PELS can drive this home battery now: `drivable`, `watch_only`
+   * (`isWatchOnly`), or `observe_only` (no setpoint surface, or not observed
+   * yet). What the settings UI and the capacity-control Flow cards ask before
+   * offering a battery's Power-limit control.
+   */
+  readControlCapability(deviceId: string): HomeBatteryControlCapability | 'not_battery';
 };
 
 /**

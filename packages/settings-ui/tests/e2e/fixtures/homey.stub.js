@@ -1806,13 +1806,17 @@
 
   // The producer resolves both on every device it serves (`managerParseDeviceFields`),
   // and the list parser requires them: default them the way it does, so a spec's
-  // seeded device needs to state them only to say something else.
+  // seeded device needs to state them only to say something else. The battery
+  // facts (`readSettingsUiBatteryStateFromApp`) likewise: a battery is one PELS can
+  // drive and nobody took over, every other device `not_battery`.
   const withResolvedIdentity = (device) => ({
     isEvCharger: device.deviceClass === 'evcharger',
     binaryControllable: false,
     isBatteryOrSolar: BATTERY_OR_SOLAR_CLASS_KEYS.has(device.deviceClass),
     deviceClass: 'other',
     deviceType: (device.targets?.length ?? 0) > 0 ? 'temperature' : 'onoff',
+    batteryControl: device.deviceClass === 'battery' ? 'drivable' : 'not_battery',
+    batteryTakenOver: false,
     ...device,
   });
 

@@ -250,6 +250,13 @@ describe('settingsUiApi', () => {
         }
         : {}),
       planStatuses,
+      // The Main home's battery control owner: every battery drivable and
+      // none taken over unless a test says otherwise; like the real owner it
+      // answers `not_battery` for any other device.
+      batteryControl: {
+        readControlCapability: (deviceId: string) => (deviceId.startsWith('batt') ? 'drivable' : 'not_battery'),
+        wasTakenOver: () => false,
+      },
       log,
       error,
       refreshTargetDevicesSnapshot,
@@ -439,7 +446,7 @@ describe('settingsUiApi', () => {
     expect(homey.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
     // `priority` is resolved over the payload's own device set — see
     // `withResolvedPriorities`.
-    expect(result.devices).toEqual([{ id: 'dev-2', name: 'Pump', priority: 1 }]);
+    expect(result.devices).toEqual([{ id: 'dev-2', name: 'Pump', priority: 1, batteryControl: 'not_battery', batteryTakenOver: false }]);
   });
 
   it('rechecks Flow conflicts and returns only the current conflict-gated control facts', async () => {
@@ -602,6 +609,8 @@ describe('settingsUiApi', () => {
           // Ranked over this payload's own device set, strictly: with nothing
           // stored the owner breaks the tie by device id.
           priority: 1,
+          // Not a home battery: the owner is never asked.
+          batteryControl: 'not_battery', batteryTakenOver: false,
         },
         {
           id: 'ev-1',
@@ -622,6 +631,7 @@ describe('settingsUiApi', () => {
             ],
           },
           reportedStepId: 'low',
+          batteryControl: 'not_battery', batteryTakenOver: false,
         },
       ],
       // The fixture's trusted app seam reports a warm snapshot with no charger wiring.
@@ -768,13 +778,50 @@ describe('settingsUiApi', () => {
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
       },
-      batteryControl: { wasTakenOver: (deviceId: string) => deviceId === 'batt-main' },
+      batteryControl: {
+        readControlCapability: (deviceId: string) => (deviceId.startsWith('batt') ? 'drivable' : 'not_battery'),
+        wasTakenOver: (deviceId: string) => deviceId === 'batt-main',
+      },
     });
 
     const { devices } = getSettingsUiDevicesPayload({ homey: homey as never });
 
     expect(devices.map((device) => device.id)).toEqual(['batt-main']);
-    expect(devices[0]).toMatchObject({ batteryTakenOver: true });
+    expect(devices[0]).toMatchObject({ batteryTakenOver: true, batteryControl: 'drivable' });
+  });
+
+  it('says for every listed device whether PELS can drive it as a home battery', () => {
+    const homey = createHomey({
+      latestDevicesOverride: [
+        { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
+        { id: 'batt-drive', name: 'Marstek', deviceClass: 'battery', isBatteryOrSolar: true },
+        { id: 'batt-watch', name: 'Sessy', deviceClass: 'battery', isBatteryOrSolar: true },
+        { id: 'batt-mode', name: 'Mode-only', deviceClass: 'battery', isBatteryOrSolar: true },
+      ],
+    });
+    Object.assign(homey.app, {
+      homeMembership: {
+        getHomeIdForDevice: () => MAIN_HOME_ID,
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+      },
+      batteryControl: {
+        readControlCapability: (deviceId: string) => (
+          ({ 'batt-drive': 'drivable', 'batt-watch': 'watch_only', 'batt-mode': 'observe_only' })[deviceId] ?? 'not_battery'
+        ),
+        wasTakenOver: () => false,
+      },
+    });
+
+    const { devices } = getSettingsUiDevicesPayload({ homey: homey as never });
+
+    expect(Object.fromEntries(devices.map((device) => [device.id, device.batteryControl]))).toEqual({
+      'heater-1': 'not_battery',
+      'batt-drive': 'drivable',
+      'batt-watch': 'watch_only',
+      'batt-mode': 'observe_only',
+    });
+    expect(devices.every((device) => device.batteryTakenOver === false)).toBe(true);
   });
 
   it('lists a Main-home battery as a managed device and hides PV from the settings-UI device list', () => {
@@ -861,6 +908,7 @@ describe('settingsUiApi', () => {
       measuredPowerKw: 2.7,
       binaryControl: { on: false },
       priority: 1,
+      batteryControl: 'not_battery', batteryTakenOver: false,
     }]);
   });
 
@@ -974,7 +1022,7 @@ describe('settingsUiApi', () => {
     });
 
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).devices).toEqual([
-      { id: 'pump-9', name: 'Pump', available: true, priority: 1 },
+      { id: 'pump-9', name: 'Pump', available: true, priority: 1, batteryControl: 'not_battery', batteryTakenOver: false },
     ]);
   });
 
@@ -1000,6 +1048,7 @@ describe('settingsUiApi', () => {
       measuredPowerKw: 0.4,
       binaryControl: { on: true },
       priority: 1,
+      batteryControl: 'not_battery', batteryTakenOver: false,
     }]);
   });
 

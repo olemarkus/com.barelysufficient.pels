@@ -2,7 +2,8 @@
 // `controllable_devices`: the persisted settings row would be an inconsistent no-op. The
 // autocomplete must exclude it, and a write hand-driven with a stale device arg must no-op.
 // A home battery is the exception: its Power-limit control IS the `controllable_devices`
-// entry (read through `isBatteryPowerLimitEnabled`), so both cards accept it.
+// entry (read through `isBatteryPowerLimitEnabled`), so both cards accept it,
+// the enable card and a true condition answer only while PELS can drive it.
 //
 // Drives the REAL `registerDeviceCapacityControlCards` against the shared mock flow seam.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +11,7 @@ import { mockHomeyInstance } from '../mocks/homey';
 import { registerCapacityControlCondition, registerDeviceCapacityControlCards } from '../../flowCards/deviceSettingsCards';
 import { CONTROLLABLE_DEVICES } from '../../lib/utils/settingsKeys';
 import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
-import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DecoratedDeviceSnapshot, HomeBatteryControlCapability } from '../../packages/contracts/src/types';
 
 const HEATER_ID = 'heater';
 const BATTERY_ID = 'home-battery';
@@ -26,11 +27,16 @@ const snapshot = [
 ] as unknown as DecoratedDeviceSnapshot[];
 
 const infoSpy = vi.fn();
+// The runtime-held map and the battery owner's answer, as the app wires them.
+let controllableDevices: Record<string, boolean> = {};
+let batteryControl: HomeBatteryControlCapability = 'drivable';
 
 const buildDeps = (): FlowCardDeps => ({
   homey: mockHomeyInstance as unknown as FlowCardDeps['homey'],
   getSnapshot: async () => snapshot,
   getDeviceDescriptors: async () => snapshot,
+  getControllableDevices: () => controllableDevices,
+  readBatteryControl: () => batteryControl,
   getStructuredLogger: () => ({ info: infoSpy } as unknown as ReturnType<FlowCardDeps['getStructuredLogger']>),
 } as unknown as FlowCardDeps);
 
@@ -42,6 +48,8 @@ describe('capacity-control cards exclude solar devices and accept a home battery
     mockHomeyInstance.flow._conditionCardListeners = {};
     mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
     infoSpy.mockClear();
+    controllableDevices = {};
+    batteryControl = 'drivable';
     registerDeviceCapacityControlCards(buildDeps());
     registerCapacityControlCondition(buildDeps());
   });
@@ -70,9 +78,41 @@ describe('capacity-control cards exclude solar devices and accept a home battery
 
     const isControlled = mockHomeyInstance.flow._conditionCardListeners.is_device_capacity_controlled;
     expect(await isControlled({ device: { id: BATTERY_ID } })).toBe(true);
-    mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [BATTERY_ID]: false });
+    controllableDevices = { [BATTERY_ID]: false };
     expect(await isControlled({ device: { id: BATTERY_ID } })).toBe(false);
   });
+
+  it('the condition reads the runtime-held map, so a malformed stored value never reads as enabled', async () => {
+    const isControlled = mockHomeyInstance.flow._conditionCardListeners.is_device_capacity_controlled;
+    controllableDevices = { [BATTERY_ID]: false };
+    mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, 'not-a-map');
+    expect(await isControlled({ device: { id: BATTERY_ID } })).toBe(false);
+  });
+
+  it.each<HomeBatteryControlCapability>(['watch_only', 'observe_only'])(
+    'a %s battery answers not capacity-controlled, and the enable card neither offers nor grants it',
+    async (control) => {
+      batteryControl = control;
+      const isControlled = mockHomeyInstance.flow._conditionCardListeners.is_device_capacity_controlled;
+      expect(await isControlled({ device: { id: BATTERY_ID } })).toBe(false);
+
+      const enableOptions = await mockHomeyInstance.flow._actionCardAutocompleteListeners
+        .enable_device_capacity_control.device('') as Array<{ id: string }>;
+      expect(enableOptions.map((o) => o.id)).not.toContain(BATTERY_ID);
+      // Turning it off stays possible: revoking never depends on what PELS can drive.
+      const disableOptions = await mockHomeyInstance.flow._actionCardAutocompleteListeners
+        .disable_device_capacity_control.device('') as Array<{ id: string }>;
+      expect(disableOptions.map((o) => o.id)).toContain(BATTERY_ID);
+
+      await mockHomeyInstance.flow._actionCardListeners.enable_device_capacity_control({ device: { id: BATTERY_ID } });
+      expect(mockHomeyInstance.settings.getKeys()).not.toContain(CONTROLLABLE_DEVICES);
+      expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'device_setting_toggle_skipped',
+        reasonCode: 'device_not_eligible',
+        deviceId: BATTERY_ID,
+      }));
+    },
+  );
 
   it('turns a home battery\'s Power-limit control on and off', async () => {
     await mockHomeyInstance.flow._actionCardListeners.enable_device_capacity_control({ device: { id: BATTERY_ID } });

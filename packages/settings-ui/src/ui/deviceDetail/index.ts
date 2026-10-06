@@ -123,7 +123,7 @@ import {
   syncTemperatureControlDisabledRow,
 } from './temperatureControlDisabled.ts';
 import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
-import { BATTERY_MANAGED_HINT, renderDeviceDetailBattery } from './batterySection.ts';
+import { BATTERY_MANAGED_HINT, BATTERY_WATCH_MANAGED_HINT, renderDeviceDetailBattery } from './batterySection.ts';
 import {
   initDeviceDetailOverlayChrome,
   initDeviceDetailOverlaySubscriptions,
@@ -215,7 +215,9 @@ const renderManagedControl = (controlState: ReturnType<typeof resolveDeviceDetai
 };
 
 const resolveManagedHint = (controlState: ReturnType<typeof resolveDeviceDetailControlState>): string => {
-  if (controlState.isHomeBattery) return BATTERY_MANAGED_HINT;
+  if (controlState.isHomeBattery) {
+    return controlState.isDrivableBattery ? BATTERY_MANAGED_HINT : BATTERY_WATCH_MANAGED_HINT;
+  }
   return controlState.supportsPower || controlState.supportsTemperature
     ? 'Include this device in modes and optimization plans.'
     : DEVICE_POWER_SUPPORT_HINT;

@@ -1,6 +1,7 @@
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
+import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 
 describe('Capacity control device condition', () => {
   beforeEach(() => {
@@ -94,6 +95,35 @@ describe('Capacity control device condition', () => {
     expect(runCondition).toBeDefined();
 
     await expect(runCondition({ device: { id: 'dev-1' } })).resolves.toBe(false);
+
+    await app.onUninit?.();
+  });
+
+  it('answers for a home battery by whether PELS can drive it, and grants Power-limit control only to one it can', async () => {
+    const drivable = buildSetpointBatteryDevice({ id: 'batt-drive', claimValue: 'anti_feed' });
+    // Mode-only: its app reports power and level but gives Homey no setpoint.
+    const modeOnly = new MockDevice('batt-mode', 'Mode battery', ['measure_battery', 'measure_power'], 'battery');
+    await modeOnly.setCapabilityValue('measure_battery', 40);
+    await modeOnly.setCapabilityValue('measure_power', 0);
+    setMockDrivers({ batteries: new MockDriver('batteries', [drivable, modeOnly]) });
+
+    const app = createApp();
+    await app.onInit();
+
+    const runCondition = mockHomeyInstance.flow._conditionCardListeners.is_device_capacity_controlled;
+    await expect(runCondition({ device: { id: 'batt-drive' } })).resolves.toBe(true);
+    await expect(runCondition({ device: { id: 'batt-mode' } })).resolves.toBe(false);
+
+    const enableOptions = await mockHomeyInstance.flow._actionCardAutocompleteListeners
+      .enable_device_capacity_control.device('') as Array<{ id: string }>;
+    expect(enableOptions.map((option) => option.id)).toContain('batt-drive');
+    expect(enableOptions.map((option) => option.id)).not.toContain('batt-mode');
+
+    const enable = mockHomeyInstance.flow._actionCardListeners.enable_device_capacity_control;
+    await enable({ device: { id: 'batt-mode' } });
+    expect(mockHomeyInstance.settings.get('controllable_devices') ?? {}).not.toHaveProperty('batt-mode');
+    await enable({ device: { id: 'batt-drive' } });
+    expect(mockHomeyInstance.settings.get('controllable_devices')).toMatchObject({ 'batt-drive': true });
 
     await app.onUninit?.();
   });

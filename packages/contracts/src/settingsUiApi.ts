@@ -8,6 +8,7 @@ import type { PriceOptimizationSetupRead } from './priceOptimizationSettings.js'
 import type {
   DecoratedDeviceSnapshot,
   DeviceStartPolicy,
+  HomeBatteryControlCapability,
   ObservedStateOfChargeProbe,
   SettingsUiLogEntry,
   TargetPowerSteppedLoadPreset,
@@ -368,12 +369,21 @@ export type SettingsUiPlanPayload = {
  * own device type widened straight back to it. Naming the resolved carrier here
  * makes the payload's shape the contract rather than a convention.
  */
-export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe & {
+export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe & SettingsUiBatteryState;
+
+/**
+ * A listed device's home-battery facts, resolved from the battery control
+ * owner (`readSettingsUiBatteryStateFromApp`) for every device, so the UI
+ * never guesses one.
+ */
+export type SettingsUiBatteryState = {
+  /** Whether PELS can drive this home battery now; `not_battery` for every other device. */
+  batteryControl: HomeBatteryControlCapability | 'not_battery';
   /**
-   * A home battery whose Managed PELS turned off this run because the owner
-   * changed its mode in the battery's own app. Present only then.
+   * PELS turned this home battery's Managed off this run because the owner
+   * changed its mode in the battery's own app. False for every other device.
    */
-  batteryTakenOver?: true;
+  batteryTakenOver: boolean;
 };
 
 /**

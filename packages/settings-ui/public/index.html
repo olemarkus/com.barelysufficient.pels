@@ -182,7 +182,8 @@
         </div>
         <ul id="priority-list" class="device-list tight-list"></ul>
         <p id="priority-empty" class="muted" hidden>No managed devices. Turn on Managed for a device under Devices to see it here.</p>
-        <p id="priority-battery-note" class="muted" hidden>Its place decides who it protects. Last in the list, it covers the whole house before any device is limited.</p>
+        <!-- Names each battery PELS can drive and what its place means (modes.ts). -->
+        <p id="priority-battery-note" class="muted" hidden></p>
       </form>
       <md-dialog id="mode-delete-dialog">
         <div slot="headline">Delete mode?</div>
@@ -1166,7 +1167,7 @@
           <details class="settings-collapse detail-collapse" open>
             <summary>
               <h3 class="section-title">Battery</h3>
-              <span class="section-hint">Control and priority</span>
+              <span class="section-hint" id="device-detail-battery-section-hint">Control and priority</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">

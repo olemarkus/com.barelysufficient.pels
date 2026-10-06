@@ -1,4 +1,9 @@
-import { requireDailyBudgetService, requireDeviceManager, requireFlowHomey } from './contextGuards';
+import {
+  requireBatteryControl,
+  requireDailyBudgetService,
+  requireDeviceManager,
+  requireFlowHomey,
+} from './contextGuards';
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
@@ -76,6 +81,8 @@ export function registerAppFlowCards(
     getCapacityPaceKw: () => ctx.computeDynamicSoftLimit(),
     getSnapshot: () => ctx.getFlowSnapshot(),
     getDeviceDescriptors: () => ctx.getFlowDeviceDescriptors(),
+    getControllableDevices: () => ctx.controllableDevices,
+    readBatteryControl: (deviceId) => requireBatteryControl(ctx).readControlCapability(deviceId),
     listDeviceTargetModes,
     setDeviceModeTarget,
     readSmartTaskInProgress: (deviceId) => (

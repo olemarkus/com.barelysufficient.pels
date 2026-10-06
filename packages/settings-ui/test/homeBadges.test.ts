@@ -1,5 +1,5 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes';
 import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../contracts/src/settingsKeys';
 import { createHomeyMock } from './helpers/homeyApiMock';
@@ -34,7 +34,7 @@ const buildHomesPayload = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'dev-main',
   name: 'Hall heater',
   deviceClass: 'heater',
@@ -481,7 +481,7 @@ describe('devices list home badges', () => {
     ['missing', undefined],
     ['non-boolean', 'yes'],
   ])('rejects a device whose availability is %s at the WebView boundary', async (_label, available) => {
-    const malformedDevice = { ...buildDevice(), available } as unknown as TargetDeviceSnapshot;
+    const malformedDevice = { ...buildDevice(), available } as unknown as SettingsUiDeviceSnapshot;
     const homey = createHomeyMock({ uiState: { devices: [malformedDevice] } });
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(homey);
@@ -500,11 +500,11 @@ describe('devices list home badges', () => {
   // The resolved identity is REQUIRED on the wire: the charger, on/off and
   // observe-only checks read these fields straight, so a device without them
   // must be refused at this boundary rather than read as "no".
-  const omitField = (field: string): TargetDeviceSnapshot => Object.fromEntries(
+  const omitField = (field: string): SettingsUiDeviceSnapshot => Object.fromEntries(
     Object.entries(buildDevice()).filter(([key]) => key !== field),
-  ) as unknown as TargetDeviceSnapshot;
-  const withField = (field: string, value: unknown): TargetDeviceSnapshot => (
-    { ...buildDevice(), [field]: value } as unknown as TargetDeviceSnapshot
+  ) as unknown as SettingsUiDeviceSnapshot;
+  const withField = (field: string, value: unknown): SettingsUiDeviceSnapshot => (
+    { ...buildDevice(), [field]: value } as unknown as SettingsUiDeviceSnapshot
   );
 
   it('accepts the fixture device, which carries every resolved identity field', async () => {
@@ -546,7 +546,7 @@ describe('devices list home badges', () => {
   });
 
   it('rejects malformed discovery data before rendering or caching it', async () => {
-    const malformedDevice = { ...buildDevice(), available: undefined } as unknown as TargetDeviceSnapshot;
+    const malformedDevice = { ...buildDevice(), available: undefined } as unknown as SettingsUiDeviceSnapshot;
     const homey = createHomeyMock({
       apiHandlers: {
         'POST /ui_refresh_devices': () => ({ devices: [malformedDevice] }),

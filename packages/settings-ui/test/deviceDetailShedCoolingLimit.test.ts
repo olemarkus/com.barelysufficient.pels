@@ -4,11 +4,11 @@
 // device, and that what it persists is the owner's pair.
 
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 type StubOption = { disabled: boolean; hidden: boolean; removeAttribute: () => void; setAttribute: () => void };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({
+const buildDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({
   available: true,
   id: 'device-1',
   name: 'Device',
@@ -84,14 +84,14 @@ const loadHarness = async () => {
   state.deviceTargetPowerConfigs = {};
   state.deviceControlProfiles = {};
 
-  const show = (device: TargetDeviceSnapshot) => {
+  const show = (device: SettingsUiDeviceSnapshot) => {
     state.managedMap = { [device.id]: true };
     state.controllableMap = { [device.id]: true };
     module.setDeviceDetailShedBehavior({ deviceId: device.id, getDeviceById: () => device, updateSetStepOptionLabel: () => {} });
     module.updateShedFieldVisibility({ currentDetailDeviceId: device.id, getDeviceById: () => device });
   };
 
-  const changeCoolingLimit = async (value: string, device: TargetDeviceSnapshot) => {
+  const changeCoolingLimit = async (value: string, device: SettingsUiDeviceSnapshot) => {
     module.initDeviceDetailShedHandlers({ getCurrentDetailDeviceId: () => device.id, getDeviceById: () => device });
     shedCoolingTemp.value = value;
     await listeners['cooling:change']?.();

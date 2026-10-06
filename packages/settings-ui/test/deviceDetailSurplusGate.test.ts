@@ -5,7 +5,7 @@
 // of homes with solar whose net never goes negative, where the runtime declines the
 // posture and the toggle would switch on a feature that cannot engage.
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
 const flushPromises = () => new Promise<void>((resolve) => {
@@ -75,7 +75,7 @@ const buildDom = () => {
   `;
 };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'heater-1',
   name: 'Hall Heater',
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
@@ -103,7 +103,7 @@ const openPanel = async (params: {
   /** Defaults to "solar present ⇒ pool reachable", the ordinary home. Set it
    *  explicitly to cover the divergence: solar on the roof, no reachable pool. */
   surplusPoolReachable?: boolean;
-  device: TargetDeviceSnapshot;
+  device: SettingsUiDeviceSnapshot;
   surplusWilling?: boolean;
 }) => {
   const homeyModule = await import('../src/ui/homey.ts');

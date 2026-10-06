@@ -2,6 +2,7 @@ import type {
   ObservedStateOfCharge,
   EvChargingState,
   EvObservedProbe,
+  HomeBatteryControlCapability,
   HomeBatteryDescriptorProbe,
   HomeBatteryObservedProbe,
   ObservedDeviceState,
@@ -80,9 +81,10 @@ export function readObservedStateOfCharge(
  * Whether PELS could drive a home battery, as its card says it: `drivable` (a
  * `setpoint` control surface), `observe_only` (none), or `watch_only` (a
  * setpoint surface whose app refused PELS's claim for now: the battery
- * owner's `isWatchOnly`).
+ * owner's `isWatchOnly`). The settings UI and the Flow cards read the same
+ * answer from the owner (`readControlCapability`).
  */
-export type HomeBatteryCardControl = 'drivable' | 'observe_only' | 'watch_only';
+export type HomeBatteryCardControl = HomeBatteryControlCapability;
 
 /**
  * A home battery as its overview card reads it: whether PELS could drive it

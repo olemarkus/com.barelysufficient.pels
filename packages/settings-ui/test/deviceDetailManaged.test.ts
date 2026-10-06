@@ -1,11 +1,11 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   EvObservedProbe,
   ObservedStateOfChargeProbe,
   SteppedLoadDescriptorProbe,
-  TargetDeviceSnapshot,
 } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
@@ -100,9 +100,9 @@ const buildDevice = (
   id: string,
   name: string,
   overrides: Partial<
-    TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe
+    SettingsUiDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe
   > = {},
-): TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe => (withDescriptorIdentity<TargetDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe>({ expectedPowerKw: 1, expectedPowerSource: 'default',
+): SettingsUiDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe => (withDescriptorIdentity<SettingsUiDeviceSnapshot & EvObservedProbe & ObservedStateOfChargeProbe & SteppedLoadDescriptorProbe>({ expectedPowerKw: 1, expectedPowerSource: 'default',
   available: true,
   id,
   name,

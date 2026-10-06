@@ -117,6 +117,8 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getLatchedTotalKw: () => null,
     getSnapshot: vi.fn().mockResolvedValue([]),
     getDeviceDescriptors: vi.fn().mockResolvedValue([]),
+    getControllableDevices: () => ({}),
+    readBatteryControl: () => 'drivable',
     listDeviceTargetModes: vi.fn(() => null),
     setDeviceModeTarget: vi.fn(() => ({ state: 'unavailable' as const })),
     readSmartTaskInProgress: vi.fn(() => 'unavailable' as const),

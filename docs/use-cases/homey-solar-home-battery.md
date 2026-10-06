@@ -51,10 +51,11 @@ When the battery is empty, or does not follow what PELS asks, PELS simply moves 
 </figure>
 
 - **Managed by PELS** is the battery's main switch. Turn it off and PELS hands the battery back to its own mode and leaves it there until you turn it on again.
-- **Power-limit control** is on by default. Turn it off and PELS never caps the battery's charge or calls on it to hold your limit, and the battery still stores your spare solar in priority order. The **Enable power-limit control for device** and **Disable power-limit control for device** Flow cards work on the battery too, so a Flow can decide when the battery may hold your limit.
+- **Power-limit control** is on by default for a battery PELS can drive. Turn it off and PELS never caps the battery's charge or calls on it to hold your limit, and the battery still stores your spare solar in priority order. The **Enable power-limit control for device** and **Disable power-limit control for device** Flow cards work on the battery too, so a Flow can decide when the battery may hold your limit.
 - **Priority** shows the battery's place in the current mode, for example `9 of 9 in Home`, and **Reorder** moves it.
+- A battery PELS can only watch has no **Power-limit control** switch and no **Priority** row. Its card says why instead: `PELS can only watch it: its app does not accept control`, or `PELS can only watch it: its app does not give Homey control` for a battery whose app gives Homey no power setting or Homey/API mode PELS can use. The **Enable power-limit control for device** Flow card skips it.
 
-If you change the battery's mode in its own app while PELS holds it, PELS takes that as your decision: it turns **Managed by PELS** off for that battery and leaves it alone until you turn it back on. The device page says so in a notice.
+If you change the battery's mode in its own app while PELS holds it, PELS takes that as your decision: it turns **Managed by PELS** off for that battery and leaves it alone until you turn it back on. Its device page and its row under **Settings > Devices** say so.
 
 ## What the battery card says
 
@@ -66,6 +67,7 @@ If you change the battery's mode in its own app while PELS holds it, PELS takes 
 | `Limited · Charging` · `Waiting to charge faster` | PELS capped the battery's charge at its place in the priority order, and gives the rest back as the house has room. |
 | `Own mode` · `PELS takes over when your limit or solar needs it` | PELS has no job for the battery right now; its own app is in charge. |
 | `Own mode` · `PELS can only watch it: its app does not accept control` | The battery's app refused PELS (for example a Sessy on its cloud login). PELS tries again after six hours or when PELS restarts. |
+| `Own mode` · `PELS can only watch it: its app does not give Homey control` | The battery's app offers Homey no power setting or Homey/API mode PELS can use, so PELS reads the battery and never controls it. |
 | `Own mode` · `PELS uses it only to store spare solar` | **Power-limit control** is off for the battery. |
 
 The fact line shows how full the battery is, such as `62 % charged`. While PELS holds the battery, its own app shows Homey or API mode. That is PELS at work, and the mode you chose returns when PELS hands it back.
@@ -83,7 +85,7 @@ If you uninstall PELS while it holds the battery, switch the battery's mode back
 
 1. **Measure whole-home power with export.** Use the **Power meter** power source through [Homey Energy](../homey-energy.md#power-metering-via-homey-energy), or send a signed reading to the **Report power usage** Flow card, so the value goes negative while you export.
 2. **Check that export is visible.** On a sunny day the Overview shows a line such as *"Solar now 3.2 kW, 1.1 kW at home, 2.1 kW exported"*, and the Solar card on the Usage tab counts **Exported**.
-3. **Turn on Managed by PELS for the battery.** Find it under **Settings > Devices**. **Power-limit control** is already on.
+3. **Check the battery under Settings > Devices.** For a battery PELS can drive, **Managed by PELS** and **Power-limit control** are on by default, so there is nothing to turn on. Turn **Managed by PELS** off if you want PELS to keep away from it. A battery whose app gives PELS no control shows `PELS can only watch it` instead of a Power-limit control switch.
 4. **Set an export price.** Under **Settings > Electricity prices**, turn on **Use an export price**. With Homey Energy prices on a dynamic contract, set **Where the price comes from** to **Homey Energy** so PELS follows the feed-in price you already set up in Homey. A fixed amount can be negative if you pay to export. See [Export pricing](../solar.md#export-pricing).
 5. **Point devices at the sun.** Turn on **Use solar surplus** on heating and water heaters, **Run on solar surplus** on on/off loads such as a pool pump, and **Charge on solar surplus** on the EV charger. See [Solar and Self-Consumption](../solar.md).
 6. **Place the battery in your priority list.** Leave it last to give your devices the sun first and to cover the whole house at a peak, or move it up if filling the battery for the evening matters more. See [Configuration](../configuration.md#settings-modes).

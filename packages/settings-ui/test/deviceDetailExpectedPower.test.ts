@@ -1,5 +1,6 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { SteppedLoadDescriptorProbe, TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SteppedLoadDescriptorProbe } from '../../contracts/src/types';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../contracts/src/settingsKeys';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
@@ -48,7 +49,7 @@ const buildDom = () => {
   `;
 };
 
-type TestDevice = TargetDeviceSnapshot & SteppedLoadDescriptorProbe;
+type TestDevice = SettingsUiDeviceSnapshot & SteppedLoadDescriptorProbe;
 
 const buildDevice = (overrides: Partial<TestDevice> = {}): TestDevice => (withDescriptorIdentity<TestDevice>({
   available: true,

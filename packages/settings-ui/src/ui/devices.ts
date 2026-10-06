@@ -36,6 +36,8 @@ import {
   countManagedInGroup,
   groupDevicesByClass,
   isLimitToggleOn,
+  resolveBatteryLimitTitle,
+  resolveBatteryRowReasons,
   resolveDeviceManageability,
   resolveGroupManagedState,
   type DeviceGroup,
@@ -354,7 +356,7 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
 
   const titles: RowSwitchTitles = {
     managed: getManagedTitle(isLoadingComplete, manageability.supportsManage, manageability.nativeWiringRequired),
-    limit: getCapacityTitle({
+    limit: resolveBatteryLimitTitle(device) ?? getCapacityTitle({
       isLoadingComplete,
       supportsPower: manageability.supportsPower,
       isManaged: manageability.isManaged,
@@ -364,9 +366,8 @@ const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement =
 
   const nameCell = buildRedesignNameCell(device);
   const reasons = getRowDisabledReasons({ isLoadingComplete, manageability, disabled });
-  // A battery's Price cell is not applicable, not waiting on the owner.
   appendRedesignDisabledReasons(nameCell, isHomeBatteryClassKey(device.deviceClass)
-    ? { ...reasons, price: null }
+    ? resolveBatteryRowReasons(device, manageability.isManaged, reasons)
     : reasons);
 
   row.append(

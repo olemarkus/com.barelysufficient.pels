@@ -1,14 +1,15 @@
 import type { DeviceDescriptor } from '../../../contracts/src/types.ts';
-import { isBatteryOrSolarClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
+import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
+import { isBatteryOrSolarClassKey, isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 
 type DescriptorIdentityKey = 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar';
 
 /** The identity facts the parse producer resolves for every inventory device. */
 type DescriptorIdentity = Pick<DeviceDescriptor, DescriptorIdentityKey>;
 
-/** A snapshot fixture that may leave the identity facts for the helper to resolve. */
-type DescriptorIdentityFixture<T extends DescriptorIdentity> = Omit<T, DescriptorIdentityKey>
-  & Partial<DescriptorIdentity>;
+/** A snapshot fixture that may leave the identity facts, and its battery facts, for the helper to resolve. */
+type DescriptorIdentityFixture<T extends DescriptorIdentity> = Omit<T, DescriptorIdentityKey | keyof SettingsUiBatteryState>
+  & Partial<DescriptorIdentity> & Partial<SettingsUiBatteryState>;
 
 /**
  * Resolve the REQUIRED descriptor identity facts from what a snapshot
@@ -47,17 +48,30 @@ const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIdentity> &
   binaryControllable: fixture.binaryControllable ?? false,
 });
 
-/** A snapshot fixture of type `T` with its identity facts resolved. */
+/**
+ * The battery facts `/ui_devices` resolves for every listed device: a battery
+ * class is one PELS can drive and nobody took over, unless the fixture says
+ * otherwise; every other device is `not_battery`.
+ */
+const resolveFixtureBatteryState = (fixture: Partial<SettingsUiBatteryState> & {
+  deviceClass?: string;
+}): SettingsUiBatteryState => ({
+  batteryControl: fixture.batteryControl ?? (isHomeBatteryClassKey(fixture.deviceClass) ? 'drivable' : 'not_battery'),
+  batteryTakenOver: fixture.batteryTakenOver ?? false,
+});
+
+/** A snapshot fixture of type `T` with its identity facts and battery facts resolved, as `/ui_devices` serves it. */
 export const withDescriptorIdentity = <T extends DescriptorIdentity>(
   fixture: DescriptorIdentityFixture<T>,
-): T => ({
+): T & SettingsUiBatteryState => ({
   ...fixture,
   ...resolveFixtureDescriptorIdentity(fixture as Partial<DescriptorIdentity> & {
     targets?: readonly unknown[];
   }),
-}) as unknown as T;
+  ...resolveFixtureBatteryState(fixture as Partial<SettingsUiBatteryState> & { deviceClass?: string }),
+}) as unknown as T & SettingsUiBatteryState;
 
 /** {@link withDescriptorIdentity} over a list. */
 export const withDescriptorIdentities = <T extends DescriptorIdentity>(
   fixtures: DescriptorIdentityFixture<T>[],
-): T[] => fixtures.map((fixture) => withDescriptorIdentity<T>(fixture));
+): (T & SettingsUiBatteryState)[] => fixtures.map((fixture) => withDescriptorIdentity<T>(fixture));

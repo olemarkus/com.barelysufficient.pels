@@ -1,5 +1,5 @@
 import { parseCarAssociationCandidatesRead } from '../src/ui/carAssociationCandidates.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi.ts';
 import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
@@ -12,7 +12,7 @@ import type {
   SettingsUiRecommendationCar,
 } from '../../contracts/src/settingsUiApi.ts';
 
-const device = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const device = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => ({
   id: 'device-1',
   name: 'Connected 300',
   available: true,
@@ -20,7 +20,7 @@ const device = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnap
   expectedPowerSource: 'default',
   targets: [],
   ...overrides,
-} as TargetDeviceSnapshot);
+} as SettingsUiDeviceSnapshot);
 
 type ChargerMatches = Extract<SettingsUiRecommendationCar['matchHistory'], { state: 'resolved' }>['chargerMatches'];
 
@@ -35,7 +35,7 @@ const carWithUnreadableHistory = (id: string, name: string): SettingsUiRecommend
 });
 
 const resolve = (
-  devices: readonly TargetDeviceSnapshot[] = [],
+  devices: readonly SettingsUiDeviceSnapshot[] = [],
   cars: readonly SettingsUiRecommendationCar[] = [],
   associations: EvCarAssociations = {},
   nativeWiringEnabledByDeviceId: Readonly<Record<string, boolean>> = {},

@@ -69,7 +69,7 @@ import {
   getLatestDevicesForUiFromApp,
   getPrioritiesForUiFromApp,
   getObservedStateForUiFromApp,
-  wasBatteryTakenOverForUiFromApp,
+  readSettingsUiBatteryStateFromApp,
   getPlanSnapshotForUiFromHomey,
   getSurplusPoolReachableForUiFromApp,
   getPowerTrackerForUiFromApp,
@@ -299,7 +299,6 @@ const buildSettingsUiDeviceList = (
     const observed = getObservedStateForUiFromApp(homey, device.id);
     const associatedCar = getAssociatedCarForUiFromApp(homey, device.id);
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
-    const batteryTakenOver = wasBatteryTakenOverForUiFromApp(homey, device.id);
     return {
       ...device,
       // Two absences are deliberately no-ops rather than writes, because neither
@@ -310,7 +309,7 @@ const buildSettingsUiDeviceList = (
       ...(observed ? pickLiveObservedFields(observed, resolveLiveObservedFields(device)) : {}),
       ...(associatedCar ? { associatedCar } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
-      ...(batteryTakenOver ? { batteryTakenOver } : {}),
+      ...readSettingsUiBatteryStateFromApp(homey, device),
       priority: priorities.getPriority(device.id),
     };
   });

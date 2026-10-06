@@ -2,8 +2,8 @@ import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type {
   SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
-  TargetDeviceSnapshot,
 } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 const createElement = (tag: string, id?: string): HTMLElement => {
   const el = document.createElement(tag);
@@ -25,7 +25,7 @@ const setupDom = (): void => {
 const buildSteppedDevice = (
   id: string,
   steps: SteppedLoadProfile['steps'],
-): TargetDeviceSnapshot & SteppedLoadDescriptorProbe => (withDescriptorIdentity<TargetDeviceSnapshot & SteppedLoadDescriptorProbe>({ expectedPowerKw: 1, expectedPowerSource: 'default',
+): SettingsUiDeviceSnapshot & SteppedLoadDescriptorProbe => (withDescriptorIdentity<SettingsUiDeviceSnapshot & SteppedLoadDescriptorProbe>({ expectedPowerKw: 1, expectedPowerSource: 'default',
   available: true,
   id,
   name: `Stepped Device ${id}`,

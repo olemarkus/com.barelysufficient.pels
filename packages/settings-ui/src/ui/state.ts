@@ -26,7 +26,7 @@ import {
 } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import type { ChargerPhasePresets } from '../../../contracts/src/settingsUiApi.ts';
+import type { ChargerPhasePresets, SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
 import type { ConfiguredShedBehavior } from '../../../shared-domain/src/settings/shedBehaviors.ts';
 import {
@@ -49,11 +49,9 @@ export type { PriceOptimizationConfig } from './priceOptimizationConfig.ts';
  * (measured-power-observed slice), which the device-control-profile and
  * target-power-config panes read.
  */
-export type SettingsUiDeviceView = DecoratedDeviceSnapshot & MeasuredPowerObservedProbe & {
+export type SettingsUiDeviceView = DecoratedDeviceSnapshot & MeasuredPowerObservedProbe & SettingsUiBatteryState & {
   temperatureBoost?: TemperatureBoostConfig;
   evBoost?: EvBoostConfig;
-  /** A home battery whose Managed PELS turned off after the owner took it over this run. */
-  batteryTakenOver?: true;
 };
 
 /** The battery Managed map as the UI read it; `unreadable` fails closed, as the runtime does. */

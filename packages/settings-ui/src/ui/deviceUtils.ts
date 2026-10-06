@@ -8,6 +8,7 @@ import type {
   SteppedLoadDescriptorProbe,
   TemperatureBoostConfig,
 } from '../../../contracts/src/types.ts';
+import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
 import { state } from './state.ts';
 
 export { isGrayStateDevice } from '../../../shared-domain/src/deviceStatePredicates.ts';
@@ -33,7 +34,11 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
     | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
     | 'powerCapable' | 'expectedPowerKw' | 'expectedPowerSource'
     | 'controlAdapter' | 'binaryControllable' | 'isEvCharger' | 'isBatteryOrSolar'
-  >;
+  >
+  // Whether PELS can drive a home battery and whether the owner took it over,
+  // resolved by the runtime for every listed device (`not_battery` / false
+  // for the rest).
+  & SettingsUiBatteryState;
 
 // The device fields the settings-UI device DETAIL surface reads — a superset of
 // the LIST carrier (detail calls the shared list predicates, so its device must
@@ -57,7 +62,6 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & {
     temperatureBoost?: TemperatureBoostConfig;
     evBoost?: EvBoostConfig;
-    batteryTakenOver?: true;
   };
 
 // `expectedPowerKw` is deliberately NOT a rung here. The producer resolves one

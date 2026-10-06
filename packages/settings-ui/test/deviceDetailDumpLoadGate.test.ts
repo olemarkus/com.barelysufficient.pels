@@ -6,8 +6,8 @@
 // (defense-in-depth mirror of the plan-side admittedDeviceIds exclusion).
 // Also covers the blob round-trip: enabling writes the full valid entry
 // {enabled:false, cheapDelta:0, expensiveDelta:0, surplusWilling:true}.
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -71,7 +71,7 @@ const buildDom = () => {
 
 // A plain binary (on/off) device — no temperature target, no stepped control,
 // not an EV. `powerCapable` makes it manageable.
-const buildBinaryDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const buildBinaryDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => ({
   id: 'pump-1',
   name: 'Pool Pump',
   targets: [],
@@ -82,7 +82,7 @@ const buildBinaryDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): Targe
   binaryControllable: true,
   capabilities: ['onoff'],
   ...overrides,
-}) as TargetDeviceSnapshot;
+}) as SettingsUiDeviceSnapshot;
 
 const mockSiblings = () => {
   vi.doMock('../src/ui/devices.ts', () => ({ renderDevices: vi.fn() }));
@@ -101,7 +101,7 @@ type OpenPanelParams = {
   /** Defaults to "solar present ⇒ pool reachable", the ordinary home. Set it
    *  explicitly to cover the divergence: solar on the roof, no reachable pool. */
   surplusPoolReachable?: boolean;
-  device: TargetDeviceSnapshot;
+  device: SettingsUiDeviceSnapshot;
   managed?: boolean;
   controllable?: boolean;
   surplusWilling?: boolean;
@@ -229,7 +229,7 @@ describe('device detail "Run on solar surplus" (dump-load) gating', () => {
       hasManagedSolarDevice: true,
       device: buildBinaryDevice({
         targetPowerConfig: { enabled: true },
-      } as Partial<TargetDeviceSnapshot>),
+      } as Partial<SettingsUiDeviceSnapshot>),
     });
     expect(dumpLoadRow()?.hidden).toBe(true);
   });
@@ -295,7 +295,7 @@ describe('device detail "Run on solar surplus" (dump-load) gating', () => {
           activationRequired: true,
           activationEnabled: false,
         },
-      } as Partial<TargetDeviceSnapshot>),
+      } as Partial<SettingsUiDeviceSnapshot>),
     });
     expect(dumpLoadRow()?.hidden).toBe(true);
   });

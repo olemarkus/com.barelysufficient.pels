@@ -129,11 +129,14 @@ describe('a battery whose app rejects PELS\'s claim', () => {
     // nl.sessy `setControlStrategy` throws unless the device uses its local login.
     device.configureCapabilityBehavior('control_strategy', { onApiWrite: { accept: false } });
     const { owner, lane, settings, writes, reading } = setup(device);
+    expect(owner.readControlCapability(BATTERY)).toBe('drivable');
 
     expect(await reading(0, -1500)).toBe(false);
 
     expect(writes()).toEqual([['control_strategy', 'POWER_STRATEGY_API']]);
     expect(owner.isWatchOnly(BATTERY)).toBe(true);
+    // The settings UI and the Flow cards offer it no Power-limit control now.
+    expect(owner.readControlCapability(BATTERY)).toBe('watch_only');
     // Still read, so its discharge counts against surplus devices, but never admissible.
     expect(owner.readControl(BATTERY)).toMatchObject({ kind: 'setpoint', admissible: false, claimHeld: false });
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'watch_only' });

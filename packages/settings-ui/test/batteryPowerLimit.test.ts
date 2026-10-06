@@ -45,6 +45,9 @@ const battery = withDescriptorIdentity<TargetDeviceSnapshot>({
   expectedPowerSource: 'default',
 });
 
+const watchOnlyBattery = { ...battery, batteryControl: 'watch_only' as const };
+const modeOnlyBattery = { ...battery, batteryControl: 'observe_only' as const };
+
 const heater = withDescriptorIdentity<TargetDeviceSnapshot>({
   id: 'heater-1',
   name: 'Heater',
@@ -60,10 +63,14 @@ const heater = withDescriptorIdentity<TargetDeviceSnapshot>({
 
 const flush = () => new Promise<void>((resolve) => { setTimeout(resolve, 0); });
 
-const loadState = async (managed: Record<string, boolean>, controllable: Record<string, boolean>) => {
+const loadState = async (
+  managed: Record<string, boolean>,
+  controllable: Record<string, boolean>,
+  device: typeof battery = battery,
+) => {
   const module = await import('../src/ui/state.ts');
   module.state.initialLoadComplete = true;
-  module.state.latestDevices = [battery];
+  module.state.latestDevices = [device];
   module.state.managedMap = {};
   module.state.batteryControl = { status: 'resolved', devices: managed };
   module.state.controllableMap = controllable;
@@ -179,21 +186,116 @@ describe('battery device page', () => {
   });
 });
 
+describe('battery device page for a battery PELS cannot drive', () => {
+  const renderPage = async (device: typeof battery, managed: Record<string, boolean> = {}) => {
+    document.body.innerHTML = `
+      <div id="device-detail-battery-takeover-notice" hidden></div>
+      <div id="device-detail-controllable-row">
+        <small id="device-detail-controllable-hint"></small>
+        <small id="device-detail-controllable-battery-hint"></small>
+      </div>
+      <div id="device-detail-battery-priority-row" hidden>
+        <span id="device-detail-battery-priority-value"></span>
+        <small id="device-detail-battery-priority-hint"></small>
+      </div>
+    `;
+    const { state } = await loadState(managed, {}, device);
+    state.loadedModeHomeId = 'main';
+    const { renderDeviceDetailBattery } = await import('../src/ui/deviceDetail/batterySection.ts');
+    renderDeviceDetailBattery(device);
+    const byId = (id: string) => document.getElementById(id)!;
+    return {
+      controllableRow: byId('device-detail-controllable-row'),
+      priorityRow: byId('device-detail-battery-priority-row'),
+    };
+  };
+
+  it.each([watchOnlyBattery, modeOnlyBattery])(
+    'hides Power-limit control and the whole Priority row ($batteryControl)',
+    async (device) => {
+      const page = await renderPage(device);
+      expect(page.controllableRow.hidden).toBe(true);
+      expect(page.priorityRow.hidden).toBe(true);
+    },
+  );
+
+  it('keeps Power-limit control and the Priority row for a battery PELS can drive', async () => {
+    const page = await renderPage(battery);
+    expect(page.controllableRow.hidden).toBe(false);
+    expect(page.priorityRow.hidden).toBe(false);
+  });
+
+  it('reads its Power-limit switch as off and unavailable', async () => {
+    await loadState({}, {}, watchOnlyBattery);
+    const { resolveDeviceDetailControlState, setPowerLimitSwitch } = await import(
+      '../src/ui/deviceDetail/controlState.ts'
+    );
+    const switchEl = { selected: true, disabled: false };
+    setPowerLimitSwitch(switchEl, resolveDeviceDetailControlState(watchOnlyBattery, 'battery-1'), 'battery-1');
+    expect(switchEl).toEqual({ selected: false, disabled: true });
+  });
+});
+
+describe('Modes priority note', () => {
+  it('names each battery PELS can drive with what its place means, and skips one it can only watch', async () => {
+    const { state } = await loadState({}, {});
+    const drivable = { ...battery, id: 'battery-2', name: 'Marstek' };
+    state.latestDevices = [watchOnlyBattery, drivable, heater];
+    state.batteryControl = { status: 'resolved', devices: {} };
+    const { resolvePriorityBatteryNote } = await import('../src/ui/deviceDetail/batterySection.ts');
+    expect(resolvePriorityBatteryNote(['heater-1', 'battery-1', 'battery-2']))
+      .toBe('Marstek: last in the list, it covers the whole house before any device is limited.');
+    expect(resolvePriorityBatteryNote(['battery-2', 'battery-1', 'heater-1']))
+      .toBe('Marstek: devices below it are limited first, so it protects only those above it.');
+    state.controllableMap = { 'battery-2': false };
+    expect(resolvePriorityBatteryNote(['heater-1', 'battery-2']))
+      .toBe('Marstek: turn on Power-limit control to let it hold your limit when its turn comes.');
+    expect(resolvePriorityBatteryNote(['heater-1', 'battery-1'])).toBeNull();
+  });
+});
+
 describe('battery device list row', () => {
-  const renderLimitToggle = async (managed: Record<string, boolean>, controllable: Record<string, boolean>) => {
+  const renderRow = async (
+    managed: Record<string, boolean>,
+    controllable: Record<string, boolean>,
+    device: typeof battery = battery,
+  ) => {
     document.body.innerHTML = `
       <div id="device-card-list"></div>
       <div id="empty-state"></div>
       <md-outlined-button id="refresh-button"></md-outlined-button>
     `;
-    const { state } = await loadState(managed, controllable);
+    const { state } = await loadState(managed, controllable, device);
     const { renderDevices } = await import('../src/ui/devices.ts');
-    renderDevices([battery]);
+    renderDevices([device]);
     const row = document.querySelector<HTMLElement>('[data-device-id="battery-1"]');
     const [, limit, price] = Array.from(row?.querySelectorAll<HTMLElement>('.pels-icon-toggle') ?? []);
-    if (!limit || !price) throw new Error('Row toggles not found.');
-    return { state, limit, price };
+    if (!row || !limit || !price) throw new Error('Row toggles not found.');
+    const reasons = Array.from(row.querySelectorAll('.pels-device-card__reasons li')).map((li) => li.textContent);
+    return { state, row, limit, price, reasons };
   };
+  const renderLimitToggle = renderRow;
+
+  it('shows no Limit switch for a battery PELS can only watch, and says why', async () => {
+    const { limit, reasons } = await renderRow({}, {}, watchOnlyBattery);
+    expect(limit.getAttribute('aria-checked')).toBe('false');
+    expect(limit.getAttribute('aria-disabled')).toBe('true');
+    expect(limit.closest('.pels-device-card__cell')?.classList.contains('pels-device-card__cell--disabled')).toBe(true);
+    expect(limit.getAttribute('aria-label')).toBe('PELS can only watch it: its app does not accept control');
+    expect(reasons).toEqual(['PELS can only watch it: its app does not accept control']);
+  });
+
+  it('shows the takeover notice on the row of a battery PELS turned Managed off for', async () => {
+    const { reasons } = await renderRow({ 'battery-1': false }, {}, { ...battery, batteryTakenOver: true });
+    expect(reasons).toEqual([
+      'You changed its mode in the battery app. PELS leaves it alone until you turn on Managed.',
+    ]);
+  });
+
+  it('shows no line on the row of a battery the owner turned off themselves', async () => {
+    const { reasons } = await renderRow({ 'battery-1': false }, {});
+    expect(reasons).toEqual([]);
+  });
 
   it('offers Limit as on by default while the battery is managed, and Price as not applicable', async () => {
     const { limit, price } = await renderLimitToggle({}, {});

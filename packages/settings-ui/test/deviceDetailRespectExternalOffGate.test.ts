@@ -8,8 +8,8 @@
 // The switch is additionally disabled — with a visible "why" — while Managed or
 // Power-limit control is off, and warns (without blocking) while a smart task is
 // active, since an explicit off action is meant to beat a smart task.
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -109,7 +109,7 @@ const finishTemperatureConfirmation = (value?: string) => {
   dialog.dispatchEvent(new Event('close'));
 };
 
-const buildBinaryDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const buildBinaryDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => ({
   id: 'heater-1',
   name: 'Water heater',
   targets: [],
@@ -120,7 +120,7 @@ const buildBinaryDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): Targe
   binaryControllable: true,
   capabilities: ['onoff'],
   ...overrides,
-}) as TargetDeviceSnapshot;
+}) as SettingsUiDeviceSnapshot;
 
 const mockSiblings = () => {
   vi.doMock('../src/ui/devices.ts', () => ({ renderDevices: vi.fn() }));
@@ -137,7 +137,7 @@ const mockSiblings = () => {
 };
 
 type OpenPanelParams = {
-  device: TargetDeviceSnapshot;
+  device: SettingsUiDeviceSnapshot;
   managed?: boolean;
   controllable?: boolean;
   optedIn?: boolean;
@@ -224,7 +224,7 @@ const temperatureControlSmartTaskHint = () => document.querySelector(
   '#device-detail-temperature-control-disabled-smart-task-hint',
 ) as HTMLElement | null;
 
-const buildTemperatureBinaryDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => (
+const buildTemperatureBinaryDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => (
   buildBinaryDevice({
     deviceType: 'temperature',
     deviceClass: 'thermostat',

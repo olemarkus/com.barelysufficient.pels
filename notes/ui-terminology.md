@@ -599,23 +599,35 @@ keeps the word for what PELS holds it to do.
 | Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |
 | Reason in its own mode, Power-limit control off | `PELS uses it only to store spare solar` |
 | Reason in its own mode, its app rejected PELS's claim (a Sessy on its cloud login), for 6 h, or until PELS restarts or its controls change | `PELS can only watch it: its app does not accept control` |
+| Reason in its own mode, a battery PELS cannot claim (no usable signed power setpoint, or no Homey/API mode to switch to) | `PELS can only watch it: its app does not give Homey control` |
+| Battery section subtitle on the device page: drivable / one PELS can only watch | `Control and priority` / `What PELS sees` |
+| Device-list row, a battery PELS cannot drive (watch-only or no setpoint): stands in for the Power-limit control switch, which is not shown | the card's reason line above |
 | Fact line | `64 % charged`; in its own mode also `· supplying` / `· charging` |
 | Overview hero, one battery supplying while PELS holds it for the limit (only while it supplies: a capped charge holds nothing) | `Sessy battery is supplying 2.4 kW to hold your limit.` |
 | Overview hero, several | `2 batteries are supplying 4.2 kW to hold your limit.` |
 | Overview hero, a battery supplying while devices are also limited | `Sessy battery is supplying 2.4 kW to hold your limit. Holding back 2 devices…` |
 | Device page, Managed hint | `PELS takes it over to hold your limit or store spare solar, then hands it back.` |
+| Device page, Managed hint, a battery PELS cannot drive | `PELS reads its power and charge level and shows it on the Overview.` |
 | Device page, Power-limit control hint (greyed out while Managed is off) | `PELS may cap its charge and call on it to hold your limit when its turn comes in your priority order.` |
 | Device page, takeover notice (amber) | `You changed its mode in the battery app` / `PELS has stepped back and leaves it alone. Turn on Managed when you want PELS to use it again.` |
+| Device-list row, takeover notice (Managed off) | `You changed its mode in the battery app. PELS leaves it alone until you turn on Managed.` |
 | Device page, priority value | `N of M in <mode>` (e.g. `9 of 9 in Home`) |
 | Device page, priority hint, battery last in the mode | `Last in the list, it covers the whole house before any device is limited.` |
-| Device page, priority hint, battery above other devices | `Its place decides who it protects: the devices above it.` |
+| Device page, priority hint, battery above other devices | `Devices below it are limited first, so it protects only those above it.` |
 | Device page, priority hint, Power-limit control off (the priority readout stays) | `Turn on Power-limit control to let it hold your limit when its turn comes.` |
-| Modes page note, under a list holding a battery | `Its place decides who it protects. Last in the list, it covers the whole house before any device is limited.` |
+| Modes page note, under a list holding a battery PELS can drive (none for a battery it can only watch) | `<battery>: <priority hint for its place in this list>`, e.g. `Sessy battery: last in the list, it covers the whole house before any device is limited.`; one per such battery |
+
+A battery PELS cannot drive (watch-only or no setpoint) is shown while
+managed, without a Power-limit control switch or a Priority row on its device
+page: its card's reason line says why, the device-list row repeats it, and the
+Flow card that turns capacity control on refuses it.
 
 Sources: `lib/plan/batteryStatusReadModel.ts` (card),
+`packages/shared-domain/src/batteryControlCopy.ts` (the can-only-watch lines),
 `packages/settings-ui/src/ui/planHeroSummary.ts` (hero),
 `packages/settings-ui/src/ui/deviceDetail/batterySection.ts` and
-`packages/settings-ui/public/index.html` (device page).
+`packages/settings-ui/public/index.html` (device page, Modes note),
+`packages/settings-ui/src/ui/deviceListPresentation.ts` (device-list row).
 
 ## Solar surplus vocabulary
 
