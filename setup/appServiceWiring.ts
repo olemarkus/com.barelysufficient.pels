@@ -381,6 +381,9 @@ export class AppServiceWiring {
     );
     this.deps.ctx.homeMembership = wiring.service;
     this.deps.setHomeMembershipService(wiring.service);
+    // Main's mode catalog persists missing ranks only once it can read
+    // settled ownership, which it could not when it first loaded.
+    this.deps.ctx.loadCapacitySettings();
     // Refuses rather than silently replacing, which the field assignment this
     // came from did not: a second `initHomeMembership` without an intervening
     // `runUninit` used to leak the predecessor's detach callback. There is one

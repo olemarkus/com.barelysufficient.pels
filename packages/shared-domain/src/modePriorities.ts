@@ -14,10 +14,11 @@
 // shared-domain because both the runtime (via the settings snapshot builder)
 // and the browser settings-UI must resolve priorities the same way, and
 // shared-domain is the only layer both may import. Normalization is applied on
-// read: the producers never eagerly rewrite settings. (The settings-UI does
-// persist the resolved order back through normal user saves, so the strict form
-// becomes the stored form over time — that is a side effect of saving, not of
-// reading.)
+// read: reading never rewrites settings. A managed device with no rank gets one
+// persisted once, by the home's mode catalog owner when its catalog reloads
+// (`lib/home/homeModeCatalog.ts`), so the inferred tail below is only the
+// order until that write lands. (The settings-UI also persists the resolved
+// order back through normal user saves.)
 
 /** A per-mode map of deviceId -> priority rank (lower wins). */
 export type ModePriorityMap = Record<string, number>;

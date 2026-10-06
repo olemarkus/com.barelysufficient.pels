@@ -178,3 +178,32 @@ describe('mode priority catalog boundary', () => {
     expect(readModePriorityCatalog({ Home: { heater: 'first' } })).toBeNull();
   });
 });
+
+describe('ModePriorityCatalog.withMissingRanks', () => {
+  it('returns null when every device is ranked in every mode', () => {
+    const catalog = new ModePriorityCatalog({ Home: { a: 1, b: 2 }, Away: { b: 1, a: 2 } });
+    expect(catalog.withMissingRanks(['a', 'b'], ['Home', 'Away'])).toBeNull();
+  });
+
+  it('appends unranked devices after the ranked ones, in device-id order, in every mode', () => {
+    const catalog = new ModePriorityCatalog({ Home: { a: 1, b: 2 }, Away: { b: 1 } });
+    expect(catalog.withMissingRanks(['d', 'c', 'a', 'b'], ['Home', 'Away'])).toEqual({
+      Home: { a: 1, b: 2, c: 3, d: 4 },
+      Away: { b: 1, a: 2, c: 3, d: 4 },
+    });
+  });
+
+  it('keeps the existing order and adds a mode known only to the caller', () => {
+    const catalog = new ModePriorityCatalog({ Home: { b: 1, a: 2 } });
+    expect(catalog.withMissingRanks(['a', 'b'], ['Home', 'Night'])).toEqual({
+      Home: { b: 1, a: 2 },
+      Night: { a: 1, b: 2 },
+    });
+  });
+
+  it('matches the order rankActiveDevicePriorities already infers for unranked devices', () => {
+    const catalog = new ModePriorityCatalog({ Home: { z: 1 } });
+    const persisted = catalog.withMissingRanks(['y', 'x', 'z'], ['Home']);
+    expect(persisted?.Home).toEqual(rankActiveDevicePriorities(['y', 'x', 'z'], (id) => ({ z: 1 } as Record<string, number>)[id]));
+  });
+});
