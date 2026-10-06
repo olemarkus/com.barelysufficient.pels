@@ -51,11 +51,13 @@
  */
 import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import type { BatteryControlOwner, BatteryLeverRead, BatterySetpointOutcome } from '../ports/batteryControlOwner';
 import type { HomeBatteryPowerObservation } from '../../packages/contracts/src/types';
-import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import { resolveLatchedMeterReading, type LatchedMeterReading } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
+import type { ExecutorDeviceReadDeps } from './executorDeviceRead';
 import {
   storageSetpointToleranceW,
   type StorageDecidedDevice,
@@ -88,9 +90,6 @@ type SetpointDecision = Extract<StorageDecision, { kind: 'setpoint' }>;
 
 /** Did the meter move the way the battery says its own power moved? `none` when it moved too little to say. */
 type SignSample = 'agrees' | 'inverted' | 'none';
-
-/** The whole-home meter's latched reading, W, and when it landed. */
-type MeterReading = { meterW: number; atMs: number };
 
 /**
  * What a setpoint's sign is checked against: the whole-home meter and the
@@ -138,24 +137,25 @@ type SignEvidence = { kind: 'confirmed' } | { kind: 'inverted'; invertedSteps: n
 
 const NO_INVERTED_STEPS = { kind: 'inverted', invertedSteps: 0, stepDownSeen: false } as const;
 
-export type BatteryExecutorDeps = {
-  owner: BatteryControlOwner;
-  /** Main's fenced plan actuator. */
-  actuator: Actuator;
-  /** The battery's own signed power, from the observer's record. */
-  readBatteryPower: (deviceId: string) => HomeBatteryPowerObservation | undefined;
-  getPowerTracker: () => PowerTrackerState;
-  /** The managed devices' own metered draw, W (no battery): the sign check discounts its move. */
-  readManagedDrawW: () => number;
+/**
+ * What PELS did to the managed loads, as the sign check reads it: the plan's
+ * actuation record (`lib/plan/actuationRecord.ts`).
+ */
+export type LoadActuationHistory = {
   /** Whether PELS shed or restored any device at or after this time. */
-  hasShedOrRestoreSince: (sinceMs: number) => boolean;
-  /**
-   * A hand-back the restore lane decided (`restored`) went out: stamp the
-   * restore clocks, as a confirmed load restore does. Only on a hand-back the
-   * owner actually made: one it declined restored nothing.
-   */
-  recordRestore: (deviceId: string, name: string, nowMs: number) => void;
+  hasShedOrRestoreSince(sinceMs: number): boolean;
 };
+
+/** The managed devices' own metered draw, W: everything metered but a battery or panel. */
+const readManagedDrawW = (devices: ExecutorDeviceReadDeps): number => (
+  devices.getDeviceConfigurations().reduce((totalW, configuration) => {
+    if (configuration.isBatteryOrSolar) return totalW;
+    const observed = devices.getObservedState(configuration.id);
+    return observed !== undefined && hasObservedMeasuredPower(observed)
+      ? totalW + observed.measuredPowerKw * 1000
+      : totalW;
+  }, 0)
+);
 
 /** What the plan executor asks of a home's storage lane. */
 export type StorageLane = Pick<BatteryExecutor, 'apply' | 'hasDrift' | 'sync' | 'releaseAbsent' | 'hasReleaseDrift'>;
@@ -188,7 +188,31 @@ export class BatteryExecutor {
   private readonly commands = new Map<string, StorageCommandRecord>();
   private readonly signEvidence = new Map<string, SignEvidence>();
 
-  constructor(private readonly deps: BatteryExecutorDeps) {}
+  /**
+   * @param owner Main's battery control owner.
+   * @param actuator Main's fenced plan actuator.
+   * @param devices The executor's device reads: the battery's own signed power
+   *   from the observer's record, and the managed devices' metered draw, whose
+   *   move the sign check discounts.
+   * @param getPowerTracker This home's whole-home meter.
+   * @param loadActuations What PELS did to the managed loads.
+   * @param recordRestore A hand-back the restore lane decided (`restored`) went
+   *   out: stamp the restore clocks, as a confirmed load restore does. Only on
+   *   a hand-back the owner actually made: one it declined restored nothing.
+   */
+  constructor(
+    private readonly owner: BatteryControlOwner,
+    private readonly actuator: Actuator,
+    private readonly devices: ExecutorDeviceReadDeps,
+    private readonly getPowerTracker: () => PowerTrackerState,
+    private readonly loadActuations: LoadActuationHistory,
+    private readonly recordRestore: (deviceId: string, name: string, nowMs: number) => void,
+  ) {}
+
+  /** The battery's own signed power, from the observer's record. */
+  private readBatteryPower(deviceId: string): HomeBatteryPowerObservation | undefined {
+    return this.devices.getObservedState(deviceId)?.batteryPower;
+  }
 
   /** Converge one decision. True when a write or hand-back was requested. */
   async apply(device: StorageDecidedDevice): Promise<boolean> {
@@ -203,14 +227,14 @@ export class BatteryExecutor {
   }
 
   hasReleaseDrift(intent: StorageReleaseIntent): boolean {
-    const control = this.deps.owner.readControl(intent.deviceId);
+    const control = this.owner.readControl(intent.deviceId);
     // An unobserved binding still needs to transfer recovery to the owner.
     return control.kind === 'none' || (control.claimHeld && !control.handBackDeferred);
   }
 
   async releaseAbsent(intent: StorageReleaseIntent): Promise<boolean> {
     this.commands.delete(intent.deviceId);
-    return await this.deps.owner.releaseClaim(intent.deviceId, intent.reason) === 'released';
+    return await this.owner.releaseClaim(intent.deviceId, intent.reason) === 'released';
   }
 
   /** Whether this decision has a write or a hand-back due. */
@@ -225,13 +249,13 @@ export class BatteryExecutor {
    */
   sync(nowMs: number): void {
     for (const [deviceId, recorded] of this.commands) {
-      const control = this.deps.owner.readControl(deviceId);
+      const control = this.owner.readControl(deviceId);
       // Handed back (an opt-out, a hand-back of the owner's own): nothing to judge.
       if (control.kind === 'none' || !control.claimHeld) {
         this.commands.delete(deviceId);
         continue;
       }
-      const power = this.deps.readBatteryPower(deviceId);
+      const power = this.readBatteryPower(deviceId);
       if (power === undefined) continue;
       const record = recorded.phase.kind === 'pending' ? this.settle(deviceId, recorded, power, nowMs) : recorded;
       if (record === 'unanswered' || record.phase.kind === 'pending') continue;
@@ -248,7 +272,7 @@ export class BatteryExecutor {
    * off or stopped.
    */
   private resolveDrift(device: StorageDecidedDevice): SetpointLever | 'no_drift' {
-    const control = this.deps.owner.readControl(device.id);
+    const control = this.owner.readControl(device.id);
     if (control.kind === 'none') return 'no_drift';
     const decision = device.storageDecision;
     const drifted = decision.kind === 'release'
@@ -263,14 +287,14 @@ export class BatteryExecutor {
     decision: SetpointDecision,
     control: SetpointLever,
   ): Promise<boolean> {
-    const power = this.deps.readBatteryPower(device.id);
+    const power = this.readBatteryPower(device.id);
     if (power === undefined) return false;
     try {
-      const outcome = await this.deps.owner.dispatchSetpoint(device.id, async () => {
-        const baseline = this.deps.readBatteryPower(device.id);
+      const outcome = await this.owner.dispatchSetpoint(device.id, async () => {
+        const baseline = this.readBatteryPower(device.id);
         if (baseline === undefined) return 'skipped';
         this.recordSent(device.id, decision, baseline, Date.now());
-        const sent = await this.deps.actuator.apply({
+        const sent = await this.actuator.apply({
           kind: 'storage_power', deviceId: device.id, setpointW: decision.setpointW,
         });
         if (!sent.requested && sent.reason === 'claim_rejected') {
@@ -333,10 +357,8 @@ export class BatteryExecutor {
   }
 
   /** The whole-home meter's latched reading, or `unavailable` when none is latched. */
-  private readMeter(): MeterReading | 'unavailable' {
-    const { lastPowerW, lastTimestamp } = this.deps.getPowerTracker();
-    if (!isFiniteNumber(lastPowerW) || lastTimestamp === undefined) return 'unavailable';
-    return { meterW: lastPowerW, atMs: lastTimestamp };
+  private readMeter(): LatchedMeterReading | 'unavailable' {
+    return resolveLatchedMeterReading(this.getPowerTracker()) ?? 'unavailable';
   }
 
   /**
@@ -362,7 +384,7 @@ export class BatteryExecutor {
         kind: 'pending',
         baseline: meter === 'unavailable'
           ? meter
-          : { meterW: meter.meterW, managedW: this.deps.readManagedDrawW(), lastAtMs: meter.atMs },
+          : { meterW: meter.powerW, managedW: readManagedDrawW(this.devices), lastAtMs: meter.atMs },
       },
     });
   }
@@ -371,11 +393,11 @@ export class BatteryExecutor {
     device: StorageDecidedDevice,
     decision: Extract<StorageDecision, { kind: 'release' }>,
   ): Promise<boolean> {
-    if (await this.deps.owner.releaseClaim(device.id, decision.reason) !== 'released') return false;
+    if (await this.owner.releaseClaim(device.id, decision.reason) !== 'released') return false;
     logger.info({
       event: 'battery_storage_released', deviceId: device.id, deviceName: device.name, reason: decision.reason,
     });
-    if (decision.reason === 'restored') this.deps.recordRestore(device.id, device.name, Date.now());
+    if (decision.reason === 'restored') this.recordRestore(device.id, device.name, Date.now());
     return true;
   }
 
@@ -421,7 +443,7 @@ export class BatteryExecutor {
     nowMs: number,
   ): SetpointVerdict {
     const toleranceW = storageSetpointToleranceW(record.setpointW, record.stepW);
-    const { verification } = this.deps.owner;
+    const { verification } = this.owner;
     const event = {
       deviceId, setpointW: record.setpointW, startPowerW: record.startSignedW, observedPowerW: power.signedW,
     };
@@ -490,7 +512,7 @@ export class BatteryExecutor {
   ): boolean {
     if (control.claimEngaged || nowMs - record.issuedAtMs < CONTROL_COMMAND_CONFIRMATION_MS) return false;
     this.commands.delete(deviceId);
-    this.deps.owner.verification.recordNotResponding(deviceId, nowMs);
+    this.owner.verification.recordNotResponding(deviceId, nowMs);
     logger.warn({ event: 'battery_storage_claim_lost', deviceId, setpointW: record.setpointW });
     return true;
   }
@@ -509,10 +531,10 @@ export class BatteryExecutor {
   ): void {
     const meter = this.readMeter();
     if (meter === 'unavailable' || meter.atMs <= phase.baseline.lastAtMs) return;
-    const quiet = !this.deps.hasShedOrRestoreSince(record.issuedAtMs - SIGN_CHECK_ACTION_QUIET_MS);
+    const quiet = !this.loadActuations.hasShedOrRestoreSince(record.issuedAtMs - SIGN_CHECK_ACTION_QUIET_MS);
     const batteryDeltaW = power.signedW - record.startSignedW;
-    const managedDeltaW = this.deps.readManagedDrawW() - phase.baseline.managedW;
-    const meterDeltaW = meter.meterW - phase.baseline.meterW - managedDeltaW;
+    const managedDeltaW = readManagedDrawW(this.devices) - phase.baseline.managedW;
+    const meterDeltaW = meter.powerW - phase.baseline.meterW - managedDeltaW;
     const sample = quiet ? resolveSignSample(batteryDeltaW, meterDeltaW) : 'none';
     const decided = sample !== 'none' && phase.lastSample === sample;
     const samples = phase.samples + 1;
@@ -541,6 +563,6 @@ export class BatteryExecutor {
     if (invertedSteps < SIGN_INVERTED_STEPS_REQUIRED || !stepDownSeen) return;
     this.commands.delete(deviceId);
     this.signEvidence.delete(deviceId);
-    this.deps.owner.verification.recordSignInverted(deviceId);
+    this.owner.verification.recordSignInverted(deviceId);
   }
 }

@@ -3,7 +3,7 @@ import {
   createPendingBinaryCommandStore,
   syncPendingBinaryCommands,
 } from '../../lib/observer/pendingBinaryCommands';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
 import type { PendingBinaryCommand } from '../../lib/observer/pendingBinaryCommandTypes';
 import Homey from 'homey';

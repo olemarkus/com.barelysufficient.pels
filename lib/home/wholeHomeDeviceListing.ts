@@ -16,7 +16,12 @@ import type { HomeMembershipPort } from './membership';
 
 type ListedDeviceCandidate = { id: string; isBatteryOrSolar: boolean; deviceClass?: string };
 
-const isSettledMainHomeMember = (membership: HomeMembershipPort | undefined, deviceId: string): boolean => (
+/**
+ * Whether the device is a Main-home member on settled membership: the port
+ * wired, ownership ready, and no ownership change pending. Unknown membership
+ * answers false (see the header).
+ */
+export const isSettledMainHomeMember = (membership: HomeMembershipPort | undefined, deviceId: string): boolean => (
   membership !== undefined
   && membership.isOwnershipReady()
   && !membership.hasPendingOwnershipGeneration()

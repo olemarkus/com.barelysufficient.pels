@@ -2,7 +2,7 @@ import type {
   BinaryCommandLifecycleEvent,
   BinaryCommandLifecycleListener,
 } from '../../observer/pendingBinaryCommands';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../ports/controlCommandConfirmation';
 import { getLogger } from '../../logging/logger';
 
 const logger = getLogger('plan/binary-command-reachability');

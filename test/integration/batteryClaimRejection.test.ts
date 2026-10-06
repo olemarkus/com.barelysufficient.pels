@@ -16,7 +16,7 @@ import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import { BatteryExecutor, VERIFICATION_MAX_WAIT_MS } from '../../lib/executor/batteryExecutor';
 import type { StorageDecidedDevice } from '../../lib/planContract/storageDecision';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { toBatteryControlRead } from '../../setup/appInit/createBatteryControl';
+import type { ExecutorDeviceReadDeps, ObserverDeviceRead } from '../../lib/executor/executorDeviceRead';
 import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
@@ -65,27 +65,32 @@ const setup = (device: MockDevice) => {
     requestStoragePower: (command) => transport.requestStoragePower(command),
     releaseStorageControl: (command) => transport.releaseStorageControl(command),
   });
-  const owner = new HomeBatteryControlOwner({
+  const owner = new HomeBatteryControlOwner(
     settings,
     managed,
-    actuation: actuator,
-    getBattery: (deviceId) => toBatteryControlRead(transport.getSnapshotByDeviceId(deviceId)),
-    isMainHomeMember: () => true,
-    isActuationFenced: () => false,
-    isCapacityDryRun: () => false,
-  });
+    actuator,
+    (deviceId) => transport.readBatteryControl(deviceId),
+    () => true,
+    () => false,
+    () => false,
+  );
   const tracker: PowerTrackerState = { lastPowerW: 4000, lastTimestamp: Date.now() };
   // The battery reports nothing new after the claim: it is never driven.
   const power = { signedW: 0, observedAtMs: Date.now() - MINUTE_MS };
-  const lane = new BatteryExecutor({
+  // The observer's record of the battery; no managed load is metered.
+  const devices: ExecutorDeviceReadDeps = {
+    getDeviceConfiguration: () => undefined,
+    getDeviceConfigurations: () => [],
+    getObservedState: (deviceId) => ({ id: deviceId, batteryPower: power }) as ObserverDeviceRead,
+  };
+  const lane = new BatteryExecutor(
     owner,
     actuator,
-    readBatteryPower: () => power,
-    getPowerTracker: () => tracker,
-    readManagedDrawW: () => 0,
-    hasShedOrRestoreSince: () => false,
-    recordRestore: vi.fn(),
-  });
+    devices,
+    () => tracker,
+    { hasShedOrRestoreSince: () => false },
+    vi.fn(),
+  );
   const put = vi.spyOn(mockHomeyInstance.api, 'put');
   const writes = (): Array<[string, unknown]> => put.mock.calls.map(([path, body]) => [
     path.replace(`manager/devices/device/${BATTERY}/capability/`, ''),
@@ -193,8 +198,8 @@ describe('a battery whose app rejects PELS\'s claim', () => {
     expect(writes()).toEqual([['control_strategy', 'POWER_STRATEGY_API'], ['control_strategy', 'POWER_STRATEGY_API']]);
   });
 
-  it('judges a Sessy under Homey\'s claim whose claim write fails not responding, and can still hand it back', async () => {
-    // A local-login Sessy PELS has been driving, whose dongle call failed once.
+  it('writes no claim to a Sessy already under Homey\'s claim, so a failing claim write never makes it watch-only', async () => {
+    // A local-login Sessy PELS has been driving, whose dongle would fail a claim write.
     const device = buildSessyBatteryDevice({ id: BATTERY, strategy: 'POWER_STRATEGY_API' });
     vi.advanceTimersByTime(MINUTE_MS);
     mockHomeyInstance.settings.set(CLAIM_KEY, {
@@ -203,11 +208,10 @@ describe('a battery whose app rejects PELS\'s claim', () => {
     device.configureCapabilityBehavior('control_strategy', { onApiWrite: { accept: false } });
     const { owner, settings, writes, reading } = setup(device);
 
-    expect(await reading(0, -1500)).toBe(false);
+    expect(await reading(0, -1500)).toBe(true);
+    expect(writes()).toEqual([['target_power', -1500]]);
     expect(owner.isWatchOnly(BATTERY)).toBe(false);
     expect(logs.findEvent('battery_control_claim_rejected_watch_only')).toBeUndefined();
-    expect(await reading(VERIFICATION_MAX_WAIT_MS, -1500)).toBe(false);
-    expect(owner.readControl(BATTERY)).toMatchObject({ kind: 'setpoint', verdict: 'not_responding', claimHeld: true });
 
     device.clearCapabilityBehavior('control_strategy');
     expect(await owner.releaseClaim(BATTERY, 'not_responding')).toBe('released');

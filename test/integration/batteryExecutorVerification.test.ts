@@ -14,11 +14,14 @@ import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import type { HomeBatteryPowerObservation, HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { ExecutorDeviceReadDeps, ObserverDeviceRead } from '../../lib/executor/executorDeviceRead';
+import type { DeviceConfigurationRead } from '../../lib/ports/deviceConfigurationRead';
 import type { StorageDecision } from '../../lib/planContract/storageDecision';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 import { buildPlanDevice } from '../utils/planTestUtils';
 
 const BATTERY = 'battery';
+const LOAD = 'heater';
 const RANGE: HomeBatterySetpointRange = { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 };
 const START_MS = Date.UTC(2026, 9, 5, 12, 0, 0);
 
@@ -73,15 +76,22 @@ const buildLane = () => {
   let managedW = 2000;
   const tracker: PowerTrackerState = { lastPowerW: 4000, lastTimestamp: START_MS };
   const recordRestore = vi.fn();
-  const lane = new BatteryExecutor({
+  // The observer's records: the battery's own power, and one metered managed load.
+  const devices: ExecutorDeviceReadDeps = {
+    getDeviceConfiguration: () => undefined,
+    getDeviceConfigurations: () => [{ id: LOAD, isBatteryOrSolar: false } as DeviceConfigurationRead],
+    getObservedState: (deviceId) => (deviceId === BATTERY
+      ? { id: deviceId, batteryPower: power }
+      : { id: deviceId, measuredPowerKw: managedW / 1000 }) as ObserverDeviceRead,
+  };
+  const lane = new BatteryExecutor(
     owner,
     actuator,
-    readBatteryPower: () => power,
-    getPowerTracker: () => tracker,
-    readManagedDrawW: () => managedW,
-    hasShedOrRestoreSince: (sinceMs) => lastActionAtMs >= sinceMs,
+    devices,
+    () => tracker,
+    { hasShedOrRestoreSince: (sinceMs: number) => lastActionAtMs >= sinceMs },
     recordRestore,
-  });
+  );
   const at = (afterMs: number) => vi.setSystemTime(new Date(START_MS + afterMs));
   return {
     lane,

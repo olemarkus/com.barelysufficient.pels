@@ -58,6 +58,22 @@ export function hasPowerMeasurement(
     && isFiniteNumber(powerTracker.lastTimestamp);
 }
 
+/** The latched whole-home sample: signed net import, W, and when it landed. */
+export type LatchedMeterReading = { powerW: number; atMs: number };
+
+/**
+ * The latched whole-home sample as one reading, both halves of the latch
+ * together (`hasPowerMeasurement`); `undefined` when nothing is latched. Signed
+ * and unfloored like `resolveLastTotalPowerKw`.
+ */
+export function resolveLatchedMeterReading(
+  powerTracker: Pick<PowerTrackerState, 'lastPowerW' | 'lastTimestamp'>,
+): LatchedMeterReading | undefined {
+  const { lastPowerW, lastTimestamp } = powerTracker;
+  if (!isFiniteNumber(lastPowerW) || !isFiniteNumber(lastTimestamp)) return undefined;
+  return { powerW: lastPowerW, atMs: lastTimestamp };
+}
+
 /**
  * The latched whole-home total, for consumers reached only from an ADMITTED
  * sample — the tracker persists `lastPowerW` before it awaits them, and every

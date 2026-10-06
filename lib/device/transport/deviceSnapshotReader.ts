@@ -22,7 +22,8 @@ import { getDeviceId } from './managerHelpers';
 import { syncNativeSteppedLoadCommandAdapters } from '../managerNativeSteppedCommand';
 import { isHomeBatteryDevice } from '../managerEnergy';
 import { isRuntimeTrackedDevice, resolveManagedFilterDecision } from './managerManagedFilter';
-import { isHomeBatterySnapshot } from './homeBatteryObservation';
+import { isHomeBatterySnapshot, toBatteryControlRead } from './homeBatteryObservation';
+import type { BatteryControlRead } from '../../ports/batteryControlOwner';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
@@ -36,6 +37,11 @@ export class DeviceSnapshotReader {
     readonly retainedPower: RetainedPowerPersistence,
     readonly logger: Logger,
   ) {}
+
+  /** The device as the battery control owner reads it (`toBatteryControlRead`). */
+  readBatteryControl(deviceId: string): BatteryControlRead {
+    return toBatteryControlRead(this.snapshotStore.getSnapshotByDeviceId(deviceId));
+  }
 
   parseDevice(
     device: HomeyDeviceLike,

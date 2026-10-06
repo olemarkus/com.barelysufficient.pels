@@ -1,6 +1,6 @@
 import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type {

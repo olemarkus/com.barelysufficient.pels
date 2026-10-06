@@ -236,7 +236,7 @@ the charger had in fact accepted.
 **How long it waits.** One confirmation policy for every device and capability,
 deliberately **not** sized per device class or command kind: a single fixed
 window (`CONTROL_COMMAND_CONFIRMATION_MS`, 90 s,
-`lib/observer/controlCommandConfirmation.ts`). A per-device cloud tier (3 min)
+`lib/ports/controlCommandConfirmation.ts`). A per-device cloud tier (3 min)
 existed until 2026-09-01; the settings map that selected it was never written
 by anything, so every device already ran the 90 s window, and the tier was
 removed. The window is armed

@@ -4,7 +4,8 @@
  * parse for a device whose class key is `battery`, kept current by realtime
  * capability events, and carried across a full refresh.
  *
- * Observation only. Nothing here commands a battery.
+ * Observation only, and the battery control owner's read of it
+ * (`toBatteryControlRead`). Nothing here commands a battery.
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
@@ -16,6 +17,7 @@ import type {
     HomeBatteryLevelObservation,
     HomeBatteryPowerObservation,
 } from '../../../packages/contracts/src/types';
+import type { BatteryControlRead, HomeBatteryClaimRead } from '../../ports/batteryControlOwner';
 import { resolveBatteryControlSurface } from '../batteryControlWiring';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
@@ -96,12 +98,39 @@ const resolveParsedLevel = (
 };
 
 /**
+ * The claim carried from the previous snapshot: only while it claimed through
+ * the same capability. A stored claim always belongs to its own snapshot's
+ * surface (the parse reads the surface's capability, and the realtime handler
+ * stores only an event on it), so comparing the surfaces keeps a reclassified
+ * battery from carrying a claim read off a capability it no longer claims
+ * through.
+ */
+const resolveCarriedClaim = (
+    capabilityId: string,
+    previousSnapshot: TransportDeviceSnapshot | undefined,
+): HomeBatteryClaimObservation | undefined => {
+    const previousSurface = previousSnapshot?.homeBattery?.controlSurface;
+    return previousSurface?.kind === 'setpoint' && previousSurface.claim.capabilityId === capabilityId
+        ? previousSnapshot?.batteryClaim
+        : undefined;
+};
+
+/**
+ * How far a pulled claim's Homey stamp may fall behind the carried claim's
+ * before the pull is read as older. A realtime claim is dated on arrival, a
+ * little after Homey stamped the change, so a pull of a later change can carry
+ * a stamp a moment earlier than the realtime claim it replaces.
+ */
+const CLAIM_STAMP_SKEW_MS = 5_000;
+
+/**
  * The claim this read leaves the battery with. A different reported value
- * wins whatever its stamp: a realtime claim is dated on arrival, a pulled one
- * by Homey, so the two clocks cannot be ordered, and a write Homey rejected
- * must not outlive the next read that says otherwise. The same value keeps the
- * later stamp. A read with no value keeps the carried one (a missing sample is
- * not a new observation).
+ * wins unless Homey stamped it more than `CLAIM_STAMP_SKEW_MS` before the
+ * carried claim: such a pull was read before the change the carried claim
+ * reports (the realtime echo of PELS's own claim, typically), and taking it
+ * would undo that change until the next read. The same value keeps the later
+ * stamp. A read with no value keeps the carried one (a missing sample is not a
+ * new observation).
  */
 const resolveParsedClaim = (
     controlSurface: HomeBatteryControlSurface,
@@ -110,22 +139,33 @@ const resolveParsedClaim = (
 ): HomeBatteryClaimObservation | undefined => {
     if (controlSurface.kind !== 'setpoint') return undefined;
     const { capabilityId } = controlSurface.claim;
-    // A claim is carried only while the previous snapshot claimed through the
-    // same capability. A stored claim always belongs to its own snapshot's
-    // surface (this parse reads the surface's capability, and the realtime
-    // handler stores only an event on it), so comparing the surfaces keeps a
-    // reclassified battery from carrying a claim read off a capability it no
-    // longer claims through.
-    const previousSurface = previousSnapshot?.homeBattery?.controlSurface;
-    const kept = previousSurface?.kind === 'setpoint' && previousSurface.claim.capabilityId === capabilityId
-        ? previousSnapshot?.batteryClaim
-        : undefined;
+    const kept = resolveCarriedClaim(capabilityId, previousSnapshot);
     const entry = capabilityObj[capabilityId];
     const value = readClaimValue(entry?.value);
     const observedAtMs = toCapabilityTimestampMs(entry?.lastUpdated);
     if (value === undefined || observedAtMs === undefined) return kept;
     if (kept?.value === value) return { value, observedAtMs: Math.max(kept.observedAtMs, observedAtMs) };
+    if (kept !== undefined && kept.observedAtMs - observedAtMs > CLAIM_STAMP_SKEW_MS) return kept;
     return { value, observedAtMs };
+};
+
+/**
+ * A transport snapshot as the battery control owner reads it
+ * (`BatteryControlRead`): `undefined` is a device not observed (yet), a
+ * snapshot without the home-battery cluster is no battery, and a battery
+ * without a setpoint surface is one PELS can only observe. A setpoint battery
+ * that has not reported its claim value reads `unreported`.
+ */
+export const toBatteryControlRead = (snapshot: TransportDeviceSnapshot | undefined): BatteryControlRead => {
+    if (snapshot === undefined) return { kind: 'unobserved' };
+    if (!isHomeBatterySnapshot(snapshot)) return { kind: 'not_battery' };
+    const surface = snapshot.homeBattery.controlSurface;
+    if (surface.kind !== 'setpoint') return { kind: 'observe_only' };
+    // No claim cluster is a battery that has reported no claim value yet.
+    const claim: HomeBatteryClaimRead = snapshot.batteryClaim === undefined
+        ? { kind: 'unreported' }
+        : snapshot.batteryClaim;
+    return { kind: 'setpoint', surface, claim };
 };
 
 /**

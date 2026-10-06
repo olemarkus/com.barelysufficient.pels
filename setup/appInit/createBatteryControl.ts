@@ -1,35 +1,19 @@
 import type { AppContext } from '../../lib/app/appContext';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
-import type { HomeBatteryDescriptorProbe, HomeBatteryObservedProbe } from '../../packages/contracts/src/types';
 import type { TeardownRegistry } from '../../lib/utils/teardownRegistry';
-import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
-import {
-  HomeBatteryControlOwner,
-  type BatteryControlRead,
-  type HomeBatteryClaimRead,
-} from '../../lib/battery/batteryControlOwner';
+import { HomeBatteryControlOwner } from '../../lib/battery/batteryControlOwner';
 import type { BatteryControlOwner, StorageLaneBinding } from '../../lib/ports/batteryControlOwner';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireBatteryControl, requireDeviceManager } from './contextGuards';
-
-const UNREPORTED_CLAIM: HomeBatteryClaimRead = { kind: 'unreported' };
-
-/** A transport snapshot as the battery owner reads it; `undefined` is a device not observed (yet). */
-export const toBatteryControlRead = (
-  snapshot: (HomeBatteryDescriptorProbe & HomeBatteryObservedProbe) | undefined,
-): BatteryControlRead => {
-  if (snapshot === undefined) return { kind: 'unobserved' };
-  const surface = snapshot.homeBattery?.controlSurface;
-  if (surface?.kind !== 'setpoint') return { kind: 'observe_only' };
-  return { kind: 'setpoint', surface, claim: snapshot.batteryClaim ?? UNREPORTED_CLAIM };
-};
+import { bindSettledMainHomeMember } from './mainHomeMembership';
 
 /**
  * The Main home's battery control owner, constructed with the reads it owns
  * policy over. Main only in v1: the owner refuses a claim for any battery
- * whose home is not Main, against the live membership read here. Membership
- * is published by its own startup step and cleared at app stop, so it is read
- * per call, like Main's write fence reads it.
+ * that is not a Main-home member on settled membership
+ * (`isSettledMainHomeMember`, bound in `mainHomeMembership.ts`). Membership is
+ * published by its own startup step and cleared at app stop, so it is read per
+ * call, like Main's write fence reads it.
  *
  * Hand-backs go through the device actuator without Main's fence, which the
  * owner applies to claims only (see its header for why hand-back is exempt).
@@ -43,15 +27,15 @@ export const createMainBatteryControl = (
   const deviceManager = requireDeviceManager(ctx);
   const actuator = buildDeviceActuator(ctx);
   if (!actuator) throw new Error('Device actuator must be initialized before battery control setup.');
-  return new HomeBatteryControlOwner({
-    settings: ctx.homey.settings,
-    managed: ctx.batteryManaged,
-    actuation: actuator,
-    getBattery: (deviceId) => toBatteryControlRead(deviceManager.getSnapshotByDeviceId(deviceId)),
-    isMainHomeMember: (deviceId) => ctx.homeMembership?.getHomeIdForDevice(deviceId) === MAIN_HOME_ID,
+  return new HomeBatteryControlOwner(
+    ctx.homey.settings,
+    ctx.batteryManaged,
+    actuator,
+    (deviceId) => deviceManager.readBatteryControl(deviceId),
+    bindSettledMainHomeMember(ctx),
     isActuationFenced,
-    isCapacityDryRun: () => ctx.capacityDryRun,
-  });
+    () => ctx.capacityDryRun,
+  );
 };
 
 /** Held in the teardown registry; `runUninit` clears it to detach the snapshot feed. */

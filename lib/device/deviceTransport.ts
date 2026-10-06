@@ -24,6 +24,7 @@ import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
 import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
+import type { BatteryControlRead } from '../ports/batteryControlOwner';
 import type { StoragePowerCommand, StoragePowerWrite, StorageReleaseCommand } from '../ports/storageCommand';
 import type { FlowSteppedLoadAdmission } from '../ports/flowSteppedLoadAdmission';
 import { admitFlowSteppedLoadReport } from './transport/observationFlowStepped';
@@ -290,6 +291,10 @@ export class DeviceTransport {
      */
     setOnHomeBatteryDevicesResolved(callback: (() => void) | undefined): void {
         this.observationProducers.battery.setOnBatteryDevicesResolved(callback);
+    }
+    /** The device as the battery control owner reads it (`DeviceSnapshotReader.readBatteryControl`). */
+    readBatteryControl(id: string): BatteryControlRead {
+        return this.reader.readBatteryControl(id);
     }
     /** Whether ANY home battery is currently detected (incl. offline). */
     hasBatteryDevices(): boolean { return this.observationProducers.battery.hasBatteryDevices(); }

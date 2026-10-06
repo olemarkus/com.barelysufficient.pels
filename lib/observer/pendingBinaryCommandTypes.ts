@@ -17,7 +17,7 @@
  * one window for every device and axis, so a stored per-entry number could
  * only ever restate or contradict it.
  */
-import { CONTROL_COMMAND_CONFIRMATION_MS } from './controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 
 /**
  * Observation sources that can settle a pending command. Identical to

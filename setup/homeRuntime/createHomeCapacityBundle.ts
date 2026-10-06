@@ -308,6 +308,8 @@ function buildSubHomeScope(params: {
         pruneCommandability: binaryCommandReachability.prune,
       });
     },
+    // Home-battery control is Main only (v1): no battery here is watched for control.
+    isBatteryWatchOnly: () => false,
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
     ...createHomeSignalWriters(ctx, homeId, isTornDown),

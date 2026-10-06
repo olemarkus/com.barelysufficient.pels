@@ -7,6 +7,7 @@
  */
 import type { HomeBatteryControlSurface } from '../../packages/contracts/src/types';
 import { getLogger } from '../logging/logger';
+import type { BatteryControlRead } from '../ports/batteryControlOwner';
 
 const logger = getLogger('battery');
 
@@ -15,8 +16,8 @@ export const BATTERY_WATCH_ONLY_MS = 6 * 60 * 60_000;
 
 type SetpointSurface = Extract<HomeBatteryControlSurface, { kind: 'setpoint' }>;
 
-/** The battery's setpoint surface as read now, or that it is unseen or has none. */
-type CurrentSurface = SetpointSurface | 'unobserved' | 'observe_only';
+/** The battery's setpoint surface as read now, or that it is unseen, has none, or is no battery. */
+type CurrentSurface = SetpointSurface | Exclude<BatteryControlRead['kind'], 'setpoint'>;
 
 /** A watch-only battery: the surface its app refused control on, and when. */
 type WatchOnlyEntry = { surface: SetpointSurface; sinceMs: number };
@@ -44,7 +45,7 @@ const resolveWatchOnlyEnd = (
   if (nowMs - refused.sinceMs >= BATTERY_WATCH_ONLY_MS) return 'expired';
   // An unseen battery has shown no new surface.
   if (surface === 'unobserved') return 'held';
-  return surface !== 'observe_only' && isSameSurface(refused.surface, surface) ? 'held' : 'control_surface_changed';
+  return typeof surface === 'object' && isSameSurface(refused.surface, surface) ? 'held' : 'control_surface_changed';
 };
 
 export class BatteryWatchOnlyLedger {

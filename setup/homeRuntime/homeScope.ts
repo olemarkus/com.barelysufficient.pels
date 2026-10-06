@@ -29,7 +29,7 @@ import { requireDeferredObjectivePlanHistoryRecorder } from '../appInit/deferred
  * target with no capacity pressure at all — exactly as main does. That is the
  * restore anchor; see `getModeDeviceTargets` below.
  */
-import { requirePlanService } from '../appInit/contextGuards';
+import { requireBatteryControl, requirePlanService } from '../appInit/contextGuards';
 import { mainStorageLane } from '../appInit/createBatteryControl';
 import { requireDeferredObjectiveEnergyDelivery } from '../appInit/deferredRecorders';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
@@ -98,6 +98,12 @@ export type HomeScope = {
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   /** Active planned devices with a unique, gap-free relative priority in this home. */
   getPlanDevices: () => PlanInputDevice[];
+  /**
+   * Whether PELS can only watch this home battery for now, for its card
+   * (`BatteryControlOwner.isWatchOnly`). Main binds its battery control owner;
+   * a meter area controls no battery, so it binds false.
+   */
+  isBatteryWatchOnly: (deviceId: string) => boolean;
   binaryCommandLifecycle: BinaryCommandLifecycleListener;
   disposeBinaryCommandReachability: () => void;
   // Signal writers. The two settings keys are this home's
@@ -297,6 +303,8 @@ export function buildMainHomeScope(
         ),
       });
     },
+    // Built by its startup step before the plan stack reads a card.
+    isBatteryWatchOnly: (deviceId) => requireBatteryControl(ctx).isWatchOnly(deviceId),
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
     // Main has a teardown edge like any other home: `runUninit` calls

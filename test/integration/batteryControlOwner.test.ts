@@ -4,23 +4,24 @@
 // are doubles. The same owner over the real transport is covered in
 // homeBatteryClaimLifecycle.test.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  BATTERY_RELEASE_RETRY_BACKOFF_MS,
-  HomeBatteryControlOwner,
-  type BatteryControlRead,
-} from '../../lib/battery/batteryControlOwner';
+import { HomeBatteryControlOwner } from '../../lib/battery/batteryControlOwner';
+import { BATTERY_RELEASE_RETRY_BACKOFF_MS } from '../../lib/battery/pendingHandBacks';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
+import type { BatteryControlRead } from '../../lib/ports/batteryControlOwner';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { StorageCommand } from '../../lib/ports/storageCommand';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 import { captureLogger } from '../utils/loggerCapture';
 
 const BATTERY = 'battery-1';
 const OTHER = 'battery-2';
 const CLAIM_KEY = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}${BATTERY}`;
 const T0 = Date.UTC(2026, 9, 5, 12, 0, 0);
+/** The confirmation window after a claim at T0 is over: another claim value then is a takeover. */
+const WINDOW_OVER = T0 + CONTROL_COMMAND_CONFIRMATION_MS;
 
 const settingsStore = (initial: Record<string, unknown> = {}): SettingsPort => {
   const values = new Map<string, unknown>([['capacity_limit_kw', 10], ...Object.entries(initial)]);
@@ -68,20 +69,20 @@ const buildOwner = (params: {
   const settings = params.settings ?? settingsStore();
   const batteries: Record<string, BatteryControlRead> = params.batteries ?? { [BATTERY]: setpointBattery('anti_feed') };
   const commands: StorageCommand[] = [];
-  const owner = new HomeBatteryControlOwner({
+  const owner = new HomeBatteryControlOwner(
     settings,
-    managed: new BatteryManagedSettings(settings),
-    actuation: {
-      apply: async (command) => {
+    new BatteryManagedSettings(settings),
+    {
+      apply: async (command: StorageCommand) => {
         commands.push(command);
         return params.apply ? params.apply(command) : { requested: true };
       },
     },
-    getBattery: (deviceId) => batteries[deviceId] ?? { kind: 'unobserved' },
-    isMainHomeMember: () => params.mainMember ?? true,
-    isActuationFenced: () => params.fenced ?? false,
-    isCapacityDryRun: () => params.dryRun ?? false,
-  });
+    (deviceId) => batteries[deviceId] ?? { kind: 'unobserved' },
+    () => params.mainMember ?? true,
+    () => params.fenced ?? false,
+    () => params.dryRun ?? false,
+  );
   return { owner, settings, commands, batteries };
 };
 
@@ -100,12 +101,17 @@ afterEach(() => {
 });
 
 describe('HomeBatteryControlOwner admission', () => {
-  it('respects a takeover inside the confirmation window and across a restart', async () => {
+  it('writes no claim over another value inside the confirmation window, and respects it as a takeover after', async () => {
     const { owner, batteries, settings, commands } = buildOwner();
     owner.admitClaim(BATTERY);
     batteries[BATTERY] = setpointBattery('manual', T0 + 1000);
     vi.setSystemTime(T0 + 2000);
 
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'claim_contested' });
+    expect(owner.readControl(BATTERY)).toMatchObject({ admissible: true, handBackDeferred: false });
+    expect(owner.isManaged(BATTERY)).toBe(true);
+
+    vi.setSystemTime(WINDOW_OVER);
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'control_disabled' });
     await owner.releaseClaim(BATTERY, 'not_admissible');
     expect(commands).toEqual([]);
@@ -119,7 +125,7 @@ describe('HomeBatteryControlOwner admission', () => {
     const { owner, batteries } = buildOwner();
     owner.admitClaim(BATTERY);
     batteries[BATTERY] = setpointBattery('manual', T0 + 1000);
-    vi.setSystemTime(T0 + 2000);
+    vi.setSystemTime(WINDOW_OVER);
     const logs = captureLogger('info');
     owner.admitClaim(BATTERY);
     await settle();
@@ -133,7 +139,7 @@ describe('HomeBatteryControlOwner admission', () => {
     const { owner, batteries, settings } = buildOwner();
     owner.admitClaim(BATTERY);
     batteries[BATTERY] = setpointBattery('manual', T0 + 1000);
-    vi.setSystemTime(T0 + 2000);
+    vi.setSystemTime(WINDOW_OVER);
     owner.admitClaim(BATTERY);
     await settle();
     expect(owner.isManaged(BATTERY)).toBe(false);
@@ -345,6 +351,7 @@ describe('HomeBatteryControlOwner hand-back', () => {
     const { owner, settings, commands, batteries } = buildOwner();
     owner.admitClaim(BATTERY);
     batteries[BATTERY] = setpointBattery('manual', T0 + 5_000);
+    vi.setSystemTime(WINDOW_OVER);
 
     settings.set(BATTERY_CONTROL_DEVICES, { [BATTERY]: false });
     owner.applyControlSettings();
@@ -430,6 +437,75 @@ describe('HomeBatteryControlOwner hand-back', () => {
       deviceId: BATTERY, failure: 'restore_value_undeclared', terminal: true,
     })]);
     logs.restore();
+  });
+
+  it('reads a battery that already shows the restore value at boot as handed back, Managed left on', async () => {
+    // A previous run handed the battery back, but the record's delete failed.
+    const { owner, settings, commands } = buildOwner({
+      settings: settingsStore({ [CLAIM_KEY]: record('anti_feed') }),
+      batteries: { [BATTERY]: setpointBattery('anti_feed', T0 - 60_000) },
+    });
+
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+
+    expect(commands).toEqual([]);
+    expect(owner.isManaged(BATTERY)).toBe(true);
+    expect(owner.wasTakenOver(BATTERY)).toBe(false);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('reads a boot record the battery already shows handed back as such on a first admission too', () => {
+    const { owner, settings } = buildOwner({
+      settings: settingsStore({ [CLAIM_KEY]: record('anti_feed') }),
+      batteries: { [BATTERY]: setpointBattery('anti_feed', T0 - 60_000) },
+    });
+
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'admitted' });
+    expect(owner.isManaged(BATTERY)).toBe(true);
+    expect(settings.get(CLAIM_KEY)).toEqual(record('anti_feed', T0));
+  });
+
+  it('keeps the record of a battery whose hand-back was asked for while its claim was contested', async () => {
+    const { owner, settings, commands, batteries } = buildOwner();
+    owner.admitClaim(BATTERY);
+    // The battery app's stale echo of its own mode, which is the value PELS would restore.
+    batteries[BATTERY] = setpointBattery('anti_feed', T0 + 2_000);
+    vi.setSystemTime(T0 + 3_000);
+
+    expect(await owner.releaseClaim(BATTERY, 'idle')).toBe('not_released');
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([]);
+    expect(settings.get(CLAIM_KEY)).toEqual(record('anti_feed', T0));
+    expect(owner.isManaged(BATTERY)).toBe(true);
+
+    // Its next poll reports PELS's claim; the retry hands the battery back.
+    batteries[BATTERY] = setpointBattery('homey', T0 + 8_000);
+    vi.setSystemTime(T0 + 3_000 + BATTERY_RELEASE_RETRY_BACKOFF_MS[0]);
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('tries a terminal hand-back again once the battery\'s control surface no longer stops it', async () => {
+    const batteries: Record<string, BatteryControlRead> = { [BATTERY]: { kind: 'observe_only' } };
+    const { owner, settings, commands } = buildOwner({
+      settings: settingsStore({ [CLAIM_KEY]: record('anti_feed') }),
+      batteries,
+    });
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([]);
+
+    // Its app exposes the setpoint again.
+    batteries[BATTERY] = setpointBattery('homey');
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 
   it('adopts a previous run\'s claim on admission instead of handing it back', async () => {
@@ -550,15 +626,15 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
     let dryRun = false;
     const settings = settingsStore();
     const commands: StorageCommand[] = [];
-    const owner = new HomeBatteryControlOwner({
+    const owner = new HomeBatteryControlOwner(
       settings,
-      managed: new BatteryManagedSettings(settings),
-      actuation: { apply: async (command) => { commands.push(command); return { requested: true }; } },
-      getBattery: () => setpointBattery('anti_feed'),
-      isMainHomeMember: () => true,
-      isActuationFenced: () => false,
-      isCapacityDryRun: () => dryRun,
-    });
+      new BatteryManagedSettings(settings),
+      { apply: async (command: StorageCommand) => { commands.push(command); return { requested: true }; } },
+      () => setpointBattery('anti_feed'),
+      () => true,
+      () => false,
+      () => dryRun,
+    );
     owner.admitClaim(BATTERY);
 
     dryRun = true;

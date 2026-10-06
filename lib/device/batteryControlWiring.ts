@@ -35,7 +35,8 @@ const TARGET_POWER_MODE_HOMEY_VALUE = 'homey';
  *   `POWER_STRATEGY_API`, the strategy that hands the battery to Homey.
  * - The `target_power` listener acts only under `POWER_STRATEGY_API`
  *   (`setPowerSetpoint` throws otherwise, unless the owner set
- *   `force_control_strategy`), so the claim is written before every setpoint.
+ *   `force_control_strategy`), so the claim is written before any setpoint
+ *   while the battery does not report it.
  *   It writes `power_setpoint = -target_power`, and a positive
  *   `power_setpoint` discharges: Homey's sign, positive charges.
  * - `setControlStrategy` throws unless the device uses its local login

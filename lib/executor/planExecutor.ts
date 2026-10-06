@@ -127,24 +127,14 @@ export class PlanExecutor {
 
   constructor(private deps: PlanExecutorDeps, private state: PlanEngineState) {
     this.shortfallExecutor = new ShortfallExecutor(deps, state);
-    this.storage = deps.storageLane.kind === 'none' ? NO_STORAGE_LANE : new BatteryExecutor({
-      owner: deps.storageLane.owner,
-      actuator: deps.actuator,
-      readBatteryPower: (deviceId) => deps.getObservedState(deviceId)?.batteryPower,
-      getPowerTracker: deps.getPowerTracker,
-      readManagedDrawW: () => this.readManagedDrawW(),
-      hasShedOrRestoreSince: (sinceMs) => this.state.actuation.hasShedOrRestoreSince(sinceMs),
-      recordRestore: (deviceId, name, nowMs) => this.recordRestoreActuation(deviceId, name, nowMs),
-    });
-  }
-
-  /** The managed devices' own metered draw, W: everything metered but a battery or panel. */
-  private readManagedDrawW(): number {
-    return readExecutorDevices(this.deps).reduce((totalW, device) => (
-      this.deps.getDeviceConfiguration(device.id)?.isBatteryOrSolar === true || !hasObservedMeasuredPower(device)
-        ? totalW
-        : totalW + device.measuredPowerKw * 1000
-    ), 0);
+    this.storage = deps.storageLane.kind === 'none' ? NO_STORAGE_LANE : new BatteryExecutor(
+      deps.storageLane.owner,
+      deps.actuator,
+      deps,
+      deps.getPowerTracker,
+      state.actuation,
+      this.boundRecordRestoreActuation,
+    );
   }
 
   /** Judge the storage lane's setpoints in flight against this reading. */
