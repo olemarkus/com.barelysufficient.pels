@@ -149,7 +149,7 @@ describe('buildDecisionSentence', () => {
 
   describe('the batteries it names as holding the limit', () => {
     const card = (signedW: number): HomeBatteryCard => ({
-      kind: 'battery', drivable: true,
+      kind: 'battery', control: 'drivable',
       power: { kind: 'observed', signedW },
       level: { kind: 'observed', percent: 60 },
     });

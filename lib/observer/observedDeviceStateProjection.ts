@@ -77,37 +77,48 @@ export function readObservedStateOfCharge(
 }
 
 /**
+ * Whether PELS could drive a home battery, as its card says it: `drivable` (a
+ * `setpoint` control surface), `observe_only` (none), or `watch_only` (a
+ * setpoint surface whose app refused PELS's claim for now: the battery
+ * owner's `isWatchOnly`).
+ */
+export type HomeBatteryCardControl = 'drivable' | 'observe_only' | 'watch_only';
+
+/**
  * A home battery as its overview card reads it: whether PELS could drive it
- * (a `setpoint` control surface), and its own power and level, each explicit
- * when the battery has not reported one. `none`: the device is not a home
- * battery.
+ * (`HomeBatteryCardControl`), and its own power and level, each explicit when
+ * the battery has not reported one. `none`: the device is not a home battery.
  */
 export type HomeBatteryCardRead =
     | { kind: 'none' }
     | {
         kind: 'battery';
-        drivable: boolean;
+        control: HomeBatteryCardControl;
         power: { kind: 'observed'; signedW: number } | { kind: 'absent' };
         level: { kind: 'observed'; percent: number } | { kind: 'absent' };
     };
 
 /**
  * Owner read of a home battery's card facts for producer wiring: the
- * descriptor the transport resolved at parse (`homeBattery`), and the signed
- * power and level the observer projection carries. Nothing here decides on
- * either reading.
+ * descriptor the transport resolved at parse (`homeBattery`), the signed
+ * power and level the observer projection carries, and whether the battery
+ * owner only watches it (`watchOnly`, its `isWatchOnly`). Nothing here decides
+ * on any of them.
  */
 export function readHomeBatteryCard(
     descriptor: HomeBatteryDescriptorProbe | undefined,
     state: (ObservedDeviceState & HomeBatteryObservedProbe) | undefined,
+    watchOnly: boolean,
 ): HomeBatteryCardRead {
     const surface = descriptor?.homeBattery?.controlSurface;
     if (surface === undefined) return { kind: 'none' };
     const power = state?.batteryPower;
     const level = state?.batteryLevel;
+    const setpointControl: HomeBatteryCardControl = watchOnly ? 'watch_only' : 'drivable';
+    const control: HomeBatteryCardControl = surface.kind === 'setpoint' ? setpointControl : 'observe_only';
     return {
         kind: 'battery',
-        drivable: surface.kind === 'setpoint',
+        control,
         power: power === undefined ? { kind: 'absent' } : { kind: 'observed', signedW: power.signedW },
         level: level === undefined ? { kind: 'absent' } : { kind: 'observed', percent: level.percent },
     };

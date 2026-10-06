@@ -7,11 +7,12 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import type { SteppedLoadWrite } from '../../ports/steppedLoadWrite';
-import type { StoragePowerCommand, StorageReleaseCommand } from '../../ports/storageCommand';
+import type { StoragePowerCommand, StoragePowerWrite, StorageReleaseCommand } from '../../ports/storageCommand';
 import type { HomeBatteryControlSurface } from '../../../packages/contracts/src/types';
 import { getDebugEmitter } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
+import { resolveHomeyHttpStatusCode } from '../../utils/homeyHttpStatusError';
 import { normalizeTargetCapabilityValue } from '../../../packages/shared-domain/src/targetCapabilities';
 import { isSteppedLoadOffStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { logEvCapabilityAccepted, logEvCapabilityRequest } from '../managerControl';
@@ -229,17 +230,35 @@ export class DeviceWriteService {
    * A home battery's signed setpoint: the claim capability is written to its
    * Homey value first, on every setpoint (an idempotent write, so PELS holds no
    * record of what it last wrote), then `target_power` takes the setpoint
-   * mapped onto the battery's declared range. Returns the watts written. A
-   * rejected write throws; the setpoint is never written after a claim write
-   * that failed.
+   * mapped onto the battery's declared range. Returns the watts written.
+   *
+   * The setpoint is never written after a claim write that failed. A claim
+   * write Homey answered with an HTTP error status resolves as
+   * `claim_rejected`, for the battery owner to judge against the binding. A
+   * claim write with no answer (a timeout, a connection reset, an unreadable
+   * 2xx: its outcome unknown), a refused setpoint and a missing REST client
+   * throw.
    */
-  async requestStoragePower(command: StoragePowerCommand): Promise<number> {
+  async requestStoragePower(command: StoragePowerCommand): Promise<StoragePowerWrite> {
     const { deviceId } = command;
     const surface = requireSetpointSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
-    await this.setCapability(deviceId, surface.claim.capabilityId, surface.claim.homeyValue);
+    // Checked here as well as in `setCapability`, so a write that never left
+    // PELS is not mistaken for one the battery's app rejected.
+    if (!hasRestClient()) throw new Error('REST client not ready');
+    try {
+      await this.setCapability(deviceId, surface.claim.capabilityId, surface.claim.homeyValue);
+    } catch (error) {
+      // Only an answer is a rejection: an HTTP error status, which is how
+      // Homey returns a capability listener's throw (an app's own error comes
+      // back as HTTP 500, as myUplink's "Failed to change the settings." does).
+      // A timeout, a connection reset or an unreadable 2xx may have landed: its
+      // outcome is unknown, and it throws like any other failed write.
+      if (resolveHomeyHttpStatusCode(error) === undefined) throw error;
+      return { kind: 'claim_rejected', errorMessage: normalizeError(error).message };
+    }
     const setpointW = toTargetPowerCapabilityValue(command.setpointW, surface.range);
     await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, setpointW);
-    return setpointW;
+    return { kind: 'written', setpointW };
   }
 
   /**

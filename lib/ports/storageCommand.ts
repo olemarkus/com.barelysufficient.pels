@@ -31,6 +31,24 @@ export type StorageReleaseCommand = {
 export type StorageCommand = StoragePowerCommand | StorageReleaseCommand;
 
 /**
+ * The battery's app rejected the write to its claim capability, so no
+ * setpoint was written. What that means is the battery owner's call, made
+ * against the binding (`HomeBatteryControlSurface` claim `rejection`).
+ * `errorMessage` is the app's own words, localized: for the log only, never
+ * matched.
+ */
+export type StorageClaimRejected = { kind: 'claim_rejected'; errorMessage: string };
+
+/**
+ * What the transport did with a `storage_power` intent: the watts it wrote,
+ * or the claim write the battery's app rejected (Homey answered it with an
+ * HTTP error status). Any other failure (a setpoint write refused, a claim
+ * write with no answer, whose outcome is unknown, no REST client yet) throws,
+ * as every other write does.
+ */
+export type StoragePowerWrite = { kind: 'written'; setpointW: number } | StorageClaimRejected;
+
+/**
  * The write seam as the battery owner sees it. The injected `Actuator`
  * satisfies it structurally. The owner needs only whether the command went
  * out; a throw is a write the device or Homey refused.

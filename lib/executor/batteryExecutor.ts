@@ -12,7 +12,9 @@
  * - **Drift.** A setpoint has work only until it is sent; a release only while
  *   the claim is held and no hand-back is running, backing off or stopped. A
  *   write the battery or Homey refused is judged like an unanswered setpoint,
- *   never resent every rebuild.
+ *   never resent every rebuild, unless the owner reads a rejected claim as the
+ *   battery's app refusing control: then it only watches the battery, and the
+ *   lane has no lever on it.
  * - **Release.** A release decision hands the battery back through its owner
  *   (`releaseClaim`), which restores the claim value it recorded. Capacity
  *   simulation dispatches nothing, and the planner decides nothing for a
@@ -50,7 +52,7 @@
 import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
-import type { BatteryControlOwner, BatteryLeverRead } from '../ports/batteryControlOwner';
+import type { BatteryControlOwner, BatteryLeverRead, BatterySetpointOutcome } from '../ports/batteryControlOwner';
 import type { HomeBatteryPowerObservation } from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { PowerTrackerState } from '../power/tracker';
@@ -269,6 +271,9 @@ export class BatteryExecutor {
         const sent = await this.deps.actuator.apply({
           kind: 'storage_power', deviceId: device.id, setpointW: decision.setpointW,
         });
+        if (!sent.requested && sent.reason === 'claim_rejected') {
+          return { kind: sent.reason, errorMessage: sent.errorMessage };
+        }
         if (!sent.requested || sent.kind !== 'storage_power') return 'skipped';
         const record = this.commands.get(device.id);
         if (record !== undefined) this.commands.set(device.id, { ...record, setpointW: sent.requestedSetpointW });
@@ -278,6 +283,10 @@ export class BatteryExecutor {
         logger.info({
           event: 'battery_storage_claim_refused', deviceId: device.id, deviceName: device.name, reason: outcome.reason,
         });
+        return false;
+      }
+      if (outcome.status === 'claim_rejected') {
+        this.recordClaimRejected(device, decision, outcome);
         return false;
       }
       if (outcome.setpointW === 'skipped') {
@@ -298,6 +307,27 @@ export class BatteryExecutor {
       });
       return false;
     }
+  }
+
+  /**
+   * The battery's app rejected the claim, so no setpoint went out. A battery
+   * its owner now only watches has nothing left to judge (the owner logged
+   * it). Any other keeps the baseline, as a rejected setpoint does, so
+   * verification judges it unanswered and bounds the retries.
+   */
+  private recordClaimRejected(
+    device: StorageDecidedDevice,
+    decision: SetpointDecision,
+    outcome: Extract<BatterySetpointOutcome, { status: 'claim_rejected' }>,
+  ): void {
+    if (outcome.effect === 'watch_only') {
+      this.commands.delete(device.id);
+      return;
+    }
+    logger.warn({
+      event: 'battery_storage_setpoint_failed', deviceId: device.id, deviceName: device.name,
+      setpointW: decision.setpointW, failedWrite: 'claim', err: normalizeError(outcome.errorMessage),
+    });
   }
 
   /** The whole-home meter's latched reading, or `unavailable` when none is latched. */

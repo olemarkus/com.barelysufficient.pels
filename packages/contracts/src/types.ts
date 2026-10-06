@@ -860,6 +860,9 @@ export type ReportedStepObservedProbe = {
  */
 export type HomeBatteryClaimCapabilityId = 'target_power_mode' | 'control_strategy';
 
+/** What a rejected write to a home battery's claim capability means (`HomeBatteryControlSurface`). */
+export type HomeBatteryClaimRejection = 'app_refuses_control' | 'unanswered';
+
 /**
  * The signed `target_power` range a home battery accepts, in watts: positive
  * charges, negative discharges, and `minW < 0 < maxW`. A write strictly inside
@@ -898,6 +901,16 @@ export type HomeBatteryControlSurface =
             homeyValue: string;
             /** Every value the claim capability declares. */
             values: readonly string[];
+            /**
+             * What a write to the claim capability that the battery's app
+             * rejected tells PELS. `app_refuses_control`: the app refuses
+             * control in its current setup and will refuse every claim (a
+             * Sessy connected through its cloud login), so the battery owner
+             * stops claiming it (`lib/battery/batteryControlOwner.ts`).
+             * `unanswered`: no more than an unanswered setpoint, judged and
+             * backed off like one.
+             */
+            rejection: HomeBatteryClaimRejection;
         };
         range: HomeBatterySetpointRange;
     }

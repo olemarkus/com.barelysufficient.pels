@@ -7,7 +7,7 @@ const buildTransport = (overrides: Partial<ActuatorTransport> = {}): ActuatorTra
   canTurnOnDevice: () => true,
   resolveTemperatureTarget: vi.fn((_deviceId: string, desired: number) => desired),
   requestSteppedLoadStep: vi.fn(async () => ({ requested: false as const })),
-  requestStoragePower: vi.fn(async () => 0),
+  requestStoragePower: vi.fn(async () => ({ kind: 'written' as const, setpointW: 0 })),
   releaseStorageControl: vi.fn(async () => undefined),
   ...overrides,
 });
@@ -85,11 +85,18 @@ describe('createDeviceActuator — intent → transport mapping', () => {
   });
 
   it('passes a battery setpoint to transport and surfaces the watts it sent', async () => {
-    const requestStoragePower = vi.fn(async () => 1000);
+    const requestStoragePower = vi.fn(async () => ({ kind: 'written' as const, setpointW: 1000 }));
     const actuator = createDeviceActuator(buildTransport({ requestStoragePower }));
     const outcome = await actuator.apply({ kind: 'storage_power', deviceId: 'b1', setpointW: 990 });
     expect(requestStoragePower).toHaveBeenCalledWith({ kind: 'storage_power', deviceId: 'b1', setpointW: 990 });
     expect(outcome).toEqual({ requested: true, kind: 'storage_power', requestedSetpointW: 1000 });
+  });
+
+  it('carries a claim the battery app rejected as a setpoint not sent, with the app\'s message', async () => {
+    const requestStoragePower = vi.fn(async () => ({ kind: 'claim_rejected' as const, errorMessage: 'not in control' }));
+    const actuator = createDeviceActuator(buildTransport({ requestStoragePower }));
+    const outcome = await actuator.apply({ kind: 'storage_power', deviceId: 'b1', setpointW: 990 });
+    expect(outcome).toEqual({ requested: false, reason: 'claim_rejected', errorMessage: 'not in control' });
   });
 
   it('passes a battery hand-back to transport', async () => {

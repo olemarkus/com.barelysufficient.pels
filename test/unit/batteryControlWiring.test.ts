@@ -41,12 +41,13 @@ describe('resolveBatteryControlSurface', () => {
         capabilityId: 'target_power_mode',
         homeyValue: 'homey',
         values: ['homey', 'anti_feed', 'trade_mode', 'manual'],
+        rejection: 'unanswered',
       },
       range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     });
   });
 
-  it('classifies a Sessy (no target_power options, control_strategy enum) with Homey default range', () => {
+  it('classifies a Sessy (no target_power options, control_strategy enum) with its own preset range', () => {
     const surface = resolveBatteryControlSurface(
       device({ driverId: 'homey:app:nl.sessy:sessy' }),
       ['measure_battery', 'measure_power', 'target_power', 'control_strategy'],
@@ -66,7 +67,43 @@ describe('resolveBatteryControlSurface', () => {
         capabilityId: 'control_strategy',
         homeyValue: 'POWER_STRATEGY_API',
         values: ['POWER_STRATEGY_NOM', 'POWER_STRATEGY_API', 'POWER_STRATEGY_IDLE'],
+        // A rejected claim means its app refuses control (cloud login).
+        rejection: 'app_refuses_control',
       },
+      // The Sessy app's DISCHARGE (1800 W) and CHARGE (2200 W) presets, in PELS's sign.
+      range: { minW: -1800, maxW: 2200, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
+    });
+  });
+
+  it('keeps a range a Sessy declares over its preset range', () => {
+    const surface = resolveBatteryControlSurface(
+      device({ driverId: 'homey:app:nl.sessy:sessy' }),
+      ['target_power', 'control_strategy'],
+      capabilityMap({
+        target_power: { setable: true, min: -3000, max: 3500, step: 10 },
+        control_strategy: { setable: true, values: enumValues('POWER_STRATEGY_API') },
+      }),
+    );
+
+    expect(surface).toMatchObject({
+      kind: 'setpoint',
+      range: { minW: -3000, maxW: 3500, stepW: 10, excludeMinW: 0, excludeMaxW: 0 },
+    });
+  });
+
+  it('gives a battery outside the Sessy app that declares no range Homey\'s default range', () => {
+    const surface = resolveBatteryControlSurface(
+      device({ driverId: 'homey:app:com.marstek:venus' }),
+      ['target_power', 'target_power_mode'],
+      capabilityMap({
+        target_power: { setable: true },
+        target_power_mode: { setable: true, values: enumValues('homey', 'manual') },
+      }),
+    );
+
+    expect(surface).toMatchObject({
+      kind: 'setpoint',
+      claim: { rejection: 'unanswered' },
       range: { minW: -25000, maxW: 25000, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
     });
   });

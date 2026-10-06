@@ -1,5 +1,6 @@
 import type {
   HomeBatteryClaimCapabilityId,
+  HomeBatteryClaimRejection,
   HomeBatteryControlSurface,
   HomeBatterySetpointRange,
 } from '../../packages/contracts/src/types';
@@ -25,22 +26,54 @@ import type { DeviceCapabilityMap } from './managerControl';
 export const HOME_BATTERY_SETPOINT_CAPABILITY_ID = 'target_power';
 const TARGET_POWER_MODE_CAPABILITY_ID = 'target_power_mode';
 const TARGET_POWER_MODE_HOMEY_VALUE = 'homey';
+
+/*
+ * The Sessy binding, verified against the Sessy app's source (nl.sessy,
+ * `drivers/sessy/device.js` and `driver.compose.json`):
+ *
+ * - `control_strategy` is a setable enum whose values include
+ *   `POWER_STRATEGY_API`, the strategy that hands the battery to Homey.
+ * - The `target_power` listener acts only under `POWER_STRATEGY_API`
+ *   (`setPowerSetpoint` throws otherwise, unless the owner set
+ *   `force_control_strategy`), so the claim is written before every setpoint.
+ *   It writes `power_setpoint = -target_power`, and a positive
+ *   `power_setpoint` discharges: Homey's sign, positive charges.
+ * - `setControlStrategy` throws unless the device uses its local login
+ *   (`useLocalLogin`). A Sessy connected through its cloud login rejects every
+ *   claim, so a rejected claim write means its app refuses control
+ *   (`app_refuses_control`), not a battery that did not answer.
+ * - The driver declares no `target_power` min, max or step.
+ */
 const SESSY_CONTROL_STRATEGY_CAPABILITY_ID = 'control_strategy';
 const SESSY_CONTROL_STRATEGY_HOMEY_VALUE = 'POWER_STRATEGY_API';
 const SESSY_OWNER_URI = 'homey:app:nl.sessy';
 const SESSY_DRIVER_ID_PREFIXES = ['homey:app:nl.sessy:', 'nl.sessy:'] as const;
 
+/** The `target_power` edges a driver leaves out are read as these, W. */
+type TargetPowerDefaults = { minW: number; maxW: number; stepW: number };
+
 /**
- * Homey's own `target_power` options, applied when a driver declares none
- * (Sessy declares none). Source: homey-lib
- * `assets/capability/capabilities/target_power.json` (`min: -25000`,
- * `max: 25000`, `step: 1`; checked against homey-lib 2.52.2, the version the
- * Homey CLI ships). homey-lib is not a dependency of this repo, so the values
- * are copied rather than read.
+ * Homey's own `target_power` options, applied when a driver declares none.
+ * Source: homey-lib `assets/capability/capabilities/target_power.json`
+ * (`min: -25000`, `max: 25000`, `step: 1`; checked against homey-lib 2.52.2,
+ * the version the Homey CLI ships). homey-lib is not a dependency of this
+ * repo, so the values are copied rather than read.
  */
-const HOMEY_TARGET_POWER_DEFAULT_MIN_W = -25000;
-const HOMEY_TARGET_POWER_DEFAULT_MAX_W = 25000;
-const HOMEY_TARGET_POWER_DEFAULT_STEP_W = 1;
+const HOMEY_TARGET_POWER_DEFAULTS: TargetPowerDefaults = { minW: -25000, maxW: 25000, stepW: 1 };
+
+/**
+ * A Sessy's `target_power` edges when it declares none, in PELS's sign
+ * (positive charges): the Sessy app's own charge-mode presets, `setChargeMode`
+ * in nl.sessy `drivers/sessy/device.js` (`CHARGE` sets `power_setpoint` -2200,
+ * `DISCHARGE` +1800, and `target_power` is `-power_setpoint`). Homey's ±25 kW
+ * would let PELS credit a whole deficit to a 2.2 kW battery until it learned a
+ * plateau. An edge the driver declares always wins.
+ */
+const SESSY_TARGET_POWER_DEFAULTS: TargetPowerDefaults = {
+  minW: -1800,
+  maxW: 2200,
+  stepW: HOMEY_TARGET_POWER_DEFAULTS.stepW,
+};
 
 type CapabilityEntry = Readonly<Record<string, unknown>>;
 
@@ -64,10 +97,10 @@ const readNumericOption = (entry: CapabilityEntry, key: string, fallback: number
  * that does not contain 0 (Homey's own validator rejects that last one).
  * Malformed numbers are treated the same: no range PELS could write against.
  */
-const resolveSignedRange = (entry: CapabilityEntry): HomeBatterySetpointRange | null => {
-  const minW = readNumericOption(entry, 'min', HOMEY_TARGET_POWER_DEFAULT_MIN_W);
-  const maxW = readNumericOption(entry, 'max', HOMEY_TARGET_POWER_DEFAULT_MAX_W);
-  const stepW = readNumericOption(entry, 'step', HOMEY_TARGET_POWER_DEFAULT_STEP_W);
+const resolveSignedRange = (entry: CapabilityEntry, defaults: TargetPowerDefaults): HomeBatterySetpointRange | null => {
+  const minW = readNumericOption(entry, 'min', defaults.minW);
+  const maxW = readNumericOption(entry, 'max', defaults.maxW);
+  const stepW = readNumericOption(entry, 'step', defaults.stepW);
   // Homey reads a missing exclude edge as 0 (homey-lib `lib/App/index.js`), so
   // a device with no band resolves to the empty band (0, 0).
   const excludeMinW = readNumericOption(entry, 'excludeMin', 0);
@@ -100,7 +133,11 @@ const isSessyDevice = (device: HomeyDeviceLike): boolean => {
   return SESSY_DRIVER_ID_PREFIXES.some((prefix) => driverId.startsWith(prefix));
 };
 
-type ClaimCandidate = { capabilityId: HomeBatteryClaimCapabilityId; homeyValue: string };
+type ClaimCandidate = {
+  capabilityId: HomeBatteryClaimCapabilityId;
+  homeyValue: string;
+  rejection: HomeBatteryClaimRejection;
+};
 
 /**
  * The claim capabilities this battery declares, in preference order: the
@@ -113,12 +150,17 @@ const resolveClaimCandidates = (
   capabilities: readonly string[],
 ): ClaimCandidate[] => [
   ...(capabilities.includes(TARGET_POWER_MODE_CAPABILITY_ID)
-    ? [{ capabilityId: TARGET_POWER_MODE_CAPABILITY_ID, homeyValue: TARGET_POWER_MODE_HOMEY_VALUE } as const]
+    ? [{
+      capabilityId: TARGET_POWER_MODE_CAPABILITY_ID,
+      homeyValue: TARGET_POWER_MODE_HOMEY_VALUE,
+      rejection: 'unanswered',
+    } as const]
     : []),
   ...(capabilities.includes(SESSY_CONTROL_STRATEGY_CAPABILITY_ID) && isSessyDevice(device)
     ? [{
       capabilityId: SESSY_CONTROL_STRATEGY_CAPABILITY_ID,
       homeyValue: SESSY_CONTROL_STRATEGY_HOMEY_VALUE,
+      rejection: 'app_refuses_control',
     } as const]
     : []),
 ];
@@ -141,7 +183,10 @@ export function resolveBatteryControlSurface(
     : undefined;
   if (targetPower === undefined) return { kind: 'observe_only', reason: 'no_target_power' };
   if (targetPower.setable !== true) return { kind: 'observe_only', reason: 'target_power_not_setable' };
-  const range = resolveSignedRange(targetPower);
+  const range = resolveSignedRange(
+    targetPower,
+    isSessyDevice(device) ? SESSY_TARGET_POWER_DEFAULTS : HOMEY_TARGET_POWER_DEFAULTS,
+  );
   if (range === null) return { kind: 'observe_only', reason: 'not_signed_range' };
 
   const candidates = resolveClaimCandidates(device, capabilities).flatMap((candidate) => {

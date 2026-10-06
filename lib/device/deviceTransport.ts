@@ -24,7 +24,7 @@ import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
 import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
-import type { StoragePowerCommand, StorageReleaseCommand } from '../ports/storageCommand';
+import type { StoragePowerCommand, StoragePowerWrite, StorageReleaseCommand } from '../ports/storageCommand';
 import type { FlowSteppedLoadAdmission } from '../ports/flowSteppedLoadAdmission';
 import { admitFlowSteppedLoadReport } from './transport/observationFlowStepped';
 import type {
@@ -537,7 +537,7 @@ export class DeviceTransport {
     }
 
     /** A home battery's signed setpoint; the claim and the range stay this owner's binding. */
-    async requestStoragePower(command: StoragePowerCommand): Promise<number> {
+    async requestStoragePower(command: StoragePowerCommand): Promise<StoragePowerWrite> {
         return this.writeService.requestStoragePower(command);
     }
 

@@ -8,6 +8,7 @@ import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/plan
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import type { SettingsOverviewReadModelDeps } from '../../lib/plan/settingsOverviewReadModel';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import type { HomeBatteryCardControl } from '../../lib/observer/observedDeviceStateProjection';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 
 
@@ -556,12 +557,12 @@ describe('settingsOverviewReadModel', () => {
 });
 
 describe('settingsOverviewReadModel home battery card', () => {
-  const battery = (overrides: { signedW?: number | null; percent?: number; drivable?: boolean } = {}) => ({
+  const battery = (overrides: { signedW?: number | null; percent?: number; control?: HomeBatteryCardControl } = {}) => ({
     ...absentTemperature,
     getHomeBatteryCard: (deviceId: string) => (deviceId === 'battery-1'
       ? {
         kind: 'battery' as const,
-        drivable: overrides.drivable ?? true,
+        control: overrides.control ?? 'drivable',
         power: overrides.signedW === null
           ? { kind: 'absent' as const }
           : { kind: 'observed' as const, signedW: overrides.signedW ?? -2400 },
@@ -680,9 +681,21 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('gives a battery PELS cannot drive no promise of taking over', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice(), battery({ drivable: false }));
+    const card = buildSettingsOverviewDeviceReadModel(batteryDevice(), battery({ control: 'observe_only' }));
     expect(card.status.reason).toBeNull();
   });
+
+  it.each([{ kind: 'none' }, { kind: 'solar_only' }] as const)(
+    'says PELS can only watch a battery whose app refused its claim ($kind hold)',
+    (hold) => {
+      const card = buildSettingsOverviewDeviceReadModel(batteryDevice(hold), battery({ control: 'watch_only' }));
+      expect(card.status).toMatchObject({
+        label: 'Own mode',
+        kind: 'idle',
+        reason: { text: 'PELS can only watch it: its app does not accept control' },
+      });
+    },
+  );
 
   it('shows a managed battery on the overview and never a solar device', () => {
     const readModel = buildSettingsOverviewReadModel({

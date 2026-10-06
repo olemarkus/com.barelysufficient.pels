@@ -1,7 +1,12 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
-import type { StoragePowerCommand, StorageReleaseCommand } from '../ports/storageCommand';
+import type {
+  StorageClaimRejected,
+  StoragePowerCommand,
+  StoragePowerWrite,
+  StorageReleaseCommand,
+} from '../ports/storageCommand';
 
 /**
  * A channel-blind control intent — what control outcome the caller wants, named
@@ -58,8 +63,8 @@ export type ActuatorTransport = {
   /** Resolve the exact semantic setpoint before pending/retry preflight. */
   resolveTemperatureTarget: (deviceId: string, desired: number) => number;
   requestSteppedLoadStep: (request: SteppedLoadWrite) => Promise<SteppedLoadStepRequestResult>;
-  /** Claim the battery for Homey, then write the setpoint; returns the watts sent. */
-  requestStoragePower: (command: StoragePowerCommand) => Promise<number>;
+  /** Claim the battery for Homey, then write the setpoint: the watts sent, or the claim its app rejected. */
+  requestStoragePower: (command: StoragePowerCommand) => Promise<StoragePowerWrite>;
   /** Write a zero setpoint, then restore the recorded claim value. */
   releaseStorageControl: (command: StorageReleaseCommand) => Promise<void>;
 };
@@ -81,6 +86,15 @@ export type ActuatorOutcome =
      * transport is the only layer that can tell these apart, so it says which.
      */
     reason?: 'flow_trigger_timeout';
+  }
+  | {
+    requested: false;
+    /**
+     * A `storage_power` intent whose claim write the battery's app rejected:
+     * no setpoint went out. The battery owner judges what that means.
+     */
+    reason: StorageClaimRejected['kind'];
+    errorMessage: string;
   }
   | {
     requested: true;

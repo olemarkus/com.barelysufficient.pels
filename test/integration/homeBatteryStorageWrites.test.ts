@@ -8,6 +8,7 @@ import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 
 const homeyMock = mockHomeyInstance as unknown as Homey.App;
 const noop = (): void => undefined;
@@ -46,7 +47,7 @@ describe('home battery storage writes', () => {
     const { transport, writes } = setup(device);
 
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 990 }))
-      .resolves.toBe(1000);
+      .resolves.toEqual({ kind: 'written', setpointW: 1000 });
 
     expect(writes()).toEqual([['target_power_mode', 'homey'], ['target_power', 1000]]);
     expect(device.getActualCapabilityValue('target_power')).toBe(1000);
@@ -64,16 +65,34 @@ describe('home battery storage writes', () => {
     ]);
   });
 
-  it('never writes a setpoint after a claim write the device refused', async () => {
+  it('never writes a setpoint after a claim write the device refused, and says the claim was rejected', async () => {
     const device = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed' });
     device.configureCapabilityBehavior('target_power_mode', { onApiWrite: { accept: false } });
     const { transport, writes } = setup(device);
 
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 1500 }))
-      .rejects.toThrow('rejected');
+      .resolves.toEqual({ kind: 'claim_rejected', errorMessage: expect.stringContaining('rejected') });
 
     expect(writes()).toEqual([['target_power_mode', 'homey']]);
     expect(device.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
+  });
+
+  it('throws for a claim write that timed out: its outcome is unknown, not a rejection', async () => {
+    const { transport } = setup(buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed' }));
+    vi.spyOn(mockHomeyInstance.api, 'put').mockRejectedValueOnce(new HomeyRequestTimeoutError('PUT', '/capability'));
+
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 1500 }))
+      .rejects.toThrow('timed out');
+  });
+
+  it('throws for a claim write whose connection reset: no answer is no rejection', async () => {
+    const { transport } = setup(buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed' }));
+    vi.spyOn(mockHomeyInstance.api, 'put').mockRejectedValueOnce(
+      Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
+    );
+
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 1500 }))
+      .rejects.toThrow('socket hang up');
   });
 
   it('hands the battery back: setpoint 0 first, then the recorded claim value', async () => {
