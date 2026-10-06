@@ -29,7 +29,7 @@ import {
   type PendingObservationSource,
   isPendingBinaryCommandActive,
 } from './pendingBinaryCommandTypes';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from './controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import { getLogger } from '../logging/logger';
 
 export type {

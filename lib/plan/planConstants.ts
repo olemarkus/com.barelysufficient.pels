@@ -80,7 +80,7 @@ export const SWAP_RESTORE_RESERVE_KW = 0.3;
 export const HEADROOM_RESERVE_MAX_MS = 15 * 60 * 1000;
 // The old `BINARY_COMMAND_PENDING_MS` constant is gone: the pending window is
 // the observer-owned `CONTROL_COMMAND_CONFIRMATION_MS`
-// (`lib/observer/controlCommandConfirmation.ts`), which arrived with PR #4 of the
+// (`lib/ports/controlCommandConfirmation.ts`), which arrived with PR #4 of the
 // observer/transport split (see
 // `notes/state-management/observer-transport-split.md`). Plan does not surface
 // a constant of its own; consumers read the observer's constant directly.

@@ -1,6 +1,6 @@
 import type { ReportedStepObservedProbe } from '../../packages/contracts/src/types';
 import type { Loggers } from '../logging/logger';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import type {
   TargetPowerProbeConfiguration, TargetPowerReachabilityOwner,
 } from '../ports/targetPowerReachabilityOwner';

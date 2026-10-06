@@ -336,18 +336,14 @@ describe('home battery control surface at parse', () => {
     expect(events).toHaveLength(2);
   });
 
-  // A realtime claim is dated on arrival and a pulled one by Homey, so the two
-  // cannot be ordered: a read that reports a different value wins, which is
-  // what stops a claim write Homey rejected from outliving every refresh.
-  it('lets a full read with a different claim value replace a realtime claim, whatever its stamp', () => {
+  /** A realtime claim echo, then a full refresh (the parse, then the fresher-wins merge) pulling `pulledValue` Homey stamped `pulledAgeMs` before now. */
+  const refreshAfterRealtimeClaim = (pulledValue: string, pulledAgeMs: number) => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     transport.setSnapshotForTests(transport.parseDeviceListForTests([signedTargetPowerBattery()]));
     transport.injectCapabilityUpdateForTest('battery-setpoint', 'target_power_mode', 'homey');
     const held = transport.getSnapshotByDeviceId('battery-setpoint');
-    const olderStamp = new Date(Date.now() - 60_000).toISOString();
-    const pulled = signedTargetPowerBattery({ claim: { value: 'anti_feed', lastUpdated: olderStamp } });
-
-    // A full refresh is the parse, then the fresher-wins merge against what is held.
+    const pulledStamp = new Date(Date.now() - pulledAgeMs).toISOString();
+    const pulled = signedTargetPowerBattery({ claim: { value: pulledValue, lastUpdated: pulledStamp } });
     const [refreshed] = transport.parseDeviceListForTests([pulled]);
     mergeFresherCapabilityObservations({
       state: createObservationState(),
@@ -355,9 +351,25 @@ describe('home battery control surface at parse', () => {
       nextSnapshot: [refreshed],
       devices: [pulled],
     });
+    return { held: held?.batteryClaim, refreshed: refreshed.batteryClaim, pulledStamp };
+  };
 
-    expect(held?.batteryClaim?.value).toBe('homey');
-    expect(refreshed.batteryClaim).toEqual({ value: 'anti_feed', observedAtMs: Date.parse(olderStamp) });
+  // A pull Homey stamped well before the realtime echo was read before the
+  // change the echo reports: taking it would undo PELS's own claim until the
+  // next read.
+  it('keeps a realtime claim through a full read of another value Homey stamped well before it', () => {
+    const { held, refreshed } = refreshAfterRealtimeClaim('anti_feed', 60_000);
+
+    expect(held?.value).toBe('homey');
+    expect(refreshed).toEqual(held);
+  });
+
+  // A realtime claim is dated on arrival, a moment after Homey stamped the
+  // change, so a pull of a later change can carry a slightly earlier stamp.
+  it('lets a full read of another value replace a realtime claim within the clock skew', () => {
+    const { refreshed, pulledStamp } = refreshAfterRealtimeClaim('manual', 1_000);
+
+    expect(refreshed).toEqual({ value: 'manual', observedAtMs: Date.parse(pulledStamp) });
   });
 
   it('keeps the last claim through a full read that carries no claim value', () => {

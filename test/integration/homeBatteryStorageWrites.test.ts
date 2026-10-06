@@ -53,16 +53,13 @@ describe('home battery storage writes', () => {
     expect(device.getActualCapabilityValue('target_power')).toBe(1000);
   });
 
-  it('writes the claim on every setpoint, also to a battery already under Homey\'s claim', async () => {
+  it('writes only the setpoint to a battery that already reports Homey\'s claim', async () => {
     const { transport, writes } = setup(buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'homey', stepW: 100 }));
 
     await transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: -250 });
     await transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 600 });
 
-    expect(writes()).toEqual([
-      ['target_power_mode', 'homey'], ['target_power', -300],
-      ['target_power_mode', 'homey'], ['target_power', 600],
-    ]);
+    expect(writes()).toEqual([['target_power', -300], ['target_power', 600]]);
   });
 
   it('never writes a setpoint after a claim write the device refused, and says the claim was rejected', async () => {
@@ -100,6 +97,19 @@ describe('home battery storage writes', () => {
     const { transport, writes } = setup(device);
 
     await transport.releaseStorageControl({ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed' });
+
+    expect(writes()).toEqual([['target_power', 0], ['target_power_mode', 'anti_feed']]);
+    expect(device.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
+  });
+
+  it('restores the claim value even when the 0 W write failed, then reports the failure', async () => {
+    const device = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'homey', targetPowerW: -2000 });
+    device.configureCapabilityBehavior('target_power', { onApiWrite: { accept: false } });
+    const { transport, writes } = setup(device);
+
+    await expect(transport.releaseStorageControl({
+      kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed',
+    })).rejects.toThrow();
 
     expect(writes()).toEqual([['target_power', 0], ['target_power_mode', 'anti_feed']]);
     expect(device.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');

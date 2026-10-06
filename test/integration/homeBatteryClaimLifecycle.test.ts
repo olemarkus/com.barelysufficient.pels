@@ -9,12 +9,14 @@ import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { HomeBatteryControlOwner } from '../../lib/battery/batteryControlOwner';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
-import { toBatteryControlRead } from '../../setup/appInit/createBatteryControl';
 import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
 import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers } from '../mocks/homey';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
+import { captureLogger } from '../utils/loggerCapture';
 
 const homeyMock = mockHomeyInstance as unknown as Homey.App;
 const noop = (): void => undefined;
@@ -49,15 +51,15 @@ const setup = () => {
     requestStoragePower: (command) => transport.requestStoragePower(command),
     releaseStorageControl: (command) => transport.releaseStorageControl(command),
   });
-  const owner = new HomeBatteryControlOwner({
+  const owner = new HomeBatteryControlOwner(
     settings,
     managed,
-    actuation: actuator,
-    getBattery: (deviceId) => toBatteryControlRead(transport.getSnapshotByDeviceId(deviceId)),
-    isMainHomeMember: () => true,
-    isActuationFenced: () => false,
-    isCapacityDryRun: () => false,
-  });
+    actuator,
+    (deviceId) => transport.readBatteryControl(deviceId),
+    () => true,
+    () => false,
+    () => false,
+  );
   const sdkPut = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
   const put = vi.spyOn(mockHomeyInstance.api, 'put');
   const writes = (): Array<[string, unknown]> => put.mock.calls.map(([path, body]) => [
@@ -162,5 +164,54 @@ describe('home battery claim and hand-back through the real transport', () => {
     // see it, or the pending hand-back would act on a claim long gone.
     transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'manual');
     expect(transport.getSnapshotByDeviceId(BATTERY)?.batteryClaim?.value).toBe('manual');
+  });
+
+  it('reads the battery app\'s stale echo of its own mode after the claim as no takeover', async () => {
+    const { owner, writes, command, transport } = setup();
+    await command(1500);
+
+    // The battery's app read its mode early in a poll, before PELS's claim
+    // landed, and writes it back at the end; its next poll reports the claim.
+    vi.setSystemTime(Date.now() + 2_000);
+    transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'anti_feed');
+    owner.onSnapshotCommitted({ entries: [] });
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'claim_contested' });
+    vi.setSystemTime(Date.now() + 5_000);
+    transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'homey');
+    vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
+    owner.onSnapshotCommitted({ entries: [] });
+
+    expect(owner.isManaged(BATTERY)).toBe(true);
+    expect(owner.wasTakenOver(BATTERY)).toBe(false);
+    await command(1200);
+    expect(writes().at(-1)).toEqual(['target_power', 1200]);
+  });
+
+  it('reads a hand-back that landed but reported failure as handed back, not as a takeover', async () => {
+    const { owner, settings, command, transport, put, sdkPut } = setup();
+    await command(-800);
+    vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
+
+    // The restore lands on the battery, but its answer never comes back.
+    put.mockImplementation(async (path, body) => {
+      const answer = await sdkPut(path, body);
+      if (path.endsWith('/target_power_mode')) throw new HomeyRequestTimeoutError('PUT', path);
+      return answer;
+    });
+    expect(await owner.releaseClaim(BATTERY, 'idle')).toBe('not_released');
+    expect(settings.get(CLAIM_KEY)).not.toBeNull();
+
+    const logs = captureLogger('info');
+    vi.setSystemTime(Date.now() + 1_000);
+    transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'anti_feed');
+    owner.onSnapshotCommitted({ entries: [] });
+
+    expect(owner.isManaged(BATTERY)).toBe(true);
+    expect(owner.wasTakenOver(BATTERY)).toBe(false);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+    expect(logs.findEvent('battery_control_released')).toMatchObject({
+      deviceId: BATTERY, restoredClaimValue: 'anti_feed', recordRemoved: true,
+    });
+    logs.restore();
   });
 });

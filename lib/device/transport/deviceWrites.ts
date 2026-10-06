@@ -228,9 +228,11 @@ export class DeviceWriteService {
 
   /**
    * A home battery's signed setpoint: the claim capability is written to its
-   * Homey value first, on every setpoint (an idempotent write, so PELS holds no
-   * record of what it last wrote), then `target_power` takes the setpoint
-   * mapped onto the battery's declared range. Returns the watts written.
+   * Homey value first, unless the battery already reports that value, then
+   * `target_power` takes the setpoint mapped onto the battery's declared range.
+   * Returns the watts written. A battery that reports Homey's value while it
+   * no longer holds it is caught by the storage lane's claim check, as any
+   * other claim lost after a setpoint is.
    *
    * The setpoint is never written after a claim write that failed. A claim
    * write Homey answered with an HTTP error status resolves as
@@ -241,20 +243,23 @@ export class DeviceWriteService {
    */
   async requestStoragePower(command: StoragePowerCommand): Promise<StoragePowerWrite> {
     const { deviceId } = command;
-    const surface = requireSetpointSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
+    const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    const surface = requireSetpointSurface(snapshot, deviceId);
     // Checked here as well as in `setCapability`, so a write that never left
     // PELS is not mistaken for one the battery's app rejected.
     if (!hasRestClient()) throw new Error('REST client not ready');
-    try {
-      await this.setCapability(deviceId, surface.claim.capabilityId, surface.claim.homeyValue);
-    } catch (error) {
-      // Only an answer is a rejection: an HTTP error status, which is how
-      // Homey returns a capability listener's throw (an app's own error comes
-      // back as HTTP 500, as myUplink's "Failed to change the settings." does).
-      // A timeout, a connection reset or an unreadable 2xx may have landed: its
-      // outcome is unknown, and it throws like any other failed write.
-      if (resolveHomeyHttpStatusCode(error) === undefined) throw error;
-      return { kind: 'claim_rejected', errorMessage: normalizeError(error).message };
+    if (snapshot?.batteryClaim?.value !== surface.claim.homeyValue) {
+      try {
+        await this.setCapability(deviceId, surface.claim.capabilityId, surface.claim.homeyValue);
+      } catch (error) {
+        // Only an answer is a rejection: an HTTP error status, which is how
+        // Homey returns a capability listener's throw (an app's own error comes
+        // back as HTTP 500, as myUplink's "Failed to change the settings." does).
+        // A timeout, a connection reset or an unreadable 2xx may have landed: its
+        // outcome is unknown, and it throws like any other failed write.
+        if (resolveHomeyHttpStatusCode(error) === undefined) throw error;
+        return { kind: 'claim_rejected', errorMessage: normalizeError(error).message };
+      }
     }
     const setpointW = toTargetPowerCapabilityValue(command.setpointW, surface.range);
     await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, setpointW);
@@ -264,16 +269,23 @@ export class DeviceWriteService {
   /**
    * Hand a battery back: `target_power` 0 first, so the battery is idle before
    * anyone else holds it, then the claim capability is restored to the value
-   * recorded before PELS claimed it. Whether the battery is still PELS's to
-   * hand back, and whether its claim capability declares that value, is the
-   * battery owner's call, made against its claim record; this writes
-   * unconditionally.
+   * recorded before PELS claimed it. The restore is written even when the 0 W
+   * write failed: a battery back under its own mode no longer follows the
+   * setpoint, while one left under Homey's claim would hold its last setpoint
+   * through every retry back-off. Either failure then throws, the restore's
+   * first. Whether the battery is still PELS's to hand back, and whether its
+   * claim capability declares that value, is the battery owner's call, made
+   * against its claim record; this writes unconditionally.
    */
   async releaseStorageControl(command: StorageReleaseCommand): Promise<void> {
     const { deviceId, restoreClaimValue } = command;
     const surface = requireSetpointSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
-    await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, 0);
+    const zeroed = await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, 0).then(
+      () => ({ failed: false as const }),
+      (error: unknown) => ({ failed: true as const, error }),
+    );
     await this.setCapability(deviceId, surface.claim.capabilityId, restoreClaimValue);
+    if (zeroed.failed) throw zeroed.error;
   }
 
   async requestSteppedLoadStep(

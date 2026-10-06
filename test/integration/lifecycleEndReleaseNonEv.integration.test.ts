@@ -361,7 +361,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
     // second cycle (the device hasn't reported back yet) must not have the same
     // off command re-issued. The guard that holds is the pending-binary-command
     // record — a matching command in flight suppresses the duplicate for the
-    // whole confirmation window (`lib/observer/controlCommandConfirmation.ts`).
+    // whole confirmation window (`lib/ports/controlCommandConfirmation.ts`).
     it('does not re-fire the off command while the first one is still pending', async () => {
       const heater = buildBinaryHeaterSnapshot();
       const harness = buildHarness([heater]);

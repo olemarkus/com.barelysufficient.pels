@@ -9,7 +9,7 @@ import {
   createPendingBinaryCommandStore,
   syncPendingBinaryCommands,
 } from '../../lib/observer/pendingBinaryCommands';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';

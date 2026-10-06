@@ -177,10 +177,11 @@ The two storage intents drive a home battery. Their shapes live in
 `lib/ports/storageCommand.ts` so the battery control owner (`lib/battery/`),
 which imports no peer, can name what it dispatches. Transport resolves the
 claim capability, its Homey value and the signed `target_power` range from the
-battery's control surface: `storage_power` writes the claim value (on every
-setpoint: the write is idempotent, so transport keeps no record of it), then
-the setpoint; `storage_release` writes setpoint 0, then restores the value the
-owner recorded before PELS claimed the battery. The owner is the only issuer of
+battery's control surface: `storage_power` writes the claim value unless the
+battery already reports it, then the setpoint; `storage_release` writes
+setpoint 0, then restores the value the owner recorded before PELS claimed the
+battery, the restore written even when the 0 W write failed (that failure is
+reported after it). The owner is the only issuer of
 `storage_release` (when the plan releases the battery, on opt-out and at boot
 recovery, exempt from Main's fence like the executor's lifecycle release) and
 issues no `storage_power`: the executor's storage lane
@@ -456,7 +457,10 @@ wait for an unanswered battery. The planner sizes writable setpoints before
 credit or surplus funding. A release whose battery left Main travels as a
 plan-level `StorageReleaseIntent`; the owner keeps failed hand-back recovery.
 A newer external mode change persists an opt-out in `battery_control_devices`,
-which is the battery's Managed setting.
+which is the battery's Managed setting, once it outlasts the confirmation
+window after PELS's last claim write: inside it, a battery app's stale echo of
+its own mode is contested, not a takeover. A battery owed a hand-back that
+reports the value PELS would restore was handed back, not taken over.
 Deferred hand-backs still reserve held discharge
 against new starts, without adding that discharge to the shedding deficit.
 

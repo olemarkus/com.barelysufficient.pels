@@ -29,7 +29,7 @@
  */
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import type { PendingTargetCommandState, PlanEngineState } from '../plan/planState';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../observer/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 
 type PendingTargetStore = Pick<PlanEngineState, 'pendingTargetCommands'>;
 

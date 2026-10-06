@@ -1,4 +1,8 @@
-import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
+import type {
+  HomeBatteryClaimObservation,
+  HomeBatteryControlSurface,
+  HomeBatterySetpointRange,
+} from '../../packages/contracts/src/types';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
 import type { StorageVerdict } from '../../packages/planner-types/src/planInputDevice';
 import type { StorageReleaseReason } from '../planContract/storageDecision';
@@ -7,19 +11,43 @@ import type { StorageClaimRejected } from './storageCommand';
 /** Re-exported so `lib/battery`, a leaf domain, names the plan's hand-back reasons through its port. */
 export type { StorageReleaseReason } from '../planContract/storageDecision';
 
+/** The claim value a battery last reported on its surface's claim capability, or that it has reported none. */
+export type HomeBatteryClaimRead = { kind: 'unreported' } | HomeBatteryClaimObservation;
+
+/**
+ * A device as the battery control owner reads it, resolved by the device
+ * transport from its snapshot (`readBatteryControl` on `DeviceTransport`): not
+ * observed (yet), not a home battery at all, a battery PELS can only observe
+ * (no setpoint surface), or one it can drive through its setpoint surface.
+ */
+export type BatteryControlRead =
+  | { kind: 'unobserved' }
+  | { kind: 'not_battery' }
+  | { kind: 'observe_only' }
+  | {
+    kind: 'setpoint';
+    surface: Extract<HomeBatteryControlSurface, { kind: 'setpoint' }>;
+    claim: HomeBatteryClaimRead;
+  };
+
 /**
  * Why PELS may not claim a battery now:
  *
- * - `not_drivable` — the battery is not observed, or its control surface is
- *   not `setpoint`.
+ * - `not_drivable` — the device is not observed, is no home battery, or its
+ *   control surface is not `setpoint`.
  * - `watch_only` — its app rejected PELS's claim and refuses control as it is
  *   set up (`isWatchOnly`).
  * - `control_disabled` — the owner turned PELS's control of this battery off.
  * - `claim_lost` — a newer observation shows another controller took over.
+ * - `claim_contested` — the battery reported another claim value after PELS's
+ *   last claim write, inside the confirmation window: a stale echo of the
+ *   battery app's own mode, or a takeover. No claim is written until the
+ *   battery shows Homey's value again or the window ends (then a takeover).
  * - `control_setting_unreadable` — the opt-out setting has never read cleanly
  *   (fail closed for a claim).
  * - `not_main_home` — the battery is not a Main-home member (v1 is Main only),
- *   or membership cannot be resolved.
+ *   or membership is not settled (not resolved yet, or an ownership change
+ *   is pending).
  * - `actuation_fenced` — Main's write fence is closed.
  * - `dry_run` — capacity simulation is on: nothing may be written.
  * - `release_in_flight` — a hand-back of this battery is running.
@@ -42,6 +70,7 @@ export type BatteryClaimRefusal =
   | 'watch_only'
   | 'control_disabled'
   | 'claim_lost'
+  | 'claim_contested'
   | 'control_setting_unreadable'
   | 'not_main_home'
   | 'actuation_fenced'
@@ -113,8 +142,9 @@ export type BatteryLeverRead =
     claimEngaged: boolean;
     /**
      * PELS may hold the battery: `admitClaim` would admit it now, Main's write
-     * fence aside (a fence holds writes for a moment; it is no reason to hand the
-     * battery back). Side-effect free: nothing is recorded.
+     * fence and a contested claim aside (each holds writes for a moment; neither
+     * is a reason to hand the battery back). Side-effect free: nothing is
+     * recorded.
      */
     admissible: boolean;
     verdict: StorageVerdict;
@@ -202,8 +232,10 @@ export type BatteryControlOwner = {
   readonly verification: BatteryVerificationRecorder;
   /**
    * A committed device snapshot: prunes the record of a battery gone from
-   * Homey, and retries every hand-back that is due (boot recovery and failed
-   * releases, with backoff).
+   * Homey, drops the record of one that already shows the hand-back it is
+   * owed, turns Managed off for one taken over, retries every hand-back that
+   * is due (boot recovery and failed releases, with backoff), and every
+   * stopped one whose control surface no longer stops it.
    */
   onSnapshotCommitted(refresh: ObservedDeviceStateRefreshPayload): void;
   /**
