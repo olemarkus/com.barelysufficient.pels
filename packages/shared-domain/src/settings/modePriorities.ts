@@ -130,7 +130,7 @@ export class ModePriorityCatalog {
     const filled = allModes.map((mode) => {
       const ranks = this.preferences[mode] ?? {};
       const missing = sortedIds.filter((deviceId) => ranks[deviceId] === undefined);
-      const ranked = Object.keys(ranks).sort((a, b) => (ranks[a] ?? 0) - (ranks[b] ?? 0));
+      const ranked = Object.keys(ranks).sort((a, b) => ((ranks[a] ?? 0) - (ranks[b] ?? 0)) || (a < b ? -1 : 1));
       // Everything after the last counted non-battery device is the bottom,
       // when a battery is there; with none, new devices go to the true end.
       const lastAnchorEnd = ranked.reduce((end, id, index) => (anchorsTop(id) ? index + 1 : end), 0);

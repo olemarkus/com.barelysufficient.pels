@@ -265,8 +265,10 @@ Check these, in order:
 - **Simulation mode is on.** PELS leaves every battery in its own mode while
   simulating (Settings → Simulation mode).
 - **A Sessy signed in with its cloud login.** PELS needs the local login in the
-  Sessy Homey app to switch the battery to API control. Switch the battery to
-  its local login in that app.
+  Sessy Homey app to switch the battery to API control. Its card then reads
+  "PELS can only watch it: its app does not accept control". Switch the battery
+  to its local login in that app; PELS tries again after six hours or when it
+  restarts.
 - **The battery's app cannot take commands from Homey.** PELS needs an app that
   lets Homey set the battery's charge and discharge power, and offers a Homey or
   API mode. Sessy and Marstek Venus are examples of apps that do.

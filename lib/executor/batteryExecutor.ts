@@ -242,7 +242,8 @@ export class BatteryExecutor {
 
   /**
    * The battery's lever when this decision has work: a setpoint only until it
-   * is sent, and never to a battery judged not responding or sign-inverted; a
+   * is sent, only to a battery PELS may claim, and never to one judged not
+   * responding or sign-inverted; a
    * release only while the claim is held and no hand-back is running, backing
    * off or stopped.
    */
@@ -252,7 +253,8 @@ export class BatteryExecutor {
     const decision = device.storageDecision;
     const drifted = decision.kind === 'release'
       ? control.claimHeld && !control.handBackDeferred
-      : !isBlockedVerdict(control) && this.commands.get(device.id)?.setpointW !== decision.setpointW;
+      : control.admissible && !isBlockedVerdict(control)
+        && this.commands.get(device.id)?.setpointW !== decision.setpointW;
     return drifted ? control : 'no_drift';
   }
 

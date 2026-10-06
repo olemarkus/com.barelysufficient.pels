@@ -365,7 +365,10 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
 
   readControl(deviceId: string): BatteryLeverRead {
     const battery = this.deps.getBattery(deviceId);
-    if (battery.kind !== 'setpoint' || this.isWatchOnly(deviceId)) return { kind: 'none' };
+    // A watch-only battery is still read, so its discharge counts against
+    // surplus devices; `checkClaim` answers `watch_only`, so it is never
+    // admissible and never claimed, limited or offered surplus.
+    if (battery.kind !== 'setpoint') return { kind: 'none' };
     const { surface } = battery;
     const nowMs = Date.now();
     const claims = this.loadClaims();

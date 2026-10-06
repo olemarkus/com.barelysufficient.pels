@@ -277,3 +277,13 @@ describe('ModePriorityCatalog.withMissingRanks with a home battery', () => {
     });
   });
 });
+
+describe('ModePriorityCatalog.withMissingRanks with tied stored ranks', () => {
+  it('breaks a tie by device id, the order PELS already inferred', () => {
+    const catalog = new ModePriorityCatalog({ Home: { b: 1, a: 1 } });
+    const ordered = catalog.withMissingRanks(['b', 'a', 'c'], [], () => false)?.Home ?? {};
+    const inferred = catalog.getOrder('Home', ['b', 'a', 'c'], () => false);
+    expect(Object.keys(ordered).sort((x, y) => (ordered[x] ?? 0) - (ordered[y] ?? 0)))
+      .toEqual(['a', 'b', 'c'].sort((x, y) => inferred.getPriority(x) - inferred.getPriority(y)));
+  });
+});

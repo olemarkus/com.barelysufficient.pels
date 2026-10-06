@@ -214,7 +214,7 @@ idled, which owners read as breakage rather than "managed is currently 0"
 (owner decision 2026-08-02, PR #1970). An unmeasured cycle draws no hero at
 all (§ "Chip row"), so the line never has to decide what to print for a split
 the meta does not carry; it is omitted only for background-only households (no
-controllable device at all, e.g. observe-only battery/PV), where the known 0
+controllable device at all, e.g. battery/PV, never a managed load), where the known 0
 is permanent and the line would be noise rather than reassurance. Those homes
 see the gauge segments without an underline, as before.
 
