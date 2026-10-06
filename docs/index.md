@@ -22,8 +22,8 @@ editLink: false
   </div>
   <div class="landing-panel landing-panel-accent">
     <figure class="landing-screenshot-frame">
-      <img class="landing-screenshot" src="/screenshots/landing-overview.png" alt="PELS Overview tab showing whole-home power now, the Safe pace now marker, and which managed devices are limited or resuming" />
-      <figcaption>The overview shows current whole-home power, the Safe pace now marker, and which devices PELS is limiting or resuming.</figcaption>
+      <img class="landing-screenshot" src="/screenshots/landing-overview.png" alt="PELS Overview tab showing whole-home power now, the Safe pace now marker, live solar production, and a home battery supplying 2.4 kW to hold the limit" />
+      <figcaption>The overview shows current whole-home power, the Safe pace now marker, your solar right now, and what PELS is doing to hold your limit.</figcaption>
     </figure>
   </div>
 </section>
@@ -76,9 +76,9 @@ editLink: false
 
   ### Use more of your own solar
 
-  With solar panels, PELS puts your surplus to work in hot water, heating or the car, even behind an inverter limited to zero export, and the Usage tab shows what your panels produced and what that saved you. A home battery charges from the surplus your devices leave and, at its place in your priority order, discharges to hold your limit, by default before anything is turned down.
+  With solar panels, PELS puts your surplus to work in hot water, heating or the car, even behind an inverter limited to zero export, and the Usage tab shows what your panels produced and what that saved you. A home battery joins your priority list: your sun goes to devices and the battery in your order, and when the house nears its limit the battery discharges on its turn, by default before anything is turned down.
 
-  [Solar and Self-Consumption](./solar.md) · [Solar accounting](./technical.md#solar-accounting)
+  [Read the solar and home battery use case](./use-cases/homey-solar-home-battery.md) · [Solar and Self-Consumption](./solar.md) · [Solar accounting](./technical.md#solar-accounting)
 
   ### Use Home, Away and Night for different energy behavior
 
@@ -110,11 +110,11 @@ editLink: false
       </article>
       <article class="landing-card landing-card-with-screenshot">
         <figure class="landing-card-media">
-          <img class="landing-card-screenshot" src="/screenshots/landing-usage.png" alt="PELS Usage tab showing an hourly energy bar chart of managed and background power use" />
-          <figcaption>Usage shows hourly and daily energy history so you can see how the home behaves over time.</figcaption>
+          <img class="landing-card-screenshot" src="/screenshots/landing-usage.png" alt="PELS Usage tab showing today's grid energy, the solar the home used itself, and the Solar card with production, use at home and export by day" />
+          <figcaption>Usage shows your energy history and what your solar did: produced, used at home and exported.</figcaption>
         </figure>
         <h3>Usage and insights</h3>
-        <p>See how much power you are using, track hourly and daily totals, and understand your home's consumption patterns over time.</p>
+        <p>See how much power you are using, track hourly and daily totals, and see how much of your own solar your home used instead of sending it to the grid.</p>
         <a href="insights-device.html">Open PELS Insights docs</a>
       </article>
       <article class="landing-card landing-card-with-screenshot">
