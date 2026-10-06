@@ -115,4 +115,5 @@ export const driftDepsFromPlanInputs = (
     return live ? splitPlanInputDevice(live, getBinaryCommand(deviceId)).externalOffHeld : false;
   },
   hasStorageDrift: () => false,
+  hasStorageReleaseDrift: () => false,
 });

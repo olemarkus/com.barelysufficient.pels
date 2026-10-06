@@ -292,7 +292,12 @@ function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unkn
 
 export function buildPlanSignature(plan: DevicePlan): string {
   return JSON.stringify(
-    plan.devices.map((device) => buildPlanSignatureDevice(device)),
+    [
+      ...plan.devices.map((device) => buildPlanSignatureDevice(device)),
+      ...(plan.storageReleases ?? []).map((intent) => ({
+        id: intent.deviceId, storageDecision: { kind: 'release', reason: intent.reason },
+      })),
+    ],
   );
 }
 
@@ -373,7 +378,7 @@ function buildComparableKindFields(d: DevicePlan['devices'][number]): {
 
 export function buildPlanDetailSignature(plan: DevicePlan): string {
   return JSON.stringify(
-    plan.devices.map((d) => ({
+    [...plan.devices.map((d) => ({
       id: d.id,
       priority: d.priority,
       ...buildComparableKindFields(d),
@@ -392,7 +397,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       pendingTargetNextRetryAtMs: d.pendingTargetCommand?.nextRetryAtMs ?? null,
       pendingTargetStatus: d.pendingTargetCommand?.status ?? null,
       storageDecision: hasStorageDecision(d) ? d.storageDecision : null,
-    })),
+    })), ...(plan.storageReleases ?? [])],
   );
 }
 

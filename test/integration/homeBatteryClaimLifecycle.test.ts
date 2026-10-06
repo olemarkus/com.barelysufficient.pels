@@ -52,17 +52,21 @@ const setup = () => {
     isActuationFenced: () => false,
     isCapacityDryRun: () => false,
   });
+  const sdkPut = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
   const put = vi.spyOn(mockHomeyInstance.api, 'put');
   const writes = (): Array<[string, unknown]> => put.mock.calls.map(([path, body]) => [
     path.replace(`manager/devices/device/${BATTERY}/capability/`, ''),
     (body as { value?: unknown } | undefined)?.value,
   ]);
-  /** What the executor will do in slice 3: admit, then command through the actuator. */
+  /** The executor's serialized claim-and-write path through the real actuator. */
   const command = async (setpointW: number) => {
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'admitted' });
-    await actuator.apply({ kind: 'storage_power', deviceId: BATTERY, setpointW });
+    await owner.dispatchSetpoint(BATTERY, async () => {
+      const outcome = await actuator.apply({ kind: 'storage_power', deviceId: BATTERY, setpointW });
+      return outcome.requested && outcome.kind === 'storage_power' ? outcome.requestedSetpointW : 'skipped';
+    });
   };
-  return { device, owner, settings, writes, command };
+  return { device, owner, settings, writes, command, transport, put, sdkPut };
 };
 
 describe('home battery claim and hand-back through the real transport', () => {
@@ -77,6 +81,27 @@ describe('home battery claim and hand-back through the real transport', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it('finishes an in-flight claim before handing back an opted-out battery', async () => {
+    const { device, owner, settings, writes, command, put, sdkPut } = setup();
+    let finish!: () => void;
+    put.mockImplementationOnce(async (path, body) => {
+      await new Promise<void>((resolve) => { finish = resolve; });
+      return sdkPut(path, body);
+    });
+    const pending = command(1500);
+    await vi.advanceTimersByTimeAsync(0);
+    owner.setControlEnabled(BATTERY, false);
+    finish();
+    await pending;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writes()).toEqual([
+      ['target_power_mode', 'homey'], ['target_power', 1500],
+      ['target_power', 0], ['target_power_mode', 'anti_feed'],
+    ]);
+    expect(device.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
+    expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 
   it('hands back an opted-out battery whose claim echo never arrived: setpoint 0, then the pre-claim value', async () => {

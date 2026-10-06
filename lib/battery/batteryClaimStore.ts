@@ -47,7 +47,7 @@ export type BatteryClaimRecord = {
 };
 
 /**
- * The stored records, read once per boot. `unavailable` is a key list the SDK
+ * Stored records. The owner retries unresolved entries on later snapshots. `unavailable` is a key list the SDK
  * did not answer: PELS cannot tell which batteries it owes a hand-back, so the
  * caller retries rather than concluding there are none. A listed record that
  * does not parse affects only its own battery: it is reported in

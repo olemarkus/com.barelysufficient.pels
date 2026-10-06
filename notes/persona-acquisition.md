@@ -213,9 +213,9 @@ because it is the dominant acquisition driver in the markets PELS is expanding t
   is **no longer surplus-blind** — the first solar surfaces have shipped (it
   observes production/export, accounts for self-consumption, nudges a heater to
   absorb surplus, and prices export), so it now has a story for this click. What is
-  still missing for the *maximiser* framing ("use every watt", battery/inverter
-  control) keeps this an **emerging, partially-served** funnel rather than a fully
-  live one — lead acquisition copy with the self-consumption accounting + surplus
+  still missing for the *maximiser* framing ("use every watt", export-to-zero
+  control and inverter control; battery relief and surplus capping have shipped)
+  keeps this an **emerging, partially-served** funnel rather than a fully live one — lead acquisition copy with the self-consumption accounting + surplus
   boost that actually ship, not an export-to-zero promise.
 
 ## The failure-driven arrival (cross-cutting)

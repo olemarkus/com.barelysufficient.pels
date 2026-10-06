@@ -407,9 +407,8 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       await rebuildPlanFromSettings(deps, RESPECT_EXTERNAL_OFF_DEVICES);
     },
     [BATTERY_CONTROL_DEVICES]: async () => {
-      // No snapshot refresh and no rebuild: the planner does not command
-      // batteries. The opt-out decides only what the battery owner may claim,
-      // and turning a battery off hands it back if PELS holds it.
+      // The owner applies opt-out immediately and hands back a held battery.
+      // The next meter-driven plan reads its updated admission state.
       deps.applyBatteryControlSettings();
     },
     [DEVICE_START_POLICIES]: async () => {

@@ -27,6 +27,9 @@ export type StorageDecision =
   | { kind: 'setpoint'; setpointW: number; stepW: number }
   | { kind: 'release'; reason: StorageReleaseReason };
 
+/** Hand-back remains executable when its battery no longer has a plan device. */
+export type StorageReleaseIntent = { deviceId: string; reason: StorageReleaseReason };
+
 /**
  * The plan-device cluster that carries it. Omitted from the plan device base,
  * like the other orthogonal clusters: reach it through `hasStorageDecision`.

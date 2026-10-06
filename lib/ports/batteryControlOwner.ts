@@ -1,3 +1,4 @@
+import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
 import type { StorageVerdict } from '../../packages/planner-types/src/planInputDevice';
 import type { StorageReleaseReason } from '../planContract/storageDecision';
@@ -11,6 +12,7 @@ export type { StorageReleaseReason } from '../planContract/storageDecision';
  * - `not_drivable` — the battery is not observed, or its control surface is
  *   not `setpoint`.
  * - `control_disabled` — the owner turned PELS's control of this battery off.
+ * - `claim_lost` — a newer observation shows another controller took over.
  * - `control_setting_unreadable` — the opt-out setting has never read cleanly
  *   (fail closed for a claim).
  * - `not_main_home` — the battery is not a Main-home member (v1 is Main only),
@@ -35,6 +37,7 @@ export type { StorageReleaseReason } from '../planContract/storageDecision';
 export type BatteryClaimRefusal =
   | 'not_drivable'
   | 'control_disabled'
+  | 'claim_lost'
   | 'control_setting_unreadable'
   | 'not_main_home'
   | 'actuation_fenced'
@@ -52,6 +55,11 @@ export type BatteryClaimAdmission =
   | { status: 'admitted' }
   | { status: 'refused'; reason: BatteryClaimRefusal };
 
+/** Admission and the actual watts sent through the actuator, or a fenced write. */
+export type BatterySetpointOutcome =
+  | { status: 'refused'; reason: BatteryClaimRefusal }
+  | { status: 'dispatched'; setpointW: number | 'skipped' };
+
 /**
  * A battery's lever as the owner reads it for the planner and the executor's
  * storage lane: `none` when the battery is not observed or can only be
@@ -63,6 +71,8 @@ export type BatteryLeverRead =
     kind: 'setpoint';
     /** The setpoint grid, W. */
     stepW: number;
+    /** Resolved writable range, grid and exclusion band. */
+    range: HomeBatterySetpointRange;
     /**
      * The most discharge PELS may ask for, W: the discharge range, or less
      * while an increase that plateaued short of it is the lesson
@@ -146,6 +156,8 @@ export type BatteryControlOwner = {
    * battery holds, so a crash leaves something to hand back to.
    */
   admitClaim(deviceId: string): BatteryClaimAdmission;
+  /** Serialize admission and the complete setpoint write with this battery's hand-backs. */
+  dispatchSetpoint(deviceId: string, write: () => Promise<number | 'skipped'>): Promise<BatterySetpointOutcome>;
   /** The battery's lever as of now. */
   readControl(deviceId: string): BatteryLeverRead;
   /**

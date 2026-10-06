@@ -185,8 +185,8 @@ owner recorded before PELS claimed the battery. The owner is the only issuer of
 recovery, exempt from Main's fence like the executor's lifecycle release) and
 issues no `storage_power`: the executor's storage lane
 (`lib/executor/batteryExecutor.ts`) issues it through Main's fenced actuator
-for a plan's setpoint decision, only for a battery the owner's `admitClaim`
-admitted. There is no hand-back at app stop: Homey ends the app some 15-20 ms
+for a plan's setpoint decision, through the owner's serialized
+`dispatchSetpoint` admission. There is no hand-back at app stop: Homey ends the app some 15-20 ms
 after "Stopping...", before a capability write could complete, so the durable
 claim record and boot recovery are the hand-back after a stop, a crash or a
 restart.
@@ -448,3 +448,14 @@ risk profiles.
 - Pending intent stays at executor dispatch; observer confirms it from telemetry.
 - Primary temperature commands use the transport-resolved single target binding.
 - Accepted asynchronous Flow dispatch defers cooldown/state accounting until confirmation.
+
+Battery control writes and hand-backs are serialized per battery by the battery
+owner. The executor captures verification observations before its write starts;
+replacement setpoints have their own settling window, with a bounded overall
+wait for an unanswered battery. The planner sizes writable setpoints before
+credit or surplus funding. A release whose battery left Main travels as a
+plan-level `StorageReleaseIntent`; the owner keeps failed hand-back recovery.
+A newer external mode change persists an opt-out in `battery_control_devices`;
+the regular-device follow-up will map it onto the battery's Managed setting.
+Deferred hand-backs still reserve held discharge
+against new starts, without adding that discharge to the shedding deficit.

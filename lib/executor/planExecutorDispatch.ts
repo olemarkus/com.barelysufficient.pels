@@ -518,6 +518,17 @@ const dispatchStorageDecisions = async (
       });
     }
   }
+  for (const intent of plan.storageReleases ?? []) {
+    try {
+      // eslint-disable-next-line functional/immutable-data -- local accumulator
+      if (await core.storage.releaseAbsent(intent)) writtenDeviceIds.push(intent.deviceId);
+    } catch (error) {
+      failureCount += 1;
+      logger.error({
+        event: 'executor_plan_error', reasonCode: 'storage_release_failed', deviceId: intent.deviceId, err: error,
+      });
+    }
+  }
   return { writtenDeviceIds, failureCount };
 };
 
