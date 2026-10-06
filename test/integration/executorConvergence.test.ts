@@ -46,6 +46,18 @@ const hasPlanExecutionDriftForDevice = (
 };
 
 describe('executorConvergence stepped device drift', () => {
+  it('finds release work in an empty plan without requiring a live device', () => {
+    const intent = { deviceId: 'battery', reason: 'not_admissible' as const };
+    const hasStorageReleaseDrift = vi.fn(() => true);
+    expect(hasPlanExecutionDriftAgainstIntent({ ...buildPlan([]), storageReleases: [intent] }, {
+      getObservedState: () => undefined,
+      getCommandState: () => ({ binary: { kind: 'none' }, step: { kind: 'none' } }),
+      isExternalOffHeld: () => false,
+      hasStorageDrift: () => false,
+      hasStorageReleaseDrift,
+    })).toBe(true);
+    expect(hasStorageReleaseDrift).toHaveBeenCalledWith(intent);
+  });
   describe('hasPlanExecutionDriftForDevice', () => {
     it('treats a keep device that is still observed off as drift even if the stored snapshot is stale', () => {
       const plan = buildPlan([buildBinaryDevice({

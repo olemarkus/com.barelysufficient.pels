@@ -44,7 +44,9 @@ import { temperatureSetpointsFor } from './planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { runSilentMeterSurplusHold } from './planBuilderSurplus';
-import { NO_STORAGE_RELIEF, attachStorageDecisions, releaseStorageOnSilentMeter } from './battery/storageRelief';
+import {
+  NO_STORAGE_RELIEF, attachStorageDecisions, collectAbsentStorageReleases, releaseStorageOnSilentMeter,
+} from './battery/storageRelief';
 import {
   buildSheddingCandidates,
   resolveShedReason,
@@ -173,6 +175,7 @@ export class SilentMeterPlanBuilder {
         hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       }),
       devices: decidedDevices,
+      storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
     };
   }
 

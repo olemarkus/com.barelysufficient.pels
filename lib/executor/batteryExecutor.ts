@@ -58,6 +58,7 @@ import {
   storageSetpointToleranceW,
   type StorageDecidedDevice,
   type StorageDecision,
+  type StorageReleaseIntent,
 } from '../planContract/storageDecision';
 import { normalizeError } from '../utils/errorUtils';
 
@@ -116,6 +117,8 @@ type StorageCommandRecord = {
   setpointW: number;
   stepW: number;
   issuedAtMs: number;
+  /** First unanswered send: replacement decisions cannot postpone failure forever. */
+  unansweredSinceMs: number;
   /** The battery's own signed power when the setpoint went out, W. */
   startSignedW: number;
   phase: CommandPhase;
@@ -147,17 +150,25 @@ export type BatteryExecutorDeps = {
 };
 
 /** What the plan executor asks of a home's storage lane. */
-export type StorageLane = Pick<BatteryExecutor, 'apply' | 'hasDrift' | 'sync'>;
+export type StorageLane = Pick<BatteryExecutor, 'apply' | 'hasDrift' | 'sync' | 'releaseAbsent' | 'hasReleaseDrift'>;
 
 /** A meter area's lane: it plans no battery, so its plans carry no storage decision to converge. */
 export const NO_STORAGE_LANE: StorageLane = {
   apply: async () => false,
   hasDrift: () => false,
   sync: () => undefined,
+  releaseAbsent: async () => false,
+  hasReleaseDrift: () => false,
 };
 
 const isBlockedVerdict = (control: SetpointLever): boolean => (
   control.verdict === 'not_responding' || control.verdict === 'sign_inverted'
+);
+
+const hasSetpointProgress = (record: StorageCommandRecord, power: HomeBatteryPowerObservation): boolean => (
+  power.observedAtMs > record.issuedAtMs
+  && (power.signedW - record.startSignedW) * Math.sign(record.setpointW - record.startSignedW)
+    >= storageSetpointToleranceW(record.setpointW, record.stepW)
 );
 
 const resolveSignSample = (batteryDeltaW: number, meterDeltaW: number): SignSample => {
@@ -181,6 +192,17 @@ export class BatteryExecutor {
     return decision.kind === 'release'
       ? this.release(device, decision)
       : this.sendSetpoint(device, decision, control);
+  }
+
+  hasReleaseDrift(intent: StorageReleaseIntent): boolean {
+    const control = this.deps.owner.readControl(intent.deviceId);
+    // An unobserved binding still needs to transfer recovery to the owner.
+    return control.kind === 'none' || (control.claimHeld && !control.handBackDeferred);
+  }
+
+  async releaseAbsent(intent: StorageReleaseIntent): Promise<boolean> {
+    this.commands.delete(intent.deviceId);
+    return await this.deps.owner.releaseClaim(intent.deviceId, intent.reason) === 'released';
   }
 
   /** Whether this decision has a write or a hand-back due. */
@@ -233,43 +255,42 @@ export class BatteryExecutor {
   ): Promise<boolean> {
     const power = this.deps.readBatteryPower(device.id);
     if (power === undefined) return false;
-    const admission = this.deps.owner.admitClaim(device.id);
-    if (admission.status === 'refused') {
+    try {
+      const outcome = await this.deps.owner.dispatchSetpoint(device.id, async () => {
+        const baseline = this.deps.readBatteryPower(device.id);
+        if (baseline === undefined) return 'skipped';
+        this.recordSent(device.id, decision, baseline, Date.now());
+        const sent = await this.deps.actuator.apply({
+          kind: 'storage_power', deviceId: device.id, setpointW: decision.setpointW,
+        });
+        if (!sent.requested || sent.kind !== 'storage_power') return 'skipped';
+        const record = this.commands.get(device.id);
+        if (record !== undefined) this.commands.set(device.id, { ...record, setpointW: sent.requestedSetpointW });
+        return sent.requestedSetpointW;
+      });
+      if (outcome.status === 'refused') {
+        logger.info({
+          event: 'battery_storage_claim_refused', deviceId: device.id, deviceName: device.name, reason: outcome.reason,
+        });
+        return false;
+      }
+      if (outcome.setpointW === 'skipped') {
+        this.commands.delete(device.id);
+        return false;
+      }
       logger.info({
-        event: 'battery_storage_claim_refused', deviceId: device.id, deviceName: device.name, reason: admission.reason,
+        event: 'battery_storage_setpoint_sent', deviceId: device.id, deviceName: device.name,
+        setpointW: outcome.setpointW, observedPowerW: power.signedW, verdict: control.verdict,
+      });
+      return true;
+    } catch (error) {
+      // Keep a rejected send's baseline: verification bounds retries rather
+      // than issuing the same rejected write on every meter reading.
+      logger.warn({
+        event: 'battery_storage_setpoint_failed', deviceId: device.id, deviceName: device.name,
+        setpointW: decision.setpointW, err: normalizeError(error),
       });
       return false;
-    }
-    const sent = await this.send(device, decision.setpointW);
-    if (sent === 'skipped') return false;
-    // A write the battery or Homey refused is a setpoint it did not follow:
-    // it is judged like one, rather than resent on every rebuild.
-    this.recordSent(device.id, decision, power, Date.now());
-    if (sent === 'failed') return false;
-    logger.info({
-      event: 'battery_storage_setpoint_sent',
-      deviceId: device.id,
-      deviceName: device.name,
-      setpointW: decision.setpointW,
-      observedPowerW: power.signedW,
-      verdict: control.verdict,
-    });
-    return true;
-  }
-
-  private async send(device: StorageDecidedDevice, setpointW: number): Promise<'sent' | 'skipped' | 'failed'> {
-    try {
-      const outcome = await this.deps.actuator.apply({ kind: 'storage_power', deviceId: device.id, setpointW });
-      return outcome.requested ? 'sent' : 'skipped';
-    } catch (error) {
-      logger.warn({
-        event: 'battery_storage_setpoint_failed',
-        deviceId: device.id,
-        deviceName: device.name,
-        setpointW,
-        err: normalizeError(error),
-      });
-      return 'failed';
     }
   }
 
@@ -281,10 +302,8 @@ export class BatteryExecutor {
   }
 
   /**
-   * Remember the setpoint for its verdict. One replacing a setpoint still
-   * unanswered is judged from where the first one found the battery and when it
-   * went out: a battery that never moves cannot have its verdict postponed by a
-   * stream of new setpoints. Its sign check starts after the latest send.
+   * Capture the battery, meter and managed draw before dispatch. Each replacement
+   * gets its own settling window; the first unanswered send bounds the total wait.
    */
   private recordSent(
     deviceId: string,
@@ -294,23 +313,12 @@ export class BatteryExecutor {
   ): void {
     const meter = this.readMeter();
     const unanswered = this.commands.get(deviceId);
-    if (unanswered?.phase.kind === 'pending') {
-      const { baseline } = unanswered.phase;
-      const latest = baseline === 'unavailable' || meter === 'unavailable'
-        ? baseline
-        : { ...baseline, lastAtMs: meter.atMs };
-      this.commands.set(deviceId, {
-        ...unanswered,
-        setpointW: decision.setpointW,
-        stepW: decision.stepW,
-        phase: { kind: 'pending', baseline: latest },
-      });
-      return;
-    }
     this.commands.set(deviceId, {
       setpointW: decision.setpointW,
       stepW: decision.stepW,
       issuedAtMs: nowMs,
+      unansweredSinceMs: unanswered?.phase.kind === 'pending' && !hasSetpointProgress(unanswered, power)
+        ? unanswered.unansweredSinceMs : nowMs,
       startSignedW: power.signedW,
       phase: {
         kind: 'pending',
@@ -347,7 +355,9 @@ export class BatteryExecutor {
     const fresh = power.observedAtMs > record.issuedAtMs;
     const elapsedMs = nowMs - record.issuedAtMs;
     const reached = fresh && Math.abs(power.signedW - record.setpointW) <= toleranceW;
-    const windowOver = fresh ? elapsedMs >= CONTROL_COMMAND_CONFIRMATION_MS : elapsedMs >= VERIFICATION_MAX_WAIT_MS;
+    const unansweredOver = nowMs - record.unansweredSinceMs >= VERIFICATION_MAX_WAIT_MS;
+    const windowOver = (fresh && elapsedMs >= CONTROL_COMMAND_CONFIRMATION_MS)
+      || (unansweredOver && !hasSetpointProgress(record, power));
     if (!reached && !windowOver) return record;
     const tooSmall = Math.abs(record.setpointW) < Math.max(toleranceW, NO_VERDICT_BELOW_W);
     const verdict = tooSmall ? 'inconclusive' : this.judge(deviceId, record, power, reached, nowMs);

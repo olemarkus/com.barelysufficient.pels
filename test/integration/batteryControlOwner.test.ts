@@ -93,6 +93,70 @@ afterEach(() => {
 });
 
 describe('HomeBatteryControlOwner admission', () => {
+  it('respects a takeover inside the confirmation window and across a restart', async () => {
+    const { owner, batteries, settings, commands } = buildOwner();
+    owner.admitClaim(BATTERY);
+    batteries[BATTERY] = setpointBattery('manual', T0 + 1000);
+    vi.setSystemTime(T0 + 2000);
+
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'control_disabled' });
+    await owner.releaseClaim(BATTERY, 'not_admissible');
+    expect(commands).toEqual([]);
+    expect(settings.get(BATTERY_CONTROL_DEVICES)).toEqual({ [BATTERY]: false });
+    vi.setSystemTime(T0 + 4 * 60 * 60_000);
+    expect(buildOwner({ settings, batteries }).owner.admitClaim(BATTERY))
+      .toEqual({ status: 'refused', reason: 'control_disabled' });
+  });
+
+  it('does not adopt a leftover record after another controller took over', () => {
+    const { owner, settings } = buildOwner({
+      settings: settingsStore({ [CLAIM_KEY]: record('anti_feed') }),
+      batteries: { [BATTERY]: setpointBattery('manual', T0 - 1000) },
+    });
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'control_disabled' });
+    expect(settings.get(BATTERY_CONTROL_DEVICES)).toEqual({ [BATTERY]: false });
+  });
+
+  it('recovers a boot record after its transient value read succeeds', async () => {
+    const settings = settingsStore({ [CLAIM_KEY]: record('anti_feed') });
+    const get = settings.get.bind(settings);
+    let unreadable = true;
+    settings.get = (key) => {
+      if (key === CLAIM_KEY && unreadable) throw new Error('temporary read failure');
+      return get(key);
+    };
+    const { owner, commands } = buildOwner({ settings, batteries: { [BATTERY]: setpointBattery('homey') } });
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([]);
+    unreadable = false;
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('keeps an accepted active record when retrying a different unreadable battery', async () => {
+    const otherKey = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}${OTHER}`;
+    const settings = settingsStore({ [otherKey]: 'unreadable' });
+    const { owner, commands, batteries } = buildOwner({ settings });
+    owner.admitClaim(BATTERY);
+    batteries[BATTERY] = setpointBattery('homey', T0 + 1000);
+    const get = settings.get.bind(settings);
+    let unreadable = true;
+    settings.get = (key) => {
+      if (key === CLAIM_KEY && unreadable) throw new Error('temporary read failure');
+      return get(key);
+    };
+    owner.onSnapshotCommitted(refresh(BATTERY, OTHER));
+    await settle();
+    unreadable = false;
+    owner.onSnapshotCommitted(refresh(BATTERY, OTHER));
+    await settle();
+    expect(commands).toEqual([]);
+    expect(settings.get(CLAIM_KEY)).toEqual(record('anti_feed', T0));
+  });
+
   it('records the observed claim value and the claim time before admitting, and only once', () => {
     const { owner, settings } = buildOwner();
 
@@ -323,6 +387,7 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
     expect(owner.readControl(BATTERY)).toEqual({
       kind: 'setpoint',
       stepW: 1,
+      range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
       deliveryCeilingW: 2500,
       chargeCeilingW: 2500,
       claimHeld: false,

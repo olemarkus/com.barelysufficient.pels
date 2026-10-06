@@ -70,8 +70,10 @@
  * (opted out, its claim lost), when it is not responding or its sign is
  * inverted, after `STORAGE_INPUT_MISSING_RELEASE_MS` without a reading, and on
  * meter silence (`releaseStorageOnSilentMeter`). The cycle that releases a
- * discharging battery counts that discharge as deficit, so shedding is ready
- * before the import lands. Capacity simulation writes nothing, so the planner
+ * discharging battery counts that discharge as deficit only when hand-back
+ * can be attempted, so shedding is ready before the import lands. A deferred
+ * hand-back still withholds discharge from restore without adding a deficit.
+ * Capacity simulation writes nothing, so the planner
  * decides nothing for a battery then (`NO_STORAGE_RELIEF`); the battery's owner
  * hands a held one back itself.
  */
@@ -85,7 +87,9 @@ import {
   type StorageDecision,
   type StoragePlanKind,
   type StorageReleaseReason,
+  type StorageReleaseIntent,
 } from '../../planContract/storageDecision';
+import { floorStorageSetpointW } from '../../utils/storageSetpoint';
 import { getLogger } from '../../logging/logger';
 import { SURPLUS_TRACK_STEP_MIN_INTERVAL_MS } from '../admission';
 import type { MeasuredPower } from '../planContext';
@@ -270,7 +274,8 @@ export function sumStorageSurplusW(
 const resolveWantedDischargeW = (storage: ObservedStorageInput, balance: StorageBalance): number => {
   const halfDeadbandW = deadbandWFor(storage) / 2;
   const reliefW = Math.min(balance.deficitW + halfDeadbandW, Math.max(0, balance.drawW - halfDeadbandW));
-  return Math.round(Math.min(storage.deliveryCeilingW, Math.max(0, -storage.signedPowerW + reliefW)));
+  const boundedW = Math.min(storage.deliveryCeilingW, Math.max(0, -storage.signedPowerW + reliefW));
+  return -floorStorageSetpointW(-boundedW, storage.range);
 };
 
 /** Whether raising from `fromW` to `wantedW` (either side of 0 W) is a step the battery could visibly answer. */
@@ -295,7 +300,7 @@ const resolveLoweredDischargeW = (
   const baseW = Math.min(heldW, -storage.signedPowerW);
   if (baseW - balance.headroomW < deadbandW) return 0;
   if (balance.headroomW <= deadbandW) return heldW;
-  return Math.round(Math.max(0, Math.min(heldW, baseW - (balance.headroomW - deadbandW))));
+  return -floorStorageSetpointW(-Math.max(0, Math.min(heldW, baseW - (balance.headroomW - deadbandW))), storage.range);
 };
 
 /**
@@ -313,7 +318,7 @@ const resolveFundedChargeW = (storage: ObservedStorageInput, addedBackW: number,
     balance.surplusW - addedBackW + ownChargeW - halfDeadbandW,
     ownChargeW + balance.headroomW - halfDeadbandW,
   );
-  return fundedW < deadbandWFor(storage) ? 0 : Math.round(fundedW);
+  return fundedW < deadbandWFor(storage) ? 0 : floorStorageSetpointW(fundedW, storage.range);
 };
 
 /**
@@ -509,10 +514,10 @@ class StorageReliefCycle {
     private readonly nowTs: number,
   ) {}
 
-  release(deviceId: string, reason: StorageReleaseReason, dischargeW: number): StorageDecision {
+  release(deviceId: string, reason: StorageReleaseReason, dischargeW: number, deferred = false): StorageDecision {
     const decision: StorageDecision = { kind: 'release', reason };
     this.decisions.set(deviceId, decision);
-    this.releasedDischargeW += Math.max(0, dischargeW);
+    if (!deferred) this.releasedDischargeW += Math.max(0, dischargeW);
     this.withheldW += Math.max(0, dischargeW);
     return decision;
   }
@@ -539,10 +544,16 @@ class StorageReliefCycle {
       // Left to its own mode, it keeps the charge the pool counted: none of it is left for the next battery.
       this.balance = { ...this.balance, surplusW: this.balance.surplusW - addedBackW };
       if (previous === undefined && !storage.claimHeld) return { ...summary, ...NO_DECISION };
-      const decision = this.release(deviceId, step.reason, observedDischargeW);
+      const deferred = !storage.claimHeld || storage.handBackDeferred;
+      const decision = this.release(deviceId, step.reason, observedDischargeW, deferred);
       return { ...summary, claim: 'none', decision, setpointW: 0, creditW: 0 };
     }
-    const next = step.lever;
+    const candidateW = step.lever.setpointW;
+    const ceilingW = candidateW < 0 ? storage.deliveryCeilingW : storage.chargeCeilingW;
+    const next = {
+      ...step.lever,
+      setpointW: floorStorageSetpointW(Math.sign(candidateW) * Math.min(Math.abs(candidateW), ceilingW), storage.range),
+    };
     const decision = this.holdSetpoint(deviceId, next);
     const nextDischargeW = -next.setpointW;
     const previousDischargeW = previous === undefined ? observedDischargeW : -previous.setpointW;
@@ -568,9 +579,9 @@ class StorageReliefCycle {
    * uncredited, until it has gone unread for `STORAGE_INPUT_MISSING_RELEASE_MS`
    * or is no longer admissible, then released. Its discharge is counted as
    * handed back on the release cycle: whether it is still delivering is
-   * unknown, and an unknown resolves toward shedding. Without a plan device to
-   * carry a decision the hold is dropped once it expires, and said so. A
-   * planned device without a storage cluster cannot say whether it is
+   * unknown, and an unknown resolves toward shedding. An absent battery's
+   * release travels on the plan itself. A planned device without a storage
+   * cluster cannot say whether it is
    * admissible: its hold is kept for the window, then released.
    */
   decideUnread(
@@ -585,17 +596,14 @@ class StorageReliefCycle {
     const sinceMs = previous.reading.kind === 'unread' ? previous.reading.sinceMs : this.nowTs;
     const expired = this.nowTs - sinceMs >= STORAGE_INPUT_MISSING_RELEASE_MS;
     const admissible = carrier === 'absent' || carrier === 'no_input' || carrier.admissible;
-    if (carrier !== 'absent' && (!admissible || expired)) {
-      const reason = admissible ? 'input_missing' : 'not_admissible';
-      const decision = this.release(deviceId, reason, heldDischargeW);
+    if (!admissible || expired) {
+      const reason = carrier === 'absent' || !admissible ? 'not_admissible' : 'input_missing';
+      const deferred = typeof carrier === 'object' && carrier.handBackDeferred;
+      const decision = this.release(deviceId, reason, heldDischargeW, deferred);
       return { ...summary, claim: 'none', decision, setpointW: 0, creditW: 0 };
     }
     const event = { deviceId, heldSetpointW: previous.setpointW };
     if (previous.reading.kind === 'read') logger.warn({ event: 'storage_relief_input_missing', ...event });
-    if (carrier === 'absent' && expired) {
-      logger.warn({ event: 'storage_relief_hold_dropped', ...event });
-      return { ...summary, ...NO_DECISION };
-    }
     const lever: StorageLeverState = { ...previous, reading: { kind: 'unread', sinceMs } };
     this.withheldW += Math.max(0, heldDischargeW);
     const held = { ...summary, claim: resolveClaimReason(lever), setpointW: lever.setpointW, creditW: 0 };
@@ -691,7 +699,9 @@ export function releaseStorageOnSilentMeter(
   devices: readonly PlanInputDevice[],
   levers: Readonly<Record<string, StorageLeverState>>,
 ): StorageRelief {
-  const decisions = new Map<string, StorageDecision>();
+  const decisions = new Map<string, StorageDecision>(
+    Object.keys(levers).map((id) => [id, { kind: 'release', reason: 'meter_silent' }]),
+  );
   for (const device of devices) {
     if (!hasStorageInput(device)) continue;
     if (levers[device.id] !== undefined || device.storage.claimHeld) {
@@ -730,4 +740,15 @@ export function attachStorageDecisions(
     const decided: DevicePlanDevice & StoragePlanKind = { ...device, storageDecision };
     return decided;
   });
+}
+
+/** Preserve releases whose battery left the home's plan. */
+export function collectAbsentStorageReleases(
+  planDevices: readonly DevicePlanDevice[],
+  relief: StorageRelief,
+): StorageReleaseIntent[] {
+  const present = new Set(planDevices.map((device) => device.id));
+  return [...relief.decisions].flatMap(([deviceId, decision]) => (
+    decision.kind === 'release' && !present.has(deviceId) ? [{ deviceId, reason: decision.reason }] : []
+  ));
 }

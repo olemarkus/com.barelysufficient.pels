@@ -4,6 +4,7 @@ import {
   buildPlanDebugSummaryEvent,
   buildPlanDebugSummarySignatureFromEvent,
   buildPlanSignature,
+  buildPlanDetailSignature,
 } from '../../lib/plan/planLogging';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { fixtureDeviceReason, insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
@@ -16,6 +17,14 @@ const CAPACITY_REASON = r('shed due to capacity')!;
 const SNAPSHOT_SOURCE = { summarySource: 'plan_snapshot', summarySourceAtMs: 1234 } as const;
 
 describe('plan logging helpers', () => {
+  it('includes an absent battery release in both signatures even for an empty plan', () => {
+    const empty = { devices: [] } as unknown as DevicePlan;
+    const released: DevicePlan = {
+      ...empty, storageReleases: [{ deviceId: 'battery', reason: 'not_admissible' }],
+    };
+    expect(buildPlanSignature(released)).not.toBe(buildPlanSignature(empty));
+    expect(buildPlanDetailSignature(released)).not.toBe(buildPlanDetailSignature(empty));
+  });
   it('builds a deterministic plan signature', () => {
     const plan = {
       meta: { headroomKw: 0 },

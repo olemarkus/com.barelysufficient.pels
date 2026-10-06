@@ -247,8 +247,8 @@ export function buildSettingsOverviewReadModel(
     meta: buildSettingsOverviewMetaReadModel(plan.meta),
     // Auto-tracked observe-only role devices (home batteries → 'battery', solar/PV →
     // 'solarpanel') ride the plan internally (the planner observes them) but are NOT
-    // user-facing: PELS never controls them and they carry no managed-load semantics on
-    // the overview. The device-list endpoint already drops them
+    // user-facing here: battery control has its own lane and these devices carry
+    // no managed-load semantics on the overview. The device-list endpoint already drops them
     // (`getSettingsUiDevicesPayload`, `setup/settingsUiApi.ts`);
     // the overview derives from the plan snapshot, so it must drop them here too, or an
     // auto-tracked battery renders as a clickable no-op card.

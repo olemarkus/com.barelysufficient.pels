@@ -27,12 +27,16 @@ export const resolveStorageCluster = (
   const power = device.batteryPower;
   if (!device.available || power === undefined) {
     return control.claimHeld
-      ? { storage: { reading: 'missing', claimHeld: true, admissible: control.admissible } }
+      ? { storage: {
+        reading: 'missing', claimHeld: true, admissible: control.admissible, handBackDeferred: control.handBackDeferred,
+      } }
       : NO_STORAGE_CLUSTER;
   }
   return {
     storage: {
       reading: 'observed',
+      range: control.range,
+      handBackDeferred: control.handBackDeferred,
       stepW: control.stepW,
       signedPowerW: power.signedW,
       claimHeld: control.claimHeld,

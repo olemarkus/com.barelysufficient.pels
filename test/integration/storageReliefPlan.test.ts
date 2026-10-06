@@ -51,6 +51,8 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
   }),
   storage: {
     reading: 'observed',
+    range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
+    handBackDeferred: false,
     stepW: 5,
     signedPowerW: 0,
     claimHeld: false,
@@ -200,6 +202,23 @@ const storageDecision = (plan: DevicePlan): StorageDecision | undefined => {
 };
 
 describe('storage relief in the plan build', () => {
+  it('preserves an expired battery hand-back when the Main plan is empty', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    await build(4200, [heater(), battery()]);
+    const missing = await build(2000, [], 1000);
+    expect(missing.storageReleases).toEqual([]);
+    const expired = await build(2000, [], 1000 + STORAGE_INPUT_MISSING_RELEASE_MS);
+    expect(expired.devices).toEqual([]);
+    expect(expired.storageReleases).toEqual([{ deviceId: 'battery', reason: 'not_admissible' }]);
+  });
+
+  it('does not shed for discharge while a hand-back is deferred', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    const plan = await build(2500, [heater(), battery({
+      signedPowerW: -1500, claimHeld: true, admissible: false, handBackDeferred: true,
+    })]);
+    expect(plannedState(plan, 'heater')).toBe('keep');
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(START_MS));
@@ -308,7 +327,7 @@ describe('storage relief in the plan build', () => {
       ...buildPlanInputDevice({
         id: 'battery', name: 'Battery', observeOnly: true, commandAuthority: false, binaryControllable: false, unmetered: true,
       }),
-      storage: { reading: 'missing', claimHeld: true, admissible: true },
+      storage: { reading: 'missing', handBackDeferred: false, claimHeld: true, admissible: true },
     };
     const kept = await build(2900, [heater(), unread], 60_000);
     expect(storageDecision(kept)).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });

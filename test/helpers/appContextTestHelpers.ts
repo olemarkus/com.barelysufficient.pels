@@ -487,6 +487,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     } as never,
     batteryControl: {
       admitClaim: vi.fn(() => ({ status: 'refused' as const, reason: 'not_drivable' as const })),
+      dispatchSetpoint: vi.fn(async () => ({ status: 'refused' as const, reason: 'not_drivable' as const })),
       readControl: vi.fn(() => ({ kind: 'none' as const })),
       releaseClaim: vi.fn(async () => 'not_released' as const),
       verification: {

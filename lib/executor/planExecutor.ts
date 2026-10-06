@@ -509,6 +509,7 @@ export class PlanExecutor {
       ),
       isExternalOffHeld: (deviceId) => this.state.isExternalOffHeld(deviceId),
       hasStorageDrift: (device) => this.storage.hasDrift(device),
+      hasStorageReleaseDrift: (intent) => this.storage.hasReleaseDrift(intent),
     };
   }
 

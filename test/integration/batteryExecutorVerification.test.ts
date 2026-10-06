@@ -37,8 +37,14 @@ const buildLane = () => {
       owned.held = true;
       return { status: 'admitted' as const };
     }),
+    dispatchSetpoint: vi.fn(async (_id, write) => {
+      const admission = owner.admitClaim(BATTERY);
+      if (admission.status === 'refused') return admission;
+      return { status: 'dispatched' as const, setpointW: await write() };
+    }),
     readControl: vi.fn((): BatteryLeverRead => ({
       kind: 'setpoint',
+      range: RANGE,
       stepW: 5,
       claimHeld: owned.held,
       handBackDeferred: owned.deferred,
@@ -110,6 +116,71 @@ describe('battery storage lane', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('counts a battery report received before the write promise resolves', async () => {
+    const { lane, apply, send, read, owner } = buildLane();
+    let finish!: () => void;
+    apply.mockImplementationOnce(async (command) => {
+      await new Promise<void>((resolve) => { finish = resolve; });
+      return command.kind === 'storage_power'
+        ? { requested: true, kind: 'storage_power', requestedSetpointW: command.setpointW }
+        : { requested: false };
+    });
+    const pending = send(-1500, 0);
+    read(-1500, 2500, 1000);
+    finish();
+    await pending;
+    lane.sync(Date.now());
+    expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'responding' });
+  });
+
+  it('judges the watts actually dispatched by the actuator', async () => {
+    const { apply, send, read, owner } = buildLane();
+    apply.mockResolvedValueOnce({ requested: true, kind: 'storage_power', requestedSetpointW: 0 });
+    await send(-500, 0);
+    read(0, 4000, CONTROL_COMMAND_CONFIRMATION_MS);
+    expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'unverified' });
+  });
+
+  it('gives a replacement setpoint its own window before learning a ceiling', async () => {
+    const { send, read, owner } = buildLane();
+    await send(-1500, 0);
+    read(-800, 3200, 80_000);
+    await send(-2500, 85_000);
+    read(-1200, 2800, 90_000);
+    expect(owner.readControl(BATTERY)).toMatchObject({ deliveryCeilingW: 2500 });
+    read(-2100, 1900, 175_000);
+    expect(owner.readControl(BATTERY)).toMatchObject({ deliveryCeilingW: 2100 });
+  });
+
+  it('bounds an unresponsive battery even when replacement decisions keep arriving', async () => {
+    const { send, tick, owner } = buildLane();
+    await send(-1500, 0);
+    await send(-2000, 120_000);
+    await send(-2500, 240_000);
+    tick(4000, VERIFICATION_MAX_WAIT_MS);
+    expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'not_responding' });
+  });
+
+  it('does not expire a new settling window after earlier replacements made progress', async () => {
+    const { send, read, owner } = buildLane();
+    await send(-1500, 0);
+    read(-800, 3200, 80_000);
+    await send(-2000, 85_000);
+    read(-1200, 2800, 160_000);
+    await send(-2500, 299_000);
+    read(-1600, 2400, 301_000);
+    expect(owner.readControl(BATTERY)).toMatchObject({ deliveryCeilingW: 2500 });
+  });
+
+  it('transfers an absent release to the owner even when the battery cannot be read', async () => {
+    const { lane, owner } = buildLane();
+    vi.mocked(owner.readControl).mockReturnValue({ kind: 'none' });
+    const intent = { deviceId: BATTERY, reason: 'not_admissible' as const };
+    expect(lane.hasReleaseDrift(intent)).toBe(true);
+    await lane.releaseAbsent(intent);
+    expect(owner.releaseClaim).toHaveBeenCalledWith(BATTERY, 'not_admissible');
   });
 
   it('admits the claim before the first setpoint and has no write due for one already sent', async () => {

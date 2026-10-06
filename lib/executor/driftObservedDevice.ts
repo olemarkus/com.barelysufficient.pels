@@ -25,7 +25,7 @@
  * collapsing `observed` into `commanded`. This type joins them at the point of
  * comparison without merging their meanings.
  */
-import type { StorageDecidedDevice } from '../planContract/storageDecision';
+import type { StorageDecidedDevice, StorageReleaseIntent } from '../planContract/storageDecision';
 import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
@@ -67,6 +67,7 @@ export type DriftObservationDeps = {
    * release while the claim is held.
    */
   hasStorageDrift: (device: StorageDecidedDevice) => boolean;
+  hasStorageReleaseDrift: (intent: StorageReleaseIntent) => boolean;
 };
 
 /**

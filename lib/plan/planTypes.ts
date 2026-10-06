@@ -846,6 +846,8 @@ export type DevicePlan = {
   generatedAtMs?: number;
   meta: PlanMeta;
   devices: DevicePlanDevice[];
+  /** Present when hand-backs have no surviving plan device to carry them. */
+  storageReleases?: import('../planContract/storageDecision').StorageReleaseIntent[];
 };
 
 export type PlanChangeSet = {

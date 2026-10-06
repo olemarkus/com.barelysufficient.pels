@@ -1,4 +1,5 @@
 import type {
+  HomeBatterySetpointRange,
   DeviceControlAdapterSnapshot,
   DeviceControlModel,
   DeviceStartPolicy,
@@ -183,6 +184,8 @@ export type StorageVerdict = 'unverified' | 'responding' | 'not_responding' | 'r
 /** A battery PELS can read this cycle: its own signed power is observed. */
 export type ObservedStorageInput = {
   reading: 'observed';
+  range: HomeBatterySetpointRange;
+  handBackDeferred: boolean;
   /** The setpoint grid, W. */
   stepW: number;
   /** The battery's own signed power, W: positive charging, negative discharging. */
@@ -211,6 +214,7 @@ export type ObservedStorageInput = {
  */
 export type MissingStorageInput = {
   reading: 'missing';
+  handBackDeferred: boolean;
   claimHeld: true;
   admissible: boolean;
 };

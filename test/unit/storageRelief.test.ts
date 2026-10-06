@@ -36,6 +36,8 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
   ...batteryDevice(),
   storage: {
     reading: 'observed',
+    range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
+    handBackDeferred: false,
     stepW: 5,
     signedPowerW: 0,
     claimHeld: false,
@@ -49,7 +51,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
 
 const unreadBattery = (admissible = true): PlanInputDevice & StoragePlanInputKind => ({
   ...batteryDevice(),
-  storage: { reading: 'missing', claimHeld: true, admissible },
+  storage: { reading: 'missing', handBackDeferred: false, claimHeld: true, admissible },
 });
 
 /** No willing device, and the house importing: nothing to store. */
@@ -253,7 +255,7 @@ describe('storage relief without a reading', () => {
       .toEqual({ kind: 'release', reason: 'not_admissible' });
   });
 
-  it('keeps a hold whose battery left the plan, then drops it, saying so', () => {
+  it('hands back a hold whose battery left the plan after the missing-input window', () => {
     const heater = buildPlanInputDevice({ id: 'heater', controllable: true });
     const kept = decideStorageRelief([heater], buildMeasuredPower(), { battery: lever() }, NO_SURPLUS, NOW);
     expect(kept.levers.battery).toBeDefined();
@@ -263,6 +265,32 @@ describe('storage relief without a reading', () => {
       [heater], buildMeasuredPower(), kept.levers, NO_SURPLUS, NOW + STORAGE_INPUT_MISSING_RELEASE_MS,
     );
     expect(dropped.levers).toEqual({});
+    expect(dropped.decisions.get('battery')).toEqual({ kind: 'release', reason: 'not_admissible' });
+  });
+
+  it('withholds deferred discharge from restores without adding it to the shed deficit', () => {
+    const relief = cycle(battery({
+      claimHeld: true, signedPowerW: -1500, admissible: false, handBackDeferred: true,
+    }), 0.5, { battery: lever() });
+    expect(relief.shed.netCreditKw).toBe(0);
+    expect(relief.withheldKw).toBe(1.5);
+  });
+
+  it('never credits discharge or funds charge inside the battery exclusion band', () => {
+    const range = { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: -1000, excludeMaxW: 1000 };
+    const relief = cycle(battery({ range }), -0.5);
+    expect(relief.decisions.get('battery')).toBeUndefined();
+    expect(relief.shed.netCreditKw).toBe(0);
+    const charge = exporting(battery({ range, signedPowerW: 2000 }), 700);
+    expect(charge.decisions.get('battery')).toMatchObject({ setpointW: 0 });
+  });
+
+  it.each([-1, 0.5])('keeps a learned off-grid ceiling writable with %s kW headroom', (headroomKw) => {
+    const range = { minW: -2500, maxW: 2500, stepW: 500, excludeMinW: 0, excludeMaxW: 0 };
+    const relief = cycle(battery({
+      range, stepW: 500, signedPowerW: -2000, claimHeld: true, deliveryCeilingW: 1900,
+    }), headroomKw, { battery: lever({ setpointW: -2000, stepW: 500 }) });
+    expect(relief.decisions.get('battery')).toMatchObject({ setpointW: -1500 });
   });
 });
 

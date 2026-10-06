@@ -48,6 +48,7 @@ import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import {
   NO_STORAGE_RELIEF,
   attachStorageDecisions,
+  collectAbsentStorageReleases,
   decideStorageRelief,
   sumStorageSurplusW,
   withoutStorageWithheld,
@@ -347,6 +348,7 @@ export class PlanBuilder {
     return {
       meta,
       devices: decidedDevices,
+      storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
     };
   }
 
