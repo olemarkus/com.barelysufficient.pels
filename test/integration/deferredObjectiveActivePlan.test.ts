@@ -4136,12 +4136,16 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     });
 
     // v3.9.3 wrote `objective_delivery_restricted` whenever PELS's own limiting
-    // held a task's device back. The code is retired: the plan must load with its
-    // commitment, report its committed verdict, and never write the code back.
-    it('loads a plan carrying the retired `objective_delivery_restricted` without it', () => {
+    // held a task's device back, and earlier builds wrote `objective_device_left_off`
+    // while "Leave off until turned on again" held it. Both codes are retired: the
+    // plan must load with its commitment, report its committed verdict, and never
+    // write the code back.
+    it.each([
+      'objective_delivery_restricted', 'objective_device_left_off',
+    ])('loads a plan carrying the retired `%s` without it', (retiredCode) => {
       const persisted = {
         version: 1,
-        plansByDeviceId: { dev: { ...basePlan(), diagnosticReasonCode: 'objective_delivery_restricted' } },
+        plansByDeviceId: { dev: { ...basePlan(), diagnosticReasonCode: retiredCode } },
       };
       const plan = normalizeDeferredObjectiveActivePlans(persisted).plansByDeviceId.dev;
       expect(plan).toBeDefined();

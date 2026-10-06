@@ -83,7 +83,7 @@ const resolveCurrentValue = (
 };
 
 // The card's line beside the target: the same live cause the widget and the
-// detail hero name (device left off, stopped taking power, the car's own limit
+// detail hero name (stopped taking power, the car's own limit
 // or schedule), in its short form. Only on a card whose status that cause
 // explains, at risk or cannot finish: beside "Building plan…", a pause, an
 // unavailable or a satisfied chip, "Car stops at 70%" would contradict the chip.

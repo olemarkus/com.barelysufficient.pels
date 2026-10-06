@@ -458,7 +458,6 @@ describe('resolveDeadlinesListCards', () => {
   });
 
   it.each([
-    ['objective_device_left_off', 'Device is staying off until turned on again'],
     ['objective_not_accepting_energy', 'Device stopped taking power'],
     ['objective_device_schedule', 'Car is delaying charging'],
   ] as const)('names the live cause of an at-risk card beside its target (%s)', (code, line) => {

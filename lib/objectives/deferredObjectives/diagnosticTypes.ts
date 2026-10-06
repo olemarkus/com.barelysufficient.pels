@@ -105,17 +105,6 @@ type BaseDeferredObjectiveDiagnostic = {
   reasonCode: DeferredObjectiveDiagnosticReasonCode | DeferredObjectiveHorizonPlan['statusDetail'];
   /** Raw progress satisfaction before any stall-to-satisfied presentation overlay. */
   actuationSatisfied: boolean;
-  /**
-   * "Leave off until turned on again" is live on this device.
-   *
-   * Its OWN field rather than a `reasonCode` value, deliberately: `reasonCode`
-   * is the planner's verdict and is frozen into the committed revision (it
-   * resolves `floorShortfallCause`). Overwriting it would erase the real cause —
-   * a budget-bound task whose device is switched off across a settle would lose
-   * its budget signal, and the detail UI would explain the risk with the clock
-   * instead. The hold is transient; the planner's verdict is not.
-   */
-  externalOffHoldActive?: true;
   targetPercent: number | null;
   currentPercent: number | null;
   // Unit-AGNOSTIC current/target reading, in the task's own unit, identical to

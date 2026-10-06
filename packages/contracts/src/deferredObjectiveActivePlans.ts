@@ -328,10 +328,6 @@ export type DeferredObjectiveActivePlanDiagnosticReason =
   | 'objective_not_accepting_energy'
   | 'objective_device_limit'
   | 'objective_device_schedule'
-  // "Leave off until turned on again" is active on the task's device. Same
-  // reason as the two above: the committed schedule keeps saying "On track"
-  // until the next settle, so the live cause has to travel on the plan itself.
-  | 'objective_device_left_off'
   // The task's device is not managed by PELS. Same live-truth reason as
   // `objective_device_in_sub_home`: a committed plan keeps advertising its
   // cached schedule until the next settle, so the pause has to travel on the

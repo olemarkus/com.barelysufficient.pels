@@ -108,19 +108,29 @@ export const applyDeferredObjectiveAdmission = (
 };
 
 /**
- * "Leave off until turned on again": the hold guarantees this device will not
- * start, so every rescue decoration is spent on a device that cannot use it —
- * and each one costs OTHER devices. `reservesStartupPower` holds available
- * power out of every lower-priority device's reach, `engageBoost` escalates
- * past the shed invariant, the cap-off `override` hands the planner a
- * controllable device to resume, and `budgetExempt` spends daily budget. All of
- * that would be pure collateral damage on unrelated loads, potentially for the
- * whole planned window. An explicit off action beats the task; the task reports
- * the deadline risk instead (`objective_device_left_off`).
+ * "Leave off until turned on again" against a smart task: the task wins (owner
+ * ruling, 2026-10-06). An hour the task books LIFTS the hold for this cycle: the
+ * device drops the flag here, and the executor's own hold gate reads the lift
+ * (`externalOffHoldLiftedDeviceIds` → `PlanEngineState.isExternalOffHeld`).
+ *
+ * Lifted, never cleared. The stored hold ends the ordinary way, when the device
+ * is observed on (the release sweep in `setup/homeRuntime/planDevicePrePass.ts`).
+ * A booked hour PELS cannot start the device in (shed all hour, a dry run)
+ * therefore leaves the hold in place for when the task is gone.
+ *
+ * An hour the task does not book leaves the hold alone: both want the device
+ * off, and the owner's off action stays the reason shown for it.
  */
-const rescueBlockedByExternalOffHold = (device: PlanInputDevice): boolean => (
-  device.externalOffHoldActive === true
-);
+const liftsExternalOffHold = (
+  decision: DeferredAdmissionDecision,
+  device: PlanInputDevice,
+): boolean => decision.kind === 'planned' && device.externalOffHoldActive === true;
+
+const withoutExternalOffHold = (device: PlanInputDevice): PlanInputDevice => {
+  const { externalOffHoldActive: _lifted, ...rest } = device;
+  void _lifted;
+  return rest;
+};
 
 /**
  * Does this task need to CONTRIBUTE authority for the device this cycle?
@@ -142,7 +152,9 @@ const contributesCommandAuthority = (
 ): boolean => (
   decision.kind !== 'inactive'
   && device.control.commandAuthority === false
-  && !rescueBlockedByExternalOffHold(device)
+  // A held device in an hour the task does not book is already off by its
+  // owner's hand; there is nothing for the task to release.
+  && device.externalOffHoldActive !== true
 );
 
 /**
@@ -169,6 +181,8 @@ export type DeferredAdmissionInput = {
   forceShedSet: Set<string>;
   /** Devices this cycle's task lends PELS authority over (`contributesCommandAuthority`). */
   lentAuthorityDeviceIds: Set<string>;
+  /** Devices whose "Leave off" hold this cycle's booked hour lifts (`liftsExternalOffHold`). */
+  externalOffHoldLiftedDeviceIds: Set<string>;
 };
 
 // A planned limit-lower-priority task forces the device's boost on. `resolveBoostActive`
@@ -199,13 +213,8 @@ const buildAdmissionDecoration = (
 });
 
 /**
- * What this decision claims ON BEHALF of the device for this hour.
- *
- * All four share one gate — `rescueBlockedByExternalOffHold` — because a device
- * its owner switched off cannot make any of them: "Leave off until turned on
- * again" wins over a smart task, by spec. Grouped rather than inlined so the map
- * callback stays within its complexity budget and so the shared gate cannot be
- * forgotten by whichever claim is added next.
+ * What this decision claims ON BEHALF of the device for this hour. Grouped
+ * rather than inlined so the map callback stays within its complexity budget.
  */
 type DeferredHourClaims = {
   budgetExempt: boolean;
@@ -218,13 +227,12 @@ const resolveHourClaims = (
   decision: DeferredAdmissionDecision,
   device: PlanInputDevice,
 ): DeferredHourClaims => {
-  const heldOff = rescueBlockedByExternalOffHold(device);
-  const planned = !heldOff && decision.kind === 'planned';
+  const planned = decision.kind === 'planned';
   return {
     // The rescue budget exemption applies cap-agnostically, but only during the
     // planned current bucket. It should not turn idle/background cycles into the
     // device's standing budget-exemption setting.
-    budgetExempt: !heldOff && decision.budgetExempt,
+    budgetExempt: decision.budgetExempt,
     // Engage the device's boost while a limit-lower-priority task is in its planned hours.
     // This reuses the existing boost machinery (EV chargers via evBoost, stepped thermal
     // devices via temperatureBoost) to escalate past the shed-invariant and claim capacity
@@ -266,13 +274,19 @@ export const applyDeferredAdmissionToInput = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
 ): DeferredAdmissionInput => {
   if (decisions.size === 0) {
-    return { devices, forceShedSet: new Set(), lentAuthorityDeviceIds: new Set() };
+    return {
+      devices, forceShedSet: new Set(), lentAuthorityDeviceIds: new Set(), externalOffHoldLiftedDeviceIds: new Set(),
+    };
   }
   const forceShedSet = new Set<string>();
   const lentAuthorityDeviceIds = new Set<string>();
-  const transformed = devices.map((device) => {
-    const decision = decisions.get(device.id);
-    if (!decision) return device;
+  const externalOffHoldLiftedDeviceIds = new Set<string>();
+  const transformed = devices.map((heldOrFree) => {
+    const decision = decisions.get(heldOrFree.id);
+    if (!decision) return heldOrFree;
+    const liftsHold = liftsExternalOffHold(decision, heldOrFree);
+    if (liftsHold) externalOffHoldLiftedDeviceIds.add(heldOrFree.id);
+    const device = liftsHold ? withoutExternalOffHold(heldOrFree) : heldOrFree;
     const deadlineFloorTargetC = decision.kind === 'planned' ? decision.deadlineFloorTargetC : undefined;
     const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     const override = contributesCommandAuthority(decision, device);
@@ -287,7 +301,9 @@ export const applyDeferredAdmissionToInput = (
       ...(holdsOwnAuthorityOff ? { deferredHoldActive: true as const } : {}),
     };
   });
-  return { devices: transformed, forceShedSet, lentAuthorityDeviceIds };
+  return {
+    devices: transformed, forceShedSet, lentAuthorityDeviceIds, externalOffHoldLiftedDeviceIds,
+  };
 };
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */

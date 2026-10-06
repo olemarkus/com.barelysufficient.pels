@@ -50,7 +50,7 @@ const buildDom = () => {
           <md-switch id="device-detail-respect-external-off"></md-switch>
           <small class="field__hint" id="device-detail-respect-external-off-temperature-hint" hidden>This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.</small>
           <small class="field__hint" id="device-detail-respect-external-off-power-limit-hint" hidden>Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.</small>
-          <small class="field__hint" id="device-detail-respect-external-off-smart-task-hint" hidden>A Smart task may not finish on time while this device stays off.</small>
+          <small class="field__hint" id="device-detail-respect-external-off-smart-task-hint" hidden>This device has an active smart task. In its booked hours, PELS can turn the device on when there is available power, even after it was turned off elsewhere.</small>
         </div>
         <md-switch id="device-detail-price-opt"></md-switch>
         <div class="md-switch-row" id="device-detail-surplus-opt-row" hidden>
@@ -326,13 +326,13 @@ describe('device detail "Leave off until turned on again" gating', () => {
     expect(powerLimitHint()?.hidden).toBe(true);
   });
 
-  it('warns but does NOT block while a smart task is active', async () => {
-    // An explicit off action is meant to beat a smart task; the hint only makes
-    // the deadline consequence visible.
+  it('explains but does NOT block while a smart task is active', async () => {
+    // A smart task's booked hours win over the hold; the hint says so, and the
+    // hold still applies in every other hour.
     await openPanel({ device: buildBinaryDevice(), activeSmartTask: true });
     expect(toggle()?.disabled).toBe(false);
     expect(smartTaskHint()?.hidden).toBe(false);
-    expect(smartTaskHint()?.textContent).toContain('Smart task');
+    expect(smartTaskHint()?.textContent).toContain('In its booked hours, PELS can turn the device on');
   });
 
   it('keeps an opted-in switch toggleable when the device stops qualifying', async () => {

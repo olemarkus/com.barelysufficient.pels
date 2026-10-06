@@ -16,7 +16,6 @@ import {
   type DeadlinePendingContext,
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
-  type SmartTaskLiveCause,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
 import { buildTrajectory } from './deadlinePlanTrajectory.ts';
@@ -138,7 +137,7 @@ const buildPendingPayload = (
 
 type ObjectivePayloadResult =
   // `headline` and `body` replace the reason's fixed copy with the task's live
-  // cause (the car stopped at its own charge limit, the device left off): the
+  // cause (the car stopped at its own charge limit, the device stopped taking power): the
   // fixed "Waiting for the first … reading" would contradict a cause the card
   // already names. `statusChip` carries the shared effective status when it is
   // at risk or cannot finish, so a task the list reports At risk is not a
@@ -188,15 +187,6 @@ const resolveDirectionUnavailable = (
 };
 
 
-// The live cause's short line heads the card and its reason line explains it.
-// Where the reason only restates the short line ("Device is staying off until
-// turned on again."), the reason's fixed body stays instead of repeating it.
-const resolveNoReadingCauseCopy = (liveCause: SmartTaskLiveCause): { headline: string; body?: string } => (
-  liveCause.reason === `${liveCause.listLine}.`
-    ? { headline: liveCause.listLine }
-    : { headline: liveCause.listLine, body: liveCause.reason }
-);
-
 // No current reading (a charger that ended the session at the car's limit takes
 // the car's level with it): progress-dependent content, the trajectory and the
 // delivered-so-far line, has nothing to stand on. The task's status does not
@@ -216,7 +206,8 @@ const resolveNoReadingResult = (
   return {
     kind: 'unavailable',
     reason: 'no_current_reading',
-    ...(liveCause === null ? {} : resolveNoReadingCauseCopy(liveCause)),
+    // The live cause's short line heads the card and its reason line explains it.
+    ...(liveCause === null ? {} : { headline: liveCause.listLine, body: liveCause.reason }),
     ...(statusChip === null ? {} : { statusChip }),
   };
 };

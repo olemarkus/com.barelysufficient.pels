@@ -550,6 +550,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
         admittedDeviceIds: new Set([PUMP]),
         drivingDeviceIds: new Set([PUMP]),
         lentAuthorityDeviceIds: new Set<string>(),
+        externalOffHoldLiftedDeviceIds: new Set<string>(),
       }),
     });
     const plan = await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
@@ -573,6 +574,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
         admittedDeviceIds: new Set([PUMP]),
         drivingDeviceIds: new Set([PUMP]),
         lentAuthorityDeviceIds: new Set<string>(),
+        externalOffHoldLiftedDeviceIds: new Set<string>(),
       }),
     });
     await h.builder.buildDevicePlanSnapshot([buildPump({ on: false })]);

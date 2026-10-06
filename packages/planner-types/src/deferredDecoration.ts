@@ -55,9 +55,13 @@ export type DeferredDecorationInput = {
  *   thermostat-style standing-demand fact.
  * - `lentAuthorityDeviceIds`: devices PELS holds no authority over of its own,
  *   to which a task lends it this cycle (any decision but `inactive`, unless
- *   "Leave off until turned on again" holds the device). A shed made under a
- *   lent authority is the task's: its lifecycle clock decides what happens when
- *   the task lets go, so the planner never records it as one PELS undoes.
+ *   "Leave off until turned on again" holds the device in an hour the task does
+ *   not book). A shed made under a lent authority is the task's: its lifecycle
+ *   clock decides what happens when the task lets go, so the planner never
+ *   records it as one PELS undoes.
+ * - `externalOffHoldLiftedDeviceIds`: held devices whose task books this hour.
+ *   A smart task wins over "Leave off until turned on again", so the planner
+ *   records these on `PlanEngineState` and the executor's hold gate lets them run.
  */
 export type DeferredDecorationBundle = {
   admittedDevices: PlanInputDevice[];
@@ -67,4 +71,5 @@ export type DeferredDecorationBundle = {
   admittedDeviceIds: ReadonlySet<string>;
   drivingDeviceIds: ReadonlySet<string>;
   lentAuthorityDeviceIds: ReadonlySet<string>;
+  externalOffHoldLiftedDeviceIds: ReadonlySet<string>;
 };

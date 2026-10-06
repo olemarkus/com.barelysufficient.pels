@@ -77,11 +77,6 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   // two co-occur even less — but a task whose current hour is idle must not have
   // its release lift the very hold that hour's idleness justifies.
   PLAN_REASON_CODES.awaitingPelsStart,
-  // "Leave off until turned on again" is an explicit user action, and the spec
-  // is that it wins over a smart task: the task reports the deadline risk
-  // instead of quietly overriding the off. Without this a deferred binary_restore
-  // would lift a hold the user set by hand.
-  PLAN_REASON_CODES.externalOffHold,
   // One smart task's binary_restore must not lift another task's startup reservation: the
   // reserving device is higher priority by construction, so resuming here would take exactly
   // the block the reservation exists to protect.

@@ -123,8 +123,8 @@ export const resolveDeadlineHeroTone = (
 // announce — its headline is suppressed like `alert`, leaving the chip +
 // meta line to carry the warning rather than a contradictory "On track".
 //
-// On an at-risk hero a live cause (device left off, a confirmed device-side
-// stop, the car's own limit or schedule) also suppresses it: "Charging now" from
+// On an at-risk hero a live cause (a confirmed device-side stop, the car's own
+// limit or schedule) also suppresses it: "Charging now" from
 // the booked hour would contradict the reason line saying the device is not
 // taking power. A satisfied or healthy hero carrying a stale cause keeps it.
 export const resolveHeroHeadline = (params: {
@@ -196,8 +196,8 @@ export const resolveCannotMeetMeta = (params: {
   budgetRole: DeadlineBudgetRole;
   liveCause: SmartTaskLiveCause | null;
 }): string => {
-  // A live cause (the device left off, a confirmed device-side stop, the car's
-  // own charge limit) outranks both cost causes: neither the target nor the
+  // A live cause (a confirmed device-side stop, the car's own charge limit)
+  // outranks both cost causes: neither the target nor the
   // deadline is what needs changing. From the same shared resolver the Smart
   // tasks widget uses, so the surfaces cannot diverge.
   if (params.liveCause !== null) return params.liveCause.reason;
@@ -286,11 +286,11 @@ export type BuildHeroInput = {
   nowMs: number;
   cannotMeet: boolean;
   budgetRole: DeadlineBudgetRole;
-  // The task's live cause from `resolveSmartTaskLiveCause` ("Leave off until
-  // turned on again", a confirmed device-side stop, the car stopped at its own
-  // charge limit). Drives the reason sentence and suppresses the recourse, so an
-  // at-risk hero reached through the overlay never explains itself with the
-  // target, the deadline, or the budget.
+  // The task's live cause from `resolveSmartTaskLiveCause` (a confirmed
+  // device-side stop, the car stopped at its own charge limit). Drives the
+  // reason sentence and suppresses the recourse, so an at-risk hero reached
+  // through the overlay never explains itself with the target, the deadline,
+  // or the budget.
   liveCause: SmartTaskLiveCause | null;
   // The car's own charge limit, when it sits below an EV task's target.
   // Explains, before the car gets there, why delivery will stop short.

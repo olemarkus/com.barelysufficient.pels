@@ -376,10 +376,16 @@ const stripRetiredRevisionFields = (
 // `objective_delivery_restricted` was written by v3.9.3 whenever PELS's own
 // capacity, budget or priority limiting held a task's device back. Those
 // decisions no longer change a task's status, and nothing writes the code.
+// `objective_device_left_off` was written while "Leave off until turned on
+// again" held a task's device; a booked hour now ends that hold, so it is no
+// risk to the task.
 // Dropped here, like `devicePriority` above, so a stored plan keeps its
 // commitment while the retired code never reaches a resolver and is not
 // written back; the next diagnostic sets whatever live code applies.
-const RETIRED_DIAGNOSTIC_REASON_CODES: ReadonlySet<string> = new Set(['objective_delivery_restricted']);
+const RETIRED_DIAGNOSTIC_REASON_CODES: ReadonlySet<string> = new Set([
+  'objective_delivery_restricted',
+  'objective_device_left_off',
+]);
 const stripRetiredDiagnosticReasonCode = <T extends { diagnosticReasonCode?: unknown }>(plan: T): T => {
   if (typeof plan.diagnosticReasonCode !== 'string'
     || !RETIRED_DIAGNOSTIC_REASON_CODES.has(plan.diagnosticReasonCode)) return plan;

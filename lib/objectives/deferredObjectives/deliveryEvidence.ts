@@ -181,11 +181,10 @@ export const activeDeliveryCause = (evidence: TaskDeliveryEvidence): TaskDeliver
  *    A failure that persists shows up as lost progress, which the next settle
  *    re-plans against; a device that stays unavailable leaves the plan through
  *    its own inactive path.
- *  - `uncontrolled`: either the owner's "Leave off until turned on again",
- *    which `resolveDiagnosticReasonCode` reports as `objective_device_left_off`
- *    from the diagnostic itself, or a PELS policy hold (start policy, solar
- *    surplus, the task's own avoided hour, no command authority) that the plan
- *    owns. Neither is device-side evidence that delivery failed.
+ *  - `uncontrolled`: a hold the plan owns: the owner's "Leave off until turned
+ *    on again" outside a booked hour (a booked hour ends it), or a PELS policy
+ *    hold (start policy, solar surplus, the task's own avoided hour, no command
+ *    authority). None is device-side evidence that delivery failed.
  */
 const DELIVERY_RISK_REASON = {
   device_not_accepting: 'objective_not_accepting_energy',

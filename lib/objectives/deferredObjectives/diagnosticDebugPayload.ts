@@ -58,9 +58,6 @@ export const buildDeferredObjectiveDebugPayload = (
   enforcement: diagnostic.enforcement,
   status: resolvedTrajectoryStatus(diagnostic) ?? 'unknown',
   reasonCode: diagnostic.reasonCode,
-  // Logged separately from `reasonCode` because it no longer replaces it — the
-  // planner's verdict and the live hold are independent facts about the cycle.
-  ...(diagnostic.externalOffHoldActive === true ? { externalOffHoldActive: true } : {}),
   // Shared with the persisted active-plan revision so the structured log and
   // the UI hero copy resolver see the same producer-resolved verdict — see
   // `floorShortfallCause.ts` for the mapping table.

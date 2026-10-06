@@ -2455,16 +2455,6 @@ describe('deadline plan page payload', () => {
     });
   });
 
-  it('heads a no-reading card for a device left off with the cause, without repeating it below', () => {
-    const renderInput = resolveRenderInput(carCapPlanInput({ limitValue: 90, reached: false }, null, {
-      diagnosticReasonCode: 'objective_device_left_off',
-    }));
-    expect(renderInput).toMatchObject({
-      status: 'unavailable', reason: 'no_current_reading', headline: 'Device is staying off until turned on again',
-    });
-    expect(renderInput).not.toHaveProperty('body');
-  });
-
   it('explains a budget-bound cannot-finish task by the budget while the car is still below its limit', () => {
     const input = carCapPlanInput({ limitValue: 70, reached: false }, 50);
     const plan = input.bootstrap.deferredObjectiveActivePlans?.plansByDeviceId.ev;
@@ -5107,20 +5097,17 @@ describe('resolveHeroHeadline', () => {
   });
 
   // "Heating now" from the booked hour would contradict a reason line saying the
-  // device is being left off or has stopped taking power.
-  it.each(['objective_device_left_off', 'objective_not_accepting_energy'] as const)(
-    'suppresses the live-state headline under a %s live cause',
-    async (code) => {
-      const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
-      expect(resolveHeroHeadline({
-        labels,
-        firstChargingHour: queuedHour,
-        nowMs: queuedHour.startsAtMs + 60_000,
-        liveCause: resolveSmartTaskLiveCause(code, null, 'none'),
-        tone: 'warn',
-      })).toBeNull();
-    },
-  );
+  // device has stopped taking power.
+  it('suppresses the live-state headline under a live cause', async () => {
+    const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroHeadline({
+      labels,
+      firstChargingHour: queuedHour,
+      nowMs: queuedHour.startsAtMs + 60_000,
+      liveCause: resolveSmartTaskLiveCause('objective_not_accepting_energy', null, 'none'),
+      tone: 'warn',
+    })).toBeNull();
+  });
 
   it('keeps the live-state headline on a satisfied or healthy hero with a stale cause', async () => {
     const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
@@ -5128,7 +5115,7 @@ describe('resolveHeroHeadline', () => {
       labels,
       firstChargingHour: queuedHour,
       nowMs: queuedHour.startsAtMs + 60_000,
-      liveCause: resolveSmartTaskLiveCause('objective_device_left_off', null, 'none'),
+      liveCause: resolveSmartTaskLiveCause('objective_not_accepting_energy', null, 'none'),
       tone: 'good',
     })).toBe('Heating now');
   });
@@ -5233,7 +5220,7 @@ describe('resolveQueuedHeadlineReason', () => {
 // view never branches on raw cause codes.
 describe('resolveCannotMeetRecourse', () => {
   const labels = deadlineLabels('temperature');
-  const leftOff = resolveSmartTaskLiveCause('objective_device_left_off', null, 'none');
+  const stoppedTakingPower = resolveSmartTaskLiveCause('objective_not_accepting_energy', null, 'none');
 
   it('returns null when the hero is not cannot-meet', async () => {
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
@@ -5312,26 +5299,23 @@ describe('resolveCannotMeetRecourse', () => {
     expect(meta).toContain('Extra permissions');
   });
 
-  it('offers no recourse for a device the user turned off', async () => {
-    // The reason sentence already names the only action ("until turned on
-    // again"); neither the Budget tab nor the device settings hold the fix, and
-    // "Adjust device" would send the user looking for a setting to change.
+  it('offers no recourse for a device that stopped taking power', async () => {
+    // The fix is on the device itself; neither the Budget tab nor the device
+    // settings hold it, and "Adjust device" would send the user looking for a
+    // setting to change.
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
     expect(resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
       planStatus: 'cannot_meet' as const,
       budgetRole: 'sole' as const,
-      liveCause: leftOff,
+      liveCause: stoppedTakingPower,
       deviceId: 'heater',
     })).toBeNull();
   });
 
-  it('explains an at-risk hero with the device, not the target or the budget', async () => {
+  it('explains a cannot-finish hero without a live cause by the time or the budget', async () => {
     const { resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'sole' as const, liveCause: leftOff }))
-      .toBe('Device is staying off until turned on again.');
-    // Unheld tasks keep their existing diagnosis.
     expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'none' as const, liveCause: null }))
       .toContain('Not enough time');
     expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'sole' as const, liveCause: null }))

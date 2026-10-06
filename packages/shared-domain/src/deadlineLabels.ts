@@ -200,11 +200,6 @@ const WHY_CANNOT_MEET_BUDGET_PARTIAL = 'Today’s daily budget is holding part o
   + 'but there is not enough time either.';
 const WHY_AT_RISK_BUDGET_PARTIAL = 'Today’s daily budget may be holding part of this back, '
   + 'and time is short too.';
-// The device is off because the user turned it off and asked PELS to leave it
-// off, so neither the budget nor the clock is the thing to act on — turning the
-// device on is. Named before the budget/time split so it is never mistaken for
-// one of those.
-const WHY_AT_RISK_DEVICE_LEFT_OFF = 'Device is staying off until turned on again.';
 
 // Exported so the widget's recently-ended detail reuses the SAME recourse copy
 // for a Missed task that the active cannot-finish path uses — budget-bound vs
@@ -383,10 +378,10 @@ const RECOURSE_RAISE_CAR_LIMIT = 'Raise the car’s charge limit to reach the ta
 
 /**
  * A live cause outside the plan that explains why a task is at risk or cannot
- * finish: the owner's own off action, a confirmed device-side stop, or the
- * car's own charge limit. `why` and `recourseHint` are the Smart tasks widget's
- * short lines; `listLine` is the Smart tasks list card's line beside the
- * target; `reason` is the detail hero's reason line. None of them comes with a
+ * finish: a confirmed device-side stop or the car's own charge limit. `why`
+ * and `recourseHint` are the Smart tasks widget's short lines; `listLine` is
+ * the Smart tasks list card's line beside the target; `reason` is the detail
+ * hero's reason line. None of them comes with a
  * PELS settings button: the fix is on the device or in the car.
  */
 export type SmartTaskLiveCause = {
@@ -396,12 +391,6 @@ export type SmartTaskLiveCause = {
   reason: string;
 };
 
-const LIVE_CAUSE_DEVICE_LEFT_OFF: SmartTaskLiveCause = {
-  why: WHY_AT_RISK_DEVICE_LEFT_OFF,
-  recourseHint: null,
-  listLine: 'Device is staying off until turned on again',
-  reason: WHY_AT_RISK_DEVICE_LEFT_OFF,
-};
 // Device-neutral: the 15-minute non-delivery confirmation covers any metered
 // device (a water heater at its own thermostat, a relay cut-off, a car that
 // stopped charging). Never says "charge": temperature devices read it too.
@@ -442,11 +431,10 @@ const carLimitLiveCause = (cap: SmartTaskCarChargeLimit): SmartTaskLiveCause => 
  * The one resolver for a task's live cause, shared by the detail hero, the
  * Smart tasks list card and widget, so they can never explain the same task
  * differently. Its causes are exactly the ones that downgrade a healthy status
- * in `resolveEffectivePlanStatus`, in precedence order: the owner's off action
- * first; then the car stopped at its known limit (which explains a device limit
- * or a stop with numbers); then the confirmed device-side causes; last, a known
- * car limit below the target that the car has not reached yet, which a more
- * specific stop outranks. `carChargeLimit` is the reported cap
+ * in `resolveEffectivePlanStatus`, in precedence order: the car stopped at its
+ * known limit (which explains a device limit or a stop with numbers); then the
+ * confirmed device-side causes; last, a known car limit below the target that
+ * the car has not reached yet, which a more specific stop outranks. `carChargeLimit` is the reported cap
  * (`resolveReportedCarChargeLimit`), so it is only present below the target
  * and only while it explains the status.
  *
@@ -463,7 +451,6 @@ export const resolveSmartTaskLiveCause = (
   carChargeLimit: SmartTaskCarChargeLimit | null,
   budgetRole: DeadlineBudgetRole,
 ): SmartTaskLiveCause | null => {
-  if (diagnosticReasonCode === 'objective_device_left_off') return LIVE_CAUSE_DEVICE_LEFT_OFF;
   if (carChargeLimit?.reached === true) return carLimitLiveCause(carChargeLimit);
   if (diagnosticReasonCode === 'objective_device_limit') return LIVE_CAUSE_CAR_LIMIT_UNKNOWN;
   if (diagnosticReasonCode === 'objective_device_schedule') return LIVE_CAUSE_CAR_SCHEDULE;
@@ -494,7 +481,7 @@ export const resolveSmartTaskBudgetRole = (revision: {
   return 'none';
 };
 
-// A live cause (an explicit off action, a confirmed device-side stop) is its own
+// A live cause (a confirmed device-side stop, the car's own limit) is its own
 // cause — neither the budget nor the clock — on an at-risk and a cannot-finish
 // row alike, matching the detail hero.
 const resolveLiveCauseCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDetailCopy | null => {
@@ -1501,15 +1488,13 @@ export const SMART_TASK_USAGE_RETURN_CONTEXT = 'Showing household usage.';
 // Resolve the list card status id from plan data.
 
 /**
- * Live reason codes that downgrade a healthy reported status. The owner's
- * "Leave off until turned on again", plus the confirmed device-side causes
- * from the runtime delivery overlay (`deliveryEvidence.ts`). Planner decisions
+ * Live reason codes that downgrade a healthy reported status: the confirmed
+ * device-side causes from the runtime delivery overlay (`deliveryEvidence.ts`). Planner decisions
  * (capacity, budget or priority limiting, settles) never reach this set: the
  * committed verdict already prices them in. Each code has its copy in
  * `resolveSmartTaskLiveCause`.
  */
 const LIVE_RISK_REASON_CODES: ReadonlySet<DeferredObjectiveActivePlanDiagnosticReason> = new Set([
-  'objective_device_left_off',
   'objective_not_accepting_energy',
   'objective_device_limit',
   'objective_device_schedule',
@@ -1579,8 +1564,8 @@ const resolveReportedStatus = (
  *
  * Deliberately NOT overlaid: the persisted revision itself, the frozen history
  * diagnostic, and the daily-budget cause derivation. Those record what the
- * TRAJECTORY was; a device left off is not a budget shortfall, and freezing the
- * overlay is what would make it outlive the hold.
+ * TRAJECTORY was; a device-side stop is not a budget shortfall, and freezing the
+ * overlay is what would make it outlive its cause.
  */
 export const resolveEffectivePlanStatus = (
   planStatus: DeferredObjectiveActivePlanStatusV1,
@@ -1682,7 +1667,7 @@ export const resolveSmartTaskListStatus = (params: SmartTaskListStatusInput): Sm
     if (pendingReason === 'device_unmanaged') return 'paused_unmanaged';
     return 'building_plan';
   }
-  // Live causes (a device left off outside PELS, a confirmed device-side stop)
+  // Live causes (a confirmed device-side stop)
   // overlay the committed verdict, which is still the trajectory truth and says
   // nothing about a device that is not running. The car-limit case returned above.
   const reported = resolveReportedStatus(planStatus, diagnosticReasonCode, params.liveCompletion, null);

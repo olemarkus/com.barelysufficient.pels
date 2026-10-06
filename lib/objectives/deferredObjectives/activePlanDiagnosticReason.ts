@@ -17,22 +17,13 @@ export const resolveDiagnosticReasonCode = (
 ): DeferredObjectiveActivePlanDiagnosticReason | undefined => {
   // The device is not in this cycle's plan input, so this diagnostic carries no
   // information about the overlay. HOLD whatever is already persisted: resolving
-  // to `undefined` would clear a standing `objective_invalid_session` /
-  // `objective_device_left_off` with no
+  // to `undefined` would clear a standing `objective_invalid_session` with no
   // grace, and the user's chip would flip back to a cached "On track" on a
   // momentary gap. A real recovery arrives as a diagnostic that names itself.
   if (diag.reasonCode === 'objective_missing_device') return current;
   if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';
   if (diag.reasonCode === 'objective_device_in_sub_home') return 'objective_device_in_sub_home';
   if (diag.reasonCode === 'objective_device_unmanaged') return 'objective_device_unmanaged';
-  // "Leave off until turned on again". `planStatus` / `floorShortfallCause` are
-  // not rewritten until the next `:58` settle. Routing the cause through here
-  // puts it on the persisted plan every cycle — which is what the settings UI
-  // and the widget read — so the chip stops claiming "On track" the moment the
-  // device goes off, and stops claiming risk the moment it is turned back on.
-  // Ahead of the delivery causes below: the owner's own off action is the cause
-  // to name, whatever the device-side evidence says while it is held off.
-  if (diag.externalOffHoldActive === true) return 'objective_device_left_off';
   // Confirmed device-side delivery causes from the live overlay
   // (`deliveryEvidence.ts:reportTaskDeliveryStatus`).
   if (diag.reasonCode === 'objective_not_accepting_energy') return diag.reasonCode;
