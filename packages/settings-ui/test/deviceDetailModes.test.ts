@@ -1,6 +1,6 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import { createHomeyMock } from './helpers/homeyApiMock';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 
 const setupDom = () => {
   const section = document.createElement('section');
@@ -11,7 +11,7 @@ const setupDom = () => {
   document.body.replaceChildren(section);
 };
 
-const buildDevice = (): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'heater-1',
   name: 'Hall Heater',
   deviceType: 'temperature',
@@ -19,7 +19,7 @@ const buildDevice = (): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDe
   targets: [{ id: 'target_temperature', value: 20, unit: '°C', step: 0.5 }],
 }));
 
-const buildOnOffDevice = (): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildOnOffDevice = (): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'charger-1',
   name: 'EV Charger',
   deviceType: 'onoff',

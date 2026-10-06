@@ -1,5 +1,5 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 const setupDom = () => {
   const root = document.body;
@@ -36,7 +36,7 @@ const mockSharedModules = () => {
   }));
 };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Test Device',
   targets: [],

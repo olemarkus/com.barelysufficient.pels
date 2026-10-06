@@ -3,7 +3,7 @@
 // shed-field relocation, idempotence, and the bare-page Setup auto-expand.
 
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 const SECTION_IDS = [
   'device-detail-modes-section',
@@ -37,8 +37,8 @@ const buildDom = () => {
 };
 
 const buildDevice = (
-  overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({
+  overrides: Partial<SettingsUiDeviceSnapshot> = {},
+): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({
   available: true,
   id: 'device-1',
   name: 'Device',

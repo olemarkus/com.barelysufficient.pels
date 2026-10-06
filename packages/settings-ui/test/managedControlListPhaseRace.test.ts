@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi.ts';
 
 const ensureChargerPhasePresetsRead = vi.fn();
 const applyManagedOptInControlMode = vi.fn();
@@ -43,7 +43,7 @@ it('drops a delayed list opt-in after the owner switches the charger back off', 
     import('../src/ui/devices.ts'),
     import('../src/ui/state.ts'),
   ]);
-  const charger: TargetDeviceSnapshot = {
+  const charger: SettingsUiDeviceSnapshot = {
     id: 'easee-1',
     name: 'Driveway charger',
     deviceClass: 'evcharger',
@@ -56,6 +56,8 @@ it('drops a delayed list opt-in after the owner switches the charger back off', 
     available: true,
     powerCapable: true,
     targets: [],
+    batteryControl: 'not_battery',
+    batteryTakenOver: false,
   };
   state.initialLoadComplete = true;
   state.latestDevices = [charger];

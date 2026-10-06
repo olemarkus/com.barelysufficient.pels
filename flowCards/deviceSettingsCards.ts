@@ -13,7 +13,9 @@ import { readFlowDeviceArg } from './flowArgParsers';
 // budget-exemption setting does not apply to it. The capacity-control cards are
 // the exception: a battery's Power-limit control lives in `controllable_devices`
 // like a load's (`isBatteryPowerLimitEnabled`), so those cards, and the
-// capacity-control condition, accept it (`isCapacityControlDevice`).
+// capacity-control condition, accept it (`isCapacityControlDevice`); the
+// enable card, and a true answer from the condition, only while PELS can
+// drive it.
 //
 // Keyed on the device's ROLE (`deviceClass` is 'battery'/'solarpanel'), NOT on
 // its CURRENT `controllable`/`managed` flags: a normal device the user has not
@@ -67,11 +69,16 @@ const mayRevokeCapacityControl: DeviceWriteGate = (device) => (
 // controllable. A Flow arg is untrusted input, so an unresolvable one is a no-op.
 // `getFlowSnapshot` refreshes an empty snapshot before answering, so this does not
 // turn the boot window into a refusal. `!== false`, not `=== true`: a descriptor
-// without the flag is not a verdict. A home battery is granted on its role: its
-// limit is priced from its own storage reading, never a load's power support.
-const mayGrantCapacityControl: DeviceWriteGate = (device) => (
+// without the flag is not a verdict. A home battery is granted only while PELS
+// can drive it (`readBatteryControl`): its limit is priced from its own storage
+// reading, never a load's power support, and a battery PELS can only watch
+// (mode-only, on/off, or its app refusing control) has no Power-limit control
+// to turn on.
+const buildMayGrantCapacityControl = (deps: FlowCardDeps): DeviceWriteGate => (device) => (
   device !== undefined && (
-    isHomeBattery(device) || (isUserSelectableDevice(device) && device.powerCapable !== false)
+    isHomeBattery(device)
+      ? deps.readBatteryControl(device.id) === 'drivable'
+      : isUserSelectableDevice(device) && device.powerCapable !== false
   )
 );
 
@@ -82,7 +89,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
     settingKind: 'capacity_control',
-    deviceFilter: mayGrantCapacityControl,
+    deviceFilter: buildMayGrantCapacityControl(deps),
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -129,13 +136,14 @@ export function registerCapacityControlCondition(deps: FlowCardDeps): void {
   registerDeviceSnapshotCondition({
     cardId: 'is_device_capacity_controlled',
     // A home battery's descriptor never reads controllable (the generic gate
-    // vetoes it): its Power-limit control is its own gate on the same setting,
-    // and like a load's it counts only while the battery is managed.
+    // vetoes it): its Power-limit control is its own gate on the runtime-held
+    // map the planner reads, and like a load's it counts only while the battery
+    // is managed, and only while PELS can drive it at all.
     predicate: (device) => (
       isHomeBattery(device)
-        ? device.managed === true && isBatteryPowerLimitEnabled(
-          getBooleanSettingsRecord(deps.homey.settings.get(CONTROLLABLE_DEVICES)), device.id,
-        )
+        ? device.managed === true
+          && deps.readBatteryControl(device.id) === 'drivable'
+          && isBatteryPowerLimitEnabled(deps.getControllableDevices(), device.id)
         : device.controllable === true
     ),
     offers: isCapacityControlDevice,

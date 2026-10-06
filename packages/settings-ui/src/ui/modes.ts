@@ -26,7 +26,7 @@ import {
 } from '../../../contracts/src/settingsKeys.ts';
 import { showToast, showToastError } from './toast.ts';
 import { isHomeBatteryDeviceId, resolveManagedState, state } from './state.ts';
-import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
+import { renderPriorityBatteryNote } from './deviceDetail/batterySection.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
@@ -262,11 +262,9 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
     resolveManagedState(device.id)
     && getHomeIdForUiDevice(device.id) === selectedHomeId
   ));
-  if (priorityBatteryNote) {
-    priorityBatteryNote.hidden = !managedDevices.some((device) => isHomeBatteryClassKey(device.deviceClass));
-  }
   if (!managedDevices.length) {
     priorityEmpty.hidden = false;
+    renderPriorityBatteryNote(priorityBatteryNote, []);
     return;
   }
   priorityEmpty.hidden = true;
@@ -321,6 +319,8 @@ const refreshPriorityBadges = () => {
     const badge = row.querySelector<HTMLElement>('.priority-badge');
     if (badge) badge.textContent = `#${index + 1}`;
   });
+  // Said for the order on screen, so a drag that moves a battery updates it.
+  renderPriorityBatteryNote(priorityBatteryNote, rows.map((row) => row.dataset.deviceId ?? ''));
 };
 
 let sortableInstance: Sortable | null = null;

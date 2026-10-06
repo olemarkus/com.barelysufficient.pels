@@ -45,6 +45,6 @@ describe('battery Managed writes', () => {
       { id: 'battery-1', name: 'Battery', deviceClass: 'battery', batteryTakenOver: true },
     ] as unknown as typeof state.latestDevices;
     await writeBatteryManaged('battery-1', true, 'device detail', () => undefined, () => undefined);
-    expect(state.latestDevices[0]?.batteryTakenOver).toBeUndefined();
+    expect(state.latestDevices[0]?.batteryTakenOver).toBe(false);
   });
 });

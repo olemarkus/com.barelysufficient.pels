@@ -6,7 +6,7 @@ PELS takes prices from Homey Energy (with the grid tariff and taxes you entered 
 
 Got solar panels? Surplus can heat your water, preheat the house, run a device you only want on your own power, or charge the car, with the charging current following the sun. Behind an inverter limited to zero export, PELS finds the production the inverter is holding back and puts it to use. You set what exported power is worth, negative prices included, or use the feed-in price from Homey Energy. The Usage page shows production, self-consumption, export and the grid cost you avoided.
 
-A home battery becomes part of the same plan. PELS charges it with solar surplus your devices don't use, and discharges it to keep you under the limit before any device has to be turned down. If the battery is empty, PELS limits devices as usual, so the limit holds either way. This works with batteries whose Homey app lets PELS set the charge and discharge power.
+A home battery becomes part of the same plan. PELS charges it with solar surplus your devices don't use, and discharges it to keep you under the limit, by default before any device has to be turned down. If the battery is empty, PELS limits devices as usual, so the limit holds either way. This works with batteries whose Homey app lets PELS set the charge and discharge power.
 
 A daily budget spreads your energy use over the day, and PELS can learn how the weather affects your consumption and tell you the evening before whether tomorrow fits. Dashboard widgets show available power, today's budget and Smart task progress, and let you start a task or release a held device. Flow cards bring prices, limits and tasks into your own automations.
 

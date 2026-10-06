@@ -102,6 +102,10 @@ type ScopedApiApp = {
   homeRuntimeRead?: HomeRuntimeReadPort;
   homeMembership?: HomeMembershipPort;
   planStatuses?: PlanStatusRegistry;
+  batteryControl: {
+    readControlCapability: (deviceId: string) => 'not_battery';
+    wasTakenOver: (deviceId: string) => boolean;
+  };
 };
 
 const installBoundary = (options: {
@@ -158,6 +162,9 @@ const installBoundary = (options: {
     getUiPickerDevices: () => [],
     getLatestPlanSnapshotForUi: () => null,
     powerTracker: { lastPowerW: 5200, lastTimestamp: 4242, buckets: {} },
+    // The battery control owner is built before any device can be listed; this
+    // home has no battery, so it answers `not_battery` for every device.
+    batteryControl: { readControlCapability: () => 'not_battery', wasTakenOver: () => false },
     ...(options.hasRegistry === false ? {} : { planStatuses }),
     ...(options.hasReadPort === false ? {} : { homeRuntimeRead }),
     ...(options.hasMembership === false ? {} : { homeMembership }),

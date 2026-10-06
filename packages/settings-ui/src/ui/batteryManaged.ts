@@ -20,12 +20,10 @@ const runSerializedBatteryManagedWrite = createSerializedAsyncRunner();
  * change (`settingsChangeRouter.ts`) then carries the runtime's own answer.
  */
 const clearTakeoverNotice = (deviceId: string): void => {
-  if (!state.latestDevices.some((device) => device.id === deviceId && device.batteryTakenOver !== undefined)) return;
-  state.latestDevices = state.latestDevices.map((device) => {
-    if (device.id !== deviceId) return device;
-    const { batteryTakenOver: _cleared, ...rest } = device;
-    return rest;
-  });
+  if (!state.latestDevices.some((device) => device.id === deviceId && device.batteryTakenOver)) return;
+  state.latestDevices = state.latestDevices.map((device) => (
+    device.id === deviceId ? { ...device, batteryTakenOver: false } : device
+  ));
 };
 
 /**

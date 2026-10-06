@@ -75,8 +75,9 @@
  * the shared packages.
  */
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
-import type { HomeBatteryClaimObservation } from '../../packages/contracts/src/types';
+import type { HomeBatteryClaimObservation, HomeBatteryControlCapability } from '../../packages/contracts/src/types';
 import { getLogger } from '../logging/logger';
+import { AbsentBatteries } from './absentBatteries';
 import type {
   BatteryClaimAdmission,
   BatteryClaimRefusal,
@@ -109,9 +110,6 @@ import { BatteryVerificationLedger } from './batteryVerification';
 import { BATTERY_WATCH_ONLY_MS, BatteryWatchOnlyLedger } from './batteryWatchOnly';
 
 const logger = getLogger('battery');
-
-/** Consecutive complete device refreshes a battery must be missing from before its record is pruned. */
-const PRUNE_AFTER_ABSENT_REFRESHES = 2;
 
 /**
  * Whether an admission check holds the moments that only hold a write back
@@ -149,7 +147,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   /** Records still owed a hand-back that is not running right now. */
   private readonly pending = new PendingHandBacks();
   /** Complete refreshes in a row each recorded battery has been missing from. */
-  private readonly absentRefreshes = new Map<string, number>();
+  private readonly absent = new AbsentBatteries();
   /** Hand-backs running now, each answering whether the battery went back. */
   private readonly releasing = new Map<string, Promise<boolean>>();
   /** Batteries whose Managed PELS turned off this run because the owner took them over. */
@@ -231,6 +229,13 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     const battery = this.getBattery(deviceId);
     const surface = battery.kind === 'setpoint' ? battery.surface : battery.kind;
     return this.watchOnly.isWatchOnly(deviceId, surface, Date.now());
+  }
+
+  readControlCapability(deviceId: string): HomeBatteryControlCapability | 'not_battery' {
+    const battery = this.getBattery(deviceId);
+    if (battery.kind === 'not_battery') return 'not_battery';
+    if (battery.kind !== 'setpoint') return 'observe_only';
+    return this.watchOnly.isWatchOnly(deviceId, battery.surface, Date.now()) ? 'watch_only' : 'drivable';
   }
 
   /**
@@ -597,16 +602,8 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
    * nothing; a failed one never reaches here.
    */
   private pruneRemovedBatteries(claims: LoadedClaimRecords, refresh: ObservedDeviceStateRefreshPayload): void {
-    if (refresh.entries.length === 0) return;
-    const present = new Set(refresh.entries.map((entry) => entry.observed.id));
-    for (const deviceId of [...claims.records.keys()]) {
-      if (present.has(deviceId)) {
-        this.absentRefreshes.delete(deviceId);
-        continue;
-      }
-      const absent = (this.absentRefreshes.get(deviceId) ?? 0) + 1;
-      this.absentRefreshes.set(deviceId, absent);
-      if (absent < PRUNE_AFTER_ABSENT_REFRESHES || this.releasing.has(deviceId)) continue;
+    for (const deviceId of this.absent.dueForPrune([...claims.records.keys()], refresh)) {
+      if (this.releasing.has(deviceId)) continue;
       this.forget(claims, deviceId);
       logger.info({ event: 'battery_control_claim_pruned', deviceId, reason: 'device_removed' });
     }
@@ -622,7 +619,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     claims.records.delete(deviceId);
     this.claimWrites.forget(deviceId);
     this.pending.delete(deviceId);
-    this.absentRefreshes.delete(deviceId);
+    this.absent.forget(deviceId);
     return this.store.remove(deviceId);
   }
 

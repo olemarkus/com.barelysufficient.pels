@@ -32,6 +32,8 @@ export const resolveDeviceDetailControlState = (
     : (supportsPower || supportsTemperature) && !nativeWiringRequired;
   return {
     isHomeBattery,
+    // Only a battery PELS can drive has a Power-limit control that does anything.
+    isDrivableBattery: isHomeBattery && device?.batteryControl === 'drivable',
     supportsTemperature,
     canControlTemperature,
     supportsPower,
@@ -59,7 +61,9 @@ export const setTemperatureGatedSwitch = (
  * The Power-limit control switch. A battery reads `controllable_devices`
  * through its own gate (absent = on), and its switch is greyed out while
  * Managed is off or its Managed map does not parse (`isManaged` is false for
- * both): PELS then leaves the battery alone, so there is nothing to limit.
+ * both): PELS then leaves the battery alone, so there is nothing to limit. A
+ * battery PELS cannot drive has none: its row is hidden
+ * (`renderDeviceDetailBattery`), and the switch reads off.
  */
 export const setPowerLimitSwitch = (
   switchEl: { selected: boolean; disabled: boolean } | null,
@@ -69,8 +73,8 @@ export const setPowerLimitSwitch = (
   if (!switchEl) return;
   /* eslint-disable no-param-reassign -- intentional DOM element mutation via a shared helper */
   if (controlState.isHomeBattery) {
-    switchEl.selected = resolveBatteryPowerLimitOn(deviceId);
-    switchEl.disabled = !controlState.isManaged;
+    switchEl.selected = controlState.isDrivableBattery && resolveBatteryPowerLimitOn(deviceId);
+    switchEl.disabled = !controlState.isDrivableBattery || !controlState.isManaged;
     return;
   }
   switchEl.selected = controlState.canLimitPower && state.controllableMap[deviceId] === true;

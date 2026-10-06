@@ -680,10 +680,17 @@ describe('settingsOverviewReadModel home battery card', () => {
     expect(card.homeBattery).toEqual({ activity: 'own_mode', power: { kind: 'observed', kw: 0.4 }, holdsLimit: false });
   });
 
-  it('gives a battery PELS cannot drive no promise of taking over', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice(), battery({ control: 'observe_only' }));
-    expect(card.status.reason).toBeNull();
-  });
+  it.each([{ kind: 'none' }, { kind: 'solar_only' }] as const)(
+    'says PELS can only watch a battery whose app gives Homey no power setting ($kind hold)',
+    (hold) => {
+      const card = buildSettingsOverviewDeviceReadModel(batteryDevice(hold), battery({ control: 'observe_only' }));
+      expect(card.status).toMatchObject({
+        label: 'Own mode',
+        kind: 'idle',
+        reason: { text: 'PELS can only watch it: its app does not give Homey control' },
+      });
+    },
+  );
 
   it.each([{ kind: 'none' }, { kind: 'solar_only' }] as const)(
     'says PELS can only watch a battery whose app refused its claim ($kind hold)',

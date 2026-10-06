@@ -15,6 +15,7 @@ import {
   state,
 } from './state.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
+import { resolveBatteryUndrivableLine } from '../../../shared-domain/src/batteryControlCopy.ts';
 import { LEGEND_ONLY_REASONS, type RowDisabledReasons } from './deviceControlAvailability.ts';
 
 export type DeviceGroup = {
@@ -104,14 +105,15 @@ export const resolveDeviceManageability = (device: SettingsUiDeviceListItem) => 
   // A home battery listed here is one PELS can manage (the runtime lists only
   // a Main-home battery), unless its Managed map does not parse: the runtime
   // then treats it as unmanaged, so the switch shows off and unavailable. Its
-  // Limit switch is its Power-limit control, offered while it is managed
-  // (`isLimitToggleOn`); Price has no temperature to act on, so it reads as
-  // not applicable.
+  // Limit switch is its Power-limit control, offered while it is managed and
+  // only for a battery PELS can drive (`isLimitToggleOn`); one PELS can only
+  // watch has none, and its row says why (`resolveBatteryRowReasons`). Price
+  // has no temperature to act on, so it reads as not applicable.
   if (isHomeBatteryClassKey(device.deviceClass)) {
     const canManage = isBatteryControlReadable();
     return {
       supportsTemperature: false,
-      supportsPower: true,
+      supportsPower: device.batteryControl === 'drivable',
       supportsManage: true,
       nativeWiringRequired: false,
       canManage,
@@ -141,9 +143,40 @@ export const isLimitToggleOn = (
   device: SettingsUiDeviceListItem,
   manageability: ReturnType<typeof resolveDeviceManageability>,
 ): boolean => {
-  if (isHomeBatteryClassKey(device.deviceClass)) return resolveBatteryPowerLimitOn(device.id);
+  if (isHomeBatteryClassKey(device.deviceClass)) {
+    return manageability.supportsPower && resolveBatteryPowerLimitOn(device.id);
+  }
   return manageability.supportsPower && state.controllableMap[device.id] === true;
 };
+
+/**
+ * The device-list line for a battery whose Managed PELS turned off after the
+ * owner changed its mode in the battery's own app: the device page's
+ * takeover notice, in one line.
+ */
+const BATTERY_TAKEOVER_ROW_REASON = 'You changed its mode in the battery app. '
+  + 'PELS leaves it alone until you turn on Managed.';
+
+/**
+ * A battery row's reason lines. With Managed off after a takeover, the
+ * takeover notice; managed, why PELS cannot drive it, in place of a Limit
+ * switch (`resolveBatteryUndrivableLine`). Price never applies to a battery.
+ */
+export const resolveBatteryRowReasons = (
+  device: SettingsUiDeviceListItem,
+  isManaged: boolean,
+  reasons: RowDisabledReasons,
+): RowDisabledReasons => ({
+  managed: reasons.managed ?? (!isManaged && device.batteryTakenOver ? BATTERY_TAKEOVER_ROW_REASON : null),
+  // Unmanaged, a battery's Limit waits on Managed alone, which the legend says once.
+  limit: isManaged ? resolveBatteryUndrivableLine(device.batteryControl) : null,
+  price: null,
+});
+
+/** The Limit cell's title for a battery PELS cannot drive, or `null` for one it can. */
+export const resolveBatteryLimitTitle = (device: SettingsUiDeviceListItem): string | null => (
+  isHomeBatteryClassKey(device.deviceClass) ? resolveBatteryUndrivableLine(device.batteryControl) : null
+);
 
 export const groupDevicesByClass = (devices: SettingsUiDeviceListItem[]): DeviceGroup[] => {
   const groups = new Map<string, SettingsUiDeviceListItem[]>();

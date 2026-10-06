@@ -16,6 +16,7 @@ import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefre
 import { hasPowerMeasurement, resolveDisplayedPowerUpdateMs } from '../lib/power/lastTotalPower';
 import { resolvePowerReadingsForUi } from '../lib/power/trackerUiProjection';
 import type {
+  SettingsUiBatteryState,
   SettingsUiPlanSnapshot,
   SettingsUiPowerStatus,
   SettingsUiPowerStatusRead,
@@ -53,7 +54,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   };
   getObservedState?: (deviceId: string) => ObservedDeviceState | undefined;
   getObservedRecord?: (deviceId: string) => ProjectedObservedDeviceState | undefined;
-  batteryControl?: Pick<BatteryControlOwner, 'wasTakenOver'>;
+  batteryControl?: Pick<BatteryControlOwner, 'wasTakenOver' | 'readControlCapability'>;
   powerTracker?: PowerTrackerState;
   isSurplusPoolReachable?: () => boolean;
   getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
@@ -207,10 +208,23 @@ export const getObservedStateForUiFromApp = (
   getRuntimeApp(homey)?.getObservedRecord?.(deviceId)
 );
 
-/** Whether PELS turned this battery's Managed off this run because the owner took it over. */
-export const wasBatteryTakenOverForUiFromApp = (homey: Homey.App['homey'], deviceId: string): boolean => (
-  getRuntimeApp(homey)?.batteryControl?.wasTakenOver(deviceId) === true
-);
+/**
+ * A listed device's home-battery facts, as the battery control owner answers
+ * them (`readControlCapability`, `wasTakenOver`); the owner answers
+ * `not_battery` for every other device. Devices are listed only after the
+ * owner is built, so a missing owner is a not-ready read, never a guess.
+ */
+export const readSettingsUiBatteryStateFromApp = (
+  homey: Homey.App['homey'],
+  device: Pick<DecoratedDeviceSnapshot, 'id'>,
+): SettingsUiBatteryState => {
+  const owner = getRuntimeApp(homey)?.batteryControl;
+  if (!owner) throw appNotReadyError('Battery control');
+  return {
+    batteryControl: owner.readControlCapability(device.id),
+    batteryTakenOver: owner.wasTakenOver(device.id),
+  };
+};
 
 export const getUiPickerDevicesFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] => {
   const app = getRuntimeApp(homey);

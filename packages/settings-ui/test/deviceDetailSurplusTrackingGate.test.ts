@@ -9,7 +9,7 @@
 // Also covers the thing that makes this control honest rather than just
 // present: the label follows the device kind, because what happens differs.
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
 const flushPromises = () => new Promise<void>((resolve) => {
@@ -66,7 +66,7 @@ const evLadder = {
   ],
 };
 
-const buildCharger = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const buildCharger = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => ({
   id: 'charger-1',
   name: 'Charger',
   targets: [],
@@ -77,11 +77,11 @@ const buildCharger = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevi
   steppedLoadProfile: evLadder,
   capabilities: ['evcharger_charging'],
   ...overrides,
-}) as TargetDeviceSnapshot;
+}) as SettingsUiDeviceSnapshot;
 
 const buildSteppedHeater = (
-  overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => ({
+  overrides: Partial<SettingsUiDeviceSnapshot> = {},
+): SettingsUiDeviceSnapshot => ({
   id: 'heater-1',
   name: 'Garage heater',
   targets: [],
@@ -97,11 +97,11 @@ const buildSteppedHeater = (
   },
   capabilities: [],
   ...overrides,
-}) as TargetDeviceSnapshot;
+}) as SettingsUiDeviceSnapshot;
 
 const buildBinaryPump = (
-  overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => ({
+  overrides: Partial<SettingsUiDeviceSnapshot> = {},
+): SettingsUiDeviceSnapshot => ({
   id: 'pump-1',
   name: 'Pool Pump',
   targets: [],
@@ -112,7 +112,7 @@ const buildBinaryPump = (
   binaryControllable: true,
   capabilities: ['onoff'],
   ...overrides,
-}) as TargetDeviceSnapshot;
+}) as SettingsUiDeviceSnapshot;
 
 const mockSiblings = () => {
   vi.doMock('../src/ui/devices.ts', () => ({ renderDevices: vi.fn() }));
@@ -129,7 +129,7 @@ const mockSiblings = () => {
 };
 
 type OpenPanelParams = {
-  device: TargetDeviceSnapshot;
+  device: SettingsUiDeviceSnapshot;
   surplusPoolReachable?: boolean;
   managed?: boolean;
   controllable?: boolean;

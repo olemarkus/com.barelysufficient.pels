@@ -5,13 +5,13 @@
 // two presentations wins and with which sentence.
 
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 type StubOption = { disabled: boolean; hidden: boolean };
 
 const buildDevice = (
-  overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({
+  overrides: Partial<SettingsUiDeviceSnapshot> = {},
+): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({
   available: true,
   id: 'device-1',
   name: 'Device',
@@ -85,7 +85,7 @@ const loadShedStatementHarness = async () => {
   state.deviceTargetPowerConfigs = {};
   state.deviceControlProfiles = {};
 
-  const render = (device: TargetDeviceSnapshot) => {
+  const render = (device: SettingsUiDeviceSnapshot) => {
     module.setDeviceDetailShedBehavior({
       deviceId: device.id,
       getDeviceById: () => device,

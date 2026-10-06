@@ -1,5 +1,5 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import type { Mock } from 'vitest';
 
 type Harness = {
@@ -19,7 +19,7 @@ const setupDom = () => {
   `;
 };
 
-const buildDevice = (overrides?: Partial<TargetDeviceSnapshot>): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+const buildDevice = (overrides?: Partial<SettingsUiDeviceSnapshot>): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Test Device',
   targets: [],
@@ -31,7 +31,7 @@ const buildDevice = (overrides?: Partial<TargetDeviceSnapshot>): TargetDeviceSna
 const setupHarness = async (options: {
   initialLoadComplete: boolean;
   isManaged?: boolean;
-  deviceOverrides?: Partial<TargetDeviceSnapshot>;
+  deviceOverrides?: Partial<SettingsUiDeviceSnapshot>;
 }): Promise<Harness> => {
   setupDom();
   vi.resetModules();

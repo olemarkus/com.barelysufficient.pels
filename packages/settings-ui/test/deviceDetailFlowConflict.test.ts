@@ -1,5 +1,5 @@
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import { NATIVE_WIRING_FLOW_CONFLICT_TITLE } from '../src/ui/deviceDetail/nativeWiringCopy';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 const buildDom = () => {
   document.body.innerHTML = `
@@ -16,13 +16,13 @@ const buildDom = () => {
   `;
 };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const buildDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => ({
   id: 'hoiax-1',
   name: 'Water heater',
   targets: [],
   capabilities: ['onoff'],
   ...overrides,
-} as TargetDeviceSnapshot);
+} as SettingsUiDeviceSnapshot);
 
 describe('device detail flow-conflict banner', () => {
   afterEach(() => {

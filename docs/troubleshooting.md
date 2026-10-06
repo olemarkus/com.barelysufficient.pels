@@ -254,8 +254,8 @@ reporting, and when PELS restarts.
 Check these, in order:
 
 - **Managed by PELS is off.** Turn it on for the battery (Settings → Devices).
-  If the device page shows a notice that you changed its mode in the battery
-  app, PELS stepped back on purpose; turning **Managed by PELS** on again hands
+  If the device page or its row in the device list says you changed its mode
+  in the battery app, PELS stepped back on purpose; turning **Managed by PELS** on again hands
   the battery to PELS.
 - **Power-limit control is off.** The battery then only stores your spare solar,
   and its card reads `PELS uses it only to store spare solar`. Turn on
@@ -271,7 +271,9 @@ Check these, in order:
   restarts.
 - **The battery's app cannot take commands from Homey.** PELS needs an app that
   lets Homey set the battery's charge and discharge power, and offers a Homey or
-  API mode. Sessy and Marstek Venus are examples of apps that do.
+  API mode. Sessy and Marstek Venus are examples of apps that do. Without one,
+  the battery's card reads "PELS can only watch it: its app does not give
+  Homey control" and offers no Power-limit control.
 
 The card reads `PELS takes over when your limit or solar needs it` when
 everything is set up and PELS simply has no job for the battery right now. Its

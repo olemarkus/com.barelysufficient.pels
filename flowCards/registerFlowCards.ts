@@ -1,6 +1,10 @@
 import { PriceLevel } from '../lib/price/priceLevels';
 import type { PriceLevelChangesRead, PriceLevelLookahead } from '../lib/price/priceLevelUtils';
-import type { DecoratedDeviceSnapshot, DeviceDescriptorRead } from '../packages/contracts/src/types';
+import type {
+  DecoratedDeviceSnapshot,
+  DeviceDescriptorRead,
+  HomeBatteryControlCapability,
+} from '../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/executor/steppedCommandState';
@@ -96,6 +100,14 @@ export type FlowCardDeps = {
    * "which devices can take this setting" cannot reach an observation.
    */
   getDeviceDescriptors: () => Promise<DeviceDescriptorRead[]>;
+  /**
+   * The runtime-held Power-limit control map (`controllable_devices`), the one
+   * the planner reads: already resolved, so a malformed stored value never
+   * reads as a fresh, all-absent map.
+   */
+  getControllableDevices: () => Readonly<Record<string, boolean>>;
+  /** Whether PELS can drive this home battery now (the battery control owner's `readControlCapability`). */
+  readBatteryControl: (deviceId: string) => HomeBatteryControlCapability | 'not_battery';
   /** The modes a device's target temperature can be set in; `null` when they cannot be read. */
   listDeviceTargetModes: (deviceId: string) => string[] | null;
   /** Saves a device's target temperature in a mode of its own home's catalog. */

@@ -1,9 +1,9 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 const buildDevice = (
-  overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => (withDescriptorIdentity<TargetDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+  overrides: Partial<SettingsUiDeviceSnapshot> = {},
+): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'device-1',
   name: 'Device',
   targets: [],
