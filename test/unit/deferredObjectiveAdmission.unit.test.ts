@@ -23,7 +23,7 @@ const buildEvDevice = (
   name: overrides.id,
   targets: [],
   isEvCharger: true,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   starvationSupported: false,
   deviceType: 'onoff',
   binaryCapabilityId: 'evcharger_charging',
@@ -222,7 +222,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       surplusTracking: false,
       confirmedNotDrawing: false,
       isEvCharger: false,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       starvationSupported: false,
       deviceType: 'onoff',
     });

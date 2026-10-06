@@ -2,7 +2,7 @@
  * Unit coverage for the device-configuration resolver (`DeviceConfigurationStore`
  * in `lib/device/deviceConfiguration.ts`): the one place the inventory class
  * becomes the planner's identity facts. Downstream code reads `isEvCharger`,
- * `observeOnly` and `starvationSupported` and never the class, so a wrong mapping
+ * `isBatteryOrSolar` and `starvationSupported` and never the class, so a wrong mapping
  * here is invisible everywhere else.
  *
  * The snapshots carry the identity the parse producer resolves from the class
@@ -90,16 +90,16 @@ const resolve = (snapshot: TransportDeviceSnapshot) => {
 
 describe('DeviceConfigurationStore identity resolution', () => {
   it.each([
-    ['thermostat', 'temperature_only', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['heater', 'onoff', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['heatpump', 'temperature_onoff', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['airconditioning', 'temperature_onoff', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['airtreatment', 'onoff', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['battery', 'observe_only', { isEvCharger: false, observeOnly: true, starvationSupported: false }],
-    ['solarpanel', 'observe_only', { isEvCharger: false, observeOnly: true, starvationSupported: false }],
-    ['evcharger', 'charger_switch', { isEvCharger: true, observeOnly: false, starvationSupported: false }],
-    ['evcharger', 'charger_target_power', { isEvCharger: true, observeOnly: false, starvationSupported: false }],
-    ['socket', 'onoff', { isEvCharger: false, observeOnly: false, starvationSupported: false }],
+    ['thermostat', 'temperature_only', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['heater', 'onoff', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['heatpump', 'temperature_onoff', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['airconditioning', 'temperature_onoff', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['airtreatment', 'onoff', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['battery', 'observe_only', { isEvCharger: false, isBatteryOrSolar: true, starvationSupported: false }],
+    ['solarpanel', 'observe_only', { isEvCharger: false, isBatteryOrSolar: true, starvationSupported: false }],
+    ['evcharger', 'charger_switch', { isEvCharger: true, isBatteryOrSolar: false, starvationSupported: false }],
+    ['evcharger', 'charger_target_power', { isEvCharger: true, isBatteryOrSolar: false, starvationSupported: false }],
+    ['socket', 'onoff', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: false }],
   ] as const)('resolves a %s (%s) to its identity facts', (deviceClass, shape, expected) => {
     expect(resolve(snapshotFor(deviceClass, shape))).toMatchObject(expected);
   });
@@ -112,10 +112,10 @@ describe('DeviceConfigurationStore identity resolution', () => {
       snapshotFor('heatpump', 'temperature_onoff', 'heatpump-1'),
     ]);
 
-    expect(store.get('ev-1')).toMatchObject({ isEvCharger: true, observeOnly: false, starvationSupported: false });
-    expect(store.get('battery-1')).toMatchObject({ isEvCharger: false, observeOnly: true, starvationSupported: false });
+    expect(store.get('ev-1')).toMatchObject({ isEvCharger: true, isBatteryOrSolar: false, starvationSupported: false });
+    expect(store.get('battery-1')).toMatchObject({ isEvCharger: false, isBatteryOrSolar: true, starvationSupported: false });
     expect(store.get('heatpump-1')).toMatchObject({
-      isEvCharger: false, observeOnly: false, starvationSupported: true,
+      isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true,
     });
   });
 

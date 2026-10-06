@@ -196,7 +196,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     // Drawing at its current step, so the boost is not released.
     confirmedNotDrawing: false,
     isEvCharger: false,
-    observeOnly: false,
+    isBatteryOrSolar: false,
     starvationSupported: false,
     control: fixtureControlPosture({ controllable: true }),
     binaryCapabilityId: 'onoff' as const,
@@ -226,7 +226,7 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
   surplusTracking: false,
   confirmedNotDrawing: false,
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   starvationSupported: false,
   deviceType: 'onoff' as const,
     control: fixtureControlPosture({ controllable: true }),

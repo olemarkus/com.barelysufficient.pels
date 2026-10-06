@@ -18,6 +18,7 @@ import {
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { resolveParseDeviceIdentity } from './managerParseIdentity';
+import { isHomeBatteryDevice } from '../managerEnergy';
 export { applyDeviceDriverOverride } from './managerParseIdentity';
 import {
     resolveManagedFilterDecision,
@@ -142,7 +143,7 @@ export function parseDevice(params: {
     const managedDecision = resolveManagedFilterDecision({
         providers: deps.providers, deviceId: identity.deviceId,
     });
-    if (shouldDropEarly({ purpose, decision: managedDecision })) return null;
+    if (shouldDropEarly(purpose, managedDecision, isHomeBatteryDevice(device))) return null;
     const profile = resolveDeviceCapabilityProfile({ identity, deps });
     if (!profile) return null;
     return assembleDeviceSnapshot({

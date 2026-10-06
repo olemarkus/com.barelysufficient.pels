@@ -66,7 +66,7 @@ const buildEvDevice = (
   targets: [],
   binaryControl: { on: false },
   isEvCharger: true,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   starvationSupported: false,
   deviceType: 'onoff' as const,
   binaryCapabilityId: 'evcharger_charging',

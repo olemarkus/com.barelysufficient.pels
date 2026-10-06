@@ -252,7 +252,8 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     confirmedNotDrawing: false,
     deviceType: 'onoff' as const,
     isEvCharger: false,
-    observeOnly: false,
+    isBatteryOrSolar: false,
+    storageHold: 'none' as const,
     // Mirrors the honestly-parsed snapshot for the missing-onoff anomaly:
     // currentOn:false with no trusted binary observation.
     binaryControl: { on: false },

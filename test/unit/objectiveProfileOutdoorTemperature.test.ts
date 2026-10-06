@@ -32,7 +32,7 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
   deviceClass: 'thermostat',
   deviceType: 'temperature',
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   binaryControllable: true,
   binaryControl: { on: true },
   temperature: { currentTemperature, target },

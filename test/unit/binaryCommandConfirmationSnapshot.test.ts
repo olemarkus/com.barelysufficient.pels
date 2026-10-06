@@ -8,7 +8,7 @@ const chargerSnapshot = (observedCapabilityIds: string[]): TransportDeviceSnapsh
   deviceClass: 'evcharger',
   deviceType: 'onoff',
   isEvCharger: true,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   binaryControllable: true,
   available: true,
   targets: [],

@@ -375,6 +375,9 @@ export const PlanGenericCard = ({
         )}
       </div>
 
+      {/* The device's own facts, between the state row and the reason: a
+          home battery's charge level (and, in its own mode, its direction). */}
+      {presentation.factText !== null && <span class="plan-card__secondary-line">{presentation.factText}</span>}
       {singleReason !== '' && <p class="plan-card__reason">{singleReason}</p>}
     </div>
   );

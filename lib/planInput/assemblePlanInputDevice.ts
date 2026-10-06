@@ -23,9 +23,10 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     temperature: _temperature,
     thermostatMode: _thermostatMode,
     // A home battery's signed power and claim value reach the plan only as the
-    // resolved storage cluster below; the battery itself stays observe-only.
+    // resolved storage cluster below; its level reaches only the overview card.
     batteryPower: _batteryPower,
     batteryClaim: _batteryClaim,
+    batteryLevel: _batteryLevel,
     ...deviceFields
   } = device;
   return deviceFields;

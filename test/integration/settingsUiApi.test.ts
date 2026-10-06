@@ -37,6 +37,7 @@ describe('settingsUiApi', () => {
     dryRun: false,
     getDeviceExecutionState: () => executionStateFixture(device),
     getObservedStateOfCharge: () => ({ kind: 'absent' }),
+    getHomeBatteryCard: () => ({ kind: 'none' } as const),
     getObservedEvChargingState: () => ({ kind: 'absent' }),
     getObservedTemperature: () => ({ kind: 'absent' }),
   });
@@ -577,7 +578,7 @@ describe('settingsUiApi', () => {
   it('uses the app priority owner for newly discovered devices without saved ranks', () => {
     const homey = createHomey();
     const catalog = new ModePriorityCatalog({ Home: { 'ev-1': 100 } });
-    homey.app.getModePrioritiesForUi = (deviceIds) => catalog.getOrder('Home', deviceIds);
+    homey.app.getModePrioritiesForUi = (deviceIds) => catalog.getOrder('Home', deviceIds, () => false);
 
     const payload = getSettingsUiDevicesPayload({ homey: homey as never });
 
@@ -715,7 +716,7 @@ describe('settingsUiApi', () => {
       settings: { power_source: 'homey_energy' },
       latestDevicesOverride: [
         { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
-        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel', observeOnly: true },
+        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel', isBatteryOrSolar: true },
       ],
     });
     // The producer prefers the LIVE app tracker over the persisted settings
@@ -736,7 +737,7 @@ describe('settingsUiApi', () => {
     // no longer a configuration that exists.
     const solarDevices = [
       { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
-      { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel', observeOnly: true },
+      { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel', isBatteryOrSolar: true },
     ];
     const flowHomey = createHomey({
       settings: { power_source: 'flow' },
@@ -754,27 +755,54 @@ describe('settingsUiApi', () => {
     expect(getSettingsUiPowerPayload({ homey: noPvHomey as never }).hasManagedSolarDevice).toBe(false);
   });
 
-  it('hides auto-tracked observe-only battery/PV devices from the settings-UI device list', () => {
-    // Home batteries (class-key 'battery') and PV (class-key 'solarpanel') are
-    // FORCE-MANAGED observe-only devices: they ride the backend snapshot
-    // (`latestTargetSnapshot`) for telemetry but the user never opted into
-    // managing them and cannot control them. They must NOT leak into the
-    // user-facing device list with a no-op "Manage" toggle. The managed half
-    // (`latestTargetSnapshot`) carries them; the picker half already drops them
-    // (managerManagedFilter) — assert BOTH inputs filter, and that a normal
-    // managed heater stays present.
+  it('hides a meter area battery from the whole-home device list and flags a taken-over battery', () => {
+    const homey = createHomey({
+      latestDevicesOverride: [
+        { id: 'batt-main', name: 'Main Battery', deviceClass: 'battery', isBatteryOrSolar: true },
+        { id: 'batt-area', name: 'Garage Battery', deviceClass: 'battery', isBatteryOrSolar: true },
+      ],
+    });
+    Object.assign(homey.app, {
+      homeMembership: {
+        getHomeIdForDevice: (deviceId: string) => (deviceId === 'batt-area' ? 'garage' : MAIN_HOME_ID),
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+      },
+      batteryControl: { wasTakenOver: (deviceId: string) => deviceId === 'batt-main' },
+    });
+
+    const { devices } = getSettingsUiDevicesPayload({ homey: homey as never });
+
+    expect(devices.map((device) => device.id)).toEqual(['batt-main']);
+    expect(devices[0]).toMatchObject({ batteryTakenOver: true });
+  });
+
+  it('lists a Main-home battery as a managed device and hides PV from the settings-UI device list', () => {
+    // A home battery (class-key 'battery') is an ordinary managed device the
+    // owner sees and switches. PV (class-key 'solarpanel') rides the backend
+    // snapshot (`latestTargetSnapshot`) for telemetry only and must NOT leak into
+    // the user-facing device list with a no-op "Manage" toggle.
     const homey = createHomey({
       latestDevicesOverride: [
         { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
-        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery', observeOnly: true },
-        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel', observeOnly: true },
+        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery', isBatteryOrSolar: true },
+        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel', isBatteryOrSolar: true },
       ],
-      // A picker that (defensively) still surfaced an observe-only device must
-      // also be filtered out here, so the payload never double-renders it.
       uiPickerDevices: [
         { id: 'pump-1', name: 'Pump', deviceType: 'onoff' },
-        { id: 'batt-2', name: 'Other Battery', deviceClass: 'battery', observeOnly: true },
+        { id: 'batt-2', name: 'Other Battery', deviceClass: 'battery', isBatteryOrSolar: true },
       ],
+    });
+    // Before membership is wired no battery is listed: it could be a meter
+    // area's, and the owner could switch it as Main's.
+    expect(getSettingsUiDevicesPayload({ homey: homey as never }).devices.map((device) => device.id))
+      .toEqual(['heater-1', 'pump-1']);
+    Object.assign(homey.app, {
+      homeMembership: {
+        getHomeIdForDevice: () => MAIN_HOME_ID,
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+      },
     });
 
     const { devices } = getSettingsUiDevicesPayload({ homey: homey as never });
@@ -782,11 +810,11 @@ describe('settingsUiApi', () => {
 
     expect(ids).toContain('heater-1');
     expect(ids).toContain('pump-1');
-    expect(ids).not.toContain('batt-1');
+    expect(ids).toContain('batt-1');
+    expect(ids).toContain('batt-2');
     expect(ids).not.toContain('pv-1');
-    expect(ids).not.toContain('batt-2');
-    // The BACKEND snapshot is untouched — the force-managed observe-only devices
-    // are still tracked there for telemetry; only this UI payload excludes them.
+    // The BACKEND snapshot is untouched — the PV device is still tracked there
+    // for telemetry; only this UI payload excludes it.
     const backendSnapshot = homey.app.latestTargetSnapshot as Record<string, unknown>[];
     expect(backendSnapshot.map((device) => device.id)).toEqual(['heater-1', 'batt-1', 'pv-1']);
     // Although the PV device is excluded from `devices`, its presence is still reported as
@@ -981,7 +1009,7 @@ describe('settingsUiApi', () => {
     const homey = createHomey({
       latestDevicesOverride: [
         { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
-        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery', observeOnly: true },
+        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery', isBatteryOrSolar: true },
       ],
     });
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).hasManagedSolarDevice).toBe(false);

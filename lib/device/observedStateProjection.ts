@@ -109,6 +109,7 @@ function projectHomeBatteryObservation(snapshot: TransportDeviceSnapshot): HomeB
     return {
         ...(snapshot.batteryPower !== undefined ? { batteryPower: { ...snapshot.batteryPower } } : {}),
         ...(snapshot.batteryClaim !== undefined ? { batteryClaim: { ...snapshot.batteryClaim } } : {}),
+        ...(snapshot.batteryLevel !== undefined ? { batteryLevel: { ...snapshot.batteryLevel } } : {}),
     };
 }
 

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { readBatteryControlSettings } from '../../lib/battery/batteryControlSettings';
 import {
   isBatteryControlEnabled,
   parseBatteryControlDevices,
-  readBatteryControlSettings,
-} from '../../lib/battery/batteryControlSettings';
+} from '../../packages/shared-domain/src/settings/batteryControlDevices';
 import { BatteryClaimStore } from '../../lib/battery/batteryClaimStore';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';

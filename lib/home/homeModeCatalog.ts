@@ -8,6 +8,7 @@
  * the legacy Main snapshot as a compatibility fallback.
  */
 import type { SettingsPort } from '../ports/homeyRuntime';
+import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { HomeMembershipPort } from './membership';
 import {
@@ -320,6 +321,11 @@ const writeInitialCatalog = (
   return { ...catalog, operatingMode };
 };
 
+/** The battery predicate the priority order ranks with; none is a battery while they are unknown. */
+const homeBatteryPredicate = (read: HomeBatteryDevicesRead) => (deviceId: string): boolean => (
+  read.status === 'resolved' && read.deviceIds.has(deviceId)
+);
+
 /** The live mode catalog for one home. It owns the accepted snapshot and its unavailable policy. */
 export class HomeModeCatalogOwner implements HomeModeCatalog {
   private lastGood: HomeModeCatalogSnapshot;
@@ -336,6 +342,11 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     private readonly getManagedDevices: () => Readonly<Record<string, boolean>>,
     private readonly getMembership: () => HomeMembershipPort | undefined,
     private readonly getLogger: () => PinoLogger | undefined,
+    /**
+     * The home batteries, whose unplaced rank is after every other unplaced
+     * device. `unavailable` before the device layer has told them apart.
+     */
+    private readonly readHomeBatteries: () => HomeBatteryDevicesRead,
   ) {
     this.lastGood = homeId === MAIN_HOME_ID ? defaultSnapshot() : getMainSnapshot();
     this.lastLoggedMode = this.lastGood.operatingMode;
@@ -360,7 +371,11 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
   getModeDeviceTargets = (): Record<string, Record<string, number>> => this.lastGood.targets;
 
   getPrioritiesForDevices = (deviceIds: readonly string[]): ModePriorityOrder => (
-    this.lastGood.modePriorityCatalog.getOrder(this.lastGood.operatingMode, deviceIds)
+    // Before the batteries are known no device ranks as one: an order is only
+    // inferred then, and the persisted ranks wait (`persistMissingRanks`).
+    this.lastGood.modePriorityCatalog.getOrder(
+      this.lastGood.operatingMode, deviceIds, homeBatteryPredicate(this.readHomeBatteries()),
+    )
   );
 
   resolveModeName = (name: string): string => {
@@ -478,6 +493,15 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
    * would bring it back. A home whose priorities were never written is seeded
    * from its configured (target) modes.
    *
+   * A home battery is not in the managed-devices map (its Managed state is the
+   * battery-control setting), so it stays unranked, and inferred last, until
+   * the owner places it; once it is ranked at the bottom, new devices are
+   * inserted above it (`withMissingRanks`).
+   *
+   * The home batteries must be known too: while they are not, a battery at
+   * the bottom reads as any other device and a new device's rank would be
+   * saved below it. The write waits as it does for ownership.
+   *
    * Device ownership must be settled first, Main included: a rank written into
    * the wrong home's catalog would outlive the boot window. Main first loads
    * before membership exists and is reloaded once membership is published
@@ -488,6 +512,8 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
   private persistMissingRanks(freshness: Exclude<PrioritiesFreshness, 'retained'>): void {
     const membership = this.getMembership();
     if (!membership?.isOwnershipReady() || membership.hasPendingOwnershipGeneration()) return;
+    const batteries = this.readHomeBatteries();
+    if (batteries.status !== 'resolved') return;
     const ownsDevice = (deviceId: string): boolean => membership.getHomeIdForDevice(deviceId) === this.homeId;
     const managedDevices = this.getManagedDevices();
     const deviceIds = Object.keys(managedDevices).filter((deviceId) => (
@@ -495,7 +521,9 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     ));
     const { operatingMode, targets } = this.lastGood;
     const seedModes = freshness === 'never_written' ? Object.keys(targets) : [];
-    const next = this.lastGood.modePriorityCatalog.withMissingRanks(deviceIds, seedModes);
+    const next = this.lastGood.modePriorityCatalog.withMissingRanks(
+      deviceIds, seedModes, homeBatteryPredicate(batteries),
+    );
     if (next === null) return;
     try {
       this.settings.set(homeScopedSettingsKey(CAPACITY_PRIORITIES, this.homeId), next);
@@ -544,9 +572,10 @@ export const createHomeModeCatalog = (
   getManagedDevices: () => Readonly<Record<string, boolean>>,
   getMembership: () => HomeMembershipPort | undefined,
   getLogger: () => PinoLogger | undefined,
+  readHomeBatteries: () => HomeBatteryDevicesRead,
 ): HomeModeCatalog => {
   const catalog = new HomeModeCatalogOwner(
-    homeId, settings, getMainSnapshot, getManagedDevices, getMembership, getLogger,
+    homeId, settings, getMainSnapshot, getManagedDevices, getMembership, getLogger, readHomeBatteries,
   );
   // Main has no registry insertion barrier. A sub-home is reloaded only after
   // HomeRuntimeRegistry has published its bundle, so marker-last writes cannot

@@ -49,7 +49,7 @@ const batteryInputDevice = (overrides: Partial<MeteredPlanInputDevice> = {}): Me
     id: BATTERY_ID,
     expectedPowerKw: 1,
     name: 'Home Battery',
-    observeOnly: true,
+    isBatteryOrSolar: true,
     deviceType: 'onoff',
     managed: true,
     controllable: false,

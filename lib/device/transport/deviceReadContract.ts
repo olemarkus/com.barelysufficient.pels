@@ -36,7 +36,7 @@ import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerCon
 import { applyNativeEvWiringOverlay } from '../nativeEvWiring';
 import { EASEE_CHARGER_CURRENT_CAPABILITY_ID, isEaseeChargerDevice } from '../nativeSteppedLoadWiring';
 import { isEvChargingState } from '../../../packages/shared-domain/src/evPlugState';
-import { isObserveOnlyRoleClassKey, resolveDeviceClassKey } from './managerHelpers';
+import { isBatteryOrSolarClassKey, resolveDeviceClassKey } from './managerHelpers';
 
 type ModelValueType = 'boolean' | 'number' | 'string';
 
@@ -136,7 +136,7 @@ function resolveModelCapabilityTypes(
     if (classKey === null) return NO_MODEL_CAPABILITIES;
     const withTemperatureFacet = readsTemperatureFacet(capabilities);
     const withStateOfCharge = STATE_OF_CHARGE_CLASS_KEYS.has(classKey);
-    const withSteppedControl = !isObserveOnlyRoleClassKey(classKey);
+    const withSteppedControl = !isBatteryOrSolarClassKey(classKey);
     const modelTypes = Object.fromEntries(Object.entries(DEVICE_MODEL_CAPABILITY_TYPES).filter(([capabilityId]) => (
         (withTemperatureFacet || !TEMPERATURE_FACET_CAPABILITY_IDS.has(capabilityId))
         && (withStateOfCharge || !STATE_OF_CHARGE_CAPABILITY_IDS.has(capabilityId))

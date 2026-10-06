@@ -69,6 +69,7 @@ import {
   getLatestDevicesForUiFromApp,
   getPrioritiesForUiFromApp,
   getObservedStateForUiFromApp,
+  wasBatteryTakenOverForUiFromApp,
   getPlanSnapshotForUiFromHomey,
   getSurplusPoolReachableForUiFromApp,
   getPowerTrackerForUiFromApp,
@@ -184,11 +185,11 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
   };
 };
 
-// The raw candidate list BEFORE the observe-only filter: managed devices joined
+// The raw candidate list BEFORE the battery/solar filter: runtime devices joined
 // from DeviceReads metadata and Observer state, plus unmanaged-but-eligible
-// picker devices from SettingsUiDeviceReads. Auto-tracked
-// observe-only role devices (home batteries → 'battery', PV → 'solarpanel') ride the
-// managed half here; callers decide whether to expose or merely detect them.
+// picker devices from SettingsUiDeviceReads. Home batteries ('battery') and PV
+// ('solarpanel') ride the runtime half here; callers decide whether to expose
+// or merely detect them.
 /**
  * The observed fields `/ui_devices` refreshes from the observer projection.
  *
@@ -298,6 +299,7 @@ const buildSettingsUiDeviceList = (
     const observed = getObservedStateForUiFromApp(homey, device.id);
     const associatedCar = getAssociatedCarForUiFromApp(homey, device.id);
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
+    const batteryTakenOver = wasBatteryTakenOverForUiFromApp(homey, device.id);
     return {
       ...device,
       // Two absences are deliberately no-ops rather than writes, because neither
@@ -308,6 +310,7 @@ const buildSettingsUiDeviceList = (
       ...(observed ? pickLiveObservedFields(observed, resolveLiveObservedFields(device)) : {}),
       ...(associatedCar ? { associatedCar } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
+      ...(batteryTakenOver ? { batteryTakenOver } : {}),
       priority: priorities.getPriority(device.id),
     };
   });
@@ -563,7 +566,9 @@ const devicesPayloadForHome = (
   const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
   if (members === null) return UNAVAILABLE_DEVICES_PAYLOAD;
   return {
-    devices: members.filter((device) => !device.observeOnly),
+    // A meter area's battery and solar devices are telemetry only: PELS does
+    // not control a battery outside the Main home.
+    devices: members.filter((device) => !device.isBatteryOrSolar),
     // Keyed by device id and consulted only for a device the owner is looking
     // at, so the whole-home map serves a sub-home unchanged: a charger outside
     // this home is never looked up here.
@@ -598,14 +603,12 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
   const candidates = getRawSettingsUiDeviceCandidates({ homey });
   const tracker = getPowerTrackerForUiFromApp(homey);
   return {
-    // Auto-tracked observe-only role devices are force-managed in the backend snapshot for
-    // telemetry, but the user never opted into managing them and cannot control them — they
-    // leak into the `managed` list with a misleading no-op "Manage" toggle, so drop them from
-    // the user-facing device list. The BACKEND snapshot + telemetry stay untouched; they earn
-    // a proper tracked / EMS view later.
-    devices: candidates.filter((device) => !device.observeOnly),
+    // A Main-home battery is an ordinary managed device the owner can see and
+    // switch; a solar device and a meter area's battery ride the backend
+    // snapshot for telemetry only.
+    devices: new SettingsUiHomeScopeAdapter(homey).filterWholeHomeDevices(candidates),
     chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
-    // A solar/PV device is tracked observe-only and excluded from `devices`, so its presence
+    // A solar/PV device is always read and excluded from `devices`, so its presence
     // is the only home-level signal the settings UI gets that the home has solar. The
     // normalized class-key for any role-detected PV is 'solarpanel' (`resolveDeviceClassKey`).
     // NOT source-gated: this flag also unlocks the export-price *settings* section (via

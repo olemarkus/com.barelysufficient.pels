@@ -244,7 +244,7 @@ describe('appSnapshotHelpers', () => {
       controlModel: 'binary_power',
       isEvCharger: false,
       managed: true,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       starvationSupported: false,
       controllable: true,
       countsAsManagedUsage: true,
@@ -389,7 +389,7 @@ describe('appSnapshotHelpers', () => {
       controlModel: 'binary_power',
       isEvCharger: false,
       managed: true,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       starvationSupported: false,
       controllable: true,
       // Missing power evidence does not alter the saved owner preference.

@@ -144,6 +144,20 @@ export type BatteryVerificationRecorder = {
 export type BatteryHandBackOutcome = 'released' | 'not_released';
 
 /**
+ * The owner's Managed choice per home battery, one answer before and after
+ * the battery control owner exists (`BatteryManagedSettings` in
+ * `lib/battery/batteryControlSettings.ts`, which the owner delegates to).
+ */
+export type BatteryManagedRead = {
+  /**
+   * On unless the owner turned it off. A failed re-read keeps the last map
+   * that read cleanly; off while the setting has never read cleanly (fail
+   * closed).
+   */
+  isManaged(deviceId: string): boolean;
+};
+
+/**
  * The Main home's battery control owner (`lib/battery/batteryControlOwner.ts`):
  * claim admission, the durable claim record, and the hand-back. It issues no
  * setpoint; the executor does, through Main's fenced actuator, after
@@ -174,8 +188,18 @@ export type BatteryControlOwner = {
    * releases, with backoff).
    */
   onSnapshotCommitted(refresh: ObservedDeviceStateRefreshPayload): void;
-  /** Re-read the owner's opt-out and hand back every claimed battery it now turns off. */
+  /**
+   * Re-read the owner's Managed map: hand back every claimed battery it turns
+   * off, and drop the takeover record of one it turns back on.
+   */
   applyControlSettings(): void;
+  /** The owner's Managed choice for this battery (`BatteryManagedRead`). */
+  isManaged(deviceId: string): boolean;
+  /**
+   * Whether PELS turned this battery's Managed off this run because the owner
+   * changed its mode in the battery's own app; false again once Managed is on.
+   */
+  wasTakenOver(deviceId: string): boolean;
 };
 
 /**

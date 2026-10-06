@@ -26,7 +26,7 @@ const NOW = 10_000_000;
 const batteryDevice = (): PlanInputDevice => buildPlanInputDevice({
   id: 'battery',
   name: 'Battery',
-  observeOnly: true,
+  isBatteryOrSolar: true,
   commandAuthority: false,
   binaryControllable: false,
   currentDrawKw: 0,

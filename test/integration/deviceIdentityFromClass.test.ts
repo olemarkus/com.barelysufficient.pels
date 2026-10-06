@@ -2,7 +2,7 @@
  * The class -> identity flag -> behaviour chain, driven from raw Homey devices.
  *
  * The device layer resolves the inventory class ONCE: the parse producer
- * (`managerParseDeviceFields`) stamps `isEvCharger` and `observeOnly`, and device
+ * (`managerParseDeviceFields`) stamps `isEvCharger` and `isBatteryOrSolar`, and device
  * configuration (`DeviceConfigurationStore`) copies them and resolves
  * `starvationSupported`. Everything downstream reads those flags and never the
  * class, so a fixture that hands the planner a pre-set flag proves nothing about
@@ -103,15 +103,15 @@ const parse = (devices: HomeyDeviceLike[]): TransportDeviceSnapshot[] => createT
 
 describe('identity resolved from the class at parse and in device configuration', () => {
   it.each([
-    ['thermostat', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['heater', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['heatpump', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['airconditioning', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['airtreatment', { isEvCharger: false, observeOnly: false, starvationSupported: true }],
-    ['battery', { isEvCharger: false, observeOnly: true, starvationSupported: false }],
-    ['solarpanel', { isEvCharger: false, observeOnly: true, starvationSupported: false }],
-    ['evcharger', { isEvCharger: true, observeOnly: false, starvationSupported: false }],
-    ['socket', { isEvCharger: false, observeOnly: false, starvationSupported: false }],
+    ['thermostat', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['heater', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['heatpump', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['airconditioning', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['airtreatment', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: true }],
+    ['battery', { isEvCharger: false, isBatteryOrSolar: true, starvationSupported: false }],
+    ['solarpanel', { isEvCharger: false, isBatteryOrSolar: true, starvationSupported: false }],
+    ['evcharger', { isEvCharger: true, isBatteryOrSolar: false, starvationSupported: false }],
+    ['socket', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: false }],
   ] as const)('a raw %s device parses and configures to its identity facts', (deviceClass, expected) => {
     const raw = RAW_DEVICES[deviceClass]!;
     const [parsed] = parse([raw]);
@@ -121,7 +121,7 @@ describe('identity resolved from the class at parse and in device configuration'
       id: raw.id,
       deviceClass,
       isEvCharger: expected.isEvCharger,
-      observeOnly: expected.observeOnly,
+      isBatteryOrSolar: expected.isBatteryOrSolar,
     });
 
     // Device configuration carries them and resolves starvation support.
@@ -174,9 +174,9 @@ const planFromRawDevices = (): { context: PlanCycle; planDevices: DevicePlanDevi
     priority: index + 1,
   }) as PlanInputDevice);
   // The flags reached planner input from configuration, not from the fixture.
-  expect(devices.find((device) => device.id === BATTERY_ID)).toMatchObject({ observeOnly: true });
+  expect(devices.find((device) => device.id === BATTERY_ID)).toMatchObject({ isBatteryOrSolar: true });
   expect(devices.find((device) => device.id === THERMOSTAT_ID)).toMatchObject({
-    observeOnly: false,
+    isBatteryOrSolar: false,
     starvationSupported: true,
   });
   const context = buildPlanCycleObject({
@@ -228,6 +228,7 @@ describe('class-resolved identity through the plan build', () => {
       nowMs: FIXTURE_NOW_MS,
       getObservedEvChargingState: () => ({ kind: 'absent' }),
       getObservedStateOfCharge: () => ({ kind: 'absent' }),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
     });
 

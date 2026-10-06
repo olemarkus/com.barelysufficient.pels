@@ -1,4 +1,5 @@
 import type { HomeyDeviceLike } from '../utils/types';
+import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
 import type { DeviceListRead } from './deviceListRead';
 import { extractBatteryState, isHomeBatteryDevice } from './managerEnergy';
 
@@ -17,25 +18,26 @@ import { extractBatteryState, isHomeBatteryDevice } from './managerEnergy';
  *
  * There is NO retained value: a point-in-time successful observation is surfaced
  * purely as the structured event, nothing is held to go stale. The value is
- * awareness-only — it NEVER feeds the hard-cap import path. The planner never
- * commands the battery (a battery is `managed: true, controllable: false` and
- * non-temperature, so the existing planner gates keep it inert); it is commanded
- * only through the actuator's storage intents (`lib/ports/storageCommand.ts`),
- * never from here.
+ * awareness-only — it NEVER feeds the hard-cap import path. The generic planner
+ * lanes never command the battery (it is `controllable: false` and
+ * non-temperature, whatever its Managed toggle, so the existing gates keep it
+ * inert); it is commanded only through the actuator's storage intents
+ * (`lib/ports/storageCommand.ts`), never from here.
  *
  * The only state held is the detected battery-id SET (plus its narrowing-grace
- * counter). The AUTHORITATIVE managed observe-only resolution is STRUCTURAL at
- * parse (`resolveDeviceClassKey` + `resolveParsedDeviceSettings`, from the device
+ * counter). The AUTHORITATIVE battery role resolution is STRUCTURAL at parse
+ * (`resolveDeviceClassKey` + `resolveParsedDeviceSettings`, from the device
  * object) and the planner reads that snapshot stamp. This set is the SECONDARY
  * agreement for the deviceId-only resolve* consumers
  * (`resolveManagedState`/`isCapacityControlEnabled` → autocomplete,
- * shortfall-hint, realtime-tracking) that have no device object in hand, and the
+ * shortfall-hint, the mode priority order) that have no device object in hand,
+ * and the
  * whole-set read (`hasBatteryDevices`) suppresses the curtailment-surplus term on
  * battery homes. It holds IDs, not values: re-derived on each non-empty full
  * refresh that still sees a battery, and additively topped up from the realtime
  * path (`noteBatteryDevice`) so it is never empty for a present battery before
- * the first full refresh. Includes offline batteries so a managed battery keeps
- * its managed identity (and recovers) while briefly unavailable.
+ * the first full refresh. Includes offline batteries so a battery keeps its
+ * battery identity (and recovers) while briefly unavailable.
  *
  * NARROWING GRACE: a full refresh that sees NO battery at all only empties a
  * previously-populated set after `BATTERY_SET_NARROW_GRACE_REFRESHES`
@@ -70,12 +72,36 @@ export const BATTERY_SET_NARROW_GRACE_REFRESHES = 3;
 export class BatteryStateProducer {
     private batteryDeviceIds: ReadonlySet<string> = new Set();
     private consecutiveBatteryFreeRefreshes = 0;
+    /** Whether a full refresh has settled the set: until then an absent id is not yet a non-battery. */
+    private fullRefreshSeen = false;
+    /** Told once, when the set first settles (`readBatteryDevices` turns `resolved`). */
+    private onResolved: (() => void) | undefined;
 
     constructor(private readonly emit: BatteryStateEventEmitter) {}
 
     /** Whether `deviceId` is a currently-detected home battery (incl. offline). */
     isBatteryDevice(deviceId: string): boolean {
         return this.batteryDeviceIds.has(deviceId);
+    }
+
+    /**
+     * The detected battery set as an explicit read: `unavailable` until a full
+     * refresh has settled it, because before then a battery only the full
+     * refresh would find reads as no battery.
+     */
+    readBatteryDevices(): HomeBatteryDevicesRead {
+        return this.fullRefreshSeen
+            ? { status: 'resolved', deviceIds: this.batteryDeviceIds }
+            : { status: 'unavailable' };
+    }
+
+    /**
+     * Subscribe the single consumer told when the battery set first settles:
+     * a reader that waited on `unavailable` (the mode catalogs' rank
+     * persistence) has nothing else to wake it. `undefined` detaches.
+     */
+    setOnBatteryDevicesResolved(listener: (() => void) | undefined): void {
+        this.onResolved = listener;
     }
 
     /** Whether ANY home battery is currently detected (incl. offline). Consumed by
@@ -135,6 +161,13 @@ export class BatteryStateProducer {
     // empties a populated set after the consecutive-miss grace (a one-refresh
     // omission is a providing-app blip, not a removal).
     private applyFullRefreshMembership(batteryDeviceIds: readonly string[]): void {
+        const firstSettle = !this.fullRefreshSeen;
+        this.fullRefreshSeen = true;
+        this.applySettledMembership(batteryDeviceIds);
+        if (firstSettle) this.onResolved?.();
+    }
+
+    private applySettledMembership(batteryDeviceIds: readonly string[]): void {
         if (batteryDeviceIds.length > 0) {
             this.batteryDeviceIds = new Set(batteryDeviceIds);
             this.consecutiveBatteryFreeRefreshes = 0;

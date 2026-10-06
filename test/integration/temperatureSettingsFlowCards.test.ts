@@ -24,7 +24,7 @@ const descriptor = (overrides: Partial<DeviceDescriptorRead>): DeviceDescriptorR
   name: 'Living room',
   deviceType: 'temperature',
   managed: true,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   ...overrides,
 });
 
@@ -42,6 +42,7 @@ const register = (smartTask: SmartTaskInProgressRead = 'none') => {
     () => ({ heater: true }),
     () => undefined,
     () => undefined,
+    () => ({ status: 'resolved', deviceIds: new Set() }),
   );
   const info = vi.fn();
   const normalizeTemperatureTarget = vi.fn((_deviceId: string, temperatureC: number) => Math.round(temperatureC * 2) / 2);

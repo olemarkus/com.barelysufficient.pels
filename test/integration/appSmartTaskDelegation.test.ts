@@ -75,6 +75,7 @@ const buildAppWithRecorders = (options: {
     getSnapshotByDeviceId: () => undefined,
     isBatteryDevice: () => false,
     isSolarDevice: () => false,
+    readHomeBatteryDevices: () => ({ status: 'resolved', deviceIds: new Set<string>() }),
     deviceConfigurationStore: new DeviceConfigurationStore(),
   });
   if (options.history) {

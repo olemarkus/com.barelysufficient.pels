@@ -32,7 +32,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   & Pick<DeviceDescriptor,
     | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
     | 'powerCapable' | 'expectedPowerKw' | 'expectedPowerSource'
-    | 'controlAdapter' | 'binaryControllable' | 'isEvCharger' | 'observeOnly'
+    | 'controlAdapter' | 'binaryControllable' | 'isEvCharger' | 'isBatteryOrSolar'
   >;
 
 // The device fields the settings-UI device DETAIL surface reads — a superset of
@@ -57,6 +57,7 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & {
     temperatureBoost?: TemperatureBoostConfig;
     evBoost?: EvBoostConfig;
+    batteryTakenOver?: true;
   };
 
 // `expectedPowerKw` is deliberately NOT a rung here. The producer resolves one

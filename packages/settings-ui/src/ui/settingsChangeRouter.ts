@@ -12,6 +12,7 @@ import {
   CAPACITY_PERIOD_MINUTES,
   HOMEY_ENERGY_METER_DEVICE_ID,
   POWER_SOURCE,
+  BATTERY_CONTROL_DEVICES,
   BUDGET_EXEMPT_DEVICES,
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   DEFERRED_OBJECTIVES_SETTINGS,
@@ -85,6 +86,7 @@ import { handleWeatherAdvisorSettingsChanged } from './weatherInsight.ts';
 import { DAILY_BUDGET_REFRESH_KEYS, DAILY_BUDGET_SETTINGS_KEYS } from './realtimeDailyBudgetKeys.ts';
 import {
   refreshDailyBudgetIfVisible,
+  refreshDevicesForUi,
   refreshHomeBadgesForUi,
   refreshModeAndDeviceControls,
   refreshOverviewPlanIfVisible,
@@ -147,6 +149,8 @@ const PRICE_REFRESH_KEYS = new Set([
 
 const DEVICE_CONTROL_KEYS = new Set([
   'managed_devices',
+  // A home battery's Managed toggle.
+  BATTERY_CONTROL_DEVICES,
   'controllable_devices',
   BUDGET_EXEMPT_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
@@ -403,6 +407,17 @@ const reloadRecommendationsIfKey = (key: string, context: string): void => {
   }
 };
 
+/**
+ * A device-control map changed: repaint what reads the maps. A battery's
+ * takeover notice rides the device payload instead, and the runtime clears it
+ * when Managed is turned back on, so that change fetches the list again.
+ */
+const refreshDeviceControlSurfaces = (key: string): void => {
+  if (!DEVICE_CONTROL_KEYS.has(key)) return;
+  refreshModeAndDeviceControls();
+  if (key === BATTERY_CONTROL_DEVICES) refreshDevicesForUi();
+};
+
 export const createSettingsUnsetHandler = () => (key: string) => {
   // Clears `unset` the per-device key; reload objectives so a cleared task drops out
   // of an already-open WebView (Homey may deliver clears as an unset event).
@@ -425,7 +440,7 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // reads an absent map as "nobody opted in" — so it has to reload here too.
   // Only `settings.set` consulted this set before, leaving switches asserting a
   // configuration the runtime had already dropped.
-  if (DEVICE_CONTROL_KEYS.has(key)) refreshModeAndDeviceControls();
+  refreshDeviceControlSurfaces(key);
   refreshPriceSettings(key, 'settings.unset');
   // The home-scoped read-model routes fire on unset too — the full mirror of
   // the set path, because NONE of the keys that route reads is set-only: an
@@ -488,9 +503,7 @@ export const createSettingsSetHandler = () => (key: string) => {
   if (key === DEVICE_CONTROL_PROFILES || key === DEVICE_TARGET_POWER_CONFIGS) {
     runLoggedTask(loadDeviceControlProfiles(), 'Failed to load device control profiles', 'settings.set');
   }
-  if (DEVICE_CONTROL_KEYS.has(key)) {
-    refreshModeAndDeviceControls();
-  }
+  refreshDeviceControlSurfaces(key);
   // Both writes affect Devices badges; the shared home-scope refresh above
   // separately updates the ownership map used by the filtered Modes list.
   if (key === HOMES_CONFIG || key === DEVICE_HOME_ASSIGNMENTS) {

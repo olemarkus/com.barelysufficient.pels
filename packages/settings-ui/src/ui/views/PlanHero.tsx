@@ -5,6 +5,7 @@ import type { ComponentChild } from 'preact';
 import { computeProjectedPeriodEnergyKWh, isProjectedOverHardCap } from '../../../../shared-domain/src/hourEnergyProjection.ts';
 import {
   buildDecisionSentence as buildSharedDecisionSentence,
+  resolveSupplyingBatteries,
   computeEnergyBarScaleKWh,
   formatAboveSafePaceSubline,
   formatCheapestUpcomingHour,
@@ -135,6 +136,7 @@ const buildDecisionSentence = ({
     // still-sheddable managed device is one PELS could yet ease off (running).
     capacityControlOffCount: devices.filter(isBreachingControlOffDevice).length,
     sheddableManagedRunningCount: devices.filter(isSheddableManagedRunningDevice).length,
+    supplyingBatteries: resolveSupplyingBatteries(devices),
   });
 };
 

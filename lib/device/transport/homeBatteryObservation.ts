@@ -13,6 +13,7 @@ import type {
     HomeBatteryControlSurface,
     HomeBatteryDescriptorFields,
     HomeBatteryDescriptorProbe,
+    HomeBatteryLevelObservation,
     HomeBatteryPowerObservation,
 } from '../../../packages/contracts/src/types';
 import { resolveBatteryControlSurface } from '../batteryControlWiring';
@@ -20,9 +21,11 @@ import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerCon
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { ObservationCursor, ObservedDeviceStateEvent } from './managerRealtimeHandlers';
+import { normalizeStateOfChargePercent } from './stateOfCharge';
+import { HOME_BATTERY_CLASS_KEY } from '../../../packages/shared-domain/src/batteryOrSolarRole';
 
-const HOME_BATTERY_CLASS_KEY = 'battery';
 const MEASURE_POWER_CAPABILITY_ID = 'measure_power';
+const MEASURE_BATTERY_CAPABILITY_ID = 'measure_battery';
 
 /**
  * Type guard: the snapshot is a home battery. Presence is the kind: the parse
@@ -75,6 +78,24 @@ const resolveDischargingDrawView = (
 };
 
 /**
+ * The battery's own charge level from this read, or the carried one when the
+ * read has none (a missing sample is not a new observation).
+ */
+const resolveParsedLevel = (
+    capabilities: readonly string[],
+    capabilityObj: DeviceCapabilityMap,
+    previousSnapshot: TransportDeviceSnapshot | undefined,
+): HomeBatteryLevelObservation | undefined => {
+    const entry = capabilities.includes(MEASURE_BATTERY_CAPABILITY_ID)
+        ? capabilityObj[MEASURE_BATTERY_CAPABILITY_ID]
+        : undefined;
+    const percent = normalizeStateOfChargePercent(entry?.value);
+    const observedAtMs = toCapabilityTimestampMs(entry?.lastUpdated);
+    if (percent === undefined || observedAtMs === undefined) return previousSnapshot?.batteryLevel;
+    return { percent, observedAtMs };
+};
+
+/**
  * The claim this read leaves the battery with. A different reported value
  * wins whatever its stamp: a realtime claim is dated on arrival, a pulled one
  * by Homey, so the two clocks cannot be ordered, and a write Homey rejected
@@ -111,7 +132,7 @@ const resolveParsedClaim = (
  * The parsed snapshot with its home-battery clusters: unchanged for anything
  * but a battery. `overlay` is the parse's overlaid capability view; a
  * battery's `target_power` there is the device's own, because the stepped
- * overlays never touch an observe-only class. A read that reached the parse
+ * overlays never touch a battery or solar class. A read that reached the parse
  * conformed to the device-read contract, so a declared `measure_power` carries
  * a finite value and a source stamp.
  */
@@ -134,6 +155,7 @@ export function withHomeBatteryParseFields(
         ? { signedW, observedAtMs: powerObservedAtMs }
         : undefined;
     const batteryClaim = resolveParsedClaim(controlSurface, capabilityObj, previousSnapshot);
+    const batteryLevel = resolveParsedLevel(capabilities, capabilityObj, previousSnapshot);
     return {
         ...snapshot,
         homeBattery: { controlSurface },
@@ -141,6 +163,7 @@ export function withHomeBatteryParseFields(
             ? { batteryPower, ...resolveDischargingDrawView(snapshot, batteryPower) }
             : {}),
         ...(batteryClaim !== undefined ? { batteryClaim } : {}),
+        ...(batteryLevel !== undefined ? { batteryLevel } : {}),
     };
 }
 
@@ -196,20 +219,51 @@ export function handleHomeBatteryClaimCapabilityUpdate(
 }
 
 /**
- * Fresher-wins for the signed power across a full refresh: a pull whose source
- * stamp predates the realtime reading already held must not roll it back. The
- * draw view of the same reading is carried by `preserveNewerMeteredPowerReading`
- * on the same stamps. A reading the pull no longer resolves stays absent; the
- * parser decides presence. The claim is settled at parse (`resolveParsedClaim`).
+ * A realtime `measure_battery` report on a home battery: stores the level the
+ * card shows. True when the event was a battery level event, whether or not it
+ * held a usable value. Published as an observed-state change only: nothing
+ * decides on a battery's level.
  */
-export function preserveNewerHomeBatteryPower(
+export function handleHomeBatteryLevelCapabilityUpdate(
+    nextObservationCursor: (deviceId: string) => ObservationCursor,
+    dispatchObservedStateChanged: (event: ObservedDeviceStateEvent) => void,
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: unknown,
+): boolean {
+    if (capabilityId !== MEASURE_BATTERY_CAPABILITY_ID || !isHomeBatterySnapshot(snapshot)) return false;
+    const percent = normalizeStateOfChargePercent(value);
+    if (percent === undefined) return true;
+    const mutableSnapshot = snapshot;
+    mutableSnapshot.batteryLevel = { percent, observedAtMs: Date.now() };
+    dispatchObservedStateChanged({
+        source: 'realtime_capability',
+        deviceId: snapshot.id,
+        ...nextObservationCursor(snapshot.id),
+        capabilityId,
+    });
+    return true;
+}
+
+/**
+ * Fresher-wins for the signed power and the charge level across a full
+ * refresh: a pull whose source stamp predates the realtime reading already
+ * held must not roll it back. The draw view of the same power reading is
+ * carried by `preserveNewerMeteredPowerReading` on the same stamps. A reading
+ * the pull no longer resolves stays absent; the parser decides presence. The
+ * claim is settled at parse (`resolveParsedClaim`).
+ */
+export function preserveNewerHomeBatteryReadings(
     previous: TransportDeviceSnapshot,
     next: TransportDeviceSnapshot,
 ): void {
-    const retained = previous.batteryPower;
-    const incoming = next.batteryPower;
-    if (retained === undefined || incoming === undefined || retained.observedAtMs <= incoming.observedAtMs) return;
     const snapshot = next;
-    snapshot.batteryPower = retained;
+    if (isNewerHeld(previous.batteryPower, next.batteryPower)) snapshot.batteryPower = previous.batteryPower;
+    if (isNewerHeld(previous.batteryLevel, next.batteryLevel)) snapshot.batteryLevel = previous.batteryLevel;
 }
+
+const isNewerHeld = (
+    retained: { observedAtMs: number } | undefined,
+    incoming: { observedAtMs: number } | undefined,
+): boolean => retained !== undefined && incoming !== undefined && retained.observedAtMs > incoming.observedAtMs;
 /* eslint-enable functional/immutable-data */

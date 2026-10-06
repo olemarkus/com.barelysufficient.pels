@@ -5271,6 +5271,19 @@ details[open] > summary .disclosure-chevron {
   min-height: var(--pels-touch-target-min);
 }
 
+/* Warning variant (a battery's takeover notice): the warning state tokens the
+   `.banner--warning` banner uses, with the body kept in the normal secondary
+   tone so only the title carries the amber text. */
+.detail-setup-notice--warning {
+  background: var(--color-state-warning-bg);
+  border-color: var(--color-state-warning-border);
+  color: var(--color-state-warning-text);
+}
+
+.detail-setup-notice--warning .detail-setup-notice__body {
+  color: var(--text-secondary);
+}
+
 .detail-stepped-boost {
   display: grid;
   gap: var(--spacing-3);
@@ -5304,6 +5317,16 @@ details[open] > summary .disclosure-chevron {
 .device-detail-readout__value {
   color: var(--text);
   font-weight: var(--font-weight-semibold);
+}
+
+/* The trailing text button (Change, Reorder): restore the M3 lead/trail
+   padding Homey's universal `* { padding: 0 }` reset strips from the host box
+   (the `.homes-settings md-text-button` idiom), so the label sits inside the
+   button's shape rather than spilling past it, and never let the row shrink
+   the button below its label: the value wraps instead. */
+.device-detail-readout__trailing md-text-button {
+  flex: none;
+  padding-inline: var(--spacing-3);
 }
 
 /* Canonical M3 outlined segmented buttons. Used everywhere a view filter

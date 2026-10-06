@@ -450,7 +450,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             {
                 id: 'dev1', name: 'dev1', targets: [], binaryControl: { on: true }, expectedPowerKw: 1,
                 deviceClass: 'socket', deviceType: 'onoff', isEvCharger: false, binaryControllable: true,
-                observeOnly: false,
+                isBatteryOrSolar: false,
             },
         ] as unknown as Parameters<typeof h.transport.setSnapshotForTests>[0]);
 

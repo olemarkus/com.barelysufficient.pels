@@ -238,3 +238,21 @@ describe('BatteryStateProducer', () => {
     });
   });
 });
+
+describe('BatteryStateProducer battery set read', () => {
+  it('reads unavailable until a full refresh settles the set, and tells its listener once', () => {
+    const producer = new BatteryStateProducer(vi.fn());
+    const resolved = vi.fn();
+    producer.setOnBatteryDevicesResolved(resolved);
+    expect(producer.readBatteryDevices()).toEqual({ status: 'unavailable' });
+
+    producer.observe(conformingRead([nonBattery('s1')]), { fullRefresh: false });
+    expect(producer.readBatteryDevices()).toEqual({ status: 'unavailable' });
+    expect(resolved).not.toHaveBeenCalled();
+
+    producer.observe(conformingRead([nonBattery('s1')]), { fullRefresh: true });
+    producer.observe(conformingRead([battery('b1', { measure_battery: 50, measure_power: 0 })]), { fullRefresh: true });
+    expect(producer.readBatteryDevices()).toEqual({ status: 'resolved', deviceIds: new Set(['b1']) });
+    expect(resolved).toHaveBeenCalledTimes(1);
+  });
+});

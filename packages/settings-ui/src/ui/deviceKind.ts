@@ -6,13 +6,14 @@ import {
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from './deviceUtils.ts';
+import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 
 // The device-detail surface composes per-kind: which sections exist and in what
 // order is decided once, here, instead of each section module re-deriving its
 // own flavour of "is this an EV charger". Row-level gating (can this row show
 // for this device) stays with the capability predicates in deviceUtils.ts and
 // deviceControlProfiles.ts — the kind decides the page, not every row.
-export type DeviceDetailKind = 'ev_charger' | 'temperature' | 'stepped' | 'binary';
+export type DeviceDetailKind = 'battery' | 'ev_charger' | 'temperature' | 'stepped' | 'binary';
 
 export type DeviceDetailControlMode =
   | 'default'
@@ -63,7 +64,8 @@ export const isSteppedLoadControlModel = (device: SettingsUiDeviceDetailItem | n
   Boolean(device && resolveDeviceDetailControlMode(device) === 'stepped_load')
 );
 
-// Kind precedence: an EV charger stays an EV charger even when its preset is
+// Kind precedence: a home battery is its own page (no load sections at all).
+// An EV charger stays an EV charger even when its preset is
 // cleared (`isEvCharger`), or when only its config marks it as one (preset /
 // native EV wiring).
 // Temperature beats stepped: a thermostat given a stepped control model still
@@ -72,6 +74,7 @@ export const resolveDeviceDetailKind = (
   device: SettingsUiDeviceDetailItem | null | undefined,
 ): DeviceDetailKind => {
   if (!device) return 'binary';
+  if (isHomeBatteryClassKey(device.deviceClass)) return 'battery';
   if (
     isEvChargerDevice(device)
     || hasEvTargetPowerPreset(device)

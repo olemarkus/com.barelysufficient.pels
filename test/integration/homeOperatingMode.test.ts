@@ -96,6 +96,7 @@ const createCatalogFor = (ctx: AppContext, homeId: string) => createHomeModeCata
   () => ctx.managedDevices,
   () => ctx.homeMembership,
   () => getLogger('homes'),
+  () => ({ status: 'resolved', deviceIds: new Set() }),
 );
 
 const buildRig = (): Rig => {
@@ -661,7 +662,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       expect(persisted.state).toBe('resolved');
       if (persisted.state === 'resolved') {
         expect(persisted.snapshot.modePriorityCatalog
-          .getOrder(persisted.snapshot.operatingMode, ['dev-1', 'dev-2']).getPriority('dev-1')).toBe(2);
+          .getOrder(persisted.snapshot.operatingMode, ['dev-1', 'dev-2'], () => false).getPriority('dev-1')).toBe(2);
       }
     } finally {
       settingsHandler.stop();

@@ -5,9 +5,9 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
-import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
+import { isBatteryOrSolarClassKey } from '../../packages/shared-domain/src/batteryOrSolarRole';
 
-type DescriptorIdentityKey = 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'observeOnly';
+type DescriptorIdentityKey = 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar';
 
 /** The identity facts the parse producer resolves for every inventory device. */
 export type DescriptorIdentity = Pick<DeviceDescriptor, DescriptorIdentityKey>;
@@ -25,7 +25,7 @@ type DescriptorIdentityFixture<T extends DescriptorIdentity> = Omit<T, Descripto
  *   temperature facet; production demotes a facet-less claim to `'onoff'`.
  * - `binaryControllable`: the producer's own question, `binaryControl !== undefined`.
  * - `isEvCharger`: class `evcharger`, as the producer resolves it.
- * - `observeOnly`: a battery or panel class key (`isObserveOnlyRoleClassKey`).
+ * - `isBatteryOrSolar`: a battery or panel class key (`isBatteryOrSolarClassKey`).
  * - `deviceClass`: a fixture that names none gets `'socket'`, the supported class
  *   that implies no further fact: not a charger, not observe-only, and not one
  *   PELS reports starvation for. The class used to be optional, so such a fixture
@@ -38,7 +38,7 @@ export const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIden
   deviceClass: fixture.deviceClass ?? 'socket',
   deviceType: fixture.deviceType ?? (fixture.temperature !== undefined ? 'temperature' : 'onoff'),
   isEvCharger: fixture.isEvCharger ?? fixture.deviceClass === 'evcharger',
-  observeOnly: fixture.observeOnly ?? isObserveOnlyRoleClassKey(fixture.deviceClass ?? 'socket'),
+  isBatteryOrSolar: fixture.isBatteryOrSolar ?? isBatteryOrSolarClassKey(fixture.deviceClass ?? 'socket'),
   binaryControllable: fixture.binaryControllable ?? fixture.binaryControl !== undefined,
 });
 

@@ -137,7 +137,7 @@ const installClient = async ({ api, settings = {}, holdUris = [] }: InstallOptio
         deviceType: 'onoff',
         isEvCharger: device.isEvCharger === true,
         binaryControllable: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
       })),
       // The scoped device read discriminates the producer's `homeScope` before
       // any flat field, exactly as the plan read does — so a scoped stub must

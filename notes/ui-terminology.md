@@ -574,6 +574,41 @@ The **Available power** (headroom) dashboard widget shares vocabulary with the r
 - **No-measurement empty state** reads **"No new power readings"** (`HEADROOM_WIDGET_COPY.noReadingsSubtitle`), in the value slot beside "No data yet" / "Reopen the dashboard": shown when the status behind the tile was the silent-meter fail-closed pass (`powerKnown: false`, meter silent, or stuck on one value, past the 10-minute shed timeout). The blob carries no headroom then and nothing derived from it is drawn, not even dimmed (owner ruling 2026-09-02); the bare lead matches the Overview's no-readings banner without its time qualifier.
 - **Price chip** uses the canonical **"Price low"** / **"Price high"** pair from `priceLevelChips.ts` — never the bare "Cheap" / "Expensive". The widget only ever renders the chip for `cheap` / `expensive` (`SHOW_PRICE_CHIP_FOR` in the renderer); for both `normal` and `unknown` the chip is hidden. The placeholder dash is only the `headroomPriceChipLabel` return value for `unknown` (so logging has a stable token) — the widget never paints it. The screen-reader phrase is the grammatical **"Price: low"** / **"Price: high"** (`headroomPriceAriaLabel`), never the broken "Price Cheap" / "Price Normal" form.
 
+## Home battery vocabulary
+
+A managed home battery has its own Overview card and device page. While PELS
+holds it, its state word is what the battery reports doing, never the plan's
+intent and never a load's state word: a battery PELS has just asked to supply
+that still charges reads `Charging`. The reason line says why PELS holds it.
+Its power is shown without a sign, because the state word gives the direction,
+and only from 50 W either way; below that no power is shown, and a held battery
+keeps the word for what PELS holds it to do.
+
+| Concept | Text |
+|---|---|
+| State while PELS holds it and it discharges | `Supplying` |
+| State while PELS holds it and it charges | `Charging` |
+| State while it runs the mode chosen in its own app | `Own mode` |
+| Reason while PELS holds it to hold the limit | `Holding your limit so your devices keep running` |
+| Reason while PELS holds it to store solar the devices leave | `Storing the solar power your devices leave` |
+| Reason while PELS caps its charge so a device can use the solar | `Charging less so a device can use the solar` |
+| Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |
+| Fact line | `64 % charged`; in its own mode also `· supplying` / `· charging` |
+| Overview hero, one battery supplying while PELS holds it for the limit | `Sessy battery is supplying 2.4 kW to hold your limit.` |
+| Overview hero, several | `2 batteries are supplying 4.2 kW to hold your limit.` |
+| Overview hero, a battery supplying while devices are also limited | `Sessy battery is supplying 2.4 kW to hold your limit. Holding back 2 devices…` |
+| Device page, Managed hint | `PELS takes it over to hold your limit or store spare solar, then hands it back.` |
+| Device page, takeover notice (amber) | `You changed its mode in the battery app` / `PELS has stepped back and leaves it alone. Turn on Managed when you want PELS to use it again.` |
+| Device page, priority value | `N of M in <mode>` (e.g. `9 of 9 in Home`) |
+| Device page, priority hint, battery last in the mode | `Last in the list, it covers the whole house before any device is limited.` |
+| Device page, priority hint, battery above other devices | `Its place decides who it protects: the devices above it.` |
+| Modes page note, under a list holding a battery | `Its place decides who it protects. Last in the list, it covers the whole house before any device is limited.` |
+
+Sources: `lib/plan/batteryStatusReadModel.ts` (card),
+`packages/settings-ui/src/ui/planHeroSummary.ts` (hero),
+`packages/settings-ui/src/ui/deviceDetail/batterySection.ts` and
+`packages/settings-ui/public/index.html` (device page).
+
 ## Solar surplus vocabulary
 
 THREE per-device surplus controls share the `surplusWilling` opt-in; the label names what happens for that device's modality, and the device's own shape picks which one it gets:

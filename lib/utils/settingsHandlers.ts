@@ -122,8 +122,9 @@ export type SettingsHandlerDeps = {
    */
   reloadExpectedPowerOverrides: () => void;
   /**
-   * Hand the owner's `battery_control_devices` change to the battery control
-   * owner, which hands back every claimed battery the owner just turned off.
+   * Hand the owner's `battery_control_devices` change (a battery's Managed
+   * toggle) to the battery control owner, which hands back every claimed
+   * battery the owner just turned off.
    * REQUIRED for the same reason as `reloadExpectedPowerOverrides`: an unwired
    * seam would leave an opted-out battery under PELS's control until restart.
    */
@@ -407,9 +408,13 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       await rebuildPlanFromSettings(deps, RESPECT_EXTERNAL_OFF_DEVICES);
     },
     [BATTERY_CONTROL_DEVICES]: async () => {
-      // The owner applies opt-out immediately and hands back a held battery.
-      // The next meter-driven plan reads its updated admission state.
+      // This is the battery's Managed toggle. The owner applies it first: it
+      // hands back a battery the owner turned off, and drops the takeover
+      // record of one turned back on. The re-parse then stamps the battery's
+      // new Managed state on the snapshot, which the next meter-driven plan
+      // reads; there is no rebuild here.
       deps.applyBatteryControlSettings();
+      await refreshSnapshotWithLog(deps, 'battery_control_devices_change');
     },
     [DEVICE_START_POLICIES]: async () => {
       // Reload FIRST: the policy map reaches the planner through the capacity

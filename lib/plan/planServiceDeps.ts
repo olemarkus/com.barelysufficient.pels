@@ -5,6 +5,7 @@ import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/
 import type { DeviceOverviewLogRecorder } from './deviceOverviewLog';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import type {
+  HomeBatteryCardRead,
   ObservedEvChargingStateRead,
   ObservedStateOfChargeRead,
   ObservedTemperatureRead,
@@ -99,6 +100,12 @@ export type PlanServiceDeps = {
   // device is projected to the planner as binary but still shows the external
   // target and measured temperature through this observer-owned seam.
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
+  /**
+   * A home battery's card facts for the settings-UI overview: its control
+   * surface from the transport and its own power and level from the observer.
+   * `none` for every other device.
+   */
+  getHomeBatteryCard: (deviceId: string) => HomeBatteryCardRead;
   // Producer `deviceType` map for the settings-UI control-mode card selection
   // (the planner no longer carries `controlModel`). Built once per serialize from
   /** Confirmed producer profile for UI; excludes any planner-only probe rung. */

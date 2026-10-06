@@ -59,6 +59,8 @@ const buildLane = () => {
     verification: ledger,
     onSnapshotCommitted: vi.fn(),
     applyControlSettings: vi.fn(),
+    isManaged: vi.fn(() => true),
+    wasTakenOver: vi.fn(() => false),
   };
   const apply = vi.fn(async (command: DeviceCommand): Promise<ActuatorOutcome> => (
     command.kind === 'storage_power'

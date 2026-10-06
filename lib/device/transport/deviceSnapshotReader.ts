@@ -20,6 +20,9 @@ import type { TransportSnapshotStore } from './transportSnapshotStore';
 import { partitionConformingDeviceReads } from './ignoredDeviceReads';
 import { getDeviceId } from './managerHelpers';
 import { syncNativeSteppedLoadCommandAdapters } from '../managerNativeSteppedCommand';
+import { isHomeBatteryDevice } from '../managerEnergy';
+import { isRuntimeTrackedDevice, resolveManagedFilterDecision } from './managerManagedFilter';
+import { isHomeBatterySnapshot } from './homeBatteryObservation';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
@@ -81,14 +84,26 @@ export class DeviceSnapshotReader {
       : device;
   }
 
+  /**
+   * Whether realtime events for this device update the snapshot: the same
+   * "tracked" answer the snapshot filter gives (`isRuntimeTrackedDevice`). A
+   * device is known as a home battery here by id, from the snapshot or the raw
+   * device tracking already holds; a caller with the device read in hand uses
+   * {@link shouldTrackRealtimeDeviceRead}.
+   */
   shouldTrackRealtimeDevice(deviceId: string): boolean {
-    return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
+    return this.isTracked(deviceId, this.isKnownHomeBattery(deviceId));
+  }
+
+  /** {@link shouldTrackRealtimeDevice} for a device read in hand, which names its own class. */
+  shouldTrackRealtimeDeviceRead(deviceId: string, device: HomeyDeviceLike): boolean {
+    return this.isTracked(deviceId, isHomeBatteryDevice(device) || this.isKnownHomeBattery(deviceId));
   }
 
   syncTrackedDevices(devices: HomeyDeviceLike[]): void {
     const tracked = devices.filter((device) => {
       const deviceId = getDeviceId(device);
-      return deviceId !== undefined && this.shouldTrackRealtimeDevice(deviceId);
+      return deviceId !== undefined && this.isTracked(deviceId, isHomeBatteryDevice(device));
     });
     this.snapshotStore.replaceTrackedRawDevices(tracked);
     this.syncNativeSteppedLoadCommandAdapters();
@@ -101,6 +116,20 @@ export class DeviceSnapshotReader {
       shouldTrackDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
       logger: this.logger,
     });
+  }
+
+  private isTracked(deviceId: string, isHomeBattery: boolean): boolean {
+    return isRuntimeTrackedDevice(
+      resolveManagedFilterDecision({ providers: this.providers, deviceId }),
+      isHomeBattery,
+    );
+  }
+
+  private isKnownHomeBattery(deviceId: string): boolean {
+    const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    if (snapshot !== undefined) return isHomeBatterySnapshot(snapshot);
+    const raw = this.snapshotStore.getTrackedRawDevice(deviceId);
+    return raw !== undefined && isHomeBatteryDevice(raw);
   }
 
   private parseDependencies() {

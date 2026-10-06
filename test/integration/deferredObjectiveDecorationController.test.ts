@@ -19,7 +19,7 @@ const buildDevice = (): PlanInputDevice => withBinaryDiscriminant(withFixtureRes
   surplusTracking: false,
   confirmedNotDrawing: false,
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   starvationSupported: false,
   deviceType: 'onoff',
   targets: [],

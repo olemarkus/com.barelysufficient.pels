@@ -8,9 +8,12 @@ import {
   formatHeroHeadline,
   formatProjectedEnergySubline,
   formatSafePaceMeterMarkerLabels,
+  resolveSupplyingBatteries,
   type DecisionSentenceInput,
   type PlanHeroMetaInput,
 } from '../../packages/settings-ui/src/ui/planHeroSummary';
+import { buildSettingsUiPlanHomeBattery, type HomeBatteryCard } from '../../lib/plan/batteryStatusReadModel';
+import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 
 
 const meta = (overrides: Partial<PlanHeroMetaInput> = {}): PlanHeroMetaInput => ({
@@ -142,6 +145,55 @@ describe('buildDecisionSentence', () => {
     capacityPeriodMinutes: 60,
     safePaceKw: 12,
     ...overrides,
+  });
+
+  describe('the batteries it names as holding the limit', () => {
+    const card = (signedW: number): HomeBatteryCard => ({
+      kind: 'battery', drivable: true,
+      power: { kind: 'observed', signedW },
+      level: { kind: 'observed', percent: 60 },
+    });
+    const named = (hold: DevicePlanDevice['storageHold'], signedW: number) => {
+      const devices = [{ name: 'Sessy battery', homeBattery: buildSettingsUiPlanHomeBattery(card(signedW), hold) }];
+      return buildDecisionSentence(baseline({ supplyingBatteries: resolveSupplyingBatteries(devices) })).text;
+    };
+
+    it('names a battery PELS holds for relief that is supplying', () => {
+      expect(named('relief', -2400)).toBe('Sessy battery is supplying 2.4 kW to hold your limit.');
+    });
+
+    it('does not name a battery held for surplus that is discharging', () => {
+      expect(named('surplus', -2400)).toBe('Quiet hour. Nothing to do.');
+    });
+
+    it('does not name a battery in its own mode that is discharging', () => {
+      expect(named('none', -2400)).toBe('Quiet hour. Nothing to do.');
+    });
+  });
+
+  it('names a battery holding the limit instead of a quiet hour', () => {
+    expect(buildDecisionSentence(baseline({
+      supplyingBatteries: [{ name: 'Sessy battery', kw: 2.4 }],
+    }))).toEqual({ text: 'Sessy battery is supplying 2.4 kW to hold your limit.', positive: true });
+    expect(buildDecisionSentence(baseline({
+      supplyingBatteries: [{ name: 'A', kw: 2.4 }, { name: 'B', kw: 1.8 }],
+    })).text).toBe('2 batteries are supplying 4.2 kW to hold your limit.');
+  });
+
+  it('names a battery at full output ahead of the devices still limited', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 1,
+      supplyingBatteries: [{ name: 'Sessy battery', kw: 3.6 }],
+    })).text).toBe(
+      'Sessy battery is supplying 3.6 kW to hold your limit. Holding back 1 device so the house stays under 12.0 kW.',
+    );
+  });
+
+  it('names no battery in simulation, where PELS drives none', () => {
+    expect(buildDecisionSentence(baseline({
+      dryRun: true,
+      supplyingBatteries: [{ name: 'Sessy battery', kw: 2.4 }],
+    })).text).toBe('Quiet hour. Nothing to do.');
   });
 
   it('returns the quiet-hour copy when nothing is happening', () => {

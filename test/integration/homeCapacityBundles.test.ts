@@ -97,6 +97,8 @@ const buildRig = (): Rig => {
       hasWarmSnapshot: () => true,
       getBinaryCommandConfirmationSnapshot: () => [],
       getAssociatedCar: () => undefined,
+      // The mode catalog asks which devices are home batteries when it ranks.
+      isBatteryDevice: () => false,
       requestBinaryControl: vi.fn(async () => undefined),
       requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
       canTurnOnDevice: () => true,
@@ -1416,7 +1418,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       deviceClass: 'socket',
       deviceType: 'onoff',
       isEvCharger: false,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       binaryControllable: true,
       binaryCapabilityId: 'onoff',
       capabilities: ['onoff'],
@@ -1434,6 +1436,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasWarmSnapshot: () => true,
       getBinaryCommandConfirmationSnapshot: () => [],
       getAssociatedCar: () => undefined,
+      isBatteryDevice: () => false,
       setCapability,
       requestBinaryControl: (deviceId: string, desired: boolean) => (
         setCapability(deviceId, 'onoff', desired).then(() => undefined)

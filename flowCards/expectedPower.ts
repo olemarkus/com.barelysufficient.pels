@@ -80,15 +80,16 @@ export function registerExpectedPowerCard(
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const descriptors = await deps.getDeviceDescriptors();
     return buildDeviceAutocompleteOptions(
-      // An observe-only role device (home battery / PV) is force-managed but
-      // non-controllable, so an expected-power override on it is a no-op pick.
-      // Keyed on the immutable observe-only ROLE (same predicate as the
-      // settings-UI hide + deviceSettingsCards), not on the live flag.
+      // A home battery or PV device is never a load the generic lanes command,
+      // so an expected-power override on it is a no-op pick.
+      // Keyed on the battery/solar ROLE (same predicate as
+      // deviceSettingsCards), not on the live flag: neither has an expected
+      // load to override.
       // A configured `loadKw` no longer excludes a device: a manual value
       // outranks `settings.load`, so overriding a wrong declared load is the
       // point rather than a conflict.
       descriptors.filter(
-        (d) => !d.observeOnly
+        (d) => !d.isBatteryOrSolar
           && !isSteppedLoadSnapshot(d),
       ),
       query,

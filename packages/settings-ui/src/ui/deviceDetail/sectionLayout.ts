@@ -22,9 +22,13 @@ import { resolveDeviceDetailKind, type DeviceDetailKind } from '../deviceKind.ts
 //   after installation; the limiting choice follows it.
 // - Binary: almost nothing to configure — the limiting statement up top and
 //   Setup auto-expanded (see autoExpandSetupWhenBare).
-// Every list carries all ten sections so hidden, inapplicable ones keep a
+// - Battery: its Managed switch and its place in the priority order; none of
+//   a load's sections apply, so they are hidden here rather than by their own
+//   gates (`applyBatteryKindVisibility`).
+// Every list carries all eleven sections so hidden, inapplicable ones keep a
 // stable DOM position (their own gates keep them hidden).
 const SECTION_IDS = {
+  battery: 'device-detail-battery-section',
   modes: 'device-detail-modes-section',
   delta: 'device-detail-delta-section',
   surplus: 'device-detail-surplus-section',
@@ -47,6 +51,7 @@ const ALL_SECTION_KEYS = Object.keys(SECTION_IDS) as SectionKey[];
 // gates hide) is derived, so an omitted key can never strand a section at the
 // previous kind's position.
 const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
+  battery: ['battery', 'activityLog', 'diagnostics'],
   ev_charger: ['charging', 'car', 'stepped', 'setup', 'activityLog', 'diagnostics'],
   temperature: ['modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'activityLog', 'diagnostics'],
   stepped: ['stepped', 'shedding', 'setup', 'activityLog', 'diagnostics'],
@@ -84,13 +89,41 @@ const placeShedField = (kind: DeviceDetailKind): void => {
     }
   }
   const shedding = sectionElement('shedding');
-  if (shedding) shedding.hidden = kind === 'ev_charger';
+  if (shedding) shedding.hidden = kind === 'ev_charger' || kind === 'battery';
+};
+
+// The Managed switch is a singleton: a battery's page carries it in its own
+// section, every other page in Setup, ahead of the temperature-control row.
+const placeManagedRow = (kind: DeviceDetailKind): void => {
+  const row = document.getElementById('device-detail-managed-row');
+  if (!row) return;
+  if (kind === 'battery') {
+    const batteryList = document.getElementById('device-detail-battery-list');
+    const notice = document.getElementById('device-detail-battery-takeover-notice');
+    if (batteryList && row.parentElement !== batteryList) batteryList.insertBefore(row, notice?.nextSibling ?? null);
+    return;
+  }
+  const anchor = document.getElementById('device-detail-temperature-control-disabled-row');
+  if (anchor?.parentElement && row.nextElementSibling !== anchor) anchor.parentElement.insertBefore(row, anchor);
+};
+
+// A battery's page shows its own section and none of a load's: Setup holds
+// nothing else that applies to it once Managed has moved out. Resolved with the
+// kind, so a page that re-kinds (never for a battery) gets them back.
+const applyBatteryKindVisibility = (kind: DeviceDetailKind): void => {
+  const isBattery = kind === 'battery';
+  const battery = sectionElement('battery');
+  if (battery) battery.hidden = !isBattery;
+  const setup = sectionElement('setup');
+  if (setup) setup.hidden = isBattery;
 };
 
 export const applyDeviceDetailSectionLayout = (
   device: Parameters<typeof resolveDeviceDetailKind>[0],
 ): void => {
   const kind = resolveDeviceDetailKind(device);
+  placeManagedRow(kind);
+  applyBatteryKindVisibility(kind);
   if (appliedKind === kind) return;
 
   const parent = sectionElement('modes')?.parentElement;

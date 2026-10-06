@@ -9,6 +9,7 @@ import {
   HomeBatteryControlOwner,
   type BatteryControlRead,
 } from '../../lib/battery/batteryControlOwner';
+import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { StorageCommand } from '../../lib/ports/storageCommand';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
@@ -64,6 +65,7 @@ const buildOwner = (params: {
   const commands: StorageCommand[] = [];
   const owner = new HomeBatteryControlOwner({
     settings,
+    managed: new BatteryManagedSettings(settings),
     actuation: {
       apply: async (command) => {
         commands.push(command);
@@ -106,6 +108,74 @@ describe('HomeBatteryControlOwner admission', () => {
     vi.setSystemTime(T0 + 4 * 60 * 60_000);
     expect(buildOwner({ settings, batteries }).owner.admitClaim(BATTERY))
       .toEqual({ status: 'refused', reason: 'control_disabled' });
+  });
+
+  it('turns Managed off after a takeover and adopts the battery\'s new mode when the owner turns it back on', async () => {
+    const { owner, batteries, settings } = buildOwner();
+    owner.admitClaim(BATTERY);
+    batteries[BATTERY] = setpointBattery('manual', T0 + 1000);
+    vi.setSystemTime(T0 + 2000);
+    owner.admitClaim(BATTERY);
+    await settle();
+    expect(owner.isManaged(BATTERY)).toBe(false);
+    expect(owner.wasTakenOver(BATTERY)).toBe(true);
+
+    // The owner's Managed toggle: a plain settings write, applied by the owner.
+    settings.set(BATTERY_CONTROL_DEVICES, { [BATTERY]: true });
+    owner.applyControlSettings();
+
+    expect(owner.isManaged(BATTERY)).toBe(true);
+    expect(owner.wasTakenOver(BATTERY)).toBe(false);
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'admitted' });
+    expect(settings.get(CLAIM_KEY)).toMatchObject({ previousValue: 'manual' });
+  });
+
+  it('keeps the last Managed map when a later read of it fails', async () => {
+    const { owner, settings, commands } = buildOwner();
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'admitted' });
+
+    settings.set(BATTERY_CONTROL_DEVICES, 'junk');
+    owner.applyControlSettings();
+    await settle();
+
+    expect(owner.isManaged(BATTERY)).toBe(true);
+    expect(commands).toEqual([]);
+  });
+
+  it('applies a stored re-enable instead of overwriting it when a takeover is seen before its settings event', () => {
+    // A takeover turned Managed off and its record is still kept.
+    const settings = settingsStore({ [CLAIM_KEY]: record('anti_feed'), [BATTERY_CONTROL_DEVICES]: { [BATTERY]: false } });
+    const { owner } = buildOwner({ settings, batteries: { [BATTERY]: setpointBattery('manual', T0 - 1000) } });
+    expect(owner.isManaged(BATTERY)).toBe(false);
+
+    // The owner turns Managed back on; a snapshot commits before the settings event is applied.
+    settings.set(BATTERY_CONTROL_DEVICES, { [BATTERY]: true });
+    owner.onSnapshotCommitted(refresh(BATTERY));
+
+    expect(settings.get(BATTERY_CONTROL_DEVICES)).toEqual({ [BATTERY]: true });
+    expect(owner.isManaged(BATTERY)).toBe(true);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('warns when the takeover record of a battery turned back on cannot be removed', () => {
+    // A previous run's record, with the owner's mode change after it: the
+    // takeover that turned Managed off.
+    const base = settingsStore({ [CLAIM_KEY]: record('anti_feed'), [BATTERY_CONTROL_DEVICES]: { [BATTERY]: false } });
+    const settings: SettingsPort = {
+      ...base,
+      unset: (key) => {
+        if (key === CLAIM_KEY) throw new Error('settings write failed');
+        base.unset(key);
+      },
+    };
+    const { owner } = buildOwner({ settings, batteries: { [BATTERY]: setpointBattery('manual', T0 - 1000) } });
+
+    const logs = captureLogger('info');
+    settings.set(BATTERY_CONTROL_DEVICES, { [BATTERY]: true });
+    owner.applyControlSettings();
+    expect(logs.findEvent('battery_control_takeover_record_remove_failed')).toMatchObject({ deviceId: BATTERY });
+    expect(logs.findEvent('battery_control_reenabled_after_takeover')).toBeUndefined();
+    logs.restore();
   });
 
   it('does not adopt a leftover record after another controller took over', () => {
@@ -463,6 +533,7 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
     const commands: StorageCommand[] = [];
     const owner = new HomeBatteryControlOwner({
       settings,
+      managed: new BatteryManagedSettings(settings),
       actuation: { apply: async (command) => { commands.push(command); return { requested: true }; } },
       getBattery: () => setpointBattery('anti_feed'),
       isMainHomeMember: () => true,

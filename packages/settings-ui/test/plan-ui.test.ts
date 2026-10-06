@@ -1216,7 +1216,7 @@ describe('Redesign plan UI', () => {
         id: 'recovered', name: 'Recovered heater', managed: true, available: true, targets: [],
         expectedPowerKw: 1, expectedPowerSource: 'default' as const,
         deviceClass: 'heater', deviceType: 'onoff' as const, isEvCharger: false,
-        binaryControllable: false, observeOnly: false,
+        binaryControllable: false, isBatteryOrSolar: false,
       }];
       const plan = { meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] };
       const homey = installHomeyMock({

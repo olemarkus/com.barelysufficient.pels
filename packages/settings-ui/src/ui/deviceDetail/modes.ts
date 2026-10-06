@@ -5,7 +5,7 @@ import {
 } from '../../../../shared-domain/src/targetCapabilities.ts';
 import { getTargetCapabilityStep } from '../targetCapabilityStep.ts';
 import { deviceDetailModes, deviceDetailModesSection, type MdFilledTextFieldElement } from '../dom.ts';
-import { state } from '../state.ts';
+import { isHomeBatteryDeviceId, resolveManagedState, state } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
 import {
@@ -125,10 +125,12 @@ const getAllModes = (catalog: DetailModeCatalog) => {
 
 const getPriorityLabel = (catalog: DetailModeCatalog, mode: string, deviceId: string) => {
   const homeId = getHomeIdForUiDevice(deviceId);
+  // The same managed set and battery ordering the Modes list and the runtime
+  // rank with, so this page's number matches theirs.
   const deviceIds = state.latestDevices
-    .filter((entry) => state.managedMap[entry.id] === true && getHomeIdForUiDevice(entry.id) === homeId)
+    .filter((entry) => resolveManagedState(entry.id) && getHomeIdForUiDevice(entry.id) === homeId)
     .map((entry) => entry.id);
-  const order = catalog.priorities.getOrder(mode, [...deviceIds, deviceId]);
+  const order = catalog.priorities.getOrder(mode, [...deviceIds, deviceId], isHomeBatteryDeviceId);
   return `Priority ${order.getPriority(deviceId)}`;
 };
 

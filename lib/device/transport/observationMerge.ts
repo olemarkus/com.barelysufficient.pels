@@ -14,7 +14,7 @@ import {
 import { incPerfCounter } from '../../utils/perfCounters';
 import { applyCapabilityObservation, clearCapabilityObservationIfMatched } from './observationApply';
 import { preserveNewerReportedStepObservation } from './reportedStepObservation';
-import { preserveNewerHomeBatteryPower } from './homeBatteryObservation';
+import { preserveNewerHomeBatteryReadings } from './homeBatteryObservation';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
@@ -137,7 +137,7 @@ function mergeSnapshotObservationsForDevice(params: {
     });
     preserveNewerReportedStepObservation(previous, snapshot);
     preserveNewerMeteredPowerReading(previous, snapshot);
-    preserveNewerHomeBatteryPower(previous, snapshot);
+    preserveNewerHomeBatteryReadings(previous, snapshot);
 
     if (snapshot.binaryCapabilityId) {
         mergeCapabilityObservation({

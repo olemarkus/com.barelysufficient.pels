@@ -9,7 +9,7 @@ type DeviceConfigurationFields = {
   // Resolved from the inventory class by the device layer, so planner and
   // executor inputs never re-read the class. All required: "absent" must not
   // be able to stand in for "no".
-  observeOnly: boolean;
+  isBatteryOrSolar: boolean;
   isEvCharger: DeviceDescriptorRead['isEvCharger'];
   /** A thermostat-family class whose "held below target" PELS reports as starvation. */
   starvationSupported: boolean;

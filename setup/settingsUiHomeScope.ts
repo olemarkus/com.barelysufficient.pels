@@ -35,6 +35,7 @@ import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../lib/home/homeRu
 import type { HomeMembershipPort } from '../lib/home/membership';
 import { isValidSubHomeId } from '../lib/home/homeConfig';
 import type { HomeId } from '../lib/utils/settingsKeys';
+import { isListedWholeHomeDevice } from '../lib/home/wholeHomeDeviceListing';
 import type { AppContext } from '../lib/app/appContext';
 import type { SettingsUiPowerStatus } from '../packages/contracts/src/settingsUiApi';
 
@@ -187,6 +188,12 @@ export class SettingsUiHomeScopeAdapter {
     if (!membership) return null;
     if (!membership.isOwnershipReady() || membership.hasPendingOwnershipGeneration()) return null;
     return devices.filter((device) => membership.getHomeIdForDevice(device.id) === scope.homeId);
+  }
+
+  /** The devices the whole-home list offers (`lib/home/wholeHomeDeviceListing.ts`). */
+  public filterWholeHomeDevices<T extends Parameters<typeof isListedWholeHomeDevice>[1]>(devices: readonly T[]): T[] {
+    const membership = this.app()?.homeMembership;
+    return devices.filter((device) => isListedWholeHomeDevice(membership, device));
   }
 
   private app(): HomeScopeApp | null {

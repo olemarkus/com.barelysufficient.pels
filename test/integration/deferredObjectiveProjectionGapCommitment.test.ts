@@ -90,7 +90,7 @@ const buildDeviceReading = (
   deviceClass: 'heater',
   deviceType: 'temperature',
   isEvCharger: false,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   binaryControllable: true,
   controlModel: 'stepped_load',
   temperature: {

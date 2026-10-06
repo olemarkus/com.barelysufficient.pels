@@ -83,7 +83,7 @@ describe('buildPlanInputDevice', () => {
       // an undescribed device does not have.
       deviceType: 'onoff',
       isEvCharger: false,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       starvationSupported: false,
     });
   });

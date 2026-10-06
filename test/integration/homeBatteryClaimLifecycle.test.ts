@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Homey from 'homey';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { HomeBatteryControlOwner } from '../../lib/battery/batteryControlOwner';
+import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import { toBatteryControlRead } from '../../setup/appInit/createBatteryControl';
 import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
@@ -30,8 +31,13 @@ const unusedWrite = (): Promise<never> => Promise.reject(new Error('Only storage
 const setup = () => {
   const device = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed', targetPowerW: 0 });
   setMockDrivers({ batteries: new MockDriver('batteries', [device]) });
+  const settings = mockHomeyInstance.settings;
+  const managed = new BatteryManagedSettings(settings);
+  // The app's managed filter: active, and asking the battery's Managed toggle.
   const transport: DeviceTransport = createTestDeviceTransport(homeyMock, loggerMock, {
     getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+    getManaged: (deviceId: string) => managed.isManaged(deviceId),
+    isManagedFilterActive: () => true,
   });
   transport.setSnapshotForTests(transport.parseDeviceListForTests([device.toHomeyApiDevice() as HomeyDeviceLike]));
   const actuator = createDeviceActuator({
@@ -43,9 +49,9 @@ const setup = () => {
     requestStoragePower: (command) => transport.requestStoragePower(command),
     releaseStorageControl: (command) => transport.releaseStorageControl(command),
   });
-  const settings = mockHomeyInstance.settings;
   const owner = new HomeBatteryControlOwner({
     settings,
+    managed,
     actuation: actuator,
     getBattery: (deviceId) => toBatteryControlRead(transport.getSnapshotByDeviceId(deviceId)),
     isMainHomeMember: () => true,
@@ -139,5 +145,22 @@ describe('home battery claim and hand-back through the real transport', () => {
 
     expect(writes().slice(-2)).toEqual([['target_power', 0], ['target_power_mode', 'anti_feed']]);
     expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('keeps a battery turned Managed off on the realtime feed while its hand-back is pending', async () => {
+    const { device, owner, settings, command, transport } = setup();
+    await command(-800);
+
+    device.configureCapabilityBehavior('target_power', { onApiWrite: { accept: false } });
+    settings.set(BATTERY_CONTROL_DEVICES, { [BATTERY]: false });
+    owner.applyControlSettings();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(owner.isManaged(BATTERY)).toBe(false);
+    expect(settings.get(CLAIM_KEY)).not.toBeNull();
+
+    // The owner changes the mode in the battery's own app: the snapshot must
+    // see it, or the pending hand-back would act on a claim long gone.
+    transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'manual');
+    expect(transport.getSnapshotByDeviceId(BATTERY)?.batteryClaim?.value).toBe('manual');
   });
 });

@@ -305,6 +305,20 @@ export type SettingsUiPlanMetaSnapshot = SettingsUiPlanMetaSnapshotBase
   & (SettingsUiPlanMetaMeasuredFields | SettingsUiPlanMetaUnmeasuredFields);
 
 /**
+ * A home battery on the overview, beyond its resolved card status: what it is
+ * doing, for the hero line that names a battery holding the limit. `power` is
+ * the battery's own reading, unsigned (the activity gives the direction).
+ * `holdsLimit`: PELS holds it to hold the limit and it reports supplying, the
+ * one case the hero names; resolved by the producer
+ * (`lib/plan/batteryStatusReadModel.ts`).
+ */
+export type SettingsUiPlanHomeBattery = {
+  activity: 'supplying' | 'charging' | 'own_mode';
+  power: { kind: 'observed'; kw: number } | { kind: 'absent' };
+  holdsLimit: boolean;
+};
+
+/**
  * NO `[key: string]: unknown` index signature, deliberately. It used to carry
  * one, and that made every field removal on this wire type unenforceable: a
  * consumer kept compiling against a field the producer no longer emits, so a
@@ -325,6 +339,8 @@ export type SettingsUiPlanDeviceSnapshot = Pick<DeviceOverviewSnapshot,
   budgetExempt?: boolean;
   boostActive: boolean;
   starvation?: SettingsUiPlanDeviceStarvation;
+  /** Present on a home battery's card, and only there. */
+  homeBattery?: SettingsUiPlanHomeBattery;
 };
 
 export type SettingsUiPlanDevice = SettingsUiPlanDeviceSnapshot;
@@ -352,7 +368,13 @@ export type SettingsUiPlanPayload = {
  * own device type widened straight back to it. Naming the resolved carrier here
  * makes the payload's shape the contract rather than a convention.
  */
-export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe;
+export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe & {
+  /**
+   * A home battery whose Managed PELS turned off this run because the owner
+   * changed its mode in the battery's own app. Present only then.
+   */
+  batteryTakenOver?: true;
+};
 
 /**
  * The EV control mode each charger's own app implies from how the charger is

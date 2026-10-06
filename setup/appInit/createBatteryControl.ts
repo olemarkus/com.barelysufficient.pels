@@ -45,6 +45,7 @@ export const createMainBatteryControl = (
   if (!actuator) throw new Error('Device actuator must be initialized before battery control setup.');
   return new HomeBatteryControlOwner({
     settings: ctx.homey.settings,
+    managed: ctx.batteryManaged,
     actuation: actuator,
     getBattery: (deviceId) => toBatteryControlRead(deviceManager.getSnapshotByDeviceId(deviceId)),
     isMainHomeMember: (deviceId) => ctx.homeMembership?.getHomeIdForDevice(deviceId) === MAIN_HOME_ID,

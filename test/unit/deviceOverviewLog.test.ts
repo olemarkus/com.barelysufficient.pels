@@ -21,6 +21,7 @@ const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => bui
   getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: 0,
   getObservedTemperature: () => ({ kind: 'absent' }),
   getObservedStateOfCharge: () => ({ kind: 'absent' }),
+  getHomeBatteryCard: () => ({ kind: 'none' } as const),
   getObservedEvChargingState: () => ({ kind: 'absent' }),
 }, 0);
 

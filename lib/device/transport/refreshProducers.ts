@@ -39,12 +39,13 @@ export function observeEvCarLinkAndResubscribe(
     ]);
 }
 
-// Detect observe-only devices (home batteries + solar) from the RAW fetched devices
-// BEFORE parse, then pass the list through unchanged. Ordering matters: parse routes
-// `getManaged`/`getControllable` (→ the app's observe-only-aware resolve functions)
-// which consult these same id sets, so they must be current first. This makes
-// role-detected batteries/solar resolve managed + non-controllable, so they ride the
-// managed snapshot as observe-only devices; it also emits the read-only
+// Detect home batteries and solar devices from the RAW fetched devices BEFORE
+// parse, then pass the list through unchanged. Ordering matters: parse routes
+// `getManaged`/`getControllable` (→ the app's role-aware resolve functions,
+// `lib/device/deviceRoleReads.ts`) which consult these same id sets, so they must be
+// current first. A role-detected solar device resolves managed; a battery resolves
+// its Managed toggle, and both resolve non-controllable and ride the runtime
+// snapshot whatever their Managed state; it also emits the read-only
 // `battery_state_observed` / `solar_production_observed` events. A FULL read
 // (`raw_manager_devices`) re-derives the sets; a targeted by-id read re-reads the
 // SAME known ids and must not narrow them.

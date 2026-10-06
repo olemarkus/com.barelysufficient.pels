@@ -1,14 +1,12 @@
 /**
- * The `battery_control_devices` setting: one key, one reader.
+ * The `battery_control_devices` setting: one key, one runtime reader.
  *
- * PELS controls a home battery it can drive (a `setpoint` control surface) by
- * default. The owner opts a battery out with an explicit `false`; an absent
- * entry, or an absent key, means control is on. `true` is accepted and means
- * the same as absence, so a settings UI may write either.
- *
- * A runtime-only key until the settings UI reads it, so it lives with its
- * owner here (`notes/settings-key-ownership.md`); the UI slice promotes the
- * parse to `packages/shared-domain` when it adds that second reader.
+ * The owner's Managed choice per home battery. A battery is managed by
+ * default; the owner turns it off with an explicit `false`, and an absent
+ * entry, or an absent key, means Managed is on. `true` is accepted and means
+ * the same as absence, so the settings UI may write either. The parse is
+ * shared with the settings UI's Managed toggle
+ * (`packages/shared-domain/src/settings/batteryControlDevices.ts`).
  *
  * The reader owns absence, which only the runtime can tell apart through
  * `getKeys()`:
@@ -19,36 +17,20 @@
  *   `unavailable`. Not an answer about the owner's wish.
  */
 import type { SettingsPort } from '../ports/homeyRuntime';
+import type { BatteryManagedRead } from '../ports/batteryControlOwner';
+import {
+  isBatteryControlEnabled,
+  parseBatteryControlDevices,
+  type BatteryControlDevices,
+} from '../../packages/shared-domain/src/settings/batteryControlDevices';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { BATTERY_CONTROL_DEVICES } from '../utils/settingsKeys';
-
-/** Per-battery control, keyed by device id. Absent = on; `false` = the owner opted out. */
-export type BatteryControlDevices = Readonly<Record<string, boolean>>;
 
 export type BatteryControlDevicesRead =
   | { status: 'resolved'; devices: BatteryControlDevices }
   | { status: 'unavailable' };
 
 const NEVER_WRITTEN: BatteryControlDevices = {};
-
-/**
- * Read policy: all or nothing, like every other per-device boolean map PELS
- * persists. A flat boolean has no partial state to repair, so a map with any
- * non-boolean entry is refused whole rather than sanitized: dropping one entry
- * would silently turn an opted-out battery back on. `null` is a rejected read,
- * never an empty map.
- */
-export const parseBatteryControlDevices = (value: unknown): BatteryControlDevices | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const entries = Object.entries(value);
-  if (!entries.every(([deviceId, enabled]) => deviceId.length > 0 && typeof enabled === 'boolean')) return null;
-  return Object.fromEntries(entries);
-};
-
-/** Whether PELS may control this battery: on unless the owner opted it out. */
-export const isBatteryControlEnabled = (devices: BatteryControlDevices, deviceId: string): boolean => (
-  devices[deviceId] !== false
-);
 
 export const readBatteryControlSettings = (settings: SettingsPort): BatteryControlDevicesRead => {
   const keyList = readSettingsKeyList(settings);
@@ -61,3 +43,45 @@ export const readBatteryControlSettings = (settings: SettingsPort): BatteryContr
     return { status: 'unavailable' };
   }
 };
+
+/**
+ * The owner's Managed map as the runtime holds it, and the one Managed answer
+ * for a home battery (`BatteryManagedRead`). Constructed at app start, before
+ * the battery control owner exists, so the first device parse already reads
+ * it; the owner delegates to it once it does.
+ *
+ * Fail closed, without forgetting: until the setting first reads cleanly every
+ * battery reads unmanaged, and a later read that fails keeps the last map that
+ * read cleanly. A transient settings miss must not turn a held battery
+ * unmanaged and drop it out of the plan while PELS still holds it.
+ */
+export class BatteryManagedSettings implements BatteryManagedRead {
+  private last: BatteryControlDevicesRead = { status: 'unavailable' };
+
+  constructor(private readonly settings: SettingsPort) {}
+
+  /**
+   * Re-read the setting. Answers this read; a failed one leaves the held map
+   * as it was.
+   */
+  reload(): BatteryControlDevicesRead {
+    const read = readBatteryControlSettings(this.settings);
+    if (read.status === 'resolved') this.last = read;
+    return read;
+  }
+
+  /** The stored setting as it reads now, leaving the held map untouched. */
+  readStored(): BatteryControlDevicesRead {
+    return readBatteryControlSettings(this.settings);
+  }
+
+  /** The held map, read first if no read has resolved yet. */
+  read(): BatteryControlDevicesRead {
+    return this.last.status === 'resolved' ? this.last : this.reload();
+  }
+
+  isManaged(deviceId: string): boolean {
+    const read = this.read();
+    return read.status === 'resolved' && isBatteryControlEnabled(read.devices, deviceId);
+  }
+}

@@ -49,6 +49,7 @@ import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore'
 import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import { createCapacitySettingsStore } from './lib/power/capacitySettingsStore';
+import { BatteryManagedSettings } from './lib/battery/batteryControlSettings';
 import type {
   HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPriceSourcePayloads,
 } from './packages/contracts/src/settingsUiApi';
@@ -138,6 +139,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   );
   public controllableDevices: Record<string, boolean> = {};
   public managedDevices: Record<string, boolean> = {};
+  public readonly batteryManaged = new BatteryManagedSettings(this.homey.settings);
   public budgetExemptDevices: Record<string, boolean> = {};
   public readonly homeModeCatalog = createHomeModeCatalog(
     MAIN_HOME_ID,
@@ -146,6 +148,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     () => this.managedDevices,
     () => this.context.homeMembership,
     () => this.getStructuredLogger('homes'),
+    () => this.readHomeBatteryDevices(),
   );
   protected readonly getHomeOperatingMode = () => this.homeModeCatalog.getOperatingMode();
   protected readonly setHomeOperatingMode = (mode: string) => this.homeModeCatalog.setOperatingMode(mode);
@@ -615,6 +618,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     openUserdataStores: () => this.openUserdata(),
     loadPersistedState: () => this.flowBacked.loadPersistedState(),
     persistLearnedPowerPeaks: () => this.flowBacked.persistLearnedPeaks(),
+    reloadMainModeCatalog: () => this.homeModeCatalog.reload(),
     flushLearnedPowerPeaks: () => this.flowBacked.flushLearnedPeaks(),
     loadPowerCalibrationStore: () => this.loadPowerCalibrationStore(),
     startPowerTrackerPruning: () => this.startPowerTrackerPruning(),

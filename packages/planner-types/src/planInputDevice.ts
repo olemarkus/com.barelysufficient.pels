@@ -227,8 +227,8 @@ export type MissingStorageInput = {
  * planner never reads a zero it did not measure. Reach it through
  * `hasStorageInput` (`lib/plan/battery/storageRelief.ts`).
  *
- * The device stays `observeOnly` with no command authority: no shed, restore or
- * surplus lane sees it. Only the storage stage reads this cluster, and the
+ * The device is `isBatteryOrSolar` with no generic command authority: no shed,
+ * restore or surplus lane sees it. Only the storage stage reads this cluster, and the
  * builder through the batteries' term in the surplus pool
  * (`sumStorageSurplusW`): the solar a battery stores that PELS can free, less
  * its discharge.
@@ -265,10 +265,12 @@ export type PlanInputDeviceBase = {
    */
   isEvCharger: boolean;
   /**
-   * Resolved by device configuration from the inventory class: a battery or
-   * panel PELS tracks and never commands. The planner has no class to re-read.
+   * Resolved by device configuration from the inventory class: a home battery
+   * or solar device, never a load the generic shed/restore lanes command (a
+   * battery is commanded only through the storage stage). The planner has no
+   * class to re-read.
    */
-  observeOnly: boolean;
+  isBatteryOrSolar: boolean;
   /**
    * Resolved by device configuration from the inventory class: a
    * thermostat-family device whose "held below target" PELS reports as
@@ -791,7 +793,7 @@ export type DeviceControlPosture = {
  */
 export type PlanDeviceCarriedKey =
   'associatedCar' | 'available' | 'binaryControllable' | 'budgetExempt'
-  | 'isEvCharger' | 'observeOnly' | 'starvationSupported'
+  | 'isEvCharger' | 'isBatteryOrSolar' | 'starvationSupported'
   | 'canSetControl' | 'capabilities' | 'controlAdapter' | 'controlModel'
   | 'controllable' | 'desiredStepId'
   | 'evCharging' | 'evChargingObservedAtMs' | 'evChargingStateObservedAtMs'
@@ -812,7 +814,7 @@ export type PlanDeviceCarriedKey =
  * projected surfaces, which never carried them.)
  */
 export type PlanDeviceStrippedKey =
-  'batteryClaim' | 'batteryPower'
+  'batteryClaim' | 'batteryLevel' | 'batteryPower'
   | 'binaryControl' | 'binaryControlObservation' | 'evChargingState' | 'measuredPowerKw'
   | 'measuredPowerIsDirectMeasurement' | 'steppedLoadProfile' | 'targetPowerConfig' | 'temperature'
   | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

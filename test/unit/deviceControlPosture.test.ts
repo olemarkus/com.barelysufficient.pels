@@ -75,6 +75,14 @@ describe('resolveDeviceControlPosture', () => {
     expect(posture.managed).toBe(true);
   });
 
+  it('reads a battery the owner turned Managed off as unmanaged, never with authority', () => {
+    // A battery's Managed is its own setting, stamped on the snapshot at parse.
+    const posture = resolveDeviceControlPosture(
+      snapshot({ deviceClass: 'battery', managed: false }), true, true, 'pels_only',
+    );
+    expect(posture).toEqual({ managed: false, commandAuthority: false });
+  });
+
   it('refuses authority on the ID-SET veto, whatever the class key says', () => {
     // The parse disagrees with the id set: an ordinary class key, and the owner
     // has both settings on — but `isCapacityControlEnabled` said no, and that is

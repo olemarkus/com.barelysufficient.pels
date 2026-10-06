@@ -9,6 +9,7 @@ import {
   type HomeId,
 } from '../lib/utils/settingsKeys';
 import type { AppContext } from '../lib/app/appContext';
+import type { BatteryControlOwner } from '../lib/ports/batteryControlOwner';
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
@@ -52,6 +53,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   };
   getObservedState?: (deviceId: string) => ObservedDeviceState | undefined;
   getObservedRecord?: (deviceId: string) => ProjectedObservedDeviceState | undefined;
+  batteryControl?: Pick<BatteryControlOwner, 'wasTakenOver'>;
   powerTracker?: PowerTrackerState;
   isSurplusPoolReachable?: () => boolean;
   getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
@@ -203,6 +205,11 @@ export const getObservedStateForUiFromApp = (
   deviceId: string,
 ): ProjectedObservedDeviceState | undefined => (
   getRuntimeApp(homey)?.getObservedRecord?.(deviceId)
+);
+
+/** Whether PELS turned this battery's Managed off this run because the owner took it over. */
+export const wasBatteryTakenOverForUiFromApp = (homey: Homey.App['homey'], deviceId: string): boolean => (
+  getRuntimeApp(homey)?.batteryControl?.wasTakenOver(deviceId) === true
 );
 
 export const getUiPickerDevicesFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] => {

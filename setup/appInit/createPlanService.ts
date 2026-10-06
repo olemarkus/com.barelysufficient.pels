@@ -1,5 +1,6 @@
 import { requireDeviceManager } from './contextGuards';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
+import { readHomeBatteryCard } from '../../lib/observer/observedDeviceStateProjection';
 import { requireDisplayedPowerUpdateMs } from '../../lib/power/lastTotalPower';
 import { PlanService } from '../../lib/plan/planService';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
@@ -60,6 +61,10 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // made from.
     getObservedStateOfCharge: (deviceId) => ctx.getObservedStateOfCharge(deviceId),
     getObservedTemperature: (deviceId) => ctx.getObservedTemperature(deviceId),
+    getHomeBatteryCard: (deviceId) => readHomeBatteryCard(
+      deviceManager.getSnapshotByDeviceId(deviceId),
+      ctx.getObservedRecord(deviceId),
+    ),
     getSteppedLoadProfileById: () => {
       const map = new Map<string, SteppedLoadProfile>();
       for (const deviceId of ctx.deviceConfiguration.ids()) {

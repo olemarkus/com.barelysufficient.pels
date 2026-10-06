@@ -11,7 +11,7 @@ const snapshot: RuntimeDeviceRead = {
   name: 'Water heater',
   targets: [],
   binaryControllable: true,
-  observeOnly: false,
+  isBatteryOrSolar: false,
   isEvCharger: false,
   starvationSupported: false,
   controlModel: 'stepped_load',

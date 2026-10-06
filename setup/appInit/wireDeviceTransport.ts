@@ -74,6 +74,8 @@ export type DeviceTransportWiringDeps = {
   getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined;
   /** Lazy for the same reason: the membership service is built after the transport. */
   getHomeMembershipService: () => HomeMembershipService | undefined;
+  /** Reload Main's mode catalog (`HomeModeCatalog.reload`). */
+  reloadMainModeCatalog: () => void;
 };
 
 /**
@@ -167,6 +169,14 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   // the descriptor joined with the projection's record, so a delta dispatched in
   // between would be one no subscriber received.
   subscribeObservedStateProjection(deps);
+  // The mode catalogs hold their rank writes until the home batteries are
+  // known (`HomeModeCatalogOwner.persistMissingRanks`); nothing else reloads
+  // them when that happens. Areas not built yet reload when they are.
+  deviceManager.setOnHomeBatteryDevicesResolved(() => {
+    deps.reloadMainModeCatalog();
+    const registry = deps.getHomeRuntimeRegistry();
+    if (registry !== undefined) registry.reloadModeCatalogs();
+  });
   // eslint-disable-next-line functional/immutable-data -- shared AppContext write
   ctx.deviceManager = deviceManager;
   deps.settingsUiDeviceReads.connect(deviceManager);

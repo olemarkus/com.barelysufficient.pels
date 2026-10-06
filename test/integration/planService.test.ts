@@ -106,7 +106,7 @@ const buildPlan = (
         name: 'Heater',
         deviceType: 'temperature' as const,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         binaryControl: { on: true },
         currentOn: true,
         currentState: 'on',
@@ -141,6 +141,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     homeId: 'main',
     hasStandingCommandGrant: () => false,
     getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+    getHomeBatteryCard: () => ({ kind: 'none' } as const),
     getObservedEvChargingState: () => ({ kind: 'absent' } as const),
     getObservedTemperature: () => ({ kind: 'absent' } as const),
     planBuildGate: openPlanBuildGate(),
@@ -219,6 +220,31 @@ describe('PlanService', () => {
     expect(engine.applyPlanActions).not.toHaveBeenCalled();
     expect(await service.syncLivePlanState('device_update')).toBe(false);
     expect(realtime).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { homeId: 'main', shown: ['battery-1'] },
+    { homeId: 'h_11111111', shown: [] },
+  ] as const)('shows a home battery on the overview of $homeId only when it is Main', async ({ homeId, shown }) => {
+    const battery = buildPlanDevice({ id: 'battery-1', name: 'Sessy battery', isBatteryOrSolar: true,
+      storageHold: 'relief' });
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [battery] };
+    const engine = { ...createMockPlanEngine(),
+      getDeviceExecutionStates: vi.fn(() => new Map([[battery.id, executionStateFixture(battery)]])) };
+    const getHomeBatteryCard = vi.fn(() => ({
+      kind: 'battery' as const,
+      drivable: true,
+      power: { kind: 'observed' as const, signedW: -2400 },
+      level: { kind: 'observed' as const, percent: 64 },
+    }));
+    const { service } = createPlanService({ homeId, emitsUiRealtime: homeId === 'main', planEngine: engine,
+      getHomeBatteryCard });
+    service['rebuildHost'].publishPlan(plan, 456);
+    await service.syncLivePlanState('realtime_capability');
+
+    const wire = service.getLatestPlanSnapshotForUi()!;
+    expect(wire.devices!.map((device) => device.id)).toEqual(shown);
+    if (homeId !== 'main') expect(getHomeBatteryCard).not.toHaveBeenCalled();
   });
 
   it('joins observations queued behind one live sync into a single status build', async () => {
@@ -427,6 +453,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed',
@@ -489,6 +516,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -546,7 +574,8 @@ describe('PlanService', () => {
           surplusTracking: false,
           confirmedNotDrawing: false,
           isEvCharger: false,
-          observeOnly: false,
+          isBatteryOrSolar: false,
+          storageHold: 'none' as const,
           deviceType: 'onoff' as const,
           binaryCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
@@ -571,7 +600,8 @@ describe('PlanService', () => {
           surplusTracking: false,
           confirmedNotDrawing: false,
           isEvCharger: false,
-          observeOnly: false,
+          isBatteryOrSolar: false,
+          storageHold: 'none' as const,
           deviceType: 'onoff' as const,
           binaryCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
@@ -596,7 +626,8 @@ describe('PlanService', () => {
           surplusTracking: false,
           confirmedNotDrawing: false,
           isEvCharger: false,
-          observeOnly: false,
+          isBatteryOrSolar: false,
+          storageHold: 'none' as const,
           deviceType: 'onoff' as const,
           binaryCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
@@ -978,7 +1009,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -993,6 +1024,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -1050,6 +1082,7 @@ describe('PlanService', () => {
   it('serializes enriched UI plan fields without changing the runtime snapshot', () => {
     const { service } = createPlanService({
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed',
@@ -1149,7 +1182,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -1162,6 +1195,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -1233,6 +1267,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -1271,6 +1306,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -1324,6 +1360,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -1362,7 +1399,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -1376,6 +1413,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -1456,7 +1494,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -1470,6 +1508,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -1545,7 +1584,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 18,
         targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
@@ -1558,6 +1597,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed',
@@ -1646,7 +1686,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -1659,6 +1699,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({
         kind: 'observed',
@@ -1720,7 +1761,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -1733,6 +1774,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -1800,7 +1842,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -1813,6 +1855,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -1939,7 +1982,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -1952,6 +1995,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2020,7 +2064,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -2033,6 +2077,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2117,7 +2162,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -2130,6 +2175,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2187,6 +2233,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2259,7 +2306,7 @@ describe('PlanService', () => {
       surplusTracking: false,
       confirmedNotDrawing: false,
       isEvCharger: false,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       starvationSupported: false,
       currentTarget: 20,
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -2283,6 +2330,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2362,6 +2410,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2413,7 +2462,7 @@ describe('PlanService', () => {
       surplusTracking: false,
       confirmedNotDrawing: false,
       isEvCharger: false,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       starvationSupported: false,
       currentTarget: 20,
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -2472,6 +2521,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2515,7 +2565,7 @@ describe('PlanService', () => {
       surplusTracking: false,
       confirmedNotDrawing: false,
       isEvCharger: false,
-      observeOnly: false,
+      isBatteryOrSolar: false,
       starvationSupported: false,
       currentTarget: 20,
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -2560,6 +2610,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2608,6 +2659,7 @@ describe('PlanService', () => {
     const planService = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2665,6 +2717,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -2721,6 +2774,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -3050,7 +3104,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -3064,6 +3118,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -3113,7 +3168,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -3127,6 +3182,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -3216,6 +3272,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
@@ -3257,7 +3314,7 @@ describe('PlanService', () => {
         surplusTracking: false,
         confirmedNotDrawing: false,
         isEvCharger: false,
-        observeOnly: false,
+        isBatteryOrSolar: false,
         starvationSupported: false,
         currentTarget: 20,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -3271,6 +3328,7 @@ describe('PlanService', () => {
     const service = new PlanService({
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
       getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),

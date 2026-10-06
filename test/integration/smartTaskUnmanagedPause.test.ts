@@ -70,7 +70,7 @@ const buildHeaterDevice = (id: string): MeteredPlanInputDevice & { thermalDirect
     surplusTracking: false,
     confirmedNotDrawing: false,
     isEvCharger: false,
-    observeOnly: false,
+    isBatteryOrSolar: false,
     starvationSupported: false,
     targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
     binaryControl: { on: false },
@@ -173,7 +173,7 @@ describe('smart task on an un-managed device', () => {
       tracker,
       activePlans: null,
       nowMs,
-      getPrioritiesForDevices: (deviceIds) => catalog.getOrder('Home', deviceIds),
+      getPrioritiesForDevices: (deviceIds) => catalog.getOrder('Home', deviceIds, () => false),
     }).map(({ deviceId, priority, reservationEligible }) => ({ deviceId, priority, reservationEligible }));
 
     expect(orderAt(NOW_MS + 30_000)).toEqual([

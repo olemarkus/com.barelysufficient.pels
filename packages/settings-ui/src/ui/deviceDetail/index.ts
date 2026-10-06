@@ -123,6 +123,7 @@ import {
   syncTemperatureControlDisabledRow,
 } from './temperatureControlDisabled.ts';
 import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
+import { BATTERY_MANAGED_HINT, renderDeviceDetailBattery } from './batterySection.ts';
 import {
   initDeviceDetailOverlayChrome,
   initDeviceDetailOverlaySubscriptions,
@@ -209,10 +210,15 @@ const renderManagedControl = (controlState: ReturnType<typeof resolveDeviceDetai
   }
   const managedHint = document.getElementById('device-detail-managed-hint');
   if (managedHint) {
-    managedHint.textContent = controlState.supportsPower || controlState.supportsTemperature
-      ? 'Include this device in modes and optimization plans.'
-      : DEVICE_POWER_SUPPORT_HINT;
+    managedHint.textContent = resolveManagedHint(controlState);
   }
+};
+
+const resolveManagedHint = (controlState: ReturnType<typeof resolveDeviceDetailControlState>): string => {
+  if (controlState.isHomeBattery) return BATTERY_MANAGED_HINT;
+  return controlState.supportsPower || controlState.supportsTemperature
+    ? 'Include this device in modes and optimization plans.'
+    : DEVICE_POWER_SUPPORT_HINT;
 };
 
 const setDeviceDetailControlStates = (deviceId: string) => {
@@ -221,6 +227,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
 
   setDeviceDetailNativeWiringState(device);
   renderManagedControl(controlState);
+  renderDeviceDetailBattery(device);
 
   if (deviceDetailControllable) {
     deviceDetailControllable.selected = controlState.canLimitPower && state.controllableMap[deviceId] === true;
@@ -500,6 +507,11 @@ export const initDeviceDetailHandlers = () => {
     refreshOpenDeviceDetail,
     refreshSharedDeviceViews,
   );
+  // Reorder carries `data-settings-target="modes"`, which the shell's click
+  // delegation opens; the device page closes so the order is in view.
+  document.getElementById('device-detail-battery-priority-reorder')?.addEventListener('click', () => {
+    closeDeviceDetail();
+  });
   initDeviceDetailControlModelHandler();
   // Charging-card "Change": the readout keeps top visibility while the edit
   // keeps Setup-grade friction — expand Setup and hand focus to the select.

@@ -5,21 +5,19 @@ import type { FlowCardDeps } from './registerFlowCards';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import { readFlowDeviceArg } from './flowArgParsers';
 
-// An OBSERVE-ONLY device (a home battery / solar device) is auto-tracked but is NOT a
-// user-facing device: PELS never controls it and it carries no managed-load semantics, so
-// it must never be OFFERED in a device picker. Letting a user pick one would either write
-// an inconsistent, no-op settings row (capacity-control / budget-exemption) or expose an
-// internal-only device in a condition card. Every device-arg autocomplete (and every write
-// that takes one) filters on this predicate so the picker offers only genuinely eligible
-// devices.
+// A home battery or solar device is never offered in these device pickers. A
+// solar device is not a user-facing device at all. A home battery is, but its
+// switch is its own Managed toggle (`battery_control_devices`), and the
+// capacity-control and budget-exemption settings these cards write do not apply
+// to it yet; writing one would be a no-op settings row.
 //
-// Keyed on the observe-only ROLE (`deviceClass` is 'battery'/'solarpanel'), NOT on the
-// device's CURRENT `controllable`/`managed` flags: a normal device the user has not yet
-// opted in is legitimately `controllable: false` right now, and the capacity-control card
-// is exactly the path to flip it on — filtering on a live flag would block that real enable
-// flow. The role is the immutable signal that the device is observe-only forever.
+// Keyed on the device's ROLE (`deviceClass` is 'battery'/'solarpanel'), NOT on
+// its CURRENT `controllable`/`managed` flags: a normal device the user has not
+// yet opted in is legitimately `controllable: false` right now, and the
+// capacity-control card is exactly the path to flip it on — filtering on a live
+// flag would block that real enable flow.
 const isUserSelectableDevice = (device: DeviceDescriptorRead): boolean => (
-  !device.observeOnly
+  !device.isBatteryOrSolar
 );
 
 // The gate an action card applies to the device its Flow names, and — over the
@@ -129,7 +127,7 @@ function registerDeviceBooleanActionCard(params: {
   settingKind: string;
   // Optional eligibility gate. When present, the autocomplete only offers — and the
   // write only acts on — devices that pass it. Used by the capacity-control cards to keep
-  // observe-only devices (battery / solar, `controllable: false`) out of the picker.
+  // battery and solar devices (`controllable: false`) out of the picker.
   deviceFilter?: DeviceWriteGate;
   deps: FlowCardDeps;
 }): void {
@@ -157,9 +155,9 @@ function registerDeviceSnapshotCondition(params: {
 }): void {
   const { cardId, predicate, deps } = params;
   const card = deps.homey.flow.getConditionCard(cardId);
-  // The run listener answers truthfully for whatever device the flow references — an
-  // observe-only battery genuinely IS `managed` internally, so an existing flow that
-  // already points at one keeps evaluating correctly. We only keep observe-only devices
+  // The run listener answers truthfully for whatever device the flow references — a
+  // battery's `managed` is its Managed toggle, so an existing flow that already
+  // points at one keeps evaluating correctly. We only keep battery and solar devices
   // out of the AUTOCOMPLETE so they are never offered as a new pick (the "hide fully"
   // contract), without silently breaking a flow a user built before the filter landed.
   card.registerRunListener(async (args: unknown) => {
@@ -217,7 +215,7 @@ async function setDeviceBooleanSetting(params: {
   const descriptors = await deps.getDeviceDescriptors();
   const device = descriptors.find((entry) => entry.id === deviceId);
   const deviceName = device ? device.name : null;
-  // Skip the write for a device the gate refuses (e.g. an observe-only battery/solar
+  // Skip the write for a device the gate refuses (e.g. a battery or solar
   // device hand-picked via a stale flow arg, or a device PELS cannot limit). The gate
   // also sees an untracked device and decides for itself what that means. Log the skip
   // so the user-facing flow still has a trace, naming which of the two it was.

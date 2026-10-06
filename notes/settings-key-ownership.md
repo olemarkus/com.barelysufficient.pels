@@ -90,6 +90,28 @@ managed device of that home that has none, after the ranked ones, in the order t
 fill already used. It never writes back a retained generation, and it waits until
 device ownership is settled.
 
+A home battery has its own place in that order. Unranked, it sorts after every
+other unranked device. When it is ranked at the bottom of a mode, a newly ranked
+device goes above it, never below; the bottom is found from devices that are
+still managed (or batteries), so a stale rank for a device no longer managed
+does not move it. A battery the owner moved up is not at the bottom, and new
+devices go to the true end. Telling a battery apart needs the device layer's
+first full refresh, so the persisted write also waits for the battery set
+(`HomeBatteryDevicesRead`); the catalogs reload once when it first resolves,
+Main and each meter area (`setup/appInit/wireDeviceTransport.ts`).
+
+`battery_control_devices` (a home battery's Managed toggle) belongs to
+`packages/shared-domain/src/settings/batteryControlDevices.ts`: the runtime's
+battery control owner reads it through `lib/battery/batteryControlSettings.ts`,
+which also owns absence (`getKeys()`: never written means every battery is
+managed), and the settings UI's Managed switch writes it. Both reject the whole
+map on any non-boolean entry, never sanitize one: dropping a `false` would turn
+a battery the owner let go of back on. On a rejected read the runtime keeps the
+last map that read cleanly, and fails closed (every battery unmanaged) while no
+read ever has; the UI marks the map `unreadable`, shows each battery's Managed
+as off, and does not offer the switch until the value is repaired. A battery's
+Managed is this key, never `managed_devices`.
+
 `mode_aliases` belongs to `packages/shared-domain/src/settings/modeAliases.ts`.
 Runtime and settings UI both lowercase alias keys and ignore malformed entries;
 both retain their last-good aliases if the stored value is not a record (the UI

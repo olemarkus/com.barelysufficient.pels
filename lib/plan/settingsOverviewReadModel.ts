@@ -15,6 +15,7 @@ import type {
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type {
+  HomeBatteryCardRead,
   ObservedEvChargingStateRead,
   ObservedStateOfChargeRead,
   ObservedTemperatureRead,
@@ -27,6 +28,11 @@ import {
 import { formatDeviceStatusReason } from '../../packages/shared-domain/src/deviceStatusText';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import { buildDeviceStatus } from './deviceStatusReadModel';
+import {
+  buildHomeBatteryStatus,
+  buildSettingsUiPlanHomeBattery,
+  type HomeBatteryCard,
+} from './batteryStatusReadModel';
 
 export type SettingsOverviewReadModelDeps = {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
@@ -44,6 +50,9 @@ export type SettingsOverviewReadModelDeps = {
   // reading it was made from.
   getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
+  // A home battery's card facts (control surface, own power and level), or
+  // `none` for any other device. Observer-owned like the readings above.
+  getHomeBatteryCard: (deviceId: string) => HomeBatteryCardRead;
   // Observational device kind, for the temperature card. Supplied as a
   // built-once map sourced from the raw, undecorated snapshot so there is no
   // re-decoration side effect. Stepped-ness is NOT resolved from a map: it is
@@ -172,7 +181,39 @@ function resolveOverviewEvChargingState(
   return read.kind === 'observed' ? read.value : undefined;
 }
 
+/** A home battery's card: its own status, never a load's (`batteryStatusReadModel.ts`). */
+function buildHomeBatteryOverviewDevice(
+  device: DevicePlan['devices'][number],
+  battery: HomeBatteryCard,
+  deps: SettingsOverviewReadModelDeps,
+): SettingsUiPlanDeviceSnapshot {
+  const { available } = deps.getDeviceExecutionState(device.id);
+  return {
+    id: device.id,
+    name: device.name,
+    controllable: device.control.commandAuthority,
+    available,
+    status: buildHomeBatteryStatus(battery, device.storageHold, available, deps.dryRun),
+    isEvCharger: false,
+    budgetExempt: device.budgetExempt,
+    boostActive: false,
+    homeBattery: buildSettingsUiPlanHomeBattery(battery, device.storageHold),
+  };
+}
+
 export function buildSettingsOverviewDeviceReadModel(
+  device: DevicePlan['devices'][number],
+  deps: SettingsOverviewReadModelDeps,
+  reasonAnchorMs: number,
+  confirmedSteppedLoadProfile?: SteppedLoadProfile,
+): SettingsUiPlanDeviceSnapshot {
+  const homeBattery = deps.getHomeBatteryCard(device.id);
+  if (homeBattery.kind === 'battery') return buildHomeBatteryOverviewDevice(device, homeBattery, deps);
+  return buildLoadOverviewDevice(device, deps, reasonAnchorMs, confirmedSteppedLoadProfile);
+}
+
+/** Every device's card but a home battery's. */
+function buildLoadOverviewDevice(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps,
   reasonAnchorMs: number,
@@ -245,20 +286,21 @@ export function buildSettingsOverviewReadModel(
   return {
     generatedAtMs: plan.generatedAtMs,
     meta: buildSettingsOverviewMetaReadModel(plan.meta),
-    // Auto-tracked observe-only role devices (home batteries → 'battery', solar/PV →
-    // 'solarpanel') ride the plan internally (the planner observes them) but are NOT
-    // user-facing here: battery control has its own lane and these devices carry
-    // no managed-load semantics on the overview. The device-list endpoint already drops them
-    // (`getSettingsUiDevicesPayload`, `setup/settingsUiApi.ts`);
-    // the overview derives from the plan snapshot, so it must drop them here too, or an
-    // auto-tracked battery renders as a clickable no-op card.
-    devices: plan.devices
-      .filter((device) => !device.observeOnly)
-      .map((device) => buildSettingsOverviewDeviceReadModel(
+    // A managed home battery has its own card. A solar device rides the plan
+    // internally but is never shown as a device; the device-list endpoint drops
+    // it too (`getSettingsUiDevicesPayload`, `setup/settingsUiApi.ts`). A battery
+    // the owner does not manage is not in the plan at all, and one in a meter
+    // area reads as no battery card (`readHomeBatteryCardForHome`).
+    devices: plan.devices.flatMap((device) => {
+      const homeBattery = deps.getHomeBatteryCard(device.id);
+      if (homeBattery.kind === 'battery') return [buildHomeBatteryOverviewDevice(device, homeBattery, deps)];
+      if (device.isBatteryOrSolar) return [];
+      return [buildLoadOverviewDevice(
         device,
         deps,
         plan.generatedAtMs ?? deps.nowMs,
         steppedLoadProfileById.get(device.id),
-      )),
+      )];
+    }),
   };
 }

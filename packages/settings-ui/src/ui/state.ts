@@ -2,6 +2,11 @@ import { ModePriorityCatalog } from '../../../shared-domain/src/settings/modePri
 import { uiHomeMembership } from './homeScopeMembership.ts';
 import type { DeviceStartPolicy } from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
 import type { TemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
+import {
+  isBatteryControlEnabled,
+  type BatteryControlDevices,
+} from '../../../shared-domain/src/settings/batteryControlDevices.ts';
+import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
@@ -46,7 +51,17 @@ export type { PriceOptimizationConfig } from './priceOptimizationConfig.ts';
 export type SettingsUiDeviceView = DecoratedDeviceSnapshot & MeasuredPowerObservedProbe & {
   temperatureBoost?: TemperatureBoostConfig;
   evBoost?: EvBoostConfig;
+  /** A home battery whose Managed PELS turned off after the owner took it over this run. */
+  batteryTakenOver?: true;
 };
+
+/** The battery Managed map as the UI read it; `unreadable` fails closed, as the runtime does. */
+export type BatteryControlUiRead =
+  | { status: 'resolved'; devices: BatteryControlDevices }
+  | { status: 'unreadable' };
+
+/** Whether a battery's Managed switch can be used: not while the stored map does not parse. */
+export const isBatteryControlReadable = (): boolean => state.batteryControl.status === 'resolved';
 
 export type UiState = {
   isBusy: boolean;
@@ -73,6 +88,12 @@ export type UiState = {
   modeTargets: Record<string, Record<string, number>>;
   controllableMap: Record<string, boolean>;
   managedMap: Record<string, boolean>;
+  /**
+   * A home battery's Managed toggle (`battery_control_devices`): absent = on,
+   * `false` = off. `unreadable` when the stored value does not parse: the
+   * runtime then treats every battery as unmanaged, and so does the UI.
+   */
+  batteryControl: BatteryControlUiRead;
   budgetExemptMap: Record<string, boolean>;
   respectExternalOffMap: Record<string, boolean>;
   deviceStartPolicyMap: Record<string, DeviceStartPolicy>;
@@ -171,6 +192,7 @@ export const state: UiState = {
   modeTargets: {},
   controllableMap: {},
   managedMap: {},
+  batteryControl: { status: 'resolved', devices: {} },
   budgetExemptMap: {},
   respectExternalOffMap: {},
   deviceStartPolicyMap: {},
@@ -197,7 +219,16 @@ export const state: UiState = {
   meterAreaSimulation: [],
 };
 
+/** Whether this listed device is a home battery, whose Managed toggle is its own setting. */
+export const isHomeBatteryDeviceId = (deviceId: string): boolean => (
+  isHomeBatteryClassKey(state.latestDevices.find((device) => device.id === deviceId)?.deviceClass)
+);
+
 export const resolveManagedState = (deviceId: string): boolean => {
+  if (isHomeBatteryDeviceId(deviceId)) {
+    const read = state.batteryControl;
+    return read.status === 'resolved' && isBatteryControlEnabled(read.devices, deviceId);
+  }
   return state.managedMap[deviceId] === true;
 };
 

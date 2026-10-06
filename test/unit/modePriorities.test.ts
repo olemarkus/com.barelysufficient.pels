@@ -139,7 +139,7 @@ describe('mode priority catalog boundary', () => {
     });
     // Reading first must not promote z-new into a preference over a device
     // returning through the objective reservation grace roster later.
-    const order = catalog.getOrder('Home', ['z-new', 'a-returned', 'configured']);
+    const order = catalog.getOrder('Home', ['z-new', 'a-returned', 'configured'], () => false);
     expect(order.getPriority('configured')).toBe(1);
     expect(order.getPriority('a-returned')).toBe(2);
     expect(order.getPriority('z-new')).toBe(3);
@@ -149,7 +149,7 @@ describe('mode priority catalog boundary', () => {
     const catalog = new ModePriorityCatalog({ Home: { ghost: 1, otherHome: 2, heater: 100 } });
     const snapshot = catalog.resolve(['new'], ['Home', 'Eco'], (id) => id !== 'otherHome');
     expect(snapshot.Home).toEqual({ ghost: 1, heater: 2, new: 3 });
-    const order = catalog.getOrder('Home', ['heater', 'new']);
+    const order = catalog.getOrder('Home', ['heater', 'new'], () => false);
     expect(order.getPriority('heater')).toBe(1);
     expect(order.getPriority('new')).toBe(2);
   });
@@ -182,12 +182,12 @@ describe('mode priority catalog boundary', () => {
 describe('ModePriorityCatalog.withMissingRanks', () => {
   it('returns null when every device is ranked in every mode', () => {
     const catalog = new ModePriorityCatalog({ Home: { a: 1, b: 2 }, Away: { b: 1, a: 2 } });
-    expect(catalog.withMissingRanks(['a', 'b'], ['Home', 'Away'])).toBeNull();
+    expect(catalog.withMissingRanks(['a', 'b'], ['Home', 'Away'], () => false)).toBeNull();
   });
 
   it('appends unranked devices after the ranked ones, in device-id order, in every mode', () => {
     const catalog = new ModePriorityCatalog({ Home: { a: 1, b: 2 }, Away: { b: 1 } });
-    expect(catalog.withMissingRanks(['d', 'c', 'a', 'b'], ['Home', 'Away'])).toEqual({
+    expect(catalog.withMissingRanks(['d', 'c', 'a', 'b'], ['Home', 'Away'], () => false)).toEqual({
       Home: { a: 1, b: 2, c: 3, d: 4 },
       Away: { b: 1, a: 2, c: 3, d: 4 },
     });
@@ -195,7 +195,7 @@ describe('ModePriorityCatalog.withMissingRanks', () => {
 
   it('keeps the existing order and adds a mode known only to the caller', () => {
     const catalog = new ModePriorityCatalog({ Home: { b: 1, a: 2 } });
-    expect(catalog.withMissingRanks(['a', 'b'], ['Home', 'Night'])).toEqual({
+    expect(catalog.withMissingRanks(['a', 'b'], ['Home', 'Night'], () => false)).toEqual({
       Home: { b: 1, a: 2 },
       Night: { a: 1, b: 2 },
     });
@@ -203,7 +203,77 @@ describe('ModePriorityCatalog.withMissingRanks', () => {
 
   it('matches the order rankActiveDevicePriorities already infers for unranked devices', () => {
     const catalog = new ModePriorityCatalog({ Home: { z: 1 } });
-    const persisted = catalog.withMissingRanks(['y', 'x', 'z'], ['Home']);
+    const persisted = catalog.withMissingRanks(['y', 'x', 'z'], ['Home'], () => false);
     expect(persisted?.Home).toEqual(rankActiveDevicePriorities(['y', 'x', 'z'], (id) => ({ z: 1 } as Record<string, number>)[id]));
+  });
+
+  it('places a new device above the bottom battery past a stale rank below it', () => {
+    const isBattery = (deviceId: string) => deviceId.startsWith('battery');
+    // `old-plug` is no longer managed: its rank does not mark where the batteries end.
+    const catalog = new ModePriorityCatalog({ Home: { heater: 1, battery: 2, 'old-plug': 3 } });
+    expect(catalog.withMissingRanks(['heater', 'charger'], ['Home'], isBattery)).toEqual({
+      Home: { heater: 1, charger: 2, battery: 3, 'old-plug': 4 },
+    });
+  });
+
+  it('appends after a stale rank when no battery is at the bottom', () => {
+    const catalog = new ModePriorityCatalog({ Home: { heater: 1, 'old-plug': 2 } });
+    expect(catalog.withMissingRanks(['heater', 'charger'], ['Home'], () => false)).toEqual({
+      Home: { heater: 1, 'old-plug': 2, charger: 3 },
+    });
+  });
+});
+
+describe('rankActiveDevicePriorities with an unranked home battery', () => {
+  const isBattery = (deviceId: string) => deviceId.startsWith('battery');
+
+  it('ranks an unplaced battery after every other unplaced device, whatever their ids', () => {
+    // 'aaa-new' sorts before 'battery-1' by id; the battery still goes last.
+    expect(rankActiveDevicePriorities(['battery-1', 'heater', 'aaa-new'], () => undefined, isBattery))
+      .toEqual({ 'aaa-new': 1, heater: 2, 'battery-1': 3 });
+  });
+
+  it('keeps a battery the owner placed where they placed it', () => {
+    const stored: Record<string, number> = { heater: 2, 'battery-1': 1 };
+    expect(rankActiveDevicePriorities(['heater', 'battery-1', 'pump'], (id) => stored[id], isBattery))
+      .toEqual({ 'battery-1': 1, heater: 2, pump: 3 });
+  });
+
+  it('ranks exactly as before when no device is a battery', () => {
+    const stored: Record<string, number> = { b: 1 };
+    expect(rankActiveDevicePriorities(['c', 'a', 'b'], (id) => stored[id], isBattery))
+      .toEqual(rankActiveDevicePriorities(['c', 'a', 'b'], (id) => stored[id]));
+  });
+
+  it('carries the tie-break through the catalog order', () => {
+    const order = new ModePriorityCatalog({ Home: { heater: 1 } })
+      .getOrder('Home', ['battery-1', 'heater', 'aaa-new'], isBattery);
+    expect(order.getPriority('battery-1')).toBe(3);
+    expect(order.getPriority('aaa-new')).toBe(2);
+  });
+});
+
+describe('ModePriorityCatalog.withMissingRanks with a home battery', () => {
+  const isBattery = (deviceId: string): boolean => deviceId.startsWith('battery');
+
+  it('puts a new battery last', () => {
+    const catalog = new ModePriorityCatalog({ Home: { heater: 1, tank: 2 } });
+    expect(catalog.withMissingRanks(['heater', 'tank', 'battery'], [], isBattery)).toEqual({
+      Home: { heater: 1, tank: 2, battery: 3 },
+    });
+  });
+
+  it('inserts a new device above the battery at the bottom', () => {
+    const catalog = new ModePriorityCatalog({ Home: { heater: 1, battery: 2 } });
+    expect(catalog.withMissingRanks(['heater', 'battery', 'charger'], [], isBattery)).toEqual({
+      Home: { heater: 1, charger: 2, battery: 3 },
+    });
+  });
+
+  it('appends below a battery the owner moved up', () => {
+    const catalog = new ModePriorityCatalog({ Home: { battery: 1, heater: 2 } });
+    expect(catalog.withMissingRanks(['heater', 'battery', 'charger'], [], isBattery)).toEqual({
+      Home: { battery: 1, heater: 2, charger: 3 },
+    });
   });
 });

@@ -16,7 +16,7 @@ import {
 import type { HomeyDeviceLike } from '../../utils/types';
 import {
     getCapabilities,
-    isObserveOnlyRoleClassKey,
+    isBatteryOrSolarClassKey,
     resolveZoneId,
     resolveZoneLabel,
 } from './managerHelpers';
@@ -38,7 +38,8 @@ import {
 } from './managerParse';
 import {
     hasPotentialHomeyEnergyEstimate,
-    isObserveOnlyRoleDevice,
+    isHomeBatteryDevice,
+    isSolarPanelDevice,
     type LiveDevicePowerWatts,
 } from '../managerEnergy';
 import { resolveMeasuredPowerKw } from '../managerMeasuredPower';
@@ -475,7 +476,7 @@ function buildParsedDeviceSnapshot(params: {
         controlModel,
         binaryControllable: binaryControl !== undefined,
         isEvCharger: deviceClassKey === 'evcharger',
-        observeOnly: isObserveOnlyRoleClassKey(deviceClassKey),
+        isBatteryOrSolar: isBatteryOrSolarClassKey(deviceClassKey),
         steppedLoadProfile,
         nativeWriteCapabilities,
         targetPowerConfig,
@@ -526,17 +527,20 @@ function resolveParsedDeviceSettings(
         budgetExempt: providers.getBudgetExempt?.(deviceId),
         flowConflict: providers.getFlowConflict?.(deviceId),
     };
-    // A role-detected OBSERVE-ONLY device (home battery OR solar) is stamped MANAGED
-    // OBSERVE-ONLY STRUCTURALLY, from the device object in hand — independent of any
-    // async-populated id set. This is the single authoritative resolution: it applies on
-    // EVERY parse path (full refresh AND realtime `device.update`), so there is no window
-    // (boot, realtime-before-first-full-refresh, or any settings combo) where a present
-    // battery/solar device resolves `controllable: true` or enters the planner
-    // controllable/actuated. The app's `resolveManagedState`/`isCapacityControlEnabled`
-    // agree via the transport's observe-only-id set; the planner reads THIS structural
-    // stamp on the snapshot, never the settings-derived flags. Detection
-    // (`isObserveOnlyRoleDevice`) is the SAME predicate the class-key normalization /
-    // snapshot-survival gates use, so detection, stamping, and survival can never diverge
-    // (an energy-role-only battery/solar device is detected, stamped, AND survives).
-    return isObserveOnlyRoleDevice(device) ? { ...base, managed: true, controllable: false } : base;
+    // A role-detected battery or solar device is stamped NOT CONTROLLABLE structurally,
+    // from the device object in hand, on EVERY parse path (full refresh AND realtime
+    // `device.update`): neither is a load the generic shed/restore lanes may command,
+    // so there is no window (boot, realtime-before-first-full-refresh, any settings
+    // combo) where one resolves `controllable: true`. A battery is commanded only
+    // through the storage lane (`lib/battery/`). Detection is the SAME predicate the
+    // class-key normalization and snapshot-survival gates use.
+    //
+    // Managed differs by role. A solar device is always read and never offered to
+    // the owner, so it is stamped managed. A home battery is an ordinary managed
+    // device: `getManaged` answers from the owner's battery-control setting
+    // (`lib/battery/batteryControlSettings.ts`), and the managed filter keeps it in
+    // the runtime snapshot either way (`managerManagedFilter.ts`).
+    if (isSolarPanelDevice(device)) return { ...base, managed: true, controllable: false };
+    if (isHomeBatteryDevice(device)) return { ...base, controllable: false };
+    return base;
 }

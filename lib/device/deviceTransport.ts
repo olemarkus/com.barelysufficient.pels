@@ -23,6 +23,7 @@ import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDeli
 import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
+import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
 import type { StoragePowerCommand, StorageReleaseCommand } from '../ports/storageCommand';
 import type { FlowSteppedLoadAdmission } from '../ports/flowSteppedLoadAdmission';
 import { admitFlowSteppedLoadReport } from './transport/observationFlowStepped';
@@ -281,6 +282,15 @@ export class DeviceTransport {
     // Read-only producer seams, single-line like the fetch seams above.
     /** Whether `deviceId` is a currently-detected home battery (incl. offline). */
     isBatteryDevice(id: string): boolean { return this.observationProducers.battery.isBatteryDevice(id); }
+    /** The detected home batteries, `unavailable` until a full refresh has settled them. */
+    readHomeBatteryDevices(): HomeBatteryDevicesRead { return this.observationProducers.battery.readBatteryDevices(); }
+    /**
+     * Told once, when `readHomeBatteryDevices` first turns `resolved`; same
+     * single-consumer lifecycle as `setOnZoneTreeCommitted`.
+     */
+    setOnHomeBatteryDevicesResolved(callback: (() => void) | undefined): void {
+        this.observationProducers.battery.setOnBatteryDevicesResolved(callback);
+    }
     /** Whether ANY home battery is currently detected (incl. offline). */
     hasBatteryDevices(): boolean { return this.observationProducers.battery.hasBatteryDevices(); }
     /** Whether `deviceId` is a currently-detected solar device (incl. offline). */
@@ -538,7 +548,7 @@ export class DeviceTransport {
 
     getLiveFeedHealth(): LiveFeedHealth | null { return this.deviceSdk.getHealth(); }
     private shouldTrackRealtimeDevice(deviceId: string): boolean {
-        return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
+        return this.reader.shouldTrackRealtimeDevice(deviceId);
     }
 
     public destroy(): void {

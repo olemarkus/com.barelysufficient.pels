@@ -10,8 +10,8 @@
  * (`withoutStorageWithheld`). Every uncertainty resolves toward shedding and
  * toward handing the battery back.
  *
- * The battery is never a shed candidate. It stays observe-only with no command
- * authority; this stage alone decides a signed setpoint or a hand-back for it
+ * The battery is never a shed candidate. It has no generic command authority
+ * (`isBatteryOrSolar`); this stage alone decides a signed setpoint or a hand-back for it
  * from its storage cluster (`StoragePlanInputKind`), which the executor's
  * storage lane carries out (`lib/executor/batteryExecutor.ts`). A deficit is
  * always answered first: the battery never charges while relief is needed.
@@ -733,14 +733,22 @@ export function attachStorageDecisions(
   planDevices: DevicePlanDevice[],
   relief: StorageRelief,
 ): DevicePlanDevice[] {
-  if (relief.decisions.size === 0) return planDevices;
+  if (relief.decisions.size === 0 && relief.batteries.length === 0) return planDevices;
+  const holds = new Map(relief.batteries.map((battery) => [battery.deviceId, toStorageHold(battery.claim)] as const));
   return planDevices.map((device) => {
     const storageDecision = relief.decisions.get(device.id);
-    if (storageDecision === undefined) return device;
-    const decided: DevicePlanDevice & StoragePlanKind = { ...device, storageDecision };
+    const storageHold = holds.get(device.id);
+    const held = storageHold === undefined ? device : { ...device, storageHold };
+    if (storageDecision === undefined) return held;
+    const decided: DevicePlanDevice & StoragePlanKind = { ...held, storageDecision };
     return decided;
   });
 }
+
+/** Why PELS holds a battery after this cycle, as the overview names it. */
+const toStorageHold = (claim: StorageClaimReason): DevicePlanDevice['storageHold'] => (
+  claim === 'raise_charge' ? 'surplus' : claim
+);
 
 /** Preserve releases whose battery left the home's plan. */
 export function collectAbsentStorageReleases(

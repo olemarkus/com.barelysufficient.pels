@@ -1,4 +1,5 @@
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
+import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
@@ -285,6 +286,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     () => managedDevices,
     () => context.homeMembership,
     () => undefined,
+    () => context.readHomeBatteryDevices(),
   );
   const context: AppContext = {
     deviceReads,
@@ -358,6 +360,12 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getHomeyDevicesForFlow: vi.fn(async () => []),
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     resolveManagedState: vi.fn(() => false),
+    // Tests often swap in a partial device manager without the battery query;
+    // that one knows no battery.
+    readHomeBatteryDevices: () => (typeof context.deviceManager?.readHomeBatteryDevices === 'function'
+      ? context.deviceManager.readHomeBatteryDevices()
+      : { status: 'resolved', deviceIds: new Set<string>() }),
+    batteryManaged: new BatteryManagedSettings(homey.settings),
     getObservedState: vi.fn(() => undefined),
     getObservedRecord: (deviceId: string) => {
       const snapshot = latestTargetSnapshot.find((device) => device.id === deviceId);
@@ -500,6 +508,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       },
       onSnapshotCommitted: vi.fn(),
       applyControlSettings: vi.fn(),
+      isManaged: vi.fn(() => true),
+      wasTakenOver: vi.fn(() => false),
     },
     priceCoordinator: {
       // The reader every combined-prices consumer takes from the coordinator,

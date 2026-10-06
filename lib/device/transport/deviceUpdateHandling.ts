@@ -105,7 +105,7 @@ function notifyDeviceZoneChangeContained(
 
 export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, device: HomeyDeviceLike): void {
     const deviceId = getDeviceId(device);
-    if (deviceId && !ingest.reader.shouldTrackRealtimeDevice(deviceId)) {
+    if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, device)) {
         ingest.binaryEvidence.clearBinarySettleEvidence(deviceId);
         ingest.reader.snapshotStore.untrackRawDevice(deviceId);
     }
@@ -118,16 +118,17 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
     if (isIgnoredDeviceRead(ingest.reader.snapshotStore, effectiveDevice, 'device_update', contractEmitter)) return;
     // Keep the battery membership set non-empty for a present battery even before
     // the first full refresh — the realtime path parses the battery (stamped
-    // managed observe-only structurally), so the deviceId-only resolve* consumers
-    // must agree. Additive: a full refresh re-derives the set; this never narrows it.
+    // non-controllable structurally, its Managed toggle read by id), so the
+    // deviceId-only resolve* consumers must agree. Additive: a full refresh
+    // re-derives the set; this never narrows it.
     ingest.observationProducers.battery.noteBatteryDevice(effectiveDevice);
     // Same machinery for a present solar device: keep the solar membership set
     // non-empty before the first full refresh so the deviceId-only resolve* consumers
-    // agree with the structural managed observe-only stamp. Additive; full refresh
-    // re-derives the set.
+    // agree with the structural managed, non-controllable stamp. Additive; full
+    // refresh re-derives the set.
     ingest.observationProducers.solar.noteSolarDevice(effectiveDevice);
     const previousSnapshot = ingest.reader.snapshotStore.getSnapshotIndex().get(deviceId);
-    if (deviceId && ingest.reader.shouldTrackRealtimeDevice(deviceId)) {
+    if (deviceId && ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, effectiveDevice)) {
         ingest.reader.snapshotStore.trackRawDevice(deviceId, effectiveDevice);
         ingest.reader.syncNativeSteppedLoadCommandAdapters();
     }
