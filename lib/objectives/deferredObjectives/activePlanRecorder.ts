@@ -1,5 +1,6 @@
 import { allocatedTaskPlan } from './taskEvaluation';
 import { resolveLiveCompletion, sameLiveCompletion } from './activePlanDiagnosticReason';
+import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 /**
  * Persisted record-keeper for deferred-objective active plans — the slow clock
  * in this module's two-clock design (governed by
@@ -442,7 +443,7 @@ export class DeferredObjectiveActivePlanRecorder {
       deviceId: diag.deviceId,
       revision: 1,
       reason,
-      hourCount: hours.length,
+      hourCount: hoursWithPlannedEnergy(hours).length,
       ...buildActivePlanLifecycleFields(diag, startedAtMs),
     });
     if (previousWasPending) {
@@ -664,12 +665,14 @@ export class DeferredObjectiveActivePlanRecorder {
       deviceId: diag.deviceId,
       revision: revision.revision,
       reason,
-      hourCount: effectiveHours.length,
+      hourCount: hoursWithPlannedEnergy(effectiveHours).length,
       ...buildActivePlanLifecycleFields(diag, current.startedAtMs),
     });
+    // Counts the hours the device is planned to run: a 0 kWh booking entering or
+    // leaving the plan changes nothing an automation should hear about.
     const allocationChanged = shouldFireNotification(
-      latest.hours.length,
-      effectiveHours.length,
+      hoursWithPlannedEnergy(latest.hours).length,
+      hoursWithPlannedEnergy(effectiveHours).length,
       reportedPlanStatus(diag, horizonPlan),
     );
     notifyRevisionWrittenIfPubliclyObservable({

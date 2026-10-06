@@ -1,3 +1,4 @@
+import { hoursWithPlannedEnergy } from './deferredPlanBookedHours';
 // Producer for the smart-task history-detail per-hour bar strip (v2.7.3).
 //
 // Resolves the postmortem question "when did each hour run, and what did
@@ -91,8 +92,10 @@ const indexLegacyPlannedHours = (
   final: DeferredObjectivePlanHistoryRevisionSnapshot | null,
 ): Map<number, number> => {
   const byAtMs = new Map<number, number>();
-  original?.hours.forEach((hour) => byAtMs.set(floorToHour(hour.startsAtMs), hour.plannedKWh));
-  final?.hours.forEach((hour) => byAtMs.set(floorToHour(hour.startsAtMs), hour.plannedKWh));
+  hoursWithPlannedEnergy(original?.hours ?? [])
+    .forEach((hour) => byAtMs.set(floorToHour(hour.startsAtMs), hour.plannedKWh));
+  hoursWithPlannedEnergy(final?.hours ?? [])
+    .forEach((hour) => byAtMs.set(floorToHour(hour.startsAtMs), hour.plannedKWh));
   return byAtMs;
 };
 

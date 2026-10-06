@@ -4,7 +4,6 @@ import {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
   buildDeferredDemandDeviceIds,
-  buildDeferredReleaseIntents,
 } from '../../lib/objectives/deferredObjectives/admission';
 import { resolveDeferredAvoidDeviceIds } from '../../lib/objectives/deferredObjectives/decorationController';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
@@ -97,6 +96,7 @@ const buildHorizonPlan = (overrides: Partial<DeferredObjectiveHorizonPlan> = {})
     bucketId: 'b0',
     sourceBucketId: 'b0',
     plannedUsefulEnergyKWh: 1.5,
+    booked: true,
     expectedStepId: 'low',
   },
   plannedBuckets: [],
@@ -118,7 +118,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan(),
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', budgetExempt: false, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
   });
 
   it('adds an EV resume intent for an EV objective in a planned bucket', () => {
@@ -138,7 +138,6 @@ describe('applyDeferredObjectiveAdmission', () => {
       budgetExempt: false,
       engageBoost: false,
       reservesStartupPower: false,
-      expectedStepId: 'low',
       releaseIntent: 'binary_restore',
     });
   });
@@ -147,7 +146,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
       horizonPlan: buildHorizonPlan({
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
         currentHourClaim: 'released',
       }),
     });
@@ -166,7 +165,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({
         kind: 'ev_soc',
         objectiveId: 'ev1:ev_soc',
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
         currentHourClaim: 'released',
       }),
     });
@@ -187,7 +186,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({
         kind: 'ev_soc',
         objectiveId: 'ev1:ev_soc',
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
         currentHourClaim: 'released',
       }),
     });
@@ -228,7 +227,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceType: 'onoff',
     });
     const idleHorizon = {
-      currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+      currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
       currentHourClaim: 'released' as const,
     };
     for (const horizon of [{}, idleHorizon]) {
@@ -255,76 +254,69 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
   });
 
-  // An hour can be booked at 0 simply because the soft daily budget's forecast
-  // controlled share for it was 0, which is not a reason to stop a task that is
-  // behind. These four pin the split: the same unbooked hour releases the device
-  // when the plan is covered, and leaves it on the planner's normal lane when it
-  // is not.
-  const shortUnbookedHour = {
-    currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+  // An hour the plan wants on price, or a hour of a task that cannot finish, is booked
+  // even when the forecast left it no room: it carries 0 kWh, promises nothing, and is
+  // claimed like any booked hour. The device is driven on whatever capacity is free,
+  // with the task's permissions.
+  const bookedEmptyHour = {
+    currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: true, expectedStepId: null },
     status: 'cannot_meet' as const,
     statusDetail: 'target_cannot_be_met' as const,
     plannedUsefulEnergyKWh: 0.5,
     unplannedUsefulEnergyKWh: 1,
-    currentHourClaim: 'unclaimed' as const,
+    currentHourClaim: 'claimed' as const,
   };
 
-  it('returns unclaimed for an unbooked hour while the booked hours do not cover the need', () => {
+  it('plans a hour booked at 0 kWh like any booked hour', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
       trajectory: { kind: 'resolved', status: 'cannot_meet' },
-      horizonPlan: buildHorizonPlan(shortUnbookedHour),
+      horizonPlan: buildHorizonPlan(bookedEmptyHour),
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'unclaimed', budgetExempt: false });
+    // The deadline floor is what lets a thermostat heat if capacity turns out to be free.
+    expect(decisions.get('dev1')).toEqual({
+      kind: 'planned', budgetExempt: false, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65,
+    });
     expect(buildDeferredDemandDeviceIds(decisions)).toEqual(new Set(['dev1']));
   });
 
-  it('does not command a binary EV charger off in an unbooked hour while the task is short', () => {
+  it('asks a binary EV charger to charge in a hour booked at 0 kWh', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'ev1',
       objectiveId: 'ev1:ev_soc',
       objectiveKind: 'ev_soc',
       trajectory: { kind: 'resolved', status: 'cannot_meet' },
-      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', ...shortUnbookedHour }),
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', ...bookedEmptyHour }),
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decision = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]).get('ev1');
-    expect(decision).toEqual({ kind: 'unclaimed', budgetExempt: false });
-    expect(decision).not.toHaveProperty('releaseIntent');
+    // A resume request, not a start: the planner still admits it on real capacity.
+    expect(decision).toMatchObject({ kind: 'planned', releaseIntent: 'binary_restore' });
   });
 
-  it('hands an unclaimed cap-off device to the planner as managed without seeding the shed set', () => {
+  it('carries the budget exemption, but not escalation, into a hour booked at 0 kWh', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'ev1',
       objectiveId: 'ev1:ev_soc',
       objectiveKind: 'ev_soc',
       trajectory: { kind: 'resolved', status: 'cannot_meet' },
-      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', ...shortUnbookedHour }),
+      budgetExemptApplied: true,
+      limitLowerPriorityApplied: true,
+      pauseLowerPriorityApplied: true,
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', ...bookedEmptyHour }),
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
     const applied = applyDeferredAdmissionToInput([device], decisions);
-    // Managed, so it competes on its own priority in the normal shed/restore lane:
-    // the task contributes the authority term the cap-off setting withheld.
+    // Managed through the authority the task lends, never force-shed.
     expect(applied.devices[0]?.control.commandAuthority).toBe(true);
-    // Not force-shed, and none of the claims a planned hour would carry.
     expect(applied.forceShedSet.has('ev1')).toBe(false);
+    expect(applied.devices[0]?.budgetExempt).toBe(true);
+    // Nothing is promised in this hour, so the task takes no capacity from others:
+    // boost there could take an hour a higher-priority task reserved.
     expect(applied.devices[0]).not.toHaveProperty('forceBoostActive');
-    expect(applied.devices[0]?.budgetExempt).toBeUndefined();
     expect(applied.devices[0]?.reservesStartupPower).toBeUndefined();
-    expect(buildDeferredReleaseIntents(decisions)).toEqual({});
-  });
-
-  it('stamps no deadline floor target on an unclaimed hour', () => {
-    const diagnostic = buildDiagnostic({
-      deviceId: 'heater1',
-      objectiveKind: 'temperature',
-      targetTemperatureC: 70,
-      trajectory: { kind: 'resolved', status: 'cannot_meet' },
-      horizonPlan: buildHorizonPlan(shortUnbookedHour),
-    });
-    expect(applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation)).get(diagnostic.deviceId)).not.toHaveProperty('deadlineFloorTargetC');
   });
 
   it('returns inactive when the goal is already satisfied so the device falls back to its normal behavior', () => {
@@ -437,11 +429,11 @@ describe('applyDeferredObjectiveAdmission', () => {
         statusDetail: 'target_cannot_be_met',
         plannedUsefulEnergyKWh: 1,
         unplannedUsefulEnergyKWh: 0.5,
-        currentBucket: { bucketId: 'b0', sourceBucketId: 'b0', plannedUsefulEnergyKWh: 1, expectedStepId: 'low' },
+        currentBucket: { bucketId: 'b0', sourceBucketId: 'b0', plannedUsefulEnergyKWh: 1, booked: true, expectedStepId: 'low' },
       }),
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', budgetExempt: false, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
   });
 
   it('returns inactive when the horizon plan is missing', () => {
@@ -463,7 +455,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('marks the decision budget-exempt when exempt-from-budget is applied to the plan', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', budgetExemptApplied: true, horizonPlan: buildHorizonPlan() });
     expect(applyDeferredObjectiveAdmission(([planned]).map((diagnostic) => diagnostic.evaluation)).get('dev1'))
-      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: true, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
+      .toEqual({ kind: 'planned', budgetExempt: true, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
 
     // Not applied once the task is no longer being pursued.
     const satisfied = buildDiagnostic({
@@ -488,6 +480,7 @@ describe('applyDeferredObjectiveAdmission', () => {
           bucketId: 'b1',
           sourceBucketId: 'b1',
           plannedUsefulEnergyKWh: 0,
+          booked: false,
           expectedStepId: null,
         },
         currentHourClaim: 'released',
@@ -512,7 +505,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('engages boost on a planned limit-lower-priority task, but not once it is satisfied', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', limitLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
     expect(applyDeferredObjectiveAdmission(([planned]).map((diagnostic) => diagnostic.evaluation)).get('dev1'))
-      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: true, reservesStartupPower: false, deadlineFloorTargetC: 65 });
+      .toEqual({ kind: 'planned', budgetExempt: false, engageBoost: true, reservesStartupPower: false, deadlineFloorTargetC: 65 });
 
     const satisfied = buildDiagnostic({
       deviceId: 'dev2',
@@ -540,7 +533,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('sets reservesStartupPower (boost-free) on a planned pause-lower-priority task, not once satisfied', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', pauseLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
     expect(applyDeferredObjectiveAdmission(([planned]).map((diagnostic) => diagnostic.evaluation)).get('dev1'))
-      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false, reservesStartupPower: true, deadlineFloorTargetC: 65 });
+      .toEqual({ kind: 'planned', budgetExempt: false, engageBoost: false, reservesStartupPower: true, deadlineFloorTargetC: 65 });
 
     const satisfied = buildDiagnostic({
       deviceId: 'dev2',
@@ -637,7 +630,7 @@ describe('planned admission temperature floor', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       horizonPlan: buildHorizonPlan({
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
         currentHourClaim: 'released',
       }),
     });
@@ -707,8 +700,8 @@ describe('resolveDeferredAvoidDeviceIds', () => {
   });
 
   it('does not flag an hour the task still needs', () => {
-    // `unclaimed`: nothing booked, but the task cannot finish without the hour, so
-    // the device competes as managed. It is not waiting for anything cheaper.
+    // Nothing booked, but the task cannot finish without the hour, so the hour is
+    // claimed. The device is not waiting for anything cheaper.
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       trajectory: { kind: 'resolved', status: 'at_risk' },
@@ -716,7 +709,7 @@ describe('resolveDeferredAvoidDeviceIds', () => {
         status: 'at_risk',
         statusDetail: 'limited_by_daily_budget',
         currentBucket: null,
-        currentHourClaim: 'unclaimed',
+        currentHourClaim: 'claimed',
       }),
     });
     expect(avoidIdsFor(diagnostic).has('heater1')).toBe(false);

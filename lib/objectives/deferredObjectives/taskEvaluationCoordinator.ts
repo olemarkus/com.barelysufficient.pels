@@ -66,8 +66,8 @@ import {
   buildFrozenDiagnostic,
   EMPTY_POLICY_HORIZON,
   resolveDeadlineBoundFrozenReadInputs,
-  type FrozenReadInputs,
 } from './frozenDiagnostic';
+import type { FrozenReadInputs } from './frozenHorizonPlan';
 import {
   buildFreshDiagnostic,
   buildHorizonUnavailableDiagnostic,
@@ -635,7 +635,6 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       progress,
       objective,
       deviceId,
-      deadlineAtMs,
       profileEnergy,
       aheadOfHourMilestone,
       steps,

@@ -6,7 +6,8 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import type { DeferredObjectiveHorizonPlan, DeferredObjectivePlannedBucket } from './types';
-import { hasCheaperBookedHourAhead } from './bucketAllocation';
+import { hasCheaperEnergyHourAhead } from './priceBand';
+import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import { roundKWh } from './activePlanMath';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -32,8 +33,10 @@ export const buildHoursFromHorizonPlan = (
     plannedAdmissionPowerKw: number;
     earliestStartMs: number;
   }>();
+  // Every booked bucket becomes an hour, also one booked at 0 kWh: the saved hours
+  // are the plan's bookings, and `plannedKWh` is what each one promises.
   for (const bucket of horizonPlan.plannedBuckets) {
-    if (bucket.plannedUsefulEnergyKWh <= 0) continue;
+    if (!bucket.booked) continue;
     const hourStart = Math.floor(bucket.startMs / ONE_HOUR_MS) * ONE_HOUR_MS;
     const existing = byHour.get(hourStart);
     if (existing) {
@@ -290,7 +293,7 @@ export const stampUnitMilestones = (
 // FROZEN per hour like `plannedUnitMilestone`: an hour that already carries the
 // flag (committed at an earlier revision, carried through the merge via `{ ...c }`)
 // keeps it; only genuinely-new hours are computed from the current plan's bucket
-// prices. The comparison is `hasCheaperBookedHourAhead` — the same definition the
+// prices. The comparison is `hasCheaperEnergyHourAhead` — the same definition the
 // fresh planner states for the current hour — over the relative band the
 // build-time allocator also uses, so "worth shifting load" stays consistent. An hour the live plan carries
 // no comparable price for is left unstamped (consumer reads absence as `false`).
@@ -314,7 +317,7 @@ export const stampCheaperHourAhead = (
     if (typeof hour.cheaperHourAhead === 'boolean') return hour; // frozen at booking
     const reference = referenceByHour.get(hour.startsAtMs);
     if (!reference) return hour; // no comparable price ⇒ leave absent
-    const cheaperAhead = hasCheaperBookedHourAhead(buckets, reference, PLANNED_EPSILON_KWH);
+    const cheaperAhead = hasCheaperEnergyHourAhead(buckets, reference, PLANNED_EPSILON_KWH);
     return { ...hour, cheaperHourAhead: cheaperAhead };
   });
 };
@@ -460,10 +463,9 @@ export const resolveCoordinatedScheduleUpdate = (params: {
 // (`floor(nowMs / ONE_HOUR_MS)`), NOT relative to the live plan's earliest
 // hour. The horizon allocator is a price optimizer
 // (`bucketAllocation.ts` sorts by reserve→relative-price-band→time, and
-// `buildHoursFromHorizonPlan` DROPS every bucket with
-// `plannedUsefulEnergyKWh <= 0`), so when near-term hours are relatively
-// expensive they are allocated 0 kWh and vanish from the
-// live set. The live plan's earliest populated hour can therefore be a FUTURE
+// `buildHoursFromHorizonPlan` keeps only the hours the plan books), so when
+// near-term hours are relatively expensive they are not booked and vanish from
+// the live set. The live plan's earliest populated hour can therefore be a FUTURE
 // hour while the current hour is still pending — keying the partition off the
 // live earliest hour would misclassify still-pending committed hours as
 // "elapsed" and let optimizer thrash silently drop them from the coverage
@@ -499,6 +501,12 @@ export const resolveCoordinatedScheduleUpdate = (params: {
 // the full commitment as-is — "committed schedule cannot shrink mid-task and
 // cannot churn from optimizer thrash" is the long-standing invariant.
 //
+// Only hours with energy are floors. A 0 kWh booking promises nothing, so it never
+// gates coverage and a still-pending one is not kept once the live plan stops
+// booking it: the live plan's booking rule decides it afresh each settle. An ELAPSED
+// 0 kWh booking is kept like any elapsed hour — it is history, and dropping it would
+// read as a schedule change at every settle.
+//
 // Pure: no mutation of the inputs. Hour math is UTC-millisecond floor/compare
 // of `nowMs` and the already-hour-floored `startsAtMs` values, so a 23/25-hour
 // DST day does not perturb the elapsed/future partition (no local-time
@@ -508,7 +516,22 @@ export const mergeHoursPreservingCommitment = (
   live: readonly DeferredObjectiveActivePlanHourV1[],
   nowMs: number,
 ): DeferredObjectiveActivePlanHourV1[] => {
-  if (committed.length === 0) return [...live];
+  const floors = hoursWithPlannedEnergy(committed);
+  const currentHourStart = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+  const liveStarts = new Set(live.map((h) => h.startsAtMs));
+  // Elapsed hours (`startsAtMs < currentHourStart`) are re-added as history. In
+  // production the planner trims the live plan's current bucket start to
+  // `nowMs`, so its earliest hour is >= currentHourStart and elapsed hours do
+  // not appear in `live`. Guard against a live plan that still carries a
+  // sub-current hour anyway: any elapsed hour already present in `live` is
+  // folded into it (with the committed kWh floor applied), so exclude it here to
+  // avoid duplicating its `startsAtMs`.
+  const elapsedCommitted = committed.filter(
+    (h) => h.startsAtMs < currentHourStart && !liveStarts.has(h.startsAtMs),
+  );
+  if (floors.length === 0) {
+    return [...elapsedCommitted, ...live].sort((left, right) => left.startsAtMs - right.startsAtMs);
+  }
   // With no live plan there is nothing to adopt — preserve the commitment
   // (no-shrink invariant). An EARLY-SATISFIED task hits this branch every
   // cycle: once the target is reached `energyNeededKWh` is 0, the horizon
@@ -522,15 +545,14 @@ export const mergeHoursPreservingCommitment = (
   // effect found — do not re-flag as "stale committed hours".)
   if (live.length === 0) return [...committed];
 
-  const currentHourStart = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-  const currentOrFutureCommitted = committed.filter((h) => h.startsAtMs >= currentHourStart);
+  const currentOrFutureCommitted = floors.filter((h) => h.startsAtMs >= currentHourStart);
 
   const liveByStart = new Map(live.map((h) => [h.startsAtMs, h] as const));
   const liveCoversCommitment = currentOrFutureCommitted.every((h) => liveByStart.has(h.startsAtMs));
   // Genuine churn: a still-pending committed hour vanished from the allocation.
   if (!liveCoversCommitment) return [...committed];
 
-  const committedByStart = new Map(committed.map((h) => [h.startsAtMs, h] as const));
+  const committedByStart = new Map(floors.map((h) => [h.startsAtMs, h] as const));
   const mergedLive = live.map((liveHour) => {
     const c = committedByStart.get(liveHour.startsAtMs);
     if (!c) return liveHour;
@@ -551,15 +573,5 @@ export const mergeHoursPreservingCommitment = (
     );
     return plannedAdmissionPowerKw > 0 ? { ...winner, plannedAdmissionPowerKw } : winner;
   });
-  // Elapsed hours (`startsAtMs < currentHourStart`) are re-added as floors. In
-  // production the planner trims the live plan's current bucket start to
-  // `nowMs`, so its earliest hour is >= currentHourStart and elapsed hours do
-  // not appear in `live`. Guard against a live plan that still carries a
-  // sub-current hour anyway: any elapsed hour already present in `live` was
-  // folded into `mergedLive` (with the committed kWh floor applied), so exclude
-  // it here to avoid duplicating its `startsAtMs`.
-  const elapsedCommitted = committed.filter(
-    (h) => h.startsAtMs < currentHourStart && !liveByStart.has(h.startsAtMs),
-  );
   return [...elapsedCommitted, ...mergedLive].sort((left, right) => left.startsAtMs - right.startsAtMs);
 };

@@ -155,7 +155,7 @@ fallback actuation stays on the independent lifecycle clock:
   and diagnostics; the recorded terminal outcome remains authoritative.
 - For each live objective whose status is `on_track`, `at_risk`, or `cannot_meet`, an admission
   decision maps the resolved hour claim: `claimed` becomes `planned`, `released` becomes `idle`,
-  and `unclaimed` hands the device back to ordinary planning. `satisfied`, `unknown`, and
+  and a claimed hour booked at 0 kWh is driven on free capacity only. `satisfied`, `unknown`, and
   `invalid` resolve to `inactive` so the device returns to
   its normal behavior once the goal is met or the objective cannot be trusted.
 - Capacity-based control on/off is treated purely as device visibility for the planner: cap-on
@@ -165,7 +165,7 @@ fallback actuation stays on the independent lifecycle clock:
   by contributing a term to the device's derived `commandAuthority` — the owner's two
   settings are never written. For idle decisions the planner also seeds the device into the shedding shed-set
   so the shedding lane keeps it off.
-- In an hour the task plans or still needs (`planned`, `unclaimed`), the shedding and restore
+- In an hour the task books (`planned`, with or without energy), the shedding and restore
   lanes act on the admitted device with their normal logic and produce their normal reasons
   (cooldowns, restore-pending, capacity, etc.). Soft deadlines therefore still respect budget,
   capacity, priority, and cooldown rules, exactly as the original design called for.
@@ -295,7 +295,7 @@ the allocator actually applies stacks three caps via `Math.min`:
   Deliberately not derived by differencing the day-total-clamped `allowedCumKWh` — that
   used to unbook the tail of any day whose plan sums past its budget. This term can
   legitimately be 0 for an hour, which is a forecast of no room rather than a physical
-  limit; see "An unbooked hour is not a stand-down" below for what that means downstream.
+  limit; see "Booking is decided by price, not by forecast room" below for what that means downstream.
 - **Forecast hard-cap headroom** — `bucket.reservedHeadroomKw × durationHours`, where
   `reservedHeadroomKw = sustainableRateKw − grossBackgroundKWh/duration − higherPriorityAdmissionPowerKw`
   is the per-bucket physical headroom forecast from `policyHorizon.ts`
@@ -332,8 +332,10 @@ The energy epsilon decides whether the task's remaining need is satisfied; it do
 not erase positive bucket bookings. In the final seconds of an hour, a booking can
 fall below 0.001 kWh and still carry a current-hour claim, active step, and physical
 reservation. Persistence preserves positive sub-Wh bookings so the frozen read does
-not release the device during the fresh-to-frozen handoff. Actual zero-capacity
-buckets remain unbooked, and explicit price releases still apply.
+not release the device during the fresh-to-frozen handoff. A zero-capacity bucket
+carries no energy; whether it is still booked (at 0 kWh) is the price rule in
+"Booking is decided by price, not by forecast room" below. Explicit price releases
+still apply, to hours with energy only.
 `mergeHoursPreservingCommitment` (`activePlanSchedule.ts`) preserves the floor by taking
 `Math.max(committed.plannedKWh, live.plannedKWh)` on overlap, so a transient shrink in
 `live.plannedKWh` cannot rewrite the persisted floor downward. Phase-2 expansion adds
@@ -348,31 +350,44 @@ after its deadline: the lifecycle clock converges the configured fallback indepe
 power-driven plan. Pre-deadline satisfaction does not end the task; if fresh progress later falls
 below target, lifecycle authority is abandoned and planning can consume the commitment again.
 
-### An unbooked hour is not a stand-down
+### Booking is decided by price, not by forecast room
 
-An hour books 0 kWh for two unrelated reasons, and admission has to tell them apart:
+An hour can carry 0 kWh for two unrelated reasons, and booking has to tell them apart:
 
-- **The task can finish without it.** Either the fill met the need outright, or the shortfall is one
-  the task climbs or re-estimates its way out of. Skipping such an hour is the whole point of price
-  optimisation — "don't use an hour we don't have to".
-- **A ceiling left no room and the task still needs the hour.** Most often the daily-budget pacing
-  slice above: the budget layer forecast no controlled share for that hour, so the allocator could
-  promise nothing there no matter how badly the task needed it.
+- **The task can finish without it.** The fill met the need in cheaper hours. Skipping such an hour
+  is the whole point of price optimisation — "don't use an hour we don't have to".
+- **A ceiling left no room.** Most often the daily-budget pacing slice above, or the power left
+  after higher-priority tasks: the forecast saw no room, so the allocator could promise nothing there.
 
-The second is not a reason to stop a task that is behind. The soft budget slice is a *forecast*; the
-runtime recomputes the real daily pace from live usage on every rebuild (`lib/plan/planBudget.ts`
-`computeDailyUsageSoftLimit`), so whether the device may run in such an hour belongs to the planner's
-capacity/budget/priority decision, not to a plan-time stand-down.
+The second is a forecast, not a reason to stop a task. So the allocator books hours by price
+(`bookBuckets` in `priceBand.ts`, applied by `horizonPlanner` once the plan's status is
+known): an hour is booked when it carries energy, when
+it is meaningfully cheaper than the dearest hour carrying energy, or when the task needs every hour
+(its settled shortfall cause is `budget` or `time_capacity`, `needsEveryHour`). A floor allocation
+that falls short is not enough: a stepped thermal task's floor routinely does while the task finishes
+by climbing (`step_power`) or is short only by estimate padding (`estimate`). A booked hour the forecast left no room for carries 0 kWh. Same-band hours are not
+booked: on a flat price curve that would claim every hour of the horizon. The deadline reserve is
+booked only when it carries energy.
 
-The producer therefore resolves one flat `currentHourClaim` (`resolveCurrentHourClaim` in
+The saved plan's `hours` are the bookings, and `plannedKWh` is what each promises, possibly 0.
+Readers that mean "the hours the device is planned to run" (counts, the first start, the revision
+log, the preview, the "allocation changed" Flow event) read only the hours with energy
+(`hoursWithPlannedEnergy`, `packages/shared-domain/src/deferredPlanBookedHours.ts`). Only hours with
+energy are commitment floors: the merge neither keeps a 0 kWh booking the live plan dropped nor
+treats it as churn, and the committed allocator does not fill it ahead of cheaper committed hours.
+
+The producer resolves one flat `currentHourClaim` (`resolveCurrentHourClaim` in
 `currentHourClaim.ts`), which admission maps 1:1 onto a decision and the reason-line resolver reads
 rather than re-derives:
 
 | Claim | When | What the device gets |
 |---|---|---|
-| `claimed` | the hour carries booked energy and no release applies | driven: floor-step target, deadline floor, rescue permissions |
-| `unclaimed` | booked nothing here AND the task cannot finish without it | managed, competing on its own priority — no forced shed, no release intent, no deadline floor, no rescue claims |
-| `released` | booked nothing here and the task can finish without it, OR a price release applies | held off: with standing authority (power limiting on, or "Only PELS starts this device"), turned OFF by the planner; with authority lent by the task, the configured release posture |
+| `claimed` | the task books the hour, with or without energy, and no release applies | driven: deadline floor, start-policy lift, budget exemption; in an hour with energy also the escalation permissions (limit and pause lower-priority devices) |
+| `released` | the hour is not booked and the task can finish without it, OR a price release applies | held off: with standing authority (power limiting on, or "Only PELS starts this device"), turned OFF by the planner; with authority lent by the task, the configured release posture |
+
+Escalation backs a promise, so a 0 kWh booking carries none: boost past the shed invariant and the
+startup reservation are priority-blind, and would let a task take an hour a higher-priority task
+reserved. A 0 kWh booking runs on capacity that turns out to be free.
 
 **During an active task the task decides whether the device runs, also with Power-limit control on**
 (owner ruling 2026-09-25). A task can aim higher than the mode would (a water heater at 65 °C where
@@ -383,18 +398,18 @@ had nothing to hold a stepped device with. Now admission force-sheds it and stam
 counting the hold as capacity pressure or starvation (`lib/objectives/deferredObjectives/AGENTS.md`
 § "During an active smart task, the task decides whether the device runs").
 
-"Cannot finish without it" is narrower than "the floor was short". It keys on the settled
-`floorShortfallCause`, which maps an unbooked hour straight to a claim:
+A task that falls short books every hour, and the claim reads the settled `floorShortfallCause` as a
+backstop (a commitment saved before this rule, or an hour outside the booked set):
 
 | `floorShortfallCause` | Unbooked hour resolves to |
 |---|---|
-| `budget` | `unclaimed` |
-| `time_capacity` | `unclaimed` |
+| `budget` | `claimed` |
+| `time_capacity` | `claimed` |
 | `step_power` | `released` |
 | `estimate` | `released` |
 | `none` | `released` |
 
-The two that release are the ones where the task can still finish without the hour: `step_power`
+The ones that release are those where the task can still finish without the hour: `step_power`
 (`feasible_above_floor`) means the climbed-band probe already proved the booked hours do the job
 once the executor climbs, and `estimate` means the gap is entirely the `k·SE` variance padding.
 Both are ordinary states for a stepped thermal task, so gating on the raw floor shortfall would
@@ -410,21 +425,22 @@ hour, because the cheaper hours are already booked to their cap and coasting onl
 A `budget`-bound task still does.
 
 Two consequences worth knowing before reading either as a bug. A budget-bound or infeasible task
-never releases *on the unbooked-hour path*, because there is no later hour to defer into. A
-budget-bound task can still release from an hour it did book, via price deferral; a
-`time_capacity` task can only release through cold-start release. And the frozen mid-hour read replays
+never releases an hour for being empty, because it books every hour. A budget-bound task can still
+release a booked hour via price deferral; a `time_capacity` task can only release through
+cold-start release. And the frozen mid-hour read replays
 the `:58` settle's `floorShortfallCause` rather than recomputing sufficiency from the live need —
 recomputing would put a control decision back on the per-cycle clock the two-clock design removes,
 and a device idling in a released hour drifts, so the answer would cross back and forth mid-hour.
 
 One distributional effect to know about, which is not a defect: the budget layer deliberately
 allocated ~0 controlled share to the expensive hours so the share would land in the cheap ones the
-task actually books. Admitting the device into a zero-share hour on the live pace spends budget now,
+task actually books. Running the device in a zero-share hour it booked at 0 kWh spends budget now,
 and `computeDailyUsageSoftLimit` then hands a tighter pace to the cheap hour the task claimed — a
 task can cannibalise its own plan. The day rollover bounds it, so an overnight deadline (the EV case
 this was found on) is largely safe; a same-evening deadline is more exposed.
 
-Proven across a whole task lifecycle in `test/integration/smartTaskUnclaimedHourLifecycle.test.ts`.
+Proven across a whole task lifecycle in `test/integration/smartTaskHourBookingLifecycle.test.ts`, and
+hour by hour in `test/integration/smartTaskHourBookingAdmission.test.ts`.
 
 The recorder treats the per-cycle horizon plan as advisory and only writes a new revision on
 these triggers:
@@ -601,9 +617,9 @@ Original design semantics (still authoritative for future slices):
   commanded target to `max(modeTarget + priceOptDelta, deadlineTargetC)` so the device's own
   thermostat can actually reach the deadline. The deadline target is never further adjusted by the
   price-opt delta.
-- An unclaimed hour is outside the plotted plan, but the task still needs it: forecast allocation
-  booked no energy, so admission hands the device to the live planner. It may run when capacity,
-  budget, and priority allow it, regardless of the Power-limit control setting.
+- A hour booked at 0 kWh is outside the plotted plan, but the task books it on price or because it
+  cannot finish without it: the forecast left no room, so nothing is promised. The device runs when
+  capacity turns out to be free, regardless of the Power-limit control setting.
 - A released hour is one the task can finish without, or has released for price deferral. During an
   active task, the device is held off in that hour even when Power-limit control is on. With
   authority borrowed by the task, it returns to its configured release posture.

@@ -22,6 +22,7 @@ import {
   resolveDeferredPlanHistoryMissAttribution,
 } from '../../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
+import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
 // Resolver supplied by the runtime wiring. Returns the spot price and
@@ -364,15 +365,16 @@ export const appendRevisionLogIfNew = (
   return appended;
 };
 
-// Symmetric-difference counts of `startsAtMs` between two hour schedules.
+// Symmetric-difference counts of `startsAtMs` between two hour schedules, over the
+// hours the device is planned to run (a 0 kWh booking promises nothing).
 // O(n + m) via a Set; ordering is irrelevant — the recorder logs the count
 // so the UI can render "+2 / −1" without needing the specific timestamps.
 const diffHourSchedules = (
-  previous: readonly { startsAtMs: number }[],
-  next: readonly { startsAtMs: number }[],
+  previous: readonly { startsAtMs: number; plannedKWh: number }[],
+  next: readonly { startsAtMs: number; plannedKWh: number }[],
 ): { hoursAdded: number; hoursRemoved: number } => {
-  const previousStarts = new Set(previous.map((hour) => hour.startsAtMs));
-  const nextStarts = new Set(next.map((hour) => hour.startsAtMs));
+  const previousStarts = new Set(hoursWithPlannedEnergy(previous).map((hour) => hour.startsAtMs));
+  const nextStarts = new Set(hoursWithPlannedEnergy(next).map((hour) => hour.startsAtMs));
   let hoursAdded = 0;
   for (const startsAtMs of nextStarts) if (!previousStarts.has(startsAtMs)) hoursAdded += 1;
   let hoursRemoved = 0;

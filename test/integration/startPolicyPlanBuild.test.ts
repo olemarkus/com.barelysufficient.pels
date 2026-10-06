@@ -67,14 +67,11 @@ const plannedDecision: DeferredAdmissionDecision = {
   budgetExempt: false,
   engageBoost: false,
   reservesStartupPower: false,
-  expectedStepId: null,
   releaseIntent: 'binary_restore',
 };
 
 const idleDecision: DeferredAdmissionDecision = { kind: 'idle', budgetExempt: false };
 
-/** Booked nothing, but the task cannot finish without the hour: lifts the hold (owner ruling, 2026-09-24). */
-const unclaimedDecision: DeferredAdmissionDecision = { kind: 'unclaimed', budgetExempt: false };
 /** Not governing the device at all, so the hold stays (owner ruling, 2026-09-10). */
 const inactiveDecision: DeferredAdmissionDecision = { kind: 'inactive', budgetExempt: false };
 
@@ -259,33 +256,16 @@ describe('start policy through a whole plan build', () => {
     expect(device?.reason?.code).toBe(PLAN_REASON_CODES.awaitingPelsStart);
   });
 
-  it('lets a smart task start a held device in an hour it needs but could not book', async () => {
-    // `unclaimed`: the task booked nothing here only because a forecast (the
-    // daily-budget share, or the power left after higher-priority tasks) left no
-    // room, and it cannot finish without the hour. That is still the task asking
-    // for the device, so the hold lifts and the device competes on its own
-    // priority. Production 2026-09-23/24: an EV task behind on its deadline sat
-    // held off for 7 h of such hours with ~6 kW measured free.
-    const plan = await buildBuilder({
-      decorateDeferredObjectives: decorateWithDecision('charger', unclaimedDecision),
-    }).buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
-
-    const device = plan.devices.find((entry) => entry.id === 'charger');
-    expect(device?.plannedState).toBe('keep');
-    expect(device?.reason?.code).not.toBe(PLAN_REASON_CODES.awaitingPelsStart);
-    const intent = buildExecutableDeviceIntent(device!, plan.meta);
-    expect(hasBinaryCommand(intent) ? intent.binary : undefined)
-      .toMatchObject({ deviceId: 'charger', desiredOn: true });
-  });
-
-  it('does not start a held device in an unclaimed hour the house has no room for', async () => {
-    // The lift hands the device to ordinary admission; it does not start it. With
-    // 0.3 kW of room under the limit, the charger's 1 kW does not fit, so it stays
-    // off — for capacity now, not for the start policy.
+  it('does not start a held device in a booked hour the house has no room for', async () => {
+    // The lift hands the device to ordinary admission; it does not start it, also
+    // in a hour booked at 0 kWh because the forecast saw no room. With 0.3 kW of
+    // room under the limit, the charger's 1 kW does not fit, so it stays off — for
+    // capacity now, not for the start policy, and the resume request does not
+    // override that.
     const plan = await buildBuilder({
       getCapacitySettings: () => ({ limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
       getDynamicSoftLimitOverride: () => 0.8,
-      decorateDeferredObjectives: decorateWithDecision('charger', unclaimedDecision),
+      decorateDeferredObjectives: decorateWithDecision('charger', plannedDecision),
     }).buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
 
     const device = plan.devices.find((entry) => entry.id === 'charger');
@@ -326,13 +306,13 @@ describe('start policy through a whole plan build', () => {
       expect(hasBinaryCommand(intent) ? intent.binary.desiredOn : false).toBe(false);
     };
 
-    it('when an unclaimed hour lifts the hold the previous plan held it off under', async () => {
+    it('when a booked hour lifts the hold the previous plan held it off under', async () => {
       let decision: DeferredAdmissionDecision = inactiveDecision;
       const builder = tightBuilder(() => decision);
       const held = await builder.buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
       expect(held.devices.find((entry) => entry.id === 'charger')?.plannedState).toBe('inactive');
 
-      decision = unclaimedDecision;
+      decision = plannedDecision;
       expectNotStarted(await builder.buildDevicePlanSnapshot([charger('pels_only', { on: false })]));
     });
 
@@ -361,7 +341,7 @@ describe('start policy through a whole plan build', () => {
       });
       await builder.buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
 
-      decision = unclaimedDecision;
+      decision = plannedDecision;
       const plan = await builder.buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
       const device = plan.devices.find((entry) => entry.id === 'charger');
       expect(device?.plannedState).toBe('keep');

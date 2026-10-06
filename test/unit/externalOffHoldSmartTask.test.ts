@@ -201,7 +201,6 @@ describe('external-off hold — no rescue claims for a device that will not star
 
   const plannedRescue: DeferredAdmissionDecision = {
     kind: 'planned',
-    expectedStepId: 'low',
     budgetExempt: true,
     engageBoost: true,
     reservesStartupPower: true,

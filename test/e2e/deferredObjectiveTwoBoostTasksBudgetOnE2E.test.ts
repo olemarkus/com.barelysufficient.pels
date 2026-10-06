@@ -238,11 +238,12 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
       blockedByShedInvariant: true,
     });
 
-    // Exemption applies only while the task is actually booked in the current
-    // hour. The lower task retains its permission but does not consume budget or
-    // physical capacity in this slot.
+    // Both tasks book the current hour. The lower task cannot finish, so it books it
+    // at 0 kWh: its budget exemption applies, but with nothing promised it takes no
+    // capacity from others (no boost past the shed invariant, asserted above), so
+    // the hour the winner reserved stays the winner's.
     expect(lastDiag(TANK_A)).toMatchObject({ budgetExemptApplied: true, limitLowerPriorityApplied: true });
-    expect(lastDiag(TANK_B)).toMatchObject({ budgetExemptApplied: false, limitLowerPriorityApplied: true });
+    expect(lastDiag(TANK_B)).toMatchObject({ budgetExemptApplied: true, limitLowerPriorityApplied: true });
 
     // (3) The lower-priority device stays shed — the boost tasks never let it back
     // on; it is rejected for restore every cycle it tries.

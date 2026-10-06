@@ -38,24 +38,24 @@ export type DeferredObjectiveHorizonStatusDetail =
  * semantics and the cause table live.
  *
  * Invariants a caller may rely on:
- * - Exactly one of the three holds per cycle, and it is resolved once. Consumers
+ * - Exactly one of the two holds per cycle, and it is resolved once. Consumers
  *   (`admission.resolveDecision`, and through its decision
  *   `decorationController.resolveDeferredAvoidDeviceIds`) read it and must not re-derive it from
- *   `currentBucket.plannedUsefulEnergyKWh`, `currentHourFacts` or the status.
- * - `claimed` ⇒ the hour carries booked energy and the device should be driven.
- * - `unclaimed` ⇒ the hour carries NO booked energy and the task cannot finish
- *   without it. The device is neither driven nor stood down: it goes to the planner
- *   as managed and competes on its own priority.
- * - `released` ⇒ the task is not using the hour and can finish anyway. The device is
- *   stood down in its configured release posture.
+ *   `currentBucket`, `currentHourFacts` or the status. What a claimed hour promises is a
+ *   separate fact, `currentBucket.plannedUsefulEnergyKWh` (0 for a booking without
+ *   energy), which admission reads to withhold escalation where nothing is promised.
+ * - `claimed` ⇒ the task books the hour (possibly at 0 kWh) and the device should be
+ *   driven, on whatever capacity is actually free.
+ * - `released` ⇒ the task can finish without the hour. The device is stood down in
+ *   its configured release posture.
  * - The fresh and frozen producers answer identically for the same settled state:
- *   the frozen path replays the `:58` settle's persisted `floorShortfallCause`
- *   rather than recomputing sufficiency from the live need.
+ *   the frozen path replays the `:58` settle's persisted booking and
+ *   `floorShortfallCause` rather than recomputing them from live inputs.
  *
- * Governing note: `notes/deferred-load-objectives/README.md` § "An unbooked hour is
- * not a stand-down".
+ * Governing note: `notes/deferred-load-objectives/README.md` § "Booking is decided
+ * by price, not by forecast room".
  */
-export type DeferredObjectiveCurrentHourClaim = 'claimed' | 'released' | 'unclaimed';
+export type DeferredObjectiveCurrentHourClaim = 'claimed' | 'released';
 
 /**
  * Per-cycle facts about the CURRENT hour that the release rules in
@@ -77,7 +77,7 @@ export type DeferredObjectiveCurrentHourFacts = {
   // the committed rate.
   aheadOfHourMilestone: boolean;
   // A later, booked, non-reserve hour is cheaper than this one by more than the
-  // relative margin (`hasCheaperBookedHourAhead`). The frozen read replays the
+  // relative margin (`hasCheaperEnergyHourAhead`). The frozen read replays the
   // value the `:58` settle stamped onto the committed hour.
   cheaperHourAhead: boolean;
   // A `temperature` task's full buffered need fits the meaningfully cheaper future
@@ -232,7 +232,9 @@ export type DeferredObjectiveCommittedHour = {
   plannedKWh: number;
 };
 
-export type DeferredObjectivePlannedBucket = {
+// A bucket as the allocator leaves it: its energy, before the plan decides which
+// hours it books.
+export type DeferredObjectiveAllocatedBucket = {
   id: string;
   sourceBucketId: string;
   startMs: number;
@@ -249,10 +251,19 @@ export type DeferredObjectivePlannedBucket = {
   plannedAdmissionPowerKw?: number;
 };
 
+export type DeferredObjectivePlannedBucket = DeferredObjectiveAllocatedBucket & {
+  // The plan books this hour (`bookBuckets`). Distinct from its energy: an hour
+  // the plan wants on price, or needs because the task falls short, but the
+  // forecast left no room for is booked at 0 kWh. It promises nothing, but the
+  // task claims it and runs there if capacity turns out to be free.
+  booked: boolean;
+};
+
 export type DeferredObjectiveCurrentBucketPlan = {
   bucketId: string;
   sourceBucketId: string;
   plannedUsefulEnergyKWh: number;
+  booked: boolean;
   expectedStepId: string | null;
 };
 
@@ -305,9 +316,9 @@ export type DeferredObjectiveHorizonPlan = {
   // What claim this task has on the CURRENT hour, resolved once by the producer
   // (`resolveCurrentHourClaim`) and mapped 1:1 onto an admission decision. Required,
   // deliberately: a new plan producer must answer it rather than inherit a default,
-  // because absence would silently mean "unclaimed" and hand the planner a
-  // controllable device. Full semantics and the reason the middle state exists live
-  // on `resolveCurrentHourClaim` in `currentHourClaim.ts`.
+  // because a defaulted claim would either strand a device its task needs or hand
+  // the planner one it should hold. Full semantics live on `resolveCurrentHourClaim`
+  // in `currentHourClaim.ts`.
   currentHourClaim: DeferredObjectiveCurrentHourClaim;
   // This plan is a frozen mid-hour projection of the PERSISTED commitment — the
   // allocator did not run (see `buildFrozenHorizonPlan`). It carries no new

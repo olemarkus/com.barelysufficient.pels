@@ -15,13 +15,15 @@ import { state } from './state.ts';
 // access to the runtime's deep `isActivePlan` validator (the `settings-ui ↛ lib`
 // architecture boundary forbids importing it), so here a plan is "valid enough"
 // when it is a non-null object whose `latest.hours` — what the Overview EV-state
-// line walks — is an array of hours with a finite start. Optional chaining does
+// line and the first-start time walk — is an array of hours with a finite start
+// and a finite `plannedKWh` (a booking may promise 0 kWh). Optional chaining does
 // not guard a non-array `hours`, so the shape is checked here, at the persisted
 // boundary, rather than by the resolver. This drops a non-object entry (e.g. a
 // tampered `plansByDeviceId['ev-1'] = 7`) and a plan with malformed hours.
 const isOverviewHour = (hour: unknown): boolean => (
   typeof hour === 'object' && hour !== null
   && Number.isFinite((hour as { startsAtMs?: unknown }).startsAtMs)
+  && Number.isFinite((hour as { plannedKWh?: unknown }).plannedKWh)
 );
 
 const hasOverviewLatestHours = (latest: unknown): boolean => {

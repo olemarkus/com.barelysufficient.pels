@@ -17,7 +17,7 @@ const PRICE_DEFERRAL_FACTS: ClaimParams['facts'] = {
 };
 const claim = (overrides: Partial<ClaimParams> = {}) => (
   resolveCurrentHourClaim({
-    currentBucketBookedKWh: 1,
+    currentHourBooking: 'booked_with_energy',
     facts: NO_RELEASE_FACTS,
     floorShortfallCause: 'none',
     ...overrides,
@@ -25,8 +25,19 @@ const claim = (overrides: Partial<ClaimParams> = {}) => (
 );
 
 describe('resolveCurrentHourClaim', () => {
-  it('claims an hour that carries booked energy', () => {
+  it('claims a booked hour, also one booked at 0 kWh', () => {
     expect(claim()).toBe('claimed');
+    expect(claim({ currentHourBooking: 'booked_without_energy' })).toBe('claimed');
+  });
+
+  it('never price-defers a hour booked without energy', () => {
+    // Nothing promised to move, and its milestone does not advance, so "ahead" is true
+    // by construction: deferring would switch the device off in the very hour it was
+    // booked to run in.
+    for (const floorShortfallCause of ['none', 'budget'] as const) {
+      expect(claim({ currentHourBooking: 'booked_without_energy', facts: PRICE_DEFERRAL_FACTS, floorShortfallCause }))
+        .toBe('claimed');
+    }
   });
 
   it('price-defers a booked hour when ahead with a cheaper booked hour later', () => {
@@ -56,35 +67,20 @@ describe('resolveCurrentHourClaim', () => {
     // (see `CAUSES_THAT_BLOCK_PRICE_DEFERRAL`). It outranks the booking and the cause.
     const facts = { ...NO_RELEASE_FACTS, coldStartFeasible: true };
     expect(claim({ facts, floorShortfallCause: 'time_capacity' })).toBe('released');
-    expect(claim({ facts, currentBucketBookedKWh: 0, floorShortfallCause: 'budget' })).toBe('released');
+    expect(claim({ facts, currentHourBooking: 'unbooked', floorShortfallCause: 'budget' })).toBe('released');
   });
 
-  it('never price-defers an unbooked hour', () => {
-    // Nothing booked ⇒ the unbooked rule decides; the price facts do not apply.
-    expect(claim({ facts: PRICE_DEFERRAL_FACTS, currentBucketBookedKWh: 0, floorShortfallCause: 'time_capacity' }))
-      .toBe('unclaimed');
-  });
-
-  // The whole precision of the rule: only a shortfall the task cannot climb or
-  // re-estimate its way out of makes an unbooked hour one it still needs.
-  const byCause: Array<[DeferredObjectiveActivePlanFloorShortfallCause, string]> = [
-    ['budget', 'unclaimed'],
-    ['time_capacity', 'unclaimed'],
+  // An hour the plan did not book is one the task can finish without, unless the task
+  // falls short: then it needs every hour, booked or not (e.g. a commitment saved
+  // before the allocator booked every hour of a short task).
+  const unbookedByCause: Array<[DeferredObjectiveActivePlanFloorShortfallCause, string]> = [
+    ['budget', 'claimed'],
+    ['time_capacity', 'claimed'],
     ['step_power', 'released'],
     ['estimate', 'released'],
     ['none', 'released'],
   ];
-  it.each(byCause)('resolves an unbooked hour with cause %s to %s', (cause, expected) => {
-    expect(claim({ currentBucketBookedKWh: 0, floorShortfallCause: cause })).toBe(expected);
-    // No current bucket at all is the same question — the commitment skipped the
-    // hour, so there is nothing booked in it either way.
-    expect(claim({ currentBucketBookedKWh: null, floorShortfallCause: cause })).toBe(expected);
-  });
-
-  it('gives up an hour a climbable task can finish without', () => {
-    // `feasible_above_floor` is the normal state of a stepped thermal task: the
-    // climbed-band probe already proved the booked hours finish the job. Keeping the
-    // hour here would switch price optimisation off for most such tasks.
-    expect(claim({ currentBucketBookedKWh: 0, floorShortfallCause: 'step_power' })).toBe('released');
+  it.each(unbookedByCause)('resolves an unbooked hour with cause %s to %s', (cause, expected) => {
+    expect(claim({ currentHourBooking: 'unbooked', floorShortfallCause: cause })).toBe(expected);
   });
 });

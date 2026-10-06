@@ -144,7 +144,7 @@ producer-resolved flag + the same per-cycle admission release:
   `trajectoryMilestone.ts`), computed in `taskEvaluationCoordinator.ts` where the RAW measured value and
   the committed rate live (the planner sees neither).
 - The horizon planner states it, with the relative raw-price fact `cheaperHourAhead`
-  (`hasCheaperBookedHourAhead`, `bucketAllocation.ts`), on the plan's `currentHourFacts`. The
+  (`hasCheaperEnergyHourAhead`, `priceBand.ts`), on the plan's `currentHourFacts`. The
   frozen read states the same two facts, replaying the `cheaperHourAhead` the `:58` settle stamped.
 - `resolveCurrentHourClaim` (`currentHourClaim.ts`) owns the rule: a booked hour is `released` when
   both facts hold, unless the task is under `time_capacity` (it cannot finish at all, or a

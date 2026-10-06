@@ -1,6 +1,7 @@
 import { EMPTY_DELIVERY_EVIDENCE } from './deliveryEvidence';
 import type { TaskDeliveryEvidence } from '../../../packages/contracts/src/taskDelivery';
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
+import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import type { MeteredRunCommitment } from './planHistoryMeteredState';
 import type { TaskEvaluation } from './taskEvaluation';
 import type {
@@ -262,16 +263,18 @@ const extendIntervals = (
   return [...intervals, { fromMs: nowMs, toMs: nowMs }];
 };
 
-// Returns whichever snapshot has the richer (longer) hour schedule. Ties keep
-// the existing snapshot so we don't churn identity on byte-equivalent
-// schedules. `null` always loses to a real snapshot.
+// Returns whichever snapshot has the richer schedule (more hours with energy; a 0 kWh
+// booking promises nothing). Ties keep the existing snapshot so we don't churn
+// identity on byte-equivalent schedules. `null` always loses to a real snapshot.
 const pickRicherSnapshot = (
   current: DeferredObjectivePlanHistoryRevisionSnapshot | null,
   candidate: DeferredObjectivePlanHistoryRevisionSnapshot | null,
 ): DeferredObjectivePlanHistoryRevisionSnapshot | null => {
   if (!candidate) return current;
   if (!current) return candidate;
-  return candidate.hours.length > current.hours.length ? candidate : current;
+  return hoursWithPlannedEnergy(candidate.hours).length > hoursWithPlannedEnergy(current.hours).length
+    ? candidate
+    : current;
 };
 
 // One reading of "what does this run need?", shared by the initial seed and the

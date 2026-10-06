@@ -1,7 +1,6 @@
 import {
   allocateCommittedEnergyToBuckets,
   allocateEnergyToBuckets,
-  hasCheaperBookedHourAhead,
   normalizeHorizonBuckets,
   type BucketAllocationResult,
   type StepForBucket,
@@ -14,7 +13,8 @@ import {
 } from './stepSelection';
 
 import { resolveColdStartFeasible } from './coldStartRelease';
-import { resolveCurrentHourClaim } from './currentHourClaim';
+import { bookBuckets, hasCheaperEnergyHourAhead } from './priceBand';
+import { needsEveryHour, resolveCurrentHourBooking, resolveCurrentHourClaim } from './currentHourClaim';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 import type {
   DeferredObjectiveCurrentBucketPlan,
@@ -139,7 +139,7 @@ export const planDeferredObjectiveHorizon = (
   const currentHourFacts: DeferredObjectiveCurrentHourFacts = {
     aheadOfHourMilestone: input.aheadOfHourMilestone,
     cheaperHourAhead: currentBucket !== undefined
-      && hasCheaperBookedHourAhead(allocation.plannedBuckets, currentBucket, epsilonKWh),
+      && hasCheaperEnergyHourAhead(allocation.plannedBuckets, currentBucket, epsilonKWh),
     coldStartFeasible: resolveColdStartFeasible({
       objectiveKind: input.objective.kind,
       buckets,
@@ -420,8 +420,10 @@ const buildPlanFromAllocation = (params: {
     budgetRole,
     varianceMarginKWh,
   });
+  const floorShortfallCause = resolveFloorShortfallCause(statusResult.statusDetail);
+  const plannedBuckets = bookBuckets(allocation.plannedBuckets, needsEveryHour(floorShortfallCause));
   const currentBucket = resolveCurrentBucketPlan({
-    plannedBuckets: allocation.plannedBuckets,
+    plannedBuckets,
     steps,
     epsilonKWh,
   });
@@ -442,15 +444,15 @@ const buildPlanFromAllocation = (params: {
     budgetContributedToShortfall: budgetRole !== 'none',
     expectedStepId: currentBucket?.expectedStepId ?? null,
     currentBucket,
-    plannedBuckets: allocation.plannedBuckets,
+    plannedBuckets,
     usesDeadlineReserve: allocation.usesDeadlineReserve,
     currentHourFacts,
     // The cause is the same signal the recorder persists onto the revision, so the
     // frozen mid-hour read replays exactly this verdict instead of recomputing one.
     currentHourClaim: resolveCurrentHourClaim({
-      currentBucketBookedKWh: currentBucket?.plannedUsefulEnergyKWh ?? null,
+      currentHourBooking: resolveCurrentHourBooking(currentBucket),
       facts: currentHourFacts,
-      floorShortfallCause: resolveFloorShortfallCause(statusResult.statusDetail),
+      floorShortfallCause,
     }),
   };
 };
@@ -477,6 +479,7 @@ const resolveCurrentBucketPlan = (params: {
     bucketId: currentBucket.id,
     sourceBucketId: currentBucket.sourceBucketId,
     plannedUsefulEnergyKWh: currentBucket.plannedUsefulEnergyKWh,
+    booked: currentBucket.booked,
     expectedStepId: requestedStep?.id ?? null,
   };
 };
@@ -568,7 +571,7 @@ const buildEmptyPlan = (params: {
     // An empty plan has no schedule at all — a passed deadline, or a price window
     // that failed to cover the horizon. There is nothing demanding this hour and no
     // allocation whose shortfall could speak for it, so the device keeps its
-    // pre-existing release posture rather than becoming unclaimed.
+    // pre-existing release posture.
     currentHourClaim: 'released',
   };
 };

@@ -1,15 +1,15 @@
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
-// What an hour the allocator booked NOTHING into means to the device, driven across
+// What an hour the forecast left no room in means to the device, driven across
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // a whole task lifecycle — and how the answer changes with the task's position.
 //
-// An hour books 0 kWh for two unrelated reasons. Either the fill already met the
+// An hour carries 0 kWh for two unrelated reasons. Either the fill already met the
 // need and the hour is surplus — the price decision, "don't use an hour we don't
 // have to" — or a ceiling left no room. Most often that ceiling is the soft daily
 // budget's forecast controlled share for the hour, which can legitimately be 0
-// (`policyHorizon.resolveMaxUsefulEnergyKWh`). Admission used to read both the same
-// and stand the device down, which stops a task that is behind for no reason the
-// physical world imposed.
+// (`policyHorizon.resolveMaxUsefulEnergyKWh`). Booking is decided by price, not by
+// that forecast: a task that cannot finish books every hour, the empty ones at
+// 0 kWh, and claims them through the saved plan and the mid-hour read alike.
 //
 // TIER: integration, per `notes/testing-taxonomy.md` § "The border cases" — it spans
 // several layers with nothing internal mocked, but it DRIVES them by calling
@@ -25,10 +25,9 @@ import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helper
 // the real fresh allocator and every later cycle is the frozen read — which is how
 // both producers of `currentHourClaim` get exercised, not just the fresh one.
 //
-// What it deliberately does NOT cover: the plan layer. An `unclaimed` device is
-// modelled here as running, because this harness has no `PlanBuilder` to hold it.
-// That the daily-budget pace really does hold it is the design's load-bearing
-// assumption and wants a spec of its own.
+// What it deliberately does NOT cover: the plan layer. A device in a hour booked at
+// 0 kWh is modelled here as running, because this harness has no `PlanBuilder` to
+// hold it; that capacity still decides is pinned in `startPolicyPlanBuild.test.ts`.
 //
 // The scenario is ONE run of a single task, watched across the transition it makes
 // on its own: a cold tank at 18:00 cannot finish by 06:00 at its floor step, and as
@@ -145,8 +144,8 @@ const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
 // deliberately TIGHT elsewhere: 0.5 kWh/h across 12 hours is 6 kWh against 22.4
 // needed, and it binds every step equally, so the climbed-band probe cannot rescue
 // it either. That makes the shortfall `limited_by_daily_budget` — a cause the task
-// cannot climb or re-estimate its way out of, which is the whole condition for
-// keeping an unbooked hour. A generous share would instead yield
+// cannot climb or re-estimate its way out of, so the task books every hour. A
+// generous share would instead yield
 // `feasible_above_floor`, where the task CAN finish by climbing and correctly gives
 // the hour up.
 const buildDay = (dateKey: string, startMs: number, prices: number[], nowMs: number): DailyBudgetDayPayload => {
@@ -276,11 +275,11 @@ const runScenario = (startC: number): { cycles: Cycle[]; finalTempC: number } =>
     recorder.observe(diag ? [diag] : [], nowMs);
     const decision = diag ? applyDeferredObjectiveAdmission(([diag]).map((diagnostic) => diagnostic.evaluation), [device]).get(DEVICE_ID) : undefined;
 
-    // What the device does with each decision. `planned` drives it. `unclaimed`
-    // hands it to the planner as managed, which with no competing load and no
-    // capacity pressure runs it — the modelled stand-in for the planner this
-    // harness does not include. `idle` / `inactive` deliver nothing.
-    const driven = decision?.kind === 'planned' || decision?.kind === 'unclaimed';
+    // What the device does with each decision. `planned` drives it: with no competing
+    // load and no capacity pressure the planner runs it, also in a hour booked at
+    // 0 kWh — the modelled stand-in for the planner this harness does not include.
+    // `idle` / `inactive` deliver nothing.
+    const driven = decision?.kind === 'planned';
     const dtH = STEP_MS / HOUR_MS;
     let kWh = 0;
     if (driven && tempC < TARGET_C) {
@@ -310,7 +309,7 @@ const summarise = (cycles: readonly Cycle[]): string => cycles
   .map((c) => `  hod ${c.hod} @${c.price}  booked ${c.currentBookedKWh.toFixed(2)}  claim ${c.claim.padEnd(9)}  ${c.kind}${c.priceDeferrable ? '  deferrable' : ''}`)
   .join('\n');
 
-describe('an unbooked smart-task hour (SDK-boundary e2e)', () => {
+describe('a smart-task hour the forecast left no room in (SDK-boundary e2e)', () => {
   const unbookedOf = (cycles: readonly Cycle[]): Cycle[] => (
     cycles.filter((c) => c.currentBookedKWh <= 0 && c.kind !== 'inactive')
   );
@@ -328,26 +327,28 @@ describe('an unbooked smart-task hour (SDK-boundary e2e)', () => {
     });
 
     it('keeps the device in play instead of standing it down', () => {
-      // Nothing about the hour's price can explain the empty booking: a task this
-      // short books every hour it is allowed to touch, so an unbooked one is
-      // always a ceiling — here the daily budget's forecast share.
+      // A task this short books every hour, the forecast-zeroed ones at 0 kWh, so it
+      // claims them and the device runs. The only release is price deferral once the
+      // heater is ahead of its milestone, which a budget-bound task keeps.
+      expect(unbooked.some((c) => c.kind === 'planned'), summarise(cycles)).toBe(true);
       expect(
-        [...new Set(unbooked.map((c) => c.kind))],
+        unbooked.every((c) => c.kind === 'planned' || c.priceDeferrable),
         `a budget-bound task must not stand its device down.\n${summarise(cycles)}`,
-      ).toEqual(['unclaimed']);
-      expect(unbooked.every((c) => c.releaseIntent === undefined)).toBe(true);
+      ).toBe(true);
+      // A claimed empty hour issues no stand-down; a price-deferred one releases the
+      // cap-off heater to its configured posture like any deferred hour.
+      expect(unbooked.filter((c) => c.kind === 'planned').every((c) => c.releaseIntent === undefined)).toBe(true);
     });
 
-    it('still releases from a BOOKED hour when price deferral says so', () => {
+    it('still releases a booked hour when price deferral says so', () => {
       // The narrow reading matters: a BUDGET-bound task still gives up an hour it HAS
       // booked once it is ahead of that hour's milestone and a cheaper hour is booked
       // ahead. Only a physical shortfall (`time_capacity`) blocks price deferral
-      // (`CAUSES_THAT_BLOCK_PRICE_DEFERRAL`), so "a budget-bound task never releases"
-      // is only true of the unbooked-hour path, which is what the assertion above pins.
+      // (`CAUSES_THAT_BLOCK_PRICE_DEFERRAL`). Every release here is that deferral:
+      // nothing is stood down for being empty, which the assertion above pins.
       const released = cycles.filter((c) => c.kind === 'idle');
-      expect(released.length, summarise(cycles)).toBeGreaterThan(0);
+      expect(released.some((c) => c.currentBookedKWh > 0), summarise(cycles)).toBe(true);
       expect(released.every((c) => c.priceDeferrable), summarise(cycles)).toBe(true);
-      expect(released.every((c) => c.currentBookedKWh > 0)).toBe(true);
     });
   });
 

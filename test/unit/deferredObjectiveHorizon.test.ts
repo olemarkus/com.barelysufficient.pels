@@ -1675,3 +1675,123 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.currentHourFacts.coldStartFeasible).toBe(false);
   });
 });
+
+// Booking is decided by price, not by forecast room (`resolveBookedBucketIds`).
+describe('booking hours by price', () => {
+  const bookedIds = (plan: ReturnType<typeof planDeferredObjectiveHorizon>): string[] => (
+    plan.plannedBuckets.filter((bucket) => bucket.booked).map((bucket) => bucket.sourceBucketId)
+  );
+
+  it('books a cheaper hour the forecast left no room for at 0 kWh, and claims it', () => {
+    // h0 is the cheapest but has no room, so the 2 kWh go to h1 and h2. h0 is
+    // cheaper than the dearest of those, so it is booked with nothing promised.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 2 }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral', { price: 30, maxUsefulEnergyKWh: 0 }),
+        bucket(1, 'neutral', { price: 50 }),
+        bucket(2, 'neutral', { price: 60 }),
+        bucket(3, 'neutral', { price: 90 }),
+      ],
+      commitment: { kind: 'uncommitted' },
+      aheadOfHourMilestone: false,
+    });
+
+    expect(bookedIds(plan)).toEqual(['h0', 'h1', 'h2']);
+    expect(plan.currentBucket).toMatchObject({ plannedUsefulEnergyKWh: 0, booked: true });
+    expect(plan.currentHourClaim).toBe('claimed');
+  });
+
+  it('does not book a same-price hour the plan does not need', () => {
+    // A flat curve would otherwise claim every hour of the horizon.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 1 }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'neutral', { price: 50, maxUsefulEnergyKWh: 0 }), bucket(1), bucket(2), bucket(3)],
+      commitment: { kind: 'uncommitted' },
+      aheadOfHourMilestone: false,
+    });
+
+    expect(bookedIds(plan)).toEqual(['h1']);
+    expect(plan.currentHourClaim).toBe('released');
+  });
+
+  it('books every hour, the empty ones at 0 kWh, when the task cannot finish', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 20 }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral', { price: 90, maxUsefulEnergyKWh: 0 }),
+        bucket(1, 'neutral', { price: 30 }),
+        bucket(2, 'neutral', { price: 30 }),
+        bucket(3, 'neutral', { price: 30 }),
+      ],
+      commitment: { kind: 'uncommitted' },
+      aheadOfHourMilestone: false,
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(bookedIds(plan)).toEqual(['h0', 'h1', 'h2', 'h3']);
+    expect(plan.currentHourClaim).toBe('claimed');
+  });
+
+  it('keeps the deadline reserve a fallback rather than booking it at 0 kWh', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 1, deadlineMarginMs: HOUR_MS }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'neutral', { price: 60 }), bucket(1, 'neutral', { price: 70 }),
+        bucket(2, 'neutral', { price: 80 }), bucket(3, 'neutral', { price: 10, maxUsefulEnergyKWh: 0 })],
+      commitment: { kind: 'uncommitted' },
+      aheadOfHourMilestone: false,
+    });
+
+    expect(plan.plannedBuckets.filter((bucket) => bucket.reserve).every((bucket) => !bucket.booked)).toBe(true);
+  });
+
+  it('fills a committed energy floor before an earlier hour booked at 0 kWh', () => {
+    // h0 was saved booked at 0 kWh, h2 with energy. The 0 kWh booking is not an
+    // energy floor, so the committed phase does not fill it first just because it
+    // is earlier; h2 is cheaper and carries the need.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 1 }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'neutral', { price: 50 }), bucket(1, 'neutral', { price: 90 }),
+        bucket(2, 'neutral', { price: 40 }), bucket(3, 'neutral', { price: 90 })],
+      commitment: {
+        kind: 'committed',
+        hours: [{ startsAtMs: NOW_MS, plannedKWh: 0 }, { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 }],
+      },
+      aheadOfHourMilestone: false,
+    });
+
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBe(0);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
+  });
+});
+
+describe('booking hours for a task that finishes by climbing', () => {
+  it('releases an expensive hour a feasible_above_floor task does not need', () => {
+    // The floor step (1 kW) cannot fit 5 kWh in the two cheap hours, but the top step
+    // (3 kW) can, so the task finishes by climbing: `step_power`, not "needs every
+    // hour". The expensive current hour stays unbooked and released.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 5, deadlineAtMs: NOW_MS + 3 * HOUR_MS }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'neutral', { price: 200, maxUsefulEnergyKWh: 0 }), bucket(1, 'neutral', { price: 20 }),
+        bucket(2, 'neutral', { price: 20 })],
+      commitment: { kind: 'uncommitted' },
+      aheadOfHourMilestone: false,
+    });
+
+    expect(plan.statusDetail).toBe('feasible_above_floor');
+    expect(plan.currentBucket?.booked).toBe(false);
+    expect(plan.currentHourClaim).toBe('released');
+  });
+});

@@ -17,6 +17,7 @@ import {
   type DeferredObjectivePlanRevisionWrittenEvent,
 } from '../lib/objectives/deferredObjectives';
 import { isFiniteNumber } from '../packages/shared-domain/src/numberGuards';
+import { hoursWithPlannedEnergy } from '../packages/shared-domain/src/deferredPlanBookedHours';
 
 // The status-token id set is a public-API contract for flow authors. Aliasing
 // here keeps the runtime call sites readable while the single source of truth
@@ -96,7 +97,8 @@ export const buildSmartTaskPlanChangedTokens = (
 ): Record<string, unknown> => ({
   device_name: event.deviceName ?? event.deviceId,
   remaining_kwh: roundForToken(event.revision.energyNeededKWh, 3),
-  planned_hours: event.revision.hours.length,
+  // Hours the device is planned to run, the same count the trigger fires on.
+  planned_hours: hoursWithPlannedEnergy(event.revision.hours).length,
   projected_finish_local_time: event.projectedFinishAtMs === null
     ? ''
     : formatDeadlineLocalTime(event.projectedFinishAtMs, timeZone),

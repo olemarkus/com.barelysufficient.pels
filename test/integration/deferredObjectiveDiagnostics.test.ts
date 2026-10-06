@@ -1,7 +1,7 @@
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
-import { resolveCurrentHourClaim } from '../../lib/objectives/deferredObjectives/currentHourClaim';
+import { resolveCurrentHourBooking, resolveCurrentHourClaim } from '../../lib/objectives/deferredObjectives/currentHourClaim';
 import { resolveFloorShortfallCause } from '../../lib/objectives/deferredObjectives/floorShortfallCause';
 import {
   resolvedTrajectoryStatus,
@@ -78,7 +78,7 @@ const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | und
   const plan = diag?.horizonPlan;
   expect(plan).toBeDefined();
   expect(plan?.currentHourClaim).toBe(resolveCurrentHourClaim({
-    currentBucketBookedKWh: plan?.currentBucket?.plannedUsefulEnergyKWh ?? null,
+    currentHourBooking: resolveCurrentHourBooking(plan?.currentBucket ?? null),
     facts: plan?.currentHourFacts ?? { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false },
     floorShortfallCause: resolveFloorShortfallCause(diag?.reasonCode),
   }));
@@ -1785,7 +1785,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     // Commit only a LATER hour, so the current hour is one the commitment skipped —
-    // the case where the cause decides between `unclaimed` and `released`.
+    // the case where the cause decides between `claimed` and `released`.
     const activePlans = buildCommittedEvPlans(
       deadlineAtMs,
       { floorShortfallCause: cause },
@@ -1804,9 +1804,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     })[0]?.horizonPlan?.currentHourClaim;
   };
 
-  it('keeps an unbooked frozen hour for a known budget-bound cause', () => {
-    expect(frozenClaimForCause('budget')).toBe('unclaimed');
-    expect(frozenClaimForCause('time_capacity')).toBe('unclaimed');
+  it('claims an unbooked frozen hour for a cause that needs every hour', () => {
+    expect(frozenClaimForCause('budget')).toBe('claimed');
+    expect(frozenClaimForCause('time_capacity')).toBe('claimed');
   });
 
   it('releases an unbooked frozen hour for a cause the task can finish without', () => {

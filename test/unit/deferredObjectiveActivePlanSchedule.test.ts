@@ -1,6 +1,7 @@
 import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
 import {
   mergeHoursPreservingCommitment,
+  sameHourSchedule,
   shouldFireNotification,
 } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
 import { partialDouble } from '../helpers/partialDouble';
@@ -274,6 +275,42 @@ describe('mergeHoursPreservingCommitment', () => {
       { startsAtMs: TEN, plannedKWh: 1.5 },
       { startsAtMs: ELEVEN, plannedKWh: 1.5 },
       { startsAtMs: TWELVE, plannedKWh: 1.5 },
+    ]);
+  });
+
+  it('does not keep a 0 kWh booking the live plan no longer books', () => {
+    // A 0 kWh booking promises nothing, so it is not a floor: it neither freezes the
+    // merge as "churn" nor survives once the live plan stops booking it.
+    const merged = mergeHoursPreservingCommitment(
+      [{ startsAtMs: ELEVEN, plannedKWh: 0 }, { startsAtMs: TWELVE, plannedKWh: 1 }],
+      [{ startsAtMs: TWELVE, plannedKWh: 1 }, { startsAtMs: THIRTEEN, plannedKWh: 0.5 }],
+      TEN + SUB_HOUR,
+    );
+    expect(merged).toEqual([
+      { startsAtMs: TWELVE, plannedKWh: 1 },
+      { startsAtMs: THIRTEEN, plannedKWh: 0.5 },
+    ]);
+  });
+
+  it('keeps an elapsed 0 kWh booking as history, so the schedule does not change every hour', () => {
+    // H (ELEVEN) was booked at 0 kWh and has elapsed. Dropping it would read as a
+    // schedule change at every settle and write an empty revision each hour.
+    const committed = [{ startsAtMs: ELEVEN, plannedKWh: 0 }, { startsAtMs: TWELVE, plannedKWh: 1 }];
+    const merged = mergeHoursPreservingCommitment(committed, [{ startsAtMs: TWELVE, plannedKWh: 1 }], TWELVE + SUB_HOUR);
+    expect(merged).toEqual(committed);
+    expect(sameHourSchedule(merged, committed)).toBe(true);
+  });
+
+  it('keeps a 0 kWh booking the live plan still books, and lets live energy win over it', () => {
+    const merged = mergeHoursPreservingCommitment(
+      [{ startsAtMs: ELEVEN, plannedKWh: 0 }, { startsAtMs: TWELVE, plannedKWh: 1 }],
+      [{ startsAtMs: ELEVEN, plannedKWh: 0.4 }, { startsAtMs: TWELVE, plannedKWh: 1 }, { startsAtMs: THIRTEEN, plannedKWh: 0 }],
+      TEN + SUB_HOUR,
+    );
+    expect(merged).toEqual([
+      { startsAtMs: ELEVEN, plannedKWh: 0.4 },
+      { startsAtMs: TWELVE, plannedKWh: 1 },
+      { startsAtMs: THIRTEEN, plannedKWh: 0 },
     ]);
   });
 

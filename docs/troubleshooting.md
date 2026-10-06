@@ -123,8 +123,8 @@ planning failure.
   plan, that's expected until usage drops back under plan.
 - **A Smart task releases an hour.** With Power-limit control on, PELS holds the
   device off for that hour. With it off, PELS uses the task's configured release
-  behavior. An unbooked hour the task still needs is different: the live planner
-  may admit the device under capacity, budget, and priority rules. When no active
+  behavior. An hour the task keeps without planned energy is different: the
+  device runs there when power turns out to be available. When no active
   task controls a device, Power-limit control on allows normal
   run-when-power-is-available behavior.
 - **It was turned off elsewhere and PELS was asked to respect that.** If the
@@ -222,8 +222,9 @@ The banner above the Overview tells you which state you are in:
   **Use built-in device control**, or the existing current-control Flow. For
   other chargers, re-check the **EV charger current (A)** Flow in
   [Configure an EV Charger](/ev-charger).
-- **The charger starts outside the plotted task plan:** an active task may still
-  need an unbooked hour, which remains eligible through live planner admission;
+- **The charger starts outside the plotted task plan:** an active task keeps
+  some hours without planned energy (cheaper than its planned hours, or needed
+  because it cannot finish otherwise) and charges there when power is available;
   a deferred hour is held off. Turn **Power-limit control** off to prevent normal
   run-when-power-is-available behavior when no active task controls the charger.
   See [Smart Tasks → Power-Limit Control and Tasks](/smart-tasks#power-limit-control-and-tasks).
