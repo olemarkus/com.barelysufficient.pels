@@ -5,7 +5,12 @@ import {
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
-import { isBatteryControlReadable, resolveManagedState } from '../state.ts';
+import {
+  isBatteryControlReadable,
+  resolveBatteryPowerLimitOn,
+  resolveManagedState,
+  state,
+} from '../state.ts';
 import { isHomeBatteryClassKey } from '../../../../shared-domain/src/batteryOrSolarRole.ts';
 
 export const resolveDeviceDetailControlState = (
@@ -47,5 +52,28 @@ export const setTemperatureGatedSwitch = (
   /* eslint-disable no-param-reassign -- intentional DOM element mutation via a shared helper */
   switchEl.selected = controlState.canControlTemperature && controlState.isManaged && active === true;
   switchEl.disabled = !controlState.canControlTemperature || !controlState.isManaged;
+  /* eslint-enable no-param-reassign */
+};
+
+/**
+ * The Power-limit control switch. A battery reads `controllable_devices`
+ * through its own gate (absent = on), and its switch is greyed out while
+ * Managed is off or its Managed map does not parse (`isManaged` is false for
+ * both): PELS then leaves the battery alone, so there is nothing to limit.
+ */
+export const setPowerLimitSwitch = (
+  switchEl: { selected: boolean; disabled: boolean } | null,
+  controlState: ReturnType<typeof resolveDeviceDetailControlState>,
+  deviceId: string,
+): void => {
+  if (!switchEl) return;
+  /* eslint-disable no-param-reassign -- intentional DOM element mutation via a shared helper */
+  if (controlState.isHomeBattery) {
+    switchEl.selected = resolveBatteryPowerLimitOn(deviceId);
+    switchEl.disabled = !controlState.isManaged;
+    return;
+  }
+  switchEl.selected = controlState.canLimitPower && state.controllableMap[deviceId] === true;
+  switchEl.disabled = !controlState.canLimitPower || !controlState.isManaged;
   /* eslint-enable no-param-reassign */
 };

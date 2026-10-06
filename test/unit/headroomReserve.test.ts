@@ -85,6 +85,7 @@ describe('resolveHeadroomReserves', () => {
       shedSet: new Set<string>(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
+      storageSetpoints: new Map(),
       sheddingActive: false,
       guardInShortfall: false,
       outcome: NO_SHEDDING_OUTCOME,

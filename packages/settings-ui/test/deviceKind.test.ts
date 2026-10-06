@@ -162,9 +162,17 @@ describe('home battery in the settings UI', () => {
 
   it('claims whole-house cover only for a battery last in the list', async () => {
     const { resolveBatteryPriorityHint } = await import('../src/ui/deviceDetail/batterySection.ts');
-    expect(resolveBatteryPriorityHint({ rank: 5, total: 5 }))
+    expect(resolveBatteryPriorityHint({ rank: 5, total: 5 }, true))
       .toBe('Last in the list, it covers the whole house before any device is limited.');
-    expect(resolveBatteryPriorityHint({ rank: 3, total: 5 }))
+    expect(resolveBatteryPriorityHint({ rank: 3, total: 5 }, true))
       .toBe('Its place decides who it protects: the devices above it.');
+  });
+
+  it('promises no cover from its place while Power-limit control is off', async () => {
+    const { resolveBatteryPriorityHint } = await import('../src/ui/deviceDetail/batterySection.ts');
+    for (const position of [{ rank: 5, total: 5 }, { rank: 3, total: 5 }]) {
+      expect(resolveBatteryPriorityHint(position, false))
+        .toBe('Turn on Power-limit control to let it hold your limit when its turn comes.');
+    }
   });
 });

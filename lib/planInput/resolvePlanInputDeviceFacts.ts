@@ -148,6 +148,6 @@ export const resolvePlanInputDeviceFacts = (
     hasStandingDemand,
     residualKw,
     budgetExempt: source.isBudgetExempt(device.id),
-    storageCluster: resolveStorageCluster(device, options),
+    storageCluster: resolveStorageCluster(source, device, options),
   };
 };

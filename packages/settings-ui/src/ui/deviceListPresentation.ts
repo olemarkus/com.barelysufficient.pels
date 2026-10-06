@@ -8,7 +8,12 @@ import {
 } from './deviceUtils.ts';
 import { PLAN_CARD_BUDGET_EXEMPT_CHIP_LABEL } from '../../../shared-domain/src/planCardGrammar.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
-import { isBatteryControlReadable, resolveManagedState, state } from './state.ts';
+import {
+  isBatteryControlReadable,
+  resolveBatteryPowerLimitOn,
+  resolveManagedState,
+  state,
+} from './state.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { LEGEND_ONLY_REASONS, type RowDisabledReasons } from './deviceControlAvailability.ts';
 
@@ -99,13 +104,14 @@ export const resolveDeviceManageability = (device: SettingsUiDeviceListItem) => 
   // A home battery listed here is one PELS can manage (the runtime lists only
   // a Main-home battery), unless its Managed map does not parse: the runtime
   // then treats it as unmanaged, so the switch shows off and unavailable. Its
-  // charging is not a load the row's Limit and Price switches act on, so both
-  // read as not applicable.
+  // Limit switch is its Power-limit control, offered while it is managed
+  // (`isLimitToggleOn`); Price has no temperature to act on, so it reads as
+  // not applicable.
   if (isHomeBatteryClassKey(device.deviceClass)) {
     const canManage = isBatteryControlReadable();
     return {
       supportsTemperature: false,
-      supportsPower: false,
+      supportsPower: true,
       supportsManage: true,
       nativeWiringRequired: false,
       canManage,
@@ -125,6 +131,18 @@ export const resolveDeviceManageability = (device: SettingsUiDeviceListItem) => 
     canManage,
     isManaged: canManage && resolveManagedState(device.id),
   };
+};
+
+/**
+ * The row's Limit switch. A battery reads `controllable_devices` through its
+ * own gate (absent = on, off while unmanaged), never as a load's `=== true`.
+ */
+export const isLimitToggleOn = (
+  device: SettingsUiDeviceListItem,
+  manageability: ReturnType<typeof resolveDeviceManageability>,
+): boolean => {
+  if (isHomeBatteryClassKey(device.deviceClass)) return resolveBatteryPowerLimitOn(device.id);
+  return manageability.supportsPower && state.controllableMap[device.id] === true;
 };
 
 export const groupDevicesByClass = (devices: SettingsUiDeviceListItem[]): DeviceGroup[] => {

@@ -1158,9 +1158,10 @@
           </details>
         </section>
 
-        <!-- A home battery's page: its Managed switch (moved here from Setup by
-             the section layout) and its place in the priority order. Hidden
-             for every other device kind. -->
+        <!-- A home battery's page: its Managed and Power-limit control
+             switches (moved here from Setup by the section layout) and its
+             place in the priority order. Hidden for every other device
+             kind. -->
         <section class="detail-section" id="device-detail-battery-section" hidden>
           <details class="settings-collapse detail-collapse" open>
             <summary>
@@ -1261,11 +1262,14 @@
                   <small class="field__hint pels-text-body" id="device-detail-temperature-control-disabled-smart-task-hint" hidden>Clear this device&rsquo;s active Smart task before changing how PELS handles its temperature.</small>
                 </div>
 
-                <div class="md-switch-row">
+                <!-- Moved into the Battery section, under Managed, on a
+                     battery's page (sectionLayout.ts), with its battery hint. -->
+                <div class="md-switch-row" id="device-detail-controllable-row">
                   <md-switch id="device-detail-controllable"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Power-limit control</span>
-                    <small class="field__hint">Allow PELS to limit this device: to stay under the hard cap, to keep to your daily budget, or to follow your solar surplus.</small>
+                    <small class="field__hint" id="device-detail-controllable-hint">Allow PELS to limit this device: to stay under the hard cap, to keep to your daily budget, or to follow your solar surplus.</small>
+                    <small class="field__hint" id="device-detail-controllable-battery-hint" hidden>PELS may cap its charge and call on it to hold your limit when its turn comes in your priority order.</small>
                   </span>
                 </div>
 

@@ -159,15 +159,19 @@ describe('buildDecisionSentence', () => {
     };
 
     it('names a battery PELS holds for relief that is supplying', () => {
-      expect(named('relief', -2400)).toBe('Sessy battery is supplying 2.4 kW to hold your limit.');
+      expect(named({ kind: 'relief' }, -2400)).toBe('Sessy battery is supplying 2.4 kW to hold your limit.');
+    });
+
+    it('does not name a battery whose charge PELS caps', () => {
+      expect(named({ kind: 'charge_limit', heldBackKw: 2 }, -2400)).toBe('Quiet hour. Nothing to do.');
     });
 
     it('does not name a battery held for surplus that is discharging', () => {
-      expect(named('surplus', -2400)).toBe('Quiet hour. Nothing to do.');
+      expect(named({ kind: 'surplus' }, -2400)).toBe('Quiet hour. Nothing to do.');
     });
 
     it('does not name a battery in its own mode that is discharging', () => {
-      expect(named('none', -2400)).toBe('Quiet hour. Nothing to do.');
+      expect(named({ kind: 'none' }, -2400)).toBe('Quiet hour. Nothing to do.');
     });
   });
 

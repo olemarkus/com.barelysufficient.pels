@@ -2,10 +2,12 @@
  * Plan assembly pipeline. One `buildDevicePlanSnapshot` call turns the live
  * device inputs into a `DevicePlan` through fixed stages: deferred-objective
  * decoration → plan context (the cycle's limits) → measurement → surplus
- * allocation (`planSurplusAbsorb.ts`) → storage relief and charge
- * (`battery/storageRelief.ts`) → shedding selection → standing-posture holds →
- * initial device materialization → restore →
- * shed-temperature hold → reason normalization → finalization, followed by
+ * allocation (`planSurplusAbsorb.ts`) → the batteries' holds and surplus
+ * charge (`battery/storageRelief.ts`) → shedding selection, a battery ranked
+ * among the devices → the battery limits it chose (`battery/storageLimit.ts`)
+ * → standing-posture holds → initial device materialization → restore, a
+ * battery handed back in priority order → shed-temperature hold → reason
+ * normalization → finalization, followed by
  * overshoot bookkeeping, plan meta, and diagnostics observation. The builder
  * mutates the shared `PlanEngineState` (cooldown clocks, overshoot tracking,
  * shed-decision stamps) but performs no actuation — every device write
@@ -54,6 +56,7 @@ import {
   withoutStorageWithheld,
   type StorageRelief,
 } from './battery/storageRelief';
+import { applyStorageHandBacks, applyStorageLimits } from './battery/storageLimit';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
 import { resolveShortfallOffState } from './planOffStateReason';
 import {
@@ -65,6 +68,7 @@ import {
 import { resolveSurplusEligibility, type SurplusLeftover } from './planSurplusAbsorb';
 import { sumBudgetExemptProjectedUsageKw, toMeteredUsageDevices } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
+import type { RestorePlanResult } from './restore';
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { incPerfCounter } from '../utils/perfCounters';
@@ -248,13 +252,12 @@ export class PlanBuilder {
     // allocator and the hold so the two can never disagree.
     const postureExcludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
     const surplus = this.allocateSurplus(context, power, postureExcludeIds, nowTs);
-    const { sheddingPlan, overshootDecision, storageRelief } = await this.decideShedding(
-      context, power, surplus, shortfallBudgetThresholdKw, nowTs,
-    );
     // Restore and admission never spend the discharge PELS holds, nor a charge
-    // increase not measured yet: the battery protects what is running, it does
-    // not make room for more.
-    const admissionPower = withoutStorageWithheld(power, storageRelief);
+    // increase not measured yet (`admissionPower`): the battery protects what
+    // is running, it does not make room for more.
+    const {
+      sheddingPlan, overshootDecision, storageRelief: limitedStorage, admissionPower,
+    } = await this.decideShedding(context, power, surplus, shortfallBudgetThresholdKw, nowTs);
     // The "Run on solar surplus" dump-load hold + the post-shedding hold
     // merges; returns the dump-load reason map for reason normalization.
     const postureHolds = trackPlanStage('plan_posture_holds_ms', () => runStandingPostureHolds({
@@ -281,6 +284,7 @@ export class PlanBuilder {
       planDevices, heldContext, admissionPower, sheddingPlan,
     );
     planDevices = restoreResult.planDevices;
+    const storageRelief = this.handBackStorage(limitedStorage, restoreResult, power, surplus);
 
     const holdResult = this.stages.applyHoldPlan(
       planDevices,
@@ -409,20 +413,25 @@ export class PlanBuilder {
     surplus: SurplusLeftover,
     shortfallBudgetThresholdKw: number,
     nowTs: number,
-  ): Promise<{ sheddingPlan: SheddingPlan; overshootDecision: SoftOvershootDecision; storageRelief: StorageRelief }> {
-    // Storage relief BEFORE shedding selection: a home battery spends stored
-    // energy against the deficit first, and with no deficit stores what the
-    // willing devices left of the surplus (`lib/plan/battery/storageRelief.ts`).
-    // Its credit is a decision, not a measurement: shedding and the overshoot
-    // grace that gates it count it as their own term, and everything else keeps
-    // the measured draw.
-    const storageRelief = this.deps.getCapacityDryRun()
+  ): Promise<{
+    sheddingPlan: SheddingPlan;
+    overshootDecision: SoftOvershootDecision;
+    storageRelief: StorageRelief;
+    admissionPower: MeasuredPower;
+  }> {
+    // The batteries' holds as this reading leaves them, and the surplus a
+    // battery stores (`lib/plan/battery/storageRelief.ts`). A held discharge
+    // still settling is credited as a decision, not a measurement: shedding and
+    // the overshoot grace that gates it count it as their own term, and
+    // everything else keeps the measured draw. Whether a battery is limited
+    // further is shedding's choice, at its place in the priority order.
+    const heldStorage = this.deps.getCapacityDryRun()
       ? NO_STORAGE_RELIEF
       : decideStorageRelief(context.devices, power, this.state.storageLeverByDevice, surplus, nowTs);
-    this.state.storageLeverByDevice = storageRelief.levers;
-    this.logStorageRelief(storageRelief, power, surplus);
+    // Shedding prices a held battery from its hold.
+    this.state.storageLeverByDevice = heldStorage.levers;
     const overshootDecision = this.state.overshoot.decideSoft(
-      power.headroomKw + storageRelief.shed.netCreditKw,
+      power.headroomKw + heldStorage.shed.netCreditKw,
       // Stamped by `stampCapacityPace` in `resolvePlanLimits`, from the same
       // hourly budget the soft limit itself is paced against.
       this.state.hourlyRemainingKWh,
@@ -444,12 +453,35 @@ export class PlanBuilder {
       'plan_shedding_ms',
       () => buildSheddingPlan(
         context, power, this.state, buildSheddingDeps(this.deps, shortfallBudgetThresholdKw),
-        overshootDecision, nowTs, storageRelief.shed,
+        overshootDecision, nowTs, heldStorage.shed,
       ),
     );
     this.applySheddingOutcome(sheddingPlan);
+    // The battery limits shedding chose at their place in the priority order.
+    // The restore lane reads the holds next, to hand back in that order.
+    const storageRelief = applyStorageLimits(heldStorage, context.devices, sheddingPlan.storageSetpoints, nowTs);
+    this.state.storageLeverByDevice = storageRelief.levers;
 
-    return { sheddingPlan, overshootDecision, storageRelief };
+    return {
+      sheddingPlan, overshootDecision, storageRelief, admissionPower: withoutStorageWithheld(power, storageRelief),
+    };
+  }
+
+  /**
+   * Release the battery limit holds the restore pass handed back. The restore
+   * clocks are stamped by the executor's storage lane once the owner has
+   * actually handed the battery back, as a confirmed load restore is.
+   */
+  private handBackStorage(
+    limitedStorage: StorageRelief,
+    restoreResult: RestorePlanResult,
+    power: MeasuredPower,
+    surplus: SurplusLeftover,
+  ): StorageRelief {
+    const storageRelief = applyStorageHandBacks(limitedStorage, restoreResult.storageHandedBack);
+    this.state.storageLeverByDevice = storageRelief.levers;
+    this.logStorageRelief(storageRelief, power, surplus);
+    return storageRelief;
   }
 
   /**
@@ -473,7 +505,7 @@ export class PlanBuilder {
     // leftover that moved by a step of `STORAGE_LOG_LEFTOVER_STEP_W`; never in
     // a home without a battery, and once when the last one leaves the plan.
     const stateKey = relief.batteries.length === 0 ? '' : JSON.stringify({
-      batteries: relief.batteries.map(({ creditW: _creditW, ...battery }) => battery),
+      batteries: relief.batteries.map(({ creditW: _creditW, withheldW: _withheldW, ...battery }) => battery),
       deviceDemand: surplus.deviceDemand,
       leftoverStep: Math.round(surplus.leftoverW / STORAGE_LOG_LEFTOVER_STEP_W),
     });

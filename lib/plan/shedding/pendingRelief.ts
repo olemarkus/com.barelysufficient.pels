@@ -73,6 +73,13 @@
  * latch the pass commits; a later rise in the reading, or the device coming
  * back, cannot revive it.
  *
+ * A home battery chosen to cap its charge is credited here like any device:
+ * its own signed power shows the charge falling, so its undelivered relief is
+ * its charge above the setpoint PELS holds it at (`StorageLeverState`). Only
+ * the charge it stops is banked here; a discharge it was asked for is the
+ * storage term's credit (`StorageShedTerm`), so the two never count one watt
+ * twice. A battery PELS no longer holds, or cannot read, has nothing to credit.
+ *
  * This is bookkeeping about the planner's own decisions, not a settle verdict:
  * nothing here says whether a write landed, and no settle tolerance or timing is
  * applied to the device's reading; the one allowance is the mains-voltage one on
@@ -80,14 +87,18 @@
  * executor still owns settle.
  */
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import type { ShedLatchDecision, ShedPlanLatch } from '../planState';
+import type { ShedLatchDecision, ShedPlanLatch, StorageLeverState } from '../planState';
 import type { MeteredPlanInputDevice, PlanInputDevice, SteppedPlanInputDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { isSteppedLoadDevice, isSteppedLoadStepBelow, resolveSteppedLoadPlanningKw } from '../planSteppedLoad';
 import { getSteppedLoadStep, sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import type { ShedSelection } from './selection';
 import { chooseShedRung } from './steppedCandidates';
-import type { ShedCandidate, SteppedShedCandidate } from './types';
+import type { ShedCandidate, StorageSetpoint, SteppedShedCandidate } from './types';
+import { hasStorageInput } from '../battery/storageLadder';
+
+/** The holds PELS keeps on home batteries (`PlanEngineState.storageLeverByDevice`). */
+type StorageLevers = Readonly<Record<string, StorageLeverState>>;
 
 /**
  * How long a shed's relief is credited against readings that do not show it.
@@ -175,6 +186,7 @@ export function resolvePendingShedRelief(
   devices: readonly PlanInputDevice[],
   powerW: number | null,
   nowTs: number,
+  storageLevers: StorageLevers,
 ): PendingShedRelief | null {
   if (latch === null || powerW === null) return null;
   const devicesById = new Map(devices.map((device) => [device.id, device]));
@@ -183,9 +195,12 @@ export function resolvePendingShedRelief(
   // decisions. Accepted — there is nothing left to read the claim from.
   const shares = [...latch.decisions].flatMap(([deviceId, decisions]) => {
     const device = devicesById.get(deviceId);
+    const taken = decisions.filter((decision) => decision.decidedAtMs <= nowTs);
+    const storageUndeliveredKw = resolveStorageUndeliveredKw(device, storageLevers[deviceId]);
+    if (storageUndeliveredKw === 'gone') return [];
+    if (storageUndeliveredKw !== 'not_storage') return splitDeviceRelief(deviceId, taken, storageUndeliveredKw);
     const stepId = latch.stepTargets.get(deviceId);
     if (!isStillDecidable(device, stepId)) return [];
-    const taken = decisions.filter((decision) => decision.decidedAtMs <= nowTs);
     return splitDeviceRelief(deviceId, taken, resolveUndeliveredReliefKw(device, stepId));
   });
   const realisedKw = (latch.powerW - powerW) / 1000;
@@ -241,6 +256,22 @@ export function resolvePendingShedRelief(
     deliveredKw: sumKw(liveShares.map((share) => share.deliveredKw)),
     realisedKw,
   };
+}
+
+/**
+ * A home battery's charge above the setpoint PELS holds it at, kW, by its own
+ * signed power. `gone` for a battery PELS no longer holds, or cannot read: its
+ * decision has nothing left to credit and is dropped, like a load that left
+ * the snapshot. `not_storage` for a load, whose decision
+ * `resolveUndeliveredReliefKw` prices.
+ */
+function resolveStorageUndeliveredKw(
+  device: PlanInputDevice | undefined,
+  lever: StorageLeverState | undefined,
+): number | 'gone' | 'not_storage' {
+  if (device === undefined || !hasStorageInput(device)) return 'not_storage';
+  if (lever === undefined || device.storage.reading !== 'observed') return 'gone';
+  return Math.max(0, device.storage.signedPowerW - Math.max(0, lever.setpointW)) / 1000;
 }
 
 function isWithinWindow(decision: ShedLatchDecision, nowTs: number): boolean {
@@ -433,13 +464,17 @@ export function holdPendingShedDecision(
   const shedReasons = new Map<string, DeviceReason>();
   const shedStepTargets = new Map<string, string>();
   for (const candidate of candidates) {
-    if (!pending.held.has(candidate.id)) continue;
+    // A held battery stays where its hold puts it: the hold itself persists
+    // (`StorageLeverState`) until the restore lane hands it back.
+    if (!pending.held.has(candidate.id) || candidate.kind === 'storage') continue;
     shedSet.add(candidate.id);
     shedReasons.set(candidate.id, reason);
     const heldStepId = resolveHeldStepId(candidate, pending.latch);
     if (heldStepId !== undefined) shedStepTargets.set(candidate.id, heldStepId);
   }
-  return { shedSet, shedReasons, shedStepTargets };
+  return {
+    shedSet, shedReasons, shedStepTargets, storageSetpoints: new Map<string, StorageSetpoint>(),
+  };
 }
 
 /**
@@ -454,6 +489,9 @@ export function holdPendingShedDecision(
  * watts are neither credited nor offered net, and it escalates as such a
  * command always has.
  *
+ * A held battery is priced from the setpoint it is held at already
+ * (`StorageShedCandidate.baseW`), so what it offers is net by construction.
+ *
  * Kept in this cycle's ranking order. The ranking keys a held device on its
  * meter-priced relief, which over-states what is left below its rung; that can
  * only move it ahead of an equal-priority candidate, and what it is then spent
@@ -465,7 +503,7 @@ export function candidatesBeyondPendingRelief(
 ): ShedCandidate[] {
   return candidates.flatMap((candidate): ShedCandidate[] => {
     const heldDecisions = pending.held.get(candidate.id);
-    if (heldDecisions === undefined) return [candidate];
+    if (heldDecisions === undefined || candidate.kind === 'storage') return [candidate];
     const bankedKw = sumKw(heldDecisions.map((decision) => decision.creditedKw));
     if (candidate.kind !== 'stepped' || bankedKw <= 0) return [];
     const heldStepId = resolveHeldStepId(candidate, pending.latch);
@@ -554,7 +592,9 @@ export function latchShedDecision(
     deviceId, standing.map(({ decidedAtMs, creditedKw }) => ({ decidedAtMs, creditedKw })),
   ] as const));
   const stepTargets = new Map<string, string>(carried?.retained.stepTargets ?? []);
-  for (const deviceId of chosen.shedSet) {
+  // A battery chosen is latched like a shed device: its stopped charge is what it banked.
+  const chosenIds = [...chosen.shedSet, ...chosen.storageSetpoints.keys()];
+  for (const deviceId of chosenIds) {
     const standing = decisions.get(deviceId) ?? [];
     const newest = standing[standing.length - 1];
     const newKw = chosen.creditedKw.get(deviceId) ?? 0;

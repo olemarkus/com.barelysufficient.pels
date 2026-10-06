@@ -4,7 +4,9 @@ import type { MeasuredPower, PlanContext } from '../planContext';
 import {
   getOnDevices,
   getRestoreCandidates,
+  getStorageHandBackCandidates,
   markOffDevicesStayOff,
+  sortRestoreCandidates,
 } from './devices';
 import {
   markSteppedDevicesStayAtCurrentLevel,
@@ -85,6 +87,7 @@ export function applyRestorePlan(params: {
   swapLedger.reconcile(deviceMap, timing.nowTs, laneServes, deps.structuredLog);
 
   const restoredThisCycle = new Set<string>();
+  const storageHandedBack = new Set<string>();
   const ledger = buildCycleHeadroomLedger(power);
   let restoredOneThisCycle = false;
   const batchState = buildRestoreBatchState({
@@ -101,6 +104,8 @@ export function applyRestorePlan(params: {
     swapLedger,
     timing: effectiveTiming,
     restoredThisCycle,
+    storageHandedBack,
+    storageHandBackWaitingAt: new Set<number>(),
     headroomReserves,
     batchState,
     phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
@@ -143,6 +148,7 @@ export function applyRestorePlan(params: {
   return {
     planDevices: Array.from(deviceMap.values()),
     restoredThisCycle,
+    storageHandedBack,
     availableHeadroom: ledger.summaryAvailableKw(),
     ...ledger.axes(),
     headroomReserves,
@@ -209,7 +215,12 @@ function applyFullRestorePass(
   const { deviceMap, deps } = cycle;
   let restoredOneThisCycle = restoredOne;
   const snapshot = Array.from(deviceMap.values());
-  const restoreCandidates = getRestoreCandidates(snapshot, cycle.state.shedDecisions);
+  // A battery PELS holds for the limit is handed back here, at its place in
+  // the same priority order (`storageHandBack.ts`).
+  const restoreCandidates = sortRestoreCandidates([
+    ...getRestoreCandidates(snapshot, cycle.state.shedDecisions),
+    ...getStorageHandBackCandidates(snapshot, cycle.state.storageLeverByDevice),
+  ]);
   const onDevices = getOnDevices(snapshot, deps.getShedBehavior, deps.temperatureSetpoints);
   const lane: RestoreLane = {
     onDevices,

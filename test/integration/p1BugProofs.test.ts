@@ -216,6 +216,7 @@ describe('P1 bug proofs', () => {
         shedSet: new Set(['shed']),
         shedReasons: new Map(),
         shedStepTargets: new Map(),
+        storageSetpoints: new Map(),
         outcome: NO_SHEDDING_OUTCOME,
         overshootStats: null,
         pendingReliefKw: 0,

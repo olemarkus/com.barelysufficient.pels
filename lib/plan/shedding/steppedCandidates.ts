@@ -55,7 +55,7 @@ import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ShedCandidateSkipRecorder } from './candidateSkipLog';
-import { type PricedShedRung, type ShedCandidate, type SheddingDeps } from './types';
+import { type PricedShedRung, type LoadShedCandidate, type SheddingDeps } from './types';
 
 /**
  * `no_reachable_step` and `no_relief` are deliberately distinct: the first means
@@ -251,7 +251,7 @@ type SteppedCandidateParams = {
   recorder?: ShedCandidateSkipRecorder;
 };
 
-export function buildSteppedCandidate(params: SteppedCandidateParams): ShedCandidate | null {
+export function buildSteppedCandidate(params: SteppedCandidateParams): LoadShedCandidate | null {
   const { device, temperatureSetpoints, getShedBehavior, recorder } = params;
   if (!isSteppedLoadDevice(device)) return null;
   // `currentDrawKw === 0` means the device is drawing nothing. The reason code
@@ -276,7 +276,7 @@ export function buildSteppedCandidate(params: SteppedCandidateParams): ShedCandi
 function buildSteppedTemperatureCandidate(
   params: SteppedCandidateParams,
   shedTemperature: number,
-): ShedCandidate | null {
+): LoadShedCandidate | null {
   const { device, priority, recentlyRestored, state, recorder } = params;
   const target = device.targets?.[0];
   if (!target?.id) {
@@ -297,7 +297,7 @@ function buildSteppedTemperatureCandidate(
 function buildSteppedStepDownCandidate(
   params: SteppedCandidateParams,
   shedAction: 'turn_off' | 'set_step',
-): ShedCandidate | null {
+): LoadShedCandidate | null {
   const { device, devices, priority, recentlyRestored, neededKw, state, recorder } = params;
   if (!isSteppedLoadDevice(device)) return null;
   const profile = device.steppedLoadProfile;
@@ -392,7 +392,7 @@ function buildSteppedNoRungFallbackCandidate(args: {
   params: SteppedCandidateParams;
   shedAction: 'turn_off' | 'set_step';
   targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>;
-}): ShedCandidate | null {
+}): LoadShedCandidate | null {
   const { params, shedAction, targetStep } = args;
   const { device, priority, recentlyRestored, pendingBinaryCommandStore, recorder } = params;
   if (!isSteppedLoadDevice(device)) return null;
@@ -429,7 +429,7 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   recentlyRestored: boolean;
   shedAction: 'turn_off' | 'set_step';
   pendingBinaryCommandStore: PendingBinaryCommandStore;
-}): ShedCandidate | null {
+}): LoadShedCandidate | null {
   const {
     device,
     steppedProfile,

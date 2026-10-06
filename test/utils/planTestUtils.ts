@@ -878,7 +878,7 @@ export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): Dev
     // is an ordinary commandable load.
     isEvCharger: overrides.isEvCharger ?? false,
     isBatteryOrSolar: overrides.isBatteryOrSolar ?? false,
-    storageHold: overrides.storageHold ?? 'none',
+    storageHold: overrides.storageHold ?? { kind: 'none' },
     // The plan device's one boost truth, REQUIRED for the same reason: the
     // planner resolves it for every device, so a fixture that omits it would let
     // a consumer read absence as "not boosting" — which is a decision, not a gap.
@@ -1381,6 +1381,7 @@ export const sheddingPlanFixture = (overrides: Partial<SheddingPlan> = {}): Shed
   shedSet: new Set<string>(),
   shedReasons: new Map<string, DeviceReason>(),
   shedStepTargets: new Map<string, string>(),
+  storageSetpoints: new Map(),
   sheddingActive: false,
   guardInShortfall: false,
   outcome: NO_SHEDDING_OUTCOME,

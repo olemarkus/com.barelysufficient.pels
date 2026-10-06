@@ -19,7 +19,7 @@ import { isCanSetControl } from '../../device/deviceActionProjection';
 import type { ShedCandidateSkipRecorder } from './candidateSkipLog';
 import {
   type BinaryShedCandidate,
-  type ShedCandidate,
+  type LoadShedCandidate,
   type TemperatureShedCandidate,
 } from './types';
 import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
@@ -102,7 +102,7 @@ export function buildTemperatureCandidate(params: {
   };
 }
 
-function isNotAtShedTemperature(device: ShedCandidate): boolean {
+function isNotAtShedTemperature(device: LoadShedCandidate): boolean {
   if (device.kind !== 'temperature') return true;
   // The setpoint truth is the narrowed `currentTarget` (atomic facet), not a
   // re-derivation from the raw `targets` metadata list.
@@ -120,7 +120,7 @@ function isNotAtShedTemperature(device: ShedCandidate): boolean {
  * resolved before the planner (`ResolvedShedBehavior.releasesDemand`); the
  * at-limit case is recorded as its own skip first.
  */
-function limitWouldAddDemand(device: ShedCandidate, temperatureSetpoints: TemperatureSetpointsByDevice): boolean {
+function limitWouldAddDemand(device: LoadShedCandidate, temperatureSetpoints: TemperatureSetpointsByDevice): boolean {
   if (device.kind !== 'temperature' || !isTemperaturePlanDevice(device)) return false;
   const { shed } = temperatureSetpointsFor(temperatureSetpoints, device.id);
   return shed.action === 'set_temperature' && !shed.releasesDemand;
@@ -131,7 +131,7 @@ function limitWouldAddDemand(device: ShedCandidate, temperatureSetpoints: Temper
  * recorded as its own skip so the counters say which. True when skipped.
  */
 export function recordSetpointShedSkip(
-  candidate: ShedCandidate,
+  candidate: LoadShedCandidate,
   device: MeteredPlanInputDevice,
   temperatureSetpoints: TemperatureSetpointsByDevice,
   recorder: ShedCandidateSkipRecorder,

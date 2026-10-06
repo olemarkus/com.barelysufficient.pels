@@ -40,7 +40,7 @@ const buildPlanDevice = (
   deviceType: 'temperature' as const,
   isEvCharger: false,
   isBatteryOrSolar: false,
-  storageHold: 'none' as const,
+  storageHold: { kind: 'none' as const },
   currentState: 'on',
   plannedState: 'keep' as const,
   currentTarget,

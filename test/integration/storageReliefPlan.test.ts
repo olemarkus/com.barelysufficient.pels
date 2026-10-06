@@ -1,7 +1,9 @@
-// Planner-layer cover for home-battery storage relief: the battery spends
-// stored energy against the deficit BEFORE shedding selection, and without a
-// usable battery the shed is exactly what it is today. Drives the real
-// `PlanBuilder` end to end; only its outward seams are fixtures.
+// Planner-layer cover for the home battery as a ranked limiting candidate
+// (owner ruling, 2026-10-06): its charge is capped and then it discharges at
+// its own place in the priority order, it is handed back by the restore lane
+// in that order, and without a usable battery the shed is exactly what it is
+// today. Drives the real `PlanBuilder` end to end; only its outward seams are
+// fixtures.
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
@@ -14,40 +16,51 @@ import type {
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { hasStorageDecision, type StorageDecision } from '../../lib/planContract/storageDecision';
 import {
-  STORAGE_IDLE_RELEASE_MS,
   STORAGE_INPUT_MISSING_RELEASE_MS,
-  STORAGE_RELIEF_SETTLE_WINDOW_MS,
   STORAGE_SURPLUS_RELEASE_DWELL_MS,
 } from '../../lib/plan/battery/storageRelief';
+import { STORAGE_RELIEF_SETTLE_WINDOW_MS } from '../../lib/plan/battery/storageLadder';
 import { DELIVERY_CEILING_TTL_MS } from '../../lib/battery/batteryVerification';
 import { SURPLUS_ABSORB_SETTLE_MS } from '../../lib/plan/admission/surplusAbsorb';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { Logger } from '../../lib/logging/logger';
+import type { StorageLeverState } from '../../lib/plan/planState';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 9, 5, 12, 10, 0);
 const HOUR_KEY = new Date(Date.UTC(2026, 9, 5, 12, 0, 0)).toISOString();
 
-const heater = (on = true, kw = 2, id = 'heater'): PlanInputDevice => buildPlanInputDevice({
+const heater = (on = true, kw = 2, id = 'heater', priority = 1): PlanInputDevice => buildPlanInputDevice({
   id,
   name: id,
   controllable: true,
   binaryControl: { on },
   currentDrawKw: on ? kw : 0,
   expectedPowerKw: kw,
+  priority,
 });
 
-const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice & StoragePlanInputKind => ({
+/** Last in the priority order by default: it is limited first. */
+const BATTERY_LAST = 10;
+
+const battery = (
+  overrides: Partial<ObservedStorageInput> = {},
+  placement: { priority?: number; managed?: boolean } = {},
+): PlanInputDevice & StoragePlanInputKind => ({
   ...buildPlanInputDevice({
     id: 'battery',
     name: 'Battery',
     isBatteryOrSolar: true,
     commandAuthority: false,
+    managed: placement.managed ?? true,
     binaryControllable: false,
     currentDrawKw: 0,
+    priority: placement.priority ?? BATTERY_LAST,
   }),
   storage: {
     reading: 'observed',
@@ -60,6 +73,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
     verdict: 'unverified',
     deliveryCeilingW: 2500,
     chargeCeilingW: 2500,
+    powerLimitControl: true,
     ...overrides,
   },
 });
@@ -90,6 +104,28 @@ const steppedTank = (stepId: string, drawKw: number): PlanInputDevice => buildPl
   reportedStepId: stepId,
   currentDrawKw: drawKw,
   expectedPowerKw: 3,
+} as Parameters<typeof buildPlanInputDevice>[0]);
+
+/** A water heater stepped Off / Low / Medium / Max, running at Max, ranked first. */
+const tankAtMax = (): PlanInputDevice => buildPlanInputDevice({
+  id: 'tank',
+  name: 'tank',
+  controllable: true,
+  currentOn: true,
+  commandableNow: true,
+  steppedLoadProfile: {
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: 1250 },
+      { id: 'medium', planningPowerW: 1750 },
+      { id: 'max', planningPowerW: 3000 },
+    ],
+  },
+  selectedStepId: 'max',
+  reportedStepId: 'max',
+  currentDrawKw: 3,
+  expectedPowerKw: 3,
+  priority: 1,
 } as Parameters<typeof buildPlanInputDevice>[0]);
 
 /** An on/off load that runs only on solar surplus (the producer's `surplusOnly` posture), 1 kW unless said. */
@@ -153,6 +189,13 @@ type Scenario = {
 
 const buildHarness = (scenario: Scenario) => {
   const state = createPlanEngineState();
+  const info = vi.fn();
+  /** The storage term shedding counted, kW, as the last build logged it (0 when it logged none). */
+  const lastShedTermKw = (): number => {
+    const calls = info.mock.calls.map(([event]) => event as { event?: string; netCreditKw?: number });
+    const last = calls.filter((event) => event.event === 'storage_relief_shed_term').at(-1);
+    return last?.netCreditKw ?? 0;
+  };
   const tracker: PowerTrackerState = {
     lastTimestamp: START_MS,
     lastPowerW: 0,
@@ -179,6 +222,7 @@ const buildHarness = (scenario: Scenario) => {
     getDynamicSoftLimitOverride: () => scenario.paceKw,
     getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
+    structuredLog: { info } as unknown as Logger,
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
     decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, state);
@@ -187,9 +231,10 @@ const buildHarness = (scenario: Scenario) => {
     vi.setSystemTime(new Date(START_MS + afterMs));
     tracker.lastTimestamp = START_MS + afterMs;
     tracker.lastPowerW = houseW;
+    info.mockClear();
     return builder.buildDevicePlanSnapshot(devices);
   };
-  return { build, state };
+  return { build, state, lastShedTermKw };
 };
 
 const plannedState = (plan: DevicePlan, id: string): string | undefined => (
@@ -227,21 +272,232 @@ describe('storage relief in the plan build', () => {
     vi.useRealTimers();
   });
 
-  it('covers the deficit with the battery and sheds nothing', async () => {
+  it('last in the order (the default), covers the deficit with the battery and sheds nothing', async () => {
     const { build } = buildHarness({ paceKw: 3 });
     const plan = await build(4200, [heater(), battery()]);
 
     // The 1.2 kW deficit, plus half the 200 W deadband as the increase's hysteresis.
     expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });
     expect(plannedState(plan, 'heater')).toBe('keep');
+    // Never a shed: the executor sees only its storage decision.
+    expect(plan.devices.find((device) => device.id === 'battery')?.plannedState).not.toBe('shed');
   });
 
-  it('sheds the heater once a battery that never moved stops being credited', async () => {
+  it('first in the order, limits the devices below it first and discharges only for what they leave', async () => {
     const { build } = buildHarness({ paceKw: 3 });
+    // A 3 kW deficit: the 2 kW heater ranked below it goes first, the battery covers the rest.
+    const plan = await build(6000, [heater(true, 2, 'heater', 5), battery({}, { priority: 1 })]);
+
+    expect(plannedState(plan, 'heater')).toBe('shed');
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1100, stepW: 5 });
+  });
+
+  it('first in the order, is not touched while the devices below it cover the deficit', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    const plan = await build(4200, [heater(true, 2, 'heater', 5), battery({ signedPowerW: 1500 }, { priority: 1 })]);
+
+    expect(plannedState(plan, 'heater')).toBe('shed');
+    expect(storageDecision(plan)).toBeUndefined();
+  });
+
+  it('caps part of a charging battery\'s charge for a deficit its charge covers', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    const plan = await build(3800, [heater(), battery({ signedPowerW: 2000 })]);
+
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 1100, stepW: 5 });
+    expect(plannedState(plan, 'heater')).toBe('keep');
+    const card = plan.devices.find((device) => device.id === 'battery');
+    expect(card?.storageHold).toEqual({ kind: 'charge_limit', heldBackKw: 0.9 });
+  });
+
+  it('caps a charging battery\'s charge and discharges in one cycle for a deficit beyond it', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    const plan = await build(5200, [heater(), battery({ signedPowerW: 1000 })]);
+
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });
+    expect(plannedState(plan, 'heater')).toBe('keep');
+  });
+
+  it('sheds the heater once a battery that never moved stops being credited, and never credits it again', async () => {
+    const { build, lastShedTermKw } = buildHarness({ paceKw: 3 });
     await build(4200, [heater(), battery()]);
     const lapsed = await build(4200, [heater(), battery()], STORAGE_RELIEF_SETTLE_WINDOW_MS);
-
     expect(plannedState(lapsed, 'heater')).toBe('shed');
+    // Held where it was, not asked deeper: one write, not one per reading.
+    expect(storageDecision(lapsed)).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });
+
+    // Asked again unbanked, it opens no new credit window.
+    const after = await build(4200, [heater(), battery()], STORAGE_RELIEF_SETTLE_WINDOW_MS + 5_000);
+    expect(plannedState(after, 'heater')).toBe('shed');
+    expect(lastShedTermKw()).toBe(0);
+    expect(storageDecision(after)).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });
+  });
+
+  it('limits a battery ranked last during the shed grace, while the devices wait it out', async () => {
+    const { build, state } = buildHarness({ paceKw: 3 });
+    // A restore PELS made a moment ago may still be ramping: devices get the grace.
+    state.activationAttemptByDevice.heater = {
+      startedMs: START_MS - 10_000, source: 'pels_restore', cleanWholeHomeSampleSeen: false,
+    };
+    const plan = await build(4200, [heater(), battery()]);
+
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });
+    expect(plannedState(plan, 'heater')).toBe('keep');
+  });
+
+  it.each([
+    ['', false],
+    [' during the shed grace', true],
+  ])('limits a battery ranked last before stepping down a tank whose upper rung covers the deficit%s', async (_label, grace) => {
+    const { build, state } = buildHarness({ paceKw: 3 });
+    if (grace) {
+      state.activationAttemptByDevice.tank = {
+        startedMs: START_MS - 10_000, source: 'pels_restore', cleanWholeHomeSampleSeen: false,
+      };
+    }
+    // Max to Medium (1.25 kW) would cover the 1.2 kW deficit, but the tank ranks above the battery.
+    const plan = await build(4200, [tankAtMax(), battery()]);
+
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });
+    expect(plannedState(plan, 'tank')).toBe('keep');
+    expect(plan.devices.find((device) => device.id === 'tank')?.desiredStepId).not.toBe('medium');
+  });
+
+  it('decides a grace cycle with a battery that has nothing to give exactly as without one', async () => {
+    const shed = async (withBattery: boolean) => {
+      const harness = buildHarness({ paceKw: 3 });
+      harness.state.activationAttemptByDevice.heater = {
+        startedMs: START_MS - 10_000, source: 'pels_restore', cleanWholeHomeSampleSeen: false,
+      };
+      // Flat: drivable, but its ladder releases nothing.
+      const plan = await harness.build(4200, [heater(), ...(withBattery ? [battery({ deliveryCeilingW: 0 })] : [])]);
+      return {
+        heater: plan.devices.find((device) => device.id === 'heater'),
+        latch: harness.state.shedPlanLatch,
+        sheddingActive: harness.state.sheddingActive,
+        lastShedPlanMeasurementTs: harness.state.lastShedPlanMeasurementTs,
+        restoreBackoff: JSON.stringify(harness.state.restoreBackoff),
+        overshoot: JSON.stringify(harness.state.overshoot),
+      };
+    };
+    expect(await shed(true)).toEqual(await shed(false));
+  });
+
+  it('hands back promptly a battery that was discharging in its own mode, so restores below it are not starved', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    const devices = (lampOn: boolean, batteryW: number, claimHeld: boolean) => [
+      battery({ signedPowerW: batteryW, claimHeld }, { priority: 1 }), heater(lampOn, 0.5, 'lamp', 5),
+    ];
+    // Its own mode discharges 2 kW; the house still goes over by 1 kW. The lamp
+    // ranked below goes first, then the battery discharges beyond its own mode
+    // (to its 2.5 kW range).
+    const first = await build(4000, devices(true, -2000, false));
+    expect(plannedState(first, 'lamp')).toBe('shed');
+    expect(storageDecision(first)).toEqual({ kind: 'setpoint', setpointW: -2500, stepW: 5 });
+
+    // The house falls under the pace: the discharge steps down, never below its
+    // own mode's, and the battery goes back to its own mode at once.
+    let plan = await build(2200, devices(false, -2500, true), 6 * 60_000);
+    let atMs = 6 * 60_000;
+    while (storageDecision(plan)?.kind === 'setpoint' && atMs < 12 * 60_000) {
+      const decision = storageDecision(plan);
+      const heldW = decision?.kind === 'setpoint' ? decision.setpointW : 0;
+      expect(heldW).toBeLessThanOrEqual(-2000);
+      atMs += 60_000;
+      plan = await build(2200 - (heldW + 2500), devices(false, heldW, true), atMs);
+    }
+    expect(storageDecision(plan)).toEqual({ kind: 'release', reason: 'idle' });
+
+    // In its own mode it covers the house again, and the lamp resumes.
+    let lampPlan = plan;
+    for (let step = 1; step <= 6 && plannedState(lampPlan, 'lamp') !== 'keep'; step += 1) {
+      lampPlan = await build(1600, devices(false, -2000, false), atMs + step * 60_000);
+    }
+    expect(plannedState(lampPlan, 'lamp')).toBe('keep');
+  });
+
+  it('limits nothing during the shed grace when a device ranks below the battery', async () => {
+    const { build, state } = buildHarness({ paceKw: 3 });
+    state.activationAttemptByDevice.heater = {
+      startedMs: START_MS - 10_000, source: 'pels_restore', cleanWholeHomeSampleSeen: false,
+    };
+    const plan = await build(4200, [heater(true, 2, 'heater', 5), battery({}, { priority: 1 })]);
+
+    expect(storageDecision(plan)).toBeUndefined();
+    expect(plannedState(plan, 'heater')).toBe('keep');
+  });
+
+  it('sizes the hand-back of a battery idle at the claim on its charge ceiling, and caps it first when its own mode charges', async () => {
+    const { build } = buildHarness({ paceKw: 5 });
+    await build(6000, [heater(), battery()]);
+    // The discharge steps down; with the heater on there is no room for a
+    // 2.5 kW charge yet.
+    await build(3900, [heater(), battery({ signedPowerW: -1100, claimHeld: true })], 2 * 60_000);
+    const waiting = await build(4000, [heater(), battery({ signedPowerW: 0, claimHeld: true })], 6 * 60_000);
+    expect(storageDecision(waiting)).toMatchObject({ kind: 'setpoint', setpointW: 0 });
+
+    const handedBack = await build(2000, [heater(), battery({ signedPowerW: 0, claimHeld: true })], 9 * 60_000);
+    expect(storageDecision(handedBack)).toEqual({ kind: 'release', reason: 'restored' });
+
+    // Its own mode charges 2.5 kW and the house goes over: the battery's charge
+    // is capped before the heater ranked above it is touched.
+    const charging = await build(5600, [heater(), battery({ signedPowerW: 2500 })], 9 * 60_000 + 10_000);
+    const decision = storageDecision(charging);
+    expect(decision?.kind === 'setpoint' && decision.setpointW > 0 && decision.setpointW < 2500).toBe(true);
+    expect(plannedState(charging, 'heater')).toBe('keep');
+  });
+
+  it('answers an exhausted hour in priority order when the battery covers only part of it', async () => {
+    const { build } = buildHarness({ paceKw: null, limitKw: 5, hourUsedKWh: 6 });
+    const plan = await build(1800, [
+      heater(true, 1.9), heater(true, 0.5, 'pump', 2), heater(true, 0.3, 'lamp', 3), battery({ deliveryCeilingW: 1000 }),
+    ]);
+
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1000, stepW: 5 });
+    expect(plannedState(plan, 'lamp')).toBe('shed');
+    expect(plannedState(plan, 'pump')).toBe('shed');
+    expect(plannedState(plan, 'heater')).toBe('keep');
+  });
+
+  it('answers an exhausted hour in priority order with the battery already at its ceiling', async () => {
+    const { build, state } = buildHarness({ paceKw: null, limitKw: 5, hourUsedKWh: 6 });
+    const atCeiling: StorageLeverState = {
+      setpointW: -1000, purpose: 'limit', increaseDecidedAtMs: START_MS - 60_000, creditBaseW: 0,
+      lastDecreaseAtMs: START_MS - 60_000, chargeRaisedAtMs: START_MS - 60_000, lastNeedAtMs: START_MS - 60_000,
+      preClaimSignedW: 0, ownModeChargeW: 2500, stepW: 5, reading: { kind: 'read' },
+    };
+    state.storageLeverByDevice = { battery: atCeiling };
+    const plan = await build(600, [
+      heater(true, 1.9), heater(true, 0.5, 'pump', 2), heater(true, 0.3, 'lamp', 3),
+      battery({ signedPowerW: -1000, claimHeld: true, deliveryCeilingW: 1000 }),
+    ]);
+
+    // It offers nothing more, and that is no reason to shed everything.
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -1000, stepW: 5 });
+    expect(plannedState(plan, 'lamp')).toBe('shed');
+    expect(plannedState(plan, 'pump')).toBe('shed');
+    expect(plannedState(plan, 'heater')).toBe('keep');
+  });
+
+  it('holds back restores ranked below a battery hand-back that waits for room', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    const devices = (lampOn: boolean, batteryW: number) => [
+      heater(true, 2, 'heater', 1), battery({ signedPowerW: batteryW, claimHeld: batteryW !== 0 }, { priority: 2 }),
+      heater(lampOn, 0.5, 'lamp', 3),
+    ];
+    // The lamp ranked below the battery goes first; the battery covers the rest.
+    const first = await build(6000, devices(true, 0));
+    expect(plannedState(first, 'lamp')).toBe('shed');
+    expect(storageDecision(first)).toMatchObject({ kind: 'setpoint' });
+
+    // Two kilowatts of room: the lamp would fit, the battery's own-mode charge
+    // (its ceiling, 2.5 kW) would not. The lamp waits behind the battery.
+    await build(1000, devices(false, 0), 6 * 60_000);
+    const waiting = await build(1000, devices(false, 0), 9 * 60_000);
+    expect(storageDecision(waiting)).toMatchObject({ kind: 'setpoint' });
+    expect(plannedState(waiting, 'lamp')).toBe('shed');
+    expect(waiting.devices.find((device) => device.id === 'lamp')?.reason)
+      .toEqual({ code: PLAN_REASON_CODES.waitingForOtherDevices });
   });
 
   it.each([
@@ -250,6 +506,9 @@ describe('storage relief in the plan build', () => {
     ['with a battery that is not responding', [battery({ verdict: 'not_responding' })]],
     ['with a battery the owner opted out', [battery({ admissible: false })]],
     ['with an inverted-sign battery', [battery({ verdict: 'sign_inverted' })]],
+    ['with a battery whose Power-limit control is off', [battery({ powerLimitControl: false })]],
+    ['with a battery whose Managed is off', [battery({ admissible: false }, { managed: false })]],
+    ['with a battery whose hand-back is deferred', [battery({ handBackDeferred: true })]],
   ])('sheds exactly as today %s', async (_label, batteries) => {
     const { build } = buildHarness({ paceKw: 3 });
     const plan = await build(4200, [heater(), ...batteries]);
@@ -259,24 +518,52 @@ describe('storage relief in the plan build', () => {
     expect(decision === undefined || decision.kind === 'release').toBe(true);
   });
 
-  it('relieves the daily-budget pace when it binds', async () => {
+  it('builds a byte-identical shed without a battery and beside one PELS may not limit', async () => {
+    const shedOnly = (plan: DevicePlan): string => JSON.stringify({
+      meta: plan.meta,
+      devices: plan.devices.filter((device) => device.id !== 'battery'),
+      storageReleases: plan.storageReleases,
+    });
+    const without = buildHarness({ paceKw: 3 });
+    const beside = buildHarness({ paceKw: 3 });
+    const plain = await without.build(4200, [heater(), heater(true, 0.5, 'lamp', 2)]);
+    const withBattery = await beside.build(
+      4200, [heater(), heater(true, 0.5, 'lamp', 2), battery({ powerLimitControl: false })],
+    );
+
+    expect(shedOnly(withBattery)).toBe(shedOnly(plain));
+    expect(without.state.storageLeverByDevice).toEqual({});
+    expect(beside.state.storageLeverByDevice).toEqual({});
+    expect(without.state.shedPlanLatch).toEqual(beside.state.shedPlanLatch);
+  });
+
+  it('asks a re-probing battery but sheds the next device as without it', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    const plan = await build(4200, [heater(), battery({ verdict: 'reprobing' })]);
+
+    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint' });
+    expect(plannedState(plan, 'heater')).toBe('shed');
+  });
+
+  it('limits the battery for the daily-budget pace when it binds: its grid charge counts like any load', async () => {
     const { build } = buildHarness({ paceKw: null, limitKw: 100, dailyBudget: true });
-    const plan = await build(2500, [heater(), battery()]);
+    const plan = await build(2500, [heater(), battery({ signedPowerW: 1000 })]);
 
     expect(plan.meta.softLimitSource).toBe('daily');
     expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint' });
     expect(plannedState(plan, 'heater')).toBe('keep');
   });
 
-  it('relieves an exhausted hour: only the import it deliberately leaves is shed, not everything', async () => {
+  it('answers an exhausted hour in priority order: the battery covers it and nothing is shed', async () => {
     const { build, state } = buildHarness({ paceKw: null, limitKw: 5, hourUsedKWh: 6 });
-    const devices = [heater(true, 1.9), heater(true, 0.3, 'lamp'), battery()];
+    const devices = [heater(true, 1.9), heater(true, 0.3, 'lamp', 2), battery()];
     const plan = await build(2200, devices);
 
     expect(state.hourlyBudgetExhausted).toBe(true);
-    // The whole draw but half the deadband, so relief never tips into export.
+    // The whole draw but half the deadband, so the limit never tips into export.
     expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: -2100, stepW: 5 });
-    expect([plannedState(plan, 'heater'), plannedState(plan, 'lamp')].filter((s) => s === 'shed')).toHaveLength(1);
+    expect(plannedState(plan, 'heater')).toBe('keep');
+    expect(plannedState(plan, 'lamp')).toBe('keep');
   });
 
   it('still sheds everything in an exhausted hour without a battery', async () => {
@@ -319,13 +606,24 @@ describe('storage relief in the plan build', () => {
     expect(plannedState(plan, 'heater')).toBe('shed');
   });
 
+  it('hands a limited battery back at once, and sheds, when the owner turns Power-limit control off', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    await build(4200, [heater(), battery()]);
+    const limitOff = battery({ signedPowerW: -1300, claimHeld: true, powerLimitControl: false });
+    const plan = await build(2900, [heater(), limitOff], 2 * 60_000);
+
+    expect(storageDecision(plan)).toEqual({ kind: 'release', reason: 'limit_off' });
+    expect(plannedState(plan, 'heater')).toBe('shed');
+  });
+
   it('keeps an unread hold uncredited, then hands it back and sheds in that cycle', async () => {
     const { build } = buildHarness({ paceKw: 3 });
     await build(4200, [heater(), battery()]);
     // The battery delivered, then stopped reporting: no power reading, still held.
     const unread: PlanInputDevice & StoragePlanInputKind = {
       ...buildPlanInputDevice({
-        id: 'battery', name: 'Battery', isBatteryOrSolar: true, commandAuthority: false, binaryControllable: false, unmetered: true,
+        id: 'battery', name: 'Battery', isBatteryOrSolar: true, commandAuthority: false, binaryControllable: false,
+        unmetered: true, priority: BATTERY_LAST,
       }),
       storage: { reading: 'missing', handBackDeferred: false, claimHeld: true, admissible: true },
     };
@@ -358,21 +656,64 @@ describe('storage relief in the plan build', () => {
     expect(changes).toBeLessThanOrEqual(3);
   });
 
-  it('steps down on headroom and hands the battery back after ten idle minutes', async () => {
-    const { build } = buildHarness({ paceKw: 3 });
+  it('steps a held discharge down on headroom, then hands the battery back through restore', async () => {
+    const { build, state } = buildHarness({ paceKw: 3 });
     await build(4200, [heater(), battery()]);
     // The battery delivered; the heater then stops on its own and the house
-    // drops well under the pace.
+    // drops a kilowatt under the pace: the discharge steps down past the
+    // deadband, and the hold stays (restore may not spend its discharge).
     const delivered = battery({ signedPowerW: -1200, claimHeld: true });
-    const stepped = await build(1000, [heater(false), delivered], 2 * 60_000);
-    expect(storageDecision(stepped)).toEqual({ kind: 'setpoint', setpointW: 0, stepW: 5 });
+    const stepped = await build(2000, [heater(false), delivered], 2 * 60_000);
+    expect(storageDecision(stepped)).toEqual({ kind: 'setpoint', setpointW: -400, stepW: 5 });
 
+    // It was idle when PELS claimed it, so its own mode may charge at its full
+    // 2.5 kW once handed back: a kilowatt of room is not enough.
     const idle = battery({ signedPowerW: 0, claimHeld: true });
-    const holding = await build(2200, [heater(false), idle], 2 * 60_000 + STORAGE_IDLE_RELEASE_MS - 1_000);
-    expect(storageDecision(holding)).toMatchObject({ kind: 'setpoint', setpointW: 0 });
+    const waiting = await build(1000, [heater(false), idle], 6 * 60_000);
+    expect(storageDecision(waiting)).toMatchObject({ kind: 'setpoint', setpointW: 0 });
 
-    const released = await build(2200, [heater(false), idle], 2 * 60_000 + STORAGE_IDLE_RELEASE_MS);
-    expect(storageDecision(released)).toEqual({ kind: 'release', reason: 'idle' });
+    // Room for its own mode again (the heater is gone): restore hands it back.
+    // The restore clocks wait for the executor to report the hand-back made.
+    const released = await build(0, [idle], 9 * 60_000);
+    expect(storageDecision(released)).toEqual({ kind: 'release', reason: 'restored' });
+    expect(state.storageLeverByDevice).toEqual({});
+    expect(state.actuation.lastDeviceRestoreMs.battery).toBeUndefined();
+  });
+
+  it('hands back in priority order: a device ranked above the battery resumes first', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    // 4 kW of background and the 2 kW heater: the battery (last) discharges
+    // its 2.5 kW, and the heater ranked above it is shed for the rest.
+    const first = await build(6000, [heater(true, 2), battery()]);
+    expect(storageDecision(first)).toEqual({ kind: 'setpoint', setpointW: -2500, stepW: 5 });
+    expect(plannedState(first, 'heater')).toBe('shed');
+
+    // The background drops: the battery steps down, and the heater resumes
+    // first. (The first cycle after the episode sits in the shed cooldown.)
+    const later = [heater(false, 2), battery({ signedPowerW: 0, claimHeld: true })];
+    await build(500, later, 6 * 60_000);
+    const resumed = await build(500, later, 9 * 60_000);
+    expect(plannedState(resumed, 'heater')).toBe('keep');
+    expect(storageDecision(resumed)).toMatchObject({ kind: 'setpoint' });
+
+    // Nearly full, its own mode takes 0.5 kW back: room for that hands it back.
+    const nearlyFull = battery({ signedPowerW: 0, claimHeld: true, chargeCeilingW: 500 });
+    const handedBack = await build(2200, [heater(true, 2), nearlyFull], 15 * 60_000);
+    expect(storageDecision(handedBack)).toEqual({ kind: 'release', reason: 'restored' });
+  });
+
+  it('hands back in priority order: the battery ranked above a device is handed back first', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    // The heater ranked below the battery goes first; the battery covers the 1 kW left.
+    const first = await build(6000, [heater(true, 2, 'heater', 5), battery({}, { priority: 1 })]);
+    expect(plannedState(first, 'heater')).toBe('shed');
+    expect(storageDecision(first)).toEqual({ kind: 'setpoint', setpointW: -1100, stepW: 5 });
+
+    const later = [heater(false, 2, 'heater', 5), battery({ signedPowerW: 0, claimHeld: true }, { priority: 1 })];
+    await build(0, later, 6 * 60_000);
+    const handedBack = await build(0, later, 9 * 60_000);
+    expect(storageDecision(handedBack)).toEqual({ kind: 'release', reason: 'restored' });
+    expect(plannedState(handedBack, 'heater')).not.toBe('keep');
   });
 });
 
@@ -586,13 +927,13 @@ describe('storage charge from surplus in the plan build', () => {
     }
   });
 
-  it('relieves a deficit instead of charging in the same build', async () => {
+  it('limits a charging battery for a deficit at its place in the order, the charge before any device', async () => {
     const { build } = buildHarness({ paceKw: 3 });
     await build(0, [pump(false), heater(), battery()]);
-    // The house jumps to 4.2 kW while the battery still charges 1.9 kW of it.
+    // The house jumps to 4.2 kW while the battery still charges 1.9 kW of it:
+    // its charge is capped by the 1.2 kW deficit and half its deadband.
     const plan = await build(4200, [pump(false), heater(), battery({ signedPowerW: 1900, claimHeld: true })], 10_000);
-    const decision = storageDecision(plan);
-    expect(decision?.kind === 'setpoint' && decision.setpointW <= 0).toBe(true);
+    expect(storageDecision(plan)).toEqual({ kind: 'setpoint', setpointW: 600, stepW: 5 });
     expect(plannedState(plan, 'heater')).toBe('keep');
   });
 });

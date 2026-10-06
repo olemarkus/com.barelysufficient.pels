@@ -192,6 +192,7 @@ const buildFor = (kind: Kind): Record<string, unknown> => {
     shedSet: new Set<string>(kind.shed === true ? [kind.dev.id] : []),
     shedReasons,
     shedStepTargets,
+    storageSetpoints: new Map(),
     sheddingActive: kind.shed === true,
     guardInShortfall: false,
     outcome: NO_SHEDDING_OUTCOME,

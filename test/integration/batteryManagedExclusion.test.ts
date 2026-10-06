@@ -110,6 +110,7 @@ const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const emptyRestoreResult: RestorePlanResult = {
   planDevices: [],
   restoredThisCycle: new Set<string>(),
+  storageHandedBack: new Set<string>(),
   headroomReserves: [],
   availableHeadroom: 1,
   capacityAvailableKw: 1,
@@ -183,7 +184,9 @@ describe('home battery as managed observe-only — control-path exclusion lock',
     }
   });
 
-  it('is never a shed candidate even under capacity overshoot (controllable:false filtered out)', () => {
+  it('is never a load shed candidate even under capacity overshoot (controllable:false filtered out)', () => {
+    // A battery is offered only as its own storage candidate, from a storage
+    // cluster this fixture does not carry; as a load it never is.
     const context = buildContext([batteryInputDevice(), heaterInputDevice()]);
     const { candidates } = buildSheddingCandidates({
       devices: context.devices,
@@ -192,6 +195,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       deficitKw: 5,
       limitSource: 'capacity',
       capacityBreached: context.capacityBreached,
+      storageLimit: { kind: 'measured' as const, drawKw: 5 },
       state: createPlanEngineState(),
       deps: {
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),

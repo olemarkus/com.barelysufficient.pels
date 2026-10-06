@@ -19,6 +19,7 @@ const heldSelection = (deviceId: string): PlanSheddingResult => ({
   shedSet: new Set([deviceId]),
   shedReasons: new Map(),
   shedStepTargets: new Map(),
+  storageSetpoints: new Map(),
   outcome: NO_SHEDDING_OUTCOME,
   overshootStats: null,
   pendingReliefKw: 0,

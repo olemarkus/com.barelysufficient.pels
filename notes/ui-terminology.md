@@ -578,8 +578,10 @@ The **Available power** (headroom) dashboard widget shares vocabulary with the r
 
 A managed home battery has its own Overview card and device page. While PELS
 holds it, its state word is what the battery reports doing, never the plan's
-intent and never a load's state word: a battery PELS has just asked to supply
-that still charges reads `Charging`. The reason line says why PELS holds it.
+intent: a battery PELS has just asked to supply that still charges reads
+`Charging`. The one load word it borrows is `Limited`, while PELS caps its
+charge at its place in the priority order (`Limited · Charging`, like a
+stepped load's `Limited · 6 A`). The reason line says why PELS holds it.
 Its power is shown without a sign, because the state word gives the direction,
 and only from 50 W either way; below that no power is shown, and a held battery
 keeps the word for what PELS holds it to do.
@@ -589,19 +591,24 @@ keeps the word for what PELS holds it to do.
 | State while PELS holds it and it discharges | `Supplying` |
 | State while PELS holds it and it charges | `Charging` |
 | State while it runs the mode chosen in its own app | `Own mode` |
+| State while PELS caps its charge at its place in the priority order | `Limited · Charging` (the load's `Limited` word) |
 | Reason while PELS holds it to hold the limit | `Holding your limit so your devices keep running` |
 | Reason while PELS holds it to store solar the devices leave | `Storing the solar power your devices leave` |
 | Reason while PELS caps its charge so a device can use the solar | `Charging less so a device can use the solar` |
+| Reason while PELS caps its charge | `Waiting to charge faster · 2.4 kW more needed` (the charge its own mode would take that the cap holds back; `Waiting to charge faster` alone under 0.05 kW) |
 | Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |
+| Reason in its own mode, Power-limit control off | `PELS uses it only to store spare solar` |
 | Fact line | `64 % charged`; in its own mode also `· supplying` / `· charging` |
-| Overview hero, one battery supplying while PELS holds it for the limit | `Sessy battery is supplying 2.4 kW to hold your limit.` |
+| Overview hero, one battery supplying while PELS holds it for the limit (only while it supplies: a capped charge holds nothing) | `Sessy battery is supplying 2.4 kW to hold your limit.` |
 | Overview hero, several | `2 batteries are supplying 4.2 kW to hold your limit.` |
 | Overview hero, a battery supplying while devices are also limited | `Sessy battery is supplying 2.4 kW to hold your limit. Holding back 2 devices…` |
 | Device page, Managed hint | `PELS takes it over to hold your limit or store spare solar, then hands it back.` |
+| Device page, Power-limit control hint (greyed out while Managed is off) | `PELS may cap its charge and call on it to hold your limit when its turn comes in your priority order.` |
 | Device page, takeover notice (amber) | `You changed its mode in the battery app` / `PELS has stepped back and leaves it alone. Turn on Managed when you want PELS to use it again.` |
 | Device page, priority value | `N of M in <mode>` (e.g. `9 of 9 in Home`) |
 | Device page, priority hint, battery last in the mode | `Last in the list, it covers the whole house before any device is limited.` |
 | Device page, priority hint, battery above other devices | `Its place decides who it protects: the devices above it.` |
+| Device page, priority hint, Power-limit control off (the priority readout stays) | `Turn on Power-limit control to let it hold your limit when its turn comes.` |
 | Modes page note, under a list holding a battery | `Its place decides who it protects. Last in the list, it covers the whole house before any device is limited.` |
 
 Sources: `lib/plan/batteryStatusReadModel.ts` (card),

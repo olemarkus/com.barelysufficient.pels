@@ -35,6 +35,13 @@ export type PlanInputProjectionSource = {
   getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
   getDeviceStartPolicies: () => Record<string, DeviceStartPolicy>;
   isCapacityControlEnabled: (deviceId: string) => boolean;
+  /**
+   * The owner's `controllable_devices` map as the runtime holds it. A home
+   * battery's Power-limit control is read from it through the battery's own
+   * gate (`isBatteryPowerLimitEnabled`, `storageProjection.ts`), never through
+   * `isCapacityControlEnabled`, which vetoes every battery.
+   */
+  getControllableDevices: () => Readonly<Record<string, boolean>>;
   resolveManagedState: (deviceId: string) => boolean;
   isBudgetExempt: (deviceId: string) => boolean;
   isExternalOffHoldActive: (deviceId: string, device: ObservedCurrentStateInput) => boolean;

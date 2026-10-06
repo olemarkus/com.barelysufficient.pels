@@ -7,6 +7,7 @@ import {
   type BatteryControlDevices,
 } from '../../../shared-domain/src/settings/batteryControlDevices.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
+import { isBatteryPowerLimitEnabled } from '../../../shared-domain/src/settings/batteryPowerLimit.ts';
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
@@ -231,6 +232,16 @@ export const resolveManagedState = (deviceId: string): boolean => {
   }
   return state.managedMap[deviceId] === true;
 };
+
+/**
+ * A home battery's Power-limit control switch, on its device page and in the
+ * device list: read through the battery's own gate (absent = on), never as a
+ * load's `controllable_devices[id] === true`. It reads off while the battery
+ * is not managed: PELS then leaves the battery alone, so nothing is limited.
+ */
+export const resolveBatteryPowerLimitOn = (deviceId: string): boolean => (
+  resolveManagedState(deviceId) && isBatteryPowerLimitEnabled(state.controllableMap, deviceId)
+);
 
 // One resolver for "does this device carry a standing smart task right now" —
 // previously five hand-copies (Overview card chip, hero, and three Setup-row

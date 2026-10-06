@@ -105,7 +105,7 @@ import {
   resolveTargetPowerConfigForControlMode,
   syncDeviceDetailControlModeOptions,
 } from './controlMode.ts';
-import { resolveDeviceDetailControlState, setTemperatureGatedSwitch } from './controlState.ts';
+import { resolveDeviceDetailControlState, setPowerLimitSwitch, setTemperatureGatedSwitch } from './controlState.ts';
 import {
   applyDeviceDetailSectionLayout,
   autoExpandSetupWhenBare,
@@ -229,10 +229,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   renderManagedControl(controlState);
   renderDeviceDetailBattery(device);
 
-  if (deviceDetailControllable) {
-    deviceDetailControllable.selected = controlState.canLimitPower && state.controllableMap[deviceId] === true;
-    deviceDetailControllable.disabled = !controlState.canLimitPower || !controlState.isManaged;
-  }
+  setPowerLimitSwitch(deviceDetailControllable, controlState, deviceId);
   const priceConfig = state.priceOptimizationSettings[deviceId];
   // Kind-inapplicable, not gated: a device with no temperature target can never
   // use price-based temperature control, so the row hides instead of promising

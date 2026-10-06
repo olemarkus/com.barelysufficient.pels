@@ -35,7 +35,12 @@ export type ShedCandidateSkipReason =
   | 'stepped_zero_draw'
   | 'no_lower_step_reachable'
   | 'zero_step_relief'
-  | 'budget_exempt_daily_only';
+  | 'budget_exempt_daily_only'
+  // A home battery whose limit is on but PELS may not drive it now (not
+  // admissible, a hand-back deferred, not responding or sign-inverted), or
+  // whose ladder releases nothing it could visibly answer.
+  | 'storage_not_drivable'
+  | 'storage_nothing_to_release';
 
 export type ShedCandidateSkipSummary = {
   skippedCandidateCount: number;
@@ -46,8 +51,19 @@ type SkippedDeviceRecord = {
   deviceId: string;
   deviceName?: string;
   reasonCode: ShedCandidateSkipReason;
-  currentDrawKw: number;
   rungsTried?: string[];
+} & (
+  | { currentDrawKw: number }
+  // A home battery's own signed power, W: positive charging, negative
+  // discharging. Never a load's draw.
+  | { batterySignedPowerW: number }
+);
+
+/** A home battery that was not a storage candidate, and why. */
+export type StorageCandidateSkipRecord = {
+  device: { id: string; name: string };
+  batterySignedPowerW: number;
+  reasonCode: Extract<ShedCandidateSkipReason, 'storage_not_drivable' | 'storage_nothing_to_release'>;
 };
 
 export type ShedCandidateSkipRecorder = {
@@ -56,6 +72,7 @@ export type ShedCandidateSkipRecorder = {
     reasonCode: ShedCandidateSkipReason;
     rungsTried?: string[];
   }) => void;
+  recordStorage: (params: StorageCandidateSkipRecord) => void;
   summary: () => ShedCandidateSkipSummary;
   emit: () => void;
 };
@@ -75,6 +92,10 @@ export function createShedCandidateSkipRecorder(
         currentDrawKw: device.currentDrawKw,
         ...(rungsTried ? { rungsTried } : {}),
       });
+      counts.set(reasonCode, (counts.get(reasonCode) ?? 0) + 1);
+    },
+    recordStorage: ({ device, batterySignedPowerW, reasonCode }) => {
+      skipped.push({ deviceId: device.id, deviceName: device.name, reasonCode, batterySignedPowerW });
       counts.set(reasonCode, (counts.get(reasonCode) ?? 0) + 1);
     },
     /* eslint-enable functional/immutable-data */

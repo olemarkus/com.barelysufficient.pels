@@ -185,37 +185,39 @@ export type SheddingOutcome =
 export const NO_SHEDDING_OUTCOME: SheddingOutcome = Object.freeze({ kind: 'none' });
 
 /**
- * The storage relief stage's hold on one home battery
- * (`lib/plan/battery/storageRelief.ts`). An entry exists exactly while the plan
- * is driving the battery; releasing it deletes the entry. In memory: after a
- * restart the owner's boot recovery hands a claimed battery back, and the next
- * deficit or surplus claims it afresh.
+ * The plan's hold on one home battery (`lib/plan/battery/`). An entry exists
+ * exactly while the plan is driving the battery; releasing it deletes the
+ * entry. In memory: after a restart the owner's boot recovery hands a claimed
+ * battery back, and the next limit or surplus claims it afresh.
  */
 export type StorageLeverState = {
   /**
-   * The signed power this plan holds the battery at, W: negative discharges
-   * (relief), positive charges (from the surplus the willing devices left).
+   * The signed power this plan holds the battery at, W: negative discharges,
+   * positive charges. Under a `limit` hold it is the battery's place on its
+   * limiting ladder (max charge, then 0 W, then max discharge); under a
+   * `surplus` hold the charge the willing devices leave it.
    */
   setpointW: number;
   /**
-   * Why the plan took the battery: `relief` against a deficit (handed back
-   * after `STORAGE_IDLE_RELEASE_MS` with nothing to do), or `surplus` to cap
-   * its own mode's charge for a device (handed back after
+   * Why the plan holds the battery: `limit`, chosen by shedding at its own place
+   * in the priority order (its charge capped, or discharged to hold the limit),
+   * and handed back only by the restore lane in priority order; or `surplus`,
+   * to cap its own mode's charge for a device (handed back after
    * `STORAGE_SURPLUS_RELEASE_DWELL_MS` without a device needing the cap). A
-   * surplus hold that meets a deficit becomes a relief hold.
+   * surplus hold that shedding chooses becomes a limit hold.
    */
-  purpose: 'relief' | 'surplus';
+  purpose: 'limit' | 'surplus';
   /**
    * When the current discharge increase was decided: its credit's settle
-   * window runs from here. A hold that starts by charging has no increase to
-   * settle: its window is already over.
+   * window runs from here. A hold that only caps the charge has no discharge
+   * to settle: its window is already over.
    */
   increaseDecidedAtMs: number;
   /**
-   * The discharge already accounted for when that increase was decided, W
-   * (signed: negative while the battery was charging). Only what the battery
-   * still has to deliver above it is credited to shedding, so an increase that
-   * never landed is not credited again by the next one.
+   * The discharge already accounted for when that increase was decided, W (0
+   * or more: a stopped charge is pending relief, never this credit). Only what
+   * the battery still has to deliver above it is credited to shedding, so an
+   * increase that never landed is not credited again by the next one.
    */
   creditBaseW: number;
   /**
@@ -226,18 +228,25 @@ export type StorageLeverState = {
   /** When the charge last rose: charge increases are paced like other surplus claims. */
   chargeRaisedAtMs: number;
   /**
-   * The last cycle the hold was needed: for relief, a deficit or a discharge
-   * held; for surplus, a device wanting surplus while the charge is capped
-   * below `preClaimSignedW`. The hand-back counts from here.
+   * For a surplus hold, the last cycle it was needed: a device wanting surplus
+   * while the charge is capped below `preClaimSignedW`; its dwell counts from
+   * here. For a limit hold, the last cycle shedding chose it: a battery that
+   * has not followed it within the credit's window banks nothing more.
    */
   lastNeedAtMs: number;
   /**
-   * The battery's own signed power when the plan first claimed it, W. A battery
-   * stopped while it was charging would charge again at about this rate once
-   * handed back, so a relief hold at 0 W counts as needed while the house has
-   * no room for that; a surplus hold is a cap on this charge.
+   * The battery's own signed power when the plan first claimed it, W. Handed
+   * back, it would charge again at about this rate (`ownModeChargeW`), and a
+   * surplus hold is a cap on it.
    */
   preClaimSignedW: number;
+  /**
+   * The charge its own mode takes once handed back, W, as last read: the
+   * pre-claim charge within the battery's charge ceiling, or the ceiling when
+   * it was not seen charging then (`resolveOwnModeChargeW`). The restore lane
+   * sizes a limit hold's hand-back on it (`lib/plan/restore/storageHandBack.ts`).
+   */
+  ownModeChargeW: number;
   /** The battery's setpoint grid, W, as last read: a hold kept while unread still names it. */
   stepW: number;
   /**
@@ -474,7 +483,7 @@ export class PlanEngineState {
   // with the decision itself.
   surplusTrackingRaisedMs: Record<string, number> = {};
 
-  // Per-device: the storage relief stage's hold on a home battery — see
+  // Per-device: the plan's hold on a home battery — see
   // `StorageLeverState`. In-memory like its siblings.
   storageLeverByDevice: Readonly<Record<string, StorageLeverState>> = {};
 

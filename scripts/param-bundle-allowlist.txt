@@ -206,7 +206,6 @@ lib/plan/restore/steppedRestoreGates.ts 2
 lib/plan/restore/timing.ts 5
 lib/plan/shedding/candidateBuilders.ts 1
 lib/plan/shedding/candidateSkipLog.ts 1
-lib/plan/shedding/candidates.ts 1
 lib/plan/shedding/steppedCandidates.ts 6
 lib/planInput/calibrationViews.ts 1
 lib/planInput/residualKwForPlanDevice.ts 1

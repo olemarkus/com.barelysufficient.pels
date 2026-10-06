@@ -9,6 +9,7 @@ import {
 } from './devices';
 import {
   planRestoreForSteppedDevice,
+  setRestorePlanDevice,
   type SteppedSwapExecutor,
 } from './helpers';
 import type { RestoreHeadroomLedger } from './headroomLedger';
@@ -18,6 +19,8 @@ import {
   holdSteppedSwapDonor,
 } from './swap';
 import { planRestoreForDevice } from './gating';
+import { isBehindWaitingHandBack, planStorageHandBack } from './storageHandBack';
+import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { RestoreCycle, RestoreLane, RestoreLoopState } from './types';
 
 export function applyRestoreCandidates(
@@ -81,6 +84,8 @@ export function applyActiveSteppedRestoreCandidates(
   const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(cycle.deviceMap.values()))
     .filter((dev) => isActiveSteppedRestoreCandidate(dev))
     .filter((dev) => !cycle.state.shedDecisions.wasShedOrUnplanned(dev.id))
+    // A step-up ranked below a waiting battery hand-back waits behind it too.
+    .filter((dev) => !isBehindWaitingHandBack(cycle, dev))
     .filter((dev) => candidateFilter?.(dev) ?? true);
   for (const dev of activeSteppedDevices) {
     const availableForCandidate = ledger.availableFor(dev);
@@ -100,10 +105,20 @@ function applyRestoreCandidate(
   candidate: RestoreCandidate,
   loop: RestoreLoopState,
 ): RestoreLoopState {
+  if (candidate.kind === 'storage') {
+    const battery = cycle.deviceMap.get(candidate.device.id);
+    return battery === undefined ? loop : planStorageHandBack(cycle, battery, candidate.handBack, loop);
+  }
   const dev = cycle.deviceMap.get(candidate.device.id);
   // The candidate was chosen with a power axis (`isRestoreLiveEligibleDevice`);
   // the map entry is the same device this cycle, re-read for its latest updates.
   if (!dev || !isMeteredPlanDevice(dev)) return loop;
+  if (isBehindWaitingHandBack(cycle, dev)) {
+    setRestorePlanDevice(cycle.deviceMap, dev.id, {
+      plannedState: 'shed', reason: { code: PLAN_REASON_CODES.waitingForOtherDevices },
+    });
+    return loop;
+  }
   if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
   const shedDecisions = cycle.state.shedDecisions;
   if (candidate.kind === 'binary' && isShedPostureBinaryRestoreCandidate(dev, shedDecisions)) {
