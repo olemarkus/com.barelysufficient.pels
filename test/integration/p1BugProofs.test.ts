@@ -1,4 +1,5 @@
 import { withDeviceConfiguration } from '../utils/planTestUtils';
+import { NO_STORAGE_RELIEF } from '../../lib/plan/battery/storageRelief';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
@@ -234,6 +235,7 @@ describe('P1 bug proofs', () => {
         }),
         log: vi.fn(),
       },
+      NO_STORAGE_RELIEF,
     );
 
     expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(6, 5, expect.objectContaining({
@@ -377,6 +379,7 @@ describe('P1 bug proofs', () => {
         binaryCapabilityId: 'onoff',
         reason: fixtureDeviceReason('shed due to capacity'),
       })],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);

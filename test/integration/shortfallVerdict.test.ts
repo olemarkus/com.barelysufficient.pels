@@ -1,4 +1,5 @@
 import type CapacityGuard from '../../lib/power/capacityGuard';
+import { NO_STORAGE_RELIEF } from '../../lib/plan/battery/storageRelief';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
 import { reportShortfallToGuard } from '../../lib/plan/shedding/shortfallVerdict';
@@ -50,6 +51,7 @@ describe('reportShortfallToGuard', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
       },
+      NO_STORAGE_RELIEF,
     );
 
     expect(capacityGuard.recordShortfallUnavailable).toHaveBeenCalledOnce();
@@ -74,6 +76,7 @@ describe('reportShortfallToGuard', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
       },
+      NO_STORAGE_RELIEF,
     );
 
     expect(capacityGuard.recordCompletePeriodReading).toHaveBeenCalledWith(4, 5);
@@ -100,6 +103,7 @@ describe('reportShortfallToGuard', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
       },
+      NO_STORAGE_RELIEF,
     );
 
     expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(7, 5, expect.objectContaining({
@@ -127,6 +131,7 @@ describe('reportShortfallToGuard', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
       },
+      NO_STORAGE_RELIEF,
     );
 
     expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(7, 5, expect.objectContaining({
@@ -155,6 +160,7 @@ describe('reportShortfallToGuard', () => {
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
       },
+      NO_STORAGE_RELIEF,
     );
 
     expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(7, 5, expect.objectContaining({

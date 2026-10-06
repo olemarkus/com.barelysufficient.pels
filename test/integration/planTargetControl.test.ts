@@ -381,6 +381,7 @@ describe('prunePendingTargetCommandsForPlan', () => {
           softLimitKw: 5,
           headroomKw: 4}),
         devices: [buildPlanDevice('dev-1', 'Heater', 25, 18)],
+        storageReleases: [],
       },
       debugStructured,
     });

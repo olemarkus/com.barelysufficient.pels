@@ -5,7 +5,7 @@ import type { SwapLedger } from '../swap';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { RestoreTiming } from './timing';
-import type { PlanEngineState } from '../planState';
+import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { SteppedSwapExecutor } from './helpers';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 
@@ -63,8 +63,17 @@ export type RestoreCycle = {
   readonly restoredThisCycle: Set<string>;
   /** Home batteries the pass handed back (`storageHandBack.ts`): never loads, so never in `restoredThisCycle`. */
   readonly storageHandedBack: Set<string>;
-  /** The ranks of battery hand-backs waiting for room this pass: the restores ranked below wait behind them. */
-  readonly storageHandBackWaitingAt: Set<number>;
+  /**
+   * The holds PELS keeps on home batteries after this build's limit step
+   * (`StorageRelief.levers`): the limit holds the lane may hand back.
+   */
+  readonly storageLevers: Readonly<Record<string, StorageLeverState>>;
+  /**
+   * The highest rank (lowest priority number) of a battery hand-back waiting
+   * for room this pass, or `Infinity` while none waits: the restores ranked
+   * below it wait behind it.
+   */
+  storageHandBackWaitingAt: number;
   /** Resolved exactly once per cycle — the resolver advances arming state. */
   readonly headroomReserves: readonly HeadroomReserve[];
   readonly batchState: RestoreBatchState;

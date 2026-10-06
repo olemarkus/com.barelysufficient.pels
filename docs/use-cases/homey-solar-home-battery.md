@@ -51,7 +51,7 @@ When the battery is empty, or does not follow what PELS asks, PELS simply moves 
 </figure>
 
 - **Managed by PELS** is the battery's main switch. Turn it off and PELS hands the battery back to its own mode and leaves it there until you turn it on again.
-- **Power-limit control** is on by default for a battery PELS can drive. Turn it off and PELS never caps the battery's charge or calls on it to hold your limit, and the battery still stores your spare solar in priority order. The **Enable power-limit control for device** and **Disable power-limit control for device** Flow cards work on the battery too, so a Flow can decide when the battery may hold your limit.
+- **Power-limit control** is on by default for a battery PELS can drive. Turn it off and PELS never takes the battery over: it never caps its charge, never calls on it to hold your limit and never steers its charge for your solar, so its own app stays in charge. PELS still reads its power and charge level and shows it on the Overview. The **Enable power-limit control for device** and **Disable power-limit control for device** Flow cards work on the battery too, so a Flow can decide when the battery may hold your limit.
 - **Priority** shows the battery's place in the current mode, for example `9 of 9 in Home`, and **Reorder** moves it.
 - A battery PELS can only watch has no **Power-limit control** switch and no **Priority** row. Its card says why instead: `PELS can only watch it: its app does not accept control`, or `PELS can only watch it: its app does not give Homey control` for a battery whose app gives Homey no power setting or Homey/API mode PELS can use. The **Enable power-limit control for device** Flow card skips it.
 
@@ -68,7 +68,7 @@ If you change the battery's mode in its own app while PELS holds it, PELS takes 
 | `Own mode` · `PELS takes over when your limit or solar needs it` | PELS has no job for the battery right now; its own app is in charge. |
 | `Own mode` · `PELS can only watch it: its app does not accept control` | The battery's app refused PELS (for example a Sessy on its cloud login). PELS tries again after six hours or when PELS restarts. |
 | `Own mode` · `PELS can only watch it: its app does not give Homey control` | The battery's app offers Homey no power setting or Homey/API mode PELS can use, so PELS reads the battery and never controls it. |
-| `Own mode` · `PELS uses it only to store spare solar` | **Power-limit control** is off for the battery. |
+| `Own mode` · `Power-limit control is off: its own app is in charge` | **Power-limit control** is off for the battery. |
 
 The fact line shows how full the battery is, such as `62 % charged`. While PELS holds the battery, its own app shows Homey or API mode. That is PELS at work, and the mode you chose returns when PELS hands it back.
 

@@ -57,6 +57,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
   const runScenario = () => {
     const state = createPlanEngineState();
     return applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'water-heater',
@@ -111,6 +112,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
     // reader can see the reversal was chosen, not lost in a deletion.
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'water-heater',
@@ -150,6 +152,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
   it('still holds an unboosted device at its step while others are limited', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'water-heater',

@@ -82,7 +82,9 @@ export const resolveBatteryPriorityHint = (
   position: { rank: number; total: number },
   powerLimitOn: boolean,
 ): string => {
-  if (!powerLimitOn) return 'Turn on Power-limit control to let it hold your limit when its turn comes.';
+  if (!powerLimitOn) {
+    return 'Turn on Power-limit control to let it hold your limit and store spare solar when its turn comes.';
+  }
   return position.rank === position.total
     ? 'Last in the list, it covers the whole house before any device is limited.'
     : 'Devices below it are limited first, so it protects only those above it.';

@@ -13,7 +13,8 @@
  * the limit never tips the house into export.
  *
  * Offered only when PELS may limit it: Managed and Power-limit control on, its
- * storage read (`isStorageLimitScope`), and drivable now (`isStorageDrivable`).
+ * storage read (`isStorageLimitScope`), and drivable now (`isStorageDrivable`,
+ * `lib/plan/battery/storageLadder.ts`).
  * A re-probing battery is still asked, but banks nothing
  * (`unconfirmedRelief`), so shedding goes on as without it; so is a battery
  * that has not followed its limit within the credit's window, as an
@@ -30,6 +31,7 @@ import {
   drawMarginWFor,
   hasStorageInput,
   isLowerVisible,
+  isStorageDrivable,
 } from '../battery/storageLadder';
 import { storageSetpointToleranceW } from '../../planContract/storageDecision';
 import { floorStorageSetpointW, toTargetPowerCapabilityValue } from '../../utils/storageSetpoint';
@@ -51,18 +53,6 @@ export function isStorageLimitScope(device: PlanInputDevice): device is Limitabl
     && device.storage.reading === 'observed'
     && device.control.managed
     && device.storage.powerLimitControl;
-}
-
-/**
- * Whether PELS may drive the battery now: admissible (Managed on, Main home,
- * claim recordable, not in simulation), no hand-back deferred, and a verdict
- * that lets PELS drive it.
- */
-export function isStorageDrivable(storage: ObservedStorageInput): boolean {
-  return storage.admissible
-    && !storage.handBackDeferred
-    && storage.verdict !== 'not_responding'
-    && storage.verdict !== 'sign_inverted';
 }
 
 /** Whether a battery in limit scope can be limited this cycle: shedding asks this of the cycle, not of candidacy. */
@@ -129,7 +119,7 @@ export function buildStorageCandidate(
 const resolveVisibleReliefW = (storage: ObservedStorageInput, baseW: number, openW: number): number => {
   let reliefW = openW;
   for (let round = 0; round < 3; round += 1) {
-    reliefW = Math.max(openW, storageSetpointToleranceW(baseW - reliefW, storage.stepW) + storage.stepW);
+    reliefW = Math.max(openW, storageSetpointToleranceW(baseW - reliefW, storage.range.stepW) + storage.range.stepW);
   }
   return reliefW;
 };

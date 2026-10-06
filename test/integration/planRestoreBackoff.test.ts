@@ -166,6 +166,7 @@ describe('restore cooldown backoff', () => {
       state.restoreBackoff.lastInstabilityMs = now - 1000;
 
       const result = applyRestorePlan({
+        storageLevers: {},
         planDevices: [],
         ...buildContext(),
         state,
@@ -202,6 +203,7 @@ describe('restore cooldown backoff', () => {
     triggerInstability();
     vi.setSystemTime(now);
     let result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [],
       ...buildContext(),
       state,
@@ -216,6 +218,7 @@ describe('restore cooldown backoff', () => {
     state.restoreBackoff.lastInstabilityMs = now - 6 * 60 * 1000;
     vi.setSystemTime(now);
     result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [],
       ...buildContext(),
       state,
@@ -242,6 +245,7 @@ describe('restore cooldown backoff', () => {
     };
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({ id: 'dev-off', name: 'Off', priority: 10, currentState: 'off', measuredPowerKw: 0, expectedPowerKw: 1 }),
         buildPlanDevice({ id: 'dev-on', name: 'On', priority: 90, currentState: 'on', measuredPowerKw: 2, expectedPowerKw: 2 }),
@@ -275,6 +279,7 @@ describe('restore cooldown backoff', () => {
     };
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -321,6 +326,7 @@ describe('restore cooldown backoff', () => {
     };
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -365,6 +371,7 @@ describe('restore cooldown backoff', () => {
     };
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -403,6 +410,7 @@ describe('restore cooldown backoff', () => {
   it('blocks stepped-load step-up while another device is still waiting to recover', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -446,6 +454,7 @@ describe('restore cooldown backoff', () => {
     state.shedDecisions.lastPlannedDeviceIds = new Set(['dev-off', 'dev-step']);
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -494,6 +503,7 @@ describe('restore cooldown backoff', () => {
     seedSwapReservation(state, { targetId: 'dev-target', donorIds: ['dev-swapped'], openedAtMs: now });
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-swapped',
@@ -550,6 +560,7 @@ describe('restore cooldown backoff', () => {
     seedSwapReservation(state, { targetId: 'dev-target', openedAtMs: now });
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-target',
@@ -593,6 +604,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-temp',
@@ -649,6 +661,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastDeviceRestoreMs['dev-step'] = Date.now() - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -698,6 +711,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -739,6 +753,7 @@ describe('restore cooldown backoff', () => {
     const before = getPerfSnapshot();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'connected-300',
@@ -781,6 +796,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -819,6 +835,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastDeviceShedMs['dev-temp'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-temp',
@@ -871,6 +888,7 @@ describe('restore cooldown backoff', () => {
   it('normalizes an off stepped device back to the lowest non-zero restore step', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -906,6 +924,7 @@ describe('restore cooldown backoff', () => {
   it('normalizes an off restore to the lowest non-zero step and can step up later', () => {
     const state = createPlanEngineState();
     const firstRestore = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -939,6 +958,7 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(restored?.reason)).toBe('restore off -> low (need 1.48kW)');
 
     const secondRestore = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -975,6 +995,7 @@ describe('restore cooldown backoff', () => {
     state.restoreBackoff.lastRecoveryMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -1021,6 +1042,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -1056,6 +1078,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -1102,6 +1125,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -1141,6 +1165,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -1187,6 +1212,7 @@ describe('restore cooldown backoff', () => {
     }));
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: devices,
       ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
@@ -1215,6 +1241,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [buildPlanDevice({
         id: 'heater',
         name: 'Heater',
@@ -1247,6 +1274,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [buildPlanDevice({
         id: 'too-large',
         name: 'Too large',
@@ -1274,6 +1302,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [steppedPlanDevice({
         id: 'dev-step',
         name: 'Tank',
@@ -1304,6 +1333,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -1359,6 +1389,7 @@ describe('restore cooldown backoff', () => {
     seedSwapReservation(state, { targetId: 'dev-step', donorIds: ['dev-source'], openedAtMs: now });
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         // Swapped-out source has NOT been confirmed off yet (still observed on).
         buildBinaryPlanDevice({
@@ -1410,6 +1441,7 @@ describe('restore cooldown backoff', () => {
     seedSwapReservation(state, { targetId: 'dev-step', donorIds: ['dev-source'], openedAtMs: now });
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildBinaryPlanDevice({
           id: 'dev-source',
@@ -1459,6 +1491,7 @@ describe('restore cooldown backoff', () => {
     seedSwapReservation(state, { targetId: 'dev-step', donorIds: ['dev-source'], openedAtMs: now });
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         // Source is now confirmed off — the hold should release.
         buildBinaryPlanDevice({
@@ -1506,6 +1539,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildBinarySteppedPlanDevice({
           id: 'dev-step',
@@ -1562,6 +1596,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildBinarySteppedPlanDevice({
           id: 'dev-step',
@@ -1638,6 +1673,7 @@ describe('restore cooldown backoff', () => {
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     };
     const restore = applyRestorePlan({
+      storageLevers: {},
       planDevices,
       ...buildContext({ headroom }),
       state,
@@ -1705,6 +1741,7 @@ describe('restore cooldown backoff', () => {
     };
 
     const restore = applyRestorePlan({
+      storageLevers: {},
       planDevices,
       context,
       power,
@@ -1757,6 +1794,7 @@ describe('restore cooldown backoff', () => {
       ? { action: 'set_temperature' as const, temperature: 16 }
       : { action: 'turn_off' as const };
     const restore = applyRestorePlan({
+      storageLevers: {},
       planDevices,
       ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
@@ -1816,6 +1854,7 @@ describe('restore cooldown backoff', () => {
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     };
     const restore = applyRestorePlan({
+      storageLevers: {},
       planDevices,
       ...buildContext({ headroomRaw: 0.1, headroom: 0.1 }),
       state,
@@ -1850,6 +1889,7 @@ describe('restore cooldown backoff', () => {
     state.restoreBackoff.restoreCooldownMs = 120_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -1884,6 +1924,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastDeviceRestoreMs['dev-step'] = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildBinarySteppedPlanDevice({
           id: 'dev-step',
@@ -1923,6 +1964,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-restored',
@@ -1968,6 +2010,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastRestoreMs = now - 60_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-restored',
@@ -2024,6 +2067,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastDeviceRestoreMs['dev-step'] = now - 61_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildBinarySteppedPlanDevice({
           id: 'dev-step',
@@ -2060,6 +2104,7 @@ describe('restore cooldown backoff', () => {
     state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -2095,6 +2140,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastDeviceControlledMs['dev-off'] = now - (10 * 60_000);
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -2129,6 +2175,7 @@ describe('restore cooldown backoff', () => {
     state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -2165,6 +2212,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastDeviceControlledMs['dev-step'] = now - (10 * 60_000);
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -2200,6 +2248,7 @@ describe('restore cooldown backoff', () => {
     state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step-off',
@@ -2237,6 +2286,7 @@ describe('restore cooldown backoff', () => {
     state.actuation.lastDeviceControlledMs['dev-step-off'] = now - (10 * 60_000);
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step-off',
@@ -2274,6 +2324,7 @@ describe('restore cooldown backoff', () => {
     state.restoreBackoff.lastInstabilityMs = now - 5_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step-off',
@@ -2310,6 +2361,7 @@ describe('restore cooldown backoff', () => {
     state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -2346,6 +2398,7 @@ describe('restore cooldown backoff', () => {
     state.restoreBackoff.startupRestoreBlockedUntilMs = now + 60_000;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev-off',
@@ -2416,6 +2469,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
 
     // applyRestorePlan should block the device
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: deviceId,
@@ -2488,6 +2542,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     // base: expected=2kW + buffer=0.3kW = 2.3kW; penalty L1: ~15% → ~2.65kW
     // With headroom=2.2kW (below penalty threshold) → still blocked by headroom
     const resultInsufficient = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: deviceId,
@@ -2508,6 +2563,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
 
     // With headroom=3.5kW (above penalty threshold + 0.50kW floor) → admitted
     const resultAdmitted = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: deviceId,
@@ -2603,6 +2659,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         batchDevice('dev-1', 10),
         batchDevice('dev-2', 20),
@@ -2631,6 +2688,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.shedDecisions.lastPlannedDeviceIds = new Set(['existing-device']);
 
     const result = applyRestorePlanFromPlanState({
+      storageLevers: {},
       planDevices: [
         batchDevice('new-1', 10),
         batchDevice('new-2', 20),
@@ -2662,6 +2720,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
 
     const result = applyRestorePlanFromPlanState({
+      storageLevers: {},
       planDevices: [alreadyRunning],
       ...freshBatchContext(0.1),
       state,
@@ -2680,6 +2739,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['stepped-first', 'binary-second', 'binary-third', 'binary-fourth']);
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildBinarySteppedPlanDevice({
           id: 'stepped-first',
@@ -2720,6 +2780,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['binary-first', 'stepped-second', 'binary-third', 'binary-fourth']);
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         batchDevice('binary-first', 1),
         buildBinarySteppedPlanDevice({
@@ -2759,6 +2820,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['binary-first', 'stepped-second', 'binary-third', 'binary-fourth']);
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         batchDevice('binary-first', 1),
         buildBinarySteppedPlanDevice({
@@ -2800,6 +2862,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.actuation.lastDeviceRestoreMs['stepped-second'] = now - 500;
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         batchDevice('binary-first', 1, 1),
         buildBinarySteppedPlanDevice({
@@ -2839,6 +2902,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         batchDevice('dev-1', 10, 1),
         batchDevice('dev-2', 20, 0.5),
@@ -2864,6 +2928,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         batchDevice('swap-target', 10, 1),
         batchDevice('later-restore', 20),
@@ -2901,6 +2966,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         batchDevice('swap-target', 10, 1),
         buildBinaryPlanDevice({
@@ -2934,6 +3000,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         batchDevice('swap-target', 10, 1),
         buildBinaryPlanDevice({
@@ -2962,6 +3029,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const state = createPlanEngineState();
     // expected=2kW, buffer=0.3kW → needed=2.3kW, and that is the whole bar.
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev',
@@ -2982,6 +3050,7 @@ describe('restore admission — headroom and penalty gates', () => {
   it('blocks device when headroom is just below its need', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev',
@@ -3007,6 +3076,7 @@ describe('restore admission — headroom and penalty gates', () => {
     // on top, so that figure is the whole bar.
 
     const rejected = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev',
@@ -3023,6 +3093,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
 
     const admitted = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev',
@@ -3051,6 +3122,7 @@ describe('restore admission — headroom and penalty gates', () => {
     // 0.25kW headroom is insufficient → device blocked.
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev',
@@ -3081,6 +3153,7 @@ describe('restore admission — headroom and penalty gates', () => {
     // With recent-shed multiplier (1.5×): 2.3 * 1.5 = 3.45kW
     // 2.5kW headroom: sufficient without penalty, insufficient with it
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'dev',
@@ -3114,6 +3187,7 @@ describe('restore admission — headroom and penalty gates', () => {
     // L4 penalty: max(2.3*2, 2.3+1.2) = max(4.6, 3.5) = 4.6kW
     // 3kW headroom: below 4.6 → blocked
     const resultBlocked = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: deviceId,
@@ -3135,6 +3209,7 @@ describe('restore admission — headroom and penalty gates', () => {
 
     // 5.1kW headroom: above 4.6 + 0.50kW floor → admitted
     const resultAdmitted = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: deviceId,
@@ -3163,6 +3238,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.activationPenaltyByDevice[deviceId] = { level: 1, lastSetbackMs: now - 1_000 }; // 1s ago, cooldown still active
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: deviceId,
@@ -3300,6 +3376,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.activationPenaltyByDevice['dev-off'] = { level: 1, lastSetbackMs: now - 1_000 };
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [buildBinaryPlanDevice({
         id: 'dev-off',
         name: 'Heater',
@@ -3332,6 +3409,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [buildBinarySteppedPlanDevice({
         id: 'dev-step',
         name: 'Tank',
@@ -3370,6 +3448,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [buildBinarySteppedPlanDevice({
         id: 'dev-step',
         name: 'Tank',
@@ -3417,6 +3496,7 @@ describe('restore admission — the device need is the whole bar', () => {
     // needed = 1.2kW (expected=1 + buffer=0.2) and nothing is withheld on top,
     // so the bar is the need itself. headroom = 1.199 → marginKw = -0.001.
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [buildPlanDevice({ id: 'dev', name: 'Heater', currentState: 'off', expectedPowerKw: 1, measuredPowerKw: 0 })],
       ...buildContext({ headroomRaw: 1.199, headroom: 1.199 }),
       state,
@@ -3430,6 +3510,7 @@ describe('restore admission — the device need is the whole bar', () => {
     const state = createPlanEngineState();
     // headroom = 1.200 → marginKw = 0, which admits.
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [buildPlanDevice({ id: 'dev', name: 'Heater', currentState: 'off', expectedPowerKw: 1, measuredPowerKw: 0 })],
       ...buildContext({ headroomRaw: 1.2, headroom: 1.2 }),
       state,
@@ -4211,6 +4292,7 @@ describe('stepped-load shed invariant', () => {
   it('upward step action is never emitted while shed devices exist (end-to-end via applyRestorePlan)', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'binary-shed',
@@ -4253,6 +4335,7 @@ describe('stepped-load shed invariant', () => {
     const state = createPlanEngineState();
     state.actuation.lastDeviceShedMs['binary-low-priority'] = 123;
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'binary-low-priority',
@@ -4298,6 +4381,7 @@ describe('stepped-load shed invariant', () => {
   it('keeps higher-priority binary restores ahead of lower-priority off stepped loads', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildPlanDevice({
           id: 'binary-high-priority',
@@ -4342,6 +4426,7 @@ describe('stepped-load shed invariant', () => {
   it('does not step up an active stepped load before lower-priority off devices are handled', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         buildBinarySteppedPlanDevice({
           id: 'stepped-high-priority',
@@ -4386,6 +4471,7 @@ describe('stepped-load shed invariant', () => {
   it('allows an off stepped restore to swap out a lower-priority active device', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4446,6 +4532,7 @@ describe('stepped-load shed invariant', () => {
   it('does not use swap capacity for an active stepped upgrade', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4496,6 +4583,7 @@ describe('stepped-load shed invariant', () => {
   it('allows a temperature-boosted active stepped upgrade to swap out lower-priority load', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4559,6 +4647,7 @@ describe('stepped-load shed invariant', () => {
   it('allows an EV-boosted active stepped upgrade to swap out lower-priority load', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         {
           ...steppedPlanDevice({
@@ -4617,6 +4706,7 @@ describe('stepped-load shed invariant', () => {
   it('keeps a temperature-boosted active stepped upgrade on during pending swap rebuilds', () => {
     const state = createPlanEngineState();
     applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4654,6 +4744,7 @@ describe('stepped-load shed invariant', () => {
     });
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4699,6 +4790,7 @@ describe('stepped-load shed invariant', () => {
   it('keeps a temperature-boosted active stepped upgrade on when its swap attempt is rejected', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4746,6 +4838,7 @@ describe('stepped-load shed invariant', () => {
   it('keeps an off stepped restore at the off step when its swap attempt is rejected', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4794,6 +4887,7 @@ describe('stepped-load shed invariant', () => {
     const state = createPlanEngineState();
     seedSwapReservation(state, { targetId: 'dev-step' });
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4838,6 +4932,7 @@ describe('stepped-load shed invariant', () => {
     const state = createPlanEngineState();
 
     applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4896,6 +4991,7 @@ describe('stepped-load shed invariant', () => {
     seedPlanWatermark(state, 'dev-step', 200);
 
     const orphanResult = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -4942,6 +5038,7 @@ describe('stepped-load shed invariant', () => {
 
     // Once a fresh power sample arrives (measurementTs > watermark), the swap is admitted.
     const freshResult = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -5016,6 +5113,7 @@ describe('a restore decision is made once, and logged once', () => {
     // 0.4 kW of swappable draw is nowhere near the 1.2 kW need, so the swap is
     // searched, found wanting, and reaches the same verdict on every rebuild.
     const run = () => applyRestorePlan({
+      storageLevers: {},
       planDevices: blockedRestoreWithSource(0.4),
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
@@ -5036,6 +5134,7 @@ describe('a restore decision is made once, and logged once', () => {
     const state = createPlanEngineState();
     // 1.5 kW freed on top of 0.5 kW clears the 1.2 kW need and both reserves.
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: blockedRestoreWithSource(1.5),
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
@@ -5054,6 +5153,7 @@ describe('a restore decision is made once, and logged once', () => {
   it('rejects on the direct figures when nothing is running to swap out', () => {
     const state = createPlanEngineState();
     applyRestorePlan({
+      storageLevers: {},
       // The only other device draws nothing, so it can fund no swap.
       planDevices: blockedRestoreWithSource(0),
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
@@ -5077,6 +5177,7 @@ describe('a restore decision is made once, and logged once', () => {
   it('lets a stepped restore reject on its own figures when there is no swap source', () => {
     const state = createPlanEngineState();
     applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -5119,6 +5220,7 @@ describe('a restore decision is made once, and logged once', () => {
   it('names the meter, not the shortfall, when a swap stands down for want of a reading', () => {
     const state = createPlanEngineState();
     applyRestorePlan({
+      storageLevers: {},
       planDevices: blockedRestoreWithSource(0.4),
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
@@ -5147,6 +5249,7 @@ describe('a restore decision is made once, and logged once', () => {
     // `hasSwappableDraw` is now false, and the short-circuit must not fire ahead
     // of the handshake gates that keep the target pending.
     applyRestorePlan({
+      storageLevers: {},
       planDevices: blockedRestoreWithSource(1.5),
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
@@ -5154,6 +5257,7 @@ describe('a restore decision is made once, and logged once', () => {
       deps: swapDeps(),
     });
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: blockedRestoreWithSource(0),
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,

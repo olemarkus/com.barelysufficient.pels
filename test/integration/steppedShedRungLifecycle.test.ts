@@ -141,6 +141,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     const state = createPlanEngineState();
 
     const result = applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'charger',

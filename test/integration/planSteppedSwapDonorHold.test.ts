@@ -103,6 +103,7 @@ describe('stepped swap donor hold', () => {
     // Cycle 1: 0.3 kW available; the heater's +1 kW step is funded by pausing the charger.
     vi.setSystemTime(T0);
     const approved = applyRestorePlan({
+      storageLevers: {},
       planDevices: [heater('medium'), chargerOn()],
       ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
@@ -122,6 +123,7 @@ describe('stepped swap donor hold', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['charger']);
     vi.setSystemTime(T0 + 90_000);
     const served = applyRestorePlan({
+      storageLevers: {},
       planDevices: [heater('medium'), chargerOff()],
       ...buildPlanCycle({ headroomRaw: 2.1, headroom: 2.1 }),
       state,
@@ -142,6 +144,7 @@ describe('stepped swap donor hold', () => {
     // charger is released to resume on its own merits.
     vi.setSystemTime(T0 + 120_000);
     const released = applyRestorePlan({
+      storageLevers: {},
       planDevices: [heater('max'), chargerOff()],
       ...buildPlanCycle({ headroomRaw: 2.1, headroom: 2.1 }),
       state,
@@ -159,6 +162,7 @@ describe('stepped swap donor hold', () => {
     const state = createPlanEngineState();
     vi.setSystemTime(T0);
     applyRestorePlan({
+      storageLevers: {},
       planDevices: [heater('medium'), chargerOn()],
       ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
@@ -170,6 +174,7 @@ describe('stepped swap donor hold', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['charger']);
     vi.setSystemTime(T0 + 10_000);
     const lagging = applyRestorePlan({
+      storageLevers: {},
       planDevices: [heater('medium'), chargerOn()],
       ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
       state,

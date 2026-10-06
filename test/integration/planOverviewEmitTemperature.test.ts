@@ -35,6 +35,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
         expectedPowerKw: 1,
       }),
     ],
+    storageReleases: [],
   });
 
   it('classifies a satisfied target-only device as idle (the facet reaches the classifier)', () => {

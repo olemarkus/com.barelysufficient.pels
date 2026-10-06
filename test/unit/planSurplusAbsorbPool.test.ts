@@ -200,7 +200,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
         state: createPlanEngineState(), signedNetKw: -3, inferredSurplusKw: 0, nowTs: 0,
         devices: [tank(0)], storage: storing(0),
       });
-      expect(offerOf(offers)).toEqual({ availableW: 2000, demandAbove: 'waiting', belowW: 0 });
+      expect(offerOf(offers)).toEqual({ availableW: 2000, demandAbove: 'waiting', belowW: 0, addedBackW: 0 });
     });
 
     it('takes nothing for a running device: its measured draw is already out of the export', () => {
@@ -210,7 +210,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
         state, signedNetKw: 0, inferredSurplusKw: 0, nowTs: SURPLUS_ABSORB_SETTLE_MS + 10_000,
         devices: [tank(1.2, 3)], storage: storing(1800),
       });
-      expect(offerOf(offers)).toEqual({ availableW: 1800, demandAbove: 'running', belowW: 0 });
+      expect(offerOf(offers)).toEqual({ availableW: 1800, demandAbove: 'running', belowW: 0, addedBackW: 1800 });
     });
 
     it('reads an engaged device that draws nothing as satisfied', () => {
@@ -219,7 +219,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
         state, signedNetKw: -3, inferredSurplusKw: 0, nowTs: SURPLUS_ABSORB_SETTLE_MS + 10_000,
         devices: [tank(0)], storage: storing(0),
       });
-      expect(offerOf(offers)).toEqual({ availableW: 3000, demandAbove: 'none', belowW: 0 });
+      expect(offerOf(offers)).toEqual({ availableW: 3000, demandAbove: 'none', belowW: 0, addedBackW: 0 });
     });
 
     it('reads a running device whose draw the surplus no longer covers as wanting nothing', () => {
@@ -242,7 +242,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
       expect(debugStructured.mock.calls[0]![0]).toMatchObject({
         event: 'surplus_pool', storageChargeKw: 2, storageDischargeKw: 0, poolKw: 2,
       });
-      expect(offerOf(offers)).toEqual({ availableW: 1000, demandAbove: 'waiting', belowW: 0 });
+      expect(offerOf(offers)).toEqual({ availableW: 1000, demandAbove: 'waiting', belowW: 0, addedBackW: 2000 });
     });
 
     it('reads a waiting device the pool could never fund as wanting nothing', () => {
@@ -251,7 +251,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
         state: createPlanEngineState(), signedNetKw: -0.5, inferredSurplusKw: 0, nowTs: 0,
         devices: [tank(0)], storage: storing(0),
       });
-      expect(offerOf(offers)).toEqual({ availableW: 500, demandAbove: 'none', belowW: 0 });
+      expect(offerOf(offers)).toEqual({ availableW: 500, demandAbove: 'none', belowW: 0, addedBackW: 0 });
     });
 
     it('composes the pool with no willing device, and records it only when a battery charges into it', () => {
@@ -260,7 +260,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
         state: createPlanEngineState(), signedNetKw: -0.5, inferredSurplusKw: 0, nowTs: 0,
         devices: [], storage: storing(0), debugStructured,
       });
-      expect(offerOf(quiet)).toEqual({ availableW: 500, demandAbove: 'none', belowW: 0 });
+      expect(offerOf(quiet)).toEqual({ availableW: 500, demandAbove: 'none', belowW: 0, addedBackW: 0 });
       expect(debugStructured).not.toHaveBeenCalled();
 
       resolve({
@@ -275,7 +275,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
         state: createPlanEngineState(), signedNetKw: 0, inferredSurplusKw: 0, nowTs: 0,
         devices: [tank(0, EXPECTED_DRAW_KW, DEVICE_ID, 5)], storage: storing(2000, 5),
       });
-      expect(offerOf(offers)).toEqual({ availableW: 1000, demandAbove: 'waiting', belowW: 0 });
+      expect(offerOf(offers)).toEqual({ availableW: 1000, demandAbove: 'waiting', belowW: 0, addedBackW: 2000 });
     });
 
     it('decides the devices exactly as a battery with nothing to give, first or last', () => {
@@ -306,7 +306,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
         state, signedNetKw: 0, inferredSurplusKw: 0, nowTs: 0,
         devices: [tank(0, EXPECTED_DRAW_KW, DEVICE_ID, 5)], storage: storing(2000, 1),
       });
-      expect(offerOf(offers)).toEqual({ availableW: 2000, demandAbove: 'none', belowW: 0 });
+      expect(offerOf(offers)).toEqual({ availableW: 2000, demandAbove: 'none', belowW: 0, addedBackW: 2000 });
       expect(settling(state, DEVICE_ID)).toBe(false);
     });
 
@@ -320,7 +320,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
       });
       expect(eligible(state)).toBe(true);
       // The engaged tank's 1 kW is what it takes below the battery: no raise may fund it twice.
-      expect(offerOf(offers)).toEqual({ availableW: 3500, demandAbove: 'none', belowW: 1000 });
+      expect(offerOf(offers)).toEqual({ availableW: 3500, demandAbove: 'none', belowW: 1000, addedBackW: 2000 });
     });
 
     it('is offered what the devices above it leave, and the devices below it only what it leaves', () => {
@@ -330,7 +330,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
       const offers = resolve({
         state, signedNetKw: -1, inferredSurplusKw: 0, nowTs: 0, devices, storage: storing(2000, 5),
       });
-      expect(offerOf(offers)).toEqual({ availableW: 1500, demandAbove: 'waiting', belowW: 0 });
+      expect(offerOf(offers)).toEqual({ availableW: 1500, demandAbove: 'waiting', belowW: 0, addedBackW: 2000 });
       expect(settling(state, 'above')).toBe(true);
       // The battery keeps the 1.5 kW the tank above left: nothing is left for the one below.
       expect(settling(state, 'below')).toBe(false);
@@ -340,7 +340,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
       const lastOffers = resolve({
         state: last, signedNetKw: -1, inferredSurplusKw: 0, nowTs: 0, devices, storage: storing(2000),
       });
-      expect(offerOf(lastOffers)).toEqual({ availableW: 500, demandAbove: 'waiting', belowW: 0 });
+      expect(offerOf(lastOffers)).toEqual({ availableW: 500, demandAbove: 'waiting', belowW: 0, addedBackW: 2000 });
       expect(settling(last, 'below')).toBe(true);
     });
 
@@ -357,9 +357,9 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
           dischargeW: 0,
         },
       });
-      expect(offers.get('first')).toEqual({ availableW: 1500, demandAbove: 'waiting', belowW: 1000 });
+      expect(offers.get('first')).toEqual({ availableW: 1500, demandAbove: 'waiting', belowW: 1000, addedBackW: 1000 });
       // The first keeps its 1 kW: the second is capped for the tank's other 0.5 kW, never both for the same.
-      expect(offers.get('second')).toEqual({ availableW: 500, demandAbove: 'waiting', belowW: 0 });
+      expect(offers.get('second')).toEqual({ availableW: 500, demandAbove: 'waiting', belowW: 0, addedBackW: 1000 });
     });
   });
 
@@ -373,7 +373,7 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
           devices: [tank(0, EXPECTED_DRAW_KW, DEVICE_ID, 5)], storage: storing(0, priority, 2000),
         });
         expect(settling(state, DEVICE_ID)).toBe(false);
-        expect(offerOf(offers)).toEqual({ availableW: 0, demandAbove: 'none', belowW: 0 });
+        expect(offerOf(offers)).toEqual({ availableW: 0, demandAbove: 'none', belowW: 0, addedBackW: 0 });
       }
     });
 

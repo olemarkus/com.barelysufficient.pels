@@ -257,9 +257,11 @@ Check these, in order:
   If the device page or its row in the device list says you changed its mode
   in the battery app, PELS stepped back on purpose; turning **Managed by PELS** on again hands
   the battery to PELS.
-- **Power-limit control is off.** The battery then only stores your spare solar,
-  and its card reads `PELS uses it only to store spare solar`. Turn on
-  **Power-limit control** so it can hold your limit on its turn.
+- **Power-limit control is off.** PELS then never takes the battery over, for
+  your limit or for your solar, and its card reads
+  `Power-limit control is off: its own app is in charge`. Turn on
+  **Power-limit control** so it can hold your limit and share your solar on its
+  turn.
 - **The battery is in a [meter area](/meter-areas).** A battery in a meter area
   keeps its own mode; PELS uses batteries in the Main home.
 - **Simulation mode is on.** PELS leaves every battery in its own mode while
@@ -293,8 +295,8 @@ returns to its own schedule.
 
 To let the night charge go ahead of other devices, move the battery up in your
 priority list (its device page → **Reorder**, or the **Modes** page). To keep
-PELS from ever capping it, turn off **Power-limit control** on the battery; it
-still stores your spare solar.
+PELS from ever capping it, turn off **Power-limit control** on the battery; PELS
+then leaves it to its own app for your solar too.
 
 ## A device doesn't appear in PELS
 

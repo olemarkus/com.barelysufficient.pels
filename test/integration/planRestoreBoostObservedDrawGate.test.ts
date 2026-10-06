@@ -58,6 +58,7 @@ describe('boost-driven escalation swaps on the boost decision alone', () => {
   const buildScenario = (boostActive: boolean) => {
     const state = createPlanEngineState();
     return applyRestorePlan({
+      storageLevers: {},
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',

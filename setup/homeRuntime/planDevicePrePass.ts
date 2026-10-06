@@ -26,7 +26,6 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import { isPlannableDevice } from '../../lib/plan/planMeteredDevice';
-import { hasStorageInput } from '../../lib/plan/battery/storageLadder';
 
 type BuildHomePlanDevicesOptions = ToPlanDeviceOptions & {
   /** Owning-home cleanup for a pull-observed ON after an outside-off hold. */
@@ -100,9 +99,9 @@ const runSnapshotPrePass = (
  * `isRuntimePlannedDevice` is the SAME predicate the create-smart-task candidate
  * list and create-time validation use, so a `managed: false` device can never be
  * offered or persisted but left unplanned. `isPlannableDevice` (`lib/plan`) says
- * which of those the plan can act on: a device with a power reading, or a
+ * which of those the plan can act on: a device with a power reading, a
  * temperature device, which without a reading gets its setpoints and no power
- * limiting.
+ * limiting, or a home battery with a storage cluster.
  */
 export const buildHomePlanDevices = (
   ctx: AppContext,
@@ -116,9 +115,7 @@ export const buildHomePlanDevices = (
   if (membership) homeDevices = membership.filterDevicesForHome(snapshot, homeId);
   const devices = homeDevices
     .map((device) => projectPlanInputDevice(source, device, options))
-    // A battery PELS holds stays planned without a power reading (its storage
-    // cluster then reads `missing`), so the hold is kept or released, never lost.
-    .filter((device) => (isPlannableDevice(device) || hasStorageInput(device)) && isRuntimePlannedPlanDevice(device));
+    .filter((device) => isPlannableDevice(device) && isRuntimePlannedPlanDevice(device));
   // The mode catalog owner puts the home's planned set in order: unique,
   // gap-free, no ties (`packages/shared-domain/src/settings/modePriorities.ts`).
   const deviceIds = devices.map((device) => device.id);

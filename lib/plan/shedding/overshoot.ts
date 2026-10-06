@@ -1,6 +1,6 @@
 import type CapacityGuard from '../../power/capacityGuard';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
-import type { PlanEngineState } from '../planState';
+import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
@@ -35,11 +35,13 @@ export function resolveSameMeasurementSheddingDecision(
   measurementPowerW: number | null,
   nowTs: number,
   allowEscalation: boolean,
+  /** The holds this cycle's storage stage left (`StorageRelief.levers`). */
+  storageLevers: Readonly<Record<string, StorageLeverState>>,
 ): SameMeasurementSheddingDecision {
   const alreadyShedThisSample = measurementTs !== null
     && measurementTs === state.lastShedPlanMeasurementTs;
   const pending = resolvePendingShedRelief(
-    state.shedPlanLatch, devices, measurementPowerW, nowTs, state.storageLeverByDevice,
+    state.shedPlanLatch, devices, measurementPowerW, nowTs, storageLevers,
   );
   if (!alreadyShedThisSample) {
     // With nothing outstanding the reading is believed as it stands; the pending

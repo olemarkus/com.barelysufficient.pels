@@ -576,7 +576,7 @@ describe('LifecycleFallbackDispatcher', () => {
     // Ordinary planning owns and prunes a different target-pending map.
     prunePendingTargetCommandsForPlan({
       state: planState,
-      plan: { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}) },
+      plan: { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}), storageReleases: [] },
     });
     dispatcher.converge({ deviceId: device.id, objectiveKind: 'temperature' });
     await flush();
@@ -1463,7 +1463,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
     prunePendingTargetCommandsForPlan({
       state: planState,
-      plan: { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}) },
+      plan: { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}), storageReleases: [] },
     });
     vi.advanceTimersByTime(30_000);
     dispatcher.converge({ deviceId: 'heater-1', objectiveKind: 'temperature' });

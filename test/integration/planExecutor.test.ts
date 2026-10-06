@@ -169,6 +169,7 @@ const buildPlan = (): DevicePlan => ({
       reason: KEEP_REASON,
     })),
   ],
+  storageReleases: [],
 });
 
 const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => ({
@@ -206,6 +207,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       reason: KEEP_REASON,
     })),
   ],
+  storageReleases: [],
 });
 
 const buildExecutor = (
@@ -494,6 +496,7 @@ describe('PlanExecutor declined actuator requests', () => {
         binaryCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       })],
+      storageReleases: [],
     });
 
     expect(apply).toHaveBeenCalledWith({
@@ -615,6 +618,7 @@ describe('PlanExecutor restore logging', () => {
           reason: CAPACITY_REASON,
         }),
       ],
+      storageReleases: [],
     })).resolves.toEqual({
       deviceWriteCount: 1,
       commandRequestCount: 0,
@@ -668,6 +672,7 @@ describe('PlanExecutor restore logging', () => {
           reason,
         }),
       ],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
@@ -705,6 +710,7 @@ describe('PlanExecutor restore logging', () => {
           reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
         }),
       ],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
@@ -745,6 +751,7 @@ describe('PlanExecutor restore logging', () => {
           reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
         }),
       ],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
@@ -772,6 +779,7 @@ describe('PlanExecutor restore logging', () => {
           reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
         }),
       ],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
@@ -808,6 +816,7 @@ describe('PlanExecutor restore logging', () => {
           reason: KEEP_REASON,
         }),
       ],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
@@ -847,6 +856,7 @@ describe('PlanExecutor restore logging', () => {
           reason: KEEP_REASON,
         }),
       ],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
@@ -875,6 +885,7 @@ describe('PlanExecutor restore logging', () => {
           reason: fixtureDeviceReason('meter settling (30s remaining)'),
         }),
       ],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
@@ -913,6 +924,7 @@ describe('PlanExecutor restore logging', () => {
         binaryCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       })],
+      storageReleases: [],
     });
 
     expect(flowBackedTurnOffTrigger.trigger).toHaveBeenCalledWith(
@@ -1057,6 +1069,7 @@ describe('PlanExecutor restore logging', () => {
         binaryCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       })],
+      storageReleases: [],
     });
 
     expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
@@ -1155,6 +1168,7 @@ describe('PlanExecutor restore logging', () => {
         binaryCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       })],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
@@ -1455,6 +1469,7 @@ describe('PlanExecutor pending target commands', () => {
           reason: { code: PLAN_REASON_CODES.awaitingPelsStart },
         }),
       ],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
@@ -1578,6 +1593,7 @@ describe('PlanExecutor pending target commands', () => {
           shedAction: 'set_temperature',
         }),
       ],
+      storageReleases: [],
     });
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 15);
@@ -1738,7 +1754,7 @@ describe('PlanExecutor stepped loads', () => {
       available: true, binaryControl: { on: false }, binaryCapabilityId: 'onoff',
       steppedLoadProfile: device.steppedLoadProfile, reportedStepId: 'low', measuredPowerKw: 0 }]);
     const before = JSON.stringify(state);
-    const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     expect(executor.getDeviceExecutionStates(plan).get(device.id)).toMatchObject({
       physicalState: 'off', observedStepId: 'low', desiredBinary: 'off', desiredStepId: null,
       binaryProgress: 'settled', stepProgress: 'undriven', currentDrawKw: 0 });
@@ -1760,7 +1776,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor } = buildExecutor(state, [{ id: device.id, name: device.name,
       available: true, binaryControl: { on: false }, binaryCapabilityId: 'onoff',
       steppedLoadProfile: device.steppedLoadProfile, reportedStepId: 'low', measuredPowerKw: 0 }]);
-    const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
 
     expect(executor.getDeviceExecutionStates(plan).get(device.id)?.binaryProgress).not.toBe('pending');
     expect(state.pendingBinaryCommands[device.id]).toBe(expired);
@@ -1852,6 +1868,7 @@ describe('PlanExecutor stepped loads', () => {
           ),
         }))),
       ],
+      storageReleases: [],
     };
   };
 
@@ -2435,6 +2452,7 @@ describe('PlanExecutor stepped loads', () => {
       deferredReleaseIntent: 'binary_restore',
       ...overrides,
     })],
+    storageReleases: [],
   });
 
   it('marks stable EV deadline resume actuatable while the charger remains paused', () => {
@@ -3393,6 +3411,7 @@ describe('PlanExecutor stepped loads', () => {
           controllable: true,
         }),
       ],
+      storageReleases: [],
     });
 
     const settingsCalls = (deps.homey.settings.set as ReturnType<typeof vi.fn>).mock.calls
@@ -3519,6 +3538,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
       ...overrides,
     })],
+    storageReleases: [],
   });
 
   const buildSnapshot = (
@@ -4080,6 +4100,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           desiredStepId: 'max',
         }),
       ],
+      storageReleases: [],
     };
 
     await executor.applyPlanActions(plan);
@@ -4126,6 +4147,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           desiredStepId: 'low', // at lowestNonZeroStep — allowed
         }),
       ],
+      storageReleases: [],
     };
 
     await executor.applyPlanActions(plan);
@@ -4168,6 +4190,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           desiredStepId: 'max',
         }),
       ],
+      storageReleases: [],
     };
 
     await executor.applyPlanActions(plan);
@@ -4229,7 +4252,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
 
     await executor.applyPlanActions(
-      { meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('medium')] },
+      { meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('medium')], storageReleases: [] },
     );
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -4243,7 +4266,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     desiredSteppedTrigger.trigger.mockClear();
     deviceManager.setCapability.mockClear();
     await executor.applyPlanActions(
-      { meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('max')] },
+      { meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('max')], storageReleases: [] },
     );
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -4277,6 +4300,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           desiredStepId: 'max',
         }),
       ],
+      storageReleases: [],
     };
     const admittedPlan: DevicePlan = {
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
@@ -4289,6 +4313,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           desiredStepId: 'max',
         }),
       ],
+      storageReleases: [],
     };
 
     await executor.applyPlanActions(blockedPlan);
@@ -4362,6 +4387,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           desiredStepId: 'max',
         }),
       ],
+      storageReleases: [],
     };
 
     await executor.applyPlanActions(plan);
@@ -4597,6 +4623,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
             reason: CAPACITY_REASON,
           }),
         ],
+        storageReleases: [],
       });
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);

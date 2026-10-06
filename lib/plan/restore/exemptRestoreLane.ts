@@ -69,7 +69,7 @@ export function applyBudgetExemptRestorePass(
   const snapshot = Array.from(deviceMap.values());
   const restoreCandidates = sortRestoreCandidates([
     ...getRestoreCandidates(snapshot, state.shedDecisions),
-    ...getStorageHandBackCandidates(snapshot, state.storageLeverByDevice),
+    ...getStorageHandBackCandidates(snapshot, cycle.storageLevers),
   ])
     .filter((candidate) => isBudgetExempt(candidate.device));
   ({ restoredOneThisCycle } = applyRestoreCandidates(

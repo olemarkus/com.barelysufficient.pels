@@ -184,10 +184,9 @@ export type StorageVerdict = 'unverified' | 'responding' | 'not_responding' | 'r
 /** A battery PELS can read this cycle: its own signed power is observed. */
 export type ObservedStorageInput = {
   reading: 'observed';
+  /** The writable setpoint range, its grid (`stepW`, W) and exclusion band. */
   range: HomeBatterySetpointRange;
   handBackDeferred: boolean;
-  /** The setpoint grid, W. */
-  stepW: number;
   /** The battery's own signed power, W: positive charging, negative discharging. */
   signedPowerW: number;
   /** PELS holds a recorded claim on the battery (it owes a hand-back). */
@@ -197,9 +196,9 @@ export type ObservedStorageInput = {
   /**
    * The owner's Power-limit control for this battery, read through the
    * battery's own gate (`isBatteryPowerLimitEnabled`), never as a load's
-   * command authority. Off: PELS never limits it (no charge cap, no discharge
-   * for the limit), and it is no shed candidate. It still stores spare solar
-   * while Managed is on.
+   * command authority. Off: PELS never takes it over at all (owner ruling,
+   * 2026-10-06): no charge cap, no discharge and no surplus claim. It is no
+   * shed candidate and no surplus claimant, and its own app is in charge.
    */
   powerLimitControl: boolean;
   verdict: StorageVerdict;

@@ -12,9 +12,9 @@
  *   executor's confirmation tolerance is sized against.
  * - `release` — hand the battery back to its own mode, saying which rule
  *   fired: `restored` (the restore lane handed a limit hold back in priority
- *   order), `limit_off` (the owner turned Power-limit control off under a
- *   limit hold), `idle` (a claim PELS holds the battery for nothing),
- *   `surplus_dwell` (a surplus hold no device needs any more), `full` (a
+ *   order), `limit_off` (the owner turned Power-limit control off: PELS hands
+ *   back any hold, limit or surplus, and claims nothing), `idle` (a claim
+ *   PELS holds the battery for nothing), `surplus_dwell` (a surplus hold no device needs any more), `full` (a
  *   surplus hold on a battery that stopped taking charge), or why it may not
  *   be held.
  */

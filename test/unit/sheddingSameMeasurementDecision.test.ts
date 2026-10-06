@@ -51,7 +51,7 @@ const decidedAt = (decidedAtMs: number): Partial<ShedPlanLatch> => ({
 });
 
 const decide = (state: ReturnType<typeof shedState>, measurementTs: number, powerW: number | null) => (
-  resolveSameMeasurementSheddingDecision(state, devices, measurementTs, powerW, NOW, true)
+  resolveSameMeasurementSheddingDecision(state, devices, measurementTs, powerW, NOW, true, {})
 );
 
 describe('resolveSameMeasurementSheddingDecision', () => {
@@ -134,6 +134,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
         READING_W,
         NOW,
         false,
+        {},
       );
 
       expect(decision.kind).toBe('skip_same_sample');

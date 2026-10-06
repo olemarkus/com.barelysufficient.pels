@@ -7,32 +7,17 @@
  * hold (`StorageLeverState`) and its `StorageDecision`, which the executor's
  * storage lane carries out unchanged.
  */
-import type { ObservedStorageInput } from '../../../packages/planner-types/src/planInputDevice';
 import type { StorageDecision } from '../../planContract/storageDecision';
 import type { StorageLeverState } from '../planState';
-import type { PlanInputDevice } from '../planTypes';
 import type { StorageSetpoint } from '../shedding/types';
-import { STORAGE_RELIEF_SETTLE_WINDOW_MS, hasStorageInput, ownDischargeWOf } from './storageLadder';
+import { STORAGE_RELIEF_SETTLE_WINDOW_MS, ownDischargeWOf } from './storageLadder';
 import {
   isSettling,
-  resolveClaimReason,
-  resolveHeldBackChargeW,
   resolveOwnModeChargeW,
-  resolveWithheldW,
-  sumWithheldKw,
+  summarizeHold,
   type StorageRelief,
   type StorageStateSummary,
 } from './storageRelief';
-
-/** An observed battery this cycle's plan carries, by id. */
-const findObservedStorage = (
-  devices: readonly PlanInputDevice[],
-  deviceId: string,
-): ObservedStorageInput | null => {
-  const device = devices.find((entry) => entry.id === deviceId);
-  if (device === undefined || !hasStorageInput(device) || device.storage.reading !== 'observed') return null;
-  return device.storage;
-};
 
 /**
  * The limit hold at the setpoint shedding chose. A discharge asked for opens
@@ -49,30 +34,28 @@ const findObservedStorage = (
  * is never credited again by being asked again.
  */
 const toLimitLever = (
-  storage: ObservedStorageInput,
   previous: StorageLeverState | undefined,
   chosen: StorageSetpoint,
   nowTs: number,
 ): StorageLeverState => {
-  const { setpointW, banked } = chosen;
+  const { setpointW, banked, storage } = chosen;
   const preClaimSignedW = previous?.preClaimSignedW ?? storage.signedPowerW;
   return {
     setpointW,
     purpose: 'limit',
-    ...resolveCreditWindow(storage, previous, chosen, nowTs),
+    ...resolveCreditWindow(previous, chosen, nowTs),
     lastDecreaseAtMs: previous?.lastDecreaseAtMs ?? nowTs,
     chargeRaisedAtMs: previous?.chargeRaisedAtMs ?? nowTs,
     lastNeedAtMs: banked ? nowTs : (previous?.lastNeedAtMs ?? nowTs - STORAGE_RELIEF_SETTLE_WINDOW_MS),
     preClaimSignedW,
     ownModeChargeW: resolveOwnModeChargeW(storage, preClaimSignedW),
-    stepW: storage.stepW,
+    stepW: storage.range.stepW,
     reading: { kind: 'read' },
   };
 };
 
 /** The credit window a limit hold at this setpoint carries (`toLimitLever`). */
 const resolveCreditWindow = (
-  storage: ObservedStorageInput,
   previous: StorageLeverState | undefined,
   chosen: StorageSetpoint,
   nowTs: number,
@@ -86,75 +69,33 @@ const resolveCreditWindow = (
     return { increaseDecidedAtMs: previous.increaseDecidedAtMs, creditBaseW: previous.creditBaseW };
   }
   const heldDischargeW = previous === undefined ? 0 : Math.max(0, -previous.setpointW);
-  return { increaseDecidedAtMs: nowTs, creditBaseW: Math.max(ownDischargeWOf(storage), heldDischargeW) };
-};
-
-/** A setpoint decision for a hold. */
-const toSetpointDecision = (lever: StorageLeverState): StorageDecision => (
-  { kind: 'setpoint', setpointW: lever.setpointW, stepW: lever.stepW }
-);
-
-/** The relief with some batteries' holds, decisions and summaries replaced. */
-const withBatteries = (
-  relief: StorageRelief,
-  levers: Readonly<Record<string, StorageLeverState>>,
-  decisions: ReadonlyMap<string, StorageDecision>,
-  summaries: ReadonlyMap<string, StorageStateSummary>,
-): StorageRelief => {
-  const batteries = [
-    ...relief.batteries.map((battery) => summaries.get(battery.deviceId) ?? battery),
-    ...[...summaries.values()].filter((summary) => !relief.batteries.some((b) => b.deviceId === summary.deviceId)),
-  ];
-  return {
-    ...relief,
-    levers,
-    decisions,
-    batteries,
-    withheldKw: sumWithheldKw(batteries),
-  };
+  return { increaseDecidedAtMs: nowTs, creditBaseW: Math.max(ownDischargeWOf(chosen.storage), heldDischargeW) };
 };
 
 /**
  * Hold every battery shedding chose this cycle at the setpoint it was spent
- * at (`SheddingPlan.storageSetpoints`). Only a battery that was a candidate
- * this cycle can be chosen, so it is observed and holdable; one that is not is
- * left as the storage stage decided it.
+ * at (`SheddingPlan.storageSetpoints`), which carries the battery as its
+ * candidate read it. A candidate is an observed battery, which the storage
+ * stage summarized this cycle, so its summary is replaced in place.
  */
 export function applyStorageLimits(
   relief: StorageRelief,
-  devices: readonly PlanInputDevice[],
   storageSetpoints: ReadonlyMap<string, StorageSetpoint>,
   nowTs: number,
 ): StorageRelief {
   if (storageSetpoints.size === 0) return relief;
-  const limits = [...storageSetpoints].flatMap(([deviceId, chosen]) => {
-    const storage = findObservedStorage(devices, deviceId);
-    if (storage === null) return [];
-    const lever = toLimitLever(storage, relief.levers[deviceId], chosen, nowTs);
-    const { setpointW } = chosen;
-    const decision = toSetpointDecision(lever);
-    const summary: StorageStateSummary = {
-      deviceId,
-      reading: 'observed',
-      claimHeld: storage.claimHeld,
-      // Limited, so its Power-limit control is on.
-      solarOnly: false,
-      claim: resolveClaimReason(lever),
-      decision,
-      setpointW,
-      heldBackChargeW: resolveHeldBackChargeW(lever),
+  const limits = new Map([...storageSetpoints].map(([deviceId, chosen]) => (
+    [deviceId, { storage: chosen.storage, lever: toLimitLever(relief.levers[deviceId], chosen, nowTs) }] as const
+  )));
+  return {
+    ...relief,
+    levers: { ...relief.levers, ...Object.fromEntries([...limits].map(([deviceId, { lever }]) => [deviceId, lever])) },
+    batteries: relief.batteries.map((battery): StorageStateSummary => {
+      const limit = limits.get(battery.deviceId);
       // Selection banked this cycle's relief already: nothing more to credit now.
-      creditW: 0,
-      withheldW: resolveWithheldW(storage, setpointW),
-    };
-    return [{ lever, decision, summary }];
-  });
-  return withBatteries(
-    relief,
-    { ...relief.levers, ...Object.fromEntries(limits.map(({ lever, summary }) => [summary.deviceId, lever])) },
-    new Map([...relief.decisions, ...limits.map(({ decision, summary }) => [summary.deviceId, decision] as const)]),
-    new Map(limits.map(({ summary }) => [summary.deviceId, summary])),
-  );
+      return limit === undefined ? battery : summarizeHold(battery.deviceId, limit.storage, limit.lever, 0);
+    }),
+  };
 }
 
 /** Hand back every battery the restore lane admitted (`restored`). */
@@ -164,15 +105,11 @@ export function applyStorageHandBacks(
 ): StorageRelief {
   if (handedBack.size === 0) return relief;
   const released: StorageDecision = { kind: 'release', reason: 'restored' };
-  const summaries = relief.batteries
-    .filter((battery) => handedBack.has(battery.deviceId))
-    .map((battery): StorageStateSummary => ({
-      ...battery, claim: 'none', decision: released, setpointW: 0, heldBackChargeW: 0, creditW: 0,
-    }));
-  return withBatteries(
-    relief,
-    Object.fromEntries(Object.entries(relief.levers).filter(([deviceId]) => !handedBack.has(deviceId))),
-    new Map([...relief.decisions, ...summaries.map((summary) => [summary.deviceId, released] as const)]),
-    new Map(summaries.map((summary) => [summary.deviceId, summary])),
-  );
+  return {
+    ...relief,
+    levers: Object.fromEntries(Object.entries(relief.levers).filter(([deviceId]) => !handedBack.has(deviceId))),
+    batteries: relief.batteries.map((battery): StorageStateSummary => (handedBack.has(battery.deviceId)
+      ? { ...battery, claim: 'none', decision: released, setpointW: 0, heldBackChargeW: 0, creditW: 0 }
+      : battery)),
+  };
 }

@@ -183,6 +183,7 @@ const buildRestoreTo6aPlan = (
       binaryControl: { on: false },
     }),
   ],
+  storageReleases: [],
 });
 
 const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan => ({
@@ -212,6 +213,7 @@ const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan =>
       binaryControl: { on: true },
     }),
   ],
+  storageReleases: [],
 });
 
 // ── Executor harness with the REAL control helper in the loop ────────────────

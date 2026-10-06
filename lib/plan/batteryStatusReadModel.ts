@@ -12,9 +12,9 @@
  *   order, with the load's `Limited` word; the reason line says how much more
  *   charge its own mode would take.
  * - **Own mode**: it runs the mode chosen in its own app. With its Power-limit
- *   control off, the reason line says PELS only stores spare solar in it. One
- *   PELS cannot drive says PELS can only watch it, and why: its app refused
- *   PELS's claim, or gives Homey no power setting.
+ *   control off, the reason line says so: PELS never takes it over, and its
+ *   own app is in charge. One PELS cannot drive says PELS can only watch it,
+ *   and why: its app refused PELS's claim, or gives Homey no power setting.
  *
  * Power is shown without a sign: the state word gives the direction. Below
  * `DIRECTION_MIN_W` either way the battery is doing nothing worth naming, so
@@ -32,6 +32,11 @@ import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 export type HomeBatteryCard = Extract<HomeBatteryCardRead, { kind: 'battery' }>;
 type StorageHoldKind = StorageHold['kind'];
 type Direction = 'supplying' | 'charging';
+/** The holds of a battery PELS does not hold: it runs its own mode. */
+type OwnModeHoldKind = 'none' | 'power_limit_off';
+const isOwnModeHold = (hold: StorageHold): hold is Extract<StorageHold, { kind: OwnModeHoldKind }> => (
+  hold.kind === 'none' || hold.kind === 'power_limit_off'
+);
 
 const NO_BATTERY_CARD: HomeBatteryCardRead = { kind: 'none' };
 
@@ -67,9 +72,8 @@ export const BATTERY_REASON_LINES = {
   surplus: 'Storing the solar power your devices leave',
   cap_for_device: 'Charging less so a device can use the solar',
   none: 'PELS takes over when your limit or solar needs it',
-  solar_only: 'PELS uses it only to store spare solar',
+  power_limit_off: 'Power-limit control is off: its own app is in charge',
 } as const satisfies Record<StorageHoldKind, string>;
-
 
 /** Below this, the charge a cap holds back is not worth naming, kW. */
 const HELD_BACK_MIN_KW = 0.05;
@@ -80,7 +84,7 @@ const INTENDED_DIRECTION = {
   charge_limit: 'charging',
   surplus: 'charging',
   cap_for_device: 'charging',
-} as const satisfies Record<Exclude<StorageHoldKind, 'none' | 'solar_only'>, Direction>;
+} as const satisfies Record<Exclude<StorageHoldKind, OwnModeHoldKind>, Direction>;
 
 /** What the battery itself reports doing, or `null` when it reports too little to name. */
 const resolveObservedDirection = (battery: HomeBatteryCard): Direction | null => {
@@ -109,20 +113,20 @@ export function buildSettingsUiPlanHomeBattery(
   // reasons of its own.
   // A capped charge holds nothing: only a discharge for the limit does.
   const holdsLimit = hold.kind === 'relief' && direction === 'supplying';
-  if (hold.kind === 'none' || hold.kind === 'solar_only') return { activity: 'own_mode', power, holdsLimit };
+  if (isOwnModeHold(hold)) return { activity: 'own_mode', power, holdsLimit };
   return { activity: direction ?? INTENDED_DIRECTION[hold.kind], power, holdsLimit };
 }
 
 const resolveFactText = (battery: HomeBatteryCard, hold: StorageHold): string | null => {
   const parts = [
     battery.level.kind === 'observed' ? `${Math.round(battery.level.percent)} % charged` : null,
-    hold.kind === 'none' || hold.kind === 'solar_only' ? resolveObservedDirection(battery) : null,
+    isOwnModeHold(hold) ? resolveObservedDirection(battery) : null,
   ].filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(' · ') : null;
 };
 
 const resolveReason = (battery: HomeBatteryCard, hold: StorageHold, dryRun: boolean): DeviceStatus['reason'] => {
-  if (hold.kind === 'none' || hold.kind === 'solar_only') {
+  if (isOwnModeHold(hold)) {
     // A battery PELS cannot drive says why: its app refused control, or gives
     // Homey no power setting. The same line its device page and device-list
     // row show in place of a Power-limit control.

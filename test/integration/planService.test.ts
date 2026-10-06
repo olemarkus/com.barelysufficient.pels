@@ -132,6 +132,7 @@ const buildPlan = (
           }),
       })))) as DevicePlan['devices'][number],
     ],
+    storageReleases: [],
   };
 };
 
@@ -189,7 +190,7 @@ describe('PlanService', () => {
     const device = steppedPlanDevice({ id: 'connected-300', currentState: 'on', reportedStepId: 'low',
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'shed',
       plannedShedTargetKind: 'binary_off', shedAction: 'turn_off', reason: { code: 'deferred_objective_avoid' } });
-    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     let live = { ...executionStateFixture(device), desiredBinary: 'off' as const, desiredStepId: null };
     const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, live]])) };
     const recorder = new DeviceOverviewLogRecorder();
@@ -228,7 +229,7 @@ describe('PlanService', () => {
   ] as const)('shows a home battery on the overview of $homeId only when it is Main', async ({ homeId, shown }) => {
     const battery = buildPlanDevice({ id: 'battery-1', name: 'Sessy battery', isBatteryOrSolar: true,
       storageHold: { kind: 'relief' } });
-    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [battery] };
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [battery], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[battery.id, executionStateFixture(battery)]])) };
     const getHomeBatteryCard = vi.fn(() => ({
@@ -250,7 +251,7 @@ describe('PlanService', () => {
   it('joins observations queued behind one live sync into a single status build', async () => {
     const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
-    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[device.id, executionStateFixture(device)]])) };
     const { service } = createPlanService({ planEngine: engine });
@@ -268,7 +269,7 @@ describe('PlanService', () => {
   it('words cards from the Simulation setting, not the transient write fence', async () => {
     const device = buildPlanDevice({ id: 'heater', currentState: 'off', plannedState: 'shed',
       reason: { code: PLAN_REASON_CODES.capacity } });
-    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[device.id, executionStateFixture(device)]])) };
     const { service } = createPlanService({ planEngine: engine, getCapacityDryRun: () => true,
@@ -283,7 +284,7 @@ describe('PlanService', () => {
   it('logs the decision and executor facts behind a presentation change for debugging only', async () => {
     const device = steppedPlanDevice({ id: 'ev-1', currentState: 'on', plannedState: 'keep',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'max' });
-    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[device.id, { ...executionStateFixture(device),
         stepProgress: 'pending' as const }]])) };
@@ -304,7 +305,7 @@ describe('PlanService', () => {
   it('pushes a fact-only change to the open card without writing an activity-log entry', async () => {
     const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState: 'on',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
-    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[device.id, executionStateFixture(device)]])) };
     let percent = 64;
@@ -333,7 +334,7 @@ describe('PlanService', () => {
     // reports; logging each one evicts the control events the log exists for.
     const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.44,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
-    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     let live = executionStateFixture(device);
     const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, live]])) };
     const recorder = new DeviceOverviewLogRecorder();
@@ -360,7 +361,7 @@ describe('PlanService', () => {
     // the observation the plan was built from, never the executor's view.
     const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
-    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, {
       ...executionStateFixture(device), physicalState: 'off' as const, currentDrawKw: 0 }]])) };
     const { service } = createPlanService({ planEngine: engine });
@@ -379,7 +380,7 @@ describe('PlanService', () => {
     // the first half of the window out and make capped idle unreachable.
     const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
-    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device] };
+    const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     let live = executionStateFixture(device);
     const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, live]])) };
     const { service } = createPlanService({ planEngine: engine });
@@ -640,6 +641,7 @@ describe('PlanService', () => {
           reason: fixtureDeviceReason('inactive (charger is unplugged)')!,
         }))) as DevicePlan['devices'][number],
       ],
+      storageReleases: [],
     };
     const debugStructured = vi.fn();
     const { service } = createPlanService({
@@ -2679,6 +2681,7 @@ describe('PlanService', () => {
     const plan: DevicePlan = {
       meta: buildPlanMeta({ totalKw: 0, softLimitKw: 0, headroomKw: 0 }),
       devices: [],
+      storageReleases: [],
     };
     const changes = {
       actionChanged: false,

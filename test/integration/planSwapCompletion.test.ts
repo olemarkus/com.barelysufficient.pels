@@ -96,6 +96,7 @@ describe('swap reservation lifetime', () => {
 
     // Cycle 1 — no headroom of its own, so only a swap can fund the restore.
     const first = applyRestorePlan({
+      storageLevers: {},
       planDevices: [beneficiary(), donorOn()],
       ...buildContext({ headroomRaw: 0, headroom: 0 }),
       state,
@@ -114,6 +115,7 @@ describe('swap reservation lifetime', () => {
     for (let elapsed = 10_000; elapsed <= SWAP_TIMEOUT_MS + 20_000; elapsed += 10_000) {
       vi.setSystemTime(t0 + elapsed);
       applyRestorePlan({
+        storageLevers: {},
         planDevices: [beneficiary(), donorOff()],
         ...buildContext({ headroomRaw: -1, headroom: -1 }),
         state,
@@ -131,6 +133,7 @@ describe('swap reservation lifetime', () => {
     // against a deadline set before the lane ever shut.
     vi.setSystemTime(t0 + SWAP_TIMEOUT_MS + 30_000);
     applyRestorePlan({
+      storageLevers: {},
       planDevices: [beneficiary(), donorOff()],
       ...buildContext({ headroomRaw: 2, headroom: 2 }),
       state,
@@ -154,6 +157,7 @@ describe('swap reservation lifetime', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-off']);
 
     applyRestorePlan({
+      storageLevers: {},
       planDevices: [beneficiary(), donorOn()],
       ...buildContext({ headroomRaw: 0, headroom: 0 }),
       state,
@@ -165,6 +169,7 @@ describe('swap reservation lifetime', () => {
     // One rebuild, well past the timeout, and it is the first since approval.
     vi.setSystemTime(t0 + SWAP_TIMEOUT_MS + 30_000);
     applyRestorePlan({
+      storageLevers: {},
       planDevices: [beneficiary(), donorOff()],
       ...buildContext({ headroomRaw: 2, headroom: 2 }),
       state,

@@ -334,7 +334,7 @@ const DEMAND_RANK: Readonly<Record<SurplusDemand, number>> = { none: 0, running:
  * its own place in the priority order (owner ruling, 2026-10-06). Resolved by
  * the builder (`resolveStorageSurplus`, `battery/storageRelief.ts`), so this
  * allocator reads no battery. Only a battery PELS may claim is one: Managed
- * on, readable, and drivable.
+ * and Power-limit control on, readable, and holdable.
  */
 export type StorageSurplusClaimant = {
   deviceId: string;
@@ -381,6 +381,12 @@ export type StorageSurplusOffer = {
    */
   availableW: number;
   demandAbove: SurplusDemand;
+  /**
+   * What the pool counted of this battery's own charge, W
+   * (`StorageSurplusClaimant.chargeW`): part of `availableW`, so the storage
+   * stage takes it out again before it funds the battery's charge.
+   */
+  addedBackW: number;
   /**
    * What the consumers ranked below it take out of `availableW`, W: the
    * smallest runnable step of every `waiting` device, what every other device
@@ -800,7 +806,7 @@ export function resolveSurplusEligibility(params: {
   // battery's offer at its turn with that running total: what the consumers
   // after it take is the difference at the end.
   let takenKw = 0;
-  const turns = new Map<string, { availableW: number; demandAbove: SurplusDemand; takenAtTurnKw: number }>();
+  const turns = new Map<string, Omit<StorageSurplusOffer, 'belowW'> & { takenAtTurnKw: number }>();
 
   const ranked: RankedSurplusConsumer[] = [
     ...willing.map((dev) => ({ kind: 'device' as const, priority: dev.priority, dev })),
@@ -816,7 +822,7 @@ export function resolveSurplusEligibility(params: {
       poolKw -= reservedKw;
       storageKw -= reservedKw;
       takenKw += Math.max(claimant.chargeW / 1000, reservedKw);
-      turns.set(claimant.deviceId, { availableW, demandAbove, takenAtTurnKw: takenKw });
+      turns.set(claimant.deviceId, { availableW, demandAbove, addedBackW: claimant.chargeW, takenAtTurnKw: takenKw });
       continue;
     }
     const { dev } = consumer;

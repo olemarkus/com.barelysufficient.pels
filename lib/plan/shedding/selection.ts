@@ -109,12 +109,12 @@ function spendStorageCandidate(
 ): ReturnType<typeof resolveStorageSpend> {
   const banked = !candidate.unconfirmedRelief;
   if (!banked && candidate.hold.kind === 'limit') {
-    storageSetpoints.set(candidate.id, { setpointW: candidate.hold.setpointW, banked });
+    storageSetpoints.set(candidate.id, { setpointW: candidate.hold.setpointW, banked, storage: candidate.storage });
     return null;
   }
   const spend = resolveStorageSpend(candidate, remainingKw);
   if (spend === null) return null;
-  storageSetpoints.set(candidate.id, { setpointW: spend.setpointW, banked });
+  storageSetpoints.set(candidate.id, { setpointW: spend.setpointW, banked, storage: candidate.storage });
   debugStructured?.({
     event: 'plan_shed_storage_limit',
     deviceId: candidate.id,

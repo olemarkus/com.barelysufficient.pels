@@ -8,8 +8,10 @@ import { resolvePendingShedRelief } from '../../lib/plan/shedding/pendingRelief'
 import { applyStorageHandBacks, applyStorageLimits } from '../../lib/plan/battery/storageLimit';
 import {
   decideStorageRelief,
+  sumWithheldKw,
   type StorageRelief,
 } from '../../lib/plan/battery/storageRelief';
+import type { StorageDecision } from '../../lib/planContract/storageDecision';
 import { resolveStorageHandBack } from '../../lib/plan/restore/devices';
 import type { StorageLeverState } from '../../lib/plan/planState';
 import type { StorageSurplusOffer } from '../../lib/plan/planSurplusAbsorb';
@@ -22,9 +24,16 @@ import { buildMeasuredPower } from '../utils/planContextPowerFixture';
 import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
 
 const NOW = 10_000_000;
+
+/** The decisions the relief carries, by battery (`StorageStateSummary.decision`). */
+const decisionsOf = (relief: StorageRelief): Map<string, StorageDecision> => new Map(relief.batteries.flatMap(
+  (battery) => (battery.decision.kind === 'none' ? [] : [[battery.deviceId, battery.decision] as const]),
+));
+/** What restore and admission may not spend for the batteries, kW. */
+const withheldKwOf = (relief: StorageRelief): number => sumWithheldKw(relief.batteries);
 /** No willing device, and the house short of its pace: nothing offered to the battery. */
 const NO_OFFERS: ReadonlyMap<string, StorageSurplusOffer> = new Map([
-  ['battery', { availableW: -5000, demandAbove: 'none', belowW: 0 }],
+  ['battery', { availableW: -5000, demandAbove: 'none', addedBackW: 0, belowW: 0 }],
 ]);
 
 const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice & { storage: ObservedStorageInput } => ({
@@ -41,7 +50,6 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
     reading: 'observed',
     range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false,
-    stepW: 5,
     signedPowerW: 0,
     claimHeld: false,
     admissible: true,
@@ -165,7 +173,7 @@ describe('the battery in the priority order', () => {
     const selection = selectShedDevices([charging(), heater(2, 2), heater(1, 2)], 1.5, CAPACITY, false);
 
     expect(selection.shedSet.size).toBe(0);
-    expect(selection.storageSetpoints.get('battery')).toEqual({ setpointW: 400, banked: true });
+    expect(selection.storageSetpoints.get('battery')).toMatchObject({ setpointW: 400, banked: true });
     // The stopped charge is banked for pending relief, as a load's relief is.
     expect(selection.creditedKw.get('battery')).toBeCloseTo(1.6);
   });
@@ -176,7 +184,7 @@ describe('the battery in the priority order', () => {
 
     expect([...selection.shedSet]).toEqual(['lamp', 'heater']);
     // 1 kW left: covered by its charge alone.
-    expect(selection.storageSetpoints.get('battery')).toEqual({ setpointW: 900, banked: true });
+    expect(selection.storageSetpoints.get('battery')).toMatchObject({ setpointW: 900, banked: true });
   });
 
   it('is never in the shed set: the executor never sees a shed for it', () => {
@@ -201,14 +209,14 @@ describe('an unconfirmed battery PELS already holds', () => {
     const unanswered = candidateFor(battery({ signedPowerW: 0 }), 6, held);
     const selection = selectShedDevices([unanswered, heater(1, 2)], 1.5, CAPACITY, false);
 
-    expect(selection.storageSetpoints.get('battery')).toEqual({ setpointW: -1300, banked: false });
+    expect(selection.storageSetpoints.get('battery')).toMatchObject({ setpointW: -1300, banked: false });
     expect([...selection.shedSet]).toEqual(['heater-1']);
   });
 
   it('re-asserts a re-probing battery at its hold, never at a deeper reading', () => {
     const reprobing = candidateFor(battery({ signedPowerW: -1500, verdict: 'reprobing' }), 6, lever({ setpointW: -1300 }));
     const selection = selectShedDevices([reprobing], 1, CAPACITY, false);
-    expect(selection.storageSetpoints.get('battery')).toEqual({ setpointW: -1300, banked: false });
+    expect(selection.storageSetpoints.get('battery')).toMatchObject({ setpointW: -1300, banked: false });
   });
 
   it('opens no credit window and keeps when it was last banked', () => {
@@ -217,7 +225,7 @@ describe('an unconfirmed battery PELS already holds', () => {
     const relief = applyStorageLimits(
       decideStorageRelief([device], buildMeasuredPower({ drawKw: 6, headroomKw: -2 }), { battery: held },
         NO_OFFERS, NOW),
-      [device], new Map([['battery', { setpointW: -1300, banked: false }]]), NOW,
+      new Map([['battery', { setpointW: -1300, banked: false, storage: device.storage }]]), NOW,
     );
     expect(relief.levers.battery).toMatchObject({ lastNeedAtMs: NOW - 40_000, creditBaseW: 1300 });
     const next = decideStorageRelief(
@@ -235,19 +243,19 @@ describe('the limit hold and its credit', () => {
 
   it('turns the chosen setpoint into a limit hold, keeping the charge its own mode took', () => {
     const device = battery({ signedPowerW: 1000 });
-    const relief = applyStorageLimits(held(device), [device], new Map([['battery', { setpointW: -1300, banked: true }]]), NOW);
+    const relief = applyStorageLimits(held(device), new Map([['battery', { setpointW: -1300, banked: true, storage: device.storage }]]), NOW);
 
-    expect(relief.decisions.get('battery')).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });
+    expect(decisionsOf(relief).get('battery')).toEqual({ kind: 'setpoint', setpointW: -1300, stepW: 5 });
     expect(relief.levers.battery).toMatchObject({
       purpose: 'limit', setpointW: -1300, increaseDecidedAtMs: NOW, creditBaseW: 0, preClaimSignedW: 1000, ownModeChargeW: 1000,
     });
     // Restore may not spend the discharge it now holds.
-    expect(relief.withheldKw).toBeCloseTo(1.3);
+    expect(withheldKwOf(relief)).toBeCloseTo(1.3);
   });
 
   it('splits the credit: the stopped charge is pending relief, the discharge is the storage term', () => {
     const device = battery({ signedPowerW: 1000 });
-    const limited = applyStorageLimits(held(device), [device], new Map([['battery', { setpointW: -1300, banked: true }]]), NOW);
+    const limited = applyStorageLimits(held(device), new Map([['battery', { setpointW: -1300, banked: true, storage: device.storage }]]), NOW);
     // Five seconds on the battery has not moved yet.
     const later = decideStorageRelief(
       [device], buildMeasuredPower({ drawKw: 6, headroomKw: -2.3 }), limited.levers, NO_OFFERS, NOW + 5_000,
@@ -264,7 +272,7 @@ describe('the limit hold and its credit', () => {
   it('keeps an earlier discharge\'s window when shedding deepens it while it settles', () => {
     const device = battery({ signedPowerW: -200 });
     const settling = { battery: lever({ setpointW: -1000, increaseDecidedAtMs: NOW - 20_000, creditBaseW: 0 }) };
-    const relief = applyStorageLimits(held(device, settling), [device], new Map([['battery', { setpointW: -2000, banked: true }]]), NOW);
+    const relief = applyStorageLimits(held(device, settling), new Map([['battery', { setpointW: -2000, banked: true, storage: device.storage }]]), NOW);
 
     expect(relief.levers.battery).toMatchObject({ increaseDecidedAtMs: NOW - 20_000, creditBaseW: 0 });
   });
@@ -278,7 +286,7 @@ describe('the limit hold and its credit', () => {
 
   it('opens no settle window for a hold that only caps the charge', () => {
     const device = battery({ signedPowerW: 2000 });
-    const relief = applyStorageLimits(held(device), [device], new Map([['battery', { setpointW: 400, banked: true }]]), NOW);
+    const relief = applyStorageLimits(held(device), new Map([['battery', { setpointW: 400, banked: true, storage: device.storage }]]), NOW);
 
     expect(relief.levers.battery?.increaseDecidedAtMs).toBe(NOW - STORAGE_RELIEF_SETTLE_WINDOW_MS);
     expect(relief.batteries[0]).toMatchObject({ claim: 'charge_limit', heldBackChargeW: 1600 });
@@ -290,8 +298,9 @@ describe('the restore hand-back', () => {
     id: 'battery', name: 'Battery', isBatteryOrSolar: true, controllable: managed, managed,
   });
 
-  it('is sized as the charge its own mode takes once handed back', () => {
-    expect(resolveStorageHandBack(planBattery(), { battery: lever({ ownModeChargeW: 2000 }) })).toEqual({ needKw: 2 });
+  it('is the limit hold, which the lane sizes on the charge its own mode takes once handed back', () => {
+    const limit = lever({ ownModeChargeW: 2000 });
+    expect(resolveStorageHandBack(planBattery(), { battery: limit })).toBe(limit);
   });
 
   it('sizes a battery not seen charging at the claim on its charge ceiling', () => {
@@ -299,14 +308,14 @@ describe('the restore hand-back', () => {
     const relief = applyStorageLimits(
       decideStorageRelief([idle], buildMeasuredPower({ drawKw: 6, headroomKw: -2 }), {},
         NO_OFFERS, NOW),
-      [idle], new Map([['battery', { setpointW: -1300, banked: true }]]), NOW,
+      new Map([['battery', { setpointW: -1300, banked: true, storage: idle.storage }]]), NOW,
     );
     expect(relief.levers.battery?.ownModeChargeW).toBe(2500);
     const charging = battery({ signedPowerW: 1500, chargeCeilingW: 2500 });
     const capped = applyStorageLimits(
       decideStorageRelief([charging], buildMeasuredPower({ drawKw: 6, headroomKw: -1 }), {},
         NO_OFFERS, NOW),
-      [charging], new Map([['battery', { setpointW: 400, banked: true }]]), NOW,
+      new Map([['battery', { setpointW: 400, banked: true, storage: charging.storage }]]), NOW,
     );
     expect(capped.levers.battery?.ownModeChargeW).toBe(1500);
   });
@@ -316,7 +325,7 @@ describe('the restore hand-back', () => {
     const relief = applyStorageLimits(
       decideStorageRelief([discharging], buildMeasuredPower({ drawKw: 6, headroomKw: -1 }), {},
         NO_OFFERS, NOW),
-      [discharging], new Map([['battery', { setpointW: -2500, banked: true }]]), NOW,
+      new Map([['battery', { setpointW: -2500, banked: true, storage: discharging.storage }]]), NOW,
     );
     expect(relief.levers.battery?.ownModeChargeW).toBe(0);
   });
@@ -336,7 +345,7 @@ describe('the restore hand-back', () => {
     );
     const handedBack = applyStorageHandBacks(relief, new Set(['battery']));
 
-    expect(handedBack.decisions.get('battery')).toEqual({ kind: 'release', reason: 'restored' });
+    expect(decisionsOf(handedBack).get('battery')).toEqual({ kind: 'release', reason: 'restored' });
     expect(handedBack.levers).toEqual({});
     expect(handedBack.batteries[0]).toMatchObject({ claim: 'none', setpointW: 0 });
   });

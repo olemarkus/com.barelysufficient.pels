@@ -239,12 +239,12 @@ export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
  * the charge its own mode would take that the cap holds back, kW); its own
  * mode's charge capped so a device ranked above it can use the solar
  * (`cap_for_device`); or storing solar the devices above it leave (`surplus`). A battery it does not hold:
- * `solar_only` when its Power-limit control is off (PELS only stores spare
- * solar in it), `none` otherwise.
+ * `power_limit_off` when its Power-limit control is off (PELS never takes it
+ * over, and its own app is in charge), `none` otherwise.
  */
 export type StorageHold =
   | { kind: 'none' }
-  | { kind: 'solar_only' }
+  | { kind: 'power_limit_off' }
   | { kind: 'relief' }
   | { kind: 'charge_limit'; heldBackKw: number }
   | { kind: 'cap_for_device' }
@@ -868,8 +868,8 @@ export type DevicePlan = {
   generatedAtMs?: number;
   meta: PlanMeta;
   devices: DevicePlanDevice[];
-  /** Present when hand-backs have no surviving plan device to carry them. */
-  storageReleases?: import('../planContract/storageDecision').StorageReleaseIntent[];
+  /** The hand-backs with no surviving plan device to carry them; empty when there are none. */
+  storageReleases: import('../planContract/storageDecision').StorageReleaseIntent[];
 };
 
 export type PlanChangeSet = {

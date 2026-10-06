@@ -20,6 +20,7 @@ const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
     softLimitKw: 5,
     headroomKw: 4}),
   devices,
+  storageReleases: [],
 });
 
 describe('planExecutablePlan', () => {
@@ -306,6 +307,7 @@ describe('planExecutablePlan', () => {
         softLimitKw: 5,
         headroomKw: 4}),
       devices: [evCharger],
+      storageReleases: [],
     });
 
     expect(executablePlan.devices[0]).not.toHaveProperty('release');
@@ -336,6 +338,7 @@ describe('planExecutablePlan', () => {
         softLimitKw: 5,
         headroomKw: 4}),
       devices: [evCharger],
+      storageReleases: [],
     });
 
     const intent = executablePlan.devices[0];

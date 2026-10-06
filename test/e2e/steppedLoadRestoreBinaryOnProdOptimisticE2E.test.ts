@@ -291,6 +291,7 @@ const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
       binaryControl: { on: false },
     }),
   ],
+  storageReleases: [],
 });
 
 const setCapabilityCallList = (

@@ -40,7 +40,7 @@ export function hasPlanExecutionDriftAgainstIntent(
   plan: DevicePlan,
   deps: DriftObservationDeps,
 ): boolean {
-  if (plan.storageReleases?.some((intent) => deps.hasStorageReleaseDrift(intent))) return true;
+  if (plan.storageReleases.some((intent) => deps.hasStorageReleaseDrift(intent))) return true;
   for (const planDevice of plan.devices) {
     if (hasStorageDecision(planDevice) && deps.hasStorageDrift(planDevice)) return true;
     const observed = deps.getObservedState(planDevice.id);

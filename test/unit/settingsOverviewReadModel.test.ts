@@ -68,6 +68,7 @@ describe('settingsOverviewReadModel', () => {
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 12}),
       devices: [device],
+      storageReleases: [],
     }, absentTemperature);
 
     // Only what the wire still carries. The inputs above are planner-meta
@@ -131,6 +132,7 @@ describe('settingsOverviewReadModel', () => {
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 12}),
       devices: [heater, battery, solar],
+      storageReleases: [],
     }, absentTemperature);
 
     const ids = (readModel?.devices ?? []).map((d) => d.id);
@@ -155,6 +157,7 @@ describe('settingsOverviewReadModel', () => {
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 4.25}),
       devices: [device],
+      storageReleases: [],
     }, absentTemperature);
 
     // The daily allocation (4.25) is tighter than the capacity budget (9.5), so
@@ -453,7 +456,7 @@ describe('settingsOverviewReadModel', () => {
 
   it('anchors a countdown to the decision when refreshing presentation later', () => {
     const device = buildPlanDevice({ reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 42 } });
-    const wire = buildPlan({ generatedAtMs: 1_000, meta: buildPlanMeta({}), devices: [device] }, {
+    const wire = buildPlan({ generatedAtMs: 1_000, meta: buildPlanMeta({}), devices: [device], storageReleases: [] }, {
       ...absentTemperature, dryRun: false, nowMs: 11_000,
       getDeviceExecutionState: () => executionStateFixture(device),
     });
@@ -667,20 +670,20 @@ describe('settingsOverviewReadModel home battery card', () => {
     expect(card.homeBattery).toEqual({ activity: 'own_mode', power: { kind: 'observed', kw: 0.4 }, holdsLimit: false });
   });
 
-  it('says PELS only stores spare solar in a battery whose Power-limit control is off', () => {
+  it('says its own app is in charge of a battery whose Power-limit control is off', () => {
     const card = buildSettingsOverviewDeviceReadModel(
-      batteryDevice({ kind: 'solar_only' }), battery({ signedW: -400, percent: 78 }),
+      batteryDevice({ kind: 'power_limit_off' }), battery({ signedW: -400, percent: 78 }),
     );
     expect(card.status).toMatchObject({
       label: 'Own mode',
       kind: 'idle',
       factText: '78 % charged · supplying',
-      reason: { text: 'PELS uses it only to store spare solar' },
+      reason: { text: 'Power-limit control is off: its own app is in charge' },
     });
     expect(card.homeBattery).toEqual({ activity: 'own_mode', power: { kind: 'observed', kw: 0.4 }, holdsLimit: false });
   });
 
-  it.each([{ kind: 'none' }, { kind: 'solar_only' }] as const)(
+  it.each([{ kind: 'none' }, { kind: 'power_limit_off' }] as const)(
     'says PELS can only watch a battery whose app gives Homey no power setting ($kind hold)',
     (hold) => {
       const card = buildSettingsOverviewDeviceReadModel(batteryDevice(hold), battery({ control: 'observe_only' }));
@@ -692,7 +695,7 @@ describe('settingsOverviewReadModel home battery card', () => {
     },
   );
 
-  it.each([{ kind: 'none' }, { kind: 'solar_only' }] as const)(
+  it.each([{ kind: 'none' }, { kind: 'power_limit_off' }] as const)(
     'says PELS can only watch a battery whose app refused its claim ($kind hold)',
     (hold) => {
       const card = buildSettingsOverviewDeviceReadModel(batteryDevice(hold), battery({ control: 'watch_only' }));
@@ -711,6 +714,7 @@ describe('settingsOverviewReadModel home battery card', () => {
         batteryDevice({ kind: 'relief' }),
         buildPlanDevice({ id: 'pv-1', name: 'Roof', isBatteryOrSolar: true }),
       ],
+      storageReleases: [],
     }, battery());
     expect(readModel?.devices?.map((device) => device.id)).toEqual(['battery-1']);
   });

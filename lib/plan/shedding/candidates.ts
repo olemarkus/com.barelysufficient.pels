@@ -32,6 +32,7 @@ import {
   buildStorageCandidate, isDrivableLimitScope, isStorageLimitScope, type LimitableStorageDevice,
 } from './storageCandidate';
 import { drawMarginWFor } from '../battery/storageLadder';
+import type { StorageRelief } from '../battery/storageRelief';
 
 /** One build's shed candidate walk, as selection and the shortfall verdict both ask it. */
 /**
@@ -92,11 +93,12 @@ export function buildShedCandidateParams(
   power: MeasuredPower,
   state: PlanEngineState,
   deps: SheddingDeps,
-  storage: StorageShedTerm,
+  /** This cycle's storage stage: the term it counts against the deficit, and the holds a battery is priced from. */
+  storage: StorageRelief,
 ): ShedCandidateParams {
-  const hour = resolveExhaustedHourAnswer(context.devices, state, power, storage);
+  const hour = resolveExhaustedHourAnswer(context.devices, state, power, storage.shed);
   const hourlyBudgetExhausted = hour.kind !== 'not_exhausted';
-  const needed = hour.kind === 'import_target' ? hour.importKw : resolveStorageAdjustedDeficitKw(power, storage);
+  const needed = hour.kind === 'import_target' ? hour.importKw : resolveStorageAdjustedDeficitKw(power, storage.shed);
   return {
     devices: context.devices,
     needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,
@@ -107,7 +109,7 @@ export function buildShedCandidateParams(
     // Resolved once on the measurement; no candidate walk re-derives it from a total.
     capacityBreached: power.capacityBreached,
     temperatureSetpoints: context.temperatureSetpoints,
-    storageLimit: { kind: 'measured', drawKw: power.drawKw },
+    storageLimit: { kind: 'measured', drawKw: power.drawKw, levers: storage.levers },
     state,
     deps,
   };
@@ -246,7 +248,7 @@ function addStorageCandidate(
   if (storageLimit.kind !== 'measured') return null;
   const candidate = buildStorageCandidate(
     device,
-    state.storageLeverByDevice[device.id],
+    storageLimit.levers[device.id],
     storageLimit.drawKw,
     resolveRecentRestoreState(device, state, nowTs, needed, deps.debugStructured),
     nowTs,

@@ -117,9 +117,7 @@ export type BatteryLeverRead =
   | { kind: 'none' }
   | {
     kind: 'setpoint';
-    /** The setpoint grid, W. */
-    stepW: number;
-    /** Resolved writable range, grid and exclusion band. */
+    /** Resolved writable range, grid (`stepW`) and exclusion band. */
     range: HomeBatterySetpointRange;
     /**
      * The most discharge PELS may ask for, W: the discharge range, or less

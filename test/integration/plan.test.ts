@@ -1354,6 +1354,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('shed due to capacity'),
         }),
       ],
+      storageReleases: [],
     };
 
     await app.planEngine.applyPlanActions(plan);
@@ -1573,6 +1574,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('keep'),
         }),
       ],
+      storageReleases: [],
     };
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
@@ -2253,6 +2255,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('keep'),
         }),
       ],
+      storageReleases: [],
     };
 
     await app.planEngine.applyPlanActions(plan);
@@ -2302,6 +2305,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('keep'),
         }),
       ],
+      storageReleases: [],
     };
 
     await app.planEngine.applyPlanActions(plan);
@@ -4079,6 +4083,7 @@ describe('Dry run mode', () => {
           expectedPowerKw: 0.2,
         }),
       ],
+      storageReleases: [],
     };
 
     await app.planEngine.applyPlanActions(plan);
@@ -4147,6 +4152,7 @@ describe('Dry run mode', () => {
           controllable: true,
         }),
       ],
+      storageReleases: [],
     };
 
     await app.planEngine.applyPlanActions(plan);
@@ -4222,6 +4228,7 @@ describe('Dry run mode', () => {
           controllable: true,
         }),
       ],
+      storageReleases: [],
     };
 
     await app.planEngine.applyPlanActions(plan);
@@ -4301,6 +4308,7 @@ describe('Dry run mode', () => {
           reason: fixtureDeviceReason('shed due to capacity'),
         }),
       ],
+      storageReleases: [],
     };
 
     await expect(app.planEngine.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({

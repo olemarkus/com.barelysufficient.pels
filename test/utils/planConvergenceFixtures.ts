@@ -202,4 +202,5 @@ export const buildEvDevice = (
 export const buildPlan = (devices: DevicePlan['devices']): DevicePlan => ({
   meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
   devices,
+  storageReleases: [],
 });

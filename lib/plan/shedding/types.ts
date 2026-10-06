@@ -2,7 +2,7 @@ import type CapacityGuard from '../../power/capacityGuard';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanContext } from '../planContext';
-import type { PlanEngineState, SheddingOutcome } from '../planState';
+import type { PlanEngineState, SheddingOutcome, StorageLeverState } from '../planState';
 import type { MeteredPlanInputDevice, PlanInputDevice, ShedBehavior } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import type { ShedCandidateSkipSummary } from './candidateSkipLog';
@@ -49,8 +49,11 @@ export type SheddingPlan = {
   overshootStats: OvershootStats | null;
 };
 
-/** The setpoint a battery's limit was spent at, W, and whether its relief was banked. */
-export type StorageSetpoint = { setpointW: number; banked: boolean };
+/**
+ * The setpoint a battery's limit was spent at, W, whether its relief was
+ * banked, and the battery as its candidate read it this cycle.
+ */
+export type StorageSetpoint = { setpointW: number; banked: boolean; storage: ObservedStorageInput };
 
 /**
  * The two overshoot questions `resolveSoftOvershootDecision` keeps apart
@@ -184,9 +187,11 @@ export type ShedCandidateParams = {
   /** The build's resolved setpoints (`PlanContext.temperatureSetpoints`): whether a setpoint limit releases demand. */
   temperatureSetpoints: TemperatureSetpointsByDevice;
   /**
-   * Whether a home battery may be offered as a candidate, and the house draw
-   * its discharge is bounded by: only on a measured cycle. The silent-meter
-   * pass has no draw to bound a discharge by and hands every battery back.
+   * Whether a home battery may be offered as a candidate, the house draw its
+   * discharge is bounded by, and the holds this cycle's storage stage left
+   * (`StorageRelief.levers`), which a held battery is priced from: only on a
+   * measured cycle. The silent-meter pass has no draw to bound a discharge by
+   * and hands every battery back.
    */
   storageLimit: StorageLimitInput;
   state: PlanEngineState;
@@ -195,7 +200,7 @@ export type ShedCandidateParams = {
 
 /** See `ShedCandidateParams.storageLimit`. */
 export type StorageLimitInput =
-  | { kind: 'measured'; drawKw: number }
+  | { kind: 'measured'; drawKw: number; levers: Readonly<Record<string, StorageLeverState>> }
   | { kind: 'unmeasured' };
 
 export type BaseShedCandidate = MeteredPlanInputDevice & {

@@ -83,8 +83,6 @@ export const SIGN_CHECK_ACTION_QUIET_MS = 30 * 1000;
 /** Inverted steps, one of them toward charge, before a battery is marked `sign_inverted`. */
 const SIGN_INVERTED_STEPS_REQUIRED = 3;
 
-/** A plan device carrying a home-battery decision. */
-
 type SetpointLever = Extract<BatteryLeverRead, { kind: 'setpoint' }>;
 type SetpointDecision = Extract<StorageDecision, { kind: 'setpoint' }>;
 
