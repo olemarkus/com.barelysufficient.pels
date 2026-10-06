@@ -215,6 +215,7 @@ describe('home battery control surface at parse', () => {
           capabilityId: 'target_power_mode',
           homeyValue: 'homey',
           values: ['homey', 'anti_feed', 'trade_mode', 'manual'],
+          rejection: 'unanswered',
         },
         range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
       },

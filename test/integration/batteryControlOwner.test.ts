@@ -36,7 +36,12 @@ const setpointBattery = (claimValue: string, observedAtMs = T0 - 60_000): Batter
   kind: 'setpoint',
   surface: {
     kind: 'setpoint',
-    claim: { capabilityId: 'target_power_mode', homeyValue: 'homey', values: ['homey', 'anti_feed', 'manual'] },
+    claim: {
+      capabilityId: 'target_power_mode',
+      homeyValue: 'homey',
+      values: ['homey', 'anti_feed', 'manual'],
+      rejection: 'unanswered',
+    },
     range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
   },
   claim: { value: claimValue, observedAtMs },

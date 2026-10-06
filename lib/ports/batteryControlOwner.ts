@@ -2,6 +2,7 @@ import type { HomeBatterySetpointRange } from '../../packages/contracts/src/type
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
 import type { StorageVerdict } from '../../packages/planner-types/src/planInputDevice';
 import type { StorageReleaseReason } from '../planContract/storageDecision';
+import type { StorageClaimRejected } from './storageCommand';
 
 /** Re-exported so `lib/battery`, a leaf domain, names the plan's hand-back reasons through its port. */
 export type { StorageReleaseReason } from '../planContract/storageDecision';
@@ -11,6 +12,8 @@ export type { StorageReleaseReason } from '../planContract/storageDecision';
  *
  * - `not_drivable` — the battery is not observed, or its control surface is
  *   not `setpoint`.
+ * - `watch_only` — its app rejected PELS's claim and refuses control as it is
+ *   set up (`isWatchOnly`).
  * - `control_disabled` — the owner turned PELS's control of this battery off.
  * - `claim_lost` — a newer observation shows another controller took over.
  * - `control_setting_unreadable` — the opt-out setting has never read cleanly
@@ -36,6 +39,7 @@ export type { StorageReleaseReason } from '../planContract/storageDecision';
  */
 export type BatteryClaimRefusal =
   | 'not_drivable'
+  | 'watch_only'
   | 'control_disabled'
   | 'claim_lost'
   | 'control_setting_unreadable'
@@ -55,15 +59,29 @@ export type BatteryClaimAdmission =
   | { status: 'admitted' }
   | { status: 'refused'; reason: BatteryClaimRefusal };
 
-/** Admission and the actual watts sent through the actuator, or a fenced write. */
+/**
+ * What the storage lane's write did: the watts sent, `skipped` (nothing went
+ * out: a fenced write, no baseline reading), or the claim write the battery's
+ * app rejected.
+ */
+export type BatterySetpointWrite = number | 'skipped' | StorageClaimRejected;
+
+/**
+ * Admission and the actual watts sent through the actuator, or a fenced write;
+ * or a claim the battery's app rejected, and what the owner made of it:
+ * `watch_only` (its app refuses control, `isWatchOnly`), or `unanswered`
+ * (judged like an unanswered setpoint).
+ */
 export type BatterySetpointOutcome =
   | { status: 'refused'; reason: BatteryClaimRefusal }
-  | { status: 'dispatched'; setpointW: number | 'skipped' };
+  | { status: 'dispatched'; setpointW: number | 'skipped' }
+  | { status: 'claim_rejected'; effect: 'watch_only' | 'unanswered'; errorMessage: string };
 
 /**
  * A battery's lever as the owner reads it for the planner and the executor's
  * storage lane: `none` when the battery is not observed or can only be
- * observed, else its setpoint surface and what PELS holds on it.
+ * observed (its surface, or its app refusing control: `isWatchOnly`), else its
+ * setpoint surface and what PELS holds on it.
  */
 export type BatteryLeverRead =
   | { kind: 'none' }
@@ -171,7 +189,7 @@ export type BatteryControlOwner = {
    */
   admitClaim(deviceId: string): BatteryClaimAdmission;
   /** Serialize admission and the complete setpoint write with this battery's hand-backs. */
-  dispatchSetpoint(deviceId: string, write: () => Promise<number | 'skipped'>): Promise<BatterySetpointOutcome>;
+  dispatchSetpoint(deviceId: string, write: () => Promise<BatterySetpointWrite>): Promise<BatterySetpointOutcome>;
   /** The battery's lever as of now. */
   readControl(deviceId: string): BatteryLeverRead;
   /**
@@ -200,6 +218,15 @@ export type BatteryControlOwner = {
    * changed its mode in the battery's own app; false again once Managed is on.
    */
   wasTakenOver(deviceId: string): boolean;
+  /**
+   * Whether PELS can only watch this battery for now: its app rejected the
+   * claim, and its binding says that means the app refuses control as it is
+   * set up (a Sessy connected through its cloud login). PELS claims, limits
+   * and stores solar in it no more until the app restarts, the battery's
+   * control surface changes, or 6 h have passed, when the next claim decides
+   * again; it stays Managed and on its card.
+   */
+  isWatchOnly(deviceId: string): boolean;
 };
 
 /**

@@ -510,6 +510,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       applyControlSettings: vi.fn(),
       isManaged: vi.fn(() => true),
       wasTakenOver: vi.fn(() => false),
+      isWatchOnly: vi.fn(() => false),
     },
     priceCoordinator: {
       // The reader every combined-prices consumer takes from the coordinator,

@@ -29,7 +29,30 @@
  * - **Retries.** A failed hand-back is retried on committed snapshots with a
  *   per-battery backoff. A terminal one (a restore value or claim capability
  *   the battery no longer declares, or a battery PELS can only observe) is
- *   logged once and keeps its record without retrying.
+ *   logged once and keeps its record without retrying. A battery PELS only
+ *   watches is not
+ *   handed back while it lasts (its app refuses the writes as well), and
+ *   nothing is recorded for the attempt: the hand-back is due again as soon
+ *   as watch-only ends.
+ * - **Watch only.** A claim write the battery's app rejected, on a binding
+ *   whose rejection means the app refuses control as it is set up
+ *   (`app_refuses_control`: a Sessy on its cloud login), to a battery that
+ *   does not show Homey's claim value, leaves the battery
+ *   one PELS can only watch until the app restarts, its control surface
+ *   changes, or `BATTERY_WATCH_ONLY_MS` has passed: no claim is admitted and
+ *   `readControl` reads no lever, so the plan neither limits it nor stores
+ *   solar in it. It stays Managed. A single rejection is not proof enough to
+ *   lose control for good: a local-login Sessy whose dongle call failed once
+ *   rejects the claim too. When the time is up the next claim decides again,
+ *   so a cloud-login Sessy costs one rejected write per period. The
+ *   rejected write changed nothing, so a record this same dispatch made is
+ *   dropped: there is nothing to hand back. A record made before it is kept,
+ *   with the restore value it names. A battery that shows Homey's claim (one
+ *   PELS is driving, or a record a previous run left) is never left
+ *   watch-only: a cloud-login Sessy never shows it, so the rejection is a
+ *   failed write, and the storage lane judges it like an unanswered setpoint,
+ *   so the plan hands the battery back. Any other binding's rejected claim is
+ *   judged that way too.
  *
  * A leaf domain: it imports only `lib/ports`, `lib/utils`, `lib/logging` and
  * the shared packages.
@@ -44,10 +67,11 @@ import type {
   BatteryHandBackOutcome,
   BatteryLeverRead,
   BatterySetpointOutcome,
+  BatterySetpointWrite,
   StorageReleaseReason,
 } from '../ports/batteryControlOwner';
 import type { SettingsPort } from '../ports/homeyRuntime';
-import type { StorageActuation } from '../ports/storageCommand';
+import type { StorageActuation, StorageClaimRejected } from '../ports/storageCommand';
 import { normalizeError } from '../utils/errorUtils';
 import { BATTERY_CONTROL_DEVICES } from '../utils/settingsKeys';
 import { BatteryClaimStore, type BatteryClaimRecord } from './batteryClaimStore';
@@ -55,6 +79,7 @@ import { isBatteryControlEnabled } from '../../packages/shared-domain/src/settin
 import type { BatteryManagedSettings } from './batteryControlSettings';
 import { backoffDelayMs } from './retryBackoff';
 import { BatteryVerificationLedger } from './batteryVerification';
+import { BATTERY_WATCH_ONLY_MS, BatteryWatchOnlyLedger } from './batteryWatchOnly';
 
 const logger = getLogger('battery');
 
@@ -149,6 +174,11 @@ const resolveValueToRecord = (battery: SetpointBatteryRead): BatteryClaimRefusal
   return claim;
 };
 
+/** Whether the battery reports Homey's claim value: under a claim, PELS's or anyone's. */
+const isClaimEngaged = (battery: SetpointBatteryRead): boolean => (
+  !('kind' in battery.claim) && battery.claim.value === battery.surface.claim.homeyValue
+);
+
 const isTakenOver = (record: BatteryClaimRecord, battery: SetpointBatteryRead): boolean => (
   battery.surface.claim.capabilityId === record.capabilityId
   && !('kind' in battery.claim)
@@ -188,6 +218,8 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   private readonly releasing = new Map<string, Promise<boolean>>();
   /** Batteries whose Managed PELS turned off this run because the owner took them over. */
   private readonly takenOver = new Set<string>();
+  /** Batteries whose app refused control, for now (`batteryWatchOnly.ts`). */
+  private readonly watchOnly = new BatteryWatchOnlyLedger();
   private readonly writes = new Map<string, Promise<void>>();
   readonly verification = new BatteryVerificationLedger();
 
@@ -215,16 +247,67 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     return refusal === 'admitted' ? { status: 'admitted' } : { status: 'refused', reason: refusal };
   }
 
-  dispatchSetpoint(deviceId: string, write: () => Promise<number | 'skipped'>): Promise<BatterySetpointOutcome> {
+  dispatchSetpoint(deviceId: string, write: () => Promise<BatterySetpointWrite>): Promise<BatterySetpointOutcome> {
     return this.serializeWrite(deviceId, async () => {
+      const recordBefore = this.readRecord(deviceId);
       const admission = this.admitClaim(deviceId);
       if (admission.status === 'refused') return admission;
-      return { status: 'dispatched', setpointW: await write() };
+      const written = await write();
+      if (typeof written === 'object') {
+        return this.judgeClaimRejected(deviceId, written, recordBefore === undefined ? 'recorded_now' : 'kept');
+      }
+      return { status: 'dispatched', setpointW: written };
     });
   }
 
   wasTakenOver(deviceId: string): boolean {
     return this.takenOver.has(deviceId);
+  }
+
+  isWatchOnly(deviceId: string): boolean {
+    const battery = this.deps.getBattery(deviceId);
+    const surface = battery.kind === 'setpoint' ? battery.surface : battery.kind;
+    return this.watchOnly.isWatchOnly(deviceId, surface, Date.now());
+  }
+
+  /**
+   * The battery's app rejected the claim write, so no setpoint went out. On a
+   * binding whose rejection means the app refuses control, PELS only watches
+   * the battery from now on (see the header); on any other, the storage lane
+   * judges the setpoint unanswered.
+   */
+  private judgeClaimRejected(
+    deviceId: string,
+    rejected: StorageClaimRejected,
+    record: 'recorded_now' | 'kept',
+  ): BatterySetpointOutcome {
+    const { errorMessage } = rejected;
+    const battery = this.deps.getBattery(deviceId);
+    // A battery under Homey's claim may be one PELS is driving: leaving it
+    // watch-only would strand it at its last setpoint with no hand-back.
+    if (
+      battery.kind !== 'setpoint'
+      || battery.surface.claim.rejection !== 'app_refuses_control'
+      || isClaimEngaged(battery)
+    ) {
+      return { status: 'claim_rejected', effect: 'unanswered', errorMessage };
+    }
+    this.watchOnly.begin(deviceId, battery.surface, Date.now());
+    const claims = this.loadClaims();
+    // The record this dispatch made names a claim the rejected write never
+    // took: nothing to hand back. One made before keeps its restore value.
+    const recordRemoved = record === 'recorded_now' && claims.status === 'loaded'
+      && claims.records.has(deviceId) && this.forget(claims, deviceId);
+    logger.warn({
+      event: 'battery_control_claim_rejected_watch_only',
+      deviceId,
+      claimCapabilityId: battery.surface.claim.capabilityId,
+      errorMessage,
+      recordRemoved,
+      watchOnlyMs: BATTERY_WATCH_ONLY_MS,
+      msg: 'The battery app rejected control; PELS only watches the battery for 6 h, or until it restarts',
+    });
+    return { status: 'claim_rejected', effect: 'watch_only', errorMessage };
   }
 
   isManaged(deviceId: string): boolean {
@@ -282,8 +365,8 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
 
   readControl(deviceId: string): BatteryLeverRead {
     const battery = this.deps.getBattery(deviceId);
-    if (battery.kind !== 'setpoint') return { kind: 'none' };
-    const { surface, claim } = battery;
+    if (battery.kind !== 'setpoint' || this.isWatchOnly(deviceId)) return { kind: 'none' };
+    const { surface } = battery;
     const nowMs = Date.now();
     const claims = this.loadClaims();
     const verification = this.verification.read(deviceId, surface.range, nowMs);
@@ -297,7 +380,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
       claimHeld: claims.status === 'loaded' && claims.records.has(deviceId),
       handBackDeferred: this.releasing.has(deviceId) || this.isHandBackWaiting(deviceId, nowMs)
         || (record !== undefined && isTakenOver(record, battery)),
-      claimEngaged: !('kind' in claim) && claim.value === surface.claim.homeyValue,
+      claimEngaged: isClaimEngaged(battery),
       // Main's write fence is a moment (a superseded apply, a teardown), not a
       // reason to hand the battery back: the fenced actuator already holds
       // every write while it lasts.
@@ -398,6 +481,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   private checkClaim(deviceId: string, fence: FencePolicy): BatteryClaimRefusal | ClaimCheck {
     const battery = this.deps.getBattery(deviceId);
     if (battery.kind !== 'setpoint') return 'not_drivable';
+    if (this.isWatchOnly(deviceId)) return 'watch_only';
     const control = this.deps.managed.read();
     if (control.status !== 'resolved') return 'control_setting_unreadable';
     if (!isBatteryControlEnabled(control.devices, deviceId)) return 'control_disabled';
@@ -504,6 +588,12 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     }
   }
 
+  /** The battery's stored claim record, or `undefined` when it has none or the records are not read. */
+  private readRecord(deviceId: string): BatteryClaimRecord | undefined {
+    const claims = this.loadClaims();
+    return claims.status === 'loaded' ? claims.records.get(deviceId) : undefined;
+  }
+
   private forget(claims: LoadedClaimRecords, deviceId: string): boolean {
     claims.records.delete(deviceId);
     this.pending.delete(deviceId);
@@ -536,6 +626,9 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
       this.scheduleRetry(deviceId, reason, { kind: 'unobserved' });
       return false;
     }
+    // Its app refuses control, so it refuses the hand-back's writes as well.
+    // Nothing is recorded: the hand-back is due again once watch-only ends.
+    if (this.isWatchOnly(deviceId)) return false;
     const verdict = classifyRelease(record, battery);
     if (verdict.kind === 'terminal') {
       this.stopRetrying(deviceId, reason, verdict.failure);

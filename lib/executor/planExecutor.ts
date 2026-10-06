@@ -404,7 +404,8 @@ export class PlanExecutor {
         requestSteppedLoadStep: (params) => this.deps.actuator.apply({ kind: 'step', ...params })
           .then((outcome) => {
             if (outcome.requested && outcome.kind === 'step') return outcome.steppedResult;
-            const reason = outcome.requested ? undefined : outcome.reason;
+            // A step's only not-requested reason; a storage claim's is never a step's.
+            const reason = !outcome.requested && outcome.reason === 'flow_trigger_timeout' ? outcome.reason : undefined;
             return { requested: false as const, ...(reason ? { reason } : {}) };
           }),
         deviceDiagnostics: this.deps.deviceDiagnostics,

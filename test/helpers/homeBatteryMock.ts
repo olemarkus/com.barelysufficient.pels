@@ -40,3 +40,34 @@ export const buildSetpointBatteryDevice = (params: {
   device.setActualCapabilityValue('target_power_mode', params.claimValue, quiet);
   return device;
 };
+
+export const SESSY_CONTROL_STRATEGIES = [
+  'POWER_STRATEGY_API', 'POWER_STRATEGY_NOM', 'POWER_STRATEGY_ROI', 'POWER_STRATEGY_ECO',
+  'POWER_STRATEGY_SESSY_CONNECT', 'POWER_STRATEGY_IDLE',
+] as const;
+
+/**
+ * A Sessy at the SDK boundary, as nl.sessy declares it: `target_power` with no
+ * min, max or step, taken over through `control_strategy` =
+ * `POWER_STRATEGY_API`.
+ */
+export const buildSessyBatteryDevice = (params: { id: string; strategy: string }): MockDevice => {
+  const device = new MockDevice(
+    params.id,
+    'Sessy',
+    ['measure_battery', 'measure_power', 'target_power', 'control_strategy'],
+    'battery',
+  );
+  device.setDriverIdentity({ driverId: 'homey:app:nl.sessy:sessy' });
+  device.setCapabilityMetadata('target_power', { setable: true, units: 'W' });
+  device.setCapabilityMetadata('control_strategy', {
+    setable: true,
+    values: SESSY_CONTROL_STRATEGIES.map((id) => ({ id })),
+  });
+  const quiet = { emitCapabilityEvent: false, emitDeviceUpdate: false };
+  device.setActualCapabilityValue('measure_battery', 55, quiet);
+  device.setActualCapabilityValue('measure_power', 0, quiet);
+  device.setActualCapabilityValue('target_power', 0, quiet);
+  device.setActualCapabilityValue('control_strategy', params.strategy, quiet);
+  return device;
+};

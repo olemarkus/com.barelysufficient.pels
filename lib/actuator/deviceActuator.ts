@@ -60,8 +60,11 @@ const applyStoragePower = async (
   transport: ActuatorTransport,
   command: Extract<DeviceCommand, { kind: 'storage_power' }>,
 ): Promise<ActuatorOutcome> => {
-  const requestedSetpointW = await transport.requestStoragePower(command);
-  return { requested: true, kind: 'storage_power', requestedSetpointW };
+  const write = await transport.requestStoragePower(command);
+  if (write.kind === 'claim_rejected') {
+    return { requested: false, reason: write.kind, errorMessage: write.errorMessage };
+  }
+  return { requested: true, kind: 'storage_power', requestedSetpointW: write.setpointW };
 };
 
 const applyStorageRelease = async (

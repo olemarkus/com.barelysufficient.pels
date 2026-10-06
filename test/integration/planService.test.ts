@@ -233,7 +233,7 @@ describe('PlanService', () => {
       getDeviceExecutionStates: vi.fn(() => new Map([[battery.id, executionStateFixture(battery)]])) };
     const getHomeBatteryCard = vi.fn(() => ({
       kind: 'battery' as const,
-      drivable: true,
+      control: 'drivable' as const,
       power: { kind: 'observed' as const, signedW: -2400 },
       level: { kind: 'observed' as const, percent: 64 },
     }));

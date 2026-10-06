@@ -163,7 +163,8 @@ export class MockDevice {
     this.lastRequestedCapabilityValues.set(capabilityId, value);
     const behavior = this.resolveApiWriteBehavior(capabilityId);
     if (!behavior.accept) {
-      throw new Error(`Mock capability write rejected for ${this.name}:${capabilityId}`);
+      // As the Homey REST client surfaces a capability listener's throw: an answered HTTP error.
+      throw new HomeyHttpStatusError(500, `Mock capability write rejected for ${this.name}:${capabilityId}`);
     }
     this.applyCapabilityMutation(capabilityId, value, behavior);
   }

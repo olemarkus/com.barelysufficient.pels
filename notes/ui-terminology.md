@@ -598,6 +598,7 @@ keeps the word for what PELS holds it to do.
 | Reason while PELS caps its charge | `Waiting to charge faster · 2.4 kW more needed` (the charge its own mode would take that the cap holds back; `Waiting to charge faster` alone under 0.05 kW) |
 | Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |
 | Reason in its own mode, Power-limit control off | `PELS uses it only to store spare solar` |
+| Reason in its own mode, its app rejected PELS's claim (a Sessy on its cloud login), for 6 h, or until PELS restarts or its controls change | `PELS can only watch it: its app does not accept control` |
 | Fact line | `64 % charged`; in its own mode also `· supplying` / `· charging` |
 | Overview hero, one battery supplying while PELS holds it for the limit (only while it supplies: a capped charge holds nothing) | `Sessy battery is supplying 2.4 kW to hold your limit.` |
 | Overview hero, several | `2 batteries are supplying 4.2 kW to hold your limit.` |
