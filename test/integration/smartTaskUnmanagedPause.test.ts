@@ -16,7 +16,7 @@ import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/m
 import { describe, expect, it, vi } from 'vitest';
 import { handleDeferredDeadlineReached } from '../../setup/appInit/deferredObjectiveLifecycle';
 import type { AppContext } from '../../lib/app/appContext';
-import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives';
+import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import {
@@ -113,7 +113,7 @@ describe('smart task on an un-managed device', () => {
   it('pauses with the dedicated code instead of claiming the device is missing', () => {
     // The managed filter drops the device from the plan input, exactly as a
     // vanished device would — the exclusion resolver is what tells them apart.
-    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+    const diagnostics = buildFixtureDiagnostics(buildDiagnosticsParams({
       devices: [],
       resolveDeviceExclusion: () => 'unmanaged',
     }));
@@ -130,14 +130,14 @@ describe('smart task on an un-managed device', () => {
       devices: [],
       resolveDeviceExclusion: () => 'unmanaged',
     });
-    buildDeferredObjectiveDiagnostics(params);
+    buildFixtureDiagnostics(params);
     expect(params.settings.objectivesByDeviceId['heater-1']?.enabled).toBe(true);
     expect(params.settings.objectivesByDeviceId['heater-1']?.deadlineAtMs).toBe(DEADLINE_MS);
   });
 
   it('never governs the device while paused', () => {
     const devices = [buildHeaterDevice('heater-1')];
-    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+    const diagnostics = buildFixtureDiagnostics(buildDiagnosticsParams({
       devices,
       resolveDeviceExclusion: () => 'unmanaged',
     }));
@@ -146,7 +146,7 @@ describe('smart task on an un-managed device', () => {
   });
 
   it('resumes on the next cycle once the device is managed again', () => {
-    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+    const diagnostics = buildFixtureDiagnostics(buildDiagnosticsParams({
       devices: [buildHeaterDevice('heater-1')],
       resolveDeviceExclusion: () => null,
     }));
@@ -210,7 +210,7 @@ describe('smart task on an un-managed device', () => {
   });
 
   it('carries the pause onto the persisted plan record, not a stale on-track chip', () => {
-    const [diagnostic] = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+    const [diagnostic] = buildFixtureDiagnostics(buildDiagnosticsParams({
       devices: [],
       resolveDeviceExclusion: () => 'unmanaged',
     }));
@@ -219,7 +219,7 @@ describe('smart task on an un-managed device', () => {
   });
 
   it('writes no progress samples from a diagnostic built without reading the device', () => {
-    const [diagnostic] = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+    const [diagnostic] = buildFixtureDiagnostics(buildDiagnosticsParams({
       devices: [],
       resolveDeviceExclusion: () => 'unmanaged',
     }));

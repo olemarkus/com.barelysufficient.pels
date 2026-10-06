@@ -22,10 +22,12 @@ import type {
 import {
   selectMinimumStepForEnergy,
 } from './stepSelection';
+import type { DeferredObjectiveStep } from './types';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 
 const HOUR_MS = 60 * 60 * 1000;
 const EPSILON_KWH = 0.001;
+const POWER_EPSILON_KW = 0.001;
 
 // Survive one full cooldown window of transient SDK misses before a device
 // stops holding a reservation. Without this window, a single Homey SDK
@@ -129,6 +131,15 @@ export type OrderedDeferredObjective = {
   reservationEligible: boolean;
 };
 
+// An ordered task as the coordinator evaluates it, in the context of the tasks
+// already evaluated ahead of it this cycle.
+export type CoordinatedDeferredObjective = OrderedDeferredObjective & {
+  // Every device ranked above this one is governed by a smart task, so all the
+  // load this task cannot displace reaches it as bookings. Gates floor promotion
+  // (`rescueReplan.ts`).
+  higherRankedLoadBooked: boolean;
+};
+
 // Keep the same locale-independent tie-break as `lib/plan/planSort.ts` without
 // importing across the objectives→plan boundary.
 const compareDeviceIdAsc = (left: string, right: string): number => {
@@ -142,14 +153,14 @@ export const orderDeferredObjectives = (params: {
   deviceById: ReadonlyMap<string, ObjectiveDeviceInput>;
   /** See `PriorityAllocationTracker.observe`: durably out of the main lane. */
   isDeviceExcluded: (deviceId: string) => boolean;
-  tracker?: PriorityAllocationTracker;
+  tracker: PriorityAllocationTracker;
   activePlans: DeferredObjectiveActivePlansV1 | null;
   nowMs: number;
   // The catalog owner orders the complete visible-plus-grace roster; callers
   // receive only resolved ranks, including temporarily missing devices.
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
 }): OrderedDeferredObjective[] => {
-  params.tracker?.retainObjectiveDeviceIds(new Set(Object.keys(params.settings.objectivesByDeviceId)));
+  params.tracker.retainObjectiveDeviceIds(new Set(Object.keys(params.settings.objectivesByDeviceId)));
   const entries = Object.entries(params.settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
     if (!objective.enabled || params.isDeviceExcluded(deviceId)) return [];
     const device = params.deviceById.get(deviceId);
@@ -162,15 +173,11 @@ export const orderDeferredObjectives = (params: {
         thermalDirection: device?.thermalDirection ?? 'unknown',
       }),
     });
-    const reservationEligible = device !== undefined || (
-      params.tracker
-        ? params.tracker.shouldReserveMissingDevice({
-          deviceId,
-          nowMs: params.nowMs,
-          hasPersistedCommitment: activePlan !== undefined,
-        })
-        : activePlan !== undefined
-    );
+    const reservationEligible = device !== undefined || params.tracker.shouldReserveMissingDevice({
+      deviceId,
+      nowMs: params.nowMs,
+      hasPersistedCommitment: activePlan !== undefined,
+    });
     return [{ deviceId, objective, device, reservationEligible }];
   });
   const activeDeviceIds = [
@@ -193,11 +200,7 @@ export const orderDeferredObjectives = (params: {
       const priority = entry.reservationEligible
         ? activePriorities.getPriority(entry.deviceId)
         : activeDeviceCount + inactivePriorities.getPriority(entry.deviceId);
-      return {
-        ...entry,
-        priority,
-        ...(entry.device ? { device: { ...entry.device, priority } } : {}),
-      };
+      return { ...entry, priority };
     })
     .sort((left, right) => left.priority - right.priority || compareDeviceIdAsc(left.deviceId, right.deviceId));
 };
@@ -313,16 +316,55 @@ const reservationsFromSegments = (params: {
   }],
 }));
 
+// A booking holds its admission power only for as long as its energy takes at the
+// booked rung, not across its whole bucket: 0.56 kWh booked on a 3 kW water heater
+// draws for about 11 minutes, and the rest of that hour is free for the tasks
+// below. `buildDeferredObjectivePolicyHorizon` already splits a lower task's
+// buckets at reservation boundaries, so the narrowed window is all it needs.
+//
+// The booked rung is the highest one whose nameplate fits the booking's admission
+// power: exact for a rung the allocator booked, while a legacy admission figure
+// that matches no rung lands on a lower one, whose slower rate only lengthens the
+// window. The window starts at the booking's start, or at `nowMs` once the booking
+// has begun: the energy may still be undelivered, so the elapsed part of the
+// bucket cannot stand in for it. With no rung to read (missing device, nothing
+// fits) the booking keeps its whole bucket, the conservative reading.
+const narrowToDrawWindow = (
+  reservation: DeferredObjectivePriorityReservation,
+  steps: readonly DeferredObjectiveStep[],
+  nowMs: number,
+): DeferredObjectivePriorityReservation => {
+  const booked = steps.filter((step) => (
+    step.usefulPowerKw > 0 && step.admissionPowerKw <= reservation.admissionPowerKw + POWER_EPSILON_KW
+  )).sort((left, right) => left.admissionPowerKw - right.admissionPowerKw).at(-1);
+  if (!booked) return reservation;
+  const { usefulPowerKw } = booked;
+  return {
+    ...reservation,
+    energySegments: reservation.energySegments.map((segment) => {
+      const startMs = Math.max(segment.startMs, nowMs);
+      if (startMs >= segment.endMs) return segment;
+      const drawMs = (segment.plannedKWh / usefulPowerKw) * HOUR_MS;
+      return { ...segment, startMs, endMs: Math.min(segment.endMs, startMs + drawMs) };
+    }),
+  };
+};
+
 export const buildPriorityReservations = (params: {
   evaluation: TaskEvaluation;
   objective: DeferredObjectiveSettingsEntry;
   device: ObjectiveDeviceInput | undefined;
-  activePlans: DeferredObjectiveActivePlansV1 | null | undefined;
+  activePlans: DeferredObjectiveActivePlansV1 | null;
   sustainableRateKw: number;
+  nowMs: number;
 }): DeferredObjectivePriorityReservation[] => {
   const { evaluation } = params;
   if (evaluation.completion.kind === 'target_reached'
     || evaluation.completion.kind === 'accepted_near_target') return [];
+  const steps = params.device ? resolveObjectiveSteps(params.device) : [];
+  const narrow = (reservations: DeferredObjectivePriorityReservation[]): DeferredObjectivePriorityReservation[] => (
+    reservations.map((reservation) => narrowToDrawWindow(reservation, steps, params.nowMs))
+  );
   const activePlan = resolveActiveCommittedPlan({
     activePlans: params.activePlans,
     deviceId: evaluation.deviceId,
@@ -349,20 +391,20 @@ export const buildPriorityReservations = (params: {
   });
   const exemptFromBudget = evaluation.permissions.budgetExempt;
   if (evaluation.planning.kind === 'allocated' && evaluation.planning.plan.frozenRead !== true) {
-    return reservationsFromSegments({
+    return narrow(reservationsFromSegments({
       deviceId: evaluation.deviceId,
       segments: buildLiveReservationSegments(evaluation.planning.plan),
       exemptFromBudget,
-    });
+    }));
   }
   if (activePlan?.latest.reservationSegments !== undefined) {
-    return reservationsFromSegments({
+    return narrow(reservationsFromSegments({
       deviceId: evaluation.deviceId,
       segments: activePlan.latest.reservationSegments,
       exemptFromBudget,
-    });
+    }));
   }
-  return reservationsFromHours({
+  return narrow(reservationsFromHours({
     // A fresh allocator result is authoritative even when it books nothing.
     // Frozen plans fabricate epoch-hour buckets for control only. An inactive
     // evaluation may retain a missing device through grace; both reserve from the
@@ -374,5 +416,5 @@ export const buildPriorityReservations = (params: {
     sustainableRateKw: params.sustainableRateKw,
     exemptFromBudget,
     deadlineAtMs: params.objective.deadlineAtMs,
-  });
+  }));
 };

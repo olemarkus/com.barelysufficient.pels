@@ -1,14 +1,16 @@
 import { buildAllocatedTaskEvaluation } from './taskEvaluationProducer';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
+  DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
 import type { DeferredObjectiveProgressResolution } from './diagnosticProgress';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
-import { buildFrozenHorizonPlan, type FrozenReadInputs } from './frozenHorizonPlan';
+import { buildFrozenHorizonPlan, type FrozenDrawWindow, type FrozenReadInputs } from './frozenHorizonPlan';
 import {
   buildDeferredObjectivePolicyHorizon,
+  type DeferredObjectivePolicyHorizonInputs,
   type DeferredObjectivePolicyHorizonResult,
 } from './policyHorizon';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
@@ -79,8 +81,24 @@ const resolveFrozenReadInputs = (params: {
     // already rejected legacy/corrupt shapes without a latest revision, so the
     // frozen path never falls back to the commitment floor for control data.
     hours: latest.hours,
+    drawWindows: resolveDrawWindows(latest, params.objective.deadlineAtMs),
   };
 };
+
+// The settled revision's exact segments, or, for a revision saved before they
+// were recorded, one window per booked hour from its covered start to the hour's
+// end, clipped to the deadline (the same shape the recorder synthesizes for such
+// an hour, `buildReservationSegmentsFromHorizonPlan`).
+const resolveDrawWindows = (
+  latest: DeferredObjectiveActivePlanRevisionV1,
+  deadlineAtMs: number,
+): FrozenDrawWindow[] => latest.reservationSegments?.map(({ startMs, endMs, plannedKWh }) => ({
+  startMs, endMs, plannedKWh,
+})) ?? latest.hours.flatMap((hour) => {
+  const startMs = hour.coversFromMs ?? hour.startsAtMs;
+  const endMs = Math.min(hour.startsAtMs + ONE_HOUR_MS, deadlineAtMs);
+  return hour.plannedKWh > 0 && endMs > startMs ? [{ startMs, endMs, plannedKWh: hour.plannedKWh }] : [];
+});
 
 export const resolveDeadlineBoundFrozenReadInputs = (params: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
@@ -101,10 +119,8 @@ export const EMPTY_POLICY_HORIZON: Extract<DeferredObjectivePolicyHorizonResult,
   reasonCode: null,
 };
 
-type DeferredObjectivePolicyHorizonParams = Parameters<typeof buildDeferredObjectivePolicyHorizon>[0];
-
 export const buildDeadlineAwarePolicyHorizon = (
-  params: DeferredObjectivePolicyHorizonParams,
+  params: DeferredObjectivePolicyHorizonInputs,
 ): DeferredObjectivePolicyHorizonResult => (
   params.deadlineAtMs <= params.nowMs ? EMPTY_POLICY_HORIZON : buildDeferredObjectivePolicyHorizon(params)
 );

@@ -44,7 +44,16 @@ export type FrozenReadInputs = {
   // would serve stale energy / `cheaperHourAhead`. `latest.hours` is the
   // Math.max-merged floored plan — the freshest thing the device should follow.
   hours: readonly DeferredObjectiveActivePlanHourV1[];
+  // When within those hours the booked energy is due: the settled revision's exact
+  // segments (`latest.reservationSegments`), one per allocator bucket that booked
+  // energy. A revision saved before exact segments resolves at the boundary to one
+  // window per booked hour. An hour shared with a higher-priority booking carries
+  // a window over only its own part, so the frozen read promises energy where the
+  // fresh allocation did and nowhere else in the hour.
+  drawWindows: readonly FrozenDrawWindow[];
 };
+
+export type FrozenDrawWindow = { startMs: number; endMs: number; plannedKWh: number };
 
 // Representative `statusDetail` for a frozen status. This placeholder is never
 // persisted: the recorder refuses to settle a replan revision from a
@@ -81,10 +90,10 @@ const toPlannableStatus = (planStatus: DeferredObjectiveActivePlanStatusV1): Def
 // Current + future committed hours become the planned buckets (elapsed hours are
 // history). Each bucket is a FULL committed hour `[startsAtMs, startsAtMs+1h]` — we
 // do NOT trim the current hour's start to `nowMs`: the frozen read carries the
-// committed full-hour energy at the committed (floor) step, so the bucket stays
-// internally consistent (energy = step power × 1 h) and the requested step
-// recovers the committed floor step rather than escalating as the remaining hour
-// shrinks (mid-hour escalation is the per-cycle re-plan the two-clock model removes;
+// committed full-hour energy, and the requested step is read off the saved draw
+// window rather than the shrinking remainder, so it recovers the committed floor
+// step instead of escalating as the hour runs out (mid-hour escalation is the
+// per-cycle re-plan the two-clock model removes;
 // the executor still climbs opportunistically when behind, and the `:58` settle
 // re-plans genuine shortfalls). `sourceBucketId` matches the allocator's
 // hour-aligned ISO convention so plannedBuckets read identically fresh-vs-frozen.
@@ -144,10 +153,22 @@ export const buildFrozenHorizonPlan = (params: {
     .sort((left, right) => left.startsAtMs - right.startsAtMs);
   const plannedBuckets = buildFrozenPlannedBuckets(futureHours, currentHourStartMs);
 
-  const currentBookedKWh = currentHour?.plannedKWh ?? 0;
-  const requestedStep = currentHour
+  // The current bucket is the saved window that covers now, as the fresh allocation's
+  // current bucket was: its energy over its own duration, so the requested step
+  // recovers the committed step. Before the window opens, or after it closes, the
+  // booked hour promises nothing here, and admission withholds escalation
+  // (`admission.resolveDecision`), which keeps a lower task's boost out of the part
+  // of an hour a higher-priority task reserved.
+  const currentWindow = currentHour
+    ? frozenRead.drawWindows.find((window) => window.startMs <= nowMs && nowMs < window.endMs)
+    : undefined;
+  const currentBookedKWh = currentWindow?.plannedKWh ?? 0;
+  const requestedStep = currentWindow
     ? selectMinimumStepForEnergy({
-      steps, energyKWh: currentBookedKWh, durationHours: 1, epsilonKWh: FROZEN_EPSILON_KWH,
+      steps,
+      energyKWh: currentWindow.plannedKWh,
+      durationHours: (currentWindow.endMs - currentWindow.startMs) / ONE_HOUR_MS,
+      epsilonKWh: FROZEN_EPSILON_KWH,
     })
     : null;
   const currentBucket = currentHour

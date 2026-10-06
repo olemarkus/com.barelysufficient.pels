@@ -11,7 +11,7 @@ import { DeferredObjectiveLifecycleEmitter } from '../../lib/objectives/deferred
 import { DeferredObjectivePlanHistoryRecorder, type PlanHistoryLoadResult } from '../../lib/objectives/deferredObjectives/planHistory';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
-import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
@@ -206,7 +206,7 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
     energy.flushIfDirty();
     return reported;
   };
-  const build = (nowMs: number) => buildDeferredObjectiveDiagnostics({
+  const build = (nowMs: number) => buildFixtureDiagnostics({
     nowMs, timeZone: 'UTC', devices, settings, powerTracker,
     dailyBudgetSnapshot: null, buildPriceHorizon: priceHorizon,
     priceOptimizationEnabled: true, sustainableRateKw: 2,

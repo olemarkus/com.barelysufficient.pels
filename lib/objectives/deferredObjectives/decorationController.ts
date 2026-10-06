@@ -23,7 +23,7 @@ import {
   buildDeferredReleaseIntents,
   type DeferredAdmissionDecision,
 } from './admission';
-import { buildDeferredObjectiveEvaluations } from './diagnosticsBridge';
+import { buildDeferredObjectiveEvaluations, LIVE_LANE, type TaskEvaluationReaders } from './diagnosticsBridge';
 import type { TaskEvaluation } from './taskEvaluation';
 import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
@@ -80,7 +80,18 @@ export type DeferredObjectiveDecorationControllerDeps = {
 export class DeferredObjectiveDecorationController {
   private readonly priorityAllocationTracker = new PriorityAllocationTracker();
 
-  constructor(private readonly deps: DeferredObjectiveDecorationControllerDeps) {}
+  private readonly readers: TaskEvaluationReaders;
+
+  constructor(private readonly deps: DeferredObjectiveDecorationControllerDeps) {
+    this.readers = {
+      buildPriceHorizon: deps.buildPriceHorizon,
+      getPrioritiesForDevices: deps.getPrioritiesForDevices,
+      resolveDeviceExclusion: deps.resolveDeviceExclusion,
+      getStallClassification: deps.getStallClassification,
+      getDeliveredEnergyKWh: deps.getDeliveredEnergyKWh,
+      isReservationSuppressed: deps.isReservationSuppressed,
+    };
+  }
 
   public decorate(input: DeferredDecorationInput): DeferredDecorationBundle {
     const { devices, dailyBudgetSnapshot, nowTs } = input;
@@ -126,17 +137,11 @@ export class DeferredObjectiveDecorationController {
         settings,
         powerTracker: this.deps.getPowerTracker(),
         dailyBudgetSnapshot,
-        buildPriceHorizon: this.deps.buildPriceHorizon,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         activePlans: this.deps.getDeferredObjectiveActivePlans(),
         sustainableRateKw: resolveUsableCapacityKw(this.deps.getCapacitySettings()),
-        priorityAllocationTracker: this.priorityAllocationTracker,
-        getPrioritiesForDevices: this.deps.getPrioritiesForDevices,
-        resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
-        getStallClassification: this.deps.getStallClassification,
-        getDeliveredEnergyKWh: this.deps.getDeliveredEnergyKWh,
-        isReservationSuppressed: this.deps.isReservationSuppressed,
-      }).filter((evaluation) => evaluation.deadlineAtMs > nowTs);
+      }, this.readers, this.priorityAllocationTracker, LIVE_LANE)
+        .filter((evaluation) => evaluation.deadlineAtMs > nowTs);
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);
       recordOpRssDelta('evaluate_deferred_objectives_ms', rssBefore, safeRss());

@@ -15,9 +15,11 @@ import type { EnergyTaskDeliveryTracker } from './energyDelivery';
 import {
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
+  LIVE_LANE,
   reportStalledTasksAsSatisfied,
   type DeferredObjectiveDiagnostic,
   type DeferredObjectiveAnnounce,
+  type TaskEvaluationReaders,
 } from './diagnosticsBridge';
 import {
   emitDeferredObjectiveLifecycleTransitions,
@@ -154,7 +156,18 @@ export class DeferredObjectiveLifecycleEmitter {
   // emission from the live diagnostics, so it cannot retain a dead objective.
   private announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
 
-  constructor(private readonly deps: DeferredObjectiveLifecycleEmitterDeps) {}
+  private readonly readers: TaskEvaluationReaders;
+
+  constructor(private readonly deps: DeferredObjectiveLifecycleEmitterDeps) {
+    this.readers = {
+      buildPriceHorizon: deps.buildPriceHorizon,
+      getPrioritiesForDevices: deps.getPrioritiesForDevices,
+      resolveDeviceExclusion: deps.resolveDeviceExclusion,
+      getStallClassification: deps.getStallClassification,
+      getDeliveredEnergyKWh: deps.energyDelivery.getDeliveredKWh,
+      isReservationSuppressed: deps.isReservationSuppressed,
+    };
+  }
 
   /** Evaluate the lifecycle at `nowMs` and emit/observe its facts. Pure side-effects. */
   tick(nowMs: number): void {
@@ -182,17 +195,10 @@ export class DeferredObjectiveLifecycleEmitter {
       settings,
       powerTracker: this.deps.getPowerTracker(),
       dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
-      buildPriceHorizon: this.deps.buildPriceHorizon,
       priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
       activePlans,
       sustainableRateKw: resolveUsableCapacityKw(this.deps.getCapacitySettings()),
-      priorityAllocationTracker: this.priorityAllocationTracker,
-      getPrioritiesForDevices: this.deps.getPrioritiesForDevices,
-      resolveDeviceExclusion: this.deps.resolveDeviceExclusion,
-      getStallClassification: this.deps.getStallClassification,
-      getDeliveredEnergyKWh: this.deps.energyDelivery.getDeliveredKWh,
-      isReservationSuppressed: this.deps.isReservationSuppressed,
-    }), this.deps.getStallClassification, activePlans);
+    }, this.readers, this.priorityAllocationTracker, LIVE_LANE), this.deps.getStallClassification, activePlans);
 
     // Plan-history record, using this tick's (pre-write) snapshot.
     this.deps.observeDeferredObjectivePlanHistory(diagnostics, nowMs, activePlans);

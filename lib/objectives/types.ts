@@ -82,7 +82,6 @@ export type ObjectiveDeviceInput = {
   isEvCharger: boolean;
   deviceType: 'temperature' | 'onoff';
   steppedLoadProfile?: SteppedLoadProfile;
-  priority?: number;
   /**
    * Producer-resolved "there is no creditable session to make progress in",
    * structurally assignable from `PlanInputDevice`. A plain boolean carrying no

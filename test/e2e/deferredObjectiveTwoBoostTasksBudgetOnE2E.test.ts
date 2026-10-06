@@ -11,8 +11,8 @@
 //
 // The higher task owns the current-hour reservation and may boost past the shed
 // invariant. The lower task is not admitted into that occupied hour; it plans
-// only against later residual slots and honestly reports that it cannot meet
-// this deliberately tight deadline.
+// only against later residual slots and honestly reports that it needs its
+// deadline reserve to meet this deliberately tight deadline.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
@@ -260,12 +260,13 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     // (5) The stored priorities tie both tanks at 1; the settings port resolves that
     // tie to a strict order (deviceId asc → tank_a wins rank 1, tank_b rank 2), so
     // the deterministic winner takes the scarce headroom. tank_a reaches `on_track`;
-    // tank_b gets only the residual schedule, which is insufficient for this
-    // deliberately tight runtime scene.
+    // tank_b gets only the residual schedule. The only device above it is tank_a, a
+    // smart task, so tank_b plans that residual at the step its headroom admits and
+    // fits only by using the deadline reserve.
     expect(lastDiag(TANK_A)?.status).toBe('on_track');
     expect(lastDiag(TANK_B)).toMatchObject({
-      status: 'cannot_meet',
-      reasonCode: 'target_cannot_be_met',
+      status: 'at_risk',
+      reasonCode: 'planned_using_deadline_reserve',
     });
   });
 });

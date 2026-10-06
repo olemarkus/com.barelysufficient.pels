@@ -1,3 +1,4 @@
+import { buildFixtureDiagnostics, type TaskEvaluationFixture } from '../helpers/taskEvaluationFixture';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
@@ -395,7 +396,7 @@ const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPr
 
 // Wrapper: inject the price-layer `combinedPrices` derived from the same snapshot
 // the test already supplies, so existing budget-overlay assertions stay intact.
-type RawDiagnosticsParams = Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0];
+type RawDiagnosticsParams = TaskEvaluationFixture;
 // Fixture defaults for the live-wiring inputs: no committed plans, no excluded
 // devices, and no device parked at its target.
 type DefaultedDiagnosticsParam =
@@ -410,7 +411,7 @@ const buildDeferredObjectiveDiagnostics = (
     & Partial<Pick<RawDiagnosticsParams, DefaultedDiagnosticsParam>>,
 ): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => {
   const combined = combinedFromSnapshot(params.dailyBudgetSnapshot);
-  return buildDeferredObjectiveDiagnosticsRaw({
+  return buildFixtureDiagnostics({
     ...params,
     activePlans: params.activePlans ?? null,
     resolveDeviceExclusion: params.resolveDeviceExclusion ?? (() => null),
@@ -614,6 +615,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       dailyBudgetSnapshot: buildSnapshot({
         prices: Array.from({ length: 24 }, (_, index) => (index === 18 ? 100 : 10)),
       }),
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
 
     expect(result.reasonCode).toBeNull();
@@ -634,6 +637,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedControlledKWh: Array.from({ length: 24 }, () => 2.5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
     for (const bucket of result.buckets) {
@@ -658,6 +663,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedControlledKWh: Array.from({ length: 24 }, () => 0.75),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.25),
       }),
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
     expect(result.buckets.length).toBeGreaterThan(0);
@@ -678,6 +685,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedControlledKWh: Array.from({ length: 24 }, () => 0),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 5),
       }),
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
     for (const bucket of result.buckets) {
@@ -699,6 +708,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedControlledKWh: Array.from({ length: 24 }, () => -1),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
     expect(result.buckets.length).toBeGreaterThan(0);
@@ -714,6 +725,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot(),
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
     for (const bucket of result.buckets) {
@@ -735,6 +748,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot(snapshot),
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
     const exempt = buildDeferredObjectivePolicyHorizon({
       sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
@@ -743,6 +758,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot(snapshot),
       exemptFromBudget: true,
+      higherPriorityReservations: [],
     });
     expect(capped.buckets.length).toBeGreaterThan(0);
     expect(capped.buckets.every((bucket) => bucket.maxUsefulEnergyKWh === 0)).toBe(true);
@@ -769,6 +785,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         exemptFromBudget: false,
         energySegments: [{ startMs: NOW_MS, endMs: NOW_MS + HOUR_MS, plannedKWh: 2 }],
       }],
+      exemptFromBudget: false,
     });
     expect(result.reasonCode).toBeNull();
     expect(result.buckets[0]?.reservedHeadroomKw).toBeCloseTo(6.5);
@@ -811,6 +828,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
           energySegments: [{ startMs: splitMs, endMs: NOW_MS + HOUR_MS, plannedKWh: 0.5 }],
         },
       ],
+      exemptFromBudget: false,
     });
 
     expect(result.reasonCode).toBeNull();
@@ -843,6 +861,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       nowMs,
       deadlineAtMs: sourceStartMs + 2 * HOUR_MS,
       priceOptimizationEnabled: true,
+      exemptFromBudget: false,
       priceHorizon: [
         { startMs: sourceStartMs, price: 5 },
         { startMs: sourceStartMs + HOUR_MS, price: 5 },
@@ -892,6 +911,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedGrossUncontrolledKWh: Array.from({ length: 24 }, () => 2.5),
       }),
       sustainableRateKw: 5,
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
 
     expect(result.reasonCode).toBeNull();
@@ -910,6 +931,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => -1),
       }),
       sustainableRateKw: 5,
+      exemptFromBudget: false,
+      higherPriorityReservations: [],
     });
 
     expect(result.reasonCode).toBeNull();
@@ -1135,19 +1158,26 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
     const coordinatedHigh = coordinated.find((diagnostic) => diagnostic.deviceId === 'ev-1');
     const coordinatedLow = coordinated.find((diagnostic) => diagnostic.deviceId === 'ev-2');
-    const coordinatedHighHours = new Set(
-      coordinatedHigh?.horizonPlan?.plannedBuckets
-        .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
-        .map((bucket) => Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS),
-    );
-    const coordinatedLowHours = coordinatedLow?.horizonPlan?.plannedBuckets
+    // The higher task draws for as long as its booked energy takes at its 1 kW
+    // `low` rung, from the start of each booked bucket; the lower task may book
+    // only outside those windows, since both rungs together exceed the 1.5 kW rate.
+    const highRungKw = 1;
+    const highDrawWindows = coordinatedHigh?.horizonPlan?.plannedBuckets
       .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
-      .map((bucket) => Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS) ?? [];
+      .map((bucket) => ({
+        startMs: bucket.startMs,
+        endMs: bucket.startMs + (bucket.plannedUsefulEnergyKWh / highRungKw) * HOUR_MS,
+      })) ?? [];
+    const lowBooked = coordinatedLow?.horizonPlan?.plannedBuckets
+      .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0) ?? [];
     expect(first.find((diagnostic) => diagnostic.deviceId === 'ev-1')?.horizonPlan).toBeUndefined();
     expect(coordinatedLow?.allocationContextSignature).not.toBe(firstLow.allocationContextSignature);
     expect(coordinatedLow?.horizonPlan?.frozenRead).not.toBe(true);
     expect(coordinatedLow?.replaceCommitment).toBe(true);
-    expect(coordinatedLowHours.every((hour) => !coordinatedHighHours.has(hour))).toBe(true);
+    expect(lowBooked.length).toBeGreaterThan(0);
+    expect(lowBooked.every((bucket) => highDrawWindows.every((window) => (
+      bucket.endMs <= window.startMs || bucket.startMs >= window.endMs
+    )))).toBe(true);
   });
 
   it('immediately coordinates a legacy lower commitment with no allocation signature', () => {
@@ -1292,10 +1322,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostics[0]).toMatchObject({
       deviceId: 'z-high',
-      devicePriority: 1,
       reasonCode: 'objective_missing_device',
     });
-    expect(lowDiagnostic?.devicePriority).toBe(2);
     expect(lowHours).not.toContain(NOW_MS);
     expect(lowHours).not.toContain(NOW_MS + 2 * HOUR_MS);
 
@@ -1327,7 +1355,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceId: 'z-high',
       reasonCode: 'objective_missing_device',
     });
-    expect(releasedLow?.devicePriority).toBe(1);
     expect(releasedLowHours).toContain(NOW_MS + 2 * HOUR_MS);
   });
 
@@ -1485,6 +1512,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       device,
       activePlans,
       sustainableRateKw: 10,
+      nowMs: NOW_MS,
     });
 
     expect(reservation?.admissionPowerKw).toBe(2);
@@ -1493,6 +1521,99 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       endMs: deadlineAtMs,
       plannedKWh: 1,
     }]);
+  });
+
+  // Regression, prod 2026-10-06: a water heater booked 0.56 kWh in an hour at
+  // ~3 kW and the EV task below it was handed nothing for that whole hour.
+  it('holds a booking only for as long as its energy takes at the booked rung', () => {
+    const deadlineAtMs = NOW_MS + 4 * HOUR_MS;
+    const settings = normalizeDeferredObjectiveSettings({
+      version: 1,
+      objectivesByDeviceId: { 'ev-1': { ...buildSettings().objectivesByDeviceId['ev-1'], deadlineAtMs } },
+    });
+    const objective = settings.objectivesByDeviceId['ev-1']!;
+    const targetPercent = objective.kind === 'ev_soc' ? objective.targetPercent : 0;
+    const hours = [
+      { startsAtMs: NOW_MS, plannedKWh: 0.25 },
+      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 0.5 },
+      { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1.5 },
+    ];
+    const latest = {
+      revision: 1,
+      revisedAtMs: NOW_MS,
+      computedFromPricesUpTo: deadlineAtMs,
+      reason: 'flow_card' as const,
+      hours,
+      energyNeededKWh: 2.25,
+      planStatus: 'on_track' as const,
+      reservationSegments: [
+        { startMs: NOW_MS, endMs: NOW_MS + HOUR_MS, plannedKWh: 0.25, plannedAdmissionPowerKw: 1 },
+        { startMs: NOW_MS + HOUR_MS, endMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 0.5, plannedAdmissionPowerKw: 1 },
+        {
+          startMs: NOW_MS + 2 * HOUR_MS, endMs: NOW_MS + 3 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 2,
+        },
+      ],
+    };
+    const activePlans: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          liveCompletion: { kind: 'unavailable' as const },
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetValue: targetPercent,
+          deadlineAtMs,
+          startedAtMs: NOW_MS,
+          pending: false,
+          objectiveSignature: buildObjectiveSignature({
+            objectiveKind: 'ev_soc',
+            targetValue: targetPercent,
+            deadlineAtMs,
+            enforcement: 'soft',
+            progressDirection: 'increasing',
+          }),
+          commitment: { committedAtMs: NOW_MS, hours },
+          original: latest,
+          latest,
+        },
+      },
+    };
+    const device = buildDevice({ priority: 1 });
+    // 20 minutes into the first booked hour.
+    const nowMs = NOW_MS + 20 * 60 * 1000;
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs,
+      timeZone: 'UTC',
+      devices: [device],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: false,
+      activePlans,
+      sustainableRateKw: 10,
+    });
+    const reserve = (reservationDevice: typeof device | undefined) => buildPriorityReservations({
+      evaluation: diagnostic!.evaluation,
+      objective,
+      device: reservationDevice,
+      activePlans,
+      sustainableRateKw: 10,
+      nowMs,
+    }).flatMap((reservation) => reservation.energySegments);
+    const minutes = (ms: number) => ms / (60 * 1000);
+
+    expect(reserve(device).map((segment) => [minutes(segment.startMs - NOW_MS), minutes(segment.endMs - NOW_MS)]))
+      .toEqual([
+        // Begun: the energy may still be undelivered, so it is held from now.
+        [20, 35],
+        // 0.5 kWh at the 1 kW `low` rung, then 1.5 kWh at the 2 kW `high` rung.
+        [60, 90],
+        [120, 165],
+      ]);
+    // Without the device's ladder the booked rung is unknown: hold the whole bucket.
+    expect(reserve(undefined).map((segment) => [minutes(segment.startMs - NOW_MS), minutes(segment.endMs - NOW_MS)]))
+      .toEqual([[0, 60], [60, 120], [120, 180]]);
   });
 
   it('plans a persisted EV SoC objective through price-shaped horizon buckets', () => {
@@ -1943,6 +2064,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       device: buildDevice(),
       activePlans,
       sustainableRateKw: 10,
+      nowMs: NOW_MS,
     });
     expect(reservation?.plannedKWh).toBe(3);
   });
@@ -3596,18 +3718,18 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
     });
 
-    it('grants a below-top-priority task the limit permission without promoting its floor', () => {
+    it('grants a task below a plain device the limit permission without promoting its floor', () => {
       // Guards the split the permission gate now relies on. The two questions are
       // separate: PERSISTING `limitLowerPriorityDevices` is useful at any priority
       // (swap selection only ever displaces strictly lower-priority devices), but
-      // `fullyReserved` FLOOR PROMOTION stays priority-1-only, because the
-      // reserved-headroom forecast (`hardCap − uncontrolled`) assumes every
-      // controlled watt is displaceable — true only at the top.
+      // `fullyReserved` FLOOR PROMOTION needs every higher rank booked, because the
+      // reserved-headroom forecast (`hardCap − uncontrolled − higher bookings`)
+      // leaves out controlled load. A plain device above the task has no bookings.
       //
-      // So a priority-2 task with both permissions must report the grant as
-      // applied while planning at the un-promoted floor: `min` (1 kW) × 4 h = 4 kWh
-      // against a 6 kWh need, versus the priority-1 control above which promotes to
-      // `top` (3 kW) and reaches `on_track`.
+      // So a priority-2 task under a task-less priority-1 device must report the
+      // grant as applied while planning at the un-promoted floor: `min` (1 kW) × 4 h
+      // = 4 kWh against a 6 kWh need, versus the priority-1 control above which
+      // promotes to `top` (3 kW) and reaches `on_track`.
       const higherDevice = { ...buildPromotableDevice('higher-device'), priority: 1 };
       const belowTop = { ...buildPromotableDevice('ev-1'), priority: 2 };
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
@@ -3662,10 +3784,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       expect(diagnostics).toHaveLength(2);
       const byDevice = new Map(diagnostics.map((diagnostic) => [diagnostic.deviceId, diagnostic]));
       expect(resolvedTrajectoryStatus(byDevice.get('ev-1')!)).toBe('on_track');
-      expect(byDevice.get('ev-1')?.devicePriority).toBe(1);
+      // ev-2 is promoted as well (its only higher rank, ev-1, is booked) and takes
+      // the hours ev-1 left at the top rung.
       expect(byDevice.get('ev-2')).toMatchObject({
-        devicePriority: 2,
-        trajectory: { kind: 'resolved', status: 'at_risk' },
+        trajectory: { kind: 'resolved', status: 'on_track' },
       });
       const firstHours = new Set(byDevice.get('ev-1')?.horizonPlan?.plannedBuckets
         .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
@@ -3778,7 +3900,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       };
     };
 
-    it('does not promote a lower relative rank after a higher task carries a prior commitment', () => {
+    it('promotes a lower rank whose every higher rank is booked, to the rung the residual admits', () => {
       const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
       const activePlans = buildCommittedHigherTaskPlans(deadlineAtMs);
       const diagnostics = buildDeferredObjectiveDiagnostics({
@@ -3807,19 +3929,51 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
       expect(diagnostics).toHaveLength(2);
       const byDevice = new Map(diagnostics.map((d) => [d.deviceId, d]));
-      // `at_risk`, not `cannot_meet`: ev-1's commitment reserves 1 kW of the 3 kW
-      // cap, leaving ev-2 a genuine 2 kW of forecast headroom — enough at the `mid`
-      // rung to cover its 6 kWh over the four primary hours. It is short at its
-      // FLOOR, which is what the rest of this test is about, but it is not beyond
-      // reach. (This read `cannot_meet` while both feasibility probes ran at the
-      // absolute `top` rung: 3 kW exceeds ev-2's 2 kW headroom, so the capacity gate
-      // zeroed every bucket and both probes reported "does not fit" no matter what.)
+      // The only device above ev-2 is ev-1, a smart-task device, so everything
+      // ev-2 cannot displace is in its forecast as ev-1's bookings: 1 kW of the
+      // 3 kW cap every hour. ev-2 books at the `mid` rung that the remaining 2 kW
+      // admits, and 2 kW over the four primary hours covers its 6 kWh. Under the
+      // former top-priority-only rule it stayed on its 1 kW floor and read `at_risk`.
       expect(byDevice.get('ev-2')).toMatchObject({
-        devicePriority: 2,
-        trajectory: { kind: 'resolved', status: 'at_risk' },
+        trajectory: { kind: 'resolved', status: 'on_track' },
       });
       expect(byDevice.get('ev-1')?.expectedStepId).toBe('min');
       expect(byDevice.get('ev-2')?.horizonPlan?.plannedBuckets
+        .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
+        .every((bucket) => bucket.plannedAdmissionPowerKw === 2)).toBe(true);
+    });
+
+    it('keeps a lower rank on its floor while the task above no longer governs its device', () => {
+      // ev-1 still holds a commitment, but its bookings are suppressed: its device is
+      // back under ordinary control, so its draw reaches ev-2 as nothing, like a plain
+      // device's. ev-2 therefore plans at its 1 kW floor (4 kWh over the four primary
+      // hours against a 6 kWh need) instead of the rung the full 3 kW would admit.
+      const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
+      const diagnostics = buildDeferredObjectiveDiagnostics({
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [buildPromotableDevice('ev-1'), buildPromotableDevice('ev-2')],
+        settings: normalizeDeferredObjectiveSettings({
+          version: 1,
+          objectivesByDeviceId: {
+            ...buildPromotableSettings('ev-1', fullyReservedRescue),
+            ...buildPromotableSettings('ev-2', fullyReservedRescue),
+          },
+        }),
+        powerTracker: buildPromotableTracker(['ev-1', 'ev-2']),
+        dailyBudgetSnapshot: buildSnapshot({
+          prices: Array.from({ length: 24 }, () => 5),
+          allowedCumKWh: generousAllowedCumKWh,
+          plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+        }),
+        priceOptimizationEnabled: true,
+        sustainableRateKw: HARDCAP_KW,
+        activePlans: buildCommittedHigherTaskPlans(deadlineAtMs),
+        isReservationSuppressed: (deviceId) => deviceId === 'ev-1',
+      });
+      const ev2 = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-2');
+      expect(ev2 && resolvedTrajectoryStatus(ev2)).toBe('at_risk');
+      expect(ev2?.horizonPlan?.plannedBuckets
         .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
         .every((bucket) => bucket.plannedAdmissionPowerKw === 1)).toBe(true);
     });
