@@ -24,7 +24,7 @@ flowCards/steppedLoadReport.ts 5
 lib/app/appContext.ts 1
 lib/dailyBudget/dailyBudgetAllocation.ts 6
 lib/dailyBudget/dailyBudgetBreakdown.ts 1
-lib/dailyBudget/dailyBudgetConfidence.ts 6
+lib/dailyBudget/dailyBudgetConfidence.ts 4
 lib/dailyBudget/dailyBudgetHistory.ts 1
 lib/dailyBudget/dailyBudgetLearning.ts 10
 lib/dailyBudget/dailyBudgetManager.ts 8

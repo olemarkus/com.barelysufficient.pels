@@ -161,13 +161,16 @@ export class DailyBudgetService {
     return this.deps.getTimeZone();
   }
 
+  /**
+   * `forcePlanRebuild` is how commands and settings changes say an input moved.
+   * It also rebuilds the adjacent days and re-checks confidence, since those
+   * read the same settings and history; routine updates leave both to the
+   * re-seed signature and the confidence cache.
+   */
   updateState(params: {
     nowMs?: number;
     forcePlanRebuild?: boolean;
-    includeAdjacentDays?: boolean;
     refreshObservedStats?: boolean;
-    refreshConfidence?: boolean;
-    includeConfidenceBootstrapDebug?: boolean;
     emitStructuredEvent?: boolean;
     recomputeFrozenPlan?: boolean;
     persistReason?: DailyBudgetStatePersistReason;
@@ -176,7 +179,7 @@ export class DailyBudgetService {
     const start = Date.now();
     const updateRssBefore = safeRss();
     const nowMs = params.nowMs ?? Date.now();
-    const includeAdjacentDays = params.includeAdjacentDays === true;
+    const forced = params.forcePlanRebuild === true;
     const timeZone = this.resolveTimeZone();
     const combinedPrices = readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone);
     const capacity = this.deps.getCapacitySettings();
@@ -194,14 +197,14 @@ export class DailyBudgetService {
         forcePlanRebuild: params.forcePlanRebuild,
         capacityBudgetKWh,
         refreshObservedStats: params.refreshObservedStats,
-        refreshConfidence: params.refreshConfidence,
-        includeConfidenceBootstrapDebug: params.includeConfidenceBootstrapDebug,
+        refreshConfidence: forced,
+        includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
         recomputeFrozenPlan: params.recomputeFrozenPlan,
         persistReason: params.persistReason,
       });
       incPerfCounter('daily_budget_compute_total');
       recordOpDuration('daily_budget_compute_ms', computeStart, computeRssBefore);
-      this.setDaySnapshot(update.snapshot, nowMs, combinedPrices, includeAdjacentDays);
+      this.setDaySnapshot(update.snapshot, nowMs, combinedPrices, forced);
       const snap = update.snapshot;
       if (params.emitStructuredEvent !== false && this.shouldEmitBudgetRecomputed(snap)) {
         (this.deps.structuredLog ?? moduleLogger).info({
@@ -352,25 +355,19 @@ export class DailyBudgetService {
     );
   }
 
-  getUiPayload(): DailyBudgetUiRead {
-    const nowMs = Date.now();
-    this.updateState({
-      nowMs,
-      forcePlanRebuild: false,
-      includeAdjacentDays: true,
-      refreshConfidence: true,
-      includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
-    });
-    return this.readSnapshot();
-  }
-
   /**
-   * The snapshot as a named read. `updateState` swallows a compute failure by
-   * design (the last good snapshot carries forward), so the only way to have
-   * nothing is to have never computed one — the boot window, or a first
-   * compute that threw. That is `unavailable`, not an empty budget.
+   * The snapshot as a named read. The settings UI and the `plan_budget` widget
+   * read this while open, refetching on every realtime push, so it computes
+   * nothing: it serves what the last update left. That is as fresh as the last
+   * power sample, or the periodic status update while the meter is silent; the
+   * adjacent days and confidence follow their own re-seed and cache rules.
+   *
+   * `updateState` swallows a compute failure by design (the last good snapshot
+   * carries forward), so the only way to have nothing is to have never computed
+   * one — the boot window, or a first compute that threw. That is
+   * `unavailable`, not an empty budget.
    */
-  private readSnapshot(): DailyBudgetUiRead {
+  getUiPayload(): DailyBudgetUiRead {
     return this.snapshot ? { kind: 'budget', payload: this.snapshot } : { kind: 'unavailable' };
   }
 
@@ -380,18 +377,15 @@ export class DailyBudgetService {
       nowMs,
       forcePlanRebuild: true,
       recomputeFrozenPlan: true,
-      includeAdjacentDays: true,
-      refreshConfidence: true,
-      includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
       persistReason: 'manual',
     });
-    return this.readSnapshot();
+    return this.getUiPayload();
   }
 
   previewModelSettings(input: DailyBudgetSettingsInput): DailyBudgetModelPreviewResponse {
     const nowMs = Date.now();
     const settings = this.resolveSettingsInput(input);
-    const active = this.readSnapshot();
+    const active = this.getUiPayload();
     const manager = this.createManagerClone();
     const timeZone = this.resolveTimeZone();
     const combinedPrices = readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone);
@@ -499,11 +493,13 @@ export class DailyBudgetService {
 
   // Hot-path compose preserves cached tomorrow but never seeds it. Rebuild
   // adjacent days whenever the seed signature changes so fresh start, price
-  // reload, and date rollover all surface tomorrow to the deferred-objective
-  // policyHorizon — see `computeAdjacentDaysSeedSignature`.
+  // reload, date rollover, a past day written late and a learned-model change
+  // all reach tomorrow, yesterday and the deferred-objective policyHorizon —
+  // see `computeAdjacentDaysSeedSignature` and `getAdjacentDaysInputsMark`.
   private setDaySnapshot(snap: DailyBudgetDayPayload, nowMs: number,
     prices: CombinedPriceData | null, includeAdjacentDays = false): void {
-    const seedSignature = computeAdjacentDaysSeedSignature(snap.dateKey, prices);
+    const priceSignature = computeAdjacentDaysSeedSignature(snap.dateKey, prices);
+    const seedSignature = `${priceSignature}|${this.manager.getAdjacentDaysInputsMark()}`;
     if (includeAdjacentDays || seedSignature !== this.adjacentDaysSeedSignature) {
       this.adjacentDaysSeedSignature = seedSignature;
       this.rebuildSnapshotWithAdjacentDays(snap, nowMs);

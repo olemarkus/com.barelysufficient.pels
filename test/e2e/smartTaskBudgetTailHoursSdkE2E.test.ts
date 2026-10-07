@@ -74,6 +74,8 @@ const DAILY_BUDGET_KWH_VALUE = 60;
 // so nothing about the hour-of-day shape can explain a skipped hour.
 const FLAT_WEIGHTS = Array.from({ length: 24 }, () => 1 / 24);
 const PROFILE_SAMPLES = 140;
+// The controlled share production was carrying on the night this reproduces.
+const PROFILE_CONTROLLED_SHARE = 0.42;
 
 // The day plan of an overspent day. Hours 0-19 at 2.8 and hours 20-21 at 1.0
 // reach 58.0 by the current hour; the two hours still to come hold 4.5 each.
@@ -105,15 +107,29 @@ const seededControlledKWh = (): number[] => {
 // The positive deviation is what keeps the plan frozen, so the seeded plan
 // reaches the allocator verbatim (`shouldRebuildDailyBudgetPlan` short-circuits
 // on `frozen`).
+//
+// The usage carries the learned profile's controlled share. The first sample
+// learns the observed background from this history and re-seeds tomorrow's
+// preview on it; history booked as all-uncontrolled would read as a 2.95 kWh/h
+// always-on load that fills tomorrow's whole 2.5 kWh/h share and leaves the task
+// nothing, contradicting the profile seeded below.
 const seedPowerTracker = (): void => {
   const buckets: Record<string, number> = {};
-  for (let hourIndex = 0; hourIndex < 21; hourIndex += 1) {
-    buckets[new Date(DAY_START_UTC_MS + hourIndex * HOUR_MS).toISOString()] = 2.95;
-  }
-  buckets[new Date(DAY_START_UTC_MS + 21 * HOUR_MS).toISOString()] = 0.5;
+  const controlledBuckets: Record<string, number> = {};
+  const uncontrolledBuckets: Record<string, number> = {};
+  const book = (hourIndex: number, kWh: number) => {
+    const key = new Date(DAY_START_UTC_MS + hourIndex * HOUR_MS).toISOString();
+    buckets[key] = kWh;
+    controlledBuckets[key] = kWh * PROFILE_CONTROLLED_SHARE;
+    uncontrolledBuckets[key] = kWh * (1 - PROFILE_CONTROLLED_SHARE);
+  };
+  for (let hourIndex = 0; hourIndex < 21; hourIndex += 1) book(hourIndex, 2.95);
+  book(21, 0.5);
   seedStoredPowerTrackerForTests({
     lastTimestamp: BOOT_MS - 30_000,
     buckets,
+    controlledBuckets,
+    uncontrolledBuckets,
     objectiveProfiles: {
       [TANK]: {
         updatedAtMs: DAY_START_UTC_MS,
@@ -214,7 +230,7 @@ const seedSettings = (): void => {
     // carrying on the night this reproduces.
     profileUncontrolled: { weights: FLAT_WEIGHTS, sampleCount: PROFILE_SAMPLES },
     profileControlled: { weights: FLAT_WEIGHTS, sampleCount: PROFILE_SAMPLES },
-    profileControlledShare: 0.42,
+    profileControlledShare: PROFILE_CONTROLLED_SHARE,
     profileSampleCount: PROFILE_SAMPLES,
     profileSplitSampleCount: PROFILE_SAMPLES,
   });
