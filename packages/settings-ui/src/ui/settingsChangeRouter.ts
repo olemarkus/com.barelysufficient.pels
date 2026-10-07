@@ -92,7 +92,6 @@ import {
   refreshOverviewPlanIfVisible,
   refreshPriceOptimizationSettings,
   refreshPlanForUi,
-  refreshPowerData,
   refreshPowerDataIfVisible,
   refreshPricesIfVisible,
   refreshStaleDataStatus,
@@ -246,7 +245,9 @@ const refreshMainPowerTracker = (context: string) => {
   // solar-surplus and export-price affordances hidden until the WebView
   // reloads, even though the export is recorded.
   invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
-  runLoggedTask(refreshPowerData(), 'Failed to refresh power data', context);
+  // Visible surfaces only: the Usage tab refetches on activation, so a hidden
+  // panel has nothing to repaint and the read would only cost the app.
+  refreshPowerDataIfVisible(context, { force: true });
   refreshStaleDataStatus(context);
   refreshDailyBudgetIfVisible(context);
 };

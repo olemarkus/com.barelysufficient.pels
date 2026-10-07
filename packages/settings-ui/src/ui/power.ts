@@ -32,7 +32,7 @@ import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
 import { getHomeScope } from './homeScope.ts';
 import { readUsagePower } from './usagePowerRead.ts';
 import { createToggleGroup } from './components.ts';
-import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
+import type { SettingsUiPowerTracker } from '../../../contracts/src/powerTrackerTypes.ts';
 import { buildDayContext } from '../../../shared-domain/src/dailyBudget/dayContext.ts';
 import {
   HOME_SCOPE_USAGE_UNAVAILABLE_BODY,
@@ -80,8 +80,8 @@ type ServedUsagePowerRead = Extract<UsagePowerRead, { state: 'served' }>;
 
 type HourlyPatternView = 'all' | 'weekday' | 'weekend';
 const MIN_RELIABLE_SAMPLES_PER_HOUR = 2;
-// Daily history shows the last 14 days — the full window the tracker retains
-// (week/month totals depend on the same cap); the rendered slice matches it.
+// Daily history shows the last 14 days; the tracker keeps 30 days of hourly
+// buckets and 365 days of daily totals (week/month totals read the latter).
 const DAILY_HISTORY_DAYS = 14;
 const ZERO_KWH_EPSILON = 1e-9;
 
@@ -349,7 +349,7 @@ setActiveDailyBudgetChangeListener(() => {
 });
 
 const computePowerStats = (
-  tracker: PowerTrackerState,
+  tracker: SettingsUiPowerTracker,
 ): { stats: PowerStatsSummary; timeZone: string } => {
   const now = new Date();
   const timeZone = getHomeyTimezone();
@@ -428,7 +428,6 @@ export const getPowerUsageFromRead = (read: ServedUsagePowerRead): PowerUsageEnt
       return {
         hour: date,
         kWh,
-        budgetKWh: tracker.hourlyBudgets?.[iso],
         ...split,
         unreliable: isUnreliable,
       };

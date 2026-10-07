@@ -9,7 +9,7 @@
 // junk-negative net sample never conjures the card. When the gate fails the
 // mount stays structurally empty.
 
-import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
+import type { SettingsUiPowerTracker } from '../../../contracts/src/powerTrackerTypes.ts';
 import { hasRecordedAnyExport } from '../../../shared-domain/src/solar/exhibitedExport.ts';
 import { resolveSolarMoneyToday } from '../../../shared-domain/src/solar/solarMoney.ts';
 import { normalizeCombinedPrices } from './combinedPrices.ts';
@@ -125,7 +125,7 @@ const readCombinedPrices = async (): Promise<unknown> => {
 };
 
 export const resolveSolarUsageCardProps = (params: {
-  tracker: PowerTrackerState | null;
+  tracker: SettingsUiPowerTracker | null;
   combined: unknown;
   timeZone: string;
   todayKey: string;
@@ -190,7 +190,7 @@ export type SolarUsageSectionResult = {
 
 /** Usage-tab render hook — called from `power.ts` on each stats render. */
 export const renderSolarUsageSection = async (params: {
-  tracker: PowerTrackerState | null;
+  tracker: SettingsUiPowerTracker | null;
   timeZone: string;
   /** Home-level solar signal from the /ui_power payload (absence = false). */
   hasManagedSolarDevice: boolean;

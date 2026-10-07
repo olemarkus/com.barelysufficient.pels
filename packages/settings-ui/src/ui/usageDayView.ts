@@ -31,7 +31,6 @@ type UsageDayView = 'today' | 'yesterday';
 export type UsageDayEntry = {
   hour: Date;
   kWh: number;
-  budgetKWh?: number;
   controlledKWh?: number;
   uncontrolledKWh?: number;
   unreliable?: boolean;
@@ -41,7 +40,6 @@ type UsageDayBucket = {
   startMs: number;
   label: string;
   measuredKWh: number;
-  budgetKWh: number | null;
   controlledKWh: number | null;
   uncontrolledKWh: number | null;
   unreliable: boolean;
@@ -102,7 +100,6 @@ const buildUsageDayBuckets = (
   const buckets = bucketStartUtcMs.map((startMs, index) => {
     const entry = entriesByStart.get(startMs);
     const measuredKWh = entry?.kWh ?? 0;
-    const budgetKWh = typeof entry?.budgetKWh === 'number' && entry.budgetKWh > 0 ? entry.budgetKWh : null;
     const controlledKWh = typeof entry?.controlledKWh === 'number' && Number.isFinite(entry.controlledKWh)
       ? entry.controlledKWh
       : null;
@@ -114,7 +111,6 @@ const buildUsageDayBuckets = (
       startMs,
       label: bucketStartLocalLabels[index] ?? '',
       measuredKWh,
-      budgetKWh,
       controlledKWh,
       uncontrolledKWh,
       unreliable,

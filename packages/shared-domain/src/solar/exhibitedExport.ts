@@ -1,5 +1,8 @@
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes';
 
+/** The export families the gates read; the WebView's cut tracker carries both. */
+type ExportHistory = Pick<PowerTrackerState, 'exportDailyTotals' | 'exportBuckets'>;
+
 /**
  * A home "has exhibited export" once its recorded grid-export energy crosses a
  * material floor — a stable, accumulated kWh signal, never a transient watt.
@@ -61,14 +64,14 @@ const hasPositiveValue = (record: Record<string, number> | undefined): boolean =
  * has to re-earn the answer with one negative sample.
  */
 export const hasRecordedAnyExport = (
-  tracker: PowerTrackerState | null | undefined,
+  tracker: ExportHistory | null | undefined,
 ): boolean => {
   if (!tracker) return false;
   return hasPositiveValue(tracker.exportDailyTotals) || hasPositiveValue(tracker.exportBuckets);
 };
 
 export const hasMaterialExhibitedExport = (
-  tracker: PowerTrackerState | null | undefined,
+  tracker: ExportHistory | null | undefined,
 ): boolean => {
   if (!tracker) return false;
   // Either retention window crossing the floor qualifies. The 365-day daily

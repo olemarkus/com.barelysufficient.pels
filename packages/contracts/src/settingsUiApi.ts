@@ -3,7 +3,7 @@ import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
-import type { PowerTrackerState } from './powerTrackerTypes.js';
+import type { SettingsUiPowerTracker } from './powerTrackerTypes.js';
 import type { PriceOptimizationSetupRead } from './priceOptimizationSettings.js';
 import type {
   DecoratedDeviceSnapshot,
@@ -627,7 +627,7 @@ export type SettingsUiPowerPayload = {
    * `{}` is the empty history. History and readings are different facts: a
    * meter swap clears the readings latch while the buckets survive.
    */
-  tracker: PowerTrackerState;
+  tracker: SettingsUiPowerTracker;
   /** Producer-resolved readings fact; see `SettingsUiPowerReadings`. */
   readings: SettingsUiPowerReadings;
   status: SettingsUiPowerStatusRead;

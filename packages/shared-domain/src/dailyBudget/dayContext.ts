@@ -1,4 +1,7 @@
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
+
+/** The hourly families a day context is built from; the WebView's cut tracker carries them too. */
+export type DayContextTracker = Pick<PowerTrackerState, 'buckets' | 'controlledBuckets' | 'uncontrolledBuckets'>;
 import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
@@ -36,7 +39,7 @@ const sumArray = (values: number[]): number => values.reduce((sum, value) => sum
 
 const buildBucketUsage = (params: {
   bucketStartUtcMs: number[];
-  powerTracker: PowerTrackerState;
+  powerTracker: DayContextTracker;
 }): {
   bucketKeys: string[];
   bucketUsage: number[];
@@ -86,7 +89,7 @@ const resolveBucketProgress = (params: {
 export const buildDayContext = (params: {
   nowMs: number;
   timeZone: string;
-  powerTracker: PowerTrackerState;
+  powerTracker: DayContextTracker;
 }): DayContext => {
   const { nowMs, timeZone, powerTracker } = params;
   const dateKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);

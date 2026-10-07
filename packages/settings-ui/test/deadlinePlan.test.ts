@@ -133,24 +133,7 @@ const buildBootstrap = (
   power: {
     tracker: {
       objectiveProfiles: {
-        heater: {
-          updatedAtMs: Date.now(),
-          lastSample: {
-            observedAtMs: Date.now(),
-            value: 18,
-          },
-          kwhPerUnit: {
-            sampleCount: 8,
-            mean: 1,
-            m2: 0,
-            min: 1,
-            max: 1,
-            confidence: 'high',
-            lastUpdatedMs: Date.now(),
-          },
-          acceptedSamples: 8,
-          rejectedSamples: 0,
-        },
+        heater: { kwhPerUnit: { mean: 1, confidence: 'high' } },
       },
     },
     status: { state: 'unavailable', reason: 'no_status_recorded' },
@@ -1632,21 +1615,7 @@ describe('deadline plan page payload', () => {
     }));
     bootstrap.power.tracker = {
       objectiveProfiles: {
-        heater: {
-          updatedAtMs: now.getTime(),
-          lastSample: { observedAtMs: now.getTime() - 60 * 60 * 1000, value: 18 },
-          kwhPerUnit: {
-            sampleCount: 3,
-            mean: 0.5,
-            m2: 0,
-            min: 0.5,
-            max: 0.5,
-            confidence: 'low',
-            lastUpdatedMs: now.getTime(),
-          },
-          acceptedSamples: 3,
-          rejectedSamples: 0,
-        },
+        heater: { kwhPerUnit: { mean: 0.5, confidence: 'low' } },
       },
     };
 
@@ -2574,21 +2543,7 @@ describe('deadline plan page payload', () => {
     // Learned profile now present for the EV.
     bootstrap.power.tracker = {
       objectiveProfiles: {
-        ev: {
-          updatedAtMs: now.getTime(),
-          lastSample: { observedAtMs: now.getTime(), value: 41 },
-          kwhPerUnit: {
-            sampleCount: 3,
-            mean: 0.15,
-            m2: 0,
-            min: 0.15,
-            max: 0.15,
-            confidence: 'low',
-            lastUpdatedMs: now.getTime(),
-          },
-          acceptedSamples: 3,
-          rejectedSamples: 0,
-        },
+        ev: { kwhPerUnit: { mean: 0.15, confidence: 'low' } },
       },
     };
 
@@ -2685,21 +2640,7 @@ describe('deadline plan page payload', () => {
     // Live profile mean deliberately differs from the persisted rateMean.
     bootstrap.power.tracker = {
       objectiveProfiles: {
-        ev: {
-          updatedAtMs: now.getTime(),
-          lastSample: { observedAtMs: now.getTime(), value: 41 },
-          kwhPerUnit: {
-            sampleCount: 5,
-            mean: 0.40,
-            m2: 0,
-            min: 0.40,
-            max: 0.40,
-            confidence: 'high',
-            lastUpdatedMs: now.getTime(),
-          },
-          acceptedSamples: 5,
-          rejectedSamples: 0,
-        },
+        ev: { kwhPerUnit: { mean: 0.40, confidence: 'high' } },
       },
     };
 
