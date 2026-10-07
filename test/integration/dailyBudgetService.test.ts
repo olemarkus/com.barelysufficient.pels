@@ -5,6 +5,7 @@ import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsA
 import type Homey from 'homey';
 import { partialDouble } from '../helpers/partialDouble';
 import type { Logger } from '../../lib/logging/logger';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 
 type AppHomey = Homey.App['homey'];
 
@@ -289,46 +290,103 @@ describe('DailyBudgetService', () => {
     expect(builderSpy).not.toHaveBeenCalled();
   });
 
-  it('refreshes confidence explicitly when fetching the UI payload', () => {
+  it('serves the UI payload from the current snapshot without computing anything', () => {
     const service = buildService();
     const updateSpy = vi.fn(() => ({
-      snapshot: buildDayPayload({
-        dateKey: '2025-03-15',
-        confidence: 0.72,
-        confidenceDebug: buildConfidenceDebug(),
-      }),
+      snapshot: buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 }),
       persistReason: null,
     }));
-    service['deps'].isDebugTopicEnabled = () => true;
     service['manager'].update = updateSpy;
+    service['buildTomorrowPreview'] = vi.fn(() => null);
+    service['buildYesterdayHistory'] = vi.fn(() => null);
+    service.updateState({ nowMs: NOW_MS });
+    const snapshot = service.getSnapshot();
+    service['buildTomorrowPreview'] = vi.fn(() => {
+      throw new Error('buildTomorrowPreview should not run on a UI read');
+    });
+    service['buildYesterdayHistory'] = vi.fn(() => {
+      throw new Error('buildYesterdayHistory should not run on a UI read');
+    });
+    updateSpy.mockClear();
+    const computesBefore = perfCount('daily_budget_compute_total');
 
+    const read = service.getUiPayload();
     service.getUiPayload();
 
-    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
-      refreshConfidence: true,
-      includeConfidenceBootstrapDebug: true,
-    }));
+    expect(read).toEqual({ kind: 'budget', payload: snapshot });
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(perfCount('daily_budget_compute_total')).toBe(computesBefore);
   });
 
-  it('does not enable confidence bootstrap debug when the daily_budget topic is off', () => {
+  it('answers unavailable from the UI read before the first compute', () => {
+    expect(buildService().getUiPayload()).toEqual({ kind: 'unavailable' });
+  });
+
+  // Real manager, stubbed builders: counts adjacent-day rebuilds as the tracker
+  // underneath the service changes.
+  type AdjacentBuilders = Record<'buildTomorrowPreview' | 'buildYesterdayHistory', () => null>;
+  const trackAdjacentRebuilds = (service: DailyBudgetService) => {
+    const builders = service as unknown as AdjacentBuilders;
+    vi.spyOn(builders, 'buildYesterdayHistory').mockReturnValue(null);
+    return vi.spyOn(builders, 'buildTomorrowPreview').mockReturnValue(null);
+  };
+
+  it('rebuilds the adjacent days on a forced update even when nothing else moved', () => {
+    const service = buildService();
+    const tomorrow = trackAdjacentRebuilds(service);
+    service.updateState({ nowMs: NOW_MS });
+    service.updateState({ nowMs: NOW_MS + 10_000 });
+    expect(tomorrow).toHaveBeenCalledTimes(1);
+
+    service.updateState({ nowMs: NOW_MS + 20_000, forcePlanRebuild: true });
+
+    expect(tomorrow).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-seeds the adjacent days when a late sample closes a past day, then holds', () => {
+    const service = buildService();
+    const tomorrow = trackAdjacentRebuilds(service);
+    let tracker: PowerTrackerState = { buckets: {}, lastTimestamp: NOW_MS - 24 * 60 * 60 * 1000 };
+    service['deps'].getPowerTracker = () => tracker;
+    service.updateState({ nowMs: NOW_MS });
+    service.updateState({ nowMs: NOW_MS + 10_000 });
+    expect(tomorrow).toHaveBeenCalledTimes(1);
+
+    // The meter returns: the gap is booked across midnight and marked unreliable.
+    tracker = { buckets: {}, lastTimestamp: NOW_MS + 20_000, unreliablePeriods: [{ start: NOW_MS - 86_400_000, end: NOW_MS + 20_000 }] };
+    service.updateState({ nowMs: NOW_MS + 20_000 });
+    service.updateState({ nowMs: NOW_MS + 30_000 });
+
+    expect(tomorrow).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-seeds the adjacent days when learning is reset', () => {
+    const service = buildService();
+    const tomorrow = trackAdjacentRebuilds(service);
+    service.updateState({ nowMs: NOW_MS });
+    expect(tomorrow).toHaveBeenCalledTimes(1);
+
+    service.resetLearning();
+    service.updateState({ nowMs: NOW_MS + 10_000 });
+
+    expect(tomorrow).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([true, false])('passes the daily_budget topic (%s) as the bootstrap flag on routine updates', (topicOn) => {
     const service = buildService();
     const updateSpy = vi.fn(() => ({
-      snapshot: buildDayPayload({
-        dateKey: '2025-03-15',
-        confidence: 0.72,
-        confidenceDebug: buildConfidenceDebug(),
-      }),
+      snapshot: buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 }),
       persistReason: null,
     }));
-    service['deps'].isDebugTopicEnabled = () => false;
+    service['deps'].isDebugTopicEnabled = () => topicOn;
     service['manager'].update = updateSpy;
 
-    service.getUiPayload();
+    service.updateState({ nowMs: NOW_MS });
 
     expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
-      refreshConfidence: true,
-      includeConfidenceBootstrapDebug: false,
+      includeConfidenceBootstrapDebug: topicOn,
     }));
+    expect(updateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ refreshConfidence: true }));
   });
 
   it('normalizes legacy persisted tuning values to dropdown modes on load', () => {

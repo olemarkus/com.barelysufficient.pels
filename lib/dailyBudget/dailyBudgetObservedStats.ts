@@ -1,4 +1,5 @@
 import type { PowerTrackerState } from '../power/tracker';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import {
   OBSERVED_HOURLY_MAX_QUANTILE,
   OBSERVED_HOURLY_MIN_QUANTILE,
@@ -402,6 +403,19 @@ function hasObservedMinChanged(previous: DailyBudgetState, next: DailyBudgetStat
     [previous.profileObservedMinUncontrolledKWh, next.profileObservedMinUncontrolledKWh],
     [previous.profileObservedMinControlledKWh, next.profileObservedMinControlledKWh],
   ].some(([left, right]) => !areEqualNumberArrays(left, right));
+}
+
+/**
+ * Learned p50 GROSS uncontrolled (always-on background) reserve for a local
+ * hour-of-day (kWh), or `undefined` until that hour has real samples. The p50
+ * array is zero-seeded as a fallback at startup, so an unlearned hour must NOT
+ * surface a fabricated 0 — gate on a positive sample count first.
+ */
+export function resolveObservedGrossBackgroundKwh(state: DailyBudgetState, hourOfDay: number): number | undefined {
+  const samples = state.profileObservedGrossUncontrolledSampleCounts?.[hourOfDay];
+  if (!isFiniteNumber(samples) || samples <= 0) return undefined;
+  const p50 = state.profileObservedP50GrossUncontrolledKWh?.[hourOfDay];
+  return typeof p50 === 'number' && Number.isFinite(p50) ? p50 : undefined;
 }
 
 export function ensureObservedHourlyStats(params: {

@@ -1,4 +1,3 @@
-import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { PowerTrackerState } from '../power/tracker';
 import { buildDefaultProfile, buildPlan, buildPriceDebugData } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
@@ -30,7 +29,7 @@ import {
 import { CONTROLLED_USAGE_WEIGHT } from './dailyBudgetConstants';
 import { finalizePreviousDayLearning } from './dailyBudgetLearning';
 import { resetDailyBudgetLearningState } from './dailyBudgetLearningReset';
-import { ensureObservedHourlyStats } from './dailyBudgetObservedStats';
+import { ensureObservedHourlyStats, resolveObservedGrossBackgroundKwh } from './dailyBudgetObservedStats';
 import {
   ensureDailyBudgetProfile,
   getEffectiveProfileData,
@@ -41,9 +40,9 @@ import {
 import {
   type ConfidenceCache,
   createConfidenceCache,
-  getCachedConfidence,
+  describeClosedDaysHistory,
   resolveConfidence,
-} from './dailyBudgetConfidence';
+} from './dailyBudgetConfidenceCache';
 import { resolveDailyBudgetPersistReason } from './dailyBudgetStatePersistence';
 import { getLogger } from '../logging/logger';
 import {
@@ -71,6 +70,10 @@ export class DailyBudgetManager {
    */
   private lastPlanPriceSignature: string | null = null;
   private confidenceCache: ConfidenceCache = createConfidenceCache();
+  /** `describeClosedDaysHistory` as of the last update. */
+  private closedDaysHistoryMark = '';
+  /** Bumped whenever the learned model behind the adjacent-day views changes. */
+  private learnedModelRevision = 0;
 
   constructor(private deps: DailyBudgetManagerDeps) { }
 
@@ -80,17 +83,9 @@ export class DailyBudgetManager {
     (this.deps.debugStructured ?? debugFallbackEmit)(payload);
   }
   loadState(state: DailyBudgetState | null): void { if (state !== null) this.state = { ...state }; }
-  /**
-   * Learned p50 GROSS uncontrolled (always-on background) reserve for a local
-   * hour-of-day (kWh), or `undefined` until that hour has real samples. The p50
-   * array is zero-seeded as a fallback at startup, so an unlearned hour must NOT
-   * surface a fabricated 0 — gate on a positive sample count first.
-   */
+  /** See `resolveObservedGrossBackgroundKwh`. */
   observedGrossBackgroundKwh(hourOfDay: number): number | undefined {
-    const samples = this.state.profileObservedGrossUncontrolledSampleCounts?.[hourOfDay];
-    if (!isFiniteNumber(samples) || samples <= 0) return undefined;
-    const p50 = this.state.profileObservedP50GrossUncontrolledKWh?.[hourOfDay];
-    return typeof p50 === 'number' && Number.isFinite(p50) ? p50 : undefined;
+    return resolveObservedGrossBackgroundKwh(this.state, hourOfDay);
   }
   /**
    * Pure read: it copies, and never mutates `this.state`. `maybePersistDailyBudgetState`
@@ -107,6 +102,15 @@ export class DailyBudgetManager {
   }
   resetLearning(): void {
     this.state = resetDailyBudgetLearningState(this.state, DEFAULT_PROFILE);
+    this.learnedModelRevision += 1;
+  }
+  /**
+   * Changes whenever an input of tomorrow's preview or yesterday's history moves
+   * that today's routine update does not otherwise reveal: a past day written
+   * after the fact, or a change to the learned model.
+   */
+  getAdjacentDaysInputsMark(): string {
+    return `${this.closedDaysHistoryMark}|${this.learnedModelRevision}`;
   }
   update(params: DailyBudgetUpdateParams): DailyBudgetUpdate {
     const {
@@ -126,6 +130,7 @@ export class DailyBudgetManager {
     } = params;
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker });
+    this.closedDaysHistoryMark = describeClosedDaysHistory(powerTracker, context);
     if (persistReason) this.markDirty(persistReason);
     const profileResult = ensureDailyBudgetProfile(this.state, DEFAULT_PROFILE);
     if (profileResult.changed) this.markDirty('manual');
@@ -161,18 +166,11 @@ export class DailyBudgetManager {
       profileSampleCount: getProfileSampleCount(this.state),
       profileSplitSampleCount: getProfileSplitSampleCount(this.state),
     }) };
-    const cr = refreshConfidence
-      ? resolveConfidence({
-        cache: this.confidenceCache, nowMs: context.nowMs, timeZone, powerTracker,
-        profileBlendConfidence: budget.profileBlendConfidence,
-        dateKey: context.dateKey,
-        // Bootstrap confidence intervals are debug-only and should not run on routine updates.
-        includeBootstrapDebug: includeConfidenceBootstrapDebug,
-      })
-      : getCachedConfidence({
-        cache: this.confidenceCache,
-        profileBlendConfidence: budget.profileBlendConfidence,
-      });
+    // Bootstrap intervals are debug-only; they ride along whenever the backtest runs.
+    const cr = resolveConfidence(
+      this.confidenceCache, context, powerTracker, budget.profileBlendConfidence,
+      refreshConfidence, includeConfidenceBootstrapDebug,
+    );
     budget.confidence = cr.confidence;
     // Freeze/unfreeze follows the controllable budget view rather than raw reported
     // usage so exempt devices can overrun the household budget without reshaping the plan.
@@ -225,6 +223,7 @@ export class DailyBudgetManager {
     if (result.logEvent) this.emitDebug(result.logEvent);
     if (result.shouldMarkDirty) this.markDirty('rollover');
     this.state = result.nextState;
+    this.learnedModelRevision += 1;
   }
 
   private isEnabled(settings: DailyBudgetSettings): boolean { return settings.enabled && settings.dailyBudgetKWh > 0; }
@@ -453,6 +452,7 @@ export class DailyBudgetManager {
     const result = ensureObservedHourlyStats({ state: this.state, powerTracker, timeZone, nowMs });
     if (result.changed) {
       this.state = result.nextState;
+      this.learnedModelRevision += 1;
       this.markDirty('observed_stats');
       if (result.logEvent) this.emitDebug(result.logEvent);
     }

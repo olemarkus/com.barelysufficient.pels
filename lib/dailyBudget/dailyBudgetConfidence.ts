@@ -1,5 +1,8 @@
 // Backtested daily-budget confidence scoring.
 //
+// The per-update cache in front of the backtest lives in
+// `dailyBudgetConfidenceCache.ts`.
+//
 // SCOPE: informational only. No planner, executor, or shed/restore path branches
 // on `budget.confidence` or `confidenceDebug`. The full consumer surface is:
 //
@@ -48,12 +51,11 @@ import { clamp } from '../../packages/shared-domain/src/utils/math';
 import { hasUnreliableOverlap } from './dailyBudgetLearning';
 import type { ConfidenceDebug } from './dailyBudgetTypes';
 
-const LOOKBACK_DAYS = 30;
+export const LOOKBACK_DAYS = 30;
 const RAMP_DAYS = 14;
 const BOOTSTRAP_ITERATIONS = 500;
 const BOOTSTRAP_SEED = 42;
 const HOURS = 24;
-const RECOMPUTE_INTERVAL_MS = 5 * 60 * 1000;
 
 const UNIFORM_24 = (): HourProfile => toHourProfile(Array.from(HOURS_OF_DAY, () => 1 / HOURS));
 
@@ -63,9 +65,6 @@ type DayData = {
   plannedProfile: HourProfile | null;
   controlledShare: number;
 };
-
-const FNV_OFFSET_BASIS = 2166136261;
-const FNV_PRIME = 16777619;
 
 export type ConfidenceResult = {
   confidence: number;
@@ -422,111 +421,6 @@ function sampleDays(days: DayData[], nextRandom: () => number): DayData[] {
 }
 /* eslint-enable functional/immutable-data */
 
-function getConfidenceWindowBounds(nowMs: number, timeZone: string): {
-  dayStartUtcMs: number;
-  windowStartUtcMs: number;
-} {
-  const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
-  const dayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
-  let windowStartUtcMs = dayStartUtcMs;
-  for (let i = 0; i < LOOKBACK_DAYS; i++) {
-    windowStartUtcMs = getPreviousLocalDayStartUtcMs(windowStartUtcMs, timeZone);
-  }
-  return { dayStartUtcMs, windowStartUtcMs };
-}
-
-function appendHashString(hash: number, value: string): number {
-  let next = hash >>> 0;
-  for (let i = 0; i < value.length; i++) {
-    next ^= value.charCodeAt(i);
-    next = Math.imul(next, FNV_PRIME) >>> 0;
-  }
-  return next;
-}
-
-function appendHashNumber(hash: number, value: number): number {
-  return appendHashString(hash, Number.isFinite(value) ? value.toString() : 'NaN');
-}
-
-function appendRecordFingerprint(
-  hash: number,
-  label: string,
-  record: Record<string, number> | undefined,
-  windowStartUtcMs: number,
-  dayStartUtcMs: number,
-): number {
-  let next = appendHashString(hash, label);
-  if (!record) return next;
-  const relevantKeys = Object.keys(record)
-    .filter((key) => {
-      const ts = Date.parse(key);
-      return Number.isFinite(ts) && ts >= windowStartUtcMs && ts < dayStartUtcMs;
-    })
-    .sort();
-  for (const key of relevantKeys) {
-    // `relevantKeys` comes from `Object.keys(record)`, so every key has a value.
-    const value = record[key];
-    next = appendHashString(next, key);
-    if (value !== undefined) next = appendHashNumber(next, value);
-  }
-  return next;
-}
-
-function appendUnreliablePeriodsFingerprint(
-  hash: number,
-  unreliablePeriods: PowerTrackerState['unreliablePeriods'],
-  windowStartUtcMs: number,
-  dayStartUtcMs: number,
-): number {
-  let next = appendHashString(hash, 'u');
-  const relevantPeriods = (unreliablePeriods ?? [])
-    .filter((period) => period.end > windowStartUtcMs && period.start < dayStartUtcMs)
-    .slice()
-    .sort((a, b) => (a.start - b.start) || (a.end - b.end));
-  for (const period of relevantPeriods) {
-    next = appendHashNumber(next, period.start);
-    next = appendHashNumber(next, period.end);
-  }
-  return next;
-}
-
-function buildConfidenceInputKey(params: {
-  nowMs: number;
-  timeZone: string;
-  powerTracker: PowerTrackerState;
-  dateKey: string;
-}): string {
-  const {
-    nowMs,
-    timeZone,
-    powerTracker,
-    dateKey,
-  } = params;
-  const { dayStartUtcMs, windowStartUtcMs } = getConfidenceWindowBounds(nowMs, timeZone);
-  let hash = FNV_OFFSET_BASIS;
-  hash = appendHashString(hash, timeZone);
-  hash = appendHashString(hash, dateKey);
-  hash = appendRecordFingerprint(hash, 'b', powerTracker.buckets, windowStartUtcMs, dayStartUtcMs);
-  hash = appendRecordFingerprint(hash, 'c', powerTracker.controlledBuckets, windowStartUtcMs, dayStartUtcMs);
-  hash = appendRecordFingerprint(hash, 'p', powerTracker.dailyBudgetCaps, windowStartUtcMs, dayStartUtcMs);
-  hash = appendUnreliablePeriodsFingerprint(hash, powerTracker.unreliablePeriods, windowStartUtcMs, dayStartUtcMs);
-  return hash.toString(16);
-}
-
-function withProfileBlendConfidence(
-  result: ConfidenceResult,
-  profileBlendConfidence: number,
-): ConfidenceResult {
-  if (result.debug.profileBlendConfidence === profileBlendConfidence) return result;
-  return {
-    ...result,
-    debug: {
-      ...result.debug,
-      profileBlendConfidence,
-    },
-  };
-}
-
 function combineScores(params: {
   regularityScore: number;
   adaptabilityScore: number;
@@ -537,73 +431,3 @@ function combineScores(params: {
   const combined = regularityScore * (1 - w) + adaptabilityScore * w;
   return clamp(combined, 0, 1);
 }
-
-export type ConfidenceCache = {
-  result: ConfidenceResult | null;
-  lastMs: number;
-  lastInputKey: string | null;
-  bootstrapComplete: boolean;
-};
-
-export function createConfidenceCache(): ConfidenceCache {
-  return { result: null, lastMs: 0, lastInputKey: null, bootstrapComplete: false };
-}
-
-export function getCachedConfidence(params: {
-  cache: ConfidenceCache;
-  profileBlendConfidence: number;
-}): ConfidenceResult {
-  const { cache, profileBlendConfidence } = params;
-  if (!cache.result) return createEmptyConfidenceResult(profileBlendConfidence);
-  return withProfileBlendConfidence(cache.result, profileBlendConfidence);
-}
-
-/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-export function resolveConfidence(params: {
-  cache: ConfidenceCache;
-  nowMs: number;
-  timeZone: string;
-  powerTracker: PowerTrackerState;
-  profileBlendConfidence: number;
-  dateKey: string;
-  includeBootstrapDebug?: boolean;
-}): ConfidenceResult {
-  const {
-    cache,
-    nowMs,
-    timeZone,
-    powerTracker,
-    profileBlendConfidence,
-    dateKey,
-    includeBootstrapDebug = false,
-  } = params;
-  const elapsed = nowMs - cache.lastMs;
-  const inputKey = buildConfidenceInputKey({
-    nowMs,
-    timeZone,
-    powerTracker,
-    dateKey,
-  });
-  const canReuseCachedResult = cache.result
-    && inputKey === cache.lastInputKey
-    && elapsed < RECOMPUTE_INTERVAL_MS
-    && (includeBootstrapDebug === false || cache.bootstrapComplete);
-  if (canReuseCachedResult) {
-    return withProfileBlendConfidence(cache.result as ConfidenceResult, profileBlendConfidence);
-  }
-  const result = computeBacktestedConfidence({
-    nowMs,
-    timeZone,
-    powerTracker,
-    profileBlendConfidence,
-    includeBootstrapDebug,
-  });
-  Object.assign(cache, {
-    result,
-    lastMs: nowMs,
-    lastInputKey: inputKey,
-    bootstrapComplete: includeBootstrapDebug,
-  });
-  return result;
-}
-/* eslint-enable functional/immutable-data */

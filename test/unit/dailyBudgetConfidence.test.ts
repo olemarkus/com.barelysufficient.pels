@@ -1,10 +1,13 @@
 import {
   computeBacktestedConfidence,
-  createConfidenceCache,
-  getCachedConfidence,
-  resolveConfidence,
   sampleDayIndex,
 } from '../../lib/dailyBudget/dailyBudgetConfidence';
+import {
+  createConfidenceCache,
+  resolveConfidence,
+  type ConfidenceCache,
+} from '../../lib/dailyBudget/dailyBudgetConfidenceCache';
+import { buildDayContext } from '../../lib/dailyBudget/dailyBudgetState';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   getDateKeyStartMs,
@@ -750,7 +753,25 @@ describe('computeBacktestedConfidence', () => {
     expect(Math.abs(bootstrapMid - result.confidence)).toBeLessThan(0.15);
   });
 
-  it('recomputes full bootstrap debug after a startup-style cached confidence update', () => {
+  // Resolves the way the manager does, on the real day context for the tracker.
+  const resolveAt = (params: {
+    cache: ConfidenceCache;
+    powerTracker: PowerTrackerState;
+    daysAhead?: number;
+    timeZone?: string;
+    profileBlendConfidence?: number;
+    refresh?: boolean;
+    includeBootstrapDebug?: boolean;
+  }) => {
+    const { daysAhead = 0, timeZone = TZ, powerTracker } = params;
+    const context = buildDayContext({ nowMs: NOW_MS + daysAhead * 24 * HOUR_MS, timeZone, powerTracker });
+    return resolveConfidence(
+      params.cache, context, powerTracker, params.profileBlendConfidence ?? 1,
+      params.refresh ?? false, params.includeBootstrapDebug ?? false,
+    );
+  };
+
+  it('computes the full bootstrap on a refresh after a startup-style cached confidence update', () => {
     const buckets: Record<string, number> = {};
     const controlledBuckets: Record<string, number> = {};
     const dailyBudgetCaps: Record<string, number> = {};
@@ -780,61 +801,94 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const cache = createConfidenceCache();
-    const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const startupResult = resolveConfidence({
-      cache,
-      nowMs: NOW_MS,
-      timeZone: TZ,
-      powerTracker: pt,
-      profileBlendConfidence: 1,
-      dateKey: buildDateKey(0),
-      includeBootstrapDebug: false,
-    });
+    const powerTracker = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
+    const startupResult = resolveAt({ cache, powerTracker, includeBootstrapDebug: false });
     expect(startupResult.debug.confidenceBootstrapLow).toBeCloseTo(startupResult.confidence, 10);
     expect(startupResult.debug.confidenceBootstrapHigh).toBeCloseTo(startupResult.confidence, 10);
 
-    const fullResult = resolveConfidence({
-      cache,
-      nowMs: NOW_MS,
-      timeZone: TZ,
-      powerTracker: pt,
-      profileBlendConfidence: 1,
-      dateKey: buildDateKey(0),
-      includeBootstrapDebug: true,
-    });
+    const fullResult = resolveAt({ cache, powerTracker, refresh: true, includeBootstrapDebug: true });
     expect(fullResult.confidence).toBeCloseTo(startupResult.confidence, 10);
     expect(fullResult.debug.confidenceBootstrapLow).toBeLessThan(fullResult.debug.confidenceBootstrapHigh);
     expect(fullResult.debug.confidenceBootstrapLow).toBeLessThanOrEqual(fullResult.confidence);
     expect(fullResult.debug.confidenceBootstrapHigh).toBeGreaterThanOrEqual(fullResult.confidence);
   });
 
-  it('recomputes cached confidence when the power-tracker history changes', () => {
+  const tenFlatDays = (): Record<string, number> => {
     const buckets: Record<string, number> = {};
-    const flatHourly = Array.from({ length: 24 }, () => 1);
     for (let i = 1; i <= 10; i++) {
-      addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: flatHourly });
+      addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: Array.from({ length: 24 }, () => 1) });
     }
+    return buckets;
+  };
 
+  it('reuses the backtest across routine samples while the closed days hold', () => {
+    const buckets = tenFlatDays();
     const cache = createConfidenceCache();
-    const first = resolveConfidence({
+    const first = resolveAt({ cache, powerTracker: buildPowerTracker({ buckets, lastTimestamp: NOW_MS }) });
+    const entry = cache.entry;
+    // Today's own buckets grow with every sample; the window never sees them.
+    const second = resolveAt({
       cache,
-      nowMs: NOW_MS,
-      timeZone: TZ,
-      powerTracker: buildPowerTracker({ buckets }),
-      profileBlendConfidence: 1,
-      dateKey: buildDateKey(0),
-    });
-    const second = resolveConfidence({
-      cache,
-      nowMs: NOW_MS,
-      timeZone: TZ,
-      powerTracker: buildPowerTracker({ buckets, unreliablePeriods: [{ start: 0, end: NOW_MS }] }),
-      profileBlendConfidence: 1,
-      dateKey: buildDateKey(0),
+      powerTracker: buildPowerTracker({ buckets: { ...buckets, [new Date(NOW_MS).toISOString()]: 5 }, lastTimestamp: NOW_MS + 10_000 }),
     });
 
-    expect(second).not.toBe(first);
-    expect(second.debug.confidenceValidActualDays).toBe(0);
+    expect(cache.entry).toBe(entry);
+    expect(second.confidence).toBe(first.confidence);
+  });
+
+  it('re-checks the history when a gap is marked unreliable after the fact', () => {
+    const buckets = tenFlatDays();
+    const cache = createConfidenceCache();
+    const first = resolveAt({ cache, powerTracker: buildPowerTracker({ buckets, lastTimestamp: NOW_MS }) });
+    const late = resolveAt({
+      cache,
+      powerTracker: buildPowerTracker({ buckets, lastTimestamp: NOW_MS, unreliablePeriods: [{ start: 0, end: NOW_MS }] }),
+    });
+
+    expect(first.debug.confidenceValidActualDays).toBe(10);
+    expect(late.debug.confidenceValidActualDays).toBe(0);
+  });
+
+  it('re-checks the history once the first sample of the day books a gap into the past', () => {
+    const buckets = tenFlatDays();
+    const dayStartMs = getDateKeyStartMs(buildDateKey(0), TZ);
+    const cache = createConfidenceCache();
+    // The meter went silent before midnight; the boot-time update ran with no sample today.
+    const open = resolveAt({ cache, powerTracker: buildPowerTracker({ buckets, lastTimestamp: dayStartMs - HOUR_MS }) });
+    const lateBuckets = { ...buckets };
+    addDayUsage({ buckets: lateBuckets, dateKey: buildDateKey(11), hourlyKWh: Array.from({ length: 24 }, () => 1) });
+    const closed = resolveAt({ cache, powerTracker: buildPowerTracker({ buckets: lateBuckets, lastTimestamp: NOW_MS }) });
+
+    expect(open.debug.confidenceValidActualDays).toBe(10);
+    expect(closed.debug.confidenceValidActualDays).toBe(11);
+  });
+
+  it('re-checks the history on an explicit refresh', () => {
+    const buckets = tenFlatDays();
+    const cache = createConfidenceCache();
+    resolveAt({ cache, powerTracker: buildPowerTracker({ buckets, lastTimestamp: NOW_MS }) });
+    const editedBuckets = { ...buckets };
+    addDayUsage({ buckets: editedBuckets, dateKey: buildDateKey(11), hourlyKWh: Array.from({ length: 24 }, () => 1) });
+    const edited = buildPowerTracker({ buckets: editedBuckets, lastTimestamp: NOW_MS });
+
+    expect(resolveAt({ cache, powerTracker: edited }).debug.confidenceValidActualDays).toBe(10);
+    expect(resolveAt({ cache, powerTracker: edited, refresh: true }).debug.confidenceValidActualDays).toBe(11);
+  });
+
+  it('recomputes cached confidence when the day rolls over', () => {
+    const buckets: Record<string, number> = {};
+    // Today (the 15th) has usage too; it joins the window only once the day closes.
+    for (let i = 0; i <= 10; i++) {
+      addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: Array.from({ length: 24 }, () => 1) });
+    }
+    const cache = createConfidenceCache();
+    const first = resolveAt({ cache, powerTracker: buildPowerTracker({ buckets, lastTimestamp: NOW_MS }) });
+    const nextDay = resolveAt({
+      cache, daysAhead: 1, powerTracker: buildPowerTracker({ buckets, lastTimestamp: NOW_MS + 24 * HOUR_MS }),
+    });
+
+    expect(first.debug.confidenceValidActualDays).toBe(10);
+    expect(nextDay.debug.confidenceValidActualDays).toBe(11);
   });
 
   it('recomputes cached confidence when the timezone changes', () => {
@@ -848,24 +902,13 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const cache = createConfidenceCache();
-    const first = resolveConfidence({
-      cache,
-      nowMs: NOW_MS,
-      timeZone: TZ,
-      powerTracker: buildPowerTracker({ buckets }),
-      profileBlendConfidence: 0.25,
-      dateKey: buildDateKey(0),
-    });
-    const second = resolveConfidence({
-      cache,
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      powerTracker: buildPowerTracker({ buckets }),
-      profileBlendConfidence: 0.25,
-      dateKey: buildDateKey(0),
-    });
+    const powerTracker = buildPowerTracker({ buckets, lastTimestamp: NOW_MS });
+    resolveAt({ cache, powerTracker, profileBlendConfidence: 0.25 });
+    const entry = cache.entry;
+    resolveAt({ cache, powerTracker, profileBlendConfidence: 0.25, timeZone: 'UTC' });
 
-    expect(second).not.toBe(first);
+    expect(cache.entry).not.toBe(entry);
+    expect(cache.entry?.inputKey).not.toBe(entry?.inputKey);
   });
 
   it('reuses cached confidence while updating profile blend debug metadata', () => {
@@ -879,44 +922,20 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const cache = createConfidenceCache();
-    const first = resolveConfidence({
-      cache,
-      nowMs: NOW_MS,
-      timeZone: TZ,
-      powerTracker: buildPowerTracker({ buckets }),
-      profileBlendConfidence: 0.25,
-      dateKey: buildDateKey(0),
-      includeBootstrapDebug: true,
+    const powerTracker = buildPowerTracker({ buckets, lastTimestamp: NOW_MS });
+    const first = resolveAt({
+      cache, powerTracker, profileBlendConfidence: 0.25, refresh: true, includeBootstrapDebug: true,
     });
-    const lastMs = cache.lastMs;
-    const second = resolveConfidence({
-      cache,
-      nowMs: NOW_MS + 1000,
-      timeZone: TZ,
-      powerTracker: buildPowerTracker({ buckets }),
-      profileBlendConfidence: 0.75,
-      dateKey: buildDateKey(0),
-      includeBootstrapDebug: true,
+    const entry = cache.entry;
+    const second = resolveAt({
+      cache, powerTracker, profileBlendConfidence: 0.75, refresh: true, includeBootstrapDebug: true,
     });
 
-    expect(cache.lastMs).toBe(lastMs);
+    expect(cache.entry?.result).toBe(entry?.result);
     expect(second.confidence).toBeCloseTo(first.confidence, 10);
     expect(second.debug.confidenceBootstrapLow).toBeCloseTo(first.debug.confidenceBootstrapLow, 10);
     expect(second.debug.confidenceBootstrapHigh).toBeCloseTo(first.debug.confidenceBootstrapHigh, 10);
     expect(second.debug.profileBlendConfidence).toBe(0.75);
-  });
-
-  it('returns an empty cached confidence result when no confidence has been computed yet', () => {
-    const cache = createConfidenceCache();
-    const result = getCachedConfidence({
-      cache,
-      profileBlendConfidence: 0.6,
-    });
-
-    expect(result.confidence).toBe(0);
-    expect(result.debug.profileBlendConfidence).toBe(0.6);
-    expect(result.debug.confidenceBootstrapLow).toBe(0);
-    expect(result.debug.confidenceBootstrapHigh).toBe(0);
   });
 
   it('requires near-full plan coverage to count as a planned day', () => {

@@ -153,6 +153,63 @@ describe('daily budget profile blending', () => {
     expect(background.snapshot.state.confidenceDebug?.profileBlendConfidence)
       .toBeCloseTo(refreshed.snapshot.state.confidenceDebug?.profileBlendConfidence ?? 0, 10);
   });
+  it('computes confidence on the first routine update, with no UI read to trigger it', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const flatBuckets: Record<string, number> = {};
+    for (let dayOffset = 1; dayOffset <= 14; dayOffset += 1) {
+      const priorDayStart = dayStart - dayOffset * 24 * 60 * 60 * 1000;
+      const { bucketStartUtcMs } = buildLocalDayBuckets({
+        dayStartUtcMs: priorDayStart,
+        nextDayStartUtcMs: getNextLocalDayStartUtcMs(priorDayStart, TZ),
+        timeZone: TZ,
+      });
+      for (const ts of bucketStartUtcMs) {
+        flatBuckets[new Date(ts).toISOString()] = 1;
+      }
+    }
+
+    const routine = manager.update({
+      nowMs: dayStart + 30 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: flatBuckets },
+      priceOptimizationEnabled: false,
+    });
+
+    expect(routine.snapshot.state.confidence).toBeGreaterThan(0);
+    expect(routine.snapshot.state.confidenceDebug?.confidenceValidActualDays).toBe(14);
+  });
+
+  it('moves the adjacent-days mark when the first routine update learns observed stats after boot', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 12, 0)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const buckets: Record<string, number> = {};
+    for (let dayOffset = 1; dayOffset <= 7; dayOffset += 1) {
+      const priorDayStart = dayStart - dayOffset * 24 * 60 * 60 * 1000;
+      const { bucketStartUtcMs } = buildLocalDayBuckets({
+        dayStartUtcMs: priorDayStart,
+        nextDayStartUtcMs: getNextLocalDayStartUtcMs(priorDayStart, TZ),
+        timeZone: TZ,
+      });
+      for (const ts of bucketStartUtcMs) buckets[new Date(ts).toISOString()] = 1;
+    }
+    const powerTracker = { buckets, uncontrolledBuckets: buckets, lastTimestamp: dayStart + 60_000 };
+    const base = { timeZone: TZ, settings, powerTracker, priceOptimizationEnabled: false };
+
+    manager.update({ ...base, nowMs: dayStart + 60_000, refreshObservedStats: false });
+    const bootMark = manager.getAdjacentDaysInputsMark();
+    manager.update({ ...base, nowMs: dayStart + 70_000 });
+    const learnedMark = manager.getAdjacentDaysInputsMark();
+    manager.update({ ...base, nowMs: dayStart + 80_000 });
+
+    expect(learnedMark).not.toBe(bootMark);
+    expect(manager.getAdjacentDaysInputsMark()).toBe(learnedMark);
+  });
 });
 
 describe('daily budget planning', () => {
