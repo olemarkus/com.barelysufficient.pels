@@ -115,9 +115,11 @@ import {
   deadbandWFor,
   drawMarginWFor,
   hasStorageInput,
+  hasStorageLeverInput,
   isRaiseVisible,
   ownChargeWOf,
   ownDischargeWOf,
+  resolveOwnModeChargeAboveHoldW,
   resolveStorageHoldBlock,
   toSetpointW,
 } from './storageLadder';
@@ -280,7 +282,9 @@ const storageChargeAddBackW = (
  * A battery PELS
  * may not hold (`resolveStorageHoldBlock`: Managed or Power-limit control off,
  * not responding, sign-inverted) is no claimant: its charge is ordinary
- * household load, and its discharge still counts. Capacity simulation makes no battery
+ * household load, and its discharge still counts. So does the discharge of a
+ * battery PELS only watches (`WatchedStorageInput`), which is never a
+ * claimant. Capacity simulation makes no battery
  * claimable, so it then carries only their discharge. Resolved by the builder
  * and handed to the allocator, which reads no battery.
  */
@@ -292,6 +296,7 @@ export function resolveStorageSurplus(
   const observed = devices.flatMap((device) => (
     hasStorageInput(device) && device.storage.reading === 'observed' ? [{ device, storage: device.storage }] : []
   ));
+
   const claimants = observed
     .filter(({ storage }) => resolveStorageHoldBlock(storage) === 'holdable')
     .map(({ device, storage }): StorageSurplusClaimant => {
@@ -304,7 +309,12 @@ export function resolveStorageSurplus(
         reservedW: lever === undefined ? chargeW : Math.max(chargeW, lever.setpointW, lever.ownModeChargeW),
       };
     });
-  return { claimants, dischargeW: observed.reduce((totalW, { storage }) => totalW + ownDischargeWOf(storage), 0) };
+  // Every battery read this cycle: one PELS only watches is never a claimant,
+  // but its discharge is stored energy all the same.
+  const read = devices.flatMap((device) => (
+    hasStorageInput(device) && device.storage.reading !== 'missing' ? [device.storage] : []
+  ));
+  return { claimants, dischargeW: read.reduce((totalW, storage) => totalW + ownDischargeWOf(storage), 0) };
 }
 
 /**
@@ -509,7 +519,7 @@ export const resolveClaimReason = (lever: StorageLeverState): StorageClaimReason
 
 /** Under a charge limit, the charge it holds back, W; 0 under any other hold. */
 export const resolveHeldBackChargeW = (lever: StorageLeverState): number => (
-  resolveClaimReason(lever) === 'charge_limit' ? Math.max(0, lever.ownModeChargeW - Math.max(0, lever.setpointW)) : 0
+  resolveClaimReason(lever) === 'charge_limit' ? resolveOwnModeChargeAboveHoldW(lever) : 0
 );
 
 /**
@@ -737,7 +747,9 @@ export function decideStorageRelief(
   }, offers, nowTs);
   const seen = new Set<string>();
   for (const device of devices) {
-    if (!hasStorageInput(device)) continue;
+    // A battery PELS only watches is decided like one without a cluster: it
+    // has nothing to hold, and a hold left on it is read as `no_input` below.
+    if (!hasStorageLeverInput(device)) continue;
     seen.add(device.id);
     const { storage } = device;
     const previous = levers[device.id];
@@ -780,7 +792,7 @@ export function releaseStorageOnSilentMeter(
   levers: Readonly<Record<string, StorageLeverState>>,
 ): StorageRelief {
   const planned = devices.flatMap((device): StorageStateSummary[] => {
-    if (!hasStorageInput(device)) {
+    if (!hasStorageLeverInput(device)) {
       return levers[device.id] === undefined ? [] : [toSilentMeterSummary(device.id, 'missing', true, false, true)];
     }
     const { storage } = device;

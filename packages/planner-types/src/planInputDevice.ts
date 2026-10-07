@@ -227,10 +227,27 @@ export type MissingStorageInput = {
 };
 
 /**
+ * A battery PELS can only watch: Managed on, in the Main home, read this
+ * cycle, but with no setpoint surface PELS could drive (its control owner
+ * reads no lever on it). Only its own signed power is carried, so its
+ * discharge counts against the surplus pool and the surplus hard-off
+ * (`resolveStorageSurplus`): stored energy is never surplus, whoever drives
+ * the battery. PELS never holds it, so it is never a surplus claimant, never a
+ * limiting candidate and never handed back; every other storage stage treats
+ * it as a battery without a lever.
+ */
+export type WatchedStorageInput = {
+  reading: 'watched';
+  /** The battery's own signed power, W: positive charging, negative discharging. */
+  signedPowerW: number;
+};
+
+/**
  * Home-battery (storage) field cluster for the plan-input contract. Like the
  * metered cluster it is ORTHOGONAL and omitted from the base: present only on a
  * Main-home battery whose control surface is a signed setpoint, and either
- * readable or held by PELS. "No cluster" is the whole of "no lever", so the
+ * readable or held by PELS; or on a Managed one PELS can only watch, read
+ * this cycle (`WatchedStorageInput`). "No cluster" is the whole of "no lever", so the
  * planner never reads a zero it did not measure. Reach it through
  * `hasStorageInput` (`lib/plan/battery/storageLadder.ts`).
  *
@@ -248,7 +265,7 @@ export type MissingStorageInput = {
  * empty is caught by its verdict and learned delivery ceiling instead.
  */
 export type StoragePlanInputKind = {
-  storage: ObservedStorageInput | MissingStorageInput;
+  storage: ObservedStorageInput | MissingStorageInput | WatchedStorageInput;
 };
 
 export type PlanInputDevice =

@@ -197,7 +197,7 @@ function buildHomeBatteryOverviewDevice(
     isEvCharger: false,
     budgetExempt: device.budgetExempt,
     boostActive: false,
-    homeBattery: buildSettingsUiPlanHomeBattery(battery, device.storageHold),
+    homeBattery: buildSettingsUiPlanHomeBattery(battery, device.storageHold, available),
   };
 }
 

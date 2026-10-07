@@ -24,4 +24,12 @@ export type ObservedDeviceStateRefreshEntry = {
  */
 export type ObservedDeviceStateRefreshPayload = {
     entries: ObservedDeviceStateRefreshEntry[];
+    /**
+     * The devices this read listed whose read the device-read contract ignored
+     * (`DeviceListRead.ignoredIds`): PRESENT, but UNREAD. One PELS had parsed
+     * before keeps its last entry in `entries` as well; one it never parsed
+     * (just after a restart) has no entry, so a consumer that tracks
+     * membership must count these as present, never as missed.
+     */
+    ignoredReadIds: string[];
 };

@@ -115,10 +115,17 @@ const NO_MODEL_CAPABILITIES: Readonly<Record<string, ModelValueType>> = {};
 
 /**
  * A battery or panel is never a stepped load, so its `target_power` is not read
- * as one. A home battery's `target_power` (and its claim capability, which is
- * outside the model anyway) is read only to classify how PELS could drive it
- * (`batteryControlWiring.ts`), and that reads the declared options, not the
- * value: a battery whose setpoint Homey never set is still readable.
+ * as one. A home battery's `target_power` is read only to classify how PELS
+ * could drive it (`batteryControlWiring.ts`), and that reads the declared
+ * options, not the value: a battery whose setpoint Homey never set is still
+ * readable.
+ *
+ * Its claim capability is outside this all-or-nothing contract, though its
+ * value and stamp ARE read: they are resolved at their own boundary
+ * (`resolveParsedClaim`, `homeBatteryObservation.ts`), where a missing or
+ * malformed claim keeps the last accepted one or reads as unreported. Failing
+ * the whole read on it instead would hide the battery's power and state of
+ * charge while leaving its claim exactly as it was.
  */
 const STEPPED_ONLY_CAPABILITY_IDS: ReadonlySet<string> = new Set(['target_power']);
 

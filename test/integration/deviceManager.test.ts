@@ -5,6 +5,7 @@ import {
   createTestObservedStateDispatcher,
   onObservedControlState,
   onObservedState,
+  onObservedStateRefresh,
 } from '../helpers/deviceTransportHarness';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
@@ -13,6 +14,7 @@ import {
     mergeFresherCapabilityObservations,
 } from '../../lib/device/transport/managerObservation';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
+import type { ObservedStateRefreshEvent } from '../../lib/observer/observedStateEvents';
 import type { EvObservedProbe, MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe, ThermostatModeObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
@@ -602,6 +604,8 @@ describe('DeviceTransport', () => {
                 },
             });
             loggerMock.structuredLog.error.mockClear();
+            const refreshes: ObservedStateRefreshEvent[] = [];
+            onObservedStateRefresh(dm, (event) => refreshes.push(event));
             await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
             // A read that breaks the device-read contract is ignored whole. With
@@ -609,6 +613,10 @@ describe('DeviceTransport', () => {
             // nowhere: not in the snapshot, not in the picker.
             expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
+            // The refresh still names it as listed: present, but unread, so a
+            // consumer tracking membership never counts it as removed.
+            expect(refreshes.at(-1)?.entries.map((entry) => entry.observed.id)).toEqual(['dev1']);
+            expect(refreshes.at(-1)?.ignoredReadIds).toEqual(['neverConformingManaged', 'neverConformingUnmanaged']);
             expect(loggerMock.structuredLog.error).not.toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_control_state_dropped',
             }));

@@ -34,6 +34,7 @@ import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import type {
   ObservedControlStateChangedEvent,
   ObservedStateChangedEvent,
+  ObservedStateRefreshEvent,
 } from '../../lib/observer/observedStateEvents';
 
 type TransportArgs = ConstructorParameters<typeof DeviceTransport>;
@@ -123,6 +124,12 @@ export const onObservedState = (
   transport: DeviceTransport,
   listener: (event: ObservedStateChangedEvent) => void,
 ): void => { emitterFor(transport).onObservedStateChanged(listener); };
+
+/** Full-snapshot refresh batches, as each commit delivers them. */
+export const onObservedStateRefresh = (
+  transport: DeviceTransport,
+  listener: (event: ObservedStateRefreshEvent) => void,
+): void => { emitterFor(transport).onObservedStateRefresh(listener); };
 
 /** Control-state changes (was `OBSERVED_CONTROL_STATE_CHANGED_REALTIME_EVENT`). */
 export const onObservedControlState = (

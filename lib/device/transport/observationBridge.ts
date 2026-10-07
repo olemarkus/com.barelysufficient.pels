@@ -41,7 +41,7 @@ export class ObservationBridge {
     });
   }
 
-  dispatchStateRefresh(snapshot: readonly TargetDeviceSnapshot[]): void {
+  dispatchStateRefresh(snapshot: readonly TargetDeviceSnapshot[], ignoredReadIds: ReadonlySet<string>): void {
     this.temperatureAdjustments.retainDevices(new Set(snapshot.map((device) => device.id)));
     const observedAtMs = Date.now();
     const event: ObservedDeviceStateRefreshEvent = {
@@ -53,6 +53,7 @@ export class ObservationBridge {
           observed: projectObservedState(device),
         };
       }),
+      ignoredReadIds: [...ignoredReadIds],
     };
     this.dispatcher.observedStateRefresh(event);
   }
