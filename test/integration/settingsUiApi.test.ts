@@ -523,26 +523,18 @@ describe('settingsUiApi', () => {
       // Reset clears STATS, not the measurement latch: `...currentState`
       // carries `lastPowerW`/`lastTimestamp` forward, so the home stays
       // measured and the classified status read stays live across a reset.
+      // The payload is the WebView's projection: the exempt, daily-split,
+      // budget-cap and split-average families the page never reads are absent.
       lastPowerW: 5200,
       lastTimestamp: 123,
       buckets: {},
       controlledBuckets: {},
-      controlledDailyTotals: {},
-      controlledHourlyAverages: {},
-      exemptBuckets: {},
-      exemptDailyTotals: {},
-      exemptHourlyAverages: {},
       uncontrolledBuckets: {},
-      uncontrolledDailyTotals: {},
-      uncontrolledHourlyAverages: {},
       hourlySampleCounts: {},
-      hourlyBudgets: {},
-      dailyBudgetCaps: {},
       dailyTotals: {},
       hourlyAverages: {},
       generationBuckets: {},
       exportBuckets: {},
-      generationDailyTotals: {},
       exportDailyTotals: {},
       unreliablePeriods: [],
     });
@@ -707,11 +699,11 @@ describe('settingsUiApi', () => {
     expect(readPriceOptimizationSetup).toHaveBeenCalledTimes(1);
   });
 
-  it('carries the solar tracker families through the ui_power payload verbatim', () => {
+  it('carries the solar tracker families through the ui_power payload whole', () => {
     // PR-5 solar visibility: the Usage-tab Solar card and the Overview
-    // "Solar now" subline read these fields straight off the tracker payload —
-    // the producer serves the persisted state as-is, so a rebuild that strips
-    // or re-shapes the solar families must fail here.
+    // "Solar now" subline read these fields straight off the tracker payload.
+    // The projection cuts other families to a recent window; a cut that
+    // reaches the solar families or re-shapes them must fail here.
     const trackerWithSolar = {
       buckets: { '2026-03-03T00:00:00.000Z': 1.2 },
       generationBuckets: { '2026-03-03T10:00:00.000Z': 2.4 },
@@ -733,7 +725,11 @@ describe('settingsUiApi', () => {
     // read — set it there, mirroring a running solar home.
     (homey.app as { powerTracker: unknown }).powerTracker = trackerWithSolar;
     const payload = getSettingsUiPowerPayload({ homey: homey as never });
-    expect(payload.tracker).toEqual(trackerWithSolar);
+    // The hourly solar families and the export daily totals reach the page
+    // whole; the generation daily totals do not (nothing on the page reads
+    // them), and the families absent from the tracker stay absent.
+    const { generationDailyTotals: _unread, ...solarForUi } = trackerWithSolar;
+    expect(JSON.parse(JSON.stringify(payload.tracker))).toEqual(solarForUi);
     // The home-level solar flag rides the power payload (the device list is
     // lazy-loaded, so the Usage Solar card gates on this copy of the signal).
     expect(payload.hasManagedSolarDevice).toBe(true);

@@ -5,10 +5,9 @@ import type {
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import { getSteppedLoadLowestActiveStep } from '../../../shared-domain/src/deviceControlProfiles.ts';
 import type {
-  DeviceObjectiveProfile,
   ObjectiveProfileConfidence,
 } from '../../../contracts/src/objectiveProfileTypes.ts';
-import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
+import type { SettingsUiObjectiveProfile, SettingsUiPowerTracker } from '../../../contracts/src/powerTrackerTypes.ts';
 import type {
   ObservedDeviceState,
   ObservedStateOfCharge,
@@ -176,9 +175,9 @@ function buildTemperatureProgress(
 }
 
 export const resolveProfile = (
-  powerTracker: PowerTrackerState | null,
+  powerTracker: SettingsUiPowerTracker | null,
   deviceId: string,
-): DeviceObjectiveProfile | null => (
+): SettingsUiObjectiveProfile | null => (
   powerTracker?.objectiveProfiles?.[deviceId] ?? null
 );
 
@@ -194,7 +193,7 @@ export const resolveProfile = (
 // `speedMode === 'learning'`: bootstrap source is EV-cold-start only.
 export const resolveDisplayRateAndSpeedMode = (params: {
   latest: DeferredObjectiveActivePlanRevisionV1;
-  profile: DeviceObjectiveProfile | null;
+  profile: SettingsUiObjectiveProfile | null;
   objectiveKind: DeferredObjectiveSettingsEntry['kind'];
 }): { rateMean: number | null; usingBootstrap: boolean; speedMode: DeferredObjectiveActivePlanSpeedMode } => {
   const speedMode: DeferredObjectiveActivePlanSpeedMode = params.latest.speedMode
@@ -222,7 +221,7 @@ export const resolveDisplayRateAndSpeedMode = (params: {
 };
 
 export const resolveEnergyNeededKWh = (params: {
-  profile: DeviceObjectiveProfile | null;
+  profile: SettingsUiObjectiveProfile | null;
   activePlan: ResolvedDeferredObjectiveActivePlanV1;
 }): {
   energyNeededKWh: number;

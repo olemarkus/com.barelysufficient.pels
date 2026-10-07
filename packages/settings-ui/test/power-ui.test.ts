@@ -466,16 +466,14 @@ describe('power page stats (buckets-only)', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders heatmap chart when hourly budget is present', async () => {
+  it('renders the heatmap chart for the current week', async () => {
     const buckets = buildBuckets('2025-01-13T00:00:00.000Z', 2, 1.2);
-    const hourlyBudgets = Object.fromEntries(Object.keys(buckets).map((iso) => [iso, 1.0]));
     // Jan 15 (Wednesday) — current week (Jan 13–19) contains the Jan 13 bucket data
     vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 15, 12, 0, 0));
     const { renderPowerUsage } = await import('../src/ui/power.ts');
     const entries = Object.entries(buckets).map(([iso, kWh]) => ({
       hour: new Date(iso),
       kWh,
-      budgetKWh: hourlyBudgets[iso],
     }));
     renderPowerUsage(entries);
     const powerList = document.querySelector('#power-list') as HTMLElement;
@@ -604,7 +602,6 @@ describe('power page stats (buckets-only)', () => {
       kWh: 2.5,
       controlledKWh: 1.1,
       uncontrolledKWh: 1.4,
-      budgetKWh: 3,
     }]);
 
     const chartRoot = document.querySelector('#usage-day-bars') as HTMLElement | null;
@@ -916,7 +913,6 @@ describe('power page stats (buckets-only)', () => {
     renderUsageDayView([{
       hour: new Date('2025-01-06T00:00:00.000Z'),
       kWh: 2.5,
-      budgetKWh: 2.0,
     }]);
 
     const params = captured as CapturedParams | null;

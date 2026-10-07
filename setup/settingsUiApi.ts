@@ -378,7 +378,7 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     ? rawTracker
     : {};
   return {
-    tracker: projectPowerTrackerForUi(tracker),
+    tracker: projectPowerTrackerForUi(tracker, Date.now()),
     readings: resolvePowerReadingsForUi(tracker),
     status: classifyMainPowerStatus(homey),
     capacityScalars: hasCapacityScalarsSeam(app)
@@ -532,7 +532,7 @@ const powerPayloadForHome = (
   // served nothing. The unavailable arm was refused above, so only
   // `resolved`/`absent` reach the classifier.
   return {
-    tracker: projectPowerTrackerForUi(reading.powerTracker),
+    tracker: projectPowerTrackerForUi(reading.powerTracker, Date.now()),
     readings: resolvePowerReadingsForUi(reading.powerTracker),
     status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
     capacityPeak: projectCapacityPeakForUi(reading.currentMonthCapacityPeakKw),

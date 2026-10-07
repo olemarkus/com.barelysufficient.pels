@@ -1,4 +1,4 @@
-import type { DeviceObjectiveProfile } from './objectiveProfileTypes.js';
+import type { DeviceObjectiveProfile, ObjectiveProfileStat } from './objectiveProfileTypes.js';
 
 export type PowerTrackerMeterIdentity = {
   powerSource: 'homey_energy' | 'flow';
@@ -42,4 +42,47 @@ export type PowerTrackerState = {
   exportDailyTotals?: Record<string, number>;
   unreliablePeriods?: Array<{ start: number; end: number }>;
   objectiveProfiles?: Record<string, DeviceObjectiveProfile>;
+};
+
+/**
+ * The learned profile as the smart-task page reads it: the energy-per-unit
+ * mean (an old plan revision's fallback) and its confidence. The sample
+ * buffer, bands and accumulators stay in the app.
+ */
+export type SettingsUiObjectiveProfile = {
+  kwhPerUnit?: Pick<ObjectiveProfileStat, 'mean' | 'confidence'>;
+};
+
+/**
+ * The usage history the settings WebView draws, and nothing else. A physical
+ * projection of `PowerTrackerState` (`lib/power/trackerUiProjection.ts`), not
+ * a type narrowing: the full tracker is 30 days of hourly families for every
+ * tracked device (~640 kB on a 14-device home) and the page refetches it every
+ * 30 s while open, so what is not read must not be serialised.
+ *
+ * Windows: `buckets`, sample counts, the solar families and the averages keep
+ * their full retention (the week heatmap's colour range, the typical-day
+ * pattern and the "any export ever" gates read all of it). The
+ * controlled/uncontrolled split is read for today and yesterday only;
+ * `deviceBuckets` for the one device with an open smart task over its plan
+ * window. Both are cut to the last `SETTINGS_UI_RECENT_HOURS` hours
+ * (`lib/power/trackerUiProjection.ts`).
+ */
+export type SettingsUiPowerTracker = Pick<PowerTrackerState,
+  | 'lastPowerW'
+  | 'lastGenerationW'
+  | 'lastTimestamp'
+  | 'buckets'
+  | 'hourlySampleCounts'
+  | 'unreliablePeriods'
+  | 'controlledBuckets'
+  | 'uncontrolledBuckets'
+  | 'dailyTotals'
+  | 'hourlyAverages'
+  | 'generationBuckets'
+  | 'exportBuckets'
+  | 'exportDailyTotals'
+  | 'deviceBuckets'
+> & {
+  objectiveProfiles?: Record<string, SettingsUiObjectiveProfile>;
 };
