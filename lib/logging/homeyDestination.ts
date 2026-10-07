@@ -1,4 +1,4 @@
-import { Writable } from 'node:stream';
+import pino from 'pino';
 
 const PINO_ERROR_LEVEL = 50;
 
@@ -7,61 +7,32 @@ export type HomeyLogCallbacks = {
   error: (...args: unknown[]) => void;
 };
 
-export const createHomeyDestination = (callbacks: HomeyLogCallbacks): Writable => {
-  let pending = '';
+/**
+ * Pino writes one complete JSON line and sets level metadata before each write.
+ * Forward synchronously: a buffered stream could read a later line's metadata.
+ */
+export class HomeyLogDestination implements pino.DestinationStream {
+  readonly [pino.symbols.needsMetadataGsym] = true;
+  lastLevel = 0;
 
-  const flushLine = (line: string): void => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
+  constructor(private readonly callbacks: HomeyLogCallbacks) {}
 
-    let level = 0;
-    let forwarded = trimmed;
+  write(line: string): void {
+    const level = this.lastLevel;
+    // createRootLogger keeps Pino's numeric level as the first field and
+    // reserves it from payloads. Slice off that field, keeping the JSON body
+    // exactly as Pino serialized it (including bindings and error serializers).
+    const firstComma = line.indexOf(',');
+    const forwarded = firstComma === -1 ? '{}' : `{${line.slice(firstComma + 1).trimEnd()}`;
     try {
-      const parsed: unknown = JSON.parse(trimmed);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const record = parsed as Record<string, unknown>;
-        level = typeof record.level === 'number' ? record.level : 0;
-        // `level` is the one field that must be read here and must not be
-        // forwarded: it is how a record is routed to Homey's error channel
-        // rather than its log channel, and pino cannot express that routing in
-        // the serialized line alone. `pid`/`hostname` are no longer emitted
-        // (`base: null` in createRootLogger), so this is all that is stripped.
-        const { level: _level, ...forwardRecord } = record;
-        forwarded = JSON.stringify(forwardRecord);
-      }
+      if (level >= PINO_ERROR_LEVEL) this.callbacks.error(forwarded);
+      else this.callbacks.log(forwarded);
     } catch {
-      // If parsing fails, treat as info-level and forward the raw line.
+      // Homey logging failures must never throw into app code.
     }
+  }
+}
 
-    if (level >= PINO_ERROR_LEVEL) {
-      callbacks.error(forwarded);
-    } else {
-      callbacks.log(forwarded);
-    }
-  };
-
-  return new Writable({
-    write(chunk: Buffer | string, _encoding: string, callback: (error?: Error | null) => void): void {
-      try {
-        pending += typeof chunk === 'string' ? chunk : chunk.toString();
-        const lines = pending.split(/\r?\n/);
-        pending = lines.length > 0 ? (lines[lines.length - 1] ?? '') : '';
-        for (const line of lines.slice(0, -1)) {
-          flushLine(line);
-        }
-      } catch {
-        // Never throw into app code.
-      }
-      callback();
-    },
-    final(callback: (error?: Error | null) => void): void {
-      try {
-        flushLine(pending);
-        pending = '';
-      } catch {
-        // Never throw into app code.
-      }
-      callback();
-    },
-  });
-};
+export const createHomeyDestination = (callbacks: HomeyLogCallbacks): HomeyLogDestination => (
+  new HomeyLogDestination(callbacks)
+);

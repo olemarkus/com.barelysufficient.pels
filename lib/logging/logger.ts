@@ -4,6 +4,7 @@ import { Writable } from 'node:stream';
 import { getCurrentContext, runWithContext } from './alsContext';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import { reportTimeZoneOffsetFailuresTo } from '../../packages/shared-domain/src/utils/dateUtils';
+import { HomeyLogDestination } from './homeyDestination';
 
 export type { Logger } from 'pino';
 export type StructuredDebugEmitter = (payload: Record<string, unknown>) => void;
@@ -29,15 +30,24 @@ export type Loggers = {
   debugStructured?: StructuredDebugEmitter;
 };
 
-export const createRootLogger = (destination: Writable, level = 'info'): pino.Logger => pino(
+const withoutTransportLevel = (record: Record<string, unknown>): Record<string, unknown> => {
+  if (!('level' in record)) return record;
+  const { level: _level, ...forwarded } = record;
+  return forwarded;
+};
+
+export const createRootLogger = (destination: pino.DestinationStream, level = 'info'): pino.Logger => pino(
   {
     level,
     timestamp: false,
-    // `pid`/`hostname` are pino's default `base`. Neither is meaningful here —
-    // the app is one process on one Homey — and `createHomeyDestination` used
-    // to parse every serialized line back to JSON purely to strip them again.
-    // Not emitting them removes both the write and that half of the strip.
+    // One app process on one Homey: pid/hostname add no useful context.
     base: null,
+    // Reserve the top-level level for transport routing. Pino writes that numeric
+    // field first; the Homey destination removes it without parsing the payload.
+    formatters: destination instanceof HomeyLogDestination ? {
+      bindings: withoutTransportLevel,
+      log: withoutTransportLevel,
+    } : undefined,
     mixin: () => ({ ...getCurrentContext() }),
   },
   destination,

@@ -78,6 +78,10 @@ export const reportTimeZoneOffsetFailuresTo = (report: (failure: TimeZoneOffsetF
     reportTimeZoneOffsetFailure = report;
 };
 const DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1000;
+// Dates advance and history readers visit older days, so unlike formatters this
+// cache must be bounded across both dates and zones. Oldest entries leave first.
+const MAX_DAY_START_CACHE_ENTRIES = 512;
+const dayStartMsByTimezoneAndDate = new Map<string, number>();
 
 const compareDateKeys = (left: string, right: string): number => {
     if (left < right) return -1;
@@ -193,6 +197,9 @@ export function shiftDateKey(dateKey: string, dayDelta: number): string {
 }
 
 export function getDateKeyStartMs(dateKey: string, timeZone: string): number {
+    const cacheKey = `${timeZone}:${dateKey}`;
+    const cached = dayStartMsByTimezoneAndDate.get(cacheKey);
+    if (cached !== undefined) return cached;
     const { year, month, day } = parseDateKey(dateKey);
     const approximateUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
     let low = approximateUtcMs - DAY_START_SEARCH_WINDOW_MS;
@@ -216,6 +223,13 @@ export function getDateKeyStartMs(dateKey: string, timeZone: string): number {
         }
     }
 
+    if (Number.isFinite(high)) {
+        if (dayStartMsByTimezoneAndDate.size >= MAX_DAY_START_CACHE_ENTRIES) {
+            const oldestKey = dayStartMsByTimezoneAndDate.keys().next().value;
+            if (oldestKey !== undefined) dayStartMsByTimezoneAndDate.delete(oldestKey);
+        }
+        dayStartMsByTimezoneAndDate.set(cacheKey, high);
+    }
     return high;
 }
 
