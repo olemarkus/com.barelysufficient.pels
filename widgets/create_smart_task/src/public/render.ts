@@ -1,6 +1,7 @@
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
   CREATE_SMART_TASK_READY_BY_PRESETS,
+  SMART_TASK_EDIT_COPY,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
   formatEnergyEstimateKWh,
@@ -12,7 +13,6 @@ import {
   resolveSmartTaskPreviewStatusCopy,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import {
-  composeSmartTaskScheduledLine,
   formatCheapestHoursSubtext,
   formatSmartTaskDeadlineLong,
 } from '../../../../packages/shared-domain/src/smartTaskDeadlineFormat';
@@ -37,8 +37,9 @@ export type ViewState =
   | {
     kind: 'compose';
     device: CreateSmartTaskDevice;
-    goal: number;
-    readyById: string;
+    // A cleared input stays a draft; preview requires a valid numeric goal.
+    goal: number | null;
+    readyByLocalTime: string;
     // Opt-in "Extra permissions", both default off and carried through
     // compose → preview → create so the user's choice survives a re-render and
     // the preview/create reflect it. `limitLowerPriorityDevices` is only
@@ -50,7 +51,7 @@ export type ViewState =
     kind: 'preview';
     device: CreateSmartTaskDevice;
     goal: number;
-    readyById: string;
+    readyByLocalTime: string;
     exemptFromBudget: boolean;
     limitLowerPriorityDevices: boolean;
     response: CreateSmartTaskPreviewResponse;
@@ -75,13 +76,16 @@ export type RenderTargets = {
   composeBackBtn: HTMLButtonElement;
   composeTitle: HTMLElement;
   goalLabel: HTMLElement;
-  goalValueEl: HTMLElement;
+  goalValueEl: HTMLInputElement;
+  goalUnitEl: HTMLElement;
   goalContextEl: HTMLElement;
   goalDecBtn: HTMLButtonElement;
   goalIncBtn: HTMLButtonElement;
   readyByLabel: HTMLElement;
   readyByList: HTMLElement;
+  readyByInput: HTMLInputElement;
   readyByEchoEl: HTMLElement;
+  composeErrorEl: HTMLElement;
   // Extra permissions disclosure
   extraPermsTitle: HTMLElement;
   extraPermsHint: HTMLElement;
@@ -94,10 +98,16 @@ export type RenderTargets = {
   permLimitHint: HTMLElement;
   previewBtn: HTMLButtonElement;
   readyByTemplate: HTMLTemplateElement;
-  // Preview — cost leads, the when-window pairs with it, energy is demoted.
+  // Preview — task intent leads, followed by feasibility and estimates.
   previewView: HTMLElement;
   previewBackBtn: HTMLButtonElement;
   previewTitle: HTMLElement;
+  previewDeviceEl: HTMLElement;
+  previewGoalEl: HTMLElement;
+  previewChartLegendEl: HTMLElement;
+  previewChartPriceEl: HTMLElement;
+  previewChartScheduledEl: HTMLElement;
+  previewWarningHintEl: HTMLElement;
   previewFeasibilityEl: HTMLElement;
   previewCostEl: HTMLElement;
   previewCostSubtextEl: HTMLElement;
@@ -108,6 +118,7 @@ export type RenderTargets = {
   previewUnavailableEl: HTMLElement;
   previewErrorEl: HTMLElement;
   createBtn: HTMLButtonElement;
+  previewEditBtn: HTMLButtonElement;
   // Created flash
   createdView: HTMLElement;
   createdMsgEl: HTMLElement;
@@ -217,7 +228,7 @@ const markChipSelected = (button: HTMLElement, selected: boolean): void => {
   button.setAttribute('aria-pressed', selected ? 'true' : 'false');
 };
 
-const renderReadyByChips = (targets: RenderTargets, selectedId: string): void => {
+const renderReadyByChips = (targets: RenderTargets, selectedTime: string): void => {
   const { readyByList, readyByTemplate } = targets;
   // Re-rendering the compose view on every goal step would otherwise rebuild
   // these chips and steal keyboard focus from a chip the user just tabbed to.
@@ -227,7 +238,7 @@ const renderReadyByChips = (targets: RenderTargets, selectedId: string): void =>
   if (existing.length === CREATE_SMART_TASK_READY_BY_PRESETS.length) {
     for (const button of existing) {
       if (button instanceof HTMLElement) {
-        markChipSelected(button, button.dataset.readyById === selectedId);
+        markChipSelected(button, button.dataset.readyByTime === selectedTime);
       }
     }
     return;
@@ -238,8 +249,10 @@ const renderReadyByChips = (targets: RenderTargets, selectedId: string): void =>
     const button = fragment.querySelector('[data-ready-by]');
     if (!(button instanceof HTMLElement)) continue;
     button.dataset.readyById = preset.id;
+    button.dataset.readyByTime = preset.localTime;
     button.textContent = preset.label;
-    markChipSelected(button, preset.id === selectedId);
+    button.setAttribute('aria-label', `${C.readyByLabel} ${preset.label}`);
+    markChipSelected(button, preset.localTime === selectedTime);
     readyByList.appendChild(button);
   }
 };
@@ -249,10 +262,8 @@ const renderReadyByChips = (targets: RenderTargets, selectedId: string): void =>
 // (the authoritative DST-aware deadline is resolved server-side and shown in
 // the preview); `formatSmartTaskDeadlineLong` with a null timezone formats in
 // the host's own zone, which matches how the user reads the local chip time.
-const resolveReadyByEcho = (readyById: string): string | null => {
-  const preset = CREATE_SMART_TASK_READY_BY_PRESETS.find((entry) => entry.id === readyById);
-  if (!preset) return null;
-  const match = preset.localTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+const resolveReadyByEcho = (readyByLocalTime: string): string | null => {
+  const match = readyByLocalTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
   if (!match) return null;
   const now = new Date();
   const next = new Date(now);
@@ -289,9 +300,10 @@ const renderCompose = (
   targets: RenderTargets,
   view: Extract<ViewState, { kind: 'compose' }>,
 ): void => {
-  const { device, goal, readyById } = view;
+  const { device, goal, readyByLocalTime } = view;
   const { composeTitle, goalLabel, goalValueEl, goalContextEl, goalDecBtn, goalIncBtn } = targets;
   const { readyByLabel, readyByEchoEl, previewBtn } = targets;
+  const { goalUnitEl, readyByInput, composeErrorEl } = targets;
   // Static field labels + the action button sourced from the copy table so a
   // copy edit reaches the UI (the HTML literals are just SSR-less placeholders).
   goalLabel.textContent = C.goalLabel;
@@ -303,43 +315,42 @@ const renderCompose = (
   // ("Charge to Driveway charger") reads as broken English. The goal value lives
   // on the stepper + the goal-context line below it.
   composeTitle.textContent = device.deviceName;
-  goalValueEl.textContent = formatSmartTaskGoalValue(goal, device.unitSymbol);
+  goalValueEl.min = String(device.goalMin);
+  goalValueEl.max = String(device.goalMax);
+  goalValueEl.step = String(device.goalStep);
+  const goalText = goal === null ? '' : String(goal);
+  if (goalValueEl.value !== goalText) goalValueEl.value = goalText;
+  goalUnitEl.textContent = device.unitSymbol;
+  if (readyByInput.value !== readyByLocalTime) readyByInput.value = readyByLocalTime;
   // Anchor the goal against the current reading ("Goal 80% · now 42%" /
   // "from 42% → 80%") so the target isn't shown in a vacuum.
-  setLine(goalContextEl, formatSmartTaskGoalContextLine({
+  setLine(goalContextEl, goal === null ? null : formatSmartTaskGoalContextLine({
     goalValue: goal,
     currentValue: device.currentValue,
     unitSymbol: device.unitSymbol,
   }));
-  goalDecBtn.disabled = goal <= device.goalMin;
-  goalIncBtn.disabled = goal >= device.goalMax;
-  renderReadyByChips(targets, readyById);
-  setLine(readyByEchoEl, resolveReadyByEcho(readyById));
+  goalDecBtn.disabled = goal === null || goal <= device.goalMin;
+  goalIncBtn.disabled = goal === null || goal >= device.goalMax;
+  renderReadyByChips(targets, readyByLocalTime);
+  setLine(readyByEchoEl, resolveReadyByEcho(readyByLocalTime));
+  const validGoal = goalValueEl.validity.valid;
+  const validTime = /^([01]\d|2[0-3]):([0-5]\d)$/.test(readyByLocalTime);
+  previewBtn.disabled = !validGoal || !validTime;
+  const goalError = !validGoal ? C.invalidGoal : null;
+  const timeError = !validTime ? C.invalidReadyBy : null;
+  setLine(composeErrorEl, goalError ?? timeError);
 };
 
 // ─── Preview ─────────────────────────────────────────────────────────────────
 
 type OkPreview = Extract<CreateSmartTaskPreviewResponse, { ok: true }>;
 
-// "Scheduled 02:00–04:00 · Ready by Tomorrow 07:00" (or "Ready by Tomorrow
-// 07:00" with no scheduled hours yet). The clock-hour window is the answer to
-// "WHEN does it run" — the preview's whole reason to exist. Both the scheduled
-// window and the deadline label are pre-formatted SERVER-SIDE in the Homey
-// timezone (see `scheduledWindowLabel`), so this stitches strings only — no
-// client-side timezone math that could drift the window into the phone's zone.
-const formatWhenLine = (response: OkPreview): string => composeSmartTaskScheduledLine({
-  scheduledWindowLabel: response.scheduledWindowLabel,
-  deadlineLabel: response.deadlineLabel,
-  scheduledLabel: C.scheduledLabel,
-  readyByLabel: C.readyByLabel,
-});
-
 const hasScheduledHours = (response: OkPreview): boolean => response.estimate.scheduledHours.length > 0;
 
-const canCreateFromPreview = (response: CreateSmartTaskPreviewResponse): boolean => (
+export const canCreateFromPreview = (response: CreateSmartTaskPreviewResponse): boolean => (
   response.ok
   && response.estimate.status !== 'unavailable'
-  && response.estimate.status !== 'cannot_meet'
+  && response.estimate.status !== 'invalid'
 );
 
 // Energy is the demoted secondary line — kept (it answers "how much will it
@@ -364,12 +375,13 @@ const formatCostLine = (estimate: OkPreview['estimate']): string | null => {
   });
 };
 
-// Render a successfully-projected (or zero-hour) preview. Cost leads; the
-// when-window pairs with it; energy is the muted secondary line. The
+// Render a successfully-projected (or zero-hour) preview. Scheduled hours and
+// estimates follow the task summary. The
 // "cheapest hours before HH:MM" subtext rides under the cost only when there is
 // a cost figure to explain. Preview verdicts sit above the figures when they
 // need attention, so `cannot_meet` cannot masquerade as an ordinary estimate.
 const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
+  const { previewChartPriceEl, previewChartScheduledEl } = targets;
   const scheduled = hasScheduledHours(response);
   const estimated = response.estimate.status !== 'unavailable';
   const costLine = scheduled ? formatCostLine(response.estimate) : null;
@@ -393,7 +405,11 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
       scheduledHours: response.estimate.scheduledHours,
     });
   setVisible(targets.previewChartEl, charted);
-  setLine(targets.previewWhenEl, formatWhenLine(response));
+  setVisible(targets.previewChartLegendEl, charted);
+  previewChartPriceEl.textContent = C.chartPrice;
+  previewChartScheduledEl.textContent = C.chartScheduled;
+  setLine(targets.previewWhenEl, response.scheduledWindowLabel
+    ? `${C.scheduledLabel} ${response.scheduledWindowLabel}` : null);
   // When the chart is shown, drop the muted energy line: the chart + cost are
   // the stars and the tile's vertical budget is better spent keeping the honest
   // estimate caveat un-clipped. Energy stays as the text fallback when there's
@@ -411,6 +427,7 @@ const hidePreviewLines = (targets: RenderTargets): void => {
   hide(targets.previewCostEl);
   hide(targets.previewCostSubtextEl);
   hide(targets.previewChartEl);
+  hide(targets.previewChartLegendEl);
   hide(targets.previewWhenEl);
   hide(targets.previewEnergyEl);
   hide(targets.previewUnavailableEl);
@@ -422,8 +439,19 @@ const renderPreview = (
   view: Extract<ViewState, { kind: 'preview' }>,
 ): void => {
   const { response, submitting, error } = view;
-  const { createBtn, previewTitle } = targets;
+  const { createBtn, previewTitle, previewDeviceEl, previewGoalEl, previewEditBtn, previewBackBtn } = targets;
   previewTitle.textContent = C.previewTitle;
+  previewDeviceEl.textContent = view.device.deviceName;
+  const goalSummary = `${C.goalLabel} ${formatSmartTaskGoalValue(view.goal, view.device.unitSymbol)}`;
+  previewGoalEl.textContent = response.ok
+    ? `${goalSummary} · ${C.readyByLabel} ${response.deadlineLabel}` : goalSummary;
+  previewEditBtn.textContent = SMART_TASK_EDIT_COPY.editButton;
+  previewEditBtn.disabled = submitting;
+  previewBackBtn.disabled = submitting;
+  const cannotFinish = response.ok && response.estimate.status === 'cannot_meet';
+  setLine(targets.previewWarningHintEl, cannotFinish ? C.cannotMeetHint : null);
+  const createLabel = cannotFinish ? C.createAnywayButton : C.createButton;
+  createBtn.textContent = submitting ? C.creating : createLabel;
   if (!response.ok) {
     // A failed preview (bad request / unavailable backend) collapses to the
     // unavailable line; the user can go back and adjust.
@@ -436,11 +464,6 @@ const renderPreview = (
   renderOkPreview(targets, response);
   setLine(targets.previewErrorEl, error);
   createBtn.disabled = submitting || !canCreateFromPreview(response);
-  // PENDING shows progress copy, NOT the success label. The success label
-  // ("Smart task created") only ever appears once the `created` view renders
-  // after a confirmed `{ ok: true }` create — never while the request is still
-  // in flight (or after it later fails).
-  createBtn.textContent = submitting ? C.creating : C.createButton;
 };
 
 // ─── Top-level ─────────────────────────────────────────────────────────────

@@ -61,6 +61,9 @@
     goalLabel: "Goal",
     readyByLabel: "Ready by",
     previewButton: "Preview",
+    previewing: "Previewing\u2026",
+    invalidGoal: "Enter a goal within this device\u2019s range.",
+    invalidReadyBy: "Choose a ready-by time.",
     // Step 3 — preview + confirm.
     previewTitle: "Preview",
     // Plain schedule-window word ("these hours are scheduled to run") rather
@@ -75,7 +78,11 @@
     // future prices, measurements, and task edits can still move it. Keep the
     // caveat short for the 320–480 px widget.
     estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
-    createButton: "Create smart task",
+    createButton: "Create task",
+    createAnywayButton: "Create anyway",
+    chartPrice: "Price",
+    chartScheduled: "Scheduled hours",
+    cannotMeetHint: "PELS will work toward this goal within your power limits, but it may not finish in time.",
     backButton: "Back",
     // Shown when the preview can't be projected and the backend did not provide a
     // more specific missing-input reason. Distinct from a hard error. Avoids the

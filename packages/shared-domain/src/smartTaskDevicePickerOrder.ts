@@ -53,7 +53,7 @@ export const SMART_TASK_DEVICE_PICKER_COPY = {
   // One-line eligibility hint under "Choose a device" — a smart task is a goal
   // on a device PELS manages, so only those appear here. Frames the subset as
   // intentional rather than a mystery.
-  eligibilityCaption: 'Only devices PELS manages can carry a smart task.',
+  eligibilityCaption: 'Managed heating devices and EV chargers.',
   groupIconLabels: {
     heating: 'Heating',
     ev_charger: 'EV charger',

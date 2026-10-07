@@ -33,7 +33,7 @@ Smart tasks are created from Homey Flow action cards or from the **New smart tas
 
 The ready-by value is written as local time, for example `07:00`. PELS stores the next matching future time when the Flow runs. It does not automatically repeat the same task every day unless your Flow runs again.
 
-The **New smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers (energy tasks are created from the Flow card), previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget blocks creation for that ready-by time instead of creating a task that already cannot meet its target. See [Dashboard Widgets](/widgets) for the full widget set.
+The **New smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers (energy tasks are created from the Flow card), previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget warns that the goal may not be reached in time. You can edit the task or choose **Create anyway**; the task still respects your power limits. See [Dashboard Widgets](/widgets) for the full widget set.
 
 ## What PELS Plans
 

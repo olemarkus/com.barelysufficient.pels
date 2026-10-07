@@ -32,11 +32,17 @@ const outDir = path.join(repoRoot, 'docs', 'public', 'screenshots', 'widgets');
 // content honest at a realistic dashboard width without crowding.
 const VIEWPORT = { width: 360, height: 900 };
 
-// Simulated Homey dashboard card chrome. Injected after the widget renders so
-// the doc image reads like a pinned widget rather than bare body content.
+// Simulated Homey dashboard card chrome and inherited host typography. Injected
+// after rendering so standalone captures don't fall back to the browser's serif.
 const CARD_CHROME_CSS = `
   html, body { margin: 0; background: #e9edf0 !important; }
-  body { box-sizing: border-box; padding: 20px; }
+  body {
+    box-sizing: border-box;
+    padding: 20px;
+    font-family: 'Roboto', 'NotoSansArabic', Helvetica, sans-serif;
+    font-size: var(--pw-font-size-title, 17px);
+    line-height: var(--pw-line-title, 24px);
+  }
   #widget-root {
     box-sizing: border-box;
     background: #ffffff;

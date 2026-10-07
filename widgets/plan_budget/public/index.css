@@ -23,7 +23,11 @@
  * the reference (a `var()` with a fallback is treated as resolved).
  */
 
-:root {
+/* Resolve aliases on the widget body too: Homey may scope theme variables to
+ * .homey-dark-mode there. A root-only alias would inherit its already-resolved
+ * light fallback instead of reading the body's dark value. */
+:root,
+body {
   /* ---- Type scale (size + paired line-height) ---- */
   /* body = small, title = default, display = large. Names describe ROLE so a
      widget picks "body/title/display", not a raw Homey size token. */
@@ -59,10 +63,16 @@
   --pw-text-danger: var(--homey-text-color-danger, #f0696c);
   --pw-on-accent: var(--homey-color-white, #ffffff);
 
+  /* ---- Device icons ---- */
+  --pw-icon: var(--homey-icon-color-dark, #1f252a);
+  --pw-icon-size: var(--homey-icon-size-medium, 20px);
+
   /* ---- Accent base hues ---- */
   /* The saturated brand hues — used directly for solid fills (e.g. primary
      button) and as the base of `color-mix()` tonal tints/borders. */
   --pw-success: var(--homey-color-success, #58c56a);
+  /* Solid actions need a darker fill to keep their white labels readable. */
+  --pw-action: color-mix(in srgb, var(--homey-color-success, #58c56a) 60%, black);
   --pw-warning: var(--homey-color-warning, #f5a623);
   --pw-danger: var(--homey-color-danger, #f0696c);
   --pw-info: var(--homey-color-blue, #3f9fff);
