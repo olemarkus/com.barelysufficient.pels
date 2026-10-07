@@ -349,6 +349,9 @@
     goalLabel: "Goal",
     readyByLabel: "Ready by",
     previewButton: "Preview",
+    previewing: "Previewing\u2026",
+    invalidGoal: "Enter a goal within this device\u2019s range.",
+    invalidReadyBy: "Choose a ready-by time.",
     // Step 3 — preview + confirm.
     previewTitle: "Preview",
     // Plain schedule-window word ("these hours are scheduled to run") rather
@@ -363,7 +366,11 @@
     // future prices, measurements, and task edits can still move it. Keep the
     // caveat short for the 320–480 px widget.
     estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
-    createButton: "Create smart task",
+    createButton: "Create task",
+    createAnywayButton: "Create anyway",
+    chartPrice: "Price",
+    chartScheduled: "Scheduled hours",
+    cannotMeetHint: "PELS will work toward this goal within your power limits, but it may not finish in time.",
     backButton: "Back",
     // Shown when the preview can't be projected and the backend did not provide a
     // more specific missing-input reason. Distinct from a hard error. Avoids the
@@ -938,9 +945,8 @@
 
   // widgets/create_smart_task/src/public/previewChart.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
-  var VIEW = { width: 480, height: 132 };
+  var VIEW = { width: 480, height: 108 };
   var PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
-  var X_LABEL_Y = 124;
   var PLOT_WIDTH = PLOT.right - PLOT.left;
   var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
   var createSvg = (doc, tag, attrs, text) => {
@@ -1028,17 +1034,19 @@
         }));
       }
     }
+    const axis = doc.createElement("div");
+    axis.className = "pchart-axis";
     priceSeries.forEach((point, index) => {
       const show = index === 0 || index === count - 1 || index % 3 === 0 && count - 1 - index >= 2;
       if (!show) return;
-      svg.appendChild(createSvg(doc, "text", {
-        class: "pchart__axis",
-        x: bucketCenter(index, count),
-        y: X_LABEL_Y,
-        "text-anchor": "middle"
-      }, hourLabel(point.startsAtMs)));
+      const label = doc.createElement("span");
+      label.className = "pchart__axis";
+      label.style.left = `${bucketCenter(index, count) / VIEW.width * 100}%`;
+      label.textContent = hourLabel(point.startsAtMs);
+      axis.appendChild(label);
     });
     container.appendChild(svg);
+    container.appendChild(axis);
     return true;
   };
 

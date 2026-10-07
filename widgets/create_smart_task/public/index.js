@@ -56,6 +56,9 @@
     goalLabel: "Goal",
     readyByLabel: "Ready by",
     previewButton: "Preview",
+    previewing: "Previewing\u2026",
+    invalidGoal: "Enter a goal within this device\u2019s range.",
+    invalidReadyBy: "Choose a ready-by time.",
     // Step 3 — preview + confirm.
     previewTitle: "Preview",
     // Plain schedule-window word ("these hours are scheduled to run") rather
@@ -70,7 +73,11 @@
     // future prices, measurements, and task edits can still move it. Keep the
     // caveat short for the 320–480 px widget.
     estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
-    createButton: "Create smart task",
+    createButton: "Create task",
+    createAnywayButton: "Create anyway",
+    chartPrice: "Price",
+    chartScheduled: "Scheduled hours",
+    cannotMeetHint: "PELS will work toward this goal within your power limits, but it may not finish in time.",
     backButton: "Back",
     // Shown when the preview can't be projected and the backend did not provide a
     // more specific missing-input reason. Distinct from a hard error. Avoids the
@@ -179,13 +186,68 @@
     if (reason === "device_in_sub_home") return SMART_TASK_SUB_HOME_UNAVAILABLE;
     return CREATE_SMART_TASK_WIDGET_COPY.createError;
   };
+  var SMART_TASK_EDIT_COPY = {
+    editButton: "Edit task",
+    // Collapsed-row supporting line: says what editing covers so the row earns
+    // its place even before it is tapped. Names the extra permissions too — they
+    // are the least discoverable thing behind this row, and until the editor
+    // could set them users had no way to find them at all.
+    editHint: "Change the goal, ready-by time, or extra permissions.",
+    // Section hint for the editor's "Extra permissions" disclosure. The create
+    // widget's variant opens "Off unless you turn them on", which is false on an
+    // existing task whose permissions may already be granted — so this one only
+    // keeps the scope half, which is the part that must never be overstated
+    // (these buy the task priority for THIS deadline; they do not raise the cap
+    // or create more power).
+    permissionsHint: "Only used to hit this ready-by time.",
+    saveButton: "Save changes",
+    saving: "Saving\u2026",
+    discardButton: "Discard",
+    clearButton: "Clear task",
+    // Two-step confirm label (same auto-revert pattern as the Budget discard
+    // button) so a stray tap can't drop the task.
+    clearConfirm: "Tap again to clear",
+    clearing: "Clearing\u2026",
+    // Honest about the mechanics: saving re-plans the task, and the run so far
+    // is filed under Past tasks (where it wears the Abandoned chip) — said here
+    // so the user who later scans history isn't surprised by a run they never
+    // knowingly abandoned.
+    updated: "Smart task updated \u2014 the earlier run is now in Past tasks.",
+    // A permission-only save changes no goal, no ready-by, and no deadline, so
+    // `objectivesMatch` holds and the recorder no-ops: the run continues and
+    // NOTHING lands in Past tasks. Claiming otherwise would send the user looking
+    // for a history entry that doesn't exist — and read as though flipping a
+    // toggle had broken their task. Says "this run", not "re-planned": *plan* is
+    // reserved for the planning layer on smart-task surfaces
+    // (`notes/ui-terminology.md` § "Plan vs deadline").
+    updatedPermissionsOnly: "Smart task updated \u2014 the new permissions apply to this run.",
+    cleared: "Smart task cleared.",
+    // The task ended (completed/expired/cleared elsewhere) while the editor was
+    // open — the editor closes rather than offering a retry that would re-create
+    // it. Verb-neutral so the line reads correctly after a save AND after a
+    // clear tap.
+    taskEnded: "This task has already ended.",
+    clearError: "Could not clear the task just now. Try again.",
+    // Save failure umbrella for an edit (mirrors `createError` but names the
+    // save action — the task itself is unchanged and still running).
+    updateError: "Could not save the changes. Check the goal and try again.",
+    // Edit-specific deadline-slip line. The create widget's variant says
+    // "Preview again" — a button this surface doesn't have (previews run
+    // automatically); the recourse must name an action that exists here.
+    deadlinePassed: "That ready-by time just passed. Pick a later time and save again.",
+    // Shown in the preview slot while the debounced estimate round-trip is in
+    // flight, so the landing/cost lines don't pop in and out of the layout.
+    previewing: "Updating estimate\u2026",
+    // Draft landing-line prefixes (see `composeSmartTaskDraftLandingLine`).
+    ifYouSavePrefix: "If you save:",
+    ifYouSaveRunsWord: "runs"
+  };
   var CREATE_SMART_TASK_READY_BY_PRESETS = [
     { id: "morning", label: "07:00", localTime: "07:00" },
     { id: "midday", label: "12:00", localTime: "12:00" },
     { id: "evening", label: "18:00", localTime: "18:00" },
     { id: "night", label: "22:00", localTime: "22:00" }
   ];
-  var CREATE_SMART_TASK_READY_BY_DEFAULT_ID = "morning";
   var resolveBuildingPlanChipTone = () => "info";
   var resolvePausedUnpluggedChipTone = () => "warn";
   var resolvePausedUnmanagedChipTone = () => "warn";
@@ -981,11 +1043,6 @@
       return formatLocalHHMMFallback(date);
     }
   };
-  var composeSmartTaskScheduledLine = (params) => {
-    const readyByPart = `${params.readyByLabel} ${params.deadlineLabel}`;
-    if (params.scheduledWindowLabel === null) return readyByPart;
-    return `${params.scheduledLabel} ${params.scheduledWindowLabel} \xB7 ${readyByPart}`;
-  };
   var formatCheapestHoursSubtext = (deadlineLabel) => {
     const timePart = deadlineLabel.match(/(\d{1,2}:\d{2})\s*$/);
     const tail = timePart ? `before ${timePart[1]}` : "before the deadline";
@@ -1001,7 +1058,7 @@
     // One-line eligibility hint under "Choose a device" — a smart task is a goal
     // on a device PELS manages, so only those appear here. Frames the subset as
     // intentional rather than a mystery.
-    eligibilityCaption: "Only devices PELS manages can carry a smart task.",
+    eligibilityCaption: "Managed heating devices and EV chargers.",
     groupIconLabels: {
       heating: "Heating",
       ev_charger: "EV charger"
@@ -1014,9 +1071,8 @@
 
   // widgets/create_smart_task/src/public/previewChart.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
-  var VIEW = { width: 480, height: 132 };
+  var VIEW = { width: 480, height: 108 };
   var PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
-  var X_LABEL_Y = 124;
   var PLOT_WIDTH = PLOT.right - PLOT.left;
   var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
   var createSvg = (doc, tag, attrs, text) => {
@@ -1104,17 +1160,19 @@
         }));
       }
     }
+    const axis = doc.createElement("div");
+    axis.className = "pchart-axis";
     priceSeries.forEach((point, index) => {
       const show = index === 0 || index === count - 1 || index % 3 === 0 && count - 1 - index >= 2;
       if (!show) return;
-      svg.appendChild(createSvg(doc, "text", {
-        class: "pchart__axis",
-        x: bucketCenter(index, count),
-        y: X_LABEL_Y,
-        "text-anchor": "middle"
-      }, hourLabel(point.startsAtMs)));
+      const label = doc.createElement("span");
+      label.className = "pchart__axis";
+      label.style.left = `${bucketCenter(index, count) / VIEW.width * 100}%`;
+      label.textContent = hourLabel(point.startsAtMs);
+      axis.appendChild(label);
     });
     container.appendChild(svg);
+    container.appendChild(axis);
     return true;
   };
 
@@ -1201,13 +1259,13 @@
     button.dataset.selected = selected ? "true" : "false";
     button.setAttribute("aria-pressed", selected ? "true" : "false");
   };
-  var renderReadyByChips = (targets, selectedId) => {
+  var renderReadyByChips = (targets, selectedTime) => {
     const { readyByList, readyByTemplate } = targets;
     const existing = readyByList.querySelectorAll("[data-ready-by]");
     if (existing.length === CREATE_SMART_TASK_READY_BY_PRESETS.length) {
       for (const button of existing) {
         if (button instanceof HTMLElement) {
-          markChipSelected(button, button.dataset.readyById === selectedId);
+          markChipSelected(button, button.dataset.readyByTime === selectedTime);
         }
       }
       return;
@@ -1218,15 +1276,15 @@
       const button = fragment.querySelector("[data-ready-by]");
       if (!(button instanceof HTMLElement)) continue;
       button.dataset.readyById = preset.id;
+      button.dataset.readyByTime = preset.localTime;
       button.textContent = preset.label;
-      markChipSelected(button, preset.id === selectedId);
+      button.setAttribute("aria-label", `${C.readyByLabel} ${preset.label}`);
+      markChipSelected(button, preset.localTime === selectedTime);
       readyByList.appendChild(button);
     }
   };
-  var resolveReadyByEcho = (readyById) => {
-    const preset = CREATE_SMART_TASK_READY_BY_PRESETS.find((entry) => entry.id === readyById);
-    if (!preset) return null;
-    const match = preset.localTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  var resolveReadyByEcho = (readyByLocalTime) => {
+    const match = readyByLocalTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
     if (!match) return null;
     const now = /* @__PURE__ */ new Date();
     const next = new Date(now);
@@ -1258,33 +1316,40 @@
     permLimitInput.checked = view.limitLowerPriorityDevices;
   };
   var renderCompose = (targets, view) => {
-    const { device, goal, readyById } = view;
+    const { device, goal, readyByLocalTime } = view;
     const { composeTitle, goalLabel, goalValueEl, goalContextEl, goalDecBtn, goalIncBtn } = targets;
     const { readyByLabel, readyByEchoEl, previewBtn } = targets;
+    const { goalUnitEl, readyByInput, composeErrorEl } = targets;
     goalLabel.textContent = C.goalLabel;
     readyByLabel.textContent = C.readyByLabel;
     previewBtn.textContent = C.previewButton;
     renderExtraPermissions(targets, view);
     composeTitle.textContent = device.deviceName;
-    goalValueEl.textContent = formatSmartTaskGoalValue(goal, device.unitSymbol);
-    setLine(goalContextEl, formatSmartTaskGoalContextLine({
+    goalValueEl.min = String(device.goalMin);
+    goalValueEl.max = String(device.goalMax);
+    goalValueEl.step = String(device.goalStep);
+    const goalText = goal === null ? "" : String(goal);
+    if (goalValueEl.value !== goalText) goalValueEl.value = goalText;
+    goalUnitEl.textContent = device.unitSymbol;
+    if (readyByInput.value !== readyByLocalTime) readyByInput.value = readyByLocalTime;
+    setLine(goalContextEl, goal === null ? null : formatSmartTaskGoalContextLine({
       goalValue: goal,
       currentValue: device.currentValue,
       unitSymbol: device.unitSymbol
     }));
-    goalDecBtn.disabled = goal <= device.goalMin;
-    goalIncBtn.disabled = goal >= device.goalMax;
-    renderReadyByChips(targets, readyById);
-    setLine(readyByEchoEl, resolveReadyByEcho(readyById));
+    goalDecBtn.disabled = goal === null || goal <= device.goalMin;
+    goalIncBtn.disabled = goal === null || goal >= device.goalMax;
+    renderReadyByChips(targets, readyByLocalTime);
+    setLine(readyByEchoEl, resolveReadyByEcho(readyByLocalTime));
+    const validGoal = goalValueEl.validity.valid;
+    const validTime = /^([01]\d|2[0-3]):([0-5]\d)$/.test(readyByLocalTime);
+    previewBtn.disabled = !validGoal || !validTime;
+    const goalError = !validGoal ? C.invalidGoal : null;
+    const timeError = !validTime ? C.invalidReadyBy : null;
+    setLine(composeErrorEl, goalError ?? timeError);
   };
-  var formatWhenLine = (response) => composeSmartTaskScheduledLine({
-    scheduledWindowLabel: response.scheduledWindowLabel,
-    deadlineLabel: response.deadlineLabel,
-    scheduledLabel: C.scheduledLabel,
-    readyByLabel: C.readyByLabel
-  });
   var hasScheduledHours = (response) => response.estimate.scheduledHours.length > 0;
-  var canCreateFromPreview = (response) => response.ok && response.estimate.status !== "unavailable" && response.estimate.status !== "cannot_meet";
+  var canCreateFromPreview = (response) => response.ok && response.estimate.status !== "unavailable" && response.estimate.status !== "invalid";
   var formatEnergyLine = (estimate) => {
     if (estimate.energyEstimateKWh === null) return null;
     return `${C.energyLabel}: ${formatEnergyEstimateKWh({
@@ -1301,6 +1366,7 @@
     });
   };
   var renderOkPreview = (targets, response) => {
+    const { previewChartPriceEl, previewChartScheduledEl } = targets;
     const scheduled = hasScheduledHours(response);
     const estimated = response.estimate.status !== "unavailable";
     const costLine = scheduled ? formatCostLine(response.estimate) : null;
@@ -1320,7 +1386,10 @@
       scheduledHours: response.estimate.scheduledHours
     });
     setVisible(targets.previewChartEl, charted);
-    setLine(targets.previewWhenEl, formatWhenLine(response));
+    setVisible(targets.previewChartLegendEl, charted);
+    previewChartPriceEl.textContent = C.chartPrice;
+    previewChartScheduledEl.textContent = C.chartScheduled;
+    setLine(targets.previewWhenEl, response.scheduledWindowLabel ? `${C.scheduledLabel} ${response.scheduledWindowLabel}` : null);
     setLine(targets.previewEnergyEl, estimated && !charted ? formatEnergyLine(response.estimate) : null);
     setLine(targets.previewUnavailableEl, estimated ? null : verdictLine);
     setLine(targets.previewCaveatEl, estimated && response.estimate.status !== "satisfied" ? C.estimateCaveat : null);
@@ -1330,6 +1399,7 @@
     hide(targets.previewCostEl);
     hide(targets.previewCostSubtextEl);
     hide(targets.previewChartEl);
+    hide(targets.previewChartLegendEl);
     hide(targets.previewWhenEl);
     hide(targets.previewEnergyEl);
     hide(targets.previewUnavailableEl);
@@ -1337,8 +1407,18 @@
   };
   var renderPreview = (targets, view) => {
     const { response, submitting, error } = view;
-    const { createBtn, previewTitle } = targets;
+    const { createBtn, previewTitle, previewDeviceEl, previewGoalEl, previewEditBtn, previewBackBtn } = targets;
     previewTitle.textContent = C.previewTitle;
+    previewDeviceEl.textContent = view.device.deviceName;
+    const goalSummary = `${C.goalLabel} ${formatSmartTaskGoalValue(view.goal, view.device.unitSymbol)}`;
+    previewGoalEl.textContent = response.ok ? `${goalSummary} \xB7 ${C.readyByLabel} ${response.deadlineLabel}` : goalSummary;
+    previewEditBtn.textContent = SMART_TASK_EDIT_COPY.editButton;
+    previewEditBtn.disabled = submitting;
+    previewBackBtn.disabled = submitting;
+    const cannotFinish = response.ok && response.estimate.status === "cannot_meet";
+    setLine(targets.previewWarningHintEl, cannotFinish ? C.cannotMeetHint : null);
+    const createLabel = cannotFinish ? C.createAnywayButton : C.createButton;
+    createBtn.textContent = submitting ? C.creating : createLabel;
     if (!response.ok) {
       hidePreviewLines(targets);
       setLine(targets.previewUnavailableEl, C.previewUnavailable);
@@ -1349,7 +1429,6 @@
     renderOkPreview(targets, response);
     setLine(targets.previewErrorEl, error);
     createBtn.disabled = submitting || !canCreateFromPreview(response);
-    createBtn.textContent = submitting ? C.creating : C.createButton;
   };
   var renderWidget = (targets, payload, view) => {
     const { root, pickerView, composeView, previewView, createdView, createdMsgEl } = targets;
@@ -1376,12 +1455,6 @@
   // widgets/create_smart_task/src/public/widgetApp.ts
   var C2 = CREATE_SMART_TASK_WIDGET_COPY;
   var CREATED_FLASH_MS = 1800;
-  var READY_BY_PRESET_LOCAL_TIME = {
-    morning: "07:00",
-    midday: "12:00",
-    evening: "18:00",
-    night: "22:00"
-  };
   var createHeightReporter = (root, widgetWindow, getHomey) => {
     let observer = null;
     let lastReportedHeight = 0;
@@ -1453,11 +1526,12 @@
       composeView: "[data-compose-view]",
       composeTitle: "[data-compose-title]",
       goalLabel: "[data-goal-label]",
-      goalValueEl: "[data-goal-value]",
+      goalUnitEl: "[data-goal-unit]",
       goalContextEl: "[data-goal-context]",
       readyByLabel: "[data-ready-by-label]",
       readyByList: "[data-ready-by-list]",
       readyByEchoEl: "[data-ready-by-echo]",
+      composeErrorEl: "[data-compose-error]",
       extraPermsTitle: "[data-extra-perms-title]",
       extraPermsHint: "[data-extra-perms-hint]",
       permBudgetLabel: "[data-perm-budget-label]",
@@ -1467,6 +1541,12 @@
       permLimitHint: "[data-perm-limit-hint]",
       previewView: "[data-preview-view]",
       previewTitle: "[data-preview-title]",
+      previewDeviceEl: "[data-preview-device]",
+      previewGoalEl: "[data-preview-goal]",
+      previewChartLegendEl: "[data-preview-chart-legend]",
+      previewChartPriceEl: "[data-preview-chart-price]",
+      previewChartScheduledEl: "[data-preview-chart-scheduled]",
+      previewWarningHintEl: "[data-preview-warning-hint]",
       previewFeasibilityEl: "[data-preview-feasibility]",
       previewCostEl: "[data-preview-cost]",
       previewCostSubtextEl: "[data-preview-cost-subtext]",
@@ -1486,11 +1566,14 @@
       goalIncBtn: "[data-goal-inc]",
       previewBtn: "[data-preview-btn]",
       previewBackBtn: "[data-preview-back]",
-      createBtn: "[data-create-btn]"
+      createBtn: "[data-create-btn]",
+      previewEditBtn: "[data-preview-edit]"
     };
     const inputs = {
       permBudgetInput: "[data-perm-budget-input]",
-      permLimitInput: "[data-perm-limit-input]"
+      permLimitInput: "[data-perm-limit-input]",
+      goalValueEl: "[data-goal-value]",
+      readyByInput: "[data-ready-by-input]"
     };
     const generic = Object.fromEntries(
       Object.entries(map).map(([k, sel]) => [k, d.querySelector(sel)])
@@ -1517,7 +1600,7 @@
     kind: "compose",
     device,
     goal: device.defaultGoal,
-    readyById: CREATE_SMART_TASK_READY_BY_DEFAULT_ID,
+    readyByLocalTime: CREATE_SMART_TASK_READY_BY_PRESETS[0].localTime,
     // Extra permissions always start off — a fresh device choice never inherits a
     // prior task's opt-ins.
     exemptFromBudget: false,
@@ -1526,8 +1609,14 @@
   var steppedGoalView = (view, direction) => {
     if (view.kind !== "compose") return view;
     const { device, goal } = view;
+    if (goal === null) return view;
     const next = Math.round((goal + direction * device.goalStep) * 100) / 100;
     return { ...view, goal: Math.min(device.goalMax, Math.max(device.goalMin, next)) };
+  };
+  var readyByPresetView = (view, readyById) => {
+    if (view.kind !== "compose") return view;
+    const preset = CREATE_SMART_TASK_READY_BY_PRESETS.find((entry) => entry.id === readyById);
+    return preset ? { ...view, readyByLocalTime: preset.localTime } : view;
   };
   var budgetToggledView = (view, checked) => {
     if (view.kind !== "compose") return view;
@@ -1543,7 +1632,7 @@
         kind: "compose",
         device: view.device,
         goal: view.goal,
-        readyById: view.readyById,
+        readyByLocalTime: view.readyByLocalTime,
         // Keep the opt-in extra permissions when stepping back to edit the goal.
         exemptFromBudget: view.exemptFromBudget,
         limitLowerPriorityDevices: view.limitLowerPriorityDevices
@@ -1551,17 +1640,16 @@
     }
     return { kind: "picker" };
   };
-  var buildCandidateRequest = (source, deadlineAtMs) => ({
+  var buildCandidateRequest = (source, deadlineAtMs) => source.goal === null ? null : {
     deviceId: source.device.deviceId,
     kind: source.device.kind,
     target: source.goal,
-    readyByLocalTime: READY_BY_PRESET_LOCAL_TIME[source.readyById] ?? READY_BY_PRESET_LOCAL_TIME.morning,
+    readyByLocalTime: source.readyByLocalTime,
     ...deadlineAtMs === void 0 ? {} : { deadlineAtMs },
     ...source.exemptFromBudget ? { exemptFromBudget: true } : {},
     ...source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}
-  });
+  };
   var previewedDeadline = (response) => response.ok ? response.deadlineAtMs : void 0;
-  var previewAllowsCreate = (response) => response.ok && response.estimate.status !== "unavailable" && response.estimate.status !== "cannot_meet";
   var closestDataValue = (target, selector, key) => {
     const el = target.closest(selector);
     return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
@@ -1611,10 +1699,19 @@
     if (eventTarget.closest("[data-perm-limit-input]")) return { kind: "toggle-limit" };
     if (eventTarget.closest("[data-preview-btn]")) return { kind: "preview" };
     if (eventTarget.closest("[data-create-btn]")) return { kind: "create" };
-    if (eventTarget.closest("[data-compose-back]") || eventTarget.closest("[data-preview-back]")) {
+    if (eventTarget.closest("[data-compose-back]") || eventTarget.closest("[data-preview-back]") || eventTarget.closest("[data-preview-edit]")) {
       return { kind: "back" };
     }
     return null;
+  };
+  var editedInputView = (view, target, targets) => {
+    if (view.kind !== "compose") return view;
+    if (target === targets.goalValueEl) {
+      const value = targets.goalValueEl.valueAsNumber;
+      return { ...view, goal: Number.isFinite(value) ? value : null };
+    }
+    if (target === targets.readyByInput) return { ...view, readyByLocalTime: targets.readyByInput.value };
+    return view;
   };
   var createWidgetController = (params) => {
     const { targets, widgetDocument, widgetWindow } = params;
@@ -1623,7 +1720,6 @@
     let loadSequence = 0;
     let devicesPayload = null;
     let view = { kind: "picker" };
-    let interactionBound = false;
     let usePreviewData = false;
     let createdResetTimer = null;
     let destroyed = false;
@@ -1631,22 +1727,28 @@
     const reporter = widgetErrorReporter("create_smart_task", () => homeyRef);
     const render = () => renderWidget(targets, devicesPayload, view);
     const setView = (next) => {
+      if (next === view) return;
       view = next;
       requestSeq += 1;
       render();
     };
     const runPreview = async () => {
       if (view.kind !== "compose") return;
+      if (!targets.goalValueEl.reportValidity() || !targets.readyByInput.reportValidity()) return;
+      const request = buildCandidateRequest(view);
+      if (request === null) return;
       const token = ++requestSeq;
-      const response = await fetchPreview(homeyRef, usePreviewData, buildCandidateRequest(view), reporter);
+      targets.previewBtn.disabled = true;
+      targets.previewBtn.textContent = C2.previewing;
+      const response = await fetchPreview(homeyRef, usePreviewData, request, reporter);
       if (token !== requestSeq || view.kind !== "compose") return;
-      view = { ...view, kind: "preview", response, submitting: false, error: null };
+      view = { ...view, kind: "preview", goal: request.target, response, submitting: false, error: null };
       render();
     };
     const runCreate = async () => {
-      if (view.kind !== "preview") return;
-      if (!previewAllowsCreate(view.response)) return;
+      if (view.kind !== "preview" || view.submitting || !canCreateFromPreview(view.response)) return;
       const request = buildCandidateRequest(view, previewedDeadline(view.response));
+      if (request === null) return;
       view = { ...view, submitting: true, error: null };
       const token = ++requestSeq;
       render();
@@ -1677,7 +1779,7 @@
           selectDevice(action.deviceId);
           return;
         case "select-ready-by":
-          if (view.kind === "compose") setView({ ...view, readyById: action.readyById });
+          setView(readyByPresetView(view, action.readyById));
           return;
         case "goal-dec":
           setView(steppedGoalView(view, -1));
@@ -1709,16 +1811,7 @@
         }
       }
     };
-    const bindInteraction = () => {
-      if (interactionBound) return;
-      targets.root.addEventListener("click", handleClick);
-      interactionBound = true;
-    };
-    const unbindInteraction = () => {
-      if (!interactionBound) return;
-      targets.root.removeEventListener("click", handleClick);
-      interactionBound = false;
-    };
+    const handleInput = (event) => setView(editedInputView(view, event.target, targets));
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
       const searchParams = new URLSearchParams(widgetWindow.location.search);
@@ -1736,7 +1829,6 @@
     const bootstrap = (homey) => {
       if (homey && homey === homeyRef) return;
       homeyRef = homey;
-      bindInteraction();
       void loadAndRender();
     };
     const destroy = () => {
@@ -1745,8 +1837,11 @@
         widgetWindow.clearTimeout(createdResetTimer);
         createdResetTimer = null;
       }
-      unbindInteraction();
+      targets.root.removeEventListener("click", handleClick);
+      targets.root.removeEventListener("input", handleInput);
     };
+    targets.root.addEventListener("click", handleClick);
+    targets.root.addEventListener("input", handleInput);
     return { bootstrap, destroy, loadAndRender };
   };
   var installWidget2 = (widgetWindow, widgetDocument) => {

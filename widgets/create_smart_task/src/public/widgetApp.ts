@@ -1,5 +1,5 @@
 import {
-  CREATE_SMART_TASK_READY_BY_DEFAULT_ID,
+  CREATE_SMART_TASK_READY_BY_PRESETS,
   CREATE_SMART_TASK_WIDGET_COPY,
   resolveCreateSmartTaskRejectCopy,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
@@ -12,7 +12,7 @@ import {
 } from '../../../_shared/widgetRuntime';
 import { widgetErrorReporter, type WidgetErrorReporter } from '../../../_shared/widgetClientLog';
 import { resolveCreateSmartTaskPreviewPayload } from './previewPayloads';
-import { renderWidget, type RenderTargets, type ViewState } from './render';
+import { canCreateFromPreview, renderWidget, type RenderTargets, type ViewState } from './render';
 import type {
   CreateSmartTaskCandidateRequest,
   CreateSmartTaskCreateResponse,
@@ -23,12 +23,6 @@ import type {
 
 const C = CREATE_SMART_TASK_WIDGET_COPY;
 const CREATED_FLASH_MS = 1800;
-const READY_BY_PRESET_LOCAL_TIME: Record<string, string> = {
-  morning: '07:00',
-  midday: '12:00',
-  evening: '18:00',
-  night: '22:00',
-};
 
 export type WidgetWindow = WidgetWindowBase & {
   // Declared explicitly: the lib.dom `Window` interface doesn't surface the
@@ -156,11 +150,12 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     composeView: '[data-compose-view]',
     composeTitle: '[data-compose-title]',
     goalLabel: '[data-goal-label]',
-    goalValueEl: '[data-goal-value]',
+    goalUnitEl: '[data-goal-unit]',
     goalContextEl: '[data-goal-context]',
     readyByLabel: '[data-ready-by-label]',
     readyByList: '[data-ready-by-list]',
     readyByEchoEl: '[data-ready-by-echo]',
+    composeErrorEl: '[data-compose-error]',
     extraPermsTitle: '[data-extra-perms-title]',
     extraPermsHint: '[data-extra-perms-hint]',
     permBudgetLabel: '[data-perm-budget-label]',
@@ -170,6 +165,12 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     permLimitHint: '[data-perm-limit-hint]',
     previewView: '[data-preview-view]',
     previewTitle: '[data-preview-title]',
+    previewDeviceEl: '[data-preview-device]',
+    previewGoalEl: '[data-preview-goal]',
+    previewChartLegendEl: '[data-preview-chart-legend]',
+    previewChartPriceEl: '[data-preview-chart-price]',
+    previewChartScheduledEl: '[data-preview-chart-scheduled]',
+    previewWarningHintEl: '[data-preview-warning-hint]',
     previewFeasibilityEl: '[data-preview-feasibility]',
     previewCostEl: '[data-preview-cost]',
     previewCostSubtextEl: '[data-preview-cost-subtext]',
@@ -190,10 +191,13 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     previewBtn: '[data-preview-btn]',
     previewBackBtn: '[data-preview-back]',
     createBtn: '[data-create-btn]',
+    previewEditBtn: '[data-preview-edit]',
   } as const;
   const inputs = {
     permBudgetInput: '[data-perm-budget-input]',
     permLimitInput: '[data-perm-limit-input]',
+    goalValueEl: '[data-goal-value]',
+    readyByInput: '[data-ready-by-input]',
   } as const;
 
   const generic = Object.fromEntries(
@@ -230,7 +234,7 @@ const initialComposeView = (device: CreateSmartTaskDevice): Extract<ViewState, {
   kind: 'compose',
   device,
   goal: device.defaultGoal,
-  readyById: CREATE_SMART_TASK_READY_BY_DEFAULT_ID,
+  readyByLocalTime: CREATE_SMART_TASK_READY_BY_PRESETS[0].localTime,
   // Extra permissions always start off — a fresh device choice never inherits a
   // prior task's opt-ins.
   exemptFromBudget: false,
@@ -243,11 +247,18 @@ const initialComposeView = (device: CreateSmartTaskDevice): Extract<ViewState, {
 const steppedGoalView = (view: ViewState, direction: 1 | -1): ViewState => {
   if (view.kind !== 'compose') return view;
   const { device, goal } = view;
+  if (goal === null) return view;
   const next = Math.round((goal + direction * device.goalStep) * 100) / 100;
   return { ...view, goal: Math.min(device.goalMax, Math.max(device.goalMin, next)) };
 };
 
 // Pure transitions (mirror steppedGoalView). The two permissions are independent.
+const readyByPresetView = (view: ViewState, readyById: string): ViewState => {
+  if (view.kind !== 'compose') return view;
+  const preset = CREATE_SMART_TASK_READY_BY_PRESETS.find((entry) => entry.id === readyById);
+  return preset ? { ...view, readyByLocalTime: preset.localTime } : view;
+};
+
 const budgetToggledView = (view: ViewState, checked: boolean): ViewState => {
   if (view.kind !== 'compose') return view;
   return { ...view, exemptFromBudget: checked };
@@ -265,7 +276,7 @@ const backView = (view: ViewState): ViewState => {
       kind: 'compose',
       device: view.device,
       goal: view.goal,
-      readyById: view.readyById,
+      readyByLocalTime: view.readyByLocalTime,
       // Keep the opt-in extra permissions when stepping back to edit the goal.
       exemptFromBudget: view.exemptFromBudget,
       limitLowerPriorityDevices: view.limitLowerPriorityDevices,
@@ -283,11 +294,11 @@ const backView = (view: ViewState): ViewState => {
 const buildCandidateRequest = (
   source: Extract<ViewState, { kind: 'compose' | 'preview' }>,
   deadlineAtMs?: number,
-): CreateSmartTaskCandidateRequest => ({
+): CreateSmartTaskCandidateRequest | null => source.goal === null ? null : ({
   deviceId: source.device.deviceId,
   kind: source.device.kind,
   target: source.goal,
-  readyByLocalTime: READY_BY_PRESET_LOCAL_TIME[source.readyById] ?? READY_BY_PRESET_LOCAL_TIME.morning,
+  readyByLocalTime: source.readyByLocalTime,
   ...(deadlineAtMs === undefined ? {} : { deadlineAtMs }),
   ...(source.exemptFromBudget ? { exemptFromBudget: true } : {}),
   ...(source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}),
@@ -299,12 +310,6 @@ const buildCandidateRequest = (
 // in that case, so this only feeds an ok preview's create.
 const previewedDeadline = (response: CreateSmartTaskPreviewResponse): number | undefined => (
   response.ok ? response.deadlineAtMs : undefined
-);
-
-const previewAllowsCreate = (response: CreateSmartTaskPreviewResponse): boolean => (
-  response.ok
-  && response.estimate.status !== 'unavailable'
-  && response.estimate.status !== 'cannot_meet'
 );
 
 // Discriminated action a click maps to. Pure resolution (no closure state) so
@@ -419,10 +424,21 @@ export const resolveClickAction = (eventTarget: EventTarget | null): ClickAction
   if (eventTarget.closest('[data-perm-limit-input]')) return { kind: 'toggle-limit' };
   if (eventTarget.closest('[data-preview-btn]')) return { kind: 'preview' };
   if (eventTarget.closest('[data-create-btn]')) return { kind: 'create' };
-  if (eventTarget.closest('[data-compose-back]') || eventTarget.closest('[data-preview-back]')) {
+  if (eventTarget.closest('[data-compose-back]') || eventTarget.closest('[data-preview-back]')
+    || eventTarget.closest('[data-preview-edit]')) {
     return { kind: 'back' };
   }
   return null;
+};
+
+const editedInputView = (view: ViewState, target: EventTarget | null, targets: RenderTargets): ViewState => {
+  if (view.kind !== 'compose') return view;
+  if (target === targets.goalValueEl) {
+    const value = targets.goalValueEl.valueAsNumber;
+    return { ...view, goal: Number.isFinite(value) ? value : null };
+  }
+  if (target === targets.readyByInput) return { ...view, readyByLocalTime: targets.readyByInput.value };
+  return view;
 };
 
 export const createWidgetController = (params: {
@@ -436,7 +452,6 @@ export const createWidgetController = (params: {
   let loadSequence = 0;
   let devicesPayload: CreateSmartTaskDevicesPayload | null = null;
   let view: ViewState = { kind: 'picker' };
-  let interactionBound = false;
   let usePreviewData = false;
   let createdResetTimer: number | null = null;
   let destroyed = false;
@@ -451,6 +466,7 @@ export const createWidgetController = (params: {
   // the request token so any in-flight preview/create that resolves afterwards
   // is recognised as stale and dropped (latest-request-wins).
   const setView = (next: ViewState): void => {
+    if (next === view) return;
     view = next;
     requestSeq += 1;
     render();
@@ -458,20 +474,25 @@ export const createWidgetController = (params: {
 
   const runPreview = async (): Promise<void> => {
     if (view.kind !== 'compose') return;
+    if (!targets.goalValueEl.reportValidity() || !targets.readyByInput.reportValidity()) return;
+    const request = buildCandidateRequest(view);
+    if (request === null) return;
     const token = ++requestSeq;
-    const response = await fetchPreview(homeyRef, usePreviewData, buildCandidateRequest(view), reporter);
+    targets.previewBtn.disabled = true;
+    targets.previewBtn.textContent = C.previewing;
+    const response = await fetchPreview(homeyRef, usePreviewData, request, reporter);
     // Drop a preview that resolved after navigation/device-switch (stale).
     if (token !== requestSeq || view.kind !== 'compose') return;
     // Spread the compose view forward so device/goal/ready-by + the opt-in
     // permissions all carry into the preview state unchanged.
-    view = { ...view, kind: 'preview', response, submitting: false, error: null };
+    view = { ...view, kind: 'preview', goal: request.target, response, submitting: false, error: null };
     render();
   };
 
   const runCreate = async (): Promise<void> => {
-    if (view.kind !== 'preview') return;
-    if (!previewAllowsCreate(view.response)) return;
+    if (view.kind !== 'preview' || view.submitting || !canCreateFromPreview(view.response)) return;
     const request = buildCandidateRequest(view, previewedDeadline(view.response));
+    if (request === null) return;
     view = { ...view, submitting: true, error: null };
     const token = ++requestSeq;
     render();
@@ -510,8 +531,7 @@ export const createWidgetController = (params: {
     if (action === null) return;
     switch (action.kind) {
       case 'select-device': selectDevice(action.deviceId); return;
-      case 'select-ready-by':
-        if (view.kind === 'compose') setView({ ...view, readyById: action.readyById }); return;
+      case 'select-ready-by': setView(readyByPresetView(view, action.readyById)); return;
       case 'goal-dec': setView(steppedGoalView(view, -1)); return;
       case 'goal-inc': setView(steppedGoalView(view, 1)); return;
       case 'toggle-budget': setView(budgetToggledView(view, targets.permBudgetInput.checked)); return;
@@ -527,17 +547,7 @@ export const createWidgetController = (params: {
     }
   };
 
-  const bindInteraction = (): void => {
-    if (interactionBound) return;
-    targets.root.addEventListener('click', handleClick);
-    interactionBound = true;
-  };
-
-  const unbindInteraction = (): void => {
-    if (!interactionBound) return;
-    targets.root.removeEventListener('click', handleClick);
-    interactionBound = false;
-  };
+  const handleInput = (event: Event): void => setView(editedInputView(view, event.target, targets));
 
   const loadAndRender = async (): Promise<void> => {
     const loadId = ++loadSequence;
@@ -560,7 +570,6 @@ export const createWidgetController = (params: {
   const bootstrap = (homey: WidgetHomey | null): void => {
     if (homey && homey === homeyRef) return;
     homeyRef = homey;
-    bindInteraction();
     void loadAndRender();
   };
 
@@ -570,9 +579,12 @@ export const createWidgetController = (params: {
       widgetWindow.clearTimeout(createdResetTimer);
       createdResetTimer = null;
     }
-    unbindInteraction();
+    targets.root.removeEventListener('click', handleClick);
+    targets.root.removeEventListener('input', handleInput);
   };
 
+  targets.root.addEventListener('click', handleClick);
+  targets.root.addEventListener('input', handleInput);
   return { bootstrap, destroy, loadAndRender };
 };
 

@@ -8,7 +8,7 @@ import type {
 // can see the planner picked the cheap hours rather than being told it did.
 // Deliberately NOT the 480×360 plan_budget chart — that one is bound to its own
 // payload and far too tall for this tile. This is a self-contained sparkline-
-// scale band (~132px) with hour ticks, no legend, no y-axis grid.
+// scale band with hour ticks and an external legend, without a y-axis grid.
 //
 // Colour/stroke come from CSS classes (tokenised in index.css), never inline,
 // so the chart tracks the dashboard dark/light theme like the rest of the UI.
@@ -16,9 +16,8 @@ import type {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // viewBox units; the SVG scales to the container width via CSS (width:100%).
-const VIEW = { width: 480, height: 132 };
+const VIEW = { width: 480, height: 108 };
 const PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
-const X_LABEL_Y = 124;
 const PLOT_WIDTH = PLOT.right - PLOT.left;
 const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
 
@@ -156,19 +155,22 @@ export const renderPreviewChart = (
   // 4) Sparse hour ticks at bucket centres: first, last, and ~every third — but
   // suppress an every-third tick within two buckets of the last one, so its label
   // can't collide with the always-shown final tick on a long (23–24h) window.
+  const axis = doc.createElement('div');
+  axis.className = 'pchart-axis';
   priceSeries.forEach((point, index) => {
     const show = index === 0
       || index === count - 1
       || (index % 3 === 0 && (count - 1 - index) >= 2);
     if (!show) return;
-    svg.appendChild(createSvg(doc, 'text', {
-      class: 'pchart__axis',
-      x: bucketCenter(index, count),
-      y: X_LABEL_Y,
-      'text-anchor': 'middle',
-    }, hourLabel(point.startsAtMs)));
+    // HTML labels keep the host's caption size when the chart is narrow.
+    const label = doc.createElement('span');
+    label.className = 'pchart__axis';
+    label.style.left = `${bucketCenter(index, count) / VIEW.width * 100}%`;
+    label.textContent = hourLabel(point.startsAtMs);
+    axis.appendChild(label);
   });
 
   container.appendChild(svg);
+  container.appendChild(axis);
   return true;
 };

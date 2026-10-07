@@ -285,7 +285,7 @@
 .pchart {
   display: block;
   width: 100%;
-  height: 100%;
+  height: calc(100% - var(--pw-line-title, 24px));
 }
 
 /* Shaded band over the scheduled hours — the "runs here" window. The shared
@@ -312,9 +312,17 @@
 }
 
 .pchart__axis {
-  fill: var(--pw-text-muted, #6d7680);
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--pw-text-muted, #6d7680);
   font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-title, 24px);
   font-variant-numeric: var(--pw-numeric, tabular-nums);
+}
+
+.pchart-axis {
+  position: relative;
+  height: var(--pw-line-title, 24px);
 }
 
 /* ----- Extra permissions (read-only summary) ----- */

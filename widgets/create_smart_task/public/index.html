@@ -28,19 +28,24 @@
           </button>
         </header>
         <div class="field">
-          <span class="field__label" data-goal-label>Goal</span>
+          <label class="field__label" data-goal-label for="task-goal">Goal</label>
           <div class="stepper">
             <button type="button" class="stepper__btn" data-goal-dec aria-label="Lower goal">&#8722;</button>
-            <span class="stepper__value" data-goal-value></span>
+            <span class="goal-input">
+              <input id="task-goal" class="stepper__value" type="number" step="any" required data-goal-value>
+              <span class="goal-input__unit" data-goal-unit></span>
+            </span>
             <button type="button" class="stepper__btn" data-goal-inc aria-label="Raise goal">&#43;</button>
           </div>
         </div>
         <p class="goal-context" data-goal-context hidden></p>
         <div class="field">
-          <span class="field__label" data-ready-by-label>Ready by</span>
-          <div class="chip-row" data-ready-by-list></div>
+          <label class="field__label" data-ready-by-label for="task-ready-by">Ready by</label>
+          <input id="task-ready-by" class="time-input" type="time" required data-ready-by-input>
         </div>
+        <div class="chip-row" data-ready-by-list></div>
         <p class="ready-by-echo" data-ready-by-echo hidden></p>
+        <p class="compose-error" data-compose-error hidden></p>
         <!-- Optional, collapsed, OFF by default. Native <details> = an accessible
              keyboard-operable disclosure with no JS needed for the expand. -->
         <details class="extra-perms" data-extra-perms>
@@ -76,17 +81,27 @@
           </button>
         </header>
         <div class="preview-body">
+          <p class="preview-device" data-preview-device></p>
+          <p class="preview-line" data-preview-goal></p>
           <p class="preview-line preview-line--feasibility" data-preview-feasibility hidden></p>
+          <p class="preview-line" data-preview-warning-hint hidden></p>
+          <p class="preview-line preview-line--when" data-preview-when hidden></p>
           <p class="preview-line preview-line--cost" data-preview-cost hidden></p>
           <p class="preview-line preview-line--cost-subtext" data-preview-cost-subtext hidden></p>
           <div class="preview-chart" data-preview-chart hidden></div>
-          <p class="preview-line preview-line--when" data-preview-when hidden></p>
+          <div class="chart-legend" data-preview-chart-legend hidden>
+            <span class="chart-legend__price" data-preview-chart-price></span>
+            <span class="chart-legend__scheduled" data-preview-chart-scheduled></span>
+          </div>
           <p class="preview-line preview-line--energy" data-preview-energy hidden></p>
           <p class="preview-line preview-line--unavailable" data-preview-unavailable hidden></p>
           <p class="preview-line preview-line--caveat" data-preview-caveat hidden></p>
           <p class="preview-line preview-line--error" data-preview-error hidden></p>
         </div>
-        <button type="button" class="primary-btn" data-create-btn>Create smart task</button>
+        <div class="preview-actions">
+          <button type="button" class="secondary-btn" data-preview-edit>Edit task</button>
+          <button type="button" class="primary-btn" data-create-btn>Create task</button>
+        </div>
       </section>
 
       <!-- Success flash -->
@@ -101,7 +116,7 @@
           <span class="row__icon" data-device-icon role="img"></span>
           <span class="row__name" data-device-name></span>
           <span class="row__meta" data-device-meta></span>
-          <span class="row__chevron" aria-hidden="true">&#8594;</span>
+          <span class="row__chevron" aria-hidden="true">&#8250;</span>
         </button>
       </li>
     </template>

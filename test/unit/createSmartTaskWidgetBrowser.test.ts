@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
@@ -8,97 +9,11 @@ import type { WidgetHomey, WidgetWindow } from '../../widgets/create_smart_task/
 import type { CreateSmartTaskPreviewResponse } from '../../widgets/create_smart_task/src/createSmartTaskWidgetTypes';
 import { registerHiddenGuardSuite } from '../cssTestUtils';
 
-// Mirrors the production index.html markup the renderer queries against, so the
-// controller wires up exactly as it would in the Homey webview.
-const WIDGET_MARKUP = `
-  <main id="widget-root" class="widget-root" data-view="picker" aria-label="New smart task">
-    <section class="picker-view" data-picker-view>
-      <p class="step-title" data-picker-prompt>Choose a device</p>
-      <p class="step-caption" data-picker-caption></p>
-      <ol class="rows" data-device-list></ol>
-      <p class="empty" data-picker-empty hidden></p>
-      <p class="empty-hint" data-picker-empty-hint hidden></p>
-      <button type="button" class="retry-btn" data-picker-retry hidden>Try again</button>
-    </section>
-    <section class="compose-view" data-compose-view hidden>
-      <header class="step-header">
-        <button type="button" class="back-btn" data-compose-back>
-          <span class="back-btn__name" data-compose-title></span>
-        </button>
-      </header>
-      <div class="field">
-        <span class="field__label" data-goal-label>Goal</span>
-        <div class="stepper">
-          <button type="button" class="stepper__btn" data-goal-dec>-</button>
-          <span class="stepper__value" data-goal-value></span>
-          <button type="button" class="stepper__btn" data-goal-inc>+</button>
-        </div>
-      </div>
-      <p class="goal-context" data-goal-context hidden></p>
-      <div class="field">
-        <span class="field__label" data-ready-by-label>Ready by</span>
-        <div class="chip-row" data-ready-by-list></div>
-      </div>
-      <p class="ready-by-echo" data-ready-by-echo hidden></p>
-      <details class="extra-perms" data-extra-perms>
-        <summary class="extra-perms__summary">
-          <span class="extra-perms__title" data-extra-perms-title>Extra permissions</span>
-          <span class="extra-perms__chevron" aria-hidden="true">&#9662;</span>
-        </summary>
-        <p class="extra-perms__hint" data-extra-perms-hint></p>
-        <label class="perm-toggle">
-          <input type="checkbox" class="perm-toggle__input" data-perm-budget-input />
-          <span class="perm-toggle__text">
-            <span data-perm-budget-label></span>
-            <span class="perm-toggle__hint" data-perm-budget-hint></span>
-          </span>
-        </label>
-        <label class="perm-toggle" data-perm-limit hidden>
-          <input type="checkbox" class="perm-toggle__input" data-perm-limit-input />
-          <span class="perm-toggle__text">
-            <span data-perm-limit-label></span>
-            <span class="perm-toggle__hint" data-perm-limit-hint></span>
-          </span>
-        </label>
-      </details>
-      <button type="button" class="primary-btn" data-preview-btn>Preview</button>
-    </section>
-    <section class="preview-view" data-preview-view hidden>
-      <header class="step-header">
-        <button type="button" class="back-btn" data-preview-back>
-          <span class="back-btn__name" data-preview-title>Preview</span>
-        </button>
-      </header>
-      <div class="preview-body">
-        <p class="preview-line preview-line--feasibility" data-preview-feasibility hidden></p>
-        <p class="preview-line preview-line--cost" data-preview-cost hidden></p>
-        <p class="preview-line preview-line--cost-subtext" data-preview-cost-subtext hidden></p>
-        <div class="preview-chart" data-preview-chart hidden></div>
-        <p class="preview-line preview-line--when" data-preview-when hidden></p>
-        <p class="preview-line preview-line--energy" data-preview-energy hidden></p>
-        <p class="preview-line preview-line--unavailable" data-preview-unavailable hidden></p>
-        <p class="preview-line preview-line--caveat" data-preview-caveat hidden></p>
-        <p class="preview-line preview-line--error" data-preview-error hidden></p>
-      </div>
-      <button type="button" class="primary-btn" data-create-btn>Create smart task</button>
-    </section>
-    <section class="created-view" data-created-view hidden>
-      <p class="created-msg" data-created-msg></p>
-    </section>
-  </main>
-  <template id="device-template">
-    <li class="row">
-      <button type="button" class="row__btn" data-device-button>
-        <span class="row__icon" data-device-icon role="img"></span>
-        <span class="row__name" data-device-name></span>
-        <span class="row__meta" data-device-meta></span>
-      </button>
-    </li>
-  </template>
-  <template id="ready-by-template">
-    <button type="button" class="chip-btn" data-ready-by aria-pressed="false"></button>
-  </template>
-`;
+// Exercise the production markup so newly added inputs and actions are covered.
+const WIDGET_MARKUP = new DOMParser().parseFromString(
+  readFileSync('widgets/create_smart_task/public/index.html', 'utf8'),
+  'text/html',
+).body.innerHTML;
 
 const flushPromises = async (): Promise<void> => {
   await Promise.resolve();
@@ -165,6 +80,86 @@ describe('create smart task widget browser', () => {
     document.body.className = '';
     document.body.innerHTML = '';
     vi.restoreAllMocks();
+  });
+
+  describe('editable task inputs', () => {
+    const enter = (selector: string, value: string): void => {
+      const input = document.querySelector(selector) as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
+    const connect = async (calls: { path: string; body: unknown }[]): Promise<void> => {
+      const homey: WidgetHomey = {
+        api: async (method, path, body) => {
+          if (method === 'GET') return { state: 'ready', devices: [DEVICE_A] };
+          calls.push({ path, body });
+          return path === '/preview' ? OK_PREVIEW : { ok: true };
+        },
+      };
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(homey as never);
+      await flushPromises();
+      click('[data-device-button]');
+    };
+
+    test('custom goal and time survive preview, editing and creation with the previewed deadline', async () => {
+      const calls: { path: string; body: unknown }[] = [];
+      await connect(calls);
+      enter('[data-goal-value]', '67.5');
+      enter('[data-ready-by-input]', '06:45');
+      expect(document.querySelectorAll('[data-ready-by][aria-pressed="true"]')).toHaveLength(0);
+      expect(document.querySelector('[data-ready-by-echo]')?.textContent).toContain('06:45');
+      click('[data-preview-btn]');
+      await flushPromises();
+      expect(calls[0]).toMatchObject({ path: '/preview', body: { target: 67.5, readyByLocalTime: '06:45' } });
+      expect(document.querySelector('[data-preview-device]')?.textContent).toBe(DEVICE_A.deviceName);
+      expect(document.querySelector('[data-preview-goal]')?.textContent).toContain('67.5 °C');
+      expect(document.querySelector('[data-preview-goal]')?.textContent).toContain(OK_PREVIEW.deadlineLabel);
+      click('[data-preview-edit]');
+      expect((document.querySelector('[data-goal-value]') as HTMLInputElement).value).toBe('67.5');
+      expect((document.querySelector('[data-ready-by-input]') as HTMLInputElement).value).toBe('06:45');
+      click('[data-preview-btn]');
+      await flushPromises();
+      click('[data-create-btn]');
+      await flushPromises();
+      expect(calls[2]).toMatchObject({ path: '/create', body: {
+        target: 67.5, readyByLocalTime: '06:45', deadlineAtMs: OK_PREVIEW.deadlineAtMs,
+      } });
+    });
+
+    test('a preset replaces a custom time and is submitted without changing the goal', async () => {
+      const calls: { path: string; body: unknown }[] = [];
+      await connect(calls);
+      enter('[data-ready-by-input]', '06:45');
+      click('[data-ready-by-id="midday"]');
+      expect((document.querySelector('[data-ready-by-input]') as HTMLInputElement).value).toBe('12:00');
+      expect(document.querySelector('[data-ready-by-id="midday"]')?.getAttribute('aria-pressed')).toBe('true');
+      click('[data-preview-btn]');
+      await flushPromises();
+      expect(calls[0]).toMatchObject({ body: { target: 65, readyByLocalTime: '12:00' } });
+    });
+
+    test.each(['', '90', '65.25'])('invalid goal %s cannot send a preview or silently use the last goal', async (goal) => {
+      const calls: { path: string; body: unknown }[] = [];
+      await connect(calls);
+      enter('[data-goal-value]', goal);
+      expect((document.querySelector('[data-preview-btn]') as HTMLButtonElement).disabled).toBe(true);
+      expect(document.querySelector('[data-compose-error]')?.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.invalidGoal);
+      click('[data-preview-btn]');
+      await flushPromises();
+      expect(calls).toHaveLength(0);
+    });
+
+    test('a cleared ready-by time requires another time before previewing', async () => {
+      const calls: { path: string; body: unknown }[] = [];
+      await connect(calls);
+      enter('[data-ready-by-input]', '');
+      expect((document.querySelector('[data-preview-btn]') as HTMLButtonElement).disabled).toBe(true);
+      click('[data-preview-btn]');
+      await flushPromises();
+      expect(calls).toHaveLength(0);
+    });
   });
 
   // FIX A (Ft7H6): a real boot (NOT ?preview=1) where the SDK bridge never
@@ -448,7 +443,7 @@ describe('create smart task widget browser', () => {
       ready: () => undefined,
     });
 
-    test('cannot-finish preview is visibly distinct and cannot be created', async () => {
+    test('cannot-finish preview warns and can be created explicitly', async () => {
       const createCalls: unknown[] = [];
       const cannotMeetPreview = {
         ...OK_PREVIEW,
@@ -467,11 +462,15 @@ describe('create smart task widget browser', () => {
       expect(statusLine.textContent).toContain('Cannot finish');
       expect((document.querySelector('[data-preview-unavailable]') as HTMLElement).hidden).toBe(true);
       const createBtn = document.querySelector('[data-create-btn]') as HTMLButtonElement;
-      expect(createBtn.disabled).toBe(true);
+      expect(createBtn.disabled).toBe(false);
+      expect(createBtn.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.createAnywayButton);
+      expect(document.querySelector('[data-preview-warning-hint]')?.textContent)
+        .toBe(CREATE_SMART_TASK_WIDGET_COPY.cannotMeetHint);
 
       click('[data-create-btn]');
       await flushPromises();
-      expect(createCalls).toHaveLength(0);
+      expect(createCalls).toHaveLength(1);
+      expect(createCalls[0]).toMatchObject({ deviceId: DEVICE_A.deviceId, target: 65, deadlineAtMs: OK_PREVIEW.deadlineAtMs });
     });
 
     test('unavailable preview uses the backend reason instead of always blaming missing prices', async () => {
@@ -627,7 +626,7 @@ describe('create smart task widget browser', () => {
       // feasibility verdict, not a missing-price gap.
       const unavailable = document.querySelector('[data-preview-unavailable]') as HTMLElement;
       expect(unavailable.hidden).toBe(true);
-      // At-risk is still a user decision; only cannot-finish blocks create.
+      // At-risk remains a user decision.
       const createBtn = document.querySelector('[data-create-btn]') as HTMLButtonElement;
       expect(createBtn.disabled).toBe(false);
     });

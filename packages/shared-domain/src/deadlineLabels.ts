@@ -667,6 +667,9 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   goalLabel: 'Goal',
   readyByLabel: 'Ready by',
   previewButton: 'Preview',
+  previewing: 'Previewing…',
+  invalidGoal: 'Enter a goal within this device’s range.',
+  invalidReadyBy: 'Choose a ready-by time.',
   // Step 3 — preview + confirm.
   previewTitle: 'Preview',
   // Plain schedule-window word ("these hours are scheduled to run") rather
@@ -681,7 +684,11 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // future prices, measurements, and task edits can still move it. Keep the
   // caveat short for the 320–480 px widget.
   estimateCaveat: 'Estimate — the actual run may differ as prices and other tasks change.',
-  createButton: 'Create smart task',
+  createButton: 'Create task',
+  createAnywayButton: 'Create anyway',
+  chartPrice: 'Price',
+  chartScheduled: 'Scheduled hours',
+  cannotMeetHint: 'PELS will work toward this goal within your power limits, but it may not finish in time.',
   backButton: 'Back',
   // Shown when the preview can't be projected and the backend did not provide a
   // more specific missing-input reason. Distinct from a hard error. Avoids the
@@ -923,7 +930,7 @@ export const resolveSmartTaskEditRejectCopy = (reason: string | undefined): stri
 // occurrence (rolling to tomorrow if already past today). Morning-commute and
 // evening times cover the common EV-charge / heat-by-bedtime cases without a
 // heavy datetime picker. The user picks one of these anchor points directly —
-// there is no fine-grained ±minutes control on the widget.
+// the widget also accepts a specific local time.
 export type CreateSmartTaskReadyByPreset = {
   id: string;
   label: string;
@@ -936,8 +943,6 @@ export const CREATE_SMART_TASK_READY_BY_PRESETS: readonly CreateSmartTaskReadyBy
   { id: 'evening', label: '18:00', localTime: '18:00' },
   { id: 'night', label: '22:00', localTime: '22:00' },
 ];
-
-export const CREATE_SMART_TASK_READY_BY_DEFAULT_ID = 'morning';
 
 // Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (`info`, `muted`, `ok`, `warn`,
