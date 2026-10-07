@@ -309,8 +309,8 @@ export type SettingsUiPlanMetaSnapshot = SettingsUiPlanMetaSnapshotBase
  * A home battery on the overview, beyond its resolved card status: what it is
  * doing, for the hero line that names a battery holding the limit. `power` is
  * the battery's own reading, unsigned (the activity gives the direction).
- * `holdsLimit`: PELS holds it to hold the limit and it reports supplying, the
- * one case the hero names; resolved by the producer
+ * `holdsLimit`: PELS holds it to hold the limit, it is available and it
+ * reports supplying, the one case the hero names; resolved by the producer
  * (`lib/plan/batteryStatusReadModel.ts`).
  */
 export type SettingsUiPlanHomeBattery = {

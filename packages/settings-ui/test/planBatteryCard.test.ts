@@ -29,7 +29,7 @@ const battery = (signedW: number, percent: number): HomeBatteryCard => ({
 const batteryDevice = (card: HomeBatteryCard, hold: StorageHold): PlanDeviceSnapshot => ({
   ...uiDeviceFixture({ id: 'battery-1', name: 'Sessy battery', controllable: false }),
   status: buildHomeBatteryStatus(card, hold, true, false),
-  homeBattery: buildSettingsUiPlanHomeBattery(card, hold),
+  homeBattery: buildSettingsUiPlanHomeBattery(card, hold, true),
 });
 
 const renderCard = (dev: PlanDeviceSnapshot): HTMLDivElement => {

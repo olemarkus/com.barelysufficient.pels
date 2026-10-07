@@ -142,7 +142,7 @@ describe('home battery claim and hand-back through the real transport', () => {
 
     device.clearCapabilityBehavior('target_power');
     vi.setSystemTime(Date.now() + 60_000);
-    owner.onSnapshotCommitted({ entries: [] });
+    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(writes().slice(-2)).toEqual([['target_power', 0], ['target_power_mode', 'anti_feed']]);
@@ -174,12 +174,12 @@ describe('home battery claim and hand-back through the real transport', () => {
     // landed, and writes it back at the end; its next poll reports the claim.
     vi.setSystemTime(Date.now() + 2_000);
     transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'anti_feed');
-    owner.onSnapshotCommitted({ entries: [] });
+    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'claim_contested' });
     vi.setSystemTime(Date.now() + 5_000);
     transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'homey');
     vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
-    owner.onSnapshotCommitted({ entries: [] });
+    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
 
     expect(owner.isManaged(BATTERY)).toBe(true);
     expect(owner.wasTakenOver(BATTERY)).toBe(false);
@@ -204,7 +204,7 @@ describe('home battery claim and hand-back through the real transport', () => {
     const logs = captureLogger('info');
     vi.setSystemTime(Date.now() + 1_000);
     transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'anti_feed');
-    owner.onSnapshotCommitted({ entries: [] });
+    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
 
     expect(owner.isManaged(BATTERY)).toBe(true);
     expect(owner.wasTakenOver(BATTERY)).toBe(false);

@@ -274,7 +274,8 @@ export type SupplyingBattery = { name: string; kw: number };
 
 /**
  * The batteries the hero names as holding the limit: the producer's
- * `holdsLimit` (held for relief and supplying), with the power each reports.
+ * `holdsLimit` (available, held for relief and supplying), with the power each
+ * reports.
  */
 export const resolveSupplyingBatteries = (
   devices: readonly Pick<SettingsUiPlanDeviceSnapshot, 'name' | 'homeBattery'>[],

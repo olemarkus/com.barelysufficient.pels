@@ -56,6 +56,7 @@ const record = (previousValue: string, claimedAtMs = T0 - 3_600_000) => ({
 
 const refresh = (...deviceIds: string[]): ObservedDeviceStateRefreshPayload => ({
   entries: deviceIds.map((id) => ({ observationSeq: 1, observedAtMs: T0, observed: { id } as ObservedDeviceState })),
+  ignoredReadIds: [],
 });
 
 const buildOwner = (params: {
@@ -542,6 +543,22 @@ describe('HomeBatteryControlOwner hand-back', () => {
     expect(settings.get(CLAIM_KEY)).toBeNull();
     expect(logs.findEvent('battery_control_claim_pruned')).toMatchObject({ deviceId: BATTERY, reason: 'device_removed' });
     logs.restore();
+  });
+
+  it('never prunes the record of a battery the read listed but ignored, though PELS never parsed it', () => {
+    // Just after a restart: the battery's read breaks the read contract, so it
+    // has no entry, yet the read listed it.
+    const { owner, settings } = buildOwner({
+      settings: settingsStore({ [CLAIM_KEY]: record('manual') }),
+      batteries: {},
+    });
+    const ignoredBattery = { ...refresh(OTHER), ignoredReadIds: [BATTERY] };
+
+    owner.onSnapshotCommitted(ignoredBattery);
+    owner.onSnapshotCommitted(ignoredBattery);
+    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [BATTERY] });
+
+    expect(settings.get(CLAIM_KEY)).toEqual(record('manual'));
   });
 });
 

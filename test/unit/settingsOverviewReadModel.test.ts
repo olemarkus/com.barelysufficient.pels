@@ -593,6 +593,13 @@ describe('settingsOverviewReadModel home battery card', () => {
     expect(card.homeBattery).toEqual({ activity: 'supplying', power: { kind: 'observed', kw: 2.4 }, holdsLimit: true });
   });
 
+  it('never says an unavailable battery holds the limit, so the hero does not name it supplying', () => {
+    const device = { ...batteryDevice({ kind: 'relief' }), available: false };
+    const card = buildSettingsOverviewDeviceReadModel(device, battery());
+    expect(card.status).toMatchObject({ kind: 'unavailable', powerText: null });
+    expect(card.homeBattery).toEqual({ activity: 'supplying', power: { kind: 'observed', kw: 2.4 }, holdsLimit: false });
+  });
+
   it('names what a battery held for the limit still does, not what the plan asked', () => {
     const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'relief' }), battery({ signedW: 1500 }));
     expect(card.status).toMatchObject({

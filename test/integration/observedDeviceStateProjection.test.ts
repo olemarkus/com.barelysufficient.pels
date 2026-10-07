@@ -700,6 +700,7 @@ describe('ObservedDeviceStateProjection apply guard', () => {
             observedAtMs: 1000 + index,
             observed: baseObserved(id, true),
         })),
+        ignoredReadIds: [],
     });
 
     // The committed snapshot is always complete truth (a targeted refresh is

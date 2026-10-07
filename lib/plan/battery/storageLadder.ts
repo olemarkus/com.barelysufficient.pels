@@ -8,10 +8,12 @@
  * on what a step is worth and on which battery PELS may take over.
  */
 import type {
+  MissingStorageInput,
   ObservedStorageInput,
   StoragePlanInputKind,
 } from '../../../packages/planner-types/src/planInputDevice';
 import { storageSetpointToleranceW, type StorageReleaseReason } from '../../planContract/storageDecision';
+import type { StorageLeverState } from '../planState';
 
 /**
  * How long a battery limit's undelivered relief is credited: a discharge
@@ -27,6 +29,23 @@ const STORAGE_MIN_DEADBAND_W = 200;
 export function hasStorageInput<T extends object>(device: T): device is T & StoragePlanInputKind {
   return 'storage' in device;
 }
+
+/**
+ * Type guard: the plan device carries a storage cluster PELS has a lever on,
+ * read (`observed`) or held but unread (`missing`). A battery PELS only
+ * watches (`watched`) has none: the stages that hold, limit or hand back a
+ * battery read it as one without a storage cluster.
+ */
+export function hasStorageLeverInput<T extends object>(
+  device: T,
+): device is T & { storage: ObservedStorageInput | MissingStorageInput } {
+  return hasStorageInput(device) && device.storage.reading !== 'watched';
+}
+
+/** The battery's own discharge, W: 0 while it is idle or charging. */
+export const ownDischargeWOf = (storage: Pick<ObservedStorageInput, 'signedPowerW'>): number => (
+  Math.max(0, -storage.signedPowerW)
+);
 
 /**
  * Why PELS may not take this battery over, as the reason it hands back a hold
@@ -78,8 +97,17 @@ export const drawMarginWFor = (storage: Pick<ObservedStorageInput, 'range'>): nu
 /** The battery's own charge, W: 0 while it is idle or discharging. */
 export const ownChargeWOf = (storage: ObservedStorageInput): number => Math.max(0, storage.signedPowerW);
 
-/** The battery's own discharge, W: 0 while it is idle or charging. */
-export const ownDischargeWOf = (storage: ObservedStorageInput): number => Math.max(0, -storage.signedPowerW);
+/**
+ * The charge its own mode takes once handed back on top of what this hold
+ * already lets through, W. A charge the hold lets through is on the meter
+ * already, so only the rest is new draw; a discharge hold lets none through,
+ * so it is the whole own-mode charge. The restore lane sizes a hand-back on
+ * it (`lib/plan/restore/storageHandBack.ts`), and a charge limit names it as
+ * the charge it holds back (`resolveHeldBackChargeW`).
+ */
+export const resolveOwnModeChargeAboveHoldW = (lever: StorageLeverState): number => (
+  Math.max(0, lever.ownModeChargeW - Math.max(0, lever.setpointW))
+);
 
 /** Whether raising from `fromW` to `toW` (either side of 0 W) is a step the battery could visibly answer. */
 export const isRaiseVisible = (storage: Pick<ObservedStorageInput, 'range'>, fromW: number, toW: number): boolean => (

@@ -77,6 +77,21 @@ const battery = (
   },
 });
 
+/** A Managed battery PELS can only watch (no setpoint surface): its signed power, nothing to drive. */
+const watchedBattery = (signedPowerW: number): PlanInputDevice & StoragePlanInputKind => ({
+  ...buildPlanInputDevice({
+    id: 'battery',
+    name: 'Battery',
+    isBatteryOrSolar: true,
+    commandAuthority: false,
+    managed: true,
+    binaryControllable: false,
+    currentDrawKw: Math.max(0, signedPowerW) / 1000,
+    priority: BATTERY_LAST,
+  }),
+  storage: { reading: 'watched', signedPowerW },
+});
+
 /** The pump is opted into "Run on solar surplus"; nothing else is. */
 const SURPLUS_SETTINGS = {
   pump: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 0 },
@@ -679,6 +694,27 @@ describe('storage relief in the plan build', () => {
     expect(state.actuation.lastDeviceRestoreMs.battery).toBeUndefined();
   });
 
+  it('sizes a capped charge\'s hand-back on the charge above the cap, and holds back nothing below it', async () => {
+    const { build } = buildHarness({ paceKw: 3 });
+    const devices = (lampOn: boolean, batteryW: number, claimHeld: boolean) => [
+      battery({ signedPowerW: batteryW, claimHeld }, { priority: 2 }), heater(lampOn, 0.5, 'lamp', 3),
+    ];
+    // Its own mode charges 2.5 kW and the house is 1.4 kW over: the lamp ranked
+    // below it goes first, then the battery's charge is capped for the rest.
+    const first = await build(4400, devices(true, 2500, false));
+    expect(plannedState(first, 'lamp')).toBe('shed');
+    expect(storageDecision(first)).toEqual({ kind: 'setpoint', setpointW: 1500, stepW: 5 });
+
+    // Capped at 1.5 kW, which the meter already shows, with 1.5 kW of room:
+    // handing it back adds only the 1 kW its own mode takes above the cap.
+    await build(1500, devices(false, 1500, true), 6 * 60_000);
+    const handedBack = await build(1500, devices(false, 1500, true), 9 * 60_000);
+    expect(storageDecision(handedBack)).toEqual({ kind: 'release', reason: 'restored' });
+    // It did not wait for room, so the lamp ranked below waits behind nothing.
+    expect(handedBack.devices.find((device) => device.id === 'lamp')?.reason)
+      .not.toEqual({ code: PLAN_REASON_CODES.waitingForOtherDevices });
+  });
+
   it('hands back in priority order: a device ranked above the battery resumes first', async () => {
     const { build } = buildHarness({ paceKw: 3 });
     // 4 kW of background and the 2 kW heater: the battery (last) discharges
@@ -846,6 +882,36 @@ describe('storage charge from surplus in the plan build', () => {
       expect(storageDecision(plan)).toBeUndefined();
     }
     expect(plannedState(plan, 'pump')).toBe('shed');
+  });
+
+  it('offers the devices nothing of a battery PELS can only watch, discharging 2 kW into the export', async () => {
+    const watched = buildHarness({ paceKw: 10 });
+    const solar = buildHarness({ paceKw: 10 });
+    let watchedPlan: DevicePlan | undefined;
+    let solarPlan: DevicePlan | undefined;
+    for (let reading = 0; reading <= 30; reading += 1) {
+      watchedPlan = await watched.build(-2000, [pump(false), watchedBattery(-2000)], reading * 10_000);
+      // Nothing to decide for it: no hold, no claim, no summary.
+      expect(storageDecision(watchedPlan)).toBeUndefined();
+      expect(watchedPlan.devices.find((device) => device.id === 'battery')?.storageHold).toEqual({ kind: 'none' });
+      solarPlan = await solar.build(-2000, [pump(false)], reading * 10_000);
+    }
+    // The meter reads the same 2 kW export: solar starts the pump, the battery's stored energy does not.
+    expect(plannedState(watchedPlan!, 'pump')).toBe('shed');
+    expect(watched.state.surplusEligibilityByDevice.pump).toBeUndefined();
+    expect(watched.state.storageLeverByDevice).toEqual({});
+    expect(plannedState(solarPlan!, 'pump')).toBe('keep');
+  });
+
+  it('turns a surplus device off when a battery PELS can only watch discharges to keep it running', async () => {
+    const { build, state } = buildHarness({ paceKw: 10 });
+    state.surplusEligibilityByDevice.pump = { eligible: true, sinceMs: START_MS };
+    let shedAtMs = Number.POSITIVE_INFINITY;
+    for (let atMs = 0; atMs <= 4 * 60_000 && shedAtMs === Number.POSITIVE_INFINITY; atMs += 10_000) {
+      const plan = await build(0, [pump(true, 3), watchedBattery(-500)], atMs);
+      if (plannedState(plan, 'pump') === 'shed') shedAtMs = atMs;
+    }
+    expect(shedAtMs).toBeLessThanOrEqual(SURPLUS_ABSORB_SETTLE_MS + 10_000);
   });
 
   it('offers the devices nothing of a battery charging from the grid, and claims it for nothing', async () => {

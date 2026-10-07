@@ -420,7 +420,7 @@ export class DeviceTransport {
         // so any reader routed onto the projection would silently fall back to the
         // snapshot and the projection path would never be exercised by the suite.
         this.setSnapshot(snapshot);
-        this.observationBridge.dispatchStateRefresh(snapshot);
+        this.observationBridge.dispatchStateRefresh(snapshot, new Set());
     }
     setSnapshot(s: TransportDeviceSnapshot[]): void {
         this.snapshotCommit.commit(s);

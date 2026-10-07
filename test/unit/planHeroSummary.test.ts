@@ -153,13 +153,17 @@ describe('buildDecisionSentence', () => {
       power: { kind: 'observed', signedW },
       level: { kind: 'observed', percent: 60 },
     });
-    const named = (hold: DevicePlanDevice['storageHold'], signedW: number) => {
-      const devices = [{ name: 'Sessy battery', homeBattery: buildSettingsUiPlanHomeBattery(card(signedW), hold) }];
+    const named = (hold: DevicePlanDevice['storageHold'], signedW: number, available = true) => {
+      const devices = [{ name: 'Sessy battery', homeBattery: buildSettingsUiPlanHomeBattery(card(signedW), hold, available) }];
       return buildDecisionSentence(baseline({ supplyingBatteries: resolveSupplyingBatteries(devices) })).text;
     };
 
     it('names a battery PELS holds for relief that is supplying', () => {
       expect(named({ kind: 'relief' }, -2400)).toBe('Sessy battery is supplying 2.4 kW to hold your limit.');
+    });
+
+    it('does not name an unavailable battery, whose card says Unavailable', () => {
+      expect(named({ kind: 'relief' }, -2400, false)).toBe('Quiet hour. Nothing to do.');
     });
 
     it('does not name a battery whose charge PELS caps', () => {

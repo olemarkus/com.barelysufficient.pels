@@ -16,6 +16,12 @@ const NO_STORAGE_CLUSTER: StorageClusterFields = {};
  * `missing`, so the planner can keep or release the hold rather than lose it
  * silently; one it does not hold and cannot read has no lever at all.
  *
+ * A battery the owner reads no setpoint surface on (PELS can only observe it)
+ * has no lever either, but one read this cycle is `watched`: its signed power
+ * alone, so its discharge counts against surplus devices. Managed is not
+ * asked here: a Managed-off battery, of either kind, is dropped by the plan's
+ * managed filter (`isRuntimePlannedPlanDevice`) and never reaches the plan.
+ *
  * The delivery and charge ceilings are the owner's resolved ones, so the
  * planner reads one number for each: the range, or less once an increase
  * plateaued short of it. Power-limit control is the battery's own gate on
@@ -28,9 +34,15 @@ export const resolveStorageCluster = (
   options: ToPlanDeviceOptions,
 ): StorageClusterFields => {
   if (options.storage.kind === 'none') return NO_STORAGE_CLUSTER;
-  const control = options.storage.owner.readControl(device.id);
-  if (control.kind === 'none') return NO_STORAGE_CLUSTER;
+  const { owner } = options.storage;
+  const control = owner.readControl(device.id);
   const power = device.batteryPower;
+  if (control.kind === 'none') {
+    // Only a home battery carries `batteryPower`.
+    return device.available && power !== undefined
+      ? { storage: { reading: 'watched', signedPowerW: power.signedW } }
+      : NO_STORAGE_CLUSTER;
+  }
   if (!device.available || power === undefined) {
     return control.claimHeld
       ? { storage: {

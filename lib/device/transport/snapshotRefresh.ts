@@ -210,9 +210,12 @@ function commitRefreshedSnapshot(refresh: SnapshotRefreshService, params: {
     snapshot: TargetDeviceSnapshot[];
     previousSnapshot: readonly TargetDeviceSnapshot[];
     rawWasEmpty: boolean;
+    // The devices this read listed but ignored (`DeviceListRead.ignoredIds`):
+    // present, though one PELS never parsed has no snapshot entry.
+    ignoredReadIds: ReadonlySet<string>;
     nowMs: number;
 }): boolean {
-    const { snapshot, previousSnapshot, rawWasEmpty, nowMs } = params;
+    const { snapshot, previousSnapshot, rawWasEmpty, ignoredReadIds, nowMs } = params;
     if (shouldDeferEmptySnapshotCommit(refresh, snapshot, previousSnapshot, rawWasEmpty, nowMs)) return false;
     refresh.snapshotCommit.commit(snapshot);
     // Warm iff this read returned at least one RAW device, re-judged on every
@@ -227,7 +230,7 @@ function commitRefreshedSnapshot(refresh: SnapshotRefreshService, params: {
     // After setSnapshot so latestSnapshotById is current. The grace-deferred
     // path returns above (before setSnapshot), so the abandon-grace invariant
     // — no refresh event on a deferred empty read — holds by construction.
-    refresh.observationBridge.dispatchStateRefresh(snapshot);
+    refresh.observationBridge.dispatchStateRefresh(snapshot, ignoredReadIds);
     refresh.temperatureRecovery.completeAfterRefresh();
     // Managed devices PLUS the cars the EV car-link probe tracks. Per-device
     // capability subscriptions (`homey:device:<id>`) are the ONLY realtime source
@@ -504,6 +507,7 @@ export class SnapshotRefreshService {
             snapshot,
             previousSnapshot,
             rawWasEmpty: list.length === 0,
+            ignoredReadIds: read.ignoredIds,
             nowMs: start,
         });
         if (!committed) return homePowerSample;

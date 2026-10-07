@@ -98,11 +98,13 @@ const resolveObservedDirection = (battery: HomeBatteryCard): Direction | null =>
  * The battery's activity and power as the card and the hero name them. A held
  * battery's word is its observed direction; one that reports none yet keeps
  * the word for what PELS holds it to do, with no power. Power is present only
- * with an observed direction.
+ * with an observed direction. An unavailable battery holds nothing: its card
+ * says Unavailable, so the hero must not name it supplying.
  */
 export function buildSettingsUiPlanHomeBattery(
   battery: HomeBatteryCard,
   hold: StorageHold,
+  available: boolean,
 ): SettingsUiPlanHomeBattery {
   const direction = resolveObservedDirection(battery);
   const power: SettingsUiPlanHomeBattery['power'] = direction !== null && battery.power.kind === 'observed'
@@ -112,7 +114,7 @@ export function buildSettingsUiPlanHomeBattery(
   // surplus or capped hold, or a battery in its own mode, discharges for
   // reasons of its own.
   // A capped charge holds nothing: only a discharge for the limit does.
-  const holdsLimit = hold.kind === 'relief' && direction === 'supplying';
+  const holdsLimit = available && hold.kind === 'relief' && direction === 'supplying';
   if (isOwnModeHold(hold)) return { activity: 'own_mode', power, holdsLimit };
   return { activity: direction ?? INTENDED_DIRECTION[hold.kind], power, holdsLimit };
 }
@@ -168,7 +170,7 @@ export function buildHomeBatteryStatus(
       reason: null,
     };
   }
-  const { activity, power } = buildSettingsUiPlanHomeBattery(battery, hold);
+  const { activity, power } = buildSettingsUiPlanHomeBattery(battery, hold, available);
   if (hold.kind === 'charge_limit') {
     return {
       ...common,

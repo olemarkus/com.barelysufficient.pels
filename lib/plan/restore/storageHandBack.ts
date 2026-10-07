@@ -17,8 +17,12 @@
  * otherwise take the room first, every cycle, and the battery never swaps.
  *
  * The hand-back is sized as the charge its own mode takes once handed back
- * (`StorageLeverState.ownModeChargeW`); the discharge PELS holds is withheld
- * from restore already, so the hand-back never spends it.
+ * (`StorageLeverState.ownModeChargeW`) above what the hold already lets
+ * through (`resolveOwnModeChargeAboveHoldW`): a battery capped at a charge
+ * already draws it on the meter, so only the rest is new. A discharge hold
+ * lets no charge through, so it needs the whole own-mode charge; the discharge
+ * PELS holds is withheld from restore already, so the hand-back never spends
+ * it.
  *
  * The battery is not a load: nothing here touches its plan device. A hand-back
  * the lane admits joins `storageHandedBack`, and the battery stage releases
@@ -27,6 +31,7 @@
 import type { DevicePlanDevice } from '../planTypes';
 import type { StorageLeverState } from '../planState';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
+import { resolveOwnModeChargeAboveHoldW } from '../battery/storageLadder';
 import { resolveReserveAdmission } from '../admission';
 import { computeRestoreBufferKw } from './accounting';
 import { canAdmitWithinBatch, canAttemptBatchContinuation, recordBatchAdmission } from './batch';
@@ -43,8 +48,8 @@ export function planStorageHandBack(
 ): RestoreLoopState {
   const { state, deviceMap, timing, batchState, headroomReserves, phase } = cycle;
   const { availableHeadroom, restoredOneThisCycle } = loop;
-  /** The charge its own mode takes once handed back, kW. */
-  const ownModeChargeKw = lever.ownModeChargeW / 1000;
+  /** The charge its own mode adds once handed back, over what the hold lets through, kW. */
+  const handBackChargeKw = resolveOwnModeChargeAboveHoldW(lever) / 1000;
   const debugKey = `storage:${dev.id}`;
   const reject = (rejectionReason: string): RestoreLoopState => {
     emitRestoreDebugEventOnChange({
@@ -56,7 +61,7 @@ export function planStorageHandBack(
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        neededKw: ownModeChargeKw,
+        neededKw: handBackChargeKw,
         availableKw: availableHeadroom,
         decision: 'rejected',
         rejectionReason,
@@ -80,7 +85,7 @@ export function planStorageHandBack(
   });
   if (gateReason) return reject(gateReason.code);
 
-  const neededKw = ownModeChargeKw + computeRestoreBufferKw(ownModeChargeKw);
+  const neededKw = handBackChargeKw + computeRestoreBufferKw(handBackChargeKw);
   if (batchContinuation && !canAdmitWithinBatch(batchState, neededKw)) return reject('batch_full');
   const reserved = resolveReserveAdmission({
     dev, availableHeadroom, neededKw, reserves: headroomReserves,
