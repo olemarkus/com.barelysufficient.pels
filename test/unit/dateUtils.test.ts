@@ -60,6 +60,64 @@ describe('dateUtils time zone handling', () => {
     expect(new Date(getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone)).toISOString()).toBe('2024-03-31T22:00:00.000Z');
     expect(new Date(getPreviousLocalDayStartUtcMs(dayStartUtcMs, timeZone)).toISOString()).toBe('2024-03-29T23:00:00.000Z');
   });
+
+  it('reuses day boundaries, including the zero timestamp, without formatting again', async () => {
+    const { getDateKeyStartMs } = await loadDateUtils();
+    const spy = vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts');
+    try {
+      expect(getDateKeyStartMs('1970-01-01', 'UTC')).toBe(0);
+      expect(spy).toHaveBeenCalled();
+      spy.mockClear();
+      expect(getDateKeyStartMs('1970-01-01', 'UTC')).toBe(0);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('keeps cached boundaries separate across zones, dates and DST changes', async () => {
+    const { getDateKeyStartMs } = await loadDateUtils();
+    const cases = [
+      ['2024-03-31', 'Europe/Oslo', '2024-03-30T23:00:00.000Z'],
+      ['2024-04-01', 'Europe/Oslo', '2024-03-31T22:00:00.000Z'],
+      ['2024-10-27', 'Europe/Oslo', '2024-10-26T22:00:00.000Z'],
+      ['2024-10-28', 'Europe/Oslo', '2024-10-27T23:00:00.000Z'],
+      ['2024-03-31', 'Asia/Kolkata', '2024-03-30T18:30:00.000Z'],
+      ['2024-03-31', 'UTC', '2024-03-31T00:00:00.000Z'],
+      // Apia skipped this local date; preserve the search's next-day boundary.
+      ['2011-12-30', 'Pacific/Apia', '2011-12-30T10:00:00.000Z'],
+    ] as const;
+    for (let pass = 0; pass < 2; pass += 1) {
+      for (const [dateKey, zone, expected] of cases) {
+        expect(new Date(getDateKeyStartMs(dateKey, zone)).toISOString()).toBe(expected);
+      }
+    }
+  });
+
+  it('evicts older day boundaries instead of retaining unlimited history', async () => {
+    const { getDateKeyStartMs, shiftDateKey } = await loadDateUtils();
+    const firstDate = '2020-01-01';
+    const firstBoundary = getDateKeyStartMs(firstDate, 'UTC');
+    for (let day = 1; day < 600; day += 1) {
+      getDateKeyStartMs(shiftDateKey(firstDate, day), 'UTC');
+    }
+    const spy = vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts');
+    try {
+      getDateKeyStartMs(shiftDateKey(firstDate, 599), 'UTC');
+      expect(spy).not.toHaveBeenCalled();
+      expect(getDateKeyStartMs(firstDate, 'UTC')).toBe(firstBoundary);
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('does not cache failed boundary lookups', async () => {
+    const { getDateKeyStartMs } = await loadDateUtils();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      expect(() => getDateKeyStartMs('2024-01-01', 'Invalid/Zone')).toThrow(RangeError);
+    }
+  });
 });
 
 describe('local day bucket labels', () => {

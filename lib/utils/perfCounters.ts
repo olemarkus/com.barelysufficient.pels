@@ -11,10 +11,13 @@ export type PerfSnapshot = {
   durations: Record<string, PerfDuration>;
 };
 
-let state: PerfSnapshot = {
+// Only this module owns live counters. Readers receive detached snapshots.
+/* eslint-disable functional/immutable-data -- Mutate privately owned counters; copy at the export boundary. */
+const state: PerfSnapshot = {
   startedAt: Date.now(),
-  counts: {},
-  durations: {},
+  // Metric names must not resolve to inherited properties on the live tables.
+  counts: Object.create(null) as Record<string, number>,
+  durations: Object.create(null) as Record<string, PerfDuration>,
 };
 
 type PerfCounterEntry = string | [string, number];
@@ -25,7 +28,10 @@ const normalizeDelta = (delta: number): number => {
 };
 
 export const incPerfCounter = (key: string, delta = 1): void => {
-  incPerfCounters([[key, delta]]);
+  if (!key) return;
+  const safeDelta = normalizeDelta(delta);
+  if (safeDelta === 0) return;
+  state.counts[key] = (state.counts[key] || 0) + safeDelta;
 };
 
 export const incPerfCounters = (entries: PerfCounterEntry[]): void => {
@@ -39,31 +45,20 @@ export const incPerfCounters = (entries: PerfCounterEntry[]): void => {
     const existing = deltas.get(key) || 0;
     deltas.set(key, existing + safeDelta);
   }
-  if (deltas.size === 0) return;
-  const nextDeltaCounts = Object.fromEntries(
-    Array.from(deltas.entries()).map(([key, delta]) => [key, (state.counts[key] || 0) + delta]),
-  );
-  const nextCounts = { ...state.counts, ...nextDeltaCounts };
-  state = { ...state, counts: nextCounts };
+  for (const [key, delta] of deltas) {
+    state.counts[key] = (state.counts[key] || 0) + delta;
+  }
 };
 
 export const addPerfDuration = (key: string, ms: number): void => {
   if (!key) return;
   const safeMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
   const entry = state.durations[key] || { totalMs: 0, maxMs: 0, count: 0, windowMaxMs: 0 };
-  const nextEntry = {
-    totalMs: entry.totalMs + safeMs,
-    maxMs: Math.max(entry.maxMs, safeMs),
-    count: entry.count + 1,
-    windowMaxMs: Math.max(entry.windowMaxMs || 0, safeMs),
-  };
-  state = {
-    ...state,
-    durations: {
-      ...state.durations,
-      [key]: nextEntry,
-    },
-  };
+  state.durations[key] = entry;
+  entry.totalMs += safeMs;
+  entry.maxMs = Math.max(entry.maxMs, safeMs);
+  entry.count += 1;
+  entry.windowMaxMs = Math.max(entry.windowMaxMs || 0, safeMs);
 };
 
 export const getPerfSnapshot = (): PerfSnapshot => ({
@@ -76,12 +71,8 @@ export const getPerfSnapshot = (): PerfSnapshot => ({
 
 export const getPerfSnapshotAndResetWindow = (): PerfSnapshot => {
   const snapshot = getPerfSnapshot();
-  const nextDurations = Object.fromEntries(
-    Object.entries(state.durations).map(([key, value]) => [key, { ...value, windowMaxMs: 0 }]),
-  );
-  state = {
-    ...state,
-    durations: nextDurations,
-  };
+  for (const duration of Object.values(state.durations)) {
+    duration.windowMaxMs = 0;
+  }
   return snapshot;
 };

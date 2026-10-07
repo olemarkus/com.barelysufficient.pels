@@ -213,7 +213,7 @@ function findingsFor(sourceFile, relativePath, exemptBudget) {
       });
     } else {
       const prose = proseCallName(node);
-      if (prose !== undefined) {
+      if (!exempt && prose !== undefined) {
         findings.push({ line, kind: 'prose', detail: `${prose}() writes prose through the SDK, not a structured event` });
       }
     }

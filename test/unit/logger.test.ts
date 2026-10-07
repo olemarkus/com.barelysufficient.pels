@@ -67,9 +67,8 @@ describe('logger', () => {
     logger.info({ event: 'base_fields' }, 'hello');
     const parsed = JSON.parse(await pending);
 
-    // The Homey destination forwards the serialized record onward and only
-    // strips `level`. If `base` were ever restored, `pid`/`hostname` would ride
-    // into every forwarded line instead of being dropped as they once were.
+    // The Homey destination removes only the transport level. Restoring the
+    // default base would also forward these unused fields to Homey.
     expect(parsed).not.toHaveProperty('pid');
     expect(parsed).not.toHaveProperty('hostname');
   });
