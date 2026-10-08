@@ -7,6 +7,18 @@ description: Internal planner behavior, budget logic, cooldowns, estimation rule
 
 This document explains the internal logic and assumptions PELS uses to manage your devices. It uses the public vocabulary from the user guide in headings and prose. Raw planner terms are shown only in code-style text or where they are still part of diagnostics, metrics, or existing Homey Flow card names.
 
+## Grid import limit
+
+Grid import limit is independent of the hourly or 15-minute capacity limit. Enable either, both, or neither in **Limits & safety**. Existing installations keep capacity control on; grid import control starts off. The first release supports the Main home; meter areas retain their existing capacity controls.
+
+PELS compares the latest accepted signed whole-home import reading with 95% of the configured grid limit. Negative power means export: solar production is not added back to this constraint. Above that working target, the next meter-driven plan reduces flexible loads immediately, without capacity-period energy grace or recent-resume protection. Device priorities, supported step reductions, configured floors and EV minimum charging current still apply. All admissions, including budget-exempt devices and Smart tasks, must fit measured grid headroom; price and solar policies cannot bypass it.
+
+An undelivered reduction keeps the existing bounded 30-second pending-relief credit. Once device telemetry confirms delivery, a new whole-home reading that remains high can request more reduction: an unrelated load may have consumed the freed space. Restoration uses the existing clear band of up to 0.4 kW (bounded to 10% of the grid target for low limits), 60-second post-shed delay and adaptive 60–300-second resume cooldown. Restore batching is disabled while grid control is enabled.
+
+This is an observed-power control loop, not electrical protection. Temporary overshoot can occur before the meter updates and devices respond. Use a whole-home net grid meter and choose a threshold appropriate to the connection. Telemetry gaps use the same existing 10-minute silence and frozen-reading policy as other limits, including its one-time fail-closed reduction. No separate grid timeout is introduced.
+
+Capacity-period energy tracking and peak history continue when Capacity limit is off, but its pacing, exhaustion holds, projections and shortfall/manual-action verdicts do not control devices. Grid pressure has its own reason and status, and does not fire capacity-period shortfall Flows. Smart-task and daily-budget forecasting of the grid limit is deferred; live planner admission enforces it.
+
 ## Permissions
 
 PELS requires the `homey:manager:api` permission to function. This permission grants access to Homey's internal device API (HomeyAPI), which PELS uses to:
@@ -87,8 +99,8 @@ The daily energy budget is a **soft constraint** that helps pace energy use thro
 
 - **Never triggers manual-action alarms**: If PELS cannot limit enough devices to meet the daily budget, it continues operating without emergency alarms.
 - **No period-boundary tightening**: Daily budget pacing is not time-critical, so it does not tighten toward the sustainable rate as a capacity period ends.
-- **Combined with the capacity pace**: The planner uses the smaller of the capacity safe pace and the daily budget pace for limiting decisions.
-- **Budget exemption is control-only**: Budget-exempt devices are ignored by daily-budget control, but their real usage still appears in reporting and they still count for capacity protection.
+- **Combined with the capacity pace**: The planner uses the smallest enabled capacity pace, daily budget pace and grid import target for limiting decisions.
+- **Budget exemption is control-only**: Budget-exempt devices are ignored by daily-budget control, but their real usage still appears in reporting and they still count toward grid import and capacity limits.
 
 See [Daily Energy Budget](daily-budget.md) for detailed documentation.
 
@@ -116,7 +128,7 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 
 - After resuming a device, wait at least 60 seconds for power measurements to stabilize
 - If a resume is followed by overshoot or new limiting, this cooldown delays the next restart by increasing amounts up to 5 minutes
-- Previously limited devices, binary or stepped, may resume in a bounded batch (up to three) when fresh measurements show ample available power; a running stepped device's step-ups remain one at a time
+- When grid import control is off, previously limited devices, binary or stepped, may resume in a bounded batch (up to three) when fresh measurements show ample available power; a running stepped device's step-ups remain one at a time
 - Every held device waits out the cooldown; the one that resumes first (turned-off devices before stepped increases before thermostat raises, by priority within each) shows the countdown and the rest show that other devices are ahead
 - Prevents an unbounded set of devices turning on simultaneously before measurements settle
 

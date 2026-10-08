@@ -1,3 +1,4 @@
+import { spendPowerHeadroom } from '../powerLimitMath';
 import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import type { PlanEngineState } from '../planState';
 import {
@@ -84,7 +85,7 @@ export function admitSteppedRestore(
         dev,
         needed,
         devPower: nextStep.planningPowerW / 1000,
-        availableHeadroom: effectiveHeadroomKw,
+        availableHeadroom: reserved.effectiveHeadroomKw,
         restoreDebugKey,
         admittedDeviceUpdate: {
           desiredStepId: nextStep.id,
@@ -110,7 +111,7 @@ export function admitSteppedRestore(
     }
     return rejectSteppedRestoreForInsufficientHeadroom({
       dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-      admission, need: params.need, restoreDebugKey,
+      admission: reserved.admission, need: params.need, restoreDebugKey,
     }, loop);
   }
   setRestorePlanDevice(deviceMap, dev.id, {
@@ -149,7 +150,7 @@ export function admitSteppedRestore(
     dev.id,
     needed,
   );
-  return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
+  return { availableHeadroom: spendPowerHeadroom(availableHeadroom, needed), restoredOneThisCycle: true };
 }
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
@@ -250,6 +251,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
     admission, need, restoreDebugKey } = params;
   const { availableHeadroom } = loop;
+  if (availableHeadroom === null) return loop;
   const reason = buildRestoreHeadroomReason({
     neededKw: need.neededKw,
     availableKw: availableHeadroom,

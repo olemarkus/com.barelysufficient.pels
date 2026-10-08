@@ -55,7 +55,7 @@ export type HoldPass = {
 
 /** The running pair the per-device loop threads through the pass. */
 export type HoldLoopState = {
-  availableHeadroom: number;
+  availableHeadroom: number | null;
   restoredOneThisCycle: boolean;
 };
 

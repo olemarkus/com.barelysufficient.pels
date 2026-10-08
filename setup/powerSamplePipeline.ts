@@ -7,7 +7,6 @@ import {
 } from '../lib/power/sampleIngest';
 import type { PlanRebuildThrottle } from '../lib/plan/rebuildScheduler/throttle';
 import { requireLastTotalPowerKw } from '../lib/power/lastTotalPower';
-import { computeShortfallThreshold } from '../lib/plan/planBudget';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
@@ -23,7 +22,7 @@ import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
-import type { CapacitySettings } from '../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../packages/contracts/src/capacitySettings';
 import type { GenerationSegment } from '../lib/power/trackerTypes';
 import type { ThermalDirection } from '../packages/contracts/src/types';
 import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfallAvailability';
@@ -38,7 +37,7 @@ export type PowerSamplePipelineDeps = {
     deps: SampleIngestQueueDeps<PowerSampleRequest>,
   ) => SampleIngestQueue<PowerSampleRequest>;
   getPowerTracker: () => PowerTrackerState;
-  getCapacitySettings: () => CapacitySettings;
+  getCapacitySettings: () => PowerLimitSettings;
   getTimeZone: () => string;
   /**
    * Late-bound by necessity: main's pipeline is a `PelsApp` field
@@ -331,10 +330,11 @@ export class PowerSamplePipeline {
           await this.deps.planRebuildThrottle.onSample(
             {
               currentPowerW,
+              gridImportLimitKw: capacitySettings.gridImportLimitKw,
               totalKw: requireLastTotalPowerKw(admittedTracker),
               limitKw: capacitySettings.limitKw,
               capacityPaceKw: planService.computeDynamicSoftLimit(),
-              shortfallThresholdKw: computeShortfallThreshold(capacitySettings, admittedTracker, nowMs),
+              shortfallThresholdKw: planEngine.computeShortfallThreshold(),
             },
             posture,
           );

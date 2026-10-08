@@ -46,7 +46,7 @@ import type {
   PowerTrackerMeterIdentity,
   PowerTrackerState,
 } from '../../lib/power/trackerTypes';
-import type { CapacityScalarSettings, CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { CapacityScalarSettings, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveCurrentMonthQuarterPeakKw } from '../../lib/power/capacityPeak';
 import type { PlanService } from '../../lib/plan/planService';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
@@ -92,6 +92,8 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 // main's contract limit. Dry-run defaults TRUE (the safe boot default): an
 // unconfigured sub-home plans but never actuates.
 const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = {
+  capacityEnabled: true,
+  gridImportLimitKw: null,
   limitKw: 10,
   marginKw: 0.2,
   dryRun: true,
@@ -364,7 +366,7 @@ function createBundleSamplePipeline(params: {
   getPlanEngine: () => ReturnType<typeof createPlanEngine>;
   getPlanService: () => PlanService;
   getCapacityGuard: () => CapacityGuard;
-  getCapacitySettings: () => CapacitySettings;
+  getCapacitySettings: () => PowerLimitSettings;
   savePowerTracker: (state: PowerTrackerState) => void;
   getPowerTracker: () => PowerTrackerState;
 }): {

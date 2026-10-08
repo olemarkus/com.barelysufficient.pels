@@ -11,9 +11,9 @@ import {
 } from './planSteppedRestorePending';
 
 export type SteppedRestoreAttemptHold =
-  | { kind: 'pending'; availableHeadroom: number; restoredOneThisCycle: true }
-  | { kind: 'retry_backoff'; availableHeadroom: number; restoredOneThisCycle: boolean }
-  | { kind: 'not_handled'; availableHeadroom: number; restoredOneThisCycle: boolean };
+  | { kind: 'pending'; availableHeadroom: number | null; restoredOneThisCycle: true }
+  | { kind: 'retry_backoff'; availableHeadroom: number | null; restoredOneThisCycle: boolean }
+  | { kind: 'not_handled'; availableHeadroom: number | null; restoredOneThisCycle: boolean };
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applySteppedRestoreAttemptHold(params: {
@@ -25,7 +25,7 @@ export function applySteppedRestoreAttemptHold(params: {
   phase: 'startup' | 'runtime';
   state: PlanEngineState;
   restoreDebugKey: string;
-  availableHeadroom: number;
+  availableHeadroom: number | null;
   restoredOneThisCycle: boolean;
   setDevice: (updates: Partial<DevicePlanDevice>) => void;
 }): SteppedRestoreAttemptHold {
@@ -95,7 +95,7 @@ export function applySteppedRestoreAttemptHold(params: {
     });
     return {
       kind: 'pending',
-      availableHeadroom: availableHeadroom - needed,
+      availableHeadroom: availableHeadroom === null ? null : availableHeadroom - needed,
       restoredOneThisCycle: true,
     };
   }

@@ -26,7 +26,7 @@ export type ShortfallExecutorDeps = {
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getPowerTracker: () => PowerTrackerState;
   /** `capacityPaceKw` — the planner's live hourly threshold, for the log line. */
-  getCapacityPaceKw: () => number;
+  getCapacityPaceKw: () => number | null;
   /**
    * `computeShortfallThreshold` — the hard-cap budget threshold, for the log
    * line and nothing else. INJECTED rather than recomputed here: it is a
@@ -35,7 +35,7 @@ export type ShortfallExecutorDeps = {
    * getter, not a value, so it is still read at the instant the line is
    * written — an eagerly captured number would describe a different moment.
    */
-  getShortfallThresholdKw: () => number;
+  getShortfallThresholdKw: () => number | null;
 };
 
 export class ShortfallExecutor {
@@ -49,6 +49,7 @@ export class ShortfallExecutor {
 
     const shortfallThreshold = this.deps.getShortfallThresholdKw();
     const softLimit = this.deps.getCapacityPaceKw();
+    if (shortfallThreshold === null || softLimit === null) return;
     const total = resolveLastTotalPowerKw(this.deps.getPowerTracker());
     const totalStr = total === null ? 'unknown' : total.toFixed(2);
     const home = this.deps.getHomeDisplayName();

@@ -8,11 +8,11 @@
  * stages beneath it needed: the old power-sample entry declared 16 properties
  * and read none of them itself.
  *
- * Every field is present and finite. The scheduler is reached from inside the
+ * Every field is present; numeric observations are finite. The scheduler is reached from inside the
  * tracker's `schedulePlanRebuild` callback, which the tracker core invokes only
  * after `saveState` has persisted an ADMITTED sample — so there is no "no
- * reading yet" case to model here, and no optional, nullable, or sentinel
- * member is permitted on it. What a doubtful reading means was decided in
+ * reading yet" case to model here. A nullable constraint means it is disabled,
+ * never that a reading is missing. What a doubtful reading means was decided in
  * `lib/power` before this point (root `AGENTS.md` § Control Flow).
  */
 export type PowerRebuildSignal = {
@@ -23,13 +23,14 @@ export type PowerRebuildSignal = {
   /** The configured hard cap in kW — the delta threshold scales off it. */
   limitKw: number;
   /** The planner's live hourly threshold (`computeDynamicSoftLimit`). */
-  capacityPaceKw: number;
+  capacityPaceKw: number | null;
   /** `capacityPaceKw - totalKw`. Negative means over pace. */
-  headroomKw: number;
+  headroomKw: number | null;
   /** Producer-resolved `computeShortfallThreshold`. */
-  shortfallThresholdKw: number;
+  shortfallThresholdKw: number | null;
   isInShortfall: boolean;
   hardCapBreach: HardCapBreach;
+  gridBreach: HardCapBreach;
   /** The last plan is still converging, so power deltas are worth rebuilding on. */
   planConvergenceActive: boolean;
   /** The last plan proved nothing can be shed or restored. */
@@ -57,11 +58,12 @@ export type RebuildCadence = {
  * what a breach or a tight headroom IS, is policy.
  */
 export type AdmittedPowerReading = {
+  gridImportLimitKw: number | null;
   currentPowerW: number;
   totalKw: number;
   limitKw: number;
-  capacityPaceKw: number;
-  shortfallThresholdKw: number;
+  capacityPaceKw: number | null;
+  shortfallThresholdKw: number | null;
 };
 
 /**
@@ -77,12 +79,12 @@ export type PlanRebuildPosture = {
   shortfallUnrecoverable: boolean;
 };
 
-export const resolveHeadroomTight = (headroomKw: number): boolean => headroomKw <= 0;
+export const resolveHeadroomTight = (headroomKw: number | null): boolean => headroomKw !== null && headroomKw <= 0;
 
 export const resolveHardCapBreach = (
   totalKw: number,
-  shortfallThresholdKw: number,
+  shortfallThresholdKw: number | null,
 ): HardCapBreach => {
-  const deficitKw = Math.max(0, totalKw - shortfallThresholdKw);
+  const deficitKw = shortfallThresholdKw === null ? 0 : Math.max(0, totalKw - shortfallThresholdKw);
   return { breached: deficitKw > 0, deficitKw };
 };

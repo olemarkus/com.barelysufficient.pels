@@ -1,5 +1,5 @@
-import type { MeasuredPower } from '../planContext';
-import { SHEDDING_CLEAR_THRESHOLD_KW } from '../planConstants';
+import type { MeasuredPower, PlanContext } from '../planContext';
+import { resolveSheddingClearThresholdKw } from '../powerLimitMath';
 import type { PlanEngineState } from '../planState';
 import type { SheddingOvershootInput } from './types';
 
@@ -23,6 +23,7 @@ import type { SheddingOvershootInput } from './types';
  * to re-read the guard to learn whether its own request had been refused.
  */
 export function resolveSheddingLatch(
+  context: PlanContext,
   power: MeasuredPower,
   state: PlanEngineState,
   overshoot: SheddingOvershootInput,
@@ -30,6 +31,8 @@ export function resolveSheddingLatch(
 ): boolean {
   const hourlyBudgetExhausted = state.hourlyBudgetExhausted;
   const inOvershoot = overshoot.actionable || hourlyBudgetExhausted;
-  if (inOvershoot && (shedSet.size > 0 || hourlyBudgetExhausted || power.headroomKw < 0)) return true;
-  return power.headroomKw >= SHEDDING_CLEAR_THRESHOLD_KW ? false : state.sheddingActive;
+  const remainsOverLimit = power.headroomKw !== null && power.headroomKw < 0;
+  if (inOvershoot && (shedSet.size > 0 || hourlyBudgetExhausted || remainsOverLimit)) return true;
+  const clearThresholdKw = resolveSheddingClearThresholdKw(context);
+  return power.headroomKw === null || power.headroomKw >= clearThresholdKw ? false : state.sheddingActive;
 }

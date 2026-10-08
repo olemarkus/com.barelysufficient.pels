@@ -225,3 +225,15 @@ history (`lib/store/legacySettingsImport.ts` holds the rules; each family's
 import beside its store hands in what "holds" and "adopt" mean). The settings UI
 reaches history through `api.js` endpoints and the store's own realtime push,
 never through a settings key.
+
+### Main-home power limit switches
+
+`capacity_enabled`, `grid_import_enabled` and `grid_import_limit_kw` belong to
+`packages/shared-domain/src/settings/powerLimits.ts`. The runtime settings store
+uses SDK key presence to supply legacy defaults (capacity on, grid off); a listed
+malformed flag or an enabled grid limit without a finite positive threshold is
+unavailable and preserves the last accepted runtime posture. The browser receives
+the running effective posture through `capacityScalars`, and uses the shared
+threshold validator for edits and for the retained disabled input value. It writes
+a valid grid threshold before enabling the grid switch. These keys are Main-only,
+not home-scopable. Disabled control axes are `null`, never large stand-in limits.

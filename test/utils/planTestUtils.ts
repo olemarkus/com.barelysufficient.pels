@@ -1263,6 +1263,8 @@ export const buildUnmeasuredPlanMeta = (
 const buildPlanMetaBase = (
   overrides: Partial<PlanMetaBase>,
 ): PlanMetaBase => ({
+  gridImportLimitKw: null,
+  gridImportTargetKw: null,
   totalKw: 5,
   softLimitKw: 6,
   capacitySoftLimitKw: 6,
@@ -1306,6 +1308,8 @@ export const buildSettingsUiPlanMeta = (
 const buildSettingsUiPlanMetaBase = (
   overrides: Partial<SettingsUiPlanMetaSnapshotBase>,
 ): SettingsUiPlanMetaSnapshotBase => ({
+  gridImportLimitKw: null,
+  gridImportTargetKw: null,
   totalKw: 5,
   softLimitKw: 6,
   capacitySoftLimitKw: 6,

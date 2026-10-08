@@ -9,6 +9,8 @@ import { resolveFixtureTemperatureSetpoints } from '../helpers/temperatureSetpoi
  * axes, no daily axis, capacity not breached.
  */
 export const buildMeasuredPower = (overrides: Partial<MeasuredPower> = {}): MeasuredPower => ({
+  gridHeadroomKw: null,
+  gridBreached: false,
   drawKw: 3,
   headroomKw: 1,
   capacityHeadroomKw: 1,
@@ -31,6 +33,8 @@ export type PlanContextFixtureOverrides = Partial<PlanContext> & { intent?: Part
  * capacity-bound, an unremarkable hour. A spec overrides what it is about.
  */
 export const buildPlanContextFixture = ({ intent = {}, ...overrides }: PlanContextFixtureOverrides = {}): PlanContext => ({
+  gridImportLimitKw: null,
+  gridImportTargetKw: null,
   devices: [],
   temperatureSetpoints: resolveFixtureTemperatureSetpoints(overrides.devices ?? [], intent),
   softLimit: 0,
@@ -65,19 +69,22 @@ export type PlanCycleSpec = PlanContextFixtureOverrides & Partial<MeasuredPower>
 export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext; power: MeasuredPower } => {
   const {
     total, headroom, headroomRaw, drawKw, headroomKw, capacityHeadroomKw, budgetHeadroomKw,
-    capacityBreached, budgetReleasableHeadroomHold, ...contextOverrides
+    capacityBreached, budgetReleasableHeadroomHold, gridHeadroomKw, gridBreached, ...contextOverrides
   } = spec;
   const context = buildPlanContextFixture(contextOverrides);
   const draw = drawKw ?? total ?? 3;
-  const binding = headroomKw ?? headroom ?? headroomRaw ?? 0;
+  const binding = headroomKw === undefined ? headroom ?? headroomRaw ?? 0 : headroomKw;
+  const gridHeadroom = context.gridImportTargetKw === null ? null : context.gridImportTargetKw - draw;
   return {
     context,
     power: buildMeasuredPower({
+      gridHeadroomKw: gridHeadroomKw === undefined ? gridHeadroom : gridHeadroomKw,
+      gridBreached: gridBreached ?? (gridHeadroom !== null && gridHeadroom < 0),
       drawKw: draw,
       headroomKw: binding,
-      capacityHeadroomKw: capacityHeadroomKw ?? binding,
+      capacityHeadroomKw: capacityHeadroomKw === undefined ? binding : capacityHeadroomKw,
       budgetHeadroomKw: budgetHeadroomKw ?? null,
-      capacityBreached: capacityBreached ?? draw > context.capacitySoftLimit,
+      capacityBreached: capacityBreached ?? (context.capacitySoftLimit !== null && draw > context.capacitySoftLimit),
       budgetReleasableHeadroomHold: budgetReleasableHeadroomHold ?? false,
     }),
   };

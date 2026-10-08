@@ -23,10 +23,11 @@ function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: number):
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function markRestoreCandidatesStayShedForShortfall(params: {
   deviceMap: Map<string, DevicePlanDevice>;
-  headroomKw: number;
+  headroomKw: number | null;
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
 }): void {
   const { deviceMap, headroomKw, setDevice: setPlanDevice } = params;
+  if (headroomKw === null) return;
   const steppedCandidates = getSteppedRestoreCandidates([...deviceMap.values()]);
   markOffDevicesStayOff({
     deviceMap,

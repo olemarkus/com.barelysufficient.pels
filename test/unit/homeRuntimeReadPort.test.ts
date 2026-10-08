@@ -21,7 +21,7 @@ const readingFor = (homeId: string): HomeRuntimeReading => ({
     operatingMode: 'Home',
     dryRunEffective: false,
     lastMeterPowerKw: 2.4,
-    capacityScalars: { limitKw: 7, marginKw: 0.2, dryRun: false, periodMinutes: 60 },
+    capacityScalars: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 7, marginKw: 0.2, dryRun: false, periodMinutes: 60 },
     lastDeviceControlledMs: {},
   },
 });

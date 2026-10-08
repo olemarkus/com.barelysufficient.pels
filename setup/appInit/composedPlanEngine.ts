@@ -88,11 +88,15 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.builder.buildDevicePlanSnapshot(devices);
   }
 
-  public computeDynamicSoftLimit(): number {
+  public computeCapacityPace(): number | null {
+    return this.builder.computeCapacityPace();
+  }
+
+  public computeDynamicSoftLimit(): number | null {
     return this.builder.computeDynamicSoftLimit();
   }
 
-  public computeShortfallThreshold(): number {
+  public computeShortfallThreshold(): number | null {
     return this.builder.computeShortfallThreshold();
   }
 

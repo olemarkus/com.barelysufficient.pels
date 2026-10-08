@@ -158,7 +158,7 @@ export type AppServiceWiringDeps = {
   runNativeWiringDetectionBestEffort: () => void;
   getDeviceDriverIdOverride: (deviceId: string) => string | undefined;
   getFlowConflict: (deviceId: string) => { conflictingCapabilities: readonly string[]; flowName?: string } | undefined;
-  computeShortfallThreshold: () => number;
+  computeShortfallThreshold: () => number | null;
   retryDeferredOvershootSeed: (
     membership: HomeMembershipService,
     allowPendingOwnershipGeneration: boolean,

@@ -205,7 +205,7 @@ type UnreadCarrier = 'absent' | 'no_input' | MissingStorageInput;
  * The headroom still to give back, W, as each battery takes its share; and the
  * deficit, which keeps a surplus hold where it is for shedding to decide.
  */
-type StorageBalance = { deficitW: number; headroomW: number };
+type StorageBalance = { deficitW: number; headroomW: number | null };
 
 /** What the plan does with an observed battery this cycle. */
 type ObservedStep = { kind: 'release'; reason: StorageReleaseReason } | { kind: 'hold'; lever: StorageLeverState };
@@ -330,6 +330,7 @@ const resolveLoweredDischargeW = (
 ): number => {
   const heldW = -lever.setpointW;
   if (isSettling(lever, nowTs) || nowTs - lever.lastDecreaseAtMs < STORAGE_DECREASE_MIN_INTERVAL_MS) return heldW;
+  if (balance.headroomW === null) return 0;
   const deadbandW = deadbandWFor(storage);
   const baseW = Math.min(heldW, ownDischargeWOf(storage));
   if (baseW - balance.headroomW < deadbandW) return 0;
@@ -357,7 +358,10 @@ const resolveFundedChargeW = (
   const ownChargeW = ownChargeWOf(storage);
   const halfDeadbandW = deadbandWFor(storage) / 2;
   const shareW = offer.availableW - offer.addedBackW + ownChargeW - halfDeadbandW;
-  const unboundW = Math.min(storage.chargeCeilingW, shareW, ownChargeW + balance.headroomW - halfDeadbandW);
+  const fundedCeilingW = Math.min(storage.chargeCeilingW, shareW);
+  const unboundW = balance.headroomW === null
+    ? fundedCeilingW
+    : Math.min(fundedCeilingW, ownChargeW + balance.headroomW - halfDeadbandW);
   const raisedW = Math.max(ownModeChargeW, Math.min(unboundW, shareW - offer.belowW));
   const fundedW = unboundW > ownModeChargeW ? raisedW : unboundW;
   return fundedW < deadbandWFor(storage) ? 0 : floorStorageSetpointW(fundedW, storage.range);
@@ -620,7 +624,9 @@ class StorageReliefCycle {
     const creditW = resolveCreditW(storage, next, nowTs);
     this.balance = {
       deficitW: this.balance.deficitW,
-      headroomW: Math.max(0, this.balance.headroomW - Math.max(0, previousDischargeW - nextDischargeW)),
+      headroomW: this.balance.headroomW === null
+        ? null
+        : Math.max(0, this.balance.headroomW - Math.max(0, previousDischargeW - nextDischargeW)),
     };
     this.creditW += creditW;
     if (nextDischargeW > 0) this.drawMarginW = Math.max(this.drawMarginW, drawMarginWFor(storage));
@@ -742,8 +748,8 @@ export function decideStorageRelief(
   nowTs: number,
 ): StorageRelief {
   const cycle = new StorageReliefCycle({
-    deficitW: Math.max(0, -power.headroomKw * 1000),
-    headroomW: Math.max(0, power.headroomKw * 1000),
+    deficitW: power.headroomKw === null ? 0 : Math.max(0, -power.headroomKw * 1000),
+    headroomW: power.headroomKw === null ? null : Math.max(0, power.headroomKw * 1000),
   }, offers, nowTs);
   const seen = new Set<string>();
   for (const device of devices) {
@@ -804,23 +810,6 @@ export function releaseStorageOnSilentMeter(
     .filter((deviceId) => !devices.some((device) => device.id === deviceId))
     .map((deviceId) => toSilentMeterSummary(deviceId, 'absent', true, false, true));
   return { ...NO_STORAGE_RELIEF, batteries: [...planned, ...absent] };
-}
-
-/**
- * The measurement as restore and admission see it: the headroom less what the
- * batteries withhold (`StorageStateSummary.withheldW`), so stored energy never
- * admits a device and a charge increase never meets a restore on the same
- * room. The draw stays the measured one.
- */
-export function withoutStorageWithheld(power: MeasuredPower, relief: StorageRelief): MeasuredPower {
-  const withheldKw = sumWithheldKw(relief.batteries);
-  if (withheldKw <= 0) return power;
-  return {
-    ...power,
-    headroomKw: power.headroomKw - withheldKw,
-    capacityHeadroomKw: power.capacityHeadroomKw - withheldKw,
-    budgetHeadroomKw: power.budgetHeadroomKw === null ? null : power.budgetHeadroomKw - withheldKw,
-  };
 }
 
 /** Carry each battery's decision and hold onto its plan device. */

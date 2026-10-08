@@ -41,7 +41,7 @@ export function applySteppedDeviceGates(params: {
   restoredOneThisCycle: boolean;
   batchContinuation: boolean;
   restoreDebugKey: string;
-  availableHeadroom: number;
+  availableHeadroom: number | null;
   phase: 'startup' | 'runtime';
   requestedStepId: string | null;
 }): boolean {
@@ -142,7 +142,7 @@ function emitSteppedRestoreGateRejection(params: {
   restoreDebugKey: string;
   phase: 'startup' | 'runtime';
   rejectionReason: 'meter_settling' | 'restore_gate' | 'waiting_for_other_recovery';
-  availableHeadroom: number;
+  availableHeadroom: number | null;
   requestedStepId: string | null;
 }): void {
   const {

@@ -25,7 +25,7 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
-import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import { resolveFreshGenerationW, resolveGenerationSegments } from '../../lib/observer/generationFreshness';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
@@ -48,7 +48,7 @@ export type HomePowerPipelineDeps = {
   // never share a tracker, capacity scalars or a guard, so there is no home for
   // which one of these is the obvious default.
   getPowerTracker: () => PowerTrackerState;
-  getCapacitySettings: () => CapacitySettings;
+  getCapacitySettings: () => PowerLimitSettings;
   getCapacityGuard: () => CapacityGuard;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;

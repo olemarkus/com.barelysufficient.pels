@@ -1,3 +1,4 @@
+import type { RestoreHeadroomAxes } from './restore/headroomLedger';
 import type {
   DevicePlanDevice, MeteredDevicePlanDevice, TemperatureKind,
 } from './planTypes';
@@ -167,13 +168,13 @@ export type ShedHoldParams = {
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function applyShedTemperatureHold(params: ShedHoldParams): {
   planDevices: DevicePlanDevice[];
-  availableHeadroom: number;
+  availableHeadroom: number | null;
   restoredOneThisCycle: boolean;
   // Post-pass per-axis availability, for the reason-normalization stage to
   // compute per-device shortfalls against the SAME axes this lane debited —
   // rebuilding from the restore-pass axes there would miss the temperature
   // restores admitted here and over-report availability.
-  ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null };
+  ledgerAxes: RestoreHeadroomAxes;
 } {
   const {
     planDevices,
@@ -214,7 +215,9 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       availableHeadroom: availableForDevice,
       restoredOneThisCycle: restoredOne,
     });
-    ledger.commit(dev, availableForDevice - result.availableHeadroom);
+    if (availableForDevice !== null && result.availableHeadroom !== null) {
+      ledger.commit(dev, availableForDevice - result.availableHeadroom);
+    }
     restoredOne = result.restoredOneThisCycle;
     nextDevices.push(result.device);
   }
@@ -334,7 +337,7 @@ function applyHoldToDevice(
   pass: HoldPass,
   dev: DevicePlanDevice,
   loop: HoldLoopState,
-): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
+): { device: DevicePlanDevice; availableHeadroom: number | null; restoredOneThisCycle: boolean } {
   const { availableHeadroom, restoredOneThisCycle } = loop;
 
   if (dev.plannedState === 'shed' && dev.reason.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
@@ -425,7 +428,7 @@ function applyHoldUpdate(
   dev: DevicePlanDevice & TemperatureKind,
   reason: DeviceReason,
   loop: HoldLoopState,
-): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
+): { device: DevicePlanDevice; availableHeadroom: number | null; restoredOneThisCycle: boolean } {
   const { normalizedShedFloorCByDevice } = pass;
   const { availableHeadroom, restoredOneThisCycle } = loop;
   // Annotated so `plannedTarget` lands on the temperature cluster rather than

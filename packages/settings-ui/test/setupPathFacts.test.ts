@@ -17,6 +17,8 @@ const NEVER = { state: 'never' as const, remedy: 'No power readings yet.' };
 const RECEIVED = { state: 'received' as const };
 
 const running: CapacityScalarSettings = {
+  capacityEnabled: true,
+  gridImportLimitKw: null,
   limitKw: 10, marginKw: 0.2, dryRun: true, periodMinutes: 60,
 };
 
@@ -28,6 +30,15 @@ const hardCapDetail = (facts: Awaited<ReturnType<typeof load>>['facts']): string
 };
 
 describe('setup path facts', () => {
+  it('keeps the Belgian period recommendation when both constraints are enabled', async () => {
+    const { facts } = await load();
+    facts.publishSetupMarket({ state: 'resolved', country: 'BE' });
+    facts.publishSetupHardCapRead(true, { ...running, gridImportLimitKw: 3.3 });
+    expect(facts.isBelgianHomeOnHourlyPeriod()).toBe(true);
+    facts.publishSetupHardCapRead(true, { ...running, gridImportLimitKw: 3.3, capacityEnabled: false });
+    expect(facts.isBelgianHomeOnHourlyPeriod()).toBe(false);
+  });
+
   it('judges nothing until the readings, the hard cap and the device list have all arrived', async () => {
     const { facts, state } = await load();
     expect(facts.readSetupPath()).toEqual({ state: 'loading' });

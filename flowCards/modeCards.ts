@@ -118,7 +118,7 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const requiredKw = readFlowNumberArg(args, 'required_kw');
     if (requiredKw === null) return false;
     const headroom = deps.getHeadroom();
-    if (headroom === null) return false;
+    if (headroom === null) return deps.getLatchedTotalKw() !== null && deps.getPowerLimitKw() === null;
     return headroom >= requiredKw;
   });
 

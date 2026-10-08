@@ -35,9 +35,10 @@ export type ThrottleSampleForTest = {
   totalKw?: number;
   limitKw?: number;
   /** Defaults to `limitKw`. */
-  capacityPaceKw?: number;
+  capacityPaceKw?: number | null;
+  gridImportLimitKw?: number | null;
   /** Defaults to `limitKw`. */
-  shortfallThresholdKw?: number;
+  shortfallThresholdKw?: number | null;
   planConvergenceActive?: boolean;
   unactionable?: boolean;
   shortfallUnrecoverable?: boolean;
@@ -50,11 +51,12 @@ export const sampleThrottle = (
   const limitKw = sample.limitKw ?? 10;
   return throttle.onSample(
     {
+      gridImportLimitKw: sample.gridImportLimitKw ?? null,
       currentPowerW: sample.currentPowerW,
       totalKw: sample.totalKw ?? sample.currentPowerW / 1000,
       limitKw,
-      capacityPaceKw: sample.capacityPaceKw ?? limitKw,
-      shortfallThresholdKw: sample.shortfallThresholdKw ?? limitKw,
+      capacityPaceKw: sample.capacityPaceKw === undefined ? limitKw : sample.capacityPaceKw,
+      shortfallThresholdKw: sample.shortfallThresholdKw === undefined ? limitKw : sample.shortfallThresholdKw,
     },
     {
       planConvergenceActive: sample.planConvergenceActive ?? false,

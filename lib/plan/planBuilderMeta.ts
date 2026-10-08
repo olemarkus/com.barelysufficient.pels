@@ -44,7 +44,7 @@ export type PlanMetaCycleFacts = {
   capacityLimitKw: number;
   hourlyBudgetExhausted: boolean;
   /** Producer-resolved `computeShortfallThreshold` for this build. */
-  shortfallBudgetThresholdKw: number;
+  shortfallBudgetThresholdKw: number | null;
 };
 
 export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
@@ -58,11 +58,13 @@ export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
     totalKw: reading.totalKw,
     softLimitKw: context.softLimit,
     capacitySoftLimitKw: context.capacitySoftLimit,
+    gridImportLimitKw: context.gridImportLimitKw,
+    gridImportTargetKw: context.gridImportTargetKw,
     dailySoftLimitKw: context.dailySoftLimit,
     budgetPaceKw: context.budgetPaceKw,
     projectedExemptKw: context.projectedExemptKw,
     softLimitSource: context.softLimitSource,
-    capacityShortfall: capacityGuard.isInShortfall(),
+    capacityShortfall: context.capacitySoftLimit !== null && capacityGuard.isInShortfall(),
     shortfallBudgetThresholdKw,
     hardCapLimitKw: capacityLimitKw,
     capacityPeriodMinutes: context.capacityPeriodMinutes,
@@ -115,13 +117,14 @@ export function resolveMeasuredMetaFields(
   reading: PowerCycleDisplay,
   planDevices: DevicePlanDevice[],
   capacityLimitKw: number,
-  shortfallBudgetThresholdKw: number,
+  shortfallBudgetThresholdKw: number | null,
 ): PlanMeasuredMetaFields {
   return {
     powerIsMeasured: true,
     headroomKw: power.headroomKw,
-    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - reading.totalKw,
-    hardCapHeadroomKw: capacityLimitKw - reading.totalKw,
+    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw === null
+      ? null : shortfallBudgetThresholdKw - reading.totalKw,
+    hardCapHeadroomKw: power.capacityHeadroomKw === null ? null : capacityLimitKw - reading.totalKw,
     ...splitControlledUsageKwFor({
       devices: toMeteredUsageDevices(planDevices),
       totalKw: reading.totalKw,
@@ -134,9 +137,9 @@ export function buildPlanContextHeadroomLogFields(
   power: MeasuredPower,
   reading: PowerCycleDisplay,
   hardCapLimitKw: number,
-  shortfallBudgetThresholdKw: number,
+  shortfallBudgetThresholdKw: number | null,
 ): Record<string, number | boolean | string | null> {
-  const hardCapHeadroomKw = hardCapLimitKw - reading.totalKw;
+  const hardCapHeadroomKw = context.capacitySoftLimit === null ? null : hardCapLimitKw - reading.totalKw;
   return {
     totalKw: reading.totalKw,
     softLimitKw: context.softLimit,
@@ -145,8 +148,9 @@ export function buildPlanContextHeadroomLogFields(
     // A LOG field, not a seam.
     powerNowKw: reading.totalKw,
     shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,
-    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - reading.totalKw,
+    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw === null
+      ? null : shortfallBudgetThresholdKw - reading.totalKw,
     hardCapHeadroomKw,
-    hardCapBreached: hardCapHeadroomKw < 0,
+    hardCapBreached: hardCapHeadroomKw !== null && hardCapHeadroomKw < 0,
   };
 }

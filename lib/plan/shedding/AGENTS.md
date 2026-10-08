@@ -1,6 +1,6 @@
 # Shedding Planner
 
-`lib/plan/shedding/` is the sole owner of selecting devices to limit for capacity, daily budget, and hourly budget. `planDevices.ts` materializes its `shedSet`, reasons, and step targets; it does not select additional devices. Execution and transport remain outside this module.
+`lib/plan/shedding/` is the sole owner of selecting devices to limit for grid import, capacity, daily budget, and hourly budget. `planDevices.ts` materializes its `shedSet`, reasons, and step targets; it does not select additional devices. Execution and transport remain outside this module.
 
 ## Candidate and step decisions
 
@@ -21,3 +21,12 @@
 - `shedActionable` controls whether this cycle selects new devices. `actionable` controls the shedding-active latch. When selection is deferred but overshoot remains, keep the latch active so already limited devices do not resume into the breach. An empty new `shedSet` is not a release decision.
 
 See `notes/state-management/actuation-clocks-and-settle.md` for timing and `lib/plan/AGENTS.md` for planner-wide boundaries.
+
+## Grid import pressure
+
+A breached grid target bypasses period grace and recent-resume grace. The
+shared pending-relief window credits only undelivered relief under grid
+pressure. Delivered relief is retired on the next aggregate observation even
+when unmanaged demand masks its fall; period pacing retains its aggregate
+confirmation policy. Restoration keeps the shared timing gates and clear
+band, bounded to 10% of the grid target for low-power connections.

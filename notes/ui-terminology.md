@@ -2,6 +2,30 @@
 
 Canonical user-facing vocabulary for PELS. Follow it in UI labels, help text, status strings, and docs. Internal code identifiers (planners, tests, logs) keep their existing names.
 
+## Grid import limit and optional capacity control
+
+**Terminology addition:** **Grid import limit** names a separate live import
+constraint. **Capacity limit** is the independent enable switch for the existing
+period control; its **Hard cap**, **Capacity period** and **Safety margin** labels
+retain their meanings. Setup now calls the choice **Limits**, since choosing grid
+control or turning both off is also a complete choice.
+
+On **Power now**, show **Grid import limit N kW** at the configured grid threshold.
+When grid control binds, the subline names the configured limit and the reduction
+threshold; use **Grid import pressure** for the warning chip. Keep **Safe pace now**
+for capacity/daily pacing. If no axis is enabled, show **Power limits off**. Hide
+capacity energy projections when capacity control is off; keep historical usage
+and peak measurements. The Available-power widget keeps **Safe pace now** for the
+binding rate across all sources; without a limit it shows **Power limits off**,
+not a missing-data message. Device reason lines still state the device's need rather
+than repeating a house-level ceiling.
+
+The settings hint is “Reduce flexible loads when household import approaches this
+level.” Net import is the measurement, including negative export with solar. The
+settings explanation names meter cadence, device response and temporary overshoot,
+and says PELS is not a circuit breaker. Italian store copy leads with the benefit:
+“Più comfort, con la potenza che hai.” Do not claim uninterrupted supply.
+
 ## Core principle
 
 > User-facing UI should say **what happens**. Advanced docs may explain why the planner does it.
@@ -23,7 +47,7 @@ The overview hero uses a specific vocabulary to keep the power/energy distinctio
 |---|---|---|
 | Current instantaneous draw | **Power now** | Power consumed currently, Current load |
 | Dynamic kW threshold (see below) | **Safe pace now** | PELS limit, Soft limit, Reaction limit |
-| Fixed user-configured ceiling | **Hard cap** | Power limit, Grid cap |
+| Fixed user-configured capacity ceiling | **Hard cap** | Power limit, Grid cap |
 | kWh used so far this hour | **Energy used this hour** | Usage now, Consumed |
 | kWh allowed for this hour | **Budget this hour** | Hourly energy budget, Hourly target |
 | Projected end-of-hour kWh | **Projected this hour** | Estimate, Forecast, Planner result |
@@ -60,13 +84,14 @@ Power-now subline, not only in the marker tooltip:
 | `capacity` | set by this hour's pace |
 | `daily` | set by today's budget |
 
-**Exactly two, never a third.** There is no "both" source: the producer
-(`resolveSoftLimitSource`, `lib/plan/planBuilder.ts`) answers `capacity` when the
-two paces coincide within `SOFT_LIMIT_EPSILON`, so "they meet here" is not a
-state the app can be in. A `both` member and its copy lived on the wire type and
-in this document until 2026-08-15 with nothing able to produce either. Do not
-reintroduce it. (Unrelated to `limitReason` in the home-limits payload, which
-does have a real four-member union including `both`.)
+**Capacity and daily pacing have two sources.** There is no "both" pace
+source: the producer (`resolveSoftLimitSource`, `lib/plan/planContext.ts`)
+answers `capacity` when those paces coincide within `SOFT_LIMIT_EPSILON`.
+Grid import control adds the independent `grid` source. When every power
+constraint is disabled, the source is `null` and the overview states that
+limits are off. Neither state claims a settlement-period pace.
+(Unrelated to `limitReason` in the home-limits payload, which has a real
+four-member union including `both`.)
 
 So the on-track subline reads `Safe pace now 1.9 kW · set by today's budget`,
 and the over-pace subline folds the same clause into its existing parenthetical:
@@ -77,12 +102,10 @@ binding ceiling (see § "Device cards say what a device needs"). WHICH ceiling
 binds is one house-level fact, so the hero states it once and the cards spend
 their single line on what each device needs. The hero is therefore the only
 place the owner can read it — and a hover tooltip is not a place: the settings
-UI runs in a touch WebView where nothing hovers. The clause always renders:
-`softLimitSource` is required on the wire and has exactly the two members
-above, so there is no unattributed case to fall back to. (The rule it used to
-state — never guess an attribution, because naming the hard cap when it is not
-binding is the specific error § "Hard cap is an hourly ceiling" warns about —
-still binds anyone adding a source; there is simply no unknown source left.)
+UI runs in a touch WebView where nothing hovers. The clause renders for capacity
+and daily pacing. `softLimitSource` also represents grid control and limits
+off, which have their own overview framing. Never guess an attribution or
+name the hard cap when it is not binding.
 
 The marker tooltip below keeps the longer explanation for pointer devices.
 
@@ -2014,7 +2037,8 @@ label reads as "not for me" to everyone else on a quarter-hour tariff. Two rules
    widget danger state, flow trigger) keys off the period's **trajectory** —
    projected energy past the period's allowance. Never pair the cap with
    "breaker trips" in copy: an average-power ceiling cannot prevent them (the
-   main fuse is a separate, much higher physical limit PELS does not manage).
+   main fuse is a separate physical limit; Grid import limit can reduce load
+   against observed import but is not electrical protection).
 2. **Not a tuning knob.** UI copy must not suggest users raise the hard cap to
    relieve pressure. The recommended remedy when the daily budget runs out
    before a deadline is to **lower the daily budget** so future days reserve

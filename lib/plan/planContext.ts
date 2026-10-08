@@ -1,4 +1,8 @@
-import type { CapacityPeriodMinutes, CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import { gridImportTargetKw } from '../../packages/shared-domain/src/settings/powerLimits';
+import { minPowerLimit } from './powerLimitMath';
+import type {
+  CapacityPeriodMinutes, CapacitySettings, PowerLimitSettings,
+} from '../../packages/contracts/src/capacitySettings';
 import { resolveUsableCapacityKWh } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import type { MeasuredPowerReading } from '../power/powerCycleReading';
@@ -9,7 +13,7 @@ import { isCapacityBreached } from './planRemainingSheddableLoad';
 import type { PlanInputDevice } from './planTypes';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 
-export type SoftLimitSource = 'capacity' | 'daily';
+export type SoftLimitSource = 'capacity' | 'daily' | 'grid' | null;
 
 /**
  * The limits one plan cycle is decided against — resolved ONCE per build by
@@ -17,18 +21,60 @@ export type SoftLimitSource = 'capacity' | 'daily';
  * pipeline and the silent-meter pass.
  */
 export type PlanLimits = {
-  /** The binding pace: `min(capacitySoftLimit, dailySoftLimit)`. */
-  softLimit: number;
-  capacitySoftLimit: number;
+  /** The binding pace: minimum enabled capacity, budget and grid threshold. */
+  softLimit: number | null;
+  capacitySoftLimit: number | null;
+  gridImportLimitKw: number | null;
+  gridImportTargetKw: number | null;
   /** `null` = no daily budget axis this cycle (a real state, always written). */
   dailySoftLimit: number | null;
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
-  // No `'both'`. `resolveSoftLimitSource` (`planBuilder.ts`) is total over these
-  // two — when the paces coincide within `SOFT_LIMIT_EPSILON` it answers
-  // `'capacity'`, not a third "they meet here" state.
+  // One binding source. Grid wins an exact tie; capacity wins a near tie with
+  // daily pacing, preserving the existing period-control attribution.
   softLimitSource: SoftLimitSource;
 };
+
+export type DailySoftLimitResolution = {
+  dailySoftLimitKw: number;
+  budgetPaceKw: number;
+  projectedExemptKw: number;
+};
+
+const SOFT_LIMIT_EPSILON = 1e-3;
+
+/** The physical ceiling used by live headroom queries and the meter rebuild scheduler. */
+export function resolvePhysicalPowerLimit(settings: PowerLimitSettings, capacityPaceKw: number | null): number | null {
+  const gridTargetKw = settings.gridImportLimitKw === null ? null : gridImportTargetKw(settings.gridImportLimitKw);
+  return minPowerLimit(capacityPaceKw, gridTargetKw);
+}
+
+/** Resolve the enabled axes once; the builder owns period state and supplies its accepted pacing facts. */
+export function buildPlanLimits(
+  settings: PowerLimitSettings,
+  capacitySoftLimit: number | null,
+  daily: DailySoftLimitResolution | null,
+): PlanLimits {
+  const gridTargetKw = settings.gridImportLimitKw === null ? null : gridImportTargetKw(settings.gridImportLimitKw);
+  const dailySoftLimit = daily?.dailySoftLimitKw ?? null;
+  return {
+    softLimit: minPowerLimit(capacitySoftLimit, dailySoftLimit, gridTargetKw),
+    capacitySoftLimit,
+    gridImportLimitKw: settings.gridImportLimitKw,
+    gridImportTargetKw: gridTargetKw,
+    dailySoftLimit,
+    budgetPaceKw: daily?.budgetPaceKw ?? null,
+    projectedExemptKw: daily?.projectedExemptKw ?? null,
+    softLimitSource: resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit, gridTargetKw),
+  };
+}
+
+function resolveSoftLimitSource(capacity: number | null, daily: number | null, grid: number | null): SoftLimitSource {
+  const binding = minPowerLimit(capacity, daily, grid);
+  if (binding === null) return null;
+  if (grid === binding) return 'grid';
+  return capacity !== null && Math.abs(capacity - binding) <= SOFT_LIMIT_EPSILON ? 'capacity' : 'daily';
+}
 
 /**
  * The frame one plan cycle is decided in: the admitted devices, the limits,
@@ -77,25 +123,27 @@ export type MeasuredPower = {
    * The spare room before the BINDING pace (`limits.softLimit`), kW — negative
    * when above it. Drives shedding and the full restore pass's gate.
    */
-  headroomKw: number;
+  headroomKw: number | null;
   // Per-axis restore-admission inputs (notes/safe-pace-two-constraints.md
   // § "Proposed model", restore-admission-scoped). A budget-driven shedding
   // latch no longer blocks exempt candidates (`shouldPlanBudgetExemptRestores`
-  // opens the restricted capacity-axis lane); these two let admission evaluate
+  // opens the restricted physical-axis lane); these axes let admission evaluate
   // each candidate on the axis that actually constrains it: a budget-exempt
-  // candidate admits against capacity only (its own projection already sits in
+  // candidate admits against capacity and grid (its own projection already sits in
   // the daily add-back — gating it on the binding pace made its reservation
   // unusable by construction, prod 2026-08-01), and a non-exempt candidate must
   // also fit the budget pace with a MEASURED exempt sum, so it cannot spend
   // headroom that exists only as an off exempt device's projection.
-  capacityHeadroomKw: number;
+  capacityHeadroomKw: number | null;
+  gridHeadroomKw: number | null;
+  gridBreached: boolean;
   /** `null` when no daily budget applies (sub-homes, budget disabled). */
   budgetHeadroomKw: number | null;
   /** The draw is above the capacity pace. The one "is capacity breached" answer every stage reads. */
   capacityBreached: boolean;
   // A headroom-blocked restore hold is releasable by the daily budget ONLY when
-  // the daily pace is the binding limit and capacity is not ALSO breached: when
-  // the total is over the capacity limit too, capacity is the constraint doing
+  // the daily pace binds and neither capacity nor grid is also breached: when
+  // the total is over a physical limit too, that limit is the constraint doing
   // the work and a budget release cannot help (prod 2026-07-25). Resolved to one
   // flat boolean HERE so no consumer recomposes it from ingredients —
   // `planDiagnostics` (starvation counting cause, rescue gating) and
@@ -158,10 +206,14 @@ export function resolveMeasuredPower(
   // when the daily pace resolved this cycle.
   const hasBudgetAxis = dailySoftLimit !== null && typeof budgetPaceKw === 'number' && Number.isFinite(budgetPaceKw);
   const capacityBreached = isCapacityBreached(drawKw, capacitySoftLimit);
+  const gridHeadroomKw = limits.gridImportTargetKw === null ? null : reading.headroomKw(limits.gridImportTargetKw);
+  const gridBreached = gridHeadroomKw !== null && gridHeadroomKw < 0;
   return {
     drawKw,
-    headroomKw: reading.headroomKw(softLimit),
-    capacityHeadroomKw: reading.headroomKw(capacitySoftLimit),
+    headroomKw: softLimit === null ? null : reading.headroomKw(softLimit),
+    capacityHeadroomKw: capacitySoftLimit === null ? null : reading.headroomKw(capacitySoftLimit),
+    gridHeadroomKw,
+    gridBreached,
     budgetHeadroomKw: hasBudgetAxis
       ? reading.headroomKw(budgetPaceKw + sumBudgetExemptMeasuredUsageKwFor(
         toMeteredUsageDevices(devices),
@@ -169,6 +221,6 @@ export function resolveMeasuredPower(
       ))
       : null,
     capacityBreached,
-    budgetReleasableHeadroomHold: softLimitSource === 'daily' && !capacityBreached,
+    budgetReleasableHeadroomHold: softLimitSource === 'daily' && !capacityBreached && !gridBreached,
   };
 }

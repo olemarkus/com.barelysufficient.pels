@@ -72,6 +72,8 @@ describe('power sample freshness policy', () => {
     projectedExemptKw?: number | null;
     softLimitSource?: 'capacity' | 'daily';
   }): PlanLimits => ({
+    gridImportLimitKw: null,
+    gridImportTargetKw: null,
     softLimit: params.softLimit ?? 5,
     capacitySoftLimit: params.capacitySoftLimit ?? 5,
     dailySoftLimit: params.dailySoftLimit ?? null,
@@ -138,6 +140,8 @@ describe('power sample freshness policy', () => {
       currentDrawKw: 1.25,
     });
     const perAxis = {
+      gridImportLimitKw: null,
+      gridImportTargetKw: null,
       softLimit: 2.2,
       capacitySoftLimit: 10,
       dailySoftLimit: 2.2,
@@ -206,7 +210,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -336,7 +340,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -408,7 +412,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({ Home: { thermo: 21 } }),
@@ -460,7 +464,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getModeDeviceTargets: () => ({ Home: { unit: modeTargetC } }),
         getThermalDirection: () => direction,
@@ -506,7 +510,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -556,7 +560,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),

@@ -5,10 +5,10 @@ import type { ShedDecisions } from '../shedDecisions';
 
 export function buildRestoreBatchState(params: {
   timing: RestoreTiming;
-  availableHeadroom: number;
+  availableHeadroom: number | null;
 }): RestoreBatchState {
   const { timing, availableHeadroom } = params;
-  const enabled = availableHeadroom > 0
+  const enabled = availableHeadroom !== null && availableHeadroom > 0
     && !timing.inCooldown
     && !timing.inRestoreCooldown
     && !timing.inStartupStabilization
@@ -16,7 +16,7 @@ export function buildRestoreBatchState(params: {
   return {
     enabled,
     maxDevices: RESTORE_BATCH_MAX_DEVICES,
-    maxNeedKw: Math.max(0, availableHeadroom * RESTORE_BATCH_HEADROOM_FRACTION),
+    maxNeedKw: Math.max(0, (availableHeadroom ?? 0) * RESTORE_BATCH_HEADROOM_FRACTION),
     admittedCount: 0,
     admittedNeedKw: 0,
   };

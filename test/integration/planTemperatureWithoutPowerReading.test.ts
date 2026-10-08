@@ -44,7 +44,7 @@ describe('temperature device without a power reading', () => {
     getCapacityDryRun: () => false,
     setCapacityInShortfall: vi.fn(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ limitKw: 6, marginKw: 0, periodMinutes: 60 }),
+    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getModeDeviceTargets: () => MODE_TARGETS,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,

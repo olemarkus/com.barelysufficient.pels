@@ -1,7 +1,7 @@
 /**
  * Domain-owned read boundary for the capacity scalar settings block
  * (`capacity_limit_kw`, `capacity_margin_kw`, `capacity_dry_run`, and
- * `capacity_period_minutes`). Consumers
+ * `capacity_period_minutes`, and independent Main-home grid/capacity enablement). Consumers
  * depend on this type, never on `homey.settings` — the interface does not
  * expose the SDK, so capacity code cannot read or normalise the persisted
  * scalars itself. This module implements the reader over the SDK-free
@@ -19,7 +19,9 @@
  * wrote the setting and may use the compatibility default, while a listed key
  * whose value is absent/malformed is an unavailable SDK read. That distinction
  * keeps a transient startup miss from silently changing 15-minute
- * control into hourly control for the life of the process.
+ * control into hourly control for the life of the process. Grid switches and
+ * enabled thresholds use the same unavailable-read policy, retaining last-good
+ * control settings until a complete read arrives.
  */
 
 /**
@@ -34,11 +36,16 @@ import {
   isCapacityPeriodMinutes,
   resolveCapacityPeriodMinutes,
 } from '../../packages/shared-domain/src/settings/capacityPeriod';
+import { resolvePowerLimitSettings } from '../../packages/shared-domain/src/settings/powerLimits';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import {
   CAPACITY_DRY_RUN,
+  CAPACITY_ENABLED,
+  GRID_IMPORT_ENABLED,
+  GRID_IMPORT_LIMIT_KW,
+  MAIN_HOME_ID,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
@@ -68,6 +75,9 @@ export type CapacitySettingsStore = {
 };
 
 const CAPACITY_SCALAR_KEYS: ReadonlySet<string> = new Set([
+  CAPACITY_ENABLED,
+  GRID_IMPORT_ENABLED,
+  GRID_IMPORT_LIMIT_KW,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
@@ -110,10 +120,19 @@ export function createCapacitySettingsStore(
         if (keys.includes(periodKey) && !isCapacityPeriodMinutes(periodMinutes)) {
           return { state: 'unavailable' };
         }
+        const controls = homeId === MAIN_HOME_ID
+          ? resolvePowerLimitSettings(
+            keys.includes(CAPACITY_ENABLED) ? settings.get(CAPACITY_ENABLED) : true,
+            keys.includes(GRID_IMPORT_ENABLED) ? settings.get(GRID_IMPORT_ENABLED) : false,
+            settings.get(GRID_IMPORT_LIMIT_KW),
+          )
+          : { capacityEnabled: true, gridImportLimitKw: null };
+        if (controls === null) return { state: 'unavailable' };
         const fallback = lastGood();
         return {
           state: 'resolved',
           value: {
+            ...controls,
             limitKw: isFiniteNumber(limit) ? limit : fallback.limitKw,
             marginKw: isFiniteNumber(margin) ? margin : fallback.marginKw,
             dryRun: typeof dryRun === 'boolean' ? dryRun : fallback.dryRun,

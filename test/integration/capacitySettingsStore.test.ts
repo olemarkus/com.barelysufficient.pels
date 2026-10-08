@@ -9,6 +9,9 @@ import { createCapacitySettingsStore } from '../../lib/power/capacitySettingsSto
 import type { CapacityScalarSettingsRead } from '../../lib/power/capacitySettingsStore';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import {
+  CAPACITY_ENABLED,
+  GRID_IMPORT_ENABLED,
+  GRID_IMPORT_LIMIT_KW,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -17,7 +20,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { MockSettings } from '../mocks/homey';
 
-const fallback = (): CapacityScalarSettings => ({ limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
+const fallback = (): CapacityScalarSettings => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
 const resolvedValue = (read: CapacityScalarSettingsRead): CapacityScalarSettings => {
   expect(read.state).toBe('resolved');
   if (read.state === 'unavailable') throw new Error('expected resolved capacity settings');
@@ -25,6 +28,38 @@ const resolvedValue = (read: CapacityScalarSettingsRead): CapacityScalarSettings
 };
 
 describe('createCapacitySettingsStore', () => {
+  it('supports grid control independently of settlement capacity', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_ENABLED, false);
+    settings.set(GRID_IMPORT_ENABLED, true);
+    settings.set(GRID_IMPORT_LIMIT_KW, 3.3);
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
+    expect(resolvedValue(store.read())).toMatchObject({ capacityEnabled: false, gridImportLimitKw: 3.3 });
+  });
+
+  it.each([null, undefined, NaN, Infinity, 0, -1, '3.3'])('rejects an enabled invalid grid threshold (%s)', (value) => {
+    const settings = new MockSettings();
+    settings.set(GRID_IMPORT_ENABLED, true);
+    settings.set(GRID_IMPORT_LIMIT_KW, value);
+    expect(createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback).read()).toEqual({ state: 'unavailable' });
+  });
+
+  it('retains a disabled grid threshold without enforcing it', () => {
+    const settings = new MockSettings();
+    settings.set(GRID_IMPORT_ENABLED, false);
+    settings.set(GRID_IMPORT_LIMIT_KW, 3.3);
+    expect(resolvedValue(createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback).read()).gridImportLimitKw).toBeNull();
+  });
+
+  it('does not apply main-home switches to a meter area', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_ENABLED, false);
+    settings.set(GRID_IMPORT_ENABLED, true);
+    settings.set(GRID_IMPORT_LIMIT_KW, 3.3);
+    expect(resolvedValue(createCapacitySettingsStore(settings, 'cabin', fallback).read()))
+      .toMatchObject({ capacityEnabled: true, gridImportLimitKw: null });
+  });
+
   it('treats an empty SDK key list as unavailable', () => {
     const store = createCapacitySettingsStore(new MockSettings(), MAIN_HOME_ID, fallback);
 
@@ -43,7 +78,7 @@ describe('createCapacitySettingsStore', () => {
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
     expect(store.readHardCapConfiguration()).toEqual({ state: 'resolved', configured: true });
-    expect(resolvedValue(store.read())).toEqual({ limitKw: 7.5, marginKw: 0.4, dryRun: true, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 7.5, marginKw: 0.4, dryRun: true, periodMinutes: 60 });
   });
 
   it('resolves an unwritten hard cap from key presence without mistaking the fallback for a saved value', () => {
@@ -96,7 +131,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, 'cabin', fallback);
 
-    expect(resolvedValue(store.read())).toEqual({ limitKw: 5, marginKw: 0.1, dryRun: false, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0.1, dryRun: false, periodMinutes: 60 });
   });
 
   it('does not bleed main-home values into a home whose keys are unset', () => {
@@ -124,7 +159,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(resolvedValue(store.read())).toEqual({ limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
   });
 
   it.each([
@@ -187,7 +222,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(resolvedValue(store.read())).toEqual({ limitKw: 0, marginKw: -0.3, dryRun: false, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 0, marginKw: -0.3, dryRun: false, periodMinutes: 60 });
   });
 
   it('resolves each field independently when only some persisted values are junk', () => {
@@ -198,6 +233,6 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(resolvedValue(store.read())).toEqual({ limitKw: 8, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 8, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
   });
 });

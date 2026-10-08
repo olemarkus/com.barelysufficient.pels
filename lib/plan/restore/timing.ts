@@ -1,6 +1,7 @@
 import type { PlanEngineState } from '../planState';
 import type { RestoreBackoff, RestoreCooldownState } from '../restoreBackoff';
-import type { SoftLimitSource } from '../planContext';
+import type { PlanContext, MeasuredPower } from '../planContext';
+import { resolveSheddingClearThresholdKw } from '../powerLimitMath';
 import type { PowerTrackerState } from '../../power/tracker';
 import {
   RESTORE_COOLDOWN_MS,
@@ -33,7 +34,7 @@ const ceilSecondsOrNull = (ms: number | null): number | null =>
 
 export const buildRestoreTiming = (
   state: PlanEngineState,
-  headroomRaw: number,
+  headroomRaw: number | null,
   powerTracker: PowerTrackerState,
 ): RestoreTiming => {
   const nowTs = Date.now();
@@ -46,7 +47,7 @@ export const buildRestoreTiming = (
   const inRestoreCooldown = sinceRestore !== null && sinceRestore < cooldownState.restoreCooldownMs;
   const startupBlockRemainingMs = state.restoreBackoff.startupBlockRemainingMs(nowTs);
   const inStartupStabilization = startupBlockRemainingMs !== null && startupBlockRemainingMs > 0;
-  const activeOvershoot = headroomRaw < 0;
+  const activeOvershoot = headroomRaw !== null && headroomRaw < 0;
   const restoreCooldownSeconds = sinceRestore !== null
     ? Math.max(0, Math.ceil((cooldownState.restoreCooldownMs - sinceRestore) / 1000))
     : Math.ceil(cooldownState.restoreCooldownMs / 1000);
@@ -125,20 +126,21 @@ export const shouldPlanRestores = (
  * inflation for the first five minutes after the shed that latched. Narrow, but
  * no longer provably inert — recording the latch cause would close it properly.
  */
-export const shouldPlanBudgetExemptRestores = (params: {
-  sheddingActive: boolean;
-  softLimitSource: SoftLimitSource;
-  capacityHeadroomKw: number;
-  hourlyBudgetExhausted: boolean;
-  timing: Pick<RestoreTiming, 'inCooldown' | 'inRestoreCooldown' | 'inStartupStabilization'>;
-}): boolean => (
-  params.sheddingActive
-  && params.softLimitSource === 'daily'
-  && params.capacityHeadroomKw > 0
-  && !params.hourlyBudgetExhausted
-  && !params.timing.inCooldown
-  && !params.timing.inRestoreCooldown
-  && !params.timing.inStartupStabilization
+export const shouldPlanBudgetExemptRestores = (
+  context: PlanContext,
+  power: MeasuredPower,
+  state: PlanEngineState,
+  timing: Pick<RestoreTiming, 'inCooldown' | 'inRestoreCooldown' | 'inStartupStabilization'>,
+  sheddingActive: boolean,
+): boolean => (
+  sheddingActive
+  && context.softLimitSource === 'daily'
+  && (power.capacityHeadroomKw === null || power.capacityHeadroomKw > 0)
+  && (power.gridHeadroomKw === null || power.gridHeadroomKw >= resolveSheddingClearThresholdKw(context))
+  && !state.hourlyBudgetExhausted
+  && !timing.inCooldown
+  && !timing.inRestoreCooldown
+  && !timing.inStartupStabilization
 );
 
 const resolveRestoreCooldown = (

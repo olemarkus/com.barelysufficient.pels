@@ -194,6 +194,8 @@
         totalKw: 1.5,
         lastPowerUpdateMs: Date.now() - 5 * 1000,
         softLimitKw: 2.3,
+        gridImportLimitKw: null,
+        gridImportTargetKw: null,
         capacitySoftLimitKw: 2.3,
         hardCapLimitKw: 8.0,
         budgetPaceKw: null,
@@ -1014,6 +1016,8 @@
       capacityScalars: {
         state: 'resolved',
         scalars: {
+          capacityEnabled: settings.capacity_enabled !== false,
+          gridImportLimitKw: settings.grid_import_enabled === true ? settings.grid_import_limit_kw : null,
           limitKw: Number.isFinite(settings.capacity_limit_kw) ? settings.capacity_limit_kw : 10,
           marginKw: Number.isFinite(settings.capacity_margin_kw) ? settings.capacity_margin_kw : 0.2,
           dryRun: typeof settings.capacity_dry_run === 'boolean' ? settings.capacity_dry_run : true,
@@ -1334,6 +1338,9 @@
   };
 
   const buildBootstrapSettings = () => ({
+    capacity_enabled: settings.capacity_enabled,
+    grid_import_enabled: settings.grid_import_enabled,
+    grid_import_limit_kw: settings.grid_import_limit_kw,
     capacity_limit_kw: settings.capacity_limit_kw,
     capacity_margin_kw: settings.capacity_margin_kw,
     capacity_dry_run: settings.capacity_dry_run,
@@ -1772,6 +1779,8 @@
       capacityScalars: {
         state: 'resolved',
         scalars: {
+          capacityEnabled: true,
+          gridImportLimitKw: null,
           limitKw: Number.isFinite(settings[`capacity_limit_kw:${scope.homeId}`])
             ? settings[`capacity_limit_kw:${scope.homeId}`]
             : 10,
@@ -2119,6 +2128,8 @@
       totalKw: 8.6,
       lastPowerUpdateMs: Date.now() - 5 * 1000,
       softLimitKw: 8.0,
+      gridImportLimitKw: null,
+      gridImportTargetKw: null,
       capacitySoftLimitKw: 8.0,
       budgetPaceKw: null,
       projectedExemptKw: null,
@@ -2229,6 +2240,8 @@
         totalKw: 4.7,
         lastPowerUpdateMs: Date.now() - 5 * 1000,
         softLimitKw: 8.0,
+        gridImportLimitKw: null,
+        gridImportTargetKw: null,
         capacitySoftLimitKw: 8.0,
         budgetPaceKw: null,
         projectedExemptKw: null,
@@ -2265,7 +2278,9 @@
           totalKw: 12.5,
           lastPowerUpdateMs: Date.now() - 5 * 1000,
           softLimitKw: 12,
-          capacitySoftLimitKw: 14,
+          gridImportLimitKw: null,
+        gridImportTargetKw: null,
+        capacitySoftLimitKw: 14,
           budgetPaceKw: 5,
           projectedExemptKw: 7,
           softLimitSource: 'daily',

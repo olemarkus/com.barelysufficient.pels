@@ -30,6 +30,12 @@ export function resolveLastTotalPowerKw(
   return isFiniteNumber(lastPowerW) ? lastPowerW / 1000 : null;
 }
 
+/** Live Flow headroom: disabled constraints and an unmeasured meter cannot supply a power amount. */
+export function resolveObservedHeadroomKw(powerTracker: PowerTrackerState, limitKw: number | null): number | null {
+  const totalKw = resolveLastTotalPowerKw(powerTracker);
+  return totalKw === null || limitKw === null ? null : limitKw - totalKw;
+}
+
 /**
  * Whether this home has a meter measurement to plan from at all — the
  * `planBuildGate`'s predicate (`lib/power/powerMeasurementGate.ts`).

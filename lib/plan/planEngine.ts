@@ -27,8 +27,9 @@ export type PlanEngine = {
   readonly state: PlanEngineState;
   readonly pendingBinaryCommandStore: PendingBinaryCommandStore;
   buildDevicePlanSnapshot: (devices: PlanInputDevice[]) => Promise<DevicePlan>;
-  computeDynamicSoftLimit: () => number;
-  computeShortfallThreshold: () => number;
+  computeDynamicSoftLimit: () => number | null;
+  computeCapacityPace: () => number | null;
+  computeShortfallThreshold: () => number | null;
   handleShortfall: (deficitKw: number) => Promise<void>;
   handleShortfallCleared: () => Promise<void>;
   applyPlanActions: (plan: DevicePlan) => Promise<PlanActuationResult>;

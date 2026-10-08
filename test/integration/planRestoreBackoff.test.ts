@@ -1691,6 +1691,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       guardInShortfall: false,
       ledger: buildRestoreHeadroomLedger({
+        gridAvailableKw: null,
         capacityAvailableKw: restore.capacityAvailableKw,
         budgetAvailableKw: restore.budgetAvailableKw,
       }),
@@ -1706,6 +1707,7 @@ describe('restore cooldown backoff', () => {
     expect(peer).toMatchObject({ plannedState: 'shed', plannedTarget: 16 });
     expect(held.availableHeadroom).toBe(restore.availableHeadroom);
     expect(held.ledgerAxes).toEqual({
+      gridAvailableKw: null,
       capacityAvailableKw: restore.capacityAvailableKw,
       budgetAvailableKw: restore.budgetAvailableKw,
     });
@@ -1758,6 +1760,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       guardInShortfall: false,
       ledger: buildRestoreHeadroomLedger({
+        gridAvailableKw: null,
         capacityAvailableKw: restore.capacityAvailableKw,
         budgetAvailableKw: restore.budgetAvailableKw,
       }),
@@ -1814,6 +1817,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       guardInShortfall: false,
       ledger: buildRestoreHeadroomLedger({
+        gridAvailableKw: null,
         capacityAvailableKw: restore.capacityAvailableKw,
         budgetAvailableKw: restore.budgetAvailableKw,
       }),
@@ -1870,6 +1874,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       guardInShortfall: false,
       ledger: buildRestoreHeadroomLedger({
+        gridAvailableKw: null,
         capacityAvailableKw: restore.capacityAvailableKw,
         budgetAvailableKw: restore.budgetAvailableKw,
       }),
@@ -3304,7 +3309,7 @@ describe('restore admission — headroom and penalty gates', () => {
       timing: restoreTimingFixture(),
       sheddingActive: false,
       guardInShortfall: false,
-      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 0.25, budgetAvailableKw: null }),
+      ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 0.25, budgetAvailableKw: null }),
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
@@ -3346,7 +3351,7 @@ describe('restore admission — headroom and penalty gates', () => {
       timing: restoreTimingFixture({ nowTs: now }),
       sheddingActive: false,
       guardInShortfall: false,
-      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 3, budgetAvailableKw: null }),
+      ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 3, budgetAvailableKw: null }),
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
@@ -3545,7 +3550,7 @@ describe('restore admission — the device need is the whole bar', () => {
       timing: restoreTimingFixture(),
       sheddingActive: false,
       guardInShortfall: false,
-      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 1.199, budgetAvailableKw: null }),
+      ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 1.199, budgetAvailableKw: null }),
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),

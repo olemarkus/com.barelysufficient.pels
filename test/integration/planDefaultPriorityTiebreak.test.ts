@@ -42,6 +42,7 @@ const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant(
 })) as PlanInputDevice;
 
 const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
+  bypassRecentRestore: false,
   devices,
   needed: 1,
   deficitKw: 1,

@@ -34,6 +34,8 @@ import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixt
 const FIXTURE_TOTAL_KW = 3;
 
 const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
+  gridImportLimitKw: null,
+  gridImportTargetKw: null,
   devices: [],
   softLimit: 1.2,
   capacitySoftLimit: 7,
@@ -372,7 +374,7 @@ const buildBuilder = (params: {
       getCapacityDryRun: () => false,
   capacityGuard: params.capacityGuard,
   setCapacityInShortfall: vi.fn(),
-  getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),

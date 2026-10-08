@@ -238,11 +238,11 @@ export class PlanService {
     });
   }
 
-  computeDynamicSoftLimit(): number {
+  computeDynamicSoftLimit(): number | null {
     return this.deps.planEngine.computeDynamicSoftLimit();
   }
 
-  computeShortfallThreshold(): number {
+  computeShortfallThreshold(): number | null {
     return this.deps.planEngine.computeShortfallThreshold();
   }
 

@@ -58,9 +58,10 @@ const buildPipeline = (
     createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => capacityGuard,
-    getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5, periodMinutes }),
+    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes }),
     getTimeZone: () => 'UTC',
     getPlanEngine: () => ({
+      computeShortfallThreshold: () => 10,
       state: {
         actuation: { hasInFlight: () => false },
         pendingTargetCommands: {},

@@ -232,6 +232,8 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
   // capacityShortfall + soft limit pressed: planned shed across two devices,
   // total > soft limit, headroom collapsed.
   const meta: SettingsUiPlanMetaSnapshot = {
+    gridImportLimitKw: null,
+    gridImportTargetKw: null,
     totalKw: 8.6,
     softLimitKw: 8.0,
     capacitySoftLimitKw: 8.0,
@@ -307,6 +309,8 @@ const buildDenseDevicePlan = (): SettingsUiPlanSnapshot => {
   // 12 controllable devices spanning thermostats, water heater, EV. Tests
   // long-list rendering, scroll, priority-table density.
   const meta: SettingsUiPlanMetaSnapshot = {
+    gridImportLimitKw: null,
+    gridImportTargetKw: null,
     totalKw: 4.7,
     softLimitKw: 8.0,
     capacitySoftLimitKw: 8.0,
@@ -408,6 +412,8 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
     description: 'Daily safe pace includes a visible allowance for devices outside today\'s budget.',
     plan: {
       meta: buildPlanMeta({
+        gridImportLimitKw: null,
+        gridImportTargetKw: null,
         totalKw: 12.5,
         softLimitKw: 12,
         capacitySoftLimitKw: 14,

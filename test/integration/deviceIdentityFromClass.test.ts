@@ -139,6 +139,7 @@ const BATTERY_ID = RAW_DEVICES.battery!.id;
 const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 
 const emptyRestoreResult: RestorePlanResult = {
+  gridAvailableKw: null,
   planDevices: [],
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),
@@ -181,6 +182,8 @@ const planFromRawDevices = (): { context: PlanCycle; planDevices: DevicePlanDevi
     starvationSupported: true,
   });
   const context = buildPlanCycleObject({
+    gridImportLimitKw: null,
+    gridImportTargetKw: null,
     devices,
     intent: { getModeDeviceTargets: () => ({ Home: { [THERMOSTAT_ID]: 21 } }) },
     total: 2,

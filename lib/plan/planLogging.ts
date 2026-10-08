@@ -253,7 +253,7 @@ function roundPowerW(powerKw: number): number {
 }
 
 type RemainingSheddableContext = {
-  limitSource: 'capacity' | 'daily' | 'both';
+  limitSource: 'capacity' | 'daily' | 'grid' | null;
   capacityBreached: boolean;
 };
 

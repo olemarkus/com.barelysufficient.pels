@@ -370,6 +370,8 @@ test.describe('Onboarding links', () => {
         // whole push if anything required is missing, so a three-field meta
         // would never reach the empty state this test is about.
         meta: {
+          gridImportLimitKw: null,
+          gridImportTargetKw: null,
           totalKw: 0,
           lastPowerUpdateMs: Date.now() - 5 * 1000,
           softLimitKw: 5,

@@ -3,6 +3,9 @@
 // Node-executed scripts cannot import the TypeScript contract module directly.
 // Keep this JS-safe copy in sync with packages/contracts/src/settingsUiApi.ts.
 const SETTINGS_UI_BOOTSTRAP_KEYS = [
+  'capacity_enabled',
+  'grid_import_enabled',
+  'grid_import_limit_kw',
   'capacity_limit_kw',
   'capacity_margin_kw',
   'capacity_period_minutes',

@@ -50,6 +50,7 @@ const CALM_POSTURE = { planConvergenceActive: false, unactionable: false, shortf
 
 /** A whole-home reading against a 10 kW limit; tight once it passes 9 kW. */
 const reading = (currentPowerW: number, shortfallThresholdKw = 20) => ({
+  gridImportLimitKw: null,
   currentPowerW,
   totalKw: currentPowerW / 1000,
   limitKw: 10,

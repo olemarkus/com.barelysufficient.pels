@@ -20,6 +20,8 @@ import type { AppContext } from '../../lib/app/appContext';
 describe('buildMainHomeScope', () => {
   const minimalStatus = {
     headroomKw: 1,
+    powerLimitKw: 8,
+    gridImportLimited: false,
     hourlyUsageKwh: 0,
     priceLevel: PriceLevel.NORMAL,
     devicesOn: 0,
@@ -73,7 +75,7 @@ describe('buildMainHomeScope', () => {
 
     // Mutations AFTER scope construction must be visible on the next read —
     // the closures are live over `ctx`, not captured copies or store re-reads.
-    const nextSettings = { limitKw: 7, marginKw: 0.3, periodMinutes: 15 as const };
+    const nextSettings = { capacityEnabled: true, gridImportLimitKw: null, limitKw: 7, marginKw: 0.3, periodMinutes: 15 as const };
     ctx.capacitySettings = nextSettings;
     ctx.capacityDryRun = true;
 

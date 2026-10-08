@@ -84,7 +84,7 @@ function holdShortOfDemandSideLimit(
  * The shedding module's dependencies, from the builder's. Shared with the
  * ordinary pipeline so the two passes price candidates identically.
  */
-export function buildSheddingDeps(deps: PlanBuilderDeps, shortfallThresholdKw: number): SheddingDeps {
+export function buildSheddingDeps(deps: PlanBuilderDeps, shortfallThresholdKw: number | null): SheddingDeps {
   return {
     capacityGuard: deps.capacityGuard,
     shortfallThresholdKw,
@@ -112,7 +112,8 @@ export class SilentMeterPlanBuilder {
   ): DevicePlan {
     const capacitySettings = this.deps.getCapacitySettings();
     const powerTracker = this.deps.getPowerTracker();
-    const shortfallBudgetThresholdKw = computeShortfallThreshold(capacitySettings, powerTracker, nowTs);
+    const shortfallBudgetThresholdKw = capacitySettings.capacityEnabled
+      ? computeShortfallThreshold(capacitySettings, powerTracker, nowTs) : null;
     const sheddingPlan = this.shedEverything(context, shortfallBudgetThresholdKw, nowTs);
     // No measurement means no surplus: every surplus-only load is held, with
     // its own reason, exactly as a collapsed surplus would hold it.
@@ -135,10 +136,10 @@ export class SilentMeterPlanBuilder {
     // command, safe without a measurement); a `binary_restore` is the one
     // positive intent and needs a measured cycle, which this is not.
     planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, false);
-    this.stages.syncHeadroomCardState(planDevices, nowTs);
     const finalized = this.stages.finalizePlan(
       planDevices,
       context.temperatureSetpoints,
+      nowTs,
     );
     // No measurement, no deficit to relieve: every battery PELS holds is handed
     // back, and the loads are shed to their floor exactly as without one.
@@ -202,9 +203,10 @@ export class SilentMeterPlanBuilder {
     return resolveShedReason('capacity', false, this.state.hourlyBudgetExhausted);
   }
 
-  private shedEverything(context: PlanContext, shortfallThresholdKw: number, nowTs: number): SheddingPlan {
+  private shedEverything(context: PlanContext, shortfallThresholdKw: number | null, nowTs: number): SheddingPlan {
     const deps = buildSheddingDeps(this.deps, shortfallThresholdKw);
     const { candidates } = buildSheddingCandidates({
+      bypassRecentRestore: false,
       devices: context.devices,
       needed: Number.POSITIVE_INFINITY,
       deficitKw: Number.POSITIVE_INFINITY,

@@ -17,7 +17,7 @@ import { capacityPeriodNoun } from './capacityPeriodCopy.ts';
 // third "they meet here" state. The member and its copy existed on the wire
 // with nothing able to emit them. (Not to be confused with `limitReason` in
 // `homeLimitsStatus.ts`, which has a real four-member union including `'both'`.)
-export type HeroSoftLimitSource = 'capacity' | 'daily';
+export type HeroSoftLimitSource = 'capacity' | 'daily' | 'grid' | null;
 
 export const HERO_INFO_TOOLTIP_TEXT = [
   'Power now is measured in kW — how fast electricity is being used right now.',
@@ -29,7 +29,26 @@ export const HERO_INFO_TOOLTIP_TEXT = [
   'kW is speed. kWh is distance.',
 ].join(' ');
 
-export const formatHeroInfoTooltip = (periodMinutes: CapacityPeriodMinutes): string => {
+export const formatHeroInfoTooltip = (
+  periodMinutes: CapacityPeriodMinutes,
+  capacityEnabled = true,
+  gridEnabled = false,
+): string => {
+  const gridText = gridEnabled
+    ? 'Grid import limit applies to the latest observed net power from the grid. '
+      + 'PELS leaves an automatic margin and reduces flexible loads when import rises. '
+      + 'Temporary overshoot is possible while meter readings and devices catch up.'
+    : '';
+  if (!capacityEnabled) return [
+    'Power now is measured in kW — the latest observed net import from the grid.',
+    gridText,
+    'Price settings and Smart tasks still follow your device priorities.',
+  ].filter(Boolean).join(' ');
+  const capacityText = formatCapacityHeroInfoTooltip(periodMinutes);
+  return [capacityText, gridText].filter(Boolean).join(' ');
+};
+
+const formatCapacityHeroInfoTooltip = (periodMinutes: CapacityPeriodMinutes): string => {
   if (periodMinutes === 60) return HERO_INFO_TOOLTIP_TEXT;
   return [
     'Power now is measured in kW — how fast electricity is being used right now.',
@@ -46,7 +65,7 @@ export const formatHeroInfoTooltip = (periodMinutes: CapacityPeriodMinutes): str
 // Tooltips appended after "Safe pace now {N} kW — ", so each phrase starts in
 // lowercase and uses a semicolon (not a second em-dash) as its internal
 // separator. Source-specific copy mirrors `notes/ui-terminology.md`.
-export const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
+export const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<'capacity' | 'daily', string> = {
   capacity: 'the hourly pace sets this marker; PELS starts reacting here.',
   daily: 'today\'s budget sets this marker, which may include power allowed beyond today\'s budget; '
     + 'PELS starts reacting here.',
@@ -59,23 +78,20 @@ export const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<HeroSoftLimitSource, string> = 
 // it once per card (see `planCardReasonLine.ts`). That makes this the only place
 // the owner can learn it, and a hover tooltip is not a place: the settings UI
 // runs in a touch WebView where nothing hovers.
-export const SAFE_PACE_SOURCE_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
+export const SAFE_PACE_SOURCE_BY_SOURCE: Record<'capacity' | 'daily', string> = {
   capacity: 'set by this hour\'s pace',
   daily: 'set by today\'s budget',
 };
 
-// Total over the union. This used to accept `null | undefined` and answer
-// `null` for them — an unattributed marker being honest where a guessed
-// attribution would not be (`feedback_hard_cap_is_physical`). That reasoning
-// still holds; there is simply no longer an unknown source to apply it to,
-// because `softLimitSource` is required on the wire and its two members are
-// the only ones a producer can emit.
 export const resolveSafePaceSourceText = (
   source: HeroSoftLimitSource,
   periodMinutes: CapacityPeriodMinutes,
-): string => source === 'capacity' && periodMinutes === 15
-  ? 'set by this quarter\'s pace'
-  : SAFE_PACE_SOURCE_BY_SOURCE[source];
+): string => {
+  if (source === null) return '';
+  if (source === 'grid') return 'set by grid import';
+  if (source === 'capacity' && periodMinutes === 15) return 'set by this quarter\'s pace';
+  return SAFE_PACE_SOURCE_BY_SOURCE[source];
+};
 
 const formatKw = (kw: number): string => `${kw.toFixed(1)} kW`;
 const roundKw = (kw: number): number => Math.round(kw * 10) / 10;
@@ -85,6 +101,10 @@ const resolveSafePaceTooltipBySource = (
   periodMinutes: CapacityPeriodMinutes,
 ): string => {
   switch (source) {
+    case null:
+      return 'no power limit enabled.';
+    case 'grid':
+      return 'PELS leaves an automatic margin below the grid import limit.';
     case 'daily':
       return SAFE_PACE_TOOLTIP_BY_SOURCE.daily;
     case 'capacity':

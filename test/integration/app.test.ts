@@ -486,7 +486,9 @@ describe('MyApp initialization', () => {
     await waitFor(() => app.deviceControlProfiles['dev-1'] !== undefined);
 
     expect(app.deviceControlProfiles).toEqual(profiles);
-    expect(app.capacitySettings).toEqual({ limitKw: 10, marginKw: 0.2, periodMinutes: 60 });
+    expect(app.capacitySettings).toEqual({
+      capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60,
+    });
     expect(app.timers.has('capacitySettingsLoadRetry')).toBe(true);
   });
 

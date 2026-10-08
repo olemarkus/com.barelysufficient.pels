@@ -1,3 +1,4 @@
+import { spendPowerHeadroom } from '../powerLimitMath';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../planTypes';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
@@ -142,8 +143,10 @@ export function planRestoreForDevice(
     });
     restoredThisCycle.add(dev.id);
     recordBatchAdmission(batchState, restoreNeed.needed);
-    return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+    return { availableHeadroom: spendPowerHeadroom(availableHeadroom, restoreNeed.needed), restoredOneThisCycle: true };
   }
+
+  if (availableHeadroom === null) return loop;
 
   // The reservation is the ONLY thing standing in the way: there is enough raw power, it is just
   // spoken for. Say so on the card, and stop here rather than falling through to the swap path —
@@ -241,6 +244,7 @@ function rejectBinaryRestoreForInsufficientHeadroom(
 ): RestoreLoopState {
   const { state, deviceMap, phase } = cycle;
   const { availableHeadroom } = loop;
+  if (availableHeadroom === null) return loop;
   const powerSource = resolveRestorePowerSource(dev);
   const restoreDebugKey = `binary:${dev.id}`;
   setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate({
@@ -286,6 +290,7 @@ function handleInsufficientBinaryRestoreHeadroom(
   const { batchState } = cycle;
   const { onDevices } = lane;
   const { availableHeadroom, restoredOneThisCycle } = loop;
+  if (reserved.kind === 'admitted' || availableHeadroom === null) return loop;
   const { admission, reservedKw: reservedHeadroomKw } = reserved;
   const restoreDebugKey = `binary:${dev.id}`;
   const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);

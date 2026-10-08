@@ -22,6 +22,17 @@ describe('CapacityGuard', () => {
   };
 
   describe('Shortfall detection', () => {
+    it('cancels an incident and pending alerts when period control is disabled', async () => {
+      const onShortfallCleared = vi.fn();
+      const guard = createTestCapacityGuard({ homeId: 'main', onShortfallCleared });
+      await guard.recordPlanVerdict(8, TEST_SHORTFALL_THRESHOLD_KW, planVerdictSummaryFixture({ actionableLoadRemains: false }));
+      expect(guard.isInShortfall()).toBe(true);
+      await guard.recordCapacityDisabled();
+      expect(guard.isInShortfall()).toBe(false);
+      expect(guard.getCurrentIncidentId()).toBeNull();
+      expect(onShortfallCleared).toHaveBeenCalledOnce();
+    });
+
     it('starts without shortfall', () => {
       const guard = createTestCapacityGuard({ homeId: 'main' });
       expect(guard.isInShortfall()).toBe(false);

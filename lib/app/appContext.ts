@@ -2,7 +2,7 @@ import type { ObservedTemperatureModeUpdates } from '../home/observedTemperature
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { TrackerStore } from '../power/trackerStore';
 import type { CapacitySettingsStore } from '../power/capacitySettingsStore';
-import type { CapacityScalarSettings, CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { CapacityScalarSettings, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type {
   ObservedEvChargingStateRead,
@@ -234,7 +234,7 @@ export type AppContext = {
   getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
   getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  computeDynamicSoftLimit: () => number;
+  computeDynamicSoftLimit: () => number | null;
   getDynamicSoftLimitOverride: () => number | null;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   evaluateHeadroomForDevice: (
@@ -251,8 +251,8 @@ export type AppContext = {
   /** This home's capacity scalars as the running app holds them, already resolved. */
   getCapacityScalars(): CapacityScalarSettings;
   getCurrentMonthCapacityPeakKw(): number | null;
-  get capacitySettings(): CapacitySettings;
-  set capacitySettings(value: CapacitySettings);
+  get capacitySettings(): PowerLimitSettings;
+  set capacitySettings(value: PowerLimitSettings);
   get capacityDryRun(): boolean;
   set capacityDryRun(value: boolean);
   get controllableDevices(): Record<string, boolean>;
@@ -285,8 +285,8 @@ export type AppContext = {
   set shedBehaviors(value: Record<string, ConfiguredShedBehavior>);
   get debugLoggingTopics(): Set<DebugLoggingTopic>;
   set debugLoggingTopics(value: Set<DebugLoggingTopic>);
-  get defaultComputeDynamicSoftLimit(): (() => number) | undefined;
-  set defaultComputeDynamicSoftLimit(value: (() => number) | undefined);
+  get defaultComputeDynamicSoftLimit(): (() => number | null) | undefined;
+  set defaultComputeDynamicSoftLimit(value: (() => number | null) | undefined);
   get lastKnownPowerKw(): LearnedPeaksByDeviceId;
   get expectedPowerKwOverrides(): ExpectedPowerOverridesByDeviceId;
   get lastNotifiedOperatingMode(): string;

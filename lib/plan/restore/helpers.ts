@@ -226,7 +226,7 @@ export function planRestoreForSteppedDevice(
     deviceMap: Map<string, DevicePlanDevice>;
     state: PlanEngineState;
     timing: RestoreDeviceTiming;
-    availableHeadroom: number;
+    availableHeadroom: number | null;
     restoredOneThisCycle: boolean;
     swapExecutor?: SteppedSwapExecutor;
     headroomReserves?: readonly HeadroomReserve[];

@@ -70,6 +70,8 @@ const heaterInputDevice = (): MeteredPlanInputDevice =>
   });
 
 const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> = {}): PlanCycle => buildPlanCycleObject({
+  gridImportLimitKw: null,
+  gridImportTargetKw: null,
   devices,
   intent: { getModeDeviceTargets: () => ({ Home: { [HEATER_ID]: 21 } }) },
   total: FIXTURE_TOTAL_KW,
@@ -96,6 +98,7 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> 
 const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 
 const emptyRestoreResult: RestorePlanResult = {
+  gridAvailableKw: null,
   planDevices: [],
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),
@@ -134,6 +137,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
   it('is never a shed candidate even under capacity overshoot (controllable:false filtered out)', () => {
     const context = buildContext([solarInputDevice(), heaterInputDevice()]);
     const { candidates } = buildSheddingCandidates({
+      bypassRecentRestore: false,
       devices: context.devices,
       temperatureSetpoints: context.temperatureSetpoints,
       needed: 5,

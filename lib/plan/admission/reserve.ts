@@ -31,7 +31,7 @@ export type RestoreAdmissionMetrics = {
 };
 
 export type RestoreDecisionPhase = 'startup' | 'runtime';
-export type RestoreAdmissionLogFields = Pick<RestoreAdmissionMetrics, 'marginKw'>;
+export type RestoreAdmissionLogFields = { marginKw: number | null };
 
 export function buildRestoreAdmissionMetrics(params: {
   availableKw: number;
@@ -46,9 +46,9 @@ export function isRestoreAdmitted(admission: RestoreAdmissionMetrics): boolean {
 }
 
 export function buildRestoreAdmissionLogFields(
-  admission: RestoreAdmissionMetrics,
+  admission: RestoreAdmissionMetrics | null,
 ): RestoreAdmissionLogFields {
-  return { marginKw: admission.marginKw };
+  return { marginKw: admission === null ? null : admission.marginKw };
 }
 
 export function resolveRestoreDecisionPhase(

@@ -39,7 +39,7 @@ export const buildPlanHeadroomLogFields = (
       softHeadroomKw: meta.headroomKw,
       shortfallBudgetHeadroomKw: meta.shortfallBudgetHeadroomKw,
       hardCapHeadroomKw: meta.hardCapHeadroomKw,
-      hardCapBreached: meta.hardCapHeadroomKw < 0,
+      hardCapBreached: meta.hardCapHeadroomKw !== null && meta.hardCapHeadroomKw < 0,
     }
     : {
       softHeadroomKw: null, shortfallBudgetHeadroomKw: null, hardCapHeadroomKw: null, hardCapBreached: null,

@@ -34,7 +34,7 @@ import { mainStorageLane } from '../appInit/createBatteryControl';
 import { requireDeferredObjectiveEnergyDelivery } from '../appInit/deferredRecorders';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
@@ -79,7 +79,7 @@ export type HomeScope = {
   // Capacity scalars: for the MAIN home these are live reads of the in-memory
   // snapshot (settings-handler maintained); sub-home scopes (R7b) back them
   // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
-  getCapacitySettings: () => CapacitySettings;
+  getCapacitySettings: () => PowerLimitSettings;
   getCapacityDryRun: () => boolean;
   /**
    * The owner's Simulation setting for this home, for presentation: what the

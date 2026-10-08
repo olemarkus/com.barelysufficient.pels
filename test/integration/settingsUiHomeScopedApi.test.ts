@@ -61,7 +61,7 @@ const areaReading = (
     operatingMode: 'Home',
     dryRunEffective: false,
     lastMeterPowerKw: 1.5,
-    capacityScalars: { limitKw: 10, marginKw: 1, dryRun: false, periodMinutes: 60 },
+    capacityScalars: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 1, dryRun: false, periodMinutes: 60 },
     lastDeviceControlledMs: {},
   },
 });

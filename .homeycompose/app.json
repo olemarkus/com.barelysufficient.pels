@@ -10,13 +10,15 @@
     "en": "PELS Energy Manager",
     "no": "PELS Strømstyring",
     "nl": "PELS Energiemanager",
-    "fr": "PELS Gestionnaire d'énergie"
+    "fr": "PELS Gestionnaire d'énergie",
+    "it": "PELS Gestione energia"
   },
   "description": {
     "en": "Stay under your power limit and run EV charging, heating and hot water on cheap power, solar and batteries.",
     "no": "Lavere effekttrinn og billigere strøm til elbil, varme og varmtvann.",
     "nl": "Lagere pieken, goedkopere uren en meer eigen zonnestroom voor je laadpaal, verwarming, boiler en thuisbatterij.",
-    "fr": "Heures creuses et pointes maîtrisées pour la voiture électrique, le chauffage et l'eau chaude."
+    "fr": "Heures creuses et pointes maîtrisées pour la voiture électrique, le chauffage et l'eau chaude.",
+    "it": "Più comfort, con la potenza che hai. PELS bilancia ricarica, riscaldamento e acqua calda."
   },
   "brandColor": "#22c55e",
   "category": [
@@ -175,6 +177,22 @@
       "pompe à chaleur",
       "climatisation",
       "Power by the Hour"
+    ],
+    "it": [
+      "gestione carichi",
+      "limite di potenza",
+      "potenza impegnata",
+      "contatore",
+      "3 kW",
+      "ricarica auto elettrica",
+      "wallbox",
+      "riscaldamento",
+      "acqua calda",
+      "fotovoltaico",
+      "autoconsumo",
+      "prezzi dinamici",
+      "ore più economiche",
+      "Homey Energy"
     ]
   },
   "permissions": [

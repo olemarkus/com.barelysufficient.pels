@@ -57,6 +57,7 @@ const RESTORE_ADMISSION_HOLD_REASON_CODES = new Set<PlanReasonCode>([
 // ride keep-state devices, revisit deliberately.
 const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.activationBackoff,
+  PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.cooldownRestore,
   PLAN_REASON_CODES.cooldownShedding,
@@ -109,6 +110,7 @@ const COOLDOWN_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
 // pause table on 2026-08-08 — they are PELS keeping the device off, and the owner does not
 // experience them as a break in the hold.
 const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, PlanStarvationCountingCause>> = {
+  [PLAN_REASON_CODES.gridImport]: 'capacity',
   [PLAN_REASON_CODES.capacity]: 'capacity',
   [PLAN_REASON_CODES.dailyBudget]: 'daily_budget',
   [PLAN_REASON_CODES.hourlyBudget]: 'hourly_budget',

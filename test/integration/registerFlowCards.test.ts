@@ -113,7 +113,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getPriceLevelChangesWithin: vi.fn() as never,
     recordPowerSample: vi.fn().mockResolvedValue(undefined),
     getHeadroom: vi.fn(() => null),
-    getCapacityPaceKw: () => 9.5,
+    getPowerLimitKw: () => 9.5,
     getLatchedTotalKw: () => null,
     getSnapshot: vi.fn().mockResolvedValue([]),
     getDeviceDescriptors: vi.fn().mockResolvedValue([]),

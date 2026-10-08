@@ -1,3 +1,4 @@
+import { withoutStorageWithheld } from '../../lib/plan/battery/storageLimit';
 import {
   STORAGE_DECREASE_MIN_INTERVAL_MS,
   STORAGE_INPUT_MISSING_RELEASE_MS,
@@ -6,7 +7,6 @@ import {
   releaseStorageOnSilentMeter,
   resolveStorageSurplus,
   sumWithheldKw,
-  withoutStorageWithheld,
   attachStorageDecisions,
   type StorageRelief,
 } from '../../lib/plan/battery/storageRelief';
@@ -636,11 +636,11 @@ describe('the surplus offer contract', () => {
 
 describe('storage discharge as restore sees it', () => {
   it('takes the held discharge off every headroom axis and leaves the draw measured', () => {
-    const power = buildMeasuredPower({ drawKw: 2, headroomKw: 1, capacityHeadroomKw: 1, budgetHeadroomKw: 0.5 });
+    const power = buildMeasuredPower({ drawKw: 2, headroomKw: 1, capacityHeadroomKw: 1, gridHeadroomKw: 0.8, budgetHeadroomKw: 0.5 });
     const relief = cycle(battery({ signedPowerW: -1500 }), 1, { battery: lever() });
 
     expect(withoutStorageWithheld(power, relief)).toEqual({
-      ...power, headroomKw: -0.5, capacityHeadroomKw: -0.5, budgetHeadroomKw: -1,
+      ...power, headroomKw: -0.5, capacityHeadroomKw: -0.5, gridHeadroomKw: -0.7, budgetHeadroomKw: -1,
     });
   });
 });

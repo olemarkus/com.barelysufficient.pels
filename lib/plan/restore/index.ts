@@ -13,7 +13,6 @@ import {
   setRestorePlanDevice as setDevice,
 } from './helpers';
 import type { RestoreTiming } from './timing';
-import type { SoftLimitSource } from '../planContext';
 import {
   buildRestoreTiming,
   buildRestoreCooldownReason,
@@ -25,7 +24,7 @@ import {
 import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
 import { resolveHeadroomReserves, resolveRestoreDecisionPhase, type HeadroomReserve } from '../admission';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
-import { buildRestoreBatchState } from './batch';
+import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
 import { markRestoreCandidatesHeld, markRestoreCandidatesStayShedForShortfall } from './marking';
 import { buildMeterSettlingReason } from '../planReasonStrings';
 import {
@@ -60,7 +59,7 @@ export function applyRestorePlan(params: {
   const swapLedger = state.swapLedger;
   const headroomReserves = resolveCycleHeadroomReserves(planDevices, state);
   const timing = buildRestoreTiming(state, power.headroomKw, deps.powerTracker);
-  const effectiveTiming = resolveEffectiveTiming(timing, context.softLimitSource);
+  const effectiveTiming = resolveEffectiveTiming(timing, context);
   // Resolved BEFORE the ledger reconcile and reused by the branch below, so the
   // one thing that decides whether restores happen this cycle also decides
   // whether a waiting swap reservation is charged for it. Ordering used to
@@ -71,16 +70,9 @@ export function applyRestorePlan(params: {
   // The exempt lane admits restores too, and reaches `blockingTarget` through
   // `applyRestoreCandidates` — so a cycle it runs in is serviceable for a
   // reservation whose target that lane can actually consider.
-  const exemptRestoresPlannable = !guardInShortfall && shouldPlanBudgetExemptRestores({
-    sheddingActive,
-    softLimitSource: context.softLimitSource,
-    capacityHeadroomKw: power.capacityHeadroomKw,
-    hourlyBudgetExhausted: state.hourlyBudgetExhausted,
-    // Raw timing on purpose: under daily source effectiveTiming clears the
-    // startup-stabilization hold, but this lane runs while shedding is latched
-    // — keep the conservative hold there.
-    timing,
-  });
+  // Raw timing keeps startup stabilization while the budget-shedding latch is active.
+  const exemptRestoresPlannable = !guardInShortfall
+    && shouldPlanBudgetExemptRestores(context, power, state, timing, sheddingActive);
   // Per target, not once per cycle: the exempt lane filters its candidates to
   // budget-exempt devices (`exemptRestoreLane.ts`), so counting it as
   // serviceable for a NON-exempt reservation would burn that reservation's
@@ -94,7 +86,7 @@ export function applyRestorePlan(params: {
   const storageHandedBack = new Set<string>();
   const ledger = buildCycleHeadroomLedger(power);
   let restoredOneThisCycle = false;
-  const batchState = buildRestoreBatchState({
+  const batchState = context.gridImportLimitKw !== null ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
     timing: effectiveTiming,
     availableHeadroom: ledger.summaryAvailableKw(),
   });
@@ -163,12 +155,12 @@ export function applyRestorePlan(params: {
 }
 
 /**
- * The startup-stabilization hold applies only while capacity is the binding
- * axis; under a daily-budget bind it is cleared, and `inShedWindow` is rebuilt
- * from the terms that remain.
+ * Keep startup stabilization when capacity binds or grid control is enabled.
+ * Otherwise rebuild the shed window from the remaining timing gates.
  */
-function resolveEffectiveTiming(timing: RestoreTiming, softLimitSource: SoftLimitSource): RestoreTiming {
-  if (timing.inStartupStabilization && softLimitSource === 'capacity') return timing;
+function resolveEffectiveTiming(timing: RestoreTiming, context: PlanContext): RestoreTiming {
+  const hasPhysicalLimit = context.softLimitSource === 'capacity' || context.gridImportLimitKw !== null;
+  if (timing.inStartupStabilization && hasPhysicalLimit) return timing;
   return {
     ...timing,
     inStartupStabilization: false,
@@ -192,6 +184,7 @@ function buildCycleHeadroomLedger(power: MeasuredPower): RestoreHeadroomLedger {
   // drop it (`notes/state-management/actuation-clocks-and-settle.md`).
   return buildRestoreHeadroomLedger({
     capacityAvailableKw: power.capacityHeadroomKw,
+    gridAvailableKw: power.gridHeadroomKw,
     budgetAvailableKw: power.budgetHeadroomKw,
   });
 }

@@ -28,6 +28,7 @@
  * the lane admits joins `storageHandedBack`, and the battery stage releases
  * the hold (`applyStorageHandBacks`, reason `restored`).
  */
+import { spendPowerHeadroom } from '../powerLimitMath';
 import type { DevicePlanDevice } from '../planTypes';
 import type { StorageLeverState } from '../planState';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
@@ -114,7 +115,7 @@ export function planStorageHandBack(
   });
   cycle.storageHandedBack.add(dev.id);
   recordBatchAdmission(batchState, neededKw);
-  return { availableHeadroom: availableHeadroom - neededKw, restoredOneThisCycle: true };
+  return { availableHeadroom: spendPowerHeadroom(availableHeadroom, neededKw), restoredOneThisCycle: true };
 }
 
 /** Whether a battery hand-back ranked above this device is waiting for room this pass. */

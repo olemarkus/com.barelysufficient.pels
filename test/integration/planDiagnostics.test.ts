@@ -33,6 +33,8 @@ const buildContext = (
   softLimitSource: PlanContext['softLimitSource'] = 'capacity',
   fixtureTotalKw = 4,
 ): PlanCycle => buildPlanCycleObject({
+  gridImportLimitKw: null,
+  gridImportTargetKw: null,
   devices: [device],
   // The real resolver, over the spec's mode targets, price settings and direction.
   intent,
@@ -63,6 +65,7 @@ const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 type RestoreResultOverrides = Partial<Omit<RestorePlanResult, 'timing'>> & { timing?: Partial<RestoreTiming> };
 
 const buildRestoreResult = ({ timing, ...overrides }: RestoreResultOverrides = {}): RestorePlanResult => ({
+  gridAvailableKw: null,
   planDevices: [],
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),

@@ -175,7 +175,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   const structuredDebugEmitter: StructuredDebugEmitter = vi.fn();
 
   let powerTracker: PowerTrackerState = {};
-  let capacitySettings = { limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
+  let capacitySettings: import('../../packages/contracts/src/capacitySettings').PowerLimitSettings = { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
   let capacityDryRun = false;
   let controllableDevices: Record<string, boolean> = {};
   let managedDevices: Record<string, boolean> = {};

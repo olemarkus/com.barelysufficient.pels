@@ -7,6 +7,9 @@ import {
   electricityPricesSurface,
   priceAwareDevicesSurface,
   settingsLimitsForm,
+  settingsGridImportEnabledInput,
+  settingsGridImportLimitInput,
+  settingsCapacityEnabledInput,
   settingsCapacityLimitInput,
   settingsCapacityMarginInput,
   settingsCapacityPeriodSelect,
@@ -41,6 +44,7 @@ import {
   loadAdvancedSettings,
   loadStaleDataStatus,
   refreshLimitsValidationHints,
+  refreshPowerLimitControls,
   refreshStaleDataBanner,
   saveSettingsLimitsSettings,
   saveSimulationModeSettings,
@@ -253,6 +257,23 @@ const initTabHandlers = () => {
   });
 };
 
+const initPowerLimitSwitchHandlers = (autoSaveSettingsLimits: () => Promise<void>): void => {
+  settingsGridImportEnabledInput?.addEventListener('change', () => {
+    refreshPowerLimitControls();
+    if (settingsGridImportEnabledInput?.selected && !settingsGridImportLimitInput?.value) {
+      settingsGridImportLimitInput?.focus();
+      return;
+    }
+    void autoSaveSettingsLimits();
+  });
+  settingsGridImportLimitInput?.addEventListener('input', refreshPowerLimitControls);
+  settingsGridImportLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
+  settingsCapacityEnabledInput?.addEventListener('change', () => {
+    refreshPowerLimitControls();
+    void autoSaveSettingsLimits();
+  });
+};
+
 const initLimitsAndSimulationHandlers = () => {
   const autoSaveSettingsLimits = async () => {
     try {
@@ -262,6 +283,7 @@ const initLimitsAndSimulationHandlers = () => {
       await showToastError(error, 'Failed to save limits and safety settings.');
     }
   };
+  initPowerLimitSwitchHandlers(autoSaveSettingsLimits);
   settingsCapacityLimitInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityMarginInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());

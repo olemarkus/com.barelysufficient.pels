@@ -1,3 +1,4 @@
+import type { RestoreHeadroomAxes } from './restore/headroomLedger';
 /**
  * Per-cycle admission shortfall for ceiling-held devices, computed at the
  * reason-normalization stage (`normalizeShedReasons`).
@@ -86,7 +87,7 @@ export type CeilingShortfallInputs = {
 };
 
 export function buildCeilingShortfallInputs(params: {
-  ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null };
+  ledgerAxes: RestoreHeadroomAxes;
   headroomReserves: readonly HeadroomReserve[];
   onDevices: readonly MeteredDevicePlanDevice[];
   swapLedger: SwapLedger;
@@ -164,6 +165,7 @@ export function resolveCeilingShortfall(params: {
   if (reserved.kind === 'blocked_by_reserve') {
     return { kind: 'blocked_by_reserve', holderName: reserved.holderName };
   }
+  if (reserved.kind === 'admitted') return { kind: 'no_gap' };
   const plainGapKw = -reserved.admission.marginKw;
 
   // Swap-aware gap, off the reservation-adjusted base (the restore lane hands

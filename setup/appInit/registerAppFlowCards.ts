@@ -6,7 +6,7 @@ import {
 } from './contextGuards';
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
-import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
+import { resolveLastTotalPowerKw, resolveObservedHeadroomKw } from '../../lib/power/lastTotalPower';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   hasMainHomeSmartTaskAuthority,
@@ -68,17 +68,11 @@ export function registerAppFlowCards(
       if (admittedSource.state !== 'resolved' || admittedSource.value !== 'flow') return;
       ctx.homeMembership?.noteAdmittedFlowHomeSample();
     },
-    // Resolved here, not inside the guard: the guard holds neither power nor a
-    // limit. `capacityPaceKw` is the planner's live threshold and the tracker is
-    // the single power latch, so the Flow condition answers against the same
-    // number the planner acts on.
-    getHeadroom: () => {
-      const totalKw = resolveLastTotalPowerKw(ctx.powerTracker);
-      if (totalKw === null) return null;
-      return ctx.computeDynamicSoftLimit() - totalKw;
-    },
+    // The power owner projects the accepted meter sample against the planner's
+    // enabled capacity/grid ceiling, keeping the Flow condition on that limit.
+    getHeadroom: () => resolveObservedHeadroomKw(ctx.powerTracker, ctx.computeDynamicSoftLimit()),
     getLatchedTotalKw: () => resolveLastTotalPowerKw(ctx.powerTracker),
-    getCapacityPaceKw: () => ctx.computeDynamicSoftLimit(),
+    getPowerLimitKw: () => ctx.computeDynamicSoftLimit(),
     getSnapshot: () => ctx.getFlowSnapshot(),
     getDeviceDescriptors: () => ctx.getFlowDeviceDescriptors(),
     getControllableDevices: () => ctx.controllableDevices,

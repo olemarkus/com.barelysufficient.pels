@@ -16,8 +16,8 @@ export type ShortfallOffState =
   | { inShortfall: true; headroomKw: number }
   | { inShortfall: false };
 
-export function resolveShortfallOffState(guardInShortfall: boolean, headroomKw: number): ShortfallOffState {
-  return guardInShortfall ? { inShortfall: true, headroomKw } : { inShortfall: false };
+export function resolveShortfallOffState(guardInShortfall: boolean, headroomKw: number | null): ShortfallOffState {
+  return guardInShortfall && headroomKw !== null ? { inShortfall: true, headroomKw } : { inShortfall: false };
 }
 
 export function applyOffStateReason(planDevice: DevicePlanDevice, shortfall: ShortfallOffState): DevicePlanDevice {
