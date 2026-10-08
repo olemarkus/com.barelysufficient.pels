@@ -592,5 +592,8 @@
   },
   "3.11.1": {
     "en": "A smart task now wins over 'Leave off until turned on again'. In the hours a task has booked, PELS can turn the device on when power is available, even if it was turned off elsewhere. Once the device has been turned on, it runs normally again after the task ends. Smart tasks lower in the priority order now plan around the tasks above them. They can charge or heat at a higher step, and use the rest of an hour that a higher task only partly needs. An EV task ranked below a water heater task no longer reports Cannot finish for a target it can reach.\n\nIn the New smart task widget you can now type the goal and choose any ready-by time, with the preset times still available as shortcuts. The preview shows the device and goal, and has an Edit task button. When a task cannot finish in time, the widget warns you and lets you choose Create anyway. PELS then works toward the goal within your power limits. The settings page and dashboard widgets now use less memory and processing while open, which makes PELS run more steadily over long periods."
+  },
+  "3.11.2": {
+    "en": "The settings page now uses less memory and processing while it’s open, especially in homes with many devices. The Usage view refreshes when you open it.\n\nSmart task details now show the energy rate and confidence recorded for the current plan, keeping them consistent with the chart, task list and widget."
   }
 }
