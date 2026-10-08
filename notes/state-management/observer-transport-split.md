@@ -458,7 +458,9 @@ These are not strictly part of the split but block it in subtle ways:
   `packages/contracts/src/`; the latter is pruned from the Homey runtime
   build, which would have broken the value imports of
   `PELS_TARGET_STEP_CAPABILITY_ID` etc.). `SteppedLoadStepRequestResult` /
-  `SteppedLoadStepRequestTransport` types moved with it.
+  `SteppedLoadStepRequestTransport` types moved with it; they have since
+  moved to the backend port `lib/ports/steppedLoadWrite.ts`, since no
+  browser code reads them.
 - ~~`lib/device/stateOfCharge.ts` is consumed by both `managerRealtimeHandlers.ts`
   and `managerObservation.ts` (now under `lib/device/transport/`) plus
   `manager.ts` and `managerRuntime.ts` (which stay in `lib/device/`).~~

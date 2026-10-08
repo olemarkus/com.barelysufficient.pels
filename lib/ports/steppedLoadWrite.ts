@@ -13,12 +13,10 @@ export type SteppedLoadWrite = {
 /** Channel actually used to issue a stepped-load request. */
 export type SteppedLoadStepRequestTransport = 'native_capability' | 'flow';
 
-/** SDK acceptance and device telemetry remain distinct facts. */
+/**
+ * Whether the request was issued, and over which channel. Acceptance only:
+ * the device's reported step reaches the executor through the observer.
+ */
 export type SteppedLoadStepRequestResult =
   | { requested: false; reason?: 'flow_trigger_timeout' }
-  | {
-    requested: true;
-    transport: SteppedLoadStepRequestTransport;
-    /** Matching telemetry received during the native write; acceptance alone supplies none. */
-    reportedStepId?: string;
-  };
+  | { requested: true; transport: SteppedLoadStepRequestTransport };

@@ -1,7 +1,7 @@
 # Deviation-Gated Logging for the Diagnostics Report
 
 Status: partially implemented (idle de-flood, `emitGated`, EV clamp, routine meter sampling,
-maintenance debug logging, and native command/report folding implemented).
+maintenance debug logging, and native step report naming implemented).
 Companion to `notes/logging/README.md`.
 
 ## Problem
@@ -106,14 +106,16 @@ state). Dedupe maps prune via `shouldEmitOnChange` (160 MB RSS ceiling).
    remain at info, and resource warnings and unavailable-collector warnings keep their
    existing severity.
 
-5. **Native stepped command echoes** (`lib/device/transport/nativeSteppedRealtime.ts`).
-   Matching step telemetry received while the native write is in flight is folded into
-   `stepped_load_command_requested` as `reportedStepId`; its separate confirmation uses
-   `devices` debug. SDK acceptance alone never populates that field. Delayed and unmatched
-   telemetry stays at info as `native_stepped_load_report_changed`, with previous and
-   observed step values, rather than labelling every change as drift. If matching telemetry
-   precedes a failed or timed-out write, `native_stepped_load_report_confirmed` retains
-   that observation at info alongside the failed/unknown command outcome.
+5. **Native stepped step reports** (`lib/device/transport/nativeSteppedRealtime.ts`).
+   Each realtime report that changes a native device's reported step logs
+   `native_stepped_load_report_changed` at info, with the previous and reported step,
+   rather than labelling every change as drift. The Easee charger-current echo of PELS's
+   own write logs like any other change; other native capabilities' own-write echoes are
+   suppressed (`shouldSuppressOwnNativeStepEcho`), and a snapshot refresh updates the step
+   without a line. The observer owns the reported step and the executor judges its command
+   against it, so the write result carries acceptance only. A step copied into
+   `stepped_load_command_requested` would be a second record of that observation, and one
+   that a re-asserted step or a suppressed echo would leave wrong or absent.
 
 ## Cautions
 
@@ -129,6 +131,8 @@ state). Dedupe maps prune via `shouldEmitOnChange` (160 MB RSS ceiling).
 
 ## Follow-up candidates (not yet done)
 
+- `stepped_load_command_requested`: promote only when `desiredStepId !==
+  plannedDesiredStepId` or transport fell back; route the matching majority to debug.
 - `periodic_device_health_summary`: value-gate (quiet when all-healthy; info on transition
   into `unavailableDevices > 0 || temperatureUnknownDevices > 0`).
 - `plan_rebuild_completed`: add `commandRequestCount > appliedActions` and `headroom < 0`

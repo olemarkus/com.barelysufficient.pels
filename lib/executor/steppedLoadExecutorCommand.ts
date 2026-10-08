@@ -117,7 +117,6 @@ export type ExecuteSteppedLoadCommandParams = {
 
 type AcceptedSteppedLoadCommandParams = ExecuteSteppedLoadCommandParams & {
   commandTransport?: SteppedLoadStepRequestTransport;
-  reportedStepId?: string;
 };
 
 const markAcceptedSteppedLoadCommand = (
@@ -204,7 +203,6 @@ const logAcceptedSteppedLoadCommand = (
     planningPowerW: desiredStep.planningPowerW,
     ...transitionFields,
     ...(commandTransport ? { commandTransport } : {}),
-    ...(params.reportedStepId !== undefined ? { reportedStepId: params.reportedStepId } : {}),
   });
 };
 
@@ -461,17 +459,10 @@ export const executeSteppedLoadCommand = async (
       accepted = handleUnrequestedSteppedLoadResult(ctx, params, result.reason);
       return accepted;
     }
-    if (ctx.isSteppedCommandAuthorityCurrent?.() === false) {
-      // A superseded command still reached Homey. Its folded observation must
-      // survive even though this executor no longer owns runtime bookkeeping.
-      logAcceptedSteppedLoadCommand(ctx, { ...params, commandTransport: result.transport,
-        reportedStepId: result.reportedStepId });
-      return false;
-    }
+    if (ctx.isSteppedCommandAuthorityCurrent?.() === false) return false;
     accepted = recordAcceptedSteppedLoadCommand(ctx, {
       ...params,
       commandTransport: result.transport,
-      reportedStepId: result.reportedStepId,
     });
     return accepted;
   } catch (error) {
