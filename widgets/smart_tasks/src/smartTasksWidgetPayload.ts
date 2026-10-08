@@ -34,6 +34,7 @@ import {
   formatSmartTaskListConfidenceChipLabel,
   RECOURSE_CANNOT_MEET_BUDGET,
   RECOURSE_CANNOT_MEET_DEVICE,
+  resolveChipConfidence,
   resolveMissedHistoryCarHint,
   resolveMissedHistoryRecourse,
   resolveSmartTaskLearning,
@@ -297,7 +298,7 @@ const resolveConfidenceLabel = (
   statusId: SmartTaskListStatusId,
 ): string | null => (
   formatSmartTaskListConfidenceChipLabel({
-    confidence: provenance?.displayConfidence ?? provenance?.confidence ?? null,
+    confidence: resolveChipConfidence(provenance),
     statusId,
     learning: resolveSmartTaskLearning(provenance),
   })

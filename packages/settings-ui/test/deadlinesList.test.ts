@@ -254,15 +254,14 @@ describe('resolveDeadlinesListCards', () => {
 
   // Bootstrap-silence regression: cold-start cards must keep the chip suppressed
   // (`confidence === null`) so they don't show "Estimating" before the device
-  // has any provenance signal at all. The list passes `profileConfidence: null`
-  // unconditionally (it doesn't load `objectiveProfiles`), so the only thing
-  // standing between the chip and a future regression that re-wires a profile
-  // fallback into the list is the producer chain collapsing the three null
-  // inputs down to `null`. Sibling of the `displayConfidence > confidence`
+  // has any provenance signal at all. The chip reads the plan's provenance only,
+  // so the only thing standing between the chip and a future regression that
+  // re-wires a profile fallback into the list is the producer chain collapsing
+  // the null inputs down to `null`. Sibling of the `displayConfidence > confidence`
   // hero-parity test above — both tests pin the same chain (`resolveChipConfidence`
   // in `deadlinesList.ts`), but this case asserts the silence end of the
   // preference order: nothing in, nothing out.
-  it('suppresses the chip when both provenance confidences and live profile are null (cold-start silence)', () => {
+  it('suppresses the chip when both provenance confidences are null (cold-start silence)', () => {
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([
         buildPlan({

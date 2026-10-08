@@ -44,7 +44,6 @@ import {
 import {
   resolveDisplayRateAndSpeedMode,
   resolveEnergyNeededKWh,
-  resolveProfile,
   resolveTaskProgress,
 } from './deadlinePlanResolvers.ts';
 import {
@@ -162,7 +161,6 @@ type ObjectivePayloadReady = {
     };
   };
   bootstrap: SettingsUiBootstrap;
-  profile: ReturnType<typeof resolveProfile>;
   progress: NonNullable<ReturnType<typeof resolveTaskProgress>>;
   hours: HorizonHour[];
   energy: ReturnType<typeof resolveEnergyNeededKWh>;
@@ -220,7 +218,6 @@ const prepareObjectivePayload = (
   ctx: ObjectivePayloadReady['ctx'],
   params: ObjectivePlanInput,
 ): ObjectivePayloadReady | ObjectivePayloadResult => {
-  const profile = resolveProfile(params.bootstrap.power.tracker, ctx.deviceId);
   const progressDirection = ctx.activePlan.progressDirection;
   const directionUnavailable = resolveDirectionUnavailable(ctx.objective.kind, progressDirection);
   if (directionUnavailable !== null) return directionUnavailable;
@@ -242,10 +239,9 @@ const prepareObjectivePayload = (
   return {
     ctx,
     bootstrap: params.bootstrap,
-    profile,
     progress,
     hours,
-    energy: resolveEnergyNeededKWh({ profile, activePlan: ctx.activePlan }),
+    energy: resolveEnergyNeededKWh(ctx.activePlan),
     costDisplay,
     priceUnitLabel: resolvePriceUnitLabel(costDisplay),
   };
@@ -384,7 +380,7 @@ const resolveHeroEnergyFields = (
 });
 
 const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload => {
-  const { ctx, bootstrap, profile, progress, hours, energy } = input;
+  const { ctx, bootstrap, progress, hours, energy } = input;
   const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
   const latest = activePlan.latest;
   const labels = deadlineLabels(objective.kind, progress.progressDirection);
@@ -427,7 +423,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     nowMs,
   });
   const planningSpeedKw = resolvePositiveNumber(activePlan.initialPlanningSpeedKw ?? latest.planningSpeedKw);
-  const displayRate = resolveDisplayRateAndSpeedMode({ latest, profile, objectiveKind: objective.kind });
+  const displayRate = resolveDisplayRateAndSpeedMode(activePlan);
 
   const revisionPanelFeed = buildRevisionPanelFeed({
     latest,

@@ -96,6 +96,11 @@ const buildHeaterActivePlan = (params: {
       ? { floorShortfallCause: params.floorShortfallCause }
       : {}),
     ...(params.planningSpeedKw !== undefined ? { planningSpeedKw: params.planningSpeedKw } : {}),
+    // The rate the recorder resolves for a learned heater: 1 kWh/°C, the same
+    // figure the plan's provenance below carries.
+    kwhPerUnitSource: 'learned' as const,
+    speedMode: 'auto' as const,
+    rateMean: 1,
   };
   const latestRevision = params.latestHourOffsets
     ? {
@@ -117,6 +122,14 @@ const buildHeaterActivePlan = (params: {
     pending: false,
     objectiveSignature: 'sig',
     ...(params.initialPlanningSpeedKw !== undefined ? { initialPlanningSpeedKw: params.initialPlanningSpeedKw } : {}),
+    kwhPerUnitProvenance: {
+      source: 'learned',
+      kWhPerUnit: 1,
+      acceptedSamples: 8,
+      confidence: 'high',
+      displayConfidence: 'high',
+      lastAcceptedAtMs: revisedAtMs,
+    },
     original: originalRevision,
     latest: latestRevision,
   };
@@ -131,11 +144,7 @@ const buildBootstrap = (
   deferredObjectiveActivePlans: buildActivePlans(activePlan),
   plan: null,
   power: {
-    tracker: {
-      objectiveProfiles: {
-        heater: { kwhPerUnit: { mean: 1, confidence: 'high' } },
-      },
-    },
+    tracker: {},
     status: { state: 'unavailable', reason: 'no_status_recorded' },
     capacityPeak: { state: 'unavailable' },
     capacityScalars: { state: 'unavailable' },
@@ -909,9 +918,9 @@ describe('deadline plan page payload', () => {
 
   it('renders the allocated plan even when the device profile is not yet learned', () => {
     // Reproduces the user-reported "Smart task unavailable" after prices
-    // arrived: the recorder has written an allocation but
-    // powerTracker.objectiveProfiles is empty (no learned kwhPerUnit). The UI
-    // must compute energy from the stored allocation, not the absent profile.
+    // arrived: the recorder has written an allocation and the page has no
+    // learned profile to read. The UI must compute energy from the stored
+    // allocation.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -963,8 +972,6 @@ describe('deadline plan page payload', () => {
       plannedHourOffsets: [0, 1, 2],
       plannedKWhPerHour: 1.5,
     }));
-    // Strip the learned profile so the UI must lean on the allocation.
-    bootstrap.power.tracker = { objectiveProfiles: {} };
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -1022,6 +1029,14 @@ describe('deadline plan page payload', () => {
       energyNeededKWh: 16,
       planStatus: 'cannot_meet',
     });
+    activePlan.kwhPerUnitProvenance = {
+      source: 'learned',
+      kWhPerUnit: 1,
+      acceptedSamples: 8,
+      confidence: 'low',
+      displayConfidence: 'low',
+      lastAcceptedAtMs: now.getTime(),
+    };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1037,9 +1052,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    const profile = bootstrap.power.tracker?.objectiveProfiles?.heater;
-    if (!profile?.kwhPerUnit) throw new Error('expected heater profile');
-    profile.kwhPerUnit.confidence = 'low';
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -1613,12 +1625,6 @@ describe('deadline plan page payload', () => {
       plannedHourOffsets: [0],
       plannedKWhPerHour: 2,
     }));
-    bootstrap.power.tracker = {
-      objectiveProfiles: {
-        heater: { kwhPerUnit: { mean: 0.5, confidence: 'low' } },
-      },
-    };
-
     const result = resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
@@ -1703,8 +1709,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    // No learned EV profile, and none would be read: progress is the live reading alone.
-    bootstrap.power.tracker = { objectiveProfiles: {} };
 
     const result = resolveRenderInput({
       bootstrap,
@@ -1958,9 +1962,6 @@ describe('deadline plan page payload', () => {
       plannedHourOffsets: [0],
       plannedKWhPerHour: 0,
     }));
-    // Strip the learned profile so the only thing keeping the UI from rendering is the
-    // already-satisfied state, not a missing kWh-per-unit estimate.
-    bootstrap.power.tracker = { objectiveProfiles: {} };
 
     const result = resolveRenderInput({
       bootstrap,
@@ -2227,6 +2228,8 @@ describe('deadline plan page payload', () => {
       energyNeededKWh: 20,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'bootstrap' as const,
+      speedMode: 'learning' as const,
+      rateMean: 1,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
@@ -2256,8 +2259,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    // No learned EV profile — only the heater placeholder.
-    bootstrap.power.tracker = { objectiveProfiles: {} };
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -2322,6 +2323,8 @@ describe('deadline plan page payload', () => {
       energyNeededKWh: 20,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'bootstrap' as const,
+      speedMode: 'learning' as const,
+      rateMean: 1,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
@@ -2353,8 +2356,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    // No learned EV profile — only the heater placeholder.
-    bootstrap.power.tracker = { objectiveProfiles: {} };
 
     return { bootstrap, deviceId: 'ev', devices, prices, nowMs: now.getTime() };
   };
@@ -2511,6 +2512,8 @@ describe('deadline plan page payload', () => {
       energyNeededKWh: 3,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'learned' as const,
+      speedMode: 'auto' as const,
+      rateMean: 0.15,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
@@ -2522,7 +2525,14 @@ describe('deadline plan page payload', () => {
       startedAtMs: now.getTime(),
       pending: false,
       objectiveSignature: 'sig',
-      original: { ...learnedRevision, revision: 1, reason: 'flow_card' as const, kwhPerUnitSource: 'bootstrap' as const },
+      original: {
+        ...learnedRevision,
+        revision: 1,
+        reason: 'flow_card' as const,
+        kwhPerUnitSource: 'bootstrap' as const,
+        speedMode: 'learning' as const,
+        rateMean: 1,
+      },
       latest: learnedRevision,
     };
     const bootstrap = buildBootstrap({
@@ -2540,12 +2550,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    // Learned profile now present for the EV.
-    bootstrap.power.tracker = {
-      objectiveProfiles: {
-        ev: { kwhPerUnit: { mean: 0.15, confidence: 'low' } },
-      },
-    };
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -2559,11 +2563,10 @@ describe('deadline plan page payload', () => {
     expect(payload.planInputs.perUnitRateNote).toBeNull();
   });
 
-  it('honours the producer-persisted flat rateMean + speedMode over the live profile', () => {
-    // Forward-compat: a revision recorded by the new producer carries flat
-    // `rateMean` / `speedMode`. The UI must read those directly and NOT
-    // re-derive from the live profile — here the profile mean (0.40) differs
-    // from the persisted rate (0.22) to prove the flat field wins.
+  it('honours the revision\'s recorded rateMean + speedMode over the provenance mean', () => {
+    // The latest revision's flat `rateMean` / `speedMode` are what the plan was
+    // sized with. The provenance's learned mean (0.40) deliberately differs from
+    // the recorded rate (0.22) to prove the revision's figure wins.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2609,6 +2612,14 @@ describe('deadline plan page payload', () => {
       planningSpeedKw: 7,
       estimatedDurationText: '3h',
     };
+    const kwhPerUnitProvenance = {
+      source: 'learned' as const,
+      kWhPerUnit: 0.40,
+      acceptedSamples: 8,
+      confidence: 'high' as const,
+      displayConfidence: 'high' as const,
+      lastAcceptedAtMs: now.getTime(),
+    };
     const activePlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
@@ -2619,6 +2630,7 @@ describe('deadline plan page payload', () => {
       startedAtMs: now.getTime(),
       pending: false,
       objectiveSignature: 'sig',
+      kwhPerUnitProvenance,
       original: revision,
       latest: revision,
     };
@@ -2637,12 +2649,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    // Live profile mean deliberately differs from the persisted rateMean.
-    bootstrap.power.tracker = {
-      objectiveProfiles: {
-        ev: { kwhPerUnit: { mean: 0.40, confidence: 'high' } },
-      },
-    };
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -2656,10 +2662,10 @@ describe('deadline plan page payload', () => {
     expect(payload.planInputs.perUnitRateNote).toBeNull();
   });
 
-  it('uses the persisted learning speedMode + bootstrap rateMean with no live profile', () => {
-    // Forward-compat bootstrap case: producer persisted `speedMode: 'learning'`
-    // and the bootstrap rate; the live profile is absent. The hero badge and
-    // the bootstrap note must both come from the flat fields.
+  it('uses the persisted learning speedMode + bootstrap rateMean', () => {
+    // Bootstrap case: the producer persisted `speedMode: 'learning'` and the
+    // bootstrap rate. The hero badge and the bootstrap note must both come from
+    // the flat fields.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -2733,7 +2739,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    bootstrap.power.tracker = { objectiveProfiles: {} };
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -2825,7 +2830,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    bootstrap.power.tracker = { objectiveProfiles: {} };
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -2924,7 +2928,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    bootstrap.power.tracker = { objectiveProfiles: {} };
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -3010,7 +3013,6 @@ describe('deadline plan page payload', () => {
         },
       },
     }, activePlan);
-    bootstrap.power.tracker = { objectiveProfiles: {} };
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
