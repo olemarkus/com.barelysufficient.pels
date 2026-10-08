@@ -829,8 +829,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('writes native capability instead of triggering the stepped-load flow when enabled', async () => {
-    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true, transport: 'native_capability' as const,
-      reportedStepId: 'medium' }));
+    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true, transport: 'native_capability' as const }));
     const trigger = vi.fn(async () => undefined);
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
@@ -890,7 +889,6 @@ describe('native stepped-load wiring', () => {
       targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       desiredStepId: 'medium',
       commandTransport: 'native_capability',
-      reportedStepId: 'medium',
     }));
   });
 

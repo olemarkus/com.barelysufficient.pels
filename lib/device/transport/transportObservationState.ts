@@ -4,7 +4,6 @@
  * work that is still pending.
  */
 import type { BinaryControlObservation } from '../../../packages/contracts/src/types';
-import type { SteppedLoadWrite } from '../../ports/steppedLoadWrite';
 import { createObservationState, type DeviceTransportObservationState } from './observationState';
 import type {
   RecentLocalCapabilityWrite,
@@ -24,7 +23,6 @@ export class TransportObservationState {
   private readonly observations = createObservationState();
   private readonly observationSeqByDeviceId = new Map<string, number>();
   private readonly localCapabilityWrites: RecentLocalCapabilityWrites = new Map();
-  private readonly nativeStepCommands = new Map<string, { command: SteppedLoadWrite; reportedStepId?: string }>();
   private readonly realtimeCapabilityEventTimesByKey = new Map<string, number>();
   private readonly binarySettleEvidenceByDeviceId = new Map<string, BinaryControlObservation>();
   private readonly pendingTemperatureRecoveryDeviceIds = new Set<string>();
@@ -54,28 +52,6 @@ export class TransportObservationState {
 
   clearLocalCapabilityWrite(deviceId: string, capabilityId: string): void {
     this.localCapabilityWrites.delete(capabilityWriteKey(deviceId, capabilityId));
-  }
-
-  beginNativeStepCommand(command: SteppedLoadWrite): void {
-    this.nativeStepCommands.set(command.deviceId, { command });
-  }
-
-  /** Fold only matching telemetry received during the write into its outcome log. */
-  recordNativeStepCommandReport(deviceId: string, reportedStepId: string | undefined): boolean {
-    const pending = this.nativeStepCommands.get(deviceId);
-    if (!pending) return false;
-    if (pending.command.desiredStepId !== reportedStepId) {
-      delete pending.reportedStepId;
-      return false;
-    }
-    pending.reportedStepId = reportedStepId;
-    return true;
-  }
-
-  finishNativeStepCommand(deviceId: string): string | undefined {
-    const reportedStepId = this.nativeStepCommands.get(deviceId)?.reportedStepId;
-    this.nativeStepCommands.delete(deviceId);
-    return reportedStepId;
   }
 
   getRecentLocalCapabilityWrite(
@@ -149,7 +125,6 @@ export class TransportObservationState {
     this.observations.latestLocalWriteMsByDeviceId.clear();
     this.observationSeqByDeviceId.clear();
     this.localCapabilityWrites.clear();
-    this.nativeStepCommands.clear();
     this.realtimeCapabilityEventTimesByKey.clear();
     this.binarySettleEvidenceByDeviceId.clear();
     this.pendingTemperatureRecoveryDeviceIds.clear();

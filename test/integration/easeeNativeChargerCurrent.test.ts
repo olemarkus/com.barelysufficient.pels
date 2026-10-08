@@ -332,10 +332,11 @@ describe('Easee native charger current', () => {
     }
   });
 
-  it('folds an in-flight matching current report into the accepted request and keeps later changes visible', async () => {
+  // The charger's echo of PELS's own write is a step change like any other: the
+  // observer owns the reported step, so the write result carries acceptance only
+  // and every change, echo or not, is the same info line.
+  it('logs each reported current change at info, the echo of its own write included', async () => {
     const transport = createEaseeTransport(true);
-    const controlChanged = vi.fn();
-    onObservedControlState(transport, controlChanged);
     setRestClient({
       get: async () => ({ [EASEE_ID]: buildEaseeCharger() }),
       put: async () => { transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6); },
@@ -346,109 +347,38 @@ describe('Easee native charger current', () => {
       logCapture = captureLogger('info', []);
       await expect(transport.requestSteppedLoadStep({
         deviceId: EASEE_ID, profile: presetProfile, desiredStepId: '6a', planningPowerW: 1380, planningCurrentA: 6,
-      })).resolves.toEqual({ requested: true, transport: 'native_capability', reportedStepId: '6a' });
-      expect(logCapture.findEvent('native_stepped_load_report_changed')).toBeUndefined();
-      expect(controlChanged).toHaveBeenCalled();
+      })).resolves.toEqual({ requested: true, transport: 'native_capability' });
       expect(transport.getSnapshotByDeviceId(EASEE_ID)?.reportedStepId).toBe('6a');
 
       transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 8);
-      expect(logCapture.findEvent('native_stepped_load_report_changed')).toMatchObject({
-        deviceId: EASEE_ID, previousReportedStepId: '6a', reportedStepId: '8a',
-      });
+      expect(logCapture.findEvents('native_stepped_load_report_changed')).toEqual([
+        expect.objectContaining({ deviceId: EASEE_ID, previousReportedStepId: '16a', reportedStepId: '6a' }),
+        expect.objectContaining({ deviceId: EASEE_ID, previousReportedStepId: '6a', reportedStepId: '8a' }),
+      ]);
     } finally {
       restoreMockRestClient();
     }
   });
 
-  it('includes an in-flight matching report even when the observed step is unchanged', async () => {
+  it('keeps a report that lands before the write rejects in the observed step', async () => {
     const transport = createEaseeTransport(true);
-    const controlChanged = vi.fn();
-    onObservedControlState(transport, controlChanged);
     setRestClient({
       get: async () => ({ [EASEE_ID]: buildEaseeCharger() }),
-      put: async () => { transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 16); },
+      put: async () => {
+        transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
+        throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/easee-1/capability/target_charger_current');
+      },
     });
-    try {
-      await transport.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
-      controlChanged.mockClear();
-      logCapture.restore();
-      logCapture = captureLogger('info', []);
-      await expect(transport.requestSteppedLoadStep({
-        deviceId: EASEE_ID, profile: presetProfile, desiredStepId: '16a', planningPowerW: 3680, planningCurrentA: 16,
-      })).resolves.toEqual({ requested: true, transport: 'native_capability', reportedStepId: '16a' });
-      expect(logCapture.findEvent('native_stepped_load_report_changed')).toBeUndefined();
-      expect(controlChanged).not.toHaveBeenCalled();
-    } finally {
-      restoreMockRestClient();
-    }
-  });
-
-  it('retains a delayed report at info when acceptance had no observed confirmation', async () => {
-    const transport = createEaseeTransport(true);
-    setRestClient({ get: async () => ({ [EASEE_ID]: buildEaseeCharger() }), put: async () => undefined });
     try {
       await transport.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
       logCapture.restore();
       logCapture = captureLogger('info', []);
       await expect(transport.requestSteppedLoadStep({
         deviceId: EASEE_ID, profile: presetProfile, desiredStepId: '6a', planningPowerW: 1380, planningCurrentA: 6,
-      })).resolves.toEqual({ requested: true, transport: 'native_capability' });
-      transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
+      })).rejects.toThrow(HomeyRequestTimeoutError);
+      expect(transport.getSnapshotByDeviceId(EASEE_ID)?.reportedStepId).toBe('6a');
       expect(logCapture.findEvent('native_stepped_load_report_changed')).toMatchObject({
         deviceId: EASEE_ID, previousReportedStepId: '16a', reportedStepId: '6a',
-      });
-    } finally {
-      restoreMockRestClient();
-    }
-  });
-
-  it.each([
-    new Error('SDK rejected the request'),
-    new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/easee-1/capability/target_charger_current'),
-  ])('keeps in-flight telemetry visible when a native request rejects with %s', async (failure) => {
-    const transport = createEaseeTransport(true);
-    setRestClient({
-      get: async () => ({ [EASEE_ID]: buildEaseeCharger() }),
-      put: async () => {
-        transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
-        throw failure;
-      },
-    });
-    try {
-      await transport.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
-      logCapture.restore();
-      logCapture = captureLogger('info', []);
-      await expect(transport.requestSteppedLoadStep({
-        deviceId: EASEE_ID, profile: presetProfile, desiredStepId: '6a', planningPowerW: 1380, planningCurrentA: 6,
-      })).rejects.toThrow(failure.message);
-      expect(logCapture.findEvent('native_stepped_load_report_confirmed')).toMatchObject({
-        deviceId: EASEE_ID, desiredStepId: '6a', reportedStepId: '6a',
-      });
-      transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 8);
-      expect(logCapture.findEvent('native_stepped_load_report_changed')).toMatchObject({ reportedStepId: '8a' });
-    } finally {
-      restoreMockRestClient();
-    }
-  });
-
-  it('does not claim confirmation when an in-flight match is followed by a different report', async () => {
-    const transport = createEaseeTransport(true);
-    setRestClient({
-      get: async () => ({ [EASEE_ID]: buildEaseeCharger() }),
-      put: async () => {
-        transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
-        transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 8);
-      },
-    });
-    try {
-      await transport.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
-      logCapture.restore();
-      logCapture = captureLogger('info', []);
-      await expect(transport.requestSteppedLoadStep({
-        deviceId: EASEE_ID, profile: presetProfile, desiredStepId: '6a', planningPowerW: 1380, planningCurrentA: 6,
-      })).resolves.toEqual({ requested: true, transport: 'native_capability' });
-      expect(logCapture.findEvent('native_stepped_load_report_changed')).toMatchObject({
-        deviceId: EASEE_ID, previousReportedStepId: '6a', reportedStepId: '8a',
       });
     } finally {
       restoreMockRestClient();
