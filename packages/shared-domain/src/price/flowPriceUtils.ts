@@ -1,7 +1,7 @@
 // The one home for flow price-payload parsing, imported by both the runtime
 // price service (`lib/price/**`) and the settings UI. It lives here because
-// shared-domain is browser-safe AND ships inside the app bundle: the runtime
-// entry points inline `packages/` (scripts/bundle-homey-build.mjs), and
+// shared-domain is browser-safe AND ships with the app: the runtime requires
+// its compiled modules from `packages/` like any other, and
 // scripts/sanitize-homey-build.mjs prunes only `packages/contracts`.
 //
 // This module used to exist twice, hand-synced, on the grounds that merging it
