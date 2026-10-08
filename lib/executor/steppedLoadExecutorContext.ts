@@ -1,7 +1,7 @@
 import type { BinaryControlTransport } from './binaryControlDispatch';
 import type { PlanEngineState } from '../plan/planState';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
-import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { SteppedLoadStepRequestResult } from '../ports/steppedLoadWrite';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { BinaryCommandClaim, BinaryCommandClaimState } from './binaryCommandClaim';
 import type { TargetCommandOwner } from './targetCommandClaim';

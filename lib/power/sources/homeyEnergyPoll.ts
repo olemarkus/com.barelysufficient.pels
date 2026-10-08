@@ -141,11 +141,6 @@ export class HomeyEnergyPollSource {
     if (this.deps.getPowerSource() !== 'homey_energy') return;
 
     if (sample) {
-      this.deps.debugStructured({
-        event: 'homey_energy_poll',
-        homePowerW: sample.powerW,
-        generationW: sample.generationW,
-      });
       await this.deps.recordPowerSample(sample);
       return;
     }

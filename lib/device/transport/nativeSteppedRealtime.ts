@@ -8,7 +8,7 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import type { TargetPowerSteppedLoadPreset } from '../../../packages/contracts/src/types';
-import { getLogger } from '../../logging/logger';
+import { getDebugEmitter, getLogger } from '../../logging/logger';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { recordCapabilityObservation } from './managerObservation';
 import {
@@ -36,6 +36,7 @@ import {
 import type { RealtimeIngestService } from './transportServices';
 
 const moduleLogger = getLogger('device/transport');
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 function resolveNativeSteppedCapabilityUpdateKind(params: {
     capabilityId: string;
@@ -68,7 +69,7 @@ function emitNativeSteppedLoadReportedStepChanged(ingest: RealtimeIngestService,
     deviceName: string;
     previousReportedStepId: string | undefined;
     nextReportedStepId: string | undefined;
-}): void {
+}, commandReportConfirmed: boolean): void {
     const {
         deviceId,
         deviceName,
@@ -87,12 +88,22 @@ function emitNativeSteppedLoadReportedStepChanged(ingest: RealtimeIngestService,
         nextReportedStepId ?? 'unknown',
     );
     const cursor = ingest.observationBridge.nextCursor(deviceId);
-    moduleLogger.info({
-        event: 'realtime_capability_drift',
+    const fields = {
+        event: 'native_stepped_load_report_changed',
         deviceId,
+        deviceName,
         capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        previousReportedStepId: previousReportedStepId ?? null,
+        reportedStepId: nextReportedStepId ?? null,
         changes: [change],
-    });
+    };
+    if (commandReportConfirmed) {
+        emitDeviceDebug({
+            ...fields, event: 'native_stepped_load_report_confirmed', desiredStepId: nextReportedStepId,
+        });
+    } else {
+        moduleLogger.info(fields);
+    }
     ingest.observationBridge.dispatchStateChanged({
         source: 'realtime_capability',
         deviceId,
@@ -146,13 +157,15 @@ function applyNativeSteppedLoadSnapshotUpdate(ingest: RealtimeIngestService, par
     }
     ingest.publishDeviceConfiguration(deviceId);
     const reportedStepChanged = previousReportedStepId !== nextReportedStepId;
+    const commandReportConfirmed = (reportedStepChanged || isNativePowerStepUpdate)
+        && ingest.observationBridge.state.recordNativeStepCommandReport(deviceId, nextReportedStepId);
     if (reportedStepChanged) {
         emitNativeSteppedLoadReportedStepChanged(ingest, {
             deviceId,
             deviceName: currentSnapshot.name,
             previousReportedStepId,
             nextReportedStepId,
-        });
+        }, commandReportConfirmed);
     }
     const exactPowerObservationChanged = isNativePowerStepUpdate && (
         previousReportedStepPowerW !== reportedStepPowerW

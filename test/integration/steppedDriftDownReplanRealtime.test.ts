@@ -69,7 +69,7 @@ type AppLike = {
  * `device.update`: `getControlRelevantRealtimeChanges` reports binary and target
  * changes only, so a `device.update` carrying a new step reports no
  * control-relevant change at all. The production log line for this incident is
- * `realtime_capability_drift` on `pels_measure_step`, which is this path.
+ * `native_stepped_load_report_changed` on `pels_measure_step`, which is this path.
  */
 const announceStep = (app: AppLike, stepId: string): void => {
   app.deviceManager?.injectCapabilityUpdateForTest(HEATER_ID, 'max_power_3000', stepId);

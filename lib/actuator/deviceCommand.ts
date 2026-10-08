@@ -1,5 +1,5 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
-import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { SteppedLoadStepRequestResult } from '../ports/steppedLoadWrite';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
 import type {
   StorageClaimRejected,

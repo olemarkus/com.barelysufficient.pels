@@ -1,9 +1,9 @@
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
-import { getDebugEmitter } from '../../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
+import { shouldEmitOnChange, type LogDedupeEntry } from '../../logging/logDedupe';
 import { isHomeyDeviceLike } from '../../utils/types';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 
-const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 import {
   asLiveEnergyReport,
   extractLiveMeterItems,
@@ -22,6 +22,20 @@ import {
   getRawDevices,
   logDeviceTransportRuntimeError,
 } from './managerHomeyApi';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
+const liveReportLogState = new WeakMap<Logger, Map<string, LogDedupeEntry>>();
+
+// Sample routine readings once a minute; meter identity and resolution changes
+// emit immediately. Watts remain in the payload, outside the dedupe signature.
+function shouldLogLiveReport(logger: Logger, signature: string): boolean {
+  let state = liveReportLogState.get(logger);
+  if (!state) {
+    state = new Map();
+    liveReportLogState.set(logger, state);
+  }
+  return shouldEmitOnChange({ state, key: 'live_report', signature, now: Date.now(), repeatAfterMs: 60_000 });
+}
 
 export type DeviceFetchSource = 'raw_manager_devices' | 'targeted_by_id';
 
@@ -276,13 +290,19 @@ export async function fetchLivePowerReport(params: {
   } = params;
   try {
     const report = await readLiveEnergyReport(logger, 'energy_live_report_unavailable');
-    if (report === null) return { state: 'unavailable' };
+    if (report === null) {
+      liveReportLogState.delete(logger);
+      return { state: 'unavailable' };
+    }
     const byDeviceId = extractLivePowerWattsByDeviceId(report);
     const home = resolveHomeReading(report, meterSelection);
     const generation = resolveLiveGeneration(report);
     const additionalMeterPowerW = extractAdditionalMeterPowerW(report, additionalMeterDeviceIds);
     const deviceCount = Object.keys(byDeviceId).length;
-    emitDeviceDebug({
+    if (isDebugTopicEnabled('devices') && shouldLogLiveReport(logger, JSON.stringify([
+      meterSelection, home.state, generation.state, deviceCount,
+      additionalMeterDeviceIds, Object.keys(additionalMeterPowerW),
+    ]))) emitDeviceDebug({
       event: 'energy_live_report_received',
       source: 'homey_energy',
       homeMeterResolution: home.state,
@@ -308,6 +328,7 @@ export async function fetchLivePowerReport(params: {
       additionalMeterPowerW,
     };
   } catch (error) {
+    liveReportLogState.delete(logger);
     logDeviceTransportRuntimeError(logger, { event: 'energy_live_report_fetch_failed' }, error);
     return { state: 'unavailable' };
   }

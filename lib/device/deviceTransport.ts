@@ -87,7 +87,7 @@ import {
     resolveChargerPhasePresets,
     resolveChargerPhasePresetsRead,
 } from './settingsUiDeviceReads';
-import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { SteppedLoadStepRequestResult } from '../ports/steppedLoadWrite';
 
 export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './transport/managerObservation';
 export type {

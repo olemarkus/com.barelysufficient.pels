@@ -19,6 +19,7 @@ import { SNAPSHOT_ABANDON_GRACE_READS } from '../../lib/device/transport/targete
 import type { Logger } from '../../lib/utils/types';
 import { PassThrough } from 'node:stream';
 import { createRootLogger } from '../../lib/logging/logger';
+import { captureLogger } from '../utils/loggerCapture';
 
 // A complete `Logger`: the transport logs through `structuredLog`, which is
 // required, so a fixture without one crashes where production cannot.
@@ -159,6 +160,53 @@ describe('fetchLivePowerReport', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('samples changing watts once a minute but reports meter changes and recovery immediately', async () => {
+    vi.useFakeTimers();
+    const capture = captureLogger('info', ['devices']);
+    const sampleLogger = makeLogger();
+    const read = vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'cumulative', id: 'meter-main', values: { W: 1000 } }],
+    });
+    const request = { logger: sampleLogger,
+      meterSelection: { state: 'resolved' as const, meterDeviceId: 'meter-main' }, additionalMeterDeviceIds: [] };
+    try {
+      await fetchLivePowerReport(request);
+      for (let i = 1; i <= 5; i += 1) {
+        vi.advanceTimersByTime(10_000);
+        read.mockResolvedValue({ items: [{ type: 'cumulative', id: 'meter-main', values: { W: 1000 + i } }] });
+        expect(await fetchLivePowerReport(request)).toMatchObject({ home: { watts: 1000 + i } });
+      }
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(1);
+      vi.advanceTimersByTime(10_000);
+      await fetchLivePowerReport(request);
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(2);
+
+      read.mockResolvedValue({ items: [{ type: 'cumulative', id: 'other-meter', values: { W: 2000 } }] });
+      await fetchLivePowerReport({ ...request, meterSelection: { state: 'resolved', meterDeviceId: 'other-meter' } });
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(3);
+      await fetchLivePowerReport(request);
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(4);
+      expect(capture.findEvents('energy_live_report_received').at(-1)).toMatchObject({
+        homeMeterResolution: 'unavailable', meterDeviceId: 'meter-main',
+      });
+      read.mockResolvedValue({ items: [{ type: 'cumulative', id: 'meter-main', values: { W: 3000 } }] });
+      await fetchLivePowerReport(request);
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(5);
+      expect(capture.findEvents('energy_live_report_received').at(-1)).toMatchObject({
+        homePowerW: 3000, meterDeviceId: 'meter-main',
+      });
+      read.mockResolvedValue(null);
+      await fetchLivePowerReport(request);
+      expect(sampleLogger.error).toHaveBeenCalledWith(expect.objectContaining({ event: 'energy_live_report_unavailable' }));
+      read.mockResolvedValue({ items: [{ type: 'cumulative', id: 'meter-main', values: { W: 3000 } }] });
+      await fetchLivePowerReport(request);
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(6);
+    } finally {
+      capture.restore();
+      vi.useRealTimers();
+    }
   });
 
   it('returns both device power and home power from the REST API', async () => {
