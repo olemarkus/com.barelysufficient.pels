@@ -192,6 +192,7 @@ export function resolveShedReason(
   // spent, so no freed power (capacity-side or budget-side) admits anything
   // before the hour rolls over. Its own reason code renders time-based copy on
   // the card instead of a kW gap, which would be dishonest here.
+  if (limitSource === 'grid') return { code: PLAN_REASON_CODES.gridImport };
   if (hourlyBudgetExhausted) {
     return { code: PLAN_REASON_CODES.hourlyBudget };
   }

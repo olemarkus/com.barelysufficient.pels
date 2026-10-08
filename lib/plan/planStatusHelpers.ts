@@ -92,7 +92,8 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
     // The `?? meta.softLimitKw` tail this used to carry existed only to restore
     // required-ness after `roundOptional` widened it to `| undefined`. The
     // overload keeps a required number required, so the tail is gone.
-    softLimitKw: roundTo(meta.softLimitKw, PLAN_META_KW_STEP),
+    softLimitKw: meta.softLimitSource === 'grid'
+      ? meta.gridImportTargetKw : roundTo(meta.softLimitKw, PLAN_META_KW_STEP),
     capacitySoftLimitKw: roundTo(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
     ...dailyPaceComposition,
     shortfallBudgetThresholdKw: roundTo(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),

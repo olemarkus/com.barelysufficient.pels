@@ -794,8 +794,10 @@ export type PlanMetaBase = {
    * derived from this total lives behind that flag (`PlanMeasuredMetaFields`).
    */
   totalKw: number;
-  softLimitKw: number;
-  capacitySoftLimitKw: number;
+  softLimitKw: number | null;
+  capacitySoftLimitKw: number | null;
+  gridImportLimitKw: number | null;
+  gridImportTargetKw: number | null;
   // `null` = no daily budget configured. Always written (`?? null`).
   dailySoftLimitKw: number | null;
   budgetPaceKw: number | null;
@@ -806,11 +808,11 @@ export type PlanMetaBase = {
   // already types it `SoftLimitSource = 'capacity' | 'daily'`. The third
   // member was declared here and on the wire with nothing able to produce it,
   // which bought a dead branch in every consumer that switched on it.
-  softLimitSource: 'capacity' | 'daily';
+  softLimitSource: 'capacity' | 'daily' | 'grid' | null;
   capacityShortfall: boolean;
   // Genuinely absent when there is no capacity guard: the threshold is the
   // guard's own, and `getCapacityGuard()` returns `undefined` before wiring.
-  shortfallBudgetThresholdKw?: number;
+  shortfallBudgetThresholdKw?: number | null;
   // From `capacitySettings.limitKw`, a plain required `number` passed straight
   // through — so neither `?` nor `| null` was ever right here.
   hardCapLimitKw: number;
@@ -851,9 +853,9 @@ export type PlanMetaBase = {
  */
 export type PlanMeasuredMetaFields = {
   powerIsMeasured: true;
-  headroomKw: number;
-  shortfallBudgetHeadroomKw: number;
-  hardCapHeadroomKw: number;
+  headroomKw: number | null;
+  shortfallBudgetHeadroomKw: number | null;
+  hardCapHeadroomKw: number | null;
   controlledKw: number;
   uncontrolledKw: number;
 };

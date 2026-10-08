@@ -37,7 +37,7 @@ export {
 export type HeadroomCardQuery = {
   devices: HeadroomCardDeviceLike[];
   device: HeadroomCardDeviceLike;
-  headroom: number;
+  headroom: number | null;
   requiredKw: number;
 };
 
@@ -80,7 +80,7 @@ export type HeadroomForDeviceDecision = {
   cooldownSource: HeadroomCardCooldownSource | null;
   cooldownRemainingSec: number | null;
   observedKw: number;
-  calculatedHeadroomForDeviceKw: number;
+  calculatedHeadroomForDeviceKw: number | null;
   penaltyLevel: number;
   requiredKwWithPenalty: number;
   clearRemainingSec: number | null;
@@ -100,7 +100,7 @@ export const evaluateHeadroomForDevice = (
   emitActivationTransition(diagnostics, device.name, penaltyInfo.transition);
 
   const observedKw = resolveObservedHeadroomDeviceKw(device);
-  const calculatedHeadroomForDeviceKw = headroom + observedKw;
+  const calculatedHeadroomForDeviceKw = headroom === null ? null : headroom + observedKw;
   const penalty = applyActivationPenalty(requiredKw, penaltyInfo.penaltyLevel);
   const cooldown = resolveHeadroomCardCooldown(state, device.id, nowTs);
   // For the card's log line only: seconds until the setback block lifts, 0 once
@@ -110,7 +110,9 @@ export const evaluateHeadroomForDevice = (
   if (block !== null) clearRemainingSec = Math.ceil(block.remainingMs / 1000);
   else if (penaltyInfo.penaltyLevel > 0) clearRemainingSec = 0;
   return {
-    allowed: cooldown === null && calculatedHeadroomForDeviceKw >= penalty.requiredKwWithPenalty,
+    allowed: cooldown === null && (
+      calculatedHeadroomForDeviceKw === null || calculatedHeadroomForDeviceKw >= penalty.requiredKwWithPenalty
+    ),
     cooldownSource: cooldown?.source ?? null,
     cooldownRemainingSec: cooldown?.remainingSec ?? null,
     observedKw,

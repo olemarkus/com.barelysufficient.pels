@@ -10,6 +10,7 @@ export type LastRebuild = {
    * mid-flight is judged against the last verdict that finished.
    */
   hardCapBreach: HardCapBreach;
+  gridBreach: HardCapBreach;
 };
 
 /**

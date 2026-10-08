@@ -463,7 +463,7 @@
         <md-list-item type="button" class="settings-nav-card" data-settings-target="limits">
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5l-8-3zm0 2.1 6 2.25V11c0 4-2.55 7.85-6 9-3.45-1.15-6-5-6-9V6.35L12 4.1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Limits &amp; safety</span>
-          <span slot="supporting-text" class="settings-nav-card__description">Hard cap, safety margin, power source</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Grid import, capacity limits, power source</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="budget-adjust">
@@ -580,6 +580,27 @@
            Main-home form below. -->
       <div id="home-limits-mount" hidden></div>
       <form id="settings-limits-form" class="form-grid settings-form-card">
+        <div class="md-switch-row">
+          <md-switch id="settings-grid-import-enabled" aria-labelledby="settings-grid-import-enabled-label"></md-switch>
+          <span class="md-switch-row__content">
+            <span class="md-switch-row__label pels-text-settings-label" id="settings-grid-import-enabled-label">Grid import limit</span>
+            <small class="field__hint">Reduce flexible loads when household import approaches this level.</small>
+          </span>
+        </div>
+        <div class="field" id="settings-grid-import-field" hidden>
+          <span class="field__label pels-text-settings-label" id="settings-grid-import-limit-label">Grid import limit</span>
+          <md-filled-text-field id="settings-grid-import-limit" name="settings_grid_import_limit" type="number" step="0.1" min="0.1" inputmode="decimal" autocomplete="off" suffix-text="kW" aria-labelledby="settings-grid-import-limit-label"></md-filled-text-field>
+          <small class="field__hint" id="settings-grid-import-hint">Choose a limit to turn this on. PELS leaves a small automatic margin.</small>
+          <small class="field__hint">Uses the latest whole-home net grid import reading. Solar export increases available power. Temporary overshoot is possible: response depends on meter updates and device response time. PELS is not a circuit breaker.</small>
+        </div>
+        <div class="md-switch-row">
+          <md-switch id="settings-capacity-enabled" selected aria-labelledby="settings-capacity-enabled-label"></md-switch>
+          <span class="md-switch-row__content">
+            <span class="md-switch-row__label pels-text-settings-label" id="settings-capacity-enabled-label">Capacity limit</span>
+            <small class="field__hint">Keep average power within your tariff's capacity limit.</small>
+          </span>
+        </div>
+        <div id="settings-capacity-fields" class="form-grid">
         <div class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-period-label">Capacity period</span>
           <md-filled-select id="settings-capacity-period" name="settings_capacity_period" aria-labelledby="settings-capacity-period-label">
@@ -593,7 +614,7 @@
           <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-limit-label"></md-filled-text-field>
           <!-- Text owned by homeLimits once meter areas exist: "your" stops
                meaning the whole house the moment the home is split. -->
-          <small class="field__hint" id="settings-capacity-limit-hint">The peak or tariff step you want to protect &mdash; PELS keeps each selected period&rsquo;s average power under this. No capacity tariff where you live? Set it well above what your home ever uses, and PELS never limits for it.</small>
+          <small class="field__hint" id="settings-capacity-limit-hint">The peak or tariff step you want to protect &mdash; PELS keeps each selected period&rsquo;s average power under this. No capacity tariff where you live? Turn off Capacity limit.</small>
         </label>
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-margin-label">Safety margin</span>
@@ -604,6 +625,7 @@
           <span class="settings-result__label" id="settings-capacity-reaction-label">With these settings, safe pace starts each period at</span>
           <strong class="settings-result__value" id="settings-capacity-reaction">&mdash;</strong>
           <span class="settings-result__note">(hard cap minus safety margin; it adapts as the period is used)</span>
+        </div>
         </div>
         <div class="settings-result" id="settings-capacity-monthly-peak" role="group" aria-labelledby="settings-capacity-monthly-peak-label" hidden>
           <span class="settings-result__label" id="settings-capacity-monthly-peak-label">Highest completed quarter this month</span>
@@ -633,7 +655,7 @@
                  labels sit outside the control (same sentinel discipline as GRID_COMPANY_NONE). -->
             <md-select-option value="__pels_no_meter__" selected><div slot="headline">Choose a meter</div></md-select-option>
           </md-filled-select>
-          <small class="field__hint" id="settings-homey-energy-meter-hint">The meter that measures your whole home&rsquo;s power use.</small>
+          <small class="field__hint" id="settings-homey-energy-meter-hint">Choose the whole-home grid meter. With solar, use net import (negative when exporting).</small>
         </div>
       </div>
     </section>

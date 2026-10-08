@@ -40,7 +40,9 @@ export function applyRestoreCandidates(
       availableHeadroom: availableForCandidate,
       restoredOneThisCycle: restoredOne,
     });
-    ledger.commit(candidate.device, availableForCandidate - result.availableHeadroom);
+    if (availableForCandidate !== null && result.availableHeadroom !== null) {
+      ledger.commit(candidate.device, availableForCandidate - result.availableHeadroom);
+    }
     restoredOne = result.restoredOneThisCycle;
   }
   return { restoredOneThisCycle: restoredOne };
@@ -93,7 +95,9 @@ export function applyActiveSteppedRestoreCandidates(
       availableHeadroom: availableForCandidate,
       restoredOneThisCycle: restoredOne,
     });
-    ledger.commit(dev, availableForCandidate - result.availableHeadroom);
+    if (availableForCandidate !== null && result.availableHeadroom !== null) {
+      ledger.commit(dev, availableForCandidate - result.availableHeadroom);
+    }
     restoredOne = result.restoredOneThisCycle;
   }
   return { restoredOneThisCycle: restoredOne };

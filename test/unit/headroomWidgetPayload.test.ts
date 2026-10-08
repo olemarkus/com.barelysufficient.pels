@@ -6,6 +6,13 @@ import { buildHeadroomWidgetPayload, EMPTY_SUBTITLE_DEFAULT } from '../../widget
 const NOW = new Date('2026-03-19T10:00:00.000Z').getTime();
 
 describe('buildHeadroomWidgetPayload', () => {
+  test('renders a grid-only binding rate and distinguishes disabled limits from missing readings', () => {
+    expect(buildHeadroomWidgetPayload({ status: { state: 'live', status: { powerKnown: true, powerLimitKw: 3.135, headroomKw: 0.535, lastPowerUpdate: NOW } }, nowMs: NOW }))
+      .toMatchObject({ state: 'ready', currentKw: expect.closeTo(2.6, 6), hourBudgetKw: 3.135 });
+    expect(buildHeadroomWidgetPayload({ status: { state: 'live', status: { powerKnown: true, powerLimitKw: null } }, nowMs: NOW }))
+      .toEqual({ state: 'empty', subtitle: 'Power limits off' });
+  });
+
   test('returns empty payload when no status blob is recorded', () => {
     const payload = buildHeadroomWidgetPayload({
       status: { state: 'unavailable', reason: 'no_status_recorded' },

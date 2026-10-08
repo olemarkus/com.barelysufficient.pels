@@ -37,10 +37,12 @@
  *   as it stands. A device whose own meter overstated its draw frees less than
  *   it claimed (a water heater credited 2 kW freed 1.08 kW, 2026-08-01), and
  *   holding that gap open would stall a real deficit for the whole window.
- *   The sum cannot tell a lagging meter from a new load that masks the fall, so
- *   a load starting just as a shed lands is under-answered until the window
- *   ends: under an hourly-average cap that costs a few watt-hours, where cutting
- *   the next device costs the owner comfort or charge.
+ *   Under period pacing a new load masking that fall is under-answered until
+ *   the window ends, trading a few watt-hours for avoiding another cut. Under
+ *   grid pressure only undelivered relief counts: once the device confirms
+ *   delivery, the next whole-home sample can shed again even if new unmanaged
+ *   demand masked the fall. The same bounded window still applies to commands
+ *   that have not landed.
  *
  * The reading's fall is laid against the oldest decisions first. Commands land
  * in the order they were sent and a lagging meter shows them in that order, so
@@ -187,6 +189,7 @@ export function resolvePendingShedRelief(
   powerW: number | null,
   nowTs: number,
   storageLevers: StorageLevers,
+  creditDelivered = true,
 ): PendingShedRelief | null {
   if (latch === null || powerW === null) return null;
   const devicesById = new Map(devices.map((device) => [device.id, device]));
@@ -207,7 +210,7 @@ export function resolvePendingShedRelief(
   const attribution = attributeRealisedRelief(shares, realisedKw);
   const assessed = shares.map((share) => {
     const { unseenShare } = attribution.get(share.decision.decidedAtMs) ?? NOTHING_ATTRIBUTED;
-    const unshownDeliveredKw = share.deliveredKw * unseenShare;
+    const unshownDeliveredKw = creditDelivered ? share.deliveredKw * unseenShare : 0;
     return {
       share,
       live: isWithinWindow(share.decision, nowTs),

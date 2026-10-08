@@ -132,6 +132,9 @@ export const SETTINGS_UI_SMART_TASK_CANCEL_PATH = '/ui_smart_task_cancel';
 export const SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX = 'PELS_APP_NOT_READY:';
 
 export const SETTINGS_UI_BOOTSTRAP_KEYS = [
+  'capacity_enabled',
+  'grid_import_enabled',
+  'grid_import_limit_kw',
   'capacity_limit_kw',
   'capacity_margin_kw',
   'capacity_period_minutes',
@@ -254,12 +257,14 @@ export type SettingsUiPlanMetaSnapshotBase = {
    * the banner.
    */
   totalKw: number;
-  softLimitKw: number;
-  capacitySoftLimitKw: number;
+  softLimitKw: number | null;
+  capacitySoftLimitKw: number | null;
+  gridImportLimitKw: number | null;
+  gridImportTargetKw: number | null;
   /** `null` = no daily budget axis this cycle. Always emitted. */
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
-  softLimitSource: 'capacity' | 'daily';
+  softLimitSource: 'capacity' | 'daily' | 'grid' | null;
   /** From `capacitySettings.limitKw` — a plain number, never absent or null. */
   hardCapLimitKw: number;
   capacityPeriodMinutes: CapacityPeriodMinutes;
@@ -532,7 +537,7 @@ export type SettingsUiPowerStatus = {
   /** Which ceiling is limiting the home right now; the Limits card's status line. */
   limitReason?: 'none' | 'hourly' | 'daily' | 'both';
   capacityShortfall?: boolean;
-  shortfallBudgetThresholdKw?: number;
+  shortfallBudgetThresholdKw?: number | null;
   shortfallBudgetHeadroomKw?: number | null;
   // Instantaneous cap headroom — log/diagnostic parity only. Never derive an
   // over-cap alarm from this (the cap is an hourly-average ceiling); consume

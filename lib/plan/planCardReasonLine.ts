@@ -38,6 +38,7 @@ import { isOnLikeState } from '../../packages/shared-domain/src/deviceStatePredi
 // duration is the device's own fact, and the only one that explains why THIS
 // card carries the "Let it run now" action and its neighbours do not.
 const CEILING_HOLD_REASON_CODES: ReadonlySet<string> = new Set([
+  PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.dailyBudget,
   PLAN_REASON_CODES.insufficientHeadroom,

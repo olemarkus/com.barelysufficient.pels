@@ -24,7 +24,12 @@ export type PelsStatus = {
    * `powerNowKw` is the one field whose `null` spelling predates that and stays.
    */
   headroomKw?: number;
+  /** Historical binding-rate field, retained for existing widget/Flow consumers. */
   hourlyLimitKw?: number;
+  powerLimitKw: number | null;
+  capacityPaceKw?: number;
+  gridImportLimitKw?: number;
+  gridImportLimited: boolean;
   hourlyUsageKwh: number;
   dailyBudgetRemainingKwh?: number;
   dailyBudgetExceeded?: boolean;
@@ -92,13 +97,22 @@ export function buildPelsStatus(params: {
   const limitReason = resolveLimitReason(plan, summary);
   return {
     ...resolveMeasuredStatusFields(plan.meta),
-    hourlyLimitKw: plan.meta.softLimitKw,
+    hourlyLimitKw: plan.meta.softLimitKw ?? undefined,
+    powerLimitKw: plan.meta.softLimitKw,
+    capacityPaceKw: plan.meta.capacitySoftLimitKw ?? undefined,
+    gridImportLimitKw: plan.meta.gridImportLimitKw ?? undefined,
+    gridImportLimited: plan.meta.powerIsMeasured && (
+      (plan.meta.gridImportTargetKw !== null && plan.meta.totalKw > plan.meta.gridImportTargetKw)
+      || plan.devices.some((device) => (
+        device.plannedState === 'shed' && device.reason.code === PLAN_REASON_CODES.gridImport
+      ))
+    ),
     hourlyUsageKwh: plan.meta.hourUsedKWh,
     dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh ?? 0,
     dailyBudgetExceeded: plan.meta.dailyBudgetExceeded ?? false,
     limitReason,
     capacityShortfall: plan.meta.capacityShortfall ?? false,
-    shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw,
+    shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw ?? undefined,
     priceLevel,
     devicesOn: summary.devicesOn,
     devicesOff: summary.devicesOff,
@@ -152,7 +166,7 @@ function resolveMeasuredStatusFields(
     // rebuilding after that pass, so such a verdict would sit frozen in the blob
     // for the whole outage with nothing scheduled to correct it.
     ...(projectedOverHardCap === undefined ? {} : { projectedOverHardCap }),
-    headroomKw: meta.headroomKw,
+    headroomKw: meta.headroomKw ?? undefined,
     shortfallBudgetHeadroomKw: meta.shortfallBudgetHeadroomKw,
     hardCapHeadroomKw: meta.hardCapHeadroomKw,
     controlledKw: meta.controlledKw,
@@ -172,6 +186,7 @@ function resolveMeasuredStatusFields(
 // hero's chip, which computes the same projection and predicate live via the
 // shared helpers.
 function resolveProjectedOverHardCap(meta: PlanMeta): boolean | undefined {
+  if (meta.capacitySoftLimitKw === null) return undefined;
   const {
     totalKw,
     usedKWh,
@@ -306,6 +321,7 @@ function resolveHourlyLimited(params: HourlyLimitParams): boolean {
     limitSource,
     capacitySourceActive,
   } = params;
+  if (plan.meta.capacitySoftLimitKw === null) return false;
   const hourlyLimitedByReason = summary.hasHourlyReason;
   const hourlyLimitedByShedState = hasLimitDrivenShedDevices && capacitySourceActive;
   const hourlyLimitedByNegativeHeadroom = headroomNegative && (limitSource ? capacitySourceActive : true);
@@ -327,7 +343,7 @@ function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none
   // Both claims require a MEASUREMENT this cycle: `headroomKw` exists only on
   // the measured meta, so the narrowing is also what makes it readable.
   const hasShedDevices = plan.meta.powerIsMeasured && summary.hasLimitDrivenShedDevices;
-  const headroomNegative = plan.meta.powerIsMeasured && plan.meta.headroomKw < 0;
+  const headroomNegative = plan.meta.powerIsMeasured && plan.meta.headroomKw !== null && plan.meta.headroomKw < 0;
   const limitSource = plan.meta.softLimitSource;
   const dailySourceActive = isDailySourceActive(limitSource);
   const capacitySourceActive = isCapacitySourceActive(limitSource);

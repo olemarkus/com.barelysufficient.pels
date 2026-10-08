@@ -7,7 +7,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
@@ -199,7 +199,7 @@ type BuilderOverrides = {
   modeRef?: { current: string };
   priorityByModeRef?: { current: Record<string, Record<string, number>> };
   capacityGuard?: CapacityGuard;
-  capacitySettings?: CapacitySettings;
+  capacitySettings?: PowerLimitSettings;
 };
 
 const buildBuilder = (
@@ -207,7 +207,7 @@ const buildBuilder = (
   overrides: BuilderOverrides = {},
 ) => {
   const capacityGuard = overrides.capacityGuard ?? createTestCapacityGuard({ homeId: 'main' });
-  const capacitySettings = overrides.capacitySettings ?? { limitKw: 100, marginKw: 0, periodMinutes: 60 };
+  const capacitySettings = overrides.capacitySettings ?? { capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 };
   const deferredController = new DeferredObjectiveDecorationController({
     getThermalDirection: () => 'heating',
     getPrioritiesForDevices: (deviceIds) => new ModePriorityCatalog(overrides.priorityByModeRef?.current)
@@ -372,7 +372,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getPowerTracker: () => powerTrackerRef.current,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
-      getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
@@ -385,7 +385,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => modeRef.current,
         getModeDeviceTargets: () => ({ [modeRef.current]: { [DEVICE_ID]: TARGET_C - 3 } }),
@@ -503,7 +503,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const builder = buildBuilder(powerTrackerRef, {
       modeRef,
       priorityByModeRef,
-      capacitySettings: { limitKw: 2.5, marginKw: 0, periodMinutes: 60 },
+      capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 2.5, marginKw: 0, periodMinutes: 60 },
     });
 
     let deferTemp = 50;
@@ -641,7 +641,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getPowerTracker: () => powerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
-      getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
@@ -654,7 +654,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),

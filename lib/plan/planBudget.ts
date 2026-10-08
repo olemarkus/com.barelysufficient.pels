@@ -14,6 +14,9 @@
  * back at the capacity-period boundary (`notes/end-of-hour-mode.md`); the budget
  * pace deliberately applies no such ceiling.
  */
+import type CapacityGuard from '../power/capacityGuard';
+import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../power/tracker';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveHardCapacityKWh, resolveUsableCapacityKWh, resolveUsableCapacityKw } from '../power/capacityModel';
@@ -167,4 +170,15 @@ export function computeShortfallThreshold(
 
   // Return the uncapped burst rate before the hard-cap period budget would be exceeded.
   return remainingKWh / remainingHours;
+}
+
+/** Recheck period alerts against this home's live settings and accepted meter sample. */
+export function isCapacityShortfallAlertActive(
+  guard: CapacityGuard,
+  settings: PowerLimitSettings,
+  tracker: PowerTrackerState,
+): boolean {
+  return settings.capacityEnabled && guard.isShortfallAlertConditionActive(
+    resolveLastTotalPowerKw(tracker), computeShortfallThreshold(settings, tracker, Date.now()),
+  );
 }

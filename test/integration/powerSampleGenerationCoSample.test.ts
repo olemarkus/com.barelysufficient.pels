@@ -65,9 +65,10 @@ const buildPipeline = (
     noteResolvedHomeMeter: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ limitKw: 12, marginKw: 0.5, periodMinutes: 60 }),
+    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 }),
     getTimeZone: () => 'UTC',
     getPlanEngine: () => ({
+      computeShortfallThreshold: () => 10,
       state: {
         actuation: { hasInFlight: () => false },
         pendingTargetCommands: {},

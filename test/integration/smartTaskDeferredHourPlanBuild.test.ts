@@ -75,7 +75,7 @@ const buildBuilderDeps = (
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
   setCapacityInShortfall: vi.fn(),
   // Roomy: nothing presses on capacity, so only the task can hold the device off.
-  getCapacitySettings: () => ({ limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
+  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),
@@ -226,7 +226,7 @@ describe('a smart task’s deferred hour on a power-limited device', () => {
     let powerW = 4000;
     const builder = new PlanBuilder({
       ...buildBuilderDeps(idleDecision),
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
       getDynamicSoftLimitOverride: () => 5,
       getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: powerW }),
     }, createPlanEngineState());
@@ -248,7 +248,7 @@ describe('a smart task’s deferred hour on a power-limited device', () => {
     // A fresh capacity reason is pressure: the hold alone is what is excluded.
     const tight = new PlanBuilder({
       ...buildBuilderDeps(idleDecision),
-      getCapacitySettings: () => ({ limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
       getDynamicSoftLimitOverride: () => 0.8,
       getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 4500 }),
     }, createPlanEngineState());

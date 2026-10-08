@@ -8,8 +8,15 @@ export type CapacitySettings = {
   periodMinutes: CapacityPeriodMinutes;
 };
 
+/** Independent live and settlement-period control settings, resolved by the power owner. */
+export type PowerLimitSettings = CapacitySettings & {
+  capacityEnabled: boolean;
+  /** Signed net grid import is constrained when this is non-null. */
+  gridImportLimitKw: number | null;
+};
+
 /**
  * One home's full capacity scalar block: the control settings plus the
  * dry-run flag that decides whether they actuate.
  */
-export type CapacityScalarSettings = CapacitySettings & { dryRun: boolean };
+export type CapacityScalarSettings = PowerLimitSettings & { dryRun: boolean };

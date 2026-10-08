@@ -5,6 +5,7 @@ import type { DevicePlanDevice } from './planTypes';
 
 const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryControl> = {
   daily_budget: { kind: 'restricted', cause: 'budget_limited' },
+  grid_import: { kind: 'restricted', cause: 'capacity_limited' },
   capacity: { kind: 'restricted', cause: 'capacity_limited' },
   shortfall: { kind: 'restricted', cause: 'capacity_limited' },
   hourly_budget: { kind: 'restricted', cause: 'capacity_limited' },

@@ -131,7 +131,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = state.overshoot.decideSoft(power.headroomKw, 4.7, false, Date.now());
+    const overshootDecision = state.overshoot.decideSoft(power.headroomKw ?? 0, 4.7, false, Date.now());
 
     const result = await buildSheddingPlanForSpec(
       context,
@@ -238,7 +238,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = state.overshoot.decideSoft(power.headroomKw, 4.7, false, Date.now());
+    const overshootDecision = state.overshoot.decideSoft(power.headroomKw ?? 0, 4.7, false, Date.now());
 
     const result = await buildSheddingPlanForSpec(
       context,
@@ -280,7 +280,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = state.overshoot.decideSoft(power.headroomKw, 4.7, false, Date.now());
+    const overshootDecision = state.overshoot.decideSoft(power.headroomKw ?? 0, 4.7, false, Date.now());
 
     const result = await buildSheddingPlanForSpec(
       context,

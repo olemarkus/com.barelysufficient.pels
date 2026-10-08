@@ -1,3 +1,6 @@
+export const CAPACITY_ENABLED = 'capacity_enabled';
+export const GRID_IMPORT_ENABLED = 'grid_import_enabled';
+export const GRID_IMPORT_LIMIT_KW = 'grid_import_limit_kw';
 export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';

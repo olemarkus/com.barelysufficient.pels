@@ -1,24 +1,31 @@
+import {
+  readPowerLimitSettings,
+  syncPowerLimitSwitches,
+  syncCapacityLimitControls,
+  validatePowerLimitSettings,
+} from './powerLimitControls.ts';
+export {
+  MARGIN_NOT_BELOW_LIMIT_MESSAGE,
+  refreshLimitsValidationHints,
+  refreshPowerLimitControls,
+} from './powerLimitControls.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import {
-  settingsCapacityLimitInput,
-  settingsCapacityMarginInput,
-  settingsCapacityPeriodSelect,
-  settingsCapacityMarginAlert,
-  settingsCapacityMonthlyPeak,
+  settingsGridImportLimitInput,
   settingsCapacityMonthlyPeakValue,
-  settingsCapacityReactionHint,
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
   dryRunBanner,
   dryRunBannerText,
   simulationDisableButton,
   type MdSwitchElement,
-  type MdFilledTextFieldElement,
   staleDataBanner,
   staleDataBannerText,
   staleDataBannerAction,
 } from './dom.ts';
-import { getSetting } from './homey.ts';
+import { isValidGridImportLimitKw } from '../../../shared-domain/src/settings/powerLimits.ts';
+import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { getSetting, setSetting, invalidateApiCache } from './homey.ts';
 import { state } from './state.ts';
 import { getPowerReadModel } from './power.ts';
 import {
@@ -30,6 +37,9 @@ import {
   resolveRetainedScopeClaim,
 } from './meterAreaPosture.ts';
 import {
+  CAPACITY_ENABLED,
+  GRID_IMPORT_ENABLED,
+  GRID_IMPORT_LIMIT_KW,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -53,7 +63,6 @@ import {
   topicsToScenarioIds,
 } from '../../../shared-domain/src/utils/debugLogging.ts';
 import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
-import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
 import {
   DEFAULT_CAPACITY_PERIOD_MINUTES,
   resolveCapacityPeriodMinutes,
@@ -98,6 +107,8 @@ export type PowerSource = 'flow' | 'homey_energy';
 type CapacitySettingsCommand =
   | {
     kind: 'limits';
+    capacityEnabled: boolean;
+    gridImportLimitKw: number | null;
     limitKw: number;
     marginKw: number;
     periodMinutes: CapacityPeriodMinutes;
@@ -109,12 +120,17 @@ type CurrentCapacitySettings = {
   margin: unknown;
   dryRun: unknown;
   periodMinutes: unknown;
+  capacityEnabled: unknown;
+  gridImportEnabled: unknown;
+  gridImportLimitKw: unknown;
 };
 
 
 // Mirrors the runtime snapshot's lifecycle: simulation is the boot default,
 // then only a resolved read or successful save replaces it.
 let lastGoodCapacityScalars: CapacityScalarSettings = {
+  capacityEnabled: true,
+  gridImportLimitKw: null,
   limitKw: 10,
   marginKw: 0.2,
   dryRun: true,
@@ -144,6 +160,7 @@ const resolveCapacityScalars = (
   current: CurrentCapacitySettings,
   fallback: CapacityScalarSettings,
 ): CapacityScalarSettings => ({
+  ...fallback,
   limitKw: isFiniteNumber(current.limit) ? current.limit : fallback.limitKw,
   marginKw: isFiniteNumber(current.margin) ? current.margin : fallback.marginKw,
   dryRun: typeof current.dryRun === 'boolean' ? current.dryRun : fallback.dryRun,
@@ -279,55 +296,6 @@ export const notifyAreaSimulationSettingChanged = (key: string): void => {
     .catch((caught: unknown) => logSettingsError('Failed to refresh the simulation posture', caught, 'capacity'));
 };
 
-const updateCapacityReactionHint = (limit: number, margin: number) => {
-  if (!settingsCapacityReactionHint) return;
-  // The result row's static label ("With these settings, safe pace starts each period at")
-  // frames this as a ceiling derived from the current inputs, not an absolute
-  // "safe pace now" — that live value is the Overview hero's job and can differ
-  // when today's daily budget is the tighter constraint. This element carries
-  // only the loud accent value so the two surfaces never contradict.
-  const reactionAt = usableCapacityKw(limit, margin).toFixed(1);
-  settingsCapacityReactionHint.textContent = `${reactionAt} kW`;
-};
-
-export const MARGIN_NOT_BELOW_LIMIT_MESSAGE
-  = 'Safety margin must be less than the hard cap. Lower the margin to continue.';
-
-// Stays silent when either number is empty or non-finite so partially-typed
-// values don't flash an error mid-edit.
-const getMarginVsLimitError = (limit: number, margin: number): string | null => {
-  if (!Number.isFinite(limit) || limit <= 0) return null;
-  if (!Number.isFinite(margin) || margin < 0) return null;
-  if (margin >= limit) return MARGIN_NOT_BELOW_LIMIT_MESSAGE;
-  return null;
-};
-
-const renderMarginAlert = (message: string | null) => {
-  if (!settingsCapacityMarginAlert) return;
-  settingsCapacityMarginAlert.textContent = message ?? '';
-  settingsCapacityMarginAlert.hidden = message === null;
-};
-
-export const refreshLimitsValidationHints = () => {
-  const limit = Number.parseFloat(settingsCapacityLimitInput?.value ?? '');
-  const margin = Number.parseFloat(settingsCapacityMarginInput?.value ?? '');
-  renderMarginAlert(getMarginVsLimitError(limit, margin));
-};
-
-const syncCapacityLimitControls = (scalars: CapacityScalarSettings) => {
-  const { limitKw, marginKw, periodMinutes } = scalars;
-  if (settingsCapacityLimitInput) {
-    settingsCapacityLimitInput.value = limitKw.toString();
-  }
-  if (settingsCapacityMarginInput) {
-    settingsCapacityMarginInput.value = marginKw.toString();
-  }
-  if (settingsCapacityPeriodSelect) settingsCapacityPeriodSelect.value = String(periodMinutes);
-  if (settingsCapacityMonthlyPeak) settingsCapacityMonthlyPeak.hidden = periodMinutes !== 15;
-  updateCapacityReactionHint(limitKw, marginKw);
-  renderMarginAlert(getMarginVsLimitError(limitKw, marginKw));
-};
-
 const syncSimulationModeControl = (dryRun: boolean): void => {
   if (settingsSimulationModeInput) settingsSimulationModeInput.selected = dryRun;
 };
@@ -337,20 +305,19 @@ const syncCapacityOwnedControls = (scalars: CapacityScalarSettings): void => {
   syncSimulationModeControl(scalars.dryRun);
 };
 
-const readNumberInput = (input: MdFilledTextFieldElement | null, label: string): number => {
-  const value = parseFloat(input?.value ?? '');
-  if (!Number.isFinite(value)) throw new Error(`${label} must be a number.`);
-  return value;
-};
-
 const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> => {
-  const [limit, margin, dryRun, periodMinutes] = await Promise.all([
+  const [
+    limit, margin, dryRun, periodMinutes, capacityEnabled, gridImportEnabled, gridImportLimitKw,
+  ] = await Promise.all([
     getSetting(CAPACITY_LIMIT_KW),
     getSetting(CAPACITY_MARGIN_KW),
     getSetting(CAPACITY_DRY_RUN),
     getSetting(CAPACITY_PERIOD_MINUTES),
+    getSetting(CAPACITY_ENABLED),
+    getSetting(GRID_IMPORT_ENABLED),
+    getSetting(GRID_IMPORT_LIMIT_KW),
   ]);
-  return { limit, margin, dryRun, periodMinutes };
+  return { limit, margin, dryRun, periodMinutes, capacityEnabled, gridImportEnabled, gridImportLimitKw };
 };
 
 const resolveCapacitySettingsCommand = (
@@ -360,6 +327,9 @@ const resolveCapacitySettingsCommand = (
   const persisted = resolveCapacityScalars(current, lastGoodCapacityScalars);
   return command.kind === 'limits'
     ? {
+      ...persisted,
+      capacityEnabled: command.capacityEnabled,
+      gridImportLimitKw: command.gridImportLimitKw,
       limitKw: command.limitKw,
       marginKw: command.marginKw,
       dryRun: persisted.dryRun,
@@ -378,19 +348,6 @@ const readCapacityPowerModel = async (): Promise<CapacityPowerRead> => {
   } catch (caught) {
     await logSettingsError('Failed to load runtime capacity state', caught, 'capacity');
     return { state: 'unavailable' };
-  }
-};
-
-const validateCapacitySettings = ({ limitKw: limit, marginKw: margin }: CapacityScalarSettings) => {
-  // Validate limit: must be a finite positive number within reasonable bounds.
-  if (!Number.isFinite(limit) || limit <= 0) throw new Error('Hard cap must be positive.');
-  if (limit > 1000) throw new Error('Hard cap cannot exceed 1000 kW.');
-
-  // Validate margin: must be a finite non-negative number within reasonable bounds.
-  if (!Number.isFinite(margin) || margin < 0) throw new Error('Safety margin must be non-negative.');
-  if (margin >= limit) {
-    renderMarginAlert(MARGIN_NOT_BELOW_LIMIT_MESSAGE);
-    throw new Error(MARGIN_NOT_BELOW_LIMIT_MESSAGE);
   }
 };
 
@@ -521,9 +478,7 @@ export const loadCapacitySettings = async () => {
   // read failure must narrow the banner to Main even if another settings read
   // later rejects and aborts the rest of the capacity refresh.
   await refreshDryRunBannerHomeScope();
-  const {
-    limit, margin, dryRun, periodMinutes,
-  } = await readCurrentCapacitySettings();
+  const current = await readCurrentCapacitySettings();
   // The power payload carries two runtime-owned facts settings values cannot
   // establish: last-good running scalars and whether the hard-cap key exists.
   const powerRead = await readCapacityPowerModel();
@@ -534,7 +489,7 @@ export const loadCapacitySettings = async () => {
     ? powerRead.payload.capacityScalars
     : { state: 'unavailable' } as const;
   const resolved = resolveCapacityScalars(
-    { limit, margin, dryRun, periodMinutes },
+    current,
     runtime.state === 'resolved' ? runtime.scalars : lastGoodCapacityScalars,
   );
   // Only a successfully completed newer load supersedes this snapshot. A load
@@ -542,6 +497,9 @@ export const loadCapacitySettings = async () => {
   // no remaining refresh guaranteed.
   if (generation < capacitySettingsAppliedGeneration || mutationRevision !== capacitySettingsMutationRevision) return;
   capacitySettingsAppliedGeneration = generation;
+  if (settingsGridImportLimitInput && isValidGridImportLimitKw(current.gridImportLimitKw)) {
+    settingsGridImportLimitInput.value = String(current.gridImportLimitKw);
+  }
   syncCapacityOwnedControls(resolved);
   // Meter selection is independently persisted. A power-source save may fence
   // source-owned paint while this load is in flight, but it must not discard a
@@ -569,17 +527,22 @@ export const loadCapacitySettings = async () => {
   if (dryRunChanged) refreshPlanSurface();
 };
 
-const saveCapacitySettingsCommand = async (
+const writeCapacitySettingsCommand = async (
+  current: CurrentCapacitySettings,
+  resolved: CapacityScalarSettings,
   command: CapacitySettingsCommand,
-  successMessage = 'Capacity settings saved.',
-) => {
-  capacitySettingsMutationRevision += 1;
-  const current = await readCurrentCapacitySettings();
-  const resolved = resolveCapacitySettingsCommand(current, command);
-  validateCapacitySettings(resolved);
-
+): Promise<void> => {
   const writes: Array<Promise<void>> = [];
   if (command.kind === 'limits') {
+    // Persist the threshold before enabling it; keep a configured grid limit in place
+    // before disabling capacity control during a switch between the two constraints.
+    if (resolved.gridImportLimitKw !== null && current.gridImportLimitKw !== resolved.gridImportLimitKw) {
+      await setSetting(GRID_IMPORT_LIMIT_KW, resolved.gridImportLimitKw);
+    }
+    if (current.gridImportEnabled !== (resolved.gridImportLimitKw !== null)) {
+      await setSetting(GRID_IMPORT_ENABLED, resolved.gridImportLimitKw !== null);
+    }
+    pushSettingWriteIfChanged(writes, CAPACITY_ENABLED, current.capacityEnabled, resolved.capacityEnabled);
     pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, resolved.limitKw);
     pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, resolved.marginKw);
     pushSettingWriteIfChanged(writes, CAPACITY_PERIOD_MINUTES, current.periodMinutes, resolved.periodMinutes);
@@ -589,8 +552,35 @@ const saveCapacitySettingsCommand = async (
   // Never power_source: a hard-cap/margin/simulation save must not materialize
   // the 'flow' default for a user who never chose a source, and the select's
   // own change goes through the guarded seam (`savePowerSourceSetting`).
-  if (writes.length > 0) {
-    await Promise.all(writes);
+  const results = await Promise.allSettled(writes);
+  const failed = results.find((result) => result.status === 'rejected');
+  if (failed?.status === 'rejected') throw failed.reason;
+};
+
+const saveCapacitySettingsCommand = async (
+  command: CapacitySettingsCommand,
+  successMessage = 'Capacity settings saved.',
+) => {
+  capacitySettingsMutationRevision += 1;
+  const current = await readCurrentCapacitySettings();
+  const resolved = resolveCapacitySettingsCommand(current, command);
+  validatePowerLimitSettings(resolved);
+
+  try {
+    await writeCapacitySettingsCommand(current, resolved, command);
+  } catch (caught) {
+    // Started writes have settled. Reconcile partial successes before the next
+    // queued save can start; keep the typed fields available for correction.
+    invalidateApiCache(SETTINGS_UI_POWER_PATH);
+    const powerRead = await readCapacityPowerModel();
+    if (powerRead.state === 'resolved' && powerRead.payload.capacityScalars.state === 'resolved') {
+      const effective = powerRead.payload.capacityScalars.scalars;
+      commitCapacityScalars(effective);
+      syncPowerLimitSwitches(effective);
+      syncDryRunBannerVisibility();
+      syncSettingsHubChips();
+    }
+    throw caught;
   }
   // A save commits only the fields named by its command. Another save or a
   // realtime settings refresh may have established newer values for the other
@@ -599,6 +589,8 @@ const saveCapacitySettingsCommand = async (
   const committed = command.kind === 'limits'
     ? {
       ...lastGoodCapacityScalars,
+      capacityEnabled: resolved.capacityEnabled,
+      gridImportLimitKw: resolved.gridImportLimitKw,
       limitKw: resolved.limitKw,
       marginKw: resolved.marginKw,
       periodMinutes: resolved.periodMinutes,
@@ -620,16 +612,19 @@ const saveCapacitySettingsCommand = async (
   await showToast(successMessage, 'ok');
 };
 
+let limitsSaveQueue: Promise<void> = Promise.resolve();
+
 export const saveSettingsLimitsSettings = async () => {
-  await saveCapacitySettingsCommand({
-    kind: 'limits',
-    limitKw: readNumberInput(settingsCapacityLimitInput, 'Hard cap'),
-    marginKw: readNumberInput(settingsCapacityMarginInput, 'Safety margin'),
-    periodMinutes: resolveCapacityPeriodMinutes(
-      Number(settingsCapacityPeriodSelect?.value),
-      lastGoodCapacityScalars.periodMinutes,
-    ),
-  }, 'Limits & safety saved.');
+  try {
+    const command: CapacitySettingsCommand = { kind: 'limits', ...readPowerLimitSettings(lastGoodCapacityScalars) };
+    const save = limitsSaveQueue.then(() => saveCapacitySettingsCommand(command, 'Limits & safety saved.'));
+    limitsSaveQueue = save.catch(() => undefined);
+    await save;
+  } catch (caught) {
+    // A failed save must not leave a switch claiming a different control posture.
+    syncPowerLimitSwitches(lastGoodCapacityScalars);
+    throw caught;
+  }
 };
 
 export const saveSimulationModeSettings = async (

@@ -82,7 +82,7 @@ export class OvershootTracker {
     overshootDecision: SoftOvershootDecision;
     nowTs: number;
     /** Producer-resolved `computeShortfallThreshold` for this build. */
-    shortfallBudgetThresholdKw: number;
+    shortfallBudgetThresholdKw: number | null;
   }): void {
     const {
       context,

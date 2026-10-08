@@ -6,6 +6,9 @@ import {
   RESPECT_EXTERNAL_OFF_DEVICES,
   DEVICE_START_POLICIES,
   CAPACITY_DRY_RUN,
+  CAPACITY_ENABLED,
+  GRID_IMPORT_ENABLED,
+  GRID_IMPORT_LIMIT_KW,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
@@ -449,6 +452,9 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, EV_BOOST_SETTINGS);
     },
+    [CAPACITY_ENABLED]: async () => handlePowerLimitsChange(deps),
+    [GRID_IMPORT_ENABLED]: async () => handlePowerLimitsChange(deps),
+    [GRID_IMPORT_LIMIT_KW]: async () => handlePowerLimitsChange(deps),
     [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_MARGIN_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_PERIOD_MINUTES]: async () => handleCapacityLimitChange(deps),
@@ -598,6 +604,11 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
   // and Observer values),
   // so a sub-home's rebuild sees fresh device state alongside the new targets.
   deps.rebuildHomeRuntimePlansForModeChange?.();
+}
+
+async function handlePowerLimitsChange(deps: SettingsHandlerDeps): Promise<void> {
+  deps.loadCapacitySettings();
+  await rebuildPlanFromSettings(deps, 'power_limits');
 }
 
 async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<void> {

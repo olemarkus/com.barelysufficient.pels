@@ -415,6 +415,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
     const ctx = makeCtx(service);
     let saved: PowerTrackerState = {};
     const planEngine = {
+      computeShortfallThreshold: () => 10,
       state: createPlanEngineState(),
       clearStartupRestoreStabilization: vi.fn(),
     } as unknown as PlanEngine;

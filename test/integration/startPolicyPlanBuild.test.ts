@@ -85,7 +85,7 @@ const buildBuilder = (
   setCapacityInShortfall: vi.fn(),
   // Deliberately roomy: no capacity pressure anywhere, so the only thing that can
   // put a device in the shed set is the posture under test.
-  getCapacitySettings: () => ({ limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
+  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),
@@ -263,7 +263,7 @@ describe('start policy through a whole plan build', () => {
     // capacity now, not for the start policy, and the resume request does not
     // override that.
     const plan = await buildBuilder({
-      getCapacitySettings: () => ({ limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
       getDynamicSoftLimitOverride: () => 0.8,
       decorateDeferredObjectives: decorateWithDecision('charger', plannedDecision),
     }).buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
@@ -280,7 +280,7 @@ describe('start policy through a whole plan build', () => {
     // admission. Every other off device is a start, one plan later just as on
     // the first plan: 1 kW does not fit in 0.3 kW of room.
     const tightBuilder = (decide?: () => DeferredAdmissionDecision) => buildBuilder({
-      getCapacitySettings: () => ({ limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
       getDynamicSoftLimitOverride: () => 0.8,
       ...(decide ? { decorateDeferredObjectives: (input: { devices: PlanInputDevice[] }) => (
         decorateWithDecision('charger', decide())(input)
@@ -383,7 +383,7 @@ describe('start policy through a whole plan build', () => {
 
     it('keeps it off for capacity, not the policy, when there is no room', async () => {
       const plan = await buildBuilder({
-        getCapacitySettings: () => ({ limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
         getDynamicSoftLimitOverride: () => 0.8,
       }).buildDevicePlanSnapshot([limitedCharger(false)]);
 
@@ -468,7 +468,7 @@ describe('start policy through a whole plan build', () => {
     });
     let powerW = 4000;
     const builder = buildBuilder({
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
       getDynamicSoftLimitOverride: () => 5,
       getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: powerW }),
       getShedBehavior: (deviceId: string) => (

@@ -64,6 +64,19 @@ const pendingFor = (
 };
 
 describe('resolvePendingShedRelief', () => {
+  it('for grid pressure credits only undelivered relief and retires delivered relief even when masked', () => {
+    const waiting = resolvePendingShedRelief(chargerLatch(), [charger()], LATCHED_READING_W, NOW, {}, false);
+    expect(waiting?.totalKw).toBeCloseTo(CREDITED_KW);
+    const delivered = resolvePendingShedRelief(chargerLatch(), [charger({ currentDrawKw: 3.22 })], LATCHED_READING_W + 500, NOW, {}, false);
+    expect(delivered?.totalKw).toBe(0);
+    expect(delivered?.retained.decisions.size).toBe(0);
+  });
+
+  it('for grid pressure keeps the existing 30-second window for a device still responding', () => {
+    const expired = chargerLatch({ decisions: new Map([['ev', decided(CREDITED_KW, NOW - 30_000)]]) });
+    expect(resolvePendingShedRelief(expired, [charger()], LATCHED_READING_W, NOW, {}, false)?.totalKw).toBe(0);
+  });
+
   it('counts relief a stepped device has not delivered in full, however the reading moves', () => {
     // Three seconds on, the reading is 42 W HIGHER and the charger still draws its 20 A.
     const pending = pendingFor(chargerLatch(), [charger()]);

@@ -1,43 +1,10 @@
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
 import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
 
-/**
- * The first-run setup path: what must be true before PELS manages a home's
- * devices, in the order a new owner meets it.
- *
- * It is state, not a tour. Each step is judged from what the app already holds,
- * so the path never claims progress the owner did not make and never asks for a
- * step that is already done. A returning owner who unmanages their last device
- * gets the Devices step back; nothing is remembered about having "finished".
- *
- * **A step appears only when what it configures is in force for this home.**
- * Asking an owner to configure something that does not apply to them tells them
- * the app was built for somebody else. A power meter and managed devices apply
- * to everyone: there is no plan without the first and nothing to plan for
- * without the second. The hard cap does not. It is enforced only on devices
- * PELS may limit, so an owner who manages thermostats for their price response
- * alone is never held to it, and is never shown the step. Once something may be
- * limited the cap IS in force, tariff or no tariff, because every home runs one
- * (10 kW until the owner saves their own) — and that is the moment the step
- * appears, naming the number it is running on. Hence Devices before Hard cap:
- * what may be limited, then to what.
- *
- * Priority is automatic, so confirming or customising the order is not a setup
- * requirement. Owners can change it in Modes whenever they want.
- *
- * The same rule is why the copy picks no market. Norway and Flanders come for
- * the capacity tariff, the Netherlands for solar and dynamic prices; the lede
- * says what builds on the steps rather than selling the hard cap, and the Hard
- * cap step names the period it runs on, because a quarter-hour tariff on the
- * hourly default is the one silent way to get this setup wrong.
- *
- * Simulation is not a step. It is on by default and the path says so while it
- * is open, but a configured home left simulating is a finished setup: the slim
- * simulation banner already speaks for it, and a card that stayed until the
- * owner went live would sit on top of a cautious owner's Overview for weeks.
- *
- * Settings-UI-owned on purpose: the runtime has no use for it, so it lives
- * beside its one consumer rather than in shared-domain.
+/** Setup names the essentials: a meter, managed devices and a chosen limit posture.
+ * Limits only apply once there are devices PELS may limit. A saved grid limit,
+ * a saved capacity limit, or an explicit choice to turn both off completes that step.
+ * Simulation remains a separate banner, not a setup requirement.
  */
 
 type SetupStepId = 'power' | 'hardCap' | 'devices';
@@ -63,7 +30,9 @@ export type SetupStep = {
  */
 export type SetupHardCap =
   | { state: 'unset'; runningLimitKw: number; periodMinutes: CapacityPeriodMinutes }
-  | { state: 'saved'; limitKw: number; marginKw: number; periodMinutes: CapacityPeriodMinutes };
+  | { state: 'saved'; limitKw: number; marginKw: number; periodMinutes: CapacityPeriodMinutes }
+  | { state: 'grid'; limitKw: number; periodMinutes: CapacityPeriodMinutes | null }
+  | { state: 'disabled' };
 
 /**
  * Whether a whole-home reading has ever arrived. While none has, `remedy` is the
@@ -128,12 +97,18 @@ const formatPeriod = (periodMinutes: CapacityPeriodMinutes): string => (
 // that does not apply to them.
 export const isBelgianHourly = (
   market: SettingsUiHubMarketRead,
-  periodMinutes: CapacityPeriodMinutes,
+  periodMinutes: CapacityPeriodMinutes | null,
 ): boolean => market.state === 'resolved' && market.country === 'BE' && periodMinutes === 60;
 
 const FLANDERS_PERIOD_NOTE = ' In Flanders, use the 15-minute average.';
 
 const resolveHardCapDetail = (hardCap: SetupHardCap, market: SettingsUiHubMarketRead): string => {
+  if (hardCap.state === 'grid') {
+    const gridDetail = `${formatKw(hardCap.limitKw)} grid import limit`;
+    return isBelgianHourly(market, hardCap.periodMinutes)
+      ? `${gridDetail}. In Flanders, use the 15-minute average for Capacity limit.` : gridDetail;
+  }
+  if (hardCap.state === 'disabled') return 'Power limits off';
   const base = hardCap.state === 'saved'
     ? `${formatKw(hardCap.limitKw)} ${formatPeriod(hardCap.periodMinutes)}, ${formatKw(hardCap.marginKw)} safety margin`
     : `${formatKw(hardCap.runningLimitKw)} ${formatPeriod(hardCap.periodMinutes)} until you set yours`;
@@ -174,8 +149,8 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
     },
     ...(hardCapApplies ? [{
       id: 'hardCap' as const,
-      done: facts.hardCap.state === 'saved',
-      title: 'Hard cap',
+      done: facts.hardCap.state !== 'unset',
+      title: 'Limits',
       detail: resolveHardCapDetail(facts.hardCap, facts.market),
       target: { panel: 'limits' },
     }] : []),

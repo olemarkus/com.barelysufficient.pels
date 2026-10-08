@@ -47,6 +47,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }
   | { code: typeof PLAN_REASON_CODES.hourlyBudget }
   | { code: typeof PLAN_REASON_CODES.dailyBudget }
+  | { code: typeof PLAN_REASON_CODES.gridImport }
   | { code: typeof PLAN_REASON_CODES.capacity }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
@@ -72,6 +73,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.capacityControlOff,
   PLAN_REASON_CODES.hourlyBudget,
   PLAN_REASON_CODES.dailyBudget,
+  PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.awaitingSolarSurplus,
@@ -100,6 +102,8 @@ function formatStaticReason(reason: StaticReason): string {
       return 'shed due to capacity-period budget';
     case PLAN_REASON_CODES.dailyBudget:
       return 'shed due to daily budget';
+    case PLAN_REASON_CODES.gridImport:
+      return 'shed due to grid import limit';
     case PLAN_REASON_CODES.capacity:
       return 'shed due to capacity';
     case PLAN_REASON_CODES.deferredObjectiveAvoid:
@@ -506,6 +510,7 @@ function formatStaticReasonUserFacing(reason: StaticReason): string {
       return PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS;
     case PLAN_REASON_CODES.dailyBudget:
       return PLAN_STATE_DAILY_BUDGET_STATUS;
+    case PLAN_REASON_CODES.gridImport:
     case PLAN_REASON_CODES.capacity:
       return PLAN_STATE_CAPACITY_STATUS;
     case PLAN_REASON_CODES.deferredObjectiveAvoid:

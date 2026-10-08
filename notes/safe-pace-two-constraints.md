@@ -9,6 +9,18 @@ Code: `lib/plan/planBudget.ts`, `lib/plan/planBuilder.ts`, `lib/plan/planContext
 Sibling note: `notes/end-of-hour-mode.md` (the capacity pace's drain ceiling).
 User-facing description: `docs/technical.md` ("Dynamic Capacity Safe Pace").
 
+## Independent grid import control
+
+Grid import adds an observed-power constraint alongside the two pacing axes
+described here. When enabled, its target is 95% of the configured grid import
+limit, and `bindingPaceKw` is the minimum of the enabled capacity pace, daily
+pace and grid target. Disabled axes contribute no ceiling. Budget exemptions
+bypass only the daily axis; every admission still spends grid and capacity
+room. Grid-only control does not create a period energy allowance or shortfall
+incident. The Main home supports grid control in the MVP; meter areas retain
+capacity control. See `docs/technical.md` for the shared telemetry, shedding,
+and restoration policies.
+
 ## Canonical names
 
 The governing rule for this area: **one concept, one canonical name throughout the
@@ -25,7 +37,7 @@ code, one owner of the data point.** Everything below is written in these terms.
 | Exempt draw from measured readings only | `measuredExemptKw` | import | `lib/power/usageAttribution.ts` | per home |
 | Daily-budget threshold on the load that counts toward the budget | `budgetPaceKw` | **non-exempt** | `lib/plan/planBudget.ts` | **main only** |
 | `budgetPaceKw` re-expressed on the import axis by adding exempt draw | `budgetPaceImportKw` | import | `lib/plan/planBuilder.ts` | **main only** |
-| `min(capacityPaceKw, budgetPaceImportKw)`: the threshold the planner acts on | `bindingPaceKw` | import | `lib/plan/planBuilder.ts` | per home |
+| Minimum enabled capacity pace, budget pace and grid import target: the threshold the planner acts on | `bindingPaceKw` | import | `lib/plan/planBuilder.ts` | per home |
 
 ### Arriving here from a code comment
 
@@ -462,7 +474,7 @@ resolved draw and a device without a reading has no power axis to sum, so the su
 is a plain number and the coercion is gone (`lib/plan/planBuilder.ts`).
 
 **4. The rebase steers `softLimitSource`, which is load-bearing elsewhere.**
-`resolveSoftLimitSource` (`lib/plan/planBuilder.ts:522-526`) compares
+`resolveSoftLimitSource` (`lib/plan/planContext.ts`) compares
 `capacityPaceKw` against `budgetPaceImportKw`, so a large exempt load pushes the
 budget number up and biases the source toward `'capacity'`.
 

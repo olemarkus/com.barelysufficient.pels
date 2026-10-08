@@ -89,7 +89,7 @@ describe('shed grace', () => {
       getCapacityDryRun: () => false,
       setCapacityInShortfall: vi.fn(),
       capacityGuard,
-      getCapacitySettings: () => ({ limitKw: 6, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),

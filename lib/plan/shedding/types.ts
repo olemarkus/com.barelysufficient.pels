@@ -126,7 +126,7 @@ export type OvershootStats = {
 export type SheddingDeps = {
   capacityGuard: CapacityGuard;
   /** Producer-resolved `computeShortfallThreshold` for this build. */
-  shortfallThresholdKw: number;
+  shortfallThresholdKw: number | null;
   powerTracker: PowerTrackerState;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   // Observer-owned pending-binary-command store; candidate builders read
@@ -154,6 +154,7 @@ export type PlanSheddingResult = {
 };
 
 export type ShedCandidateParams = {
+  bypassRecentRestore: boolean;
   devices: PlanInputDevice[];
   /**
    * How badly this cycle wants to shed — NOT a kW quantity to compare against.
@@ -179,8 +180,8 @@ export type ShedCandidateParams = {
   deficitKw: number;
   limitSource: PlanContext['softLimitSource'];
   /**
-   * Producer-resolved: MEASURED above the capacity soft limit. Resolved once
-   * in `buildSheddingPlan` from the context's predicate, so no candidate walk
+   * Producer-resolved: measured above an enabled capacity or grid threshold.
+   * Resolved once in `buildShedCandidateParams`, so no candidate walk
    * re-derives breach from a total (an unmeasured cycle is not breached).
    */
   capacityBreached: boolean;

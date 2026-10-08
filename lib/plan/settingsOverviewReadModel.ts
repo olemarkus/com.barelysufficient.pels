@@ -133,6 +133,8 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
     totalKw: normalizedMeta.totalKw,
     softLimitKw: normalizedMeta.softLimitKw,
     capacitySoftLimitKw: normalizedMeta.capacitySoftLimitKw,
+    gridImportLimitKw: normalizedMeta.gridImportLimitKw,
+    gridImportTargetKw: normalizedMeta.gridImportTargetKw,
     budgetPaceKw: normalizedMeta.budgetPaceKw,
     projectedExemptKw: normalizedMeta.projectedExemptKw,
     softLimitSource: normalizedMeta.softLimitSource,

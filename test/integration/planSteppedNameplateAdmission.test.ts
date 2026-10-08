@@ -42,7 +42,7 @@ const buildPlanner = (availableKw: number): PlanBuilder => new PlanBuilder({
   getCapacityDryRun: () => false,
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
   setCapacityInShortfall: vi.fn(),
-  getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
     getOperatingMode: () => 'Home',
     getModeDeviceTargets: () => ({}),

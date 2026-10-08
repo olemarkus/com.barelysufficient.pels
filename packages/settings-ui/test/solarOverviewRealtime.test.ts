@@ -26,6 +26,8 @@ const SOLAR_TRACKER = {
 // Minimal but numerically consistent hero meta (net export → negative total).
 const PLAN_SNAPSHOT = {
   meta: buildPlanMeta({
+    gridImportLimitKw: null,
+    gridImportTargetKw: null,
     totalKw: -2.1,
     softLimitKw: 2.3,
     capacitySoftLimitKw: 2.3,

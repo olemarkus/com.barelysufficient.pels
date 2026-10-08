@@ -107,7 +107,7 @@ const withValidatedFacets = (device: PlanDeviceSnapshot): PlanDeviceSnapshot => 
 // realtime handler drops the push and logs, the scoped reader reports
 // `unavailable`.
 const REQUIRED_META_NUMBERS = [
-  'softLimitKw', 'capacitySoftLimitKw', 'hardCapLimitKw',
+  'hardCapLimitKw',
   'usedKWh', 'hourBudgetKWh', 'minutesRemaining',
   // The meter total and its stamp: always numbers — a snapshot exists only
   // behind the measurement gate, so its cycle always carried a reading.
@@ -122,10 +122,11 @@ const MEASURED_META_NUMBERS = ['controlledKw', 'uncontrolledKw'] as const;
 
 // Required, but `null` is a real value: no daily-budget axis (the pace pair).
 const REQUIRED_META_NULLABLE_NUMBERS = [
-  'budgetPaceKw', 'projectedExemptKw',
+  'budgetPaceKw', 'projectedExemptKw', 'softLimitKw', 'capacitySoftLimitKw',
+  'gridImportLimitKw', 'gridImportTargetKw',
 ] as const;
 
-const SOFT_LIMIT_SOURCES: ReadonlySet<unknown> = new Set(['capacity', 'daily']);
+const SOFT_LIMIT_SOURCES: ReadonlySet<unknown> = new Set(['capacity', 'daily', 'grid', null]);
 const isValidPlanMeta = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
   const meta = value as Record<string, unknown>;
@@ -134,6 +135,7 @@ const isValidPlanMeta = (value: unknown): boolean => {
       (key) => meta[key] === null || isFiniteNumber(meta[key]),
     )
     && SOFT_LIMIT_SOURCES.has(meta.softLimitSource)
+    && ((meta.softLimitKw === null) === (meta.softLimitSource === null))
     && isCapacityPeriodMinutes(meta.capacityPeriodMinutes)
     && typeof meta.capacityPeriodCoverageComplete === 'boolean'
     && typeof meta.powerIsMeasured === 'boolean'

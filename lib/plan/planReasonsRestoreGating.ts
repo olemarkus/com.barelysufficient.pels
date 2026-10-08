@@ -1,3 +1,4 @@
+import { spendPowerHeadroom } from './powerLimitMath';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import {
   PLAN_REASON_CODES,
@@ -72,7 +73,7 @@ export function resolveMeterSettlingHold(
 
 export type HoldDecision =
   | { type: 'skip' }
-  | { type: 'restore'; availableHeadroom: number; restoredOneThisCycle: boolean }
+  | { type: 'restore'; availableHeadroom: number | null; restoredOneThisCycle: boolean }
   | { type: 'hold'; reason: PlanReasonDecision };
 
 function emitRestoreRejectedDebug(
@@ -110,7 +111,7 @@ function emitRestoreRejectedDebug(
 export function resolveActivationBackoffHold(
   pass: HoldPass,
   dev: DevicePlanDevice,
-  availableHeadroom: number,
+  availableHeadroom: number | null,
 ): HoldDecision | null {
   const { state, timing } = pass;
   const restoreDebugKey = `target:${dev.id}`;
@@ -133,12 +134,12 @@ export function resolveActivationBackoffHold(
 export function resolveInsufficientHeadroomHold(
   pass: HoldPass,
   dev: DevicePlanDevice,
-  availableHeadroom: number,
+  availableHeadroom: number | null,
   restoreNeed: ReturnType<typeof getRestoreNeed>,
-  admission: ReturnType<typeof buildRestoreAdmissionMetrics>,
+  admission: ReturnType<typeof buildRestoreAdmissionMetrics> | null,
 ): HoldDecision | null {
   const restoreDebugKey = `target:${dev.id}`;
-  if (isRestoreAdmitted(admission)) return null;
+  if (admission === null || availableHeadroom === null || isRestoreAdmitted(admission)) return null;
 
   const reason: PlanReasonDecision = {
     code: 'restore_headroom',
@@ -167,7 +168,7 @@ export function resolveRestoreGateHold(
   dev: DevicePlanDevice,
   loop: HoldLoopState,
   restoreNeed: ReturnType<typeof getRestoreNeed>,
-  admission: ReturnType<typeof buildRestoreAdmissionMetrics>,
+  admission: ReturnType<typeof buildRestoreAdmissionMetrics> | null,
 ): HoldDecision | null {
   const { restoreCooldownSeconds, restoreCooldownRemainingSec } = pass.timing;
   const { availableHeadroom, restoredOneThisCycle } = loop;
@@ -285,7 +286,7 @@ export function resolveRestoreDecision(
   });
   return {
     type: 'restore',
-    availableHeadroom: availableHeadroom - restoreNeed.needed,
+    availableHeadroom: spendPowerHeadroom(availableHeadroom, restoreNeed.needed),
     restoredOneThisCycle: true,
   };
 }

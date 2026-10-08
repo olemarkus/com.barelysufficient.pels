@@ -42,6 +42,16 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     vi.useRealTimers();
   });
 
+  it('rebuilds on the first grid breach even when the capacity axis is absent and a calm plan was suppressed', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 20_000, reading: { currentPowerW: 2600, capacityPaceKw: null, shortfallThresholdKw: null, gridImportLimitKw: 3.3 } },
+    });
+    await sampleThrottle(throttle, { currentPowerW: 4600, capacityPaceKw: null, shortfallThresholdKw: null, gridImportLimitKw: 3.3, unactionable: true });
+    expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('grid_import_pressure');
+  });
+
   it('rebuilds immediately when a control boundary is already crossed', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({

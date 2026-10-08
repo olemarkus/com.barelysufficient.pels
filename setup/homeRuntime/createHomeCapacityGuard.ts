@@ -21,10 +21,9 @@
  */
 import type { AppContext } from '../../lib/app/appContext';
 import { getLogger } from '../../lib/logging/logger';
-import { computeShortfallThreshold } from '../../lib/plan/planBudget';
+import { isCapacityShortfallAlertActive } from '../../lib/plan/planBudget';
 import type { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
-import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { createCapacityShortfallAlertDispatch } from '../capacityShortfallAlertDispatch';
 import {
@@ -120,9 +119,8 @@ export const createHomeCapacityGuard = (
     // so a construction-time copy would leave this predicate re-checking the
     // old cap while planning had already moved to the new one — suppressing a
     // real alert after a decrease, holding an obsolete one after an increase.
-    isConditionActive: () => guard.isShortfallAlertConditionActive(
-      resolveLastTotalPowerKw(scope.getPowerTracker()),
-      computeShortfallThreshold(scope.getCapacitySettings(), scope.getPowerTracker(), Date.now()),
+    isConditionActive: () => isCapacityShortfallAlertActive(
+      guard, scope.getCapacitySettings(), scope.getPowerTracker(),
     ),
     getHomeDisplayName: scope.getHomeDisplayName,
     flow: ctx.homey.flow,

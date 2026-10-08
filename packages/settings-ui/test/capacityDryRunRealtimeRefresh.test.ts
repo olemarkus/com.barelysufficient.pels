@@ -1,3 +1,4 @@
+import type { CapacityScalarSettings } from '../../contracts/src/capacitySettings.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emitHomeyEvent, installHomeyMock, type MockHomeyClient } from './helpers/homeyApiMock.ts';
 import { setHomeyClient } from '../src/ui/homey.ts';
@@ -51,7 +52,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   const setup = (
     dryRunSetting: boolean | undefined,
     priorState: boolean,
-    runtimeScalars?: { limitKw: number; marginKw: number; periodMinutes: 15 | 60; dryRun: boolean },
+    runtimeScalars?: CapacityScalarSettings,
   ) => {
     homey = installHomeyMock({
       settings: {
@@ -93,7 +94,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('uses the running Main posture after a reload when the persisted key is absent', async () => {
-    setup(undefined, true, { limitKw: 10, marginKw: 0.2, periodMinutes: 60, dryRun: false });
+    setup(undefined, true, { capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60, dryRun: false });
 
     await loadCapacitySettings();
 
@@ -102,7 +103,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('does not materialize retained Main limits during a simulation-only save', async () => {
-    setup(undefined, true, { limitKw: 12, marginKw: 0.4, periodMinutes: 60, dryRun: false });
+    setup(undefined, true, { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.4, periodMinutes: 60, dryRun: false });
     delete homey.__settingsStore[CAPACITY_LIMIT_KW];
     delete homey.__settingsStore[CAPACITY_MARGIN_KW];
 
@@ -114,7 +115,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('does not materialize the runtime Belgian period during a simulation-only save', async () => {
-    setup(undefined, true, { limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false });
+    setup(undefined, true, { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false });
     delete homey.__settingsStore[CAPACITY_PERIOD_MINUTES];
 
     await loadCapacitySettings();

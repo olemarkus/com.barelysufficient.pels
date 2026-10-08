@@ -1,6 +1,7 @@
 import type CapacityGuard from '../../power/capacityGuard';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
 import type { PlanEngineState, StorageLeverState } from '../planState';
+import type { MeasuredPower } from '../planContext';
 import type { PlanInputDevice } from '../planTypes';
 import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
@@ -34,14 +35,14 @@ export function resolveSameMeasurementSheddingDecision(
   measurementTs: number | null,
   measurementPowerW: number | null,
   nowTs: number,
-  allowEscalation: boolean,
+  power: MeasuredPower,
   /** The holds this cycle's storage stage left (`StorageRelief.levers`). */
   storageLevers: Readonly<Record<string, StorageLeverState>>,
 ): SameMeasurementSheddingDecision {
   const alreadyShedThisSample = measurementTs !== null
     && measurementTs === state.lastShedPlanMeasurementTs;
   const pending = resolvePendingShedRelief(
-    state.shedPlanLatch, devices, measurementPowerW, nowTs, storageLevers,
+    state.shedPlanLatch, devices, measurementPowerW, nowTs, storageLevers, !power.gridBreached,
   );
   if (!alreadyShedThisSample) {
     // With nothing outstanding the reading is believed as it stands; the pending
@@ -50,7 +51,7 @@ export function resolveSameMeasurementSheddingDecision(
       ? { kind: 'credit_pending_relief', pending }
       : { kind: 'proceed', escalatedSameSample: false, pending };
   }
-  if (allowEscalation && state.overshoot.shouldEscalate(nowTs)) {
+  if ((power.capacityBreached || power.gridBreached) && state.overshoot.shouldEscalate(nowTs)) {
     return { kind: 'proceed', escalatedSameSample: true, pending: null };
   }
   return { kind: 'skip_same_sample', pending };

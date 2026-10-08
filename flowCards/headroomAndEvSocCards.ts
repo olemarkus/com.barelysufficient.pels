@@ -45,7 +45,7 @@ async function checkHeadroomForDevice(
   if (!deviceId || requiredKw === null || requiredKw < 0) return false;
 
   const headroom = deps.getHeadroom();
-  if (headroom === null) return false;
+  if (headroom === null && (deps.getLatchedTotalKw() === null || deps.getPowerLimitKw() !== null)) return false;
 
   const snapshot = await deps.getSnapshot();
   const deviceSnap = snapshot.find((d) => d.id === deviceId);
@@ -88,7 +88,7 @@ function logHeadroomCheck(params: {
     event: 'headroom_for_device_checked',
     deviceId,
     deviceName: deviceSnap?.name,
-    capacityPaceKw: deps.getCapacityPaceKw(),
+    powerLimitKw: deps.getPowerLimitKw(),
     currentPowerKw: deps.getLatchedTotalKw(),
     deviceConsumptionKw: decision.observedKw,
     expectedPowerKw: deviceSnap?.expectedPowerKw ?? null,

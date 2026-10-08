@@ -7,12 +7,15 @@
  * hold (`StorageLeverState`) and its `StorageDecision`, which the executor's
  * storage lane carries out unchanged.
  */
+import { spendPowerHeadroom } from '../powerLimitMath';
+import type { MeasuredPower } from '../planContext';
 import type { StorageDecision } from '../../planContract/storageDecision';
 import type { StorageLeverState } from '../planState';
 import type { StorageSetpoint } from '../shedding/types';
 import { STORAGE_RELIEF_SETTLE_WINDOW_MS, ownDischargeWOf } from './storageLadder';
 import {
   isSettling,
+  sumWithheldKw,
   resolveOwnModeChargeW,
   summarizeHold,
   type StorageRelief,
@@ -113,3 +116,22 @@ export function applyStorageHandBacks(
       : battery)),
   };
 }
+
+/**
+ * The measurement as restore and admission see it: the headroom less what the
+ * batteries withhold (`StorageStateSummary.withheldW`), so stored energy never
+ * admits a device and a charge increase never meets a restore on the same
+ * room. The draw stays the measured one.
+ */
+export function withoutStorageWithheld(power: MeasuredPower, relief: StorageRelief): MeasuredPower {
+  const withheldKw = sumWithheldKw(relief.batteries);
+  if (withheldKw <= 0) return power;
+  return {
+    ...power,
+    headroomKw: spendPowerHeadroom(power.headroomKw, withheldKw),
+    capacityHeadroomKw: spendPowerHeadroom(power.capacityHeadroomKw, withheldKw),
+    gridHeadroomKw: spendPowerHeadroom(power.gridHeadroomKw, withheldKw),
+    budgetHeadroomKw: spendPowerHeadroom(power.budgetHeadroomKw, withheldKw),
+  };
+}
+

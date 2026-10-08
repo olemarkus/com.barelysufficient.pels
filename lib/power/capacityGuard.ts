@@ -151,6 +151,19 @@ export default class CapacityGuard {
     this.publishShortfallAlertCondition(false, 0);
   }
 
+  /** Disabling period control cancels its incident; it is not measured recovery. */
+  async recordCapacityDisabled(): Promise<void> {
+    this.recordShortfallUnavailable();
+    if (!this.inShortfall) return;
+    this.structuredLog.info({ event: 'hard_cap_shortfall_disabled', homeId: this.homeId, incidentId: this.incidentId });
+    this.inShortfall = false;
+    this.shortfallClearStartTime = null;
+    this.incidentId = null;
+    this.incidentStartMs = 0;
+    this.planLeftNothingToShed = false;
+    await this.onShortfallCleared();
+  }
+
   /**
    * A plan build's reading at or under the threshold, from a period whose
    * coverage is complete. That completeness is what makes reporting available
@@ -179,7 +192,9 @@ export default class CapacityGuard {
     await this.maybeClearShortfall(shortfallThresholdKw, totalKw);
   }
 
-  public isShortfallAlertConditionActive(totalKw: number | null, shortfallThresholdKw: number): boolean {
+  public isShortfallAlertConditionActive(
+    totalKw: number | null, shortfallThresholdKw: number,
+  ): boolean {
     return this.shortfallReportingAvailable
       && this.planLeftNothingToShed
       && isOverShortfallThreshold(totalKw, shortfallThresholdKw);

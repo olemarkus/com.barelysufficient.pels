@@ -213,7 +213,12 @@ export function resolveClaimedReserveKw(params: {
  * `admission` / `rawAdmission` was representable and silent.
  */
 export type ReserveAdmission =
-  | { kind: 'admitted'; admission: RestoreAdmissionMetrics; effectiveHeadroomKw: number; reservedKw: number }
+  | {
+    kind: 'admitted';
+    admission: RestoreAdmissionMetrics | null;
+    effectiveHeadroomKw: number | null;
+    reservedKw: number;
+  }
   // Carries the holder's NAME, resolved here rather than re-derived by each
   // caller: this is the only branch on which a holder is guaranteed to exist
   // (it needs `claimedKw > 0`, i.e. a live claiming reserve), so resolving it in
@@ -231,11 +236,14 @@ export type ReserveAdmission =
 
 export function resolveReserveAdmission(params: {
   dev: Pick<DevicePlanDevice, 'id' | 'priority'>;
-  availableHeadroom: number;
+  availableHeadroom: number | null;
   neededKw: number;
   reserves: readonly HeadroomReserve[];
 }): ReserveAdmission {
   const { dev, availableHeadroom, neededKw, reserves } = params;
+  if (availableHeadroom === null) {
+    return { kind: 'admitted', admission: null, effectiveHeadroomKw: null, reservedKw: 0 };
+  }
   const claimedKw = resolveClaimedReserveKw({ dev, reserves });
 
   // Signed, unclamped, on purpose. The reserve is an amount that must stay FREE, not a ceiling on

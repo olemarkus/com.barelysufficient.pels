@@ -40,7 +40,7 @@ import type { StorageRelief } from '../battery/storageRelief';
  * relief counts against it (`StorageShedTerm`), which a hand-back can raise.
  */
 export function resolveStorageAdjustedDeficitKw(power: MeasuredPower, storage: StorageShedTerm): number {
-  return Math.max(0, -power.headroomKw - storage.netCreditKw);
+  return power.headroomKw === null ? 0 : Math.max(0, -power.headroomKw - storage.netCreditKw);
 }
 
 /**
@@ -102,12 +102,13 @@ export function buildShedCandidateParams(
   return {
     devices: context.devices,
     needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,
+    bypassRecentRestore: power.gridBreached,
     // The measured deficit, never the severity sentinel: rung sizing compares
     // kW against it. See `ShedCandidateParams`.
     deficitKw: needed,
-    limitSource: hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
+    limitSource: power.gridBreached ? 'grid' : resolveShedLimitSource(context, hourlyBudgetExhausted),
     // Resolved once on the measurement; no candidate walk re-derives it from a total.
-    capacityBreached: power.capacityBreached,
+    capacityBreached: power.capacityBreached || power.gridBreached,
     temperatureSetpoints: context.temperatureSetpoints,
     storageLimit: { kind: 'measured', drawKw: power.drawKw, levers: storage.levers },
     state,
@@ -250,7 +251,7 @@ function addStorageCandidate(
     device,
     storageLimit.levers[device.id],
     storageLimit.drawKw,
-    resolveRecentRestoreState(device, state, nowTs, needed, deps.debugStructured),
+    !params.bypassRecentRestore && resolveRecentRestoreState(device, state, nowTs, needed, deps.debugStructured),
     nowTs,
   );
   if (typeof candidate !== 'string') return candidate;
@@ -272,10 +273,11 @@ function addCandidatePower(
     needed,
     // The real deficit in kW — for anything that compares or subtracts.
     deficitKw,
+    bypassRecentRestore,
     deps,
   } = params;
   const priority = device.priority;
-  const recentlyRestored = resolveRecentRestoreState(
+  const recentlyRestored = !bypassRecentRestore && resolveRecentRestoreState(
     device, state, nowTs, needed, deps.debugStructured,
   );
   if (isSteppedLoadDevice(device)) {
@@ -362,4 +364,8 @@ function comparePriority(a: ShedCandidate, b: ShedCandidate): number {
   // Defensive final tiebreak for partial/legacy inputs (active-home plan
   // inputs have unique ranks), shared with restore via compareDeviceIdAsc.
   return compareDeviceIdAsc(a, b);
+}
+
+function resolveShedLimitSource(context: PlanContext, hourlyBudgetExhausted: boolean): PlanContext['softLimitSource'] {
+  return hourlyBudgetExhausted ? 'daily' : context.softLimitSource;
 }

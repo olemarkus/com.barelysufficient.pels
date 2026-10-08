@@ -1,4 +1,5 @@
 import type { SettingsUiCapacityScalarsRead } from '../../../contracts/src/settingsUiApi.ts';
+import { resolvePowerLimitSettings } from '../../../shared-domain/src/settings/powerLimits.ts';
 import { isCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 
 const isObject = (value: unknown): value is Readonly<Record<string, unknown>> => (
@@ -16,13 +17,17 @@ export const classifyCapacityScalarsRead = (value: unknown): SettingsUiCapacityS
     return { state: 'unavailable' };
   }
   const {
-    limitKw, marginKw, periodMinutes, dryRun,
+    limitKw, marginKw, periodMinutes, dryRun, capacityEnabled, gridImportLimitKw,
   } = value.scalars;
+  const controls = resolvePowerLimitSettings(capacityEnabled, gridImportLimitKw !== null, gridImportLimitKw);
   if (
     typeof limitKw !== 'number' || !Number.isFinite(limitKw)
     || typeof marginKw !== 'number' || !Number.isFinite(marginKw)
     || !isCapacityPeriodMinutes(periodMinutes)
-    || typeof dryRun !== 'boolean'
+    || typeof dryRun !== 'boolean' || controls === null
   ) return { state: 'unavailable' };
-  return { state: 'resolved', scalars: { limitKw, marginKw, periodMinutes, dryRun } };
+  return {
+    state: 'resolved',
+    scalars: { limitKw, marginKw, periodMinutes, dryRun, ...controls },
+  };
 };

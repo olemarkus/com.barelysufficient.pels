@@ -142,12 +142,14 @@ function isCodeOnlyReason(reason: DeviceReason): reason is CodeOnlyReason {
 type HolderOnlyComparableReason = Extract<
   DeviceReason,
   | { code: typeof PLAN_REASON_CODES.dailyBudget }
+  | { code: typeof PLAN_REASON_CODES.gridImport }
   | { code: typeof PLAN_REASON_CODES.capacity }
 >;
 
 function isHolderOnlyComparableReason(reason: DeviceReason): reason is HolderOnlyComparableReason {
   return reason.code === PLAN_REASON_CODES.dailyBudget
-    || reason.code === PLAN_REASON_CODES.capacity;
+    || reason.code === PLAN_REASON_CODES.capacity
+    || reason.code === PLAN_REASON_CODES.gridImport;
 }
 
 /**

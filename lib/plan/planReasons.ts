@@ -70,7 +70,7 @@ function buildBaseReason(ctx: ReasonContext, dev: DevicePlanDevice): DeviceReaso
 export type ReasonContext = {
   readonly shedReasons: Map<string, DeviceReason>;
   readonly guardInShortfall: boolean;
-  readonly headroomRaw: number;
+  readonly headroomRaw: number | null;
   readonly inCooldown: boolean;
   readonly activeOvershoot: boolean;
   readonly shedCooldownRemainingSec: number | null;
@@ -91,10 +91,10 @@ export type ReasonContext = {
    */
   readonly postureHoldReasonById: ReadonlyMap<string, DeviceReason>;
   /** Plan-level binding constraint; `'daily'` re-attributes carried `capacity` reasons. */
-  readonly softLimitSource: 'capacity' | 'daily' | null;
-  /** Over the CAPACITY soft limit, whichever limit binds. Producer-resolved. */
+  readonly softLimitSource: 'capacity' | 'daily' | 'grid' | null;
+  /** Over an enabled capacity or grid threshold, whichever limit binds. Producer-resolved. */
   readonly capacityBreached: boolean;
-  /** Daily pace binding AND capacity not also breached. Producer-resolved. */
+  /** Daily pace binding with neither capacity nor grid also breached. Producer-resolved. */
   readonly budgetReleasableHeadroomHold: boolean;
   /** The hour's energy budget is spent; folds every ceiling hold to `hourlyBudget`. */
   readonly hourlyBudgetExhausted: boolean;
@@ -108,7 +108,8 @@ function maybeApplyShortfallReason(
   currentReason: ClassifiedPlanReason,
 ): PlanReasonDecision | null {
   const { guardInShortfall, headroomRaw } = ctx;
-  if (!guardInShortfall || isSwapReason(currentReason) || isBudgetReason(currentReason)) return null;
+  if (!guardInShortfall || headroomRaw === null) return null;
+  if (isSwapReason(currentReason) || isBudgetReason(currentReason)) return null;
   if (currentReason.code === PLAN_REASON_CODES.neutralStartupHold) return null;
   if (isShortfallReason(currentReason)) return null;
   const { needed: estimatedNeed } = computeBaseRestoreNeed(dev);
@@ -172,6 +173,7 @@ export function normalizeShedReasons(
 // fresh `hourlyBudget` reason never reaches this set — `resolveHourlyFold`
 // early-returns on it to preserve the producer's object identity.
 const HOURLY_FOLD_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set([
+  PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.dailyBudget,
   PLAN_REASON_CODES.insufficientHeadroom,
@@ -181,6 +183,7 @@ const HOURLY_FOLD_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set([
 // self-computes from its own admission margins; `hourlyBudget` never carries a
 // kW (time-based copy); `sheddingActive` has no live producer.
 const SHORTFALL_ATTACH_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set([
+  PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.dailyBudget,
   PLAN_REASON_CODES.swapPending,
@@ -313,6 +316,7 @@ function resolveHourlyFold(
   }
   if (dev.reason.code !== PLAN_REASON_CODES.hourlyBudget) return dev.reason;
   if (shedReasonFresh) return dev.reason;
+  if (softLimitSource === 'grid') return { code: PLAN_REASON_CODES.gridImport };
   const daily = softLimitSource === 'daily' && !capacityBreached && dev.budgetExempt !== true;
   return daily
     ? { code: PLAN_REASON_CODES.dailyBudget }
@@ -325,6 +329,7 @@ function resolveHourlyFold(
 // precisely the branch where no gap figure exists.
 function attachReserveHolder(reason: DeviceReason, reserveHolderName: string): DeviceReason {
   switch (reason.code) {
+    case PLAN_REASON_CODES.gridImport:
     case PLAN_REASON_CODES.capacity:
     case PLAN_REASON_CODES.dailyBudget:
       return { ...reason, reserveHolderName };
@@ -340,6 +345,7 @@ function attachReserveHolder(reason: DeviceReason, reserveHolderName: string): D
 // `shortfallKw` inside the carrier variants.
 function attachShortfall(reason: DeviceReason, shortfallKw: number): DeviceReason {
   switch (reason.code) {
+    case PLAN_REASON_CODES.gridImport:
     case PLAN_REASON_CODES.capacity:
     case PLAN_REASON_CODES.dailyBudget:
       return { ...reason, shortfallKw };
@@ -475,7 +481,8 @@ function resolveDailyBindingReattribution(
   // exists to prevent. (This inverts the pre-per-axis comment that admission
   // had "no exemption carve-out"; it does now.)
   if (budgetExempt) return null;
-  const reattribute = (reasonCode === PLAN_REASON_CODES.capacity && !shedReasonFresh)
+  const physicalHold = reasonCode === PLAN_REASON_CODES.capacity || reasonCode === PLAN_REASON_CODES.gridImport;
+  const reattribute = (physicalHold && !shedReasonFresh)
     || (reasonCode === PLAN_REASON_CODES.insufficientHeadroom && budgetReleasableHeadroomHold);
   if (!reattribute) return null;
   // Absence is the missing KEY, not a `null` value: `shortfallKw` is `?: number`

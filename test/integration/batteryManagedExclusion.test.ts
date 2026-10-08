@@ -80,6 +80,8 @@ const heaterInputDevice = (): MeteredPlanInputDevice =>
   });
 
 const buildContext = (devices: PlanInputDevice[], overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
+  gridImportLimitKw: null,
+  gridImportTargetKw: null,
   devices,
   intent: { getModeDeviceTargets: () => ({ Home: { [HEATER_ID]: 21 } }) },
   total: FIXTURE_TOTAL_KW,
@@ -108,6 +110,7 @@ const buildContext = (devices: PlanInputDevice[], overrides: PlanCycleSpec = {})
 const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 
 const emptyRestoreResult: RestorePlanResult = {
+  gridAvailableKw: null,
   planDevices: [],
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),
@@ -189,6 +192,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
     // cluster this fixture does not carry; as a load it never is.
     const context = buildContext([batteryInputDevice(), heaterInputDevice()]);
     const { candidates } = buildSheddingCandidates({
+      bypassRecentRestore: false,
       devices: context.devices,
       temperatureSetpoints: context.temperatureSetpoints,
       needed: 5, // ask for a large reduction so any eligible device is offered

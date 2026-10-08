@@ -19,7 +19,7 @@ import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDevic
  */
 export type PlanHeroMetaInput = {
   totalKw: number;
-  softLimitKw: number;
+  softLimitKw: number | null;
   hardCapLimitKw: number;
   controlledKw: number;
   uncontrolledKw: number;
@@ -34,7 +34,7 @@ export type PlanHeroMetaInput = {
 // caller, which owns the projection.
 export type HeroHeadline = {
   totalKw: number;
-  softLimitKw: number;
+  softLimitKw: number | null;
   hardLimitKw: number;
   controlledKw: number;
   uncontrolledKw: number;
@@ -63,7 +63,7 @@ export const formatHeroHeadline = (
   // From the printed pair, so the sentence can never contradict the figures
   // beside it — there is no headroom on the meta wire to read instead
   // (owner ruling 2026-09-02).
-  overSoftLimit: meta.totalKw > meta.softLimitKw,
+  overSoftLimit: meta.softLimitKw !== null && meta.totalKw > meta.softLimitKw,
 });
 
 /**

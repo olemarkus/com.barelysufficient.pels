@@ -1,3 +1,4 @@
+import type { RestoreHeadroomAxes } from './restore/headroomLedger';
 /**
  * Post-shedding materialization stages of the plan pipeline, sliced out of
  * `planBuilder.ts` to keep that entry point under the line budget (and under
@@ -62,9 +63,9 @@ export type PlanMaterializationDeps = {
 
 type HoldPlanResult = {
   planDevices: DevicePlanDevice[];
-  availableHeadroom: number;
+  availableHeadroom: number | null;
   restoredOneThisCycle: boolean;
-  ledgerAxes: { capacityAvailableKw: number; budgetAvailableKw: number | null };
+  ledgerAxes: RestoreHeadroomAxes;
 };
 
 type FinalizedPlanResult = {
@@ -131,6 +132,7 @@ export class PlanMaterializationStages {
       temperatureSetpoints,
       ledger: buildRestoreHeadroomLedger({
         capacityAvailableKw: restoreResult.capacityAvailableKw,
+        gridAvailableKw: restoreResult.gridAvailableKw,
         budgetAvailableKw: restoreResult.budgetAvailableKw,
       }),
       headroomReserves: restoreResult.headroomReserves,
@@ -182,7 +184,7 @@ export class PlanMaterializationStages {
       // The one resolved breach answer: this used to read the RAW total, which
       // survives a meter dropout, so a stale cached figure could claim a breach
       // PELS could not observe.
-      capacityBreached: power.capacityBreached,
+      capacityBreached: power.capacityBreached || power.gridBreached,
       budgetReleasableHeadroomHold: power.budgetReleasableHeadroomHold,
       // Use the availability left after temperature restores in this cycle.
       admissionInputs: buildCeilingShortfallInputs({
@@ -218,7 +220,9 @@ export class PlanMaterializationStages {
   finalizePlan(
     planDevices: DevicePlanDevice[],
     temperatureSetpoints: TemperatureSetpointsByDevice,
+    nowTs: number,
   ): FinalizedPlanResult {
+    this.syncHeadroomCardState(planDevices, nowTs);
     return trackPlanStage('plan_finalize_ms', () => finalizePlanDevices(
       planDevices, temperatureSetpoints, this.state.shedDecisions.lastPlannedShedIds, {
       onInvalidReasonPair: (issue) => {
@@ -235,7 +239,7 @@ export class PlanMaterializationStages {
     }));
   }
 
-  syncHeadroomCardState(planDevices: DevicePlanDevice[], nowTs: number): void {
+  private syncHeadroomCardState(planDevices: DevicePlanDevice[], nowTs: number): void {
     return trackPlanStage('plan_headroom_cooldown_ms', () => {
       // The card tracks drops in measured usage, which only a device with a power
       // reading has.

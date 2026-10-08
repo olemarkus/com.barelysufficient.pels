@@ -1,5 +1,6 @@
+import { gridImportTargetKw } from '../../packages/shared-domain/src/settings/powerLimits';
 import type CapacityGuard from '../power/capacityGuard';
-import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import { computeShortfallThreshold } from '../plan/planBudget';
@@ -14,9 +15,9 @@ type CapacityGuardView = Pick<
 
 type CapacityStatusMetrics = {
   total: number | null;
-  capacityPace: number;
+  capacityPace: number | null;
   capacityPaceHeadroom: number | null;
-  shortfallBudgetThreshold: number;
+  shortfallBudgetThreshold: number | null;
   shortfallBudgetHeadroom: number | null;
   hardCapHeadroom: number | null;
 };
@@ -25,7 +26,9 @@ export type PeriodicStatusLogFields = {
   event: 'periodic_status';
   homeId: HomeId;
   powerKw: number | null;
-  capacityPaceKw: number;
+  capacityPaceKw: number | null;
+  gridImportLimitKw: number | null;
+  gridImportHeadroomKw: number | null;
   /**
    * Headroom against `capacityPaceKw`, raw. Deliberately NOT
    * `capacityHeadroomKw`: `MeasuredPower` already owns that name for the
@@ -33,7 +36,7 @@ export type PeriodicStatusLogFields = {
    * overload this record just renamed its way out of.
    */
   capacityPaceHeadroomKw: number | null;
-  shortfallBudgetThresholdKw: number;
+  shortfallBudgetThresholdKw: number | null;
   shortfallBudgetHeadroomKw: number | null;
   hardCapHeadroomKw: number | null;
   usedKWh: number;
@@ -53,7 +56,7 @@ export type PeriodicStatusLogFields = {
 export function buildPeriodicStatusLogFields(params: {
   capacityGuard: CapacityGuardView;
   powerTracker: PowerTrackerState;
-  capacitySettings: CapacitySettings;
+  capacitySettings: PowerLimitSettings;
   operatingMode: string;
   capacityDryRun: boolean;
   starvedDeviceCount?: number;
@@ -61,7 +64,7 @@ export function buildPeriodicStatusLogFields(params: {
    * The dynamic hourly threshold, resolved by the caller and logged under its
    * canonical name (`notes/safe-pace-two-constraints.md` § "Canonical names").
    */
-  capacityPaceKw: number;
+  capacityPaceKw: number | null;
   /** The shedding latch, read off `PlanEngineState` by the caller. */
   sheddingActive: boolean;
 }): PeriodicStatusLogFields {
@@ -79,7 +82,7 @@ export function buildPeriodicStatusLogFields(params: {
   const metrics = resolveCapacityStatusMetrics(capacitySettings, powerTracker, capacityPaceKw, nowMs);
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
 
-  const inShortfall = capacityGuard.isInShortfall();
+  const inShortfall = capacitySettings.capacityEnabled && capacityGuard.isInShortfall();
   // These published field names are an existing hourly diagnostics contract,
   // independent of the period selected for capacity control.
   const usage = getCurrentHourContext(powerTracker, nowMs);
@@ -89,6 +92,9 @@ export function buildPeriodicStatusLogFields(params: {
     homeId: MAIN_HOME_ID,
     powerKw: metrics.total,
     capacityPaceKw: metrics.capacityPace,
+    gridImportLimitKw: capacitySettings.gridImportLimitKw,
+    gridImportHeadroomKw: capacitySettings.gridImportLimitKw !== null && metrics.total !== null
+      ? gridImportTargetKw(capacitySettings.gridImportLimitKw) - metrics.total : null,
     capacityPaceHeadroomKw: metrics.capacityPaceHeadroom,
     shortfallBudgetThresholdKw: metrics.shortfallBudgetThreshold,
     shortfallBudgetHeadroomKw: metrics.shortfallBudgetHeadroom,
@@ -104,16 +110,18 @@ export function buildPeriodicStatusLogFields(params: {
 }
 
 function resolveCapacityStatusMetrics(
-  capacitySettings: CapacitySettings,
+  capacitySettings: PowerLimitSettings,
   powerTracker: PowerTrackerState,
-  capacityPaceKw: number,
+  capacityPaceKw: number | null,
   nowMs: number,
 ): CapacityStatusMetrics {
   const total = resolveLastTotalPowerKw(powerTracker);
-  const capacityPaceHeadroom = total !== null ? capacityPaceKw - total : null;
-  const shortfallBudgetThreshold = computeShortfallThreshold(capacitySettings, powerTracker, nowMs);
-  const shortfallBudgetHeadroom = total !== null ? shortfallBudgetThreshold - total : null;
-  const hardCapHeadroom = total !== null ? capacitySettings.limitKw - total : null;
+  const capacityPaceHeadroom = total !== null && capacityPaceKw !== null ? capacityPaceKw - total : null;
+  const shortfallBudgetThreshold = capacitySettings.capacityEnabled
+    ? computeShortfallThreshold(capacitySettings, powerTracker, nowMs) : null;
+  const shortfallBudgetHeadroom = total !== null && shortfallBudgetThreshold !== null
+    ? shortfallBudgetThreshold - total : null;
+  const hardCapHeadroom = total !== null && capacitySettings.capacityEnabled ? capacitySettings.limitKw - total : null;
   return {
     total,
     capacityPace: capacityPaceKw,

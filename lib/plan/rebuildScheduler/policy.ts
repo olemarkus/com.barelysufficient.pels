@@ -116,13 +116,15 @@ export const shouldRebuildFromDecision = (
   maxIntervalExceeded: boolean,
 ): boolean => {
   if (memory.lastRebuild === null) return true;
-  // Sits above the hard-cap and backoff gates: when nothing is actionable, a
-  // hard-cap breach or meaningful delta cannot change the outcome, so refresh
-  // only on the max-interval cadence instead of every power sample.
-  if (isUnactionableThrottleActive(signal, memory.suppressionInvalidated)) {
-    return maxIntervalExceeded;
-  }
-  if (hardCapBreachActive) return true;
+  const previousGrid = memory.lastRebuild.gridBreach;
+  // A new/worsening live breach invalidates the calm plan's no-action verdict.
+  // A steady, exhausted grid breach keeps the normal bounded refresh cadence.
+  if (signal.gridBreach.breached && (
+    !previousGrid.breached || signal.gridBreach.deficitKw > previousGrid.deficitKw
+    || deltaMeaningful || memory.suppressionInvalidated
+  )) return true;
+  if (isUnactionableThrottleActive(signal, memory.suppressionInvalidated)) return maxIntervalExceeded;
+  if (hardCapBreachActive || signal.gridBreach.breached) return true;
   if (backoffActive) return false;
   return controlBoundaryActive
     || (signal.planConvergenceActive && deltaMeaningful)
@@ -200,6 +202,7 @@ export const resolveRebuildReason = (
   decision: RebuildDecision,
 ): PowerSampleRebuildTrigger => {
   if (memory.lastRebuild === null) return 'initial';
+  if (signal.gridBreach.breached) return 'grid_import_pressure';
   if (signal.isInShortfall) return 'shortfall';
   if (signal.hardCapBreach.breached) return 'hard_cap_breach';
   if (decision.headroomTight) return 'headroom_tight';
@@ -215,7 +218,8 @@ export const resolveRebuildIntentKind = (hardCapBreach: HardCapBreach): RebuildI
 );
 
 export const isTightReason = (reason: PlanRebuildTrigger): boolean => (
-  reason === 'headroom_tight' || reason === 'shortfall' || reason === 'hard_cap_breach'
+  reason === 'grid_import_pressure' || reason === 'headroom_tight'
+  || reason === 'shortfall' || reason === 'hard_cap_breach'
 );
 
 export function isTightNoopBackoffActive(

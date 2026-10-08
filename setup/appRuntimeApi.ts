@@ -461,7 +461,7 @@ abstract class AppRuntimeApi extends Base {
       operatingMode: this.getHomeOperatingMode(),
       capacityDryRun: this.context.capacityDryRun,
       starvedDeviceCount: this.context.deviceDiagnosticsService?.getCurrentStarvedDeviceCount?.() ?? 0,
-      capacityPaceKw: this.computeDynamicSoftLimit(),
+      capacityPaceKw: this.context.planEngine.computeCapacityPace(),
       sheddingActive: this.context.planEngine.state.sheddingActive,
     }));
     if (options.includeDeviceHealth === true) {

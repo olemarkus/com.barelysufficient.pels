@@ -77,7 +77,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacitySettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -160,7 +160,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -240,7 +240,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -318,7 +318,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -387,7 +387,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacitySettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -452,7 +452,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
       capacityGuard: capacityGuard,
       setCapacityInShortfall: vi.fn(),
-      getCapacitySettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({}),
@@ -506,7 +506,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -574,7 +574,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -645,7 +645,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -722,7 +722,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -797,7 +797,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -880,7 +880,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -961,7 +961,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -1065,7 +1065,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -1174,7 +1174,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -1282,7 +1282,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),
@@ -1369,7 +1369,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       getCapacityDryRun: () => false,
         capacityGuard: capacityGuard,
         setCapacityInShortfall: vi.fn(),
-        getCapacitySettings: () => ({ limitKw: 3, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 3, marginKw: 0, periodMinutes: 60 }),
         resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
           getOperatingMode: () => 'Home',
           getModeDeviceTargets: () => ({}),

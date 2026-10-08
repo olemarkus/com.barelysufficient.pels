@@ -34,7 +34,7 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 const buildCapacitySnapshot = (
   overrides: Partial<CapacitySettingsSnapshot> = {},
 ): CapacitySettingsSnapshot => ({
-  capacitySettings: { limitKw: 12, marginKw: 0.5, periodMinutes: 60 },
+  capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 },
   capacityDryRun: false,
   controllableDevices: {},
   managedDevices: {},
@@ -491,12 +491,12 @@ describe('buildCapacitySettingsSnapshot', () => {
     const next = buildCapacitySettingsSnapshot({
       settings: settings as never,
       current: buildCapacitySnapshot({
-        capacitySettings: { limitKw: 8, marginKw: 0.5, periodMinutes: 15 },
+        capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 8, marginKw: 0.5, periodMinutes: 15 },
         capacityDryRun: true,
       }),
     });
 
-    expect(next.capacitySettings).toEqual({ limitKw: 8, marginKw: 0.5, periodMinutes: 15 });
+    expect(next.capacitySettings).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 8, marginKw: 0.5, periodMinutes: 15 });
     expect(next.capacityDryRun).toBe(true);
   });
 

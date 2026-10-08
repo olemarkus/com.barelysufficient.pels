@@ -87,8 +87,8 @@ export type FlowCardDeps = {
    * (`resolveLastTotalPowerKw`). `null` = no trustworthy reading.
    */
   getLatchedTotalKw: () => number | null;
-  /** `capacityPaceKw` — the planner's live hourly threshold. */
-  getCapacityPaceKw: () => number;
+  /** The enabled capacity/grid ceiling; null means both constraints are disabled. */
+  getPowerLimitKw: () => number | null;
   // Decorated: the runtime snapshot carries the app-layer step-command
   // decoration (`desiredStepId` / `targetStepId`) that the clamp-deviation
   // check reads. The runtime already returns decorated objects; the type just

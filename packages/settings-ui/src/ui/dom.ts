@@ -90,6 +90,14 @@ export const tabListEntries: MdTabListEntry[] = Array
     tabs: Array.from(tabList.querySelectorAll<HTMLElement>('.tab')),
   }));
 export const panels = Array.from(document.querySelectorAll<HTMLElement>('.panel'));
+export const settingsGridImportEnabledInput = document.querySelector<MdSwitchElement>('#settings-grid-import-enabled');
+export const settingsGridImportLimitInput = document.querySelector<MdFilledTextFieldElement>(
+  '#settings-grid-import-limit',
+);
+export const settingsGridImportField = document.getElementById('settings-grid-import-field');
+export const settingsGridImportHint = document.getElementById('settings-grid-import-hint');
+export const settingsCapacityEnabledInput = document.querySelector<MdSwitchElement>('#settings-capacity-enabled');
+export const settingsCapacityFields = document.getElementById('settings-capacity-fields');
 export const settingsLimitsForm = document.querySelector<HTMLFormElement>('#settings-limits-form');
 export const settingsCapacityLimitInput = document.querySelector<MdFilledTextFieldElement>(
   '#settings-capacity-limit',

@@ -312,8 +312,8 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     this.context.getThermalDirection(deviceId),
   );
 
-  public computeDynamicSoftLimit = (): number => this.requirePlanService().computeDynamicSoftLimit();
-  protected computeShortfallThreshold = (): number => this.requirePlanService().computeShortfallThreshold();
+  public computeDynamicSoftLimit = (): number | null => this.requirePlanService().computeDynamicSoftLimit();
+  protected computeShortfallThreshold = (): number | null => this.requirePlanService().computeShortfallThreshold();
 
   public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
     return this.requireDeviceDiagnosticsService().getUiPayload();

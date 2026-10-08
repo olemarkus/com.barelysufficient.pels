@@ -67,12 +67,12 @@ export async function buildSheddingPlan(
   // decided on (`PlanBuilder.computeDynamicSoftLimit`). A battery limited this
   // cycle is something limited, as a shed device is.
   const sheddingActive = resolveSheddingLatch(
-    power, state, overshoot, new Set([...shedSet, ...storageSetpoints.keys()]),
+    context, power, state, overshoot, new Set([...shedSet, ...storageSetpoints.keys()]),
   );
   await reportShortfallToGuard(context, power, state, selection, deps, storage);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = sheddingActive;
-  const guardInShortfall = deps.capacityGuard.isInShortfall();
+  const guardInShortfall = context.capacitySoftLimit !== null && deps.capacityGuard.isInShortfall();
   const recoveredFromShedding = wasSheddingActive && !sheddingActive;
   return {
     shedSet,
@@ -88,8 +88,8 @@ export async function buildSheddingPlan(
 }
 /* eslint-enable functional/immutable-data */
 
-function shouldPlanShedding(headroom: number): boolean {
-  return headroom < 0;
+function shouldPlanShedding(headroom: number | null): boolean {
+  return headroom !== null && headroom < 0;
 }
 
 function emptySheddingResult(
@@ -130,7 +130,7 @@ function planShedding(
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const measurementPowerW = resolveMeasurementPowerW(deps.powerTracker);
   const measurementDecision = resolveSameMeasurementSheddingDecision(
-    state, context.devices, measurementTs, measurementPowerW, nowTs, power.capacityBreached, storage.levers,
+    state, context.devices, measurementTs, measurementPowerW, nowTs, power, storage.levers,
   );
   // Shedding every candidate goes on every cycle regardless of the sample: the
   // deficit is the whole hour's, not this reading's. An hour a battery answers
@@ -157,7 +157,7 @@ function planShedding(
     // is passed plain — the old `exhausted ? 'daily' : …` alias only fed the
     // pre-2026-08 reason mapping.
     resolveShedReason(
-      context.softLimitSource,
+      candidateParams.limitSource,
       candidateSummary.capacityBreached,
       hourlyBudgetExhausted,
     ),
@@ -209,7 +209,8 @@ function resolveShedEntry(
     const shedsEverything = hour.kind === 'shed_everything';
     return { kind: 'select', hourlyBudgetExhausted: true, shedsEverything, leadingStorageOnly: false };
   }
-  if (!shouldPlanShedding(power.headroomKw + storage.netCreditKw)) return { kind: 'none' };
+  const adjustedHeadroomKw = power.headroomKw === null ? null : power.headroomKw + storage.netCreditKw;
+  if (!shouldPlanShedding(adjustedHeadroomKw)) return { kind: 'none' };
   if (overshoot.shedActionable) {
     return { kind: 'select', hourlyBudgetExhausted: false, shedsEverything: false, leadingStorageOnly: false };
   }

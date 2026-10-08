@@ -81,6 +81,7 @@ const HOLD_REASON_CODES: ReadonlySet<string> = new Set([
   PLAN_REASON_CODES.restoreThrottled,
   PLAN_REASON_CODES.swapPending,
   PLAN_REASON_CODES.swappedOut,
+  PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.hourlyBudget,
   PLAN_REASON_CODES.dailyBudget,

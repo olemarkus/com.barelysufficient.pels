@@ -87,7 +87,9 @@ export const publishSetupMarket = (next: SettingsUiHubMarketRead): void => {
  * until the hard cap has been read: nothing is asked of the owner on a guess.
  */
 export const isBelgianHomeOnHourlyPeriod = (): boolean => (
-  hardCap.state === 'ready' && isBelgianHourly(market, hardCap.value.periodMinutes)
+  hardCap.state === 'ready'
+  && hardCap.value.state !== 'disabled'
+  && isBelgianHourly(market, hardCap.value.periodMinutes)
 );
 
 export const readSetupMarket = (): SettingsUiHubMarketRead => market;
@@ -101,14 +103,21 @@ export const publishSetupHardCapRead = (
   configured: boolean,
   running: CapacityScalarSettings,
 ): void => {
-  const { limitKw, marginKw, periodMinutes } = running;
-  hardCap = {
-    state: 'ready',
-    value: configured
-      ? { state: 'saved', limitKw, marginKw, periodMinutes }
-      : { state: 'unset', runningLimitKw: limitKw, periodMinutes },
-  };
+  hardCap = { state: 'ready', value: resolveSetupLimits(configured, running) };
   notify();
+};
+
+const resolveSetupLimits = (configured: boolean, running: CapacityScalarSettings): SetupHardCap => {
+  const { limitKw, marginKw, periodMinutes } = running;
+  if (running.gridImportLimitKw !== null) return {
+    state: 'grid',
+    limitKw: running.gridImportLimitKw,
+    periodMinutes: running.capacityEnabled ? periodMinutes : null,
+  };
+  if (!running.capacityEnabled) return { state: 'disabled' };
+  return configured
+    ? { state: 'saved', limitKw, marginKw, periodMinutes }
+    : { state: 'unset', runningLimitKw: limitKw, periodMinutes };
 };
 
 /** A bounded first read failed; preserve a previously trusted value. */

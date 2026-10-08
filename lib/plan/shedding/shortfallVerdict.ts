@@ -39,6 +39,7 @@ export async function reportShortfallToGuard(
   /** This cycle's storage stage: the holds a battery's candidate is priced from. */
   storage: StorageRelief,
 ): Promise<void> {
+  if (context.capacitySoftLimit === null || deps.shortfallThresholdKw === null) return;
   if (!applyShortfallPeriodCoverage(deps.capacityGuard, context.capacityPeriodCoverageComplete)) return;
   if (!isOverShortfallThreshold(power.drawKw, deps.shortfallThresholdKw)) {
     await deps.capacityGuard.recordCompletePeriodReading(power.drawKw, deps.shortfallThresholdKw);

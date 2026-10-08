@@ -538,6 +538,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
   const normalize = (params: {
     devices: MeteredDevicePlanDevice[];
     capacityAvailableKw: number;
+    gridAvailableKw?: number | null;
     budgetAvailableKw?: number | null;
     headroomReserves?: readonly { deviceId: string; deviceName: string; priority: number; kw: number }[];
     hourlyBudgetExhausted?: boolean;
@@ -555,6 +556,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       capacityBreached: params.capacityBreached ?? false,
       admissionInputs: buildCeilingShortfallInputs({
       ledgerAxes: {
+        gridAvailableKw: null,
         capacityAvailableKw: params.capacityAvailableKw,
         budgetAvailableKw: params.budgetAvailableKw ?? null,
       },
@@ -650,7 +652,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       state.actuation.lastDeviceShedMs[dev.id] = SHORTFALL_NOW_MS - 60_000;
       const gateNeededKw = getRestoreNeed(dev, state, SHORTFALL_NOW_MS, undefined).needed;
       const shortfallInputs = (capacityAvailableKw: number) => buildCeilingShortfallInputs({
-        ledgerAxes: { capacityAvailableKw, budgetAvailableKw: null },
+        ledgerAxes: { gridAvailableKw: null, capacityAvailableKw, budgetAvailableKw: null },
         headroomReserves: [],
         onDevices: [],
         swapLedger: new SwapLedger(),
@@ -724,6 +726,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
 
   it('reads the capacity axis for a budget-exempt device', () => {
     const [exempt, bound] = normalize({
+      gridAvailableKw: null,
       devices: [
         heldDevice({ id: 'exempt-dev', budgetExempt: true }),
         heldDevice({ id: 'bound-dev', budgetExempt: false }),
@@ -742,6 +745,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
   // restore pass never ran. Every held card must resolve a number now.
   it('gives every deep-hold device a number even when available power is negative', () => {
     const devices = normalize({
+      gridAvailableKw: null,
       devices: [1, 2, 3, 4, 5].map((n) => heldDevice({
         id: `held-${n}`,
         reason: { code: 'daily_budget' },
@@ -990,7 +994,7 @@ describe('applyShedTemperatureHold', () => {
         timing: restoreTimingFixture(),
         sheddingActive: false,
         guardInShortfall: false,
-        ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 8, budgetAvailableKw: 0.3 }),
+        ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 8, budgetAvailableKw: 0.3 }),
         headroomReserves: [],
         restoredOneThisCycle: false,
         restoredThisCycle: new Set(),
@@ -1034,7 +1038,7 @@ describe('applyShedTemperatureHold', () => {
         timing: restoreTimingFixture({ nowTs: now }),
         sheddingActive: false,
         guardInShortfall: false,
-        ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 8, budgetAvailableKw: null }),
+        ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 8, budgetAvailableKw: null }),
         headroomReserves: [],
         restoredOneThisCycle: false,
         restoredThisCycle: new Set(),
@@ -1076,7 +1080,7 @@ describe('applyShedTemperatureHold', () => {
       timing: restoreTimingFixture({ inShedWindow: true }),
       sheddingActive: true,
       guardInShortfall: false,
-      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 0, budgetAvailableKw: null }),
+      ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 0, budgetAvailableKw: null }),
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
@@ -1107,7 +1111,7 @@ describe('applyShedTemperatureHold', () => {
       timing: restoreTimingFixture({ inShedWindow: true }),
       sheddingActive: false,
       guardInShortfall: false,
-      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 1, budgetAvailableKw: null }),
+      ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 1, budgetAvailableKw: null }),
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
@@ -1139,7 +1143,7 @@ describe('applyShedTemperatureHold', () => {
       timing: restoreTimingFixture({ inShedWindow: true }),
       sheddingActive: false,
       guardInShortfall: false,
-      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 1, budgetAvailableKw: null }),
+      ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 1, budgetAvailableKw: null }),
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
@@ -1174,7 +1178,7 @@ describe('applyShedTemperatureHold', () => {
       shedReasons: new Map(),
       timing: restoreTimingFixture({ nowTs: now }),
       sheddingActive: false,
-      ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 3, budgetAvailableKw: null }),
+      ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 3, budgetAvailableKw: null }),
       headroomReserves: [],
       restoredOneThisCycle: false,
       restoredThisCycle: new Set(),
@@ -1250,7 +1254,7 @@ describe('applyShedTemperatureHold', () => {
         }),
         sheddingActive: false,
         guardInShortfall: false,
-        ledger: buildRestoreHeadroomLedger({ capacityAvailableKw: 0, budgetAvailableKw: null }),
+        ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw: 0, budgetAvailableKw: null }),
         headroomReserves: [],
         restoredOneThisCycle: false,
         restoredThisCycle: new Set(),

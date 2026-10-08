@@ -13,7 +13,7 @@ import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PriceLevel } from '../../lib/price/priceLevels';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
 
 /**
@@ -38,7 +38,7 @@ export type PlanEngineWiring = {
   actuator: Actuator;
   binaryCommandLifecycle?: BinaryCommandLifecycleListener;
   capacityGuard: CapacityGuard;
-  getCapacitySettings: () => CapacitySettings;
+  getCapacitySettings: () => PowerLimitSettings;
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;

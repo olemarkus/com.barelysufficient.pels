@@ -130,7 +130,9 @@ class PelsApp extends PelsAppBase implements AppContext {
         }
       },
     });
-  public capacitySettings: AppContext['capacitySettings'] = { limitKw: 10, marginKw: 0.2, periodMinutes: 60 };
+  public capacitySettings: AppContext['capacitySettings'] = {
+    limitKw: 10, marginKw: 0.2, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null,
+  };
   public capacityDryRun = true;
   public readonly capacitySettingsStore = createCapacitySettingsStore(
     this.homey.settings,
@@ -263,7 +265,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     () => this.canContributeCurtailmentSurplus?.() === true,
   );
   public isSurplusPoolReachable = (): boolean => this.surplusPoolReachability.isReachable();
-  public defaultComputeDynamicSoftLimit: (() => number) | undefined = undefined;
+  public defaultComputeDynamicSoftLimit: (() => number | null) | undefined = undefined;
   public lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   public expectedPowerKwOverrides: ExpectedPowerOverridesByDeviceId = {};
   protected overheadToken?: Homey.FlowToken;

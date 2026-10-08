@@ -43,6 +43,8 @@ describe('parsePlanSnapshot resolved status boundary', () => {
 describe('parsePlanSnapshot meta guard', () => {
   // The fields both variants carry; `validMeta` is the measured variant on top.
   const baseMeta = {
+    gridImportLimitKw: null,
+    gridImportTargetKw: null,
     totalKw: 4.2,
     softLimitKw: 9.5,
     capacitySoftLimitKw: 9.5,
@@ -63,6 +65,13 @@ describe('parsePlanSnapshot meta guard', () => {
     controlledKw: 2,
     uncontrolledKw: 2.2,
   };
+
+  it('accepts genuine absence of both control axes and a grid-only snapshot', () => {
+    const disabled = { meta: { ...validMeta, softLimitKw: null, capacitySoftLimitKw: null, softLimitSource: null }, devices: [] };
+    expect(parsePlanSnapshot(disabled)).toBe(disabled);
+    const grid = { meta: { ...validMeta, capacitySoftLimitKw: null, gridImportLimitKw: 3.3, gridImportTargetKw: 3.135, softLimitKw: 3.135, softLimitSource: 'grid' }, devices: [] };
+    expect(parsePlanSnapshot(grid)).toBe(grid);
+  });
 
   it('passes a complete meta through identity-preserving', () => {
     const payload = { meta: validMeta, devices: [] };

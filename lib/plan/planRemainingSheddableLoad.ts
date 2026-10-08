@@ -52,7 +52,7 @@ export type RemainingSheddableDevice = RemainingSheddableResidualFields & {
 export type RemainingSheddableLoadParams = {
   device: RemainingSheddableDevice;
   alreadyShed: boolean;
-  limitSource: 'capacity' | 'daily' | 'both';
+  limitSource: 'capacity' | 'daily' | 'grid' | null;
   capacityBreached: boolean;
 };
 
@@ -65,8 +65,8 @@ type RemainingSheddableSourceDevice = RemainingSheddableResidualFields & {
   budgetExempt?: boolean;
 };
 
-export function isCapacityBreached(totalKw: number, capacitySoftLimitKw: number): boolean {
-  return totalKw > capacitySoftLimitKw;
+export function isCapacityBreached(totalKw: number, capacitySoftLimitKw: number | null): boolean {
+  return capacitySoftLimitKw !== null && totalKw > capacitySoftLimitKw;
 }
 
 export function toInputRemainingSheddableDevice(device: PlanInputDevice): RemainingSheddableDevice {
@@ -160,7 +160,7 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
 export function sumRemainingSheddableLoadKw(params: {
   devices: RemainingSheddableDevice[];
   isAlreadyShed: (device: RemainingSheddableDevice) => boolean;
-  limitSource: 'capacity' | 'daily' | 'both';
+  limitSource: 'capacity' | 'daily' | 'grid' | null;
   capacityBreached: boolean;
 }): number {
   const {

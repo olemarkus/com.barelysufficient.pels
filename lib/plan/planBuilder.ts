@@ -40,23 +40,24 @@ import {
 } from './planBudget';
 import {
   buildPlanContext,
+  buildPlanLimits,
+  resolvePhysicalPowerLimit,
+  type DailySoftLimitResolution,
   resolveMeasuredPower,
   type MeasuredPower,
   type PlanContext,
   type PlanLimits,
-  type SoftLimitSource,
 } from './planContext';
-import { buildSheddingPlan, type SheddingPlan } from './shedding';
+import { buildSheddingPlan, type SheddingPlan, type StorageShedTerm } from './shedding';
 import {
   NO_STORAGE_RELIEF,
   attachStorageDecisions,
   collectAbsentStorageReleases,
   decideStorageRelief,
   resolveStorageSurplus,
-  withoutStorageWithheld,
   type StorageRelief,
 } from './battery/storageRelief';
-import { applyStorageHandBacks, applyStorageLimits } from './battery/storageLimit';
+import { applyStorageHandBacks, applyStorageLimits, withoutStorageWithheld } from './battery/storageLimit';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
 import { resolveShortfallOffState } from './planOffStateReason';
 import {
@@ -82,18 +83,11 @@ import type { SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta } from './planBuilderMeta';
 import { attachDeferredReleaseIntents } from './planBuilderDecoration';
-import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 export type { PlanBuilderDeps } from './planBuilderDeps';
-const SOFT_LIMIT_EPSILON = 1e-3;
 /** A battery's surplus offer moves the `storage_relief_state` log only by a step this large, W. */
 const STORAGE_LOG_OFFER_STEP_W = 500;
-
-type DailySoftLimitResolution = {
-  dailySoftLimitKw: number;
-  budgetPaceKw: number;
-  projectedExemptKw: number;
-};
 
 export class PlanBuilder {
   private readonly overshootTracker: OvershootTracker;
@@ -116,7 +110,7 @@ export class PlanBuilder {
   }
 
   private get capacityGuard(): CapacityGuard { return this.deps.capacityGuard; }
-  private get capacitySettings(): CapacitySettings { return this.deps.getCapacitySettings(); }
+  private get capacitySettings(): PowerLimitSettings { return this.deps.getCapacitySettings(); }
 
   private get priceOptimizationSettings(): Record<string, PriceOptDeviceConfig> {
     return this.deps.getPriceOptimizationSettings();
@@ -161,8 +155,13 @@ export class PlanBuilder {
    * a capacity-period boundary re-stamped the flag, and the plan explained itself
    * against a period its own decision never saw.
    */
-  public computeDynamicSoftLimit(): number {
-    return this.resolveCapacityPace(Date.now()).paceKw;
+  public computeDynamicSoftLimit(): number | null {
+    return resolvePhysicalPowerLimit(this.capacitySettings, this.computeCapacityPace());
+  }
+
+  /** Capacity-only diagnostic axis; grid import must not be labelled as period pace. */
+  public computeCapacityPace(): number | null {
+    return this.capacitySettings.capacityEnabled ? this.resolveCapacityPace(Date.now()).paceKw : null;
   }
 
   /**
@@ -204,8 +203,9 @@ export class PlanBuilder {
    * Shortfall should only trigger when projected selected-period usage would breach the hard cap
    * and no devices are left to shed.
    */
-  public computeShortfallThreshold(): number {
-    return computeShortfallThreshold(this.capacitySettings, this.powerTracker, Date.now());
+  public computeShortfallThreshold(nowTs = Date.now()): number | null {
+    if (!this.capacitySettings.capacityEnabled) return null;
+    return computeShortfallThreshold(this.capacitySettings, this.powerTracker, nowTs);
   }
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -214,6 +214,7 @@ export class PlanBuilder {
 
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const nowTs = Date.now();
+    if (!this.capacitySettings.capacityEnabled) await this.deps.capacityGuard.recordCapacityDisabled();
     // Evaluate deferred objectives at the planner boundary and translate active objectives
     // into a plain managed-device shape: a device PELS has no standing authority over
     // gains `commandAuthority` for the cycle (so it participates in shed/restore) without
@@ -256,9 +257,7 @@ export class PlanBuilder {
       return this.silentMeter.build(context, reading, decoration, nowTs);
     }
     const power = resolveMeasuredPower(reading, context, admittedDevices);
-    const shortfallBudgetThresholdKw = computeShortfallThreshold(
-      this.capacitySettings, this.powerTracker, nowTs,
-    );
+    const shortfallBudgetThresholdKw = this.computeShortfallThreshold(nowTs);
     // Smart-task precedence for the standing postures, shared by the
     // allocator and the hold so the two can never disagree.
     const postureExcludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
@@ -318,9 +317,8 @@ export class PlanBuilder {
       holdResult,
     });
     planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, true);
-    this.stages.syncHeadroomCardState(planDevices, nowTs);
     const decidedDevices = attachStorageDecisions(
-      this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints).planDevices, storageRelief,
+      this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints, nowTs).planDevices, storageRelief,
     );
     // Which devices this plan holds shed and under which posture — semantics
     // on `ShedDecisions.recordPlannedShed`.
@@ -376,17 +374,14 @@ export class PlanBuilder {
   private resolvePlanLimits(
     devices: PlanInputDevice[], dailyBudgetSnapshot: DailyBudgetUiPayload | null, nowTs: number,
   ): PlanLimits {
-    const capacitySoftLimit = this.stampCapacityPace(nowTs);
-    const dailySoftLimitResolution = this.computeDailySoftLimit(dailyBudgetSnapshot, devices, nowTs);
-    const dailySoftLimit = dailySoftLimitResolution?.dailySoftLimitKw ?? null;
-    return {
-      softLimit: dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit,
-      capacitySoftLimit,
-      dailySoftLimit,
-      budgetPaceKw: dailySoftLimitResolution?.budgetPaceKw ?? null,
-      projectedExemptKw: dailySoftLimitResolution?.projectedExemptKw ?? null,
-      softLimitSource: this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit),
-    };
+    const capacitySoftLimit = this.capacitySettings.capacityEnabled ? this.stampCapacityPace(nowTs) : null;
+    if (capacitySoftLimit === null) {
+      this.state.hourlyBudgetExhausted = false;
+      this.state.hourlyRemainingKWh = 0;
+    }
+    return buildPlanLimits(
+      this.capacitySettings, capacitySoftLimit, this.computeDailySoftLimit(dailyBudgetSnapshot, devices, nowTs),
+    );
   }
 
   /**
@@ -423,7 +418,7 @@ export class PlanBuilder {
     context: PlanContext,
     power: MeasuredPower,
     surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
-    shortfallBudgetThresholdKw: number,
+    shortfallBudgetThresholdKw: number | null,
     nowTs: number,
   ): Promise<{
     sheddingPlan: SheddingPlan;
@@ -440,18 +435,10 @@ export class PlanBuilder {
     const heldStorage = this.deps.getCapacityDryRun()
       ? NO_STORAGE_RELIEF
       : decideStorageRelief(context.devices, power, this.state.storageLeverByDevice, surplusOffers, nowTs);
-    const overshootDecision = this.state.overshoot.decideSoft(
-      power.headroomKw + heldStorage.shed.netCreditKw,
-      // Stamped by `stampCapacityPace` in `resolvePlanLimits`, from the same
-      // hourly budget the soft limit itself is paced against.
-      this.state.hourlyRemainingKWh,
-      // Only price a wait when a restore PELS issued is still settling.
-      this.hasOpenActivationAttempt(nowTs),
-      nowTs,
-    );
+    const overshootDecision = this.decideOvershoot(power, heldStorage.shed, nowTs);
     // A clean whole-home sample: the house is under its pace, and the hour is
     // not spent (an exhausted hour admits nothing, however the draw reads).
-    if (power.headroomKw >= 0 && !this.state.hourlyBudgetExhausted) {
+    if ((power.headroomKw === null || power.headroomKw >= 0) && !this.state.hourlyBudgetExhausted) {
       this.recordCleanWholeHomeSample(context.devices, this.powerTracker.lastTimestamp);
     }
 
@@ -476,6 +463,17 @@ export class PlanBuilder {
     return {
       sheddingPlan, overshootDecision, storageRelief, admissionPower: withoutStorageWithheld(power, storageRelief),
     };
+  }
+
+  private decideOvershoot(power: MeasuredPower, storage: StorageShedTerm, nowTs: number): SoftOvershootDecision {
+    if (power.gridBreached) return { actionable: true, shedActionable: true, pendingSinceMs: nowTs };
+    if (power.headroomKw === null) return { actionable: false, shedActionable: false, pendingSinceMs: null };
+    return this.state.overshoot.decideSoft(
+      power.headroomKw + storage.netCreditKw,
+      this.state.hourlyRemainingKWh,
+      this.hasOpenActivationAttempt(nowTs),
+      nowTs,
+    );
   }
 
   /**
@@ -510,7 +508,7 @@ export class PlanBuilder {
     surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
   ): void {
     const { netCreditKw } = relief.shed;
-    if (netCreditKw !== 0 && (power.headroomKw < 0 || netCreditKw < 0)) {
+    if (power.headroomKw !== null && netCreditKw !== 0 && (power.headroomKw < 0 || netCreditKw < 0)) {
       this.deps.structuredLog?.info({
         event: 'storage_relief_shed_term',
         netCreditKw,
@@ -565,12 +563,6 @@ export class PlanBuilder {
     for (const device of devices) {
       recordCleanWholeHomeSample(this.state, device.id, sampleAtMs);
     }
-  }
-
-  private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {
-    if (dailySoftLimit === null) return 'capacity';
-    if (Math.abs(dailySoftLimit - capacitySoftLimit) <= SOFT_LIMIT_EPSILON) return 'capacity';
-    return dailySoftLimit < capacitySoftLimit ? 'daily' : 'capacity';
   }
 
   private computeDailySoftLimit(

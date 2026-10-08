@@ -209,7 +209,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(hoursInDay), nowMs, deadlineAtMs),
-    getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
     getDeferredObjectiveActivePlans: () => null,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
@@ -222,7 +222,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
       getCapacityDryRun: () => false,
     capacityGuard: capacityGuard,
     setCapacityInShortfall: vi.fn(),
-    getCapacitySettings: () => ({ limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),

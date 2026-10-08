@@ -34,7 +34,7 @@ export type SteppedRestoreNeed = {
 };
 
 export type RestoreLoopState = {
-  availableHeadroom: number;
+  availableHeadroom: number | null;
   restoredOneThisCycle: boolean;
 };
 
@@ -132,10 +132,11 @@ export type RestorePlanResult = {
   // Post-pass NON-EXEMPT view (min of capacity and measured-exempt budget axes
   // from the per-axis ledger) — no longer the binding-axis scalar. Consumers:
   // batch throttle sizing and shed-temperature hold decisions; both conservative.
-  availableHeadroom: number;
+  availableHeadroom: number | null;
   // The underlying per-axis values (see headroomLedger.ts) — the hold lane
   // rebuilds a ledger from these so setpoint-shed devices admit per axis too.
-  capacityAvailableKw: number;
+  capacityAvailableKw: number | null;
+  gridAvailableKw: number | null;
   budgetAvailableKw: number | null;
   // This cycle's startup reservations, resolved ONCE by the restore pass (the
   // resolver advances arming state, so it must not run twice per cycle). The

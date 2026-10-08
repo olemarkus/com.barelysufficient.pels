@@ -1,3 +1,4 @@
+import { gridImportTargetKw } from '../../../packages/shared-domain/src/settings/powerLimits';
 import type CapacityGuard from '../../power/capacityGuard';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from '../../utils/perfCounters';
 import type { PlanRebuildTrigger, PowerSampleRebuildTrigger } from '../planRebuildTrigger';
@@ -131,10 +132,14 @@ export class PlanRebuildThrottle {
       totalKw: reading.totalKw,
       limitKw: reading.limitKw,
       capacityPaceKw: reading.capacityPaceKw,
-      headroomKw: reading.capacityPaceKw - reading.totalKw,
+      headroomKw: reading.capacityPaceKw === null ? null : reading.capacityPaceKw - reading.totalKw,
       shortfallThresholdKw: reading.shortfallThresholdKw,
-      isInShortfall: this.deps.getCapacityGuard().isInShortfall(),
+      isInShortfall: reading.shortfallThresholdKw !== null && this.deps.getCapacityGuard().isInShortfall(),
       hardCapBreach: resolveHardCapBreach(reading.totalKw, reading.shortfallThresholdKw),
+      gridBreach: resolveHardCapBreach(
+        reading.totalKw,
+        reading.gridImportLimitKw === null ? null : gridImportTargetKw(reading.gridImportLimitKw),
+      ),
       planConvergenceActive: posture.planConvergenceActive,
       unactionable: posture.unactionable,
     };
@@ -162,7 +167,10 @@ export class PlanRebuildThrottle {
     const observationSeqAtDispatch = this.observationSeq;
     const dispatchedAtMs = this.deps.getNowMs();
     const previousBreach = this.lastRebuild === null ? NO_BREACH : this.lastRebuild.hardCapBreach;
-    this.lastRebuild = { atMs: dispatchedAtMs, powerW: signal.currentPowerW, hardCapBreach: previousBreach };
+    this.lastRebuild = {
+      atMs: dispatchedAtMs, powerW: signal.currentPowerW,
+      hardCapBreach: previousBreach, gridBreach: this.lastRebuild?.gridBreach ?? NO_BREACH,
+    };
     this.inFlight = deferred.promise;
     incPerfCounters(['plan_rebuild_execute_total', 'plan_rebuild_execute.power_sample_total']);
     incReasonCounter('plan_rebuild_execute.power_sample_reason', trigger);
@@ -176,7 +184,10 @@ export class PlanRebuildThrottle {
         // shed grace — and reading it as "nothing left to shed" is what opened
         // hard-cap incidents, and fired the owner's Flow, with kilowatts still
         // reducible.
-        this.lastRebuild = { atMs: dispatchedAtMs, powerW: signal.currentPowerW, hardCapBreach: signal.hardCapBreach };
+        this.lastRebuild = {
+          atMs: dispatchedAtMs, powerW: signal.currentPowerW,
+          hardCapBreach: signal.hardCapBreach, gridBreach: signal.gridBreach,
+        };
         if (this.observedDuringFlight(observationSeqAtDispatch)) {
           this.settleAfterOvertakenRebuild(trigger, outcome);
         } else {
@@ -270,7 +281,8 @@ export class PlanRebuildThrottle {
       && !maxIntervalExceeded
     ) {
       incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
-      return guard.recordReading(signal.totalKw, signal.shortfallThresholdKw);
+      return signal.shortfallThresholdKw === null
+        ? Promise.resolve() : guard.recordReading(signal.totalKw, signal.shortfallThresholdKw);
     }
     const memory = this.memory();
     const decision = resolveRebuildDecision(signal, memory, now, cadence.maxIntervalMs);
@@ -323,7 +335,7 @@ export class PlanRebuildThrottle {
     const holdoffBefore = this.holdoff;
     const lastDecisionUnactionableBefore = this.lastDecisionUnactionable;
     if (decision.deltaMeaningful && this.hasBackoffState()) this.resetBackoff();
-    const intentKind = resolveRebuildIntentKind(signal.hardCapBreach);
+    const intentKind = resolveRebuildIntentKind(signal.gridBreach.breached ? signal.gridBreach : signal.hardCapBreach);
     const earliestMs = this.lastRebuild === null
       ? nowMs
       : this.lastRebuild.atMs + POWER_SAMPLE_REBUILD_CADENCE.minIntervalMs;

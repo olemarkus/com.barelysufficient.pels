@@ -17,6 +17,7 @@ export const PLAN_REASON_CODES = {
   insufficientHeadroom: 'insufficient_headroom',
   inactive: 'inactive',
   capacity: 'capacity',
+  gridImport: 'grid_import',
   deferredObjectiveAvoid: 'deferred_objective_avoid',
   // Standing "Run on solar surplus" hold for a binary dump load: the device's
   // baseline is OFF and PELS lifts the hold only while the surplus allocator
@@ -208,6 +209,7 @@ export type DeviceReason =
   // `lib/plan/restore/devices.ts`) build this reason INSIDE a truthiness guard on
   // the string they are about to put here.
   | { code: typeof PLAN_REASON_CODES.inactive; detail: string }
+  | ({ code: typeof PLAN_REASON_CODES.gridImport } & AdmissionShortfall & ReserveHolder)
   | ({ code: typeof PLAN_REASON_CODES.capacity } & AdmissionShortfall & ReserveHolder)
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }

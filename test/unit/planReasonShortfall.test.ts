@@ -37,6 +37,7 @@ const inputs = (params: {
   nowMs?: number;
 }) => buildCeilingShortfallInputs({
   ledgerAxes: {
+    gridAvailableKw: null,
     capacityAvailableKw: params.capacityAvailableKw,
     budgetAvailableKw: params.budgetAvailableKw ?? null,
   },
@@ -106,7 +107,7 @@ describe('resolveCeilingShortfall', () => {
   // device admits on the CAPACITY axis only, so a spent budget axis must not
   // manufacture a gap for it — while a non-exempt sibling reads min(cap, budget).
   it('reads the capacity axis for a budget-exempt device and the min for others', () => {
-    const axes = { capacityAvailableKw: 2.0, budgetAvailableKw: 0.1 };
+    const axes = { gridAvailableKw: null, capacityAvailableKw: 2.0, budgetAvailableKw: 0.1 };
     expect(gapKw({
       dev: heldDevice({ budgetExempt: true }),
       inputs: inputs(axes),

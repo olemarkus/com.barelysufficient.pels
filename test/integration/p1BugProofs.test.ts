@@ -37,6 +37,8 @@ import { deviceSurfacesFixture } from '../utils/deviceSnapshotFixture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
+  gridImportLimitKw: null,
+  gridImportTargetKw: null,
   devices,
   temperatureSetpoints: new Map(),
   total: 1.25,
@@ -93,7 +95,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
       requestTemperatureTarget: async (_deviceId, desired) => desired,
     }),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0, periodMinutes: 60 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,
     getShortfallThresholdKw: () => 0,
@@ -140,13 +142,13 @@ describe('P1 bug proofs', () => {
     // The latch is threaded build to build, so the proof is that a single
     // sample 0.21 kW above the restore margin — short of the 0.4 kW clear
     // threshold — does not release it.
-    state.sheddingActive = resolveSheddingLatch(buildMeasuredPower({ headroomKw: -0.05 }), state, inOvershoot, new Set());
+    state.sheddingActive = resolveSheddingLatch(buildPlanContextFixture(), buildMeasuredPower({ headroomKw: -0.05 }), state, inOvershoot, new Set());
     expect(state.sheddingActive).toBe(true);
 
-    state.sheddingActive = resolveSheddingLatch(buildMeasuredPower({ headroomKw: 0.21 }), state, clear, new Set());
+    state.sheddingActive = resolveSheddingLatch(buildPlanContextFixture(), buildMeasuredPower({ headroomKw: 0.21 }), state, clear, new Set());
     expect(state.sheddingActive).toBe(true);
 
-    state.sheddingActive = resolveSheddingLatch(buildMeasuredPower({ headroomKw: -0.05 }), state, inOvershoot, new Set());
+    state.sheddingActive = resolveSheddingLatch(buildPlanContextFixture(), buildMeasuredPower({ headroomKw: -0.05 }), state, inOvershoot, new Set());
     expect(state.sheddingActive).toBe(true);
   });
 

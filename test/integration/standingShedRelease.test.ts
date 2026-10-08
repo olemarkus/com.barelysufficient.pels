@@ -62,7 +62,7 @@ const makeHarness = (shedBehavior: ShedBehavior = { action: 'turn_off' }): Harne
     getCapacityDryRun: () => false,
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     setCapacityInShortfall: vi.fn(),
-    getCapacitySettings: () => ({ limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
+    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),

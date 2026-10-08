@@ -45,6 +45,7 @@ const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
 ] as const;
 
 const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
+  { code: PLAN_REASON_CODES.gridImport },
   { code: PLAN_REASON_CODES.capacity },
   { code: PLAN_REASON_CODES.hourlyBudget },
   { code: PLAN_REASON_CODES.dailyBudget },

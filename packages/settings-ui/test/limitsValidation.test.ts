@@ -3,10 +3,17 @@
 // pair, that it clears once the pair becomes valid, and that the save path
 // blocks the API call without silently snapping the field back.
 
+import { resolvePowerLimitSettings } from '../../shared-domain/src/settings/powerLimits';
 import type { SettingsUiCapacityPeak } from '../../contracts/src/settingsUiApi.ts';
 
 const LIMITS_FORM_TEMPLATE = [
   '<form id="settings-limits-form">',
+  '<md-switch id="settings-capacity-enabled"></md-switch>',
+  '<div id="settings-capacity-fields"></div>',
+  '<md-switch id="settings-grid-import-enabled"></md-switch>',
+  '<div id="settings-grid-import-field" hidden></div>',
+  '<md-filled-text-field id="settings-grid-import-limit"></md-filled-text-field>',
+  '<small id="settings-grid-import-hint"></small>',
   '<md-filled-text-field id="settings-capacity-limit"></md-filled-text-field>',
   '<md-filled-text-field id="settings-capacity-margin"></md-filled-text-field>',
   '<md-filled-select id="settings-capacity-period"></md-filled-select>',
@@ -24,6 +31,7 @@ const LIMITS_FORM_TEMPLATE = [
 const buildLimitsDom = () => {
   // Static template constructed from a literal — no untrusted content.
   document.body.innerHTML = LIMITS_FORM_TEMPLATE;
+  (document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean }).selected = true;
   const limit = document.querySelector('#settings-capacity-limit') as HTMLElement & { value: string };
   const margin = document.querySelector('#settings-capacity-margin') as HTMLElement & { value: string };
   const powerSource = document.querySelector('#settings-power-source') as HTMLElement & { value: string };
@@ -74,14 +82,27 @@ const loadCapacityModuleWithWriter = async (
   vi.doMock('../src/ui/power.ts', () => ({
     getPowerReadModel: powerReadError
       ? vi.fn().mockRejectedValue(powerReadError)
-      : vi.fn().mockResolvedValue({
+      : vi.fn().mockImplementation(async () => ({
         tracker: {},
         readings: { state: 'never' },
         status: { state: 'unavailable', reason: 'no_measurement' },
         capacityPeak,
-        capacityScalars: { state: 'unavailable' },
+        capacityScalars: {
+          state: 'resolved',
+          scalars: {
+            limitKw: settingsStore.capacity_limit_kw,
+            marginKw: settingsStore.capacity_margin_kw,
+            periodMinutes: settingsStore.capacity_period_minutes ?? 60,
+            dryRun: settingsStore.capacity_dry_run,
+            ...resolvePowerLimitSettings(
+              settingsStore.capacity_enabled ?? true,
+              settingsStore.grid_import_enabled ?? false,
+              settingsStore.grid_import_limit_kw,
+            ),
+          },
+        },
         hardCapConfiguration: { state: 'unavailable' },
-      }),
+      })),
   }));
   const showToast = vi.fn().mockResolvedValue(undefined);
   vi.doMock('../src/ui/toast.ts', () => ({
@@ -118,6 +139,115 @@ const loadCapacityModule = async (
 );
 
 describe('Limits & safety inline validation', () => {
+
+  it('writes the grid threshold before enabling grid control, independently of capacity', async () => {
+    const dom = buildLimitsDom();
+    const { capacity, setSetting, settingsStore } = await loadCapacityModule();
+    await capacity.loadCapacitySettings();
+    const grid = document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean };
+    const cap = document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean };
+    const input = document.querySelector('#settings-grid-import-limit') as HTMLElement & { value: string };
+    grid.selected = true;
+    cap.selected = false;
+    input.value = '3.3';
+    capacity.refreshPowerLimitControls();
+    expect(document.querySelector('#settings-capacity-fields')?.hasAttribute('hidden')).toBe(true);
+    expect(document.querySelector('#settings-grid-import-hint')?.textContent).toContain('3.13 kW');
+    await capacity.saveSettingsLimitsSettings();
+    expect(setSetting.mock.calls.slice(0, 2)).toEqual([['grid_import_limit_kw', 3.3], ['grid_import_enabled', true]]);
+    expect(settingsStore.capacity_enabled).toBe(false);
+    expect(dom.limit.value).toBe('8');
+  });
+
+  it('reconciles a partially saved grid switch after every started write settles', async () => {
+    const dom = buildLimitsDom();
+    let releaseMargin!: () => void;
+    let markMarginStarted!: () => void;
+    const marginStarted = new Promise<void>((resolve) => { markMarginStarted = resolve; });
+    const marginWrite = new Promise<void>((resolve) => { releaseMargin = resolve; });
+    const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
+      {}, undefined, { state: 'recorded', peakKw: 4.75 },
+      async (key, value, store) => {
+        if (key === 'capacity_limit_kw') throw new Error('capacity write failed');
+        if (key === 'capacity_margin_kw') {
+          markMarginStarted();
+          await marginWrite;
+        }
+        store[key] = value;
+      },
+    );
+    await capacity.loadCapacitySettings();
+    const grid = document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean };
+    const input = document.querySelector('#settings-grid-import-limit') as HTMLElement & { value: string };
+    grid.selected = true;
+    input.value = '3.3';
+    dom.limit.value = '12';
+    dom.margin.value = '0.8';
+    let settled = false;
+    const save = capacity.saveSettingsLimitsSettings().catch((caught: unknown) => {
+      settled = true;
+      return caught;
+    });
+    await marginStarted;
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+    expect(settled).toBe(false);
+    expect(settingsStore.grid_import_enabled).toBe(true);
+    releaseMargin();
+    expect(await save).toEqual(new Error('capacity write failed'));
+    expect(grid.selected).toBe(true);
+    expect(settingsStore.capacity_margin_kw).toBe(0.8);
+    await capacity.loadCapacitySettings();
+    expect(grid.selected).toBe(true);
+  });
+
+  it('keeps the runtime control posture when one persisted control field is unreadable', async () => {
+    buildLimitsDom();
+    const { capacity } = await loadCapacityModule({
+      capacity_enabled: false, grid_import_enabled: true, grid_import_limit_kw: undefined,
+    });
+    const power = await import('../src/ui/power.ts');
+    vi.mocked(power.getPowerReadModel).mockResolvedValue({
+      tracker: {}, readings: { state: 'never' },
+      status: { state: 'unavailable', reason: 'no_measurement' },
+      capacityPeak: { state: 'recorded', peakKw: 4.75 },
+      capacityScalars: {
+        state: 'resolved',
+        scalars: { limitKw: 8, marginKw: 0.5, periodMinutes: 60, dryRun: true,
+          capacityEnabled: true, gridImportLimitKw: 3.3 },
+      },
+      hardCapConfiguration: { state: 'resolved', configured: true },
+    });
+    await capacity.loadCapacitySettings();
+    const cap = document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean };
+    const grid = document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean };
+    expect(cap.selected).toBe(true);
+    expect(grid.selected).toBe(true);
+  });
+
+  it('returns a failed enable switch to the confirmed posture without discarding typed values', async () => {
+    const dom = buildLimitsDom();
+    const { capacity } = await loadCapacityModule();
+    const enabled = document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean };
+    enabled.selected = false;
+    await capacity.saveSettingsLimitsSettings();
+    enabled.selected = true;
+    dom.limit.value = '8';
+    dom.margin.value = '10';
+    await expect(capacity.saveSettingsLimitsSettings()).rejects.toThrow(capacity.MARGIN_NOT_BELOW_LIMIT_MESSAGE);
+    expect(enabled.selected).toBe(false);
+    expect(dom.margin.value).toBe('10');
+  });
+
+  it('rejects a nonpositive enabled grid limit before writing either switch', async () => {
+    const dom = buildLimitsDom();
+    const { capacity, setSetting } = await loadCapacityModule();
+    dom.limit.value = '8';
+    dom.margin.value = '0.5';
+    (document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean }).selected = true;
+    (document.querySelector('#settings-grid-import-limit') as HTMLElement & { value: string }).value = '0';
+    await expect(capacity.saveSettingsLimitsSettings()).rejects.toThrow('Grid import limit must be positive.');
+    expect(setSetting).not.toHaveBeenCalled();
+  });
   it('shows an alert when the margin meets or exceeds the hard cap', async () => {
     const dom = buildLimitsDom();
     const { capacity } = await loadCapacityModule();

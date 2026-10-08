@@ -49,6 +49,7 @@ export const HEADROOM_WIDGET_COPY = {
   safePaceLabel: 'Safe pace now',
   /** Shown when there is no status to render yet. */
   noDataSubtitle: 'No data yet',
+  powerLimitsOffSubtitle: 'Power limits off',
   /**
    * Shown when the status behind the tile had no measurement (`powerKnown:
    * false`): the blob carries no headroom then, and nothing derived is honest

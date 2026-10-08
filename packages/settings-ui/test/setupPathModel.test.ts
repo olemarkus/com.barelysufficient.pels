@@ -58,6 +58,12 @@ const pathOf = (facts: SetupPathFacts) => {
 };
 
 describe('setup path', () => {
+
+  it('completes Limits with grid control or an explicit choice to turn both off', () => {
+    const configured = { ...freshInstall, power: { state: 'received' as const }, managedDeviceCount: 1, limitableDeviceCount: 1 };
+    expect(resolveSetupPath({ ...configured, hardCap: { state: 'grid', limitKw: 3.3, periodMinutes: null } })).toEqual({ state: 'complete' });
+    expect(resolveSetupPath({ ...configured, hardCap: { state: 'disabled' } })).toEqual({ state: 'complete' });
+  });
   it('asks a fresh install for the two things every home needs, and nothing else', () => {
     // No hard cap row: nothing may be limited yet, so no cap is in force.
     expect(statuses(freshInstall)).toEqual(['power:next', 'devices:later']);

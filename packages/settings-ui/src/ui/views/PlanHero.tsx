@@ -150,6 +150,7 @@ type BarScale = {
   controlled: number;
   uncontrolled: number;
   safePaceKw: number;
+  gridImportLimitKw: number | null;
   scaleKw: number;
   softLimitSource: PlanMetaSnapshot['softLimitSource'];
   budgetPaceKw: number | null;
@@ -181,7 +182,7 @@ const computePowerBarScale = (
   // deep on a value the planner writes every cycle. The `<= 0` guard stays —
   // a zero safe pace is a real configuration, not an absent one.
   const safePaceKw = meta.softLimitKw;
-  if (safePaceKw <= 0) return null;
+  if (safePaceKw === null || safePaceKw <= 0) return null;
   const total = Math.max(0, headline.totalKw);
   const controlled = Math.max(0, Math.min(total, headline.controlledKw));
   // Derive background as the residual after the managed segment. `totalKw`,
@@ -194,12 +195,13 @@ const computePowerBarScale = (
   // This is an instantaneous-power gauge: its scale follows current draw and
   // the safe pace PELS reacts to. The capacity-period hard cap belongs on the
   // energy bar in kWh, not on this axis.
-  const scaleKw = Math.max(safePaceKw * 1.2, total * 1.05);
+  const scaleKw = Math.max(safePaceKw * 1.2, (meta.gridImportLimitKw ?? 0) * 1.2, total * 1.05);
   return {
     total,
     controlled,
     uncontrolled,
     safePaceKw,
+    gridImportLimitKw: meta.gridImportLimitKw,
     scaleKw,
     softLimitSource: meta.softLimitSource,
     budgetPaceKw: meta.budgetPaceKw,
@@ -229,7 +231,7 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
   // bar to draw. `usedKWh` and `budgetKWh` are both required on the wire, so
   // the two `typeof` checks that used to sit here asked whether the planner had
   // done its job.
-  if (!meta.capacityPeriodCoverageComplete || budgetKWh <= 0) return null;
+  if (meta.capacitySoftLimitKw === null || !meta.capacityPeriodCoverageComplete || budgetKWh <= 0) return null;
   const { totalKw, minutesRemaining } = meta;
   // The zero floor for net-export hours lives in the shared helper (also used
   // by the `pels_status` producer for the "Above hard cap" trajectory flag).
@@ -299,17 +301,14 @@ const InfoIcon = () => (
 // price-level chips were demoted in PR9 (owner walk 2026-05-17): mode is a
 // stable filter belonging to page chrome, and price-level is a Budget concern.
 // See notes/overview-hero-spec.md § "Chip row".
-const HeroChipRow = ({
-  heroStatus,
-  capacityPeriodMinutes,
-}: {
-  heroStatus: HeroStatus;
-  capacityPeriodMinutes: CapacityPeriodMinutes;
-}) => {
+const HeroChipRow = ({ heroStatus, meta }: { heroStatus: HeroStatus; meta: PlanMetaSnapshot }) => {
+  const { capacityPeriodMinutes } = meta;
+  const gridBinding = meta.softLimitSource === 'grid';
   // The old freshness chip ('Delayed'/'No data') is retired: staleness is the
   // global no-readings banner's fact, rendered above the hero (owner ruling
   // 2026-08-31 — banner only).
-  const statusLabel = HERO_STATUS_LABEL[heroStatus] ?? null;
+  const statusLabel = gridBinding && heroStatus === 'above-safe-pace'
+    ? 'Grid import pressure' : HERO_STATUS_LABEL[heroStatus] ?? null;
   return (
     <div class="plan-hero__chips">
       <div class="plan-hero__chip-rail">
@@ -319,7 +318,9 @@ const HeroChipRow = ({
         class="plan-hero__info-button"
         type="button"
         aria-label="About this card"
-        data-tooltip={formatHeroInfoTooltip(capacityPeriodMinutes)}
+        data-tooltip={formatHeroInfoTooltip(
+          capacityPeriodMinutes, meta.capacitySoftLimitKw !== null, meta.gridImportLimitKw !== null,
+        )}
       >
         <InfoIcon />
       </MdIconButton>
@@ -434,12 +435,21 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
     budgetPaceKw: scale.budgetPaceKw,
     projectedExemptKw: scale.projectedExemptKw,
   });
-  const markers: MeterMarker[] = [{
+  const markers: MeterMarker[] = scale.softLimitSource === 'grid' ? [] : [{
     kind: 'target',
     positionPct: pctOf(scale.safePaceKw, scale.scaleKw),
     tooltip: safePaceTooltip,
     labels: formatSafePaceMeterMarkerLabels(scale.safePaceKw),
   }];
+  if (scale.gridImportLimitKw !== null) {
+    const label = `Grid import limit ${scale.gridImportLimitKw.toFixed(1)} kW`;
+    markers.push({
+      kind: 'cap',
+      positionPct: pctOf(scale.gridImportLimitKw, scale.scaleKw),
+      tooltip: 'PELS reduces flexible loads before this level, using the latest observed grid import.',
+      labels: { short: label, aria: label },
+    });
+  }
   return (
     <>
       <PelsMeterTrack fill={<PowerMeterSegments scale={scale} isLimiting={isLimiting} />} markers={markers} />
@@ -461,12 +471,12 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
 // Since the cards stopped repeating it, this is where the owner learns it — so
 // it is visible text, not the hover tooltip it used to be (nothing hovers in the
 // Homey WebView).
-const resolvePowerSubline = (
-  headline: HeroHeadline,
-  softLimitSource: PlanMetaSnapshot['softLimitSource'],
-  capacityPeriodMinutes: CapacityPeriodMinutes,
-): string => {
-  const sourceText = resolveSafePaceSourceText(softLimitSource, capacityPeriodMinutes);
+const resolvePowerSubline = (headline: HeroHeadline, meta: PlanMetaSnapshot): string => {
+  if (headline.softLimitKw === null) return 'Power limits off';
+  if (meta.softLimitSource === 'grid' && meta.gridImportLimitKw !== null) {
+    return `Grid import limit ${meta.gridImportLimitKw.toFixed(1)} kW · reducing loads near ${headline.softLimitKw.toFixed(2)} kW`;
+  }
+  const sourceText = resolveSafePaceSourceText(meta.softLimitSource, meta.capacityPeriodMinutes);
   return headline.overSoftLimit
     ? formatAboveSafePaceSubline(headline.totalKw, headline.softLimitKw, sourceText)
     : formatSafePaceSubline(headline.softLimitKw, sourceText);
@@ -505,7 +515,7 @@ const PowerSection = ({
         <span class="plan-hero__metric-qualifier">kW</span>
       </div>
       <div class="plan-hero__subline">
-        {resolvePowerSubline(headline, meta.softLimitSource, meta.capacityPeriodMinutes)}
+        {resolvePowerSubline(headline, meta)}
       </div>
       {solarNowText !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted" id="plan-hero-solar-now">
@@ -753,7 +763,7 @@ export const PlanHero = ({
   // snapshot always carries its reading), and `usedKWh` / `minutesRemaining`
   // are required. The three `typeof` guards this replaces were the last place
   // the hero re-asked whether the planner had produced its own required fields.
-  const projectedOverHardCap = meta.capacityPeriodCoverageComplete && isProjectedOverHardCap({
+  const projectedOverHardCap = meta.capacitySoftLimitKw !== null && meta.capacityPeriodCoverageComplete && isProjectedOverHardCap({
     projectedKWh: computeProjectedPeriodEnergyKWh(
       meta.usedKWh,
       meta.totalKw,
@@ -769,7 +779,7 @@ export const PlanHero = ({
     projectedOverHardCap,
   );
   const safePaceKw = meta.softLimitKw;
-  const decision = buildDecisionSentence({
+  const defaultDecision = buildDecisionSentence({
     devices,
     dryRun: context.dryRun,
     projectedOverHardCap,
@@ -777,6 +787,15 @@ export const PlanHero = ({
     safePaceKw,
     capacityPeriodMinutes: meta.capacityPeriodMinutes,
   });
+  const gridPressure = meta.gridImportTargetKw !== null && meta.totalKw > meta.gridImportTargetKw;
+  const decision = gridPressure ? {
+    text: devices.some(isSheddableManagedRunningDevice)
+      ? context.dryRun ? 'Would reduce flexible loads to free available power.' : 'Reducing flexible loads to free available power.'
+      : devices.some(isLimitedDevice)
+        ? 'Grid import is high. Flexible loads are held back.'
+        : 'No grid power is available. Reduce other household loads.',
+    positive: false,
+  } : defaultDecision;
   // The breathing animation runs only while the hero is actually limiting —
   // gated by an active limiting status (`above-safe-pace` or `over-hard-cap`)
   // *and* the presence of held devices, so a transient over-safe-pace blip
@@ -791,7 +810,7 @@ export const PlanHero = ({
 
   return (
     <div class="plan-hero pels-hero" data-tone={HERO_STATUS_DATA_TONE[heroStatus]} aria-live="polite">
-      <HeroChipRow heroStatus={heroStatus} capacityPeriodMinutes={meta.capacityPeriodMinutes} />
+      <HeroChipRow heroStatus={heroStatus} meta={meta} />
       <PowerSection
         headline={headline}
         meta={meta}

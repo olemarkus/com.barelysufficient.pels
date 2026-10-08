@@ -1,6 +1,7 @@
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { resolveSameMeasurementSheddingDecision } from '../../lib/plan/shedding/overshoot';
+import { buildMeasuredPower } from '../utils/planContextPowerFixture';
 import type { ShedPlanLatch } from '../../lib/plan/planState';
 
 const NOW = 1_000_000;
@@ -51,7 +52,7 @@ const decidedAt = (decidedAtMs: number): Partial<ShedPlanLatch> => ({
 });
 
 const decide = (state: ReturnType<typeof shedState>, measurementTs: number, powerW: number | null) => (
-  resolveSameMeasurementSheddingDecision(state, devices, measurementTs, powerW, NOW, true, {})
+  resolveSameMeasurementSheddingDecision(state, devices, measurementTs, powerW, NOW, buildMeasuredPower({ capacityBreached: true }), {})
 );
 
 describe('resolveSameMeasurementSheddingDecision', () => {
@@ -133,7 +134,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
         SAMPLE_TS,
         READING_W,
         NOW,
-        false,
+        buildMeasuredPower(),
         {},
       );
 

@@ -197,6 +197,8 @@ type Scenario = {
   /** The capacity pace override, kW, or `null` to pace from the limit and the hour's usage. */
   paceKw: number | null;
   limitKw?: number;
+  capacityEnabled?: boolean;
+  gridImportLimitKw?: number | null;
   dailyBudget?: boolean;
   hourUsedKWh?: number;
 };
@@ -221,7 +223,10 @@ const buildHarness = (scenario: Scenario) => {
     getCapacityDryRun: () => false,
     setCapacityInShortfall: vi.fn(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ limitKw: scenario.limitKw ?? 10, marginKw: 0, periodMinutes: 60 }),
+    getCapacitySettings: () => ({
+      capacityEnabled: scenario.capacityEnabled ?? true, gridImportLimitKw: scenario.gridImportLimitKw ?? null,
+      limitKw: scenario.limitKw ?? 10, marginKw: 0, periodMinutes: 60,
+    }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),
@@ -261,6 +266,46 @@ const storageDecision = (plan: DevicePlan): StorageDecision | undefined => {
 };
 
 describe('storage relief in the plan build', () => {
+  it('caps battery charging on the first grid-only breach despite a recent restore', async () => {
+    const { build, state } = buildHarness({ paceKw: null, capacityEnabled: false, gridImportLimitKw: 3.3 });
+    state.actuation.markRestore('battery', START_MS - 1000);
+    const plan = await build(3500, [heater(), battery({ signedPowerW: 1500 })]);
+    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint' });
+    const decision = storageDecision(plan);
+    if (decision?.kind !== 'setpoint') throw new Error('expected a battery charge limit');
+    expect(decision.setpointW).toBeLessThan(1500);
+    expect(plannedState(plan, 'heater')).toBe('keep');
+    expect(plan.meta.capacitySoftLimitKw).toBeNull();
+  });
+
+  it('withholds battery discharge from grid-only restoration and bounds hand-back charging', async () => {
+    const { build } = buildHarness({ paceKw: null, capacityEnabled: false, gridImportLimitKw: 3.3 });
+    await build(4300, [heater(false, 0.5, 'lamp'), battery()]);
+    const delivered = [heater(false, 0.5, 'lamp'), battery({ signedPowerW: -1200, claimHeld: true })];
+    await build(2500, delivered, 6 * 60_000);
+    const waiting = await build(2500, delivered, 9 * 60_000);
+    expect(plannedState(waiting, 'lamp')).not.toBe('keep');
+    expect(storageDecision(waiting)?.kind).toBe('setpoint');
+    const idle = battery({ signedPowerW: 0, claimHeld: true });
+    const insufficient = await build(1000, [idle], 12 * 60_000);
+    expect(storageDecision(insufficient)?.kind).toBe('setpoint');
+    const released = await build(0, [idle], 15 * 60_000);
+    expect(storageDecision(released)).toEqual({ kind: 'release', reason: 'restored' });
+  });
+
+  it('hands a limit-held battery back when both physical constraints are off', async () => {
+    const { build, state } = buildHarness({ paceKw: null, capacityEnabled: false });
+    state.storageLeverByDevice = { battery: {
+      setpointW: -1500, purpose: 'limit', increaseDecidedAtMs: START_MS - 600_000,
+      creditBaseW: 0, lastDecreaseAtMs: START_MS - 600_000, chargeRaisedAtMs: START_MS - 600_000,
+      lastNeedAtMs: START_MS - 600_000, preClaimSignedW: 0, ownModeChargeW: 2500, stepW: 5,
+      reading: { kind: 'read' },
+    } };
+    const plan = await build(5000, [battery({ signedPowerW: -1500, claimHeld: true })]);
+    expect(storageDecision(plan)).toEqual({ kind: 'release', reason: 'restored' });
+    expect(plan.meta.softLimitKw).toBeNull();
+  });
+
   it('preserves an expired battery hand-back when the Main plan is empty', async () => {
     const { build } = buildHarness({ paceKw: 3 });
     await build(4200, [heater(), battery()]);

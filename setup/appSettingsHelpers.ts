@@ -59,10 +59,10 @@ import type { SettingsHandler } from '../lib/utils/settingsHandlers';
 import type { AppContext } from '../lib/app/appContext';
 import { resolveTemperatureControlDisabled } from '../lib/device/temperatureControlSettings';
 import { requireBatteryControl, requirePlanService } from './appInit/contextGuards';
-import type { CapacitySettings } from '../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../packages/contracts/src/capacitySettings';
 
 export type CapacitySettingsSnapshot = {
-  capacitySettings: CapacitySettings;
+  capacitySettings: PowerLimitSettings;
   capacityDryRun: boolean;
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
