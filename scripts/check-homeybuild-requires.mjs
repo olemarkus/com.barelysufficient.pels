@@ -76,11 +76,11 @@ const collectEntries = () => {
   // that actually resolves, because a tsconfig regression that stops emitting
   // it would otherwise pass this smoke and MODULE_NOT_FOUND at boot.
   //
-  // Two build shapes are legitimate and the target differs between them:
-  //  - fully assembled (`scripts/bundle-homey-build.mjs` has run): the committed
-  //    `api.js` shim is rewritten to require the single `_pels-runtime.js`
-  //    bundle, and `src/api.js` is gone because it was inlined into it;
-  //  - bare `tsc` (no CLI source copy, so no shim): only `src/api.js` exists.
+  // Two build shapes are legitimate:
+  //  - fully assembled (the Homey CLI copied the sources in): the committed
+  //    `api.js` shim requires the compiled `src/api.js` beside it;
+  //  - bare `tsc` / `npm run build` (no CLI source copy, so no shim): only
+  //    `src/api.js` exists.
   // Seeding whichever is present and letting the walk below resolve its require
   // covers both — the failure this guards against is a widget with NEITHER.
   const widgetsSourceDir = path.resolve(process.cwd(), 'widgets');
