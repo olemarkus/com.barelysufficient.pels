@@ -1,6 +1,7 @@
 # Deviation-Gated Logging for the Diagnostics Report
 
-Status: partially implemented (idle de-flood + `emitGated` helper + EV clamp shipped).
+Status: partially implemented (idle de-flood, `emitGated`, EV clamp, routine meter sampling,
+maintenance debug logging, and native command/report folding implemented).
 Companion to `notes/logging/README.md`.
 
 ## Problem
@@ -92,6 +93,28 @@ state). Dedupe maps prune via `shouldEmitOnChange` (160 MB RSS ceiling).
    `FlowCardDeps.getSnapshot` to `DecoratedDeviceSnapshot[]`, which the runtime already
    returns.)
 
+3. **Routine meter samples** (`lib/device/transport/managerFetch.ts`).
+   `energy_live_report_received` keeps the meter identity and current watts but samples
+   routine reads once per minute on the `devices` debug topic. Meter selection,
+   resolution, generation availability, and report coverage changes emit immediately;
+   an unavailable read resets the sample gate so recovery emits immediately too.
+   `homey_energy_poll` was removed because it repeated the same watts without meter
+   identity. Sample ingestion still runs on every poll.
+
+4. **Heap maintenance** (`lib/diagnostics/resourceWarnings.ts`). Scheduled
+   `heap_pages_reclaimed` events use the `perf` debug topic. Warning-triggered reclaims
+   remain at info, and resource warnings and unavailable-collector warnings keep their
+   existing severity.
+
+5. **Native stepped command echoes** (`lib/device/transport/nativeSteppedRealtime.ts`).
+   Matching step telemetry received while the native write is in flight is folded into
+   `stepped_load_command_requested` as `reportedStepId`; its separate confirmation uses
+   `devices` debug. SDK acceptance alone never populates that field. Delayed and unmatched
+   telemetry stays at info as `native_stepped_load_report_changed`, with previous and
+   observed step values, rather than labelling every change as drift. If matching telemetry
+   precedes a failed or timed-out write, `native_stepped_load_report_confirmed` retains
+   that observation at info alongside the failed/unknown command outcome.
+
 ## Cautions
 
 - **Only deviation-gate the gray lines.** Unambiguous anomalies (`*_rejected`,
@@ -106,8 +129,6 @@ state). Dedupe maps prune via `shouldEmitOnChange` (160 MB RSS ceiling).
 
 ## Follow-up candidates (not yet done)
 
-- `stepped_load_command_requested`: promote only when `desiredStepId !==
-  plannedDesiredStepId` or transport fell back; route the matching majority to debug.
 - `periodic_device_health_summary`: value-gate (quiet when all-healthy; info on transition
   into `unavailableDevices > 0 || temperatureUnknownDevices > 0`).
 - `plan_rebuild_completed`: add `commandRequestCount > appliedActions` and `headroom < 0`

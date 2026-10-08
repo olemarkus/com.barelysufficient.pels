@@ -6,10 +6,10 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import type { SteppedLoadWrite } from '../../ports/steppedLoadWrite';
+import type { SteppedLoadWrite, SteppedLoadStepRequestResult } from '../../ports/steppedLoadWrite';
 import type { StoragePowerCommand, StoragePowerWrite, StorageReleaseCommand } from '../../ports/storageCommand';
 import type { HomeBatteryControlSurface } from '../../../packages/contracts/src/types';
-import { getDebugEmitter } from '../../logging/logger';
+import { getDebugEmitter, getLogger } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
 import { resolveHomeyHttpStatusCode } from '../../utils/homeyHttpStatusError';
@@ -21,9 +21,6 @@ import { recordLocalWriteObservation } from './managerObservation';
 import { setObservedNativeSteppedLoadStep } from '../managerNativeSteppedCommand';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
 import { isEaseeUnderBuiltInControl, resolveEaseeSwitchWrite } from '../easeeChargingSwitch';
-import type {
-  SteppedLoadStepRequestResult,
-} from '../../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -36,6 +33,7 @@ import { TransportSnapshotStore } from './transportSnapshotStore';
 import { TransportObservationState } from './transportObservationState';
 
 const emitTransportDebug = getDebugEmitter('devices', 'devices');
+const logger = getLogger('device/transport');
 const FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS = 10_000;
 
 function normalizeCapabilityValue(
@@ -288,6 +286,38 @@ export class DeviceWriteService {
     if (zeroed.failed) throw zeroed.error;
   }
 
+  private async requestNativeSteppedLoadStep(
+    request: SteppedLoadWrite, snapshot: TransportDeviceSnapshot,
+  ): Promise<SteppedLoadStepRequestResult> {
+    const { deviceId, profile, desiredStepId } = request;
+    this.observationState.beginNativeStepCommand(request);
+    let nativeRequested: boolean;
+    try {
+      nativeRequested = await setObservedNativeSteppedLoadStep({
+        owner: this.snapshotStore,
+        deviceId,
+        profile,
+        desiredStepId,
+        setCapability: (capabilityId, value) => this.setCapability(deviceId, capabilityId, value),
+        logger: this.logger,
+      });
+    } catch (error) {
+      const reportedStepId = this.observationState.finishNativeStepCommand(deviceId);
+      // Telemetry can land before the SDK rejects or times out. Preserve that
+      // observation independently of the executor's failed/unknown outcome.
+      if (reportedStepId !== undefined) logger.info({
+        event: 'native_stepped_load_report_confirmed', deviceId, deviceName: snapshot.name,
+        desiredStepId, reportedStepId,
+      });
+      throw error;
+    }
+    const reportedStepId = this.observationState.finishNativeStepCommand(deviceId);
+    return nativeRequested
+      ? { requested: true, transport: 'native_capability',
+        ...(reportedStepId !== undefined ? { reportedStepId } : {}) }
+      : { requested: false };
+  }
+
   async requestSteppedLoadStep(
     params: SteppedLoadWrite,
   ): Promise<SteppedLoadStepRequestResult> {
@@ -302,15 +332,7 @@ export class DeviceWriteService {
     if (isSteppedLoadOffStep(profile, desiredStepId)) this.noteStopCommand(deviceId, Date.now());
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
-      const nativeRequested = await setObservedNativeSteppedLoadStep({
-        owner: this.snapshotStore,
-        deviceId,
-        profile,
-        desiredStepId,
-        setCapability: (capabilityId, value) => this.setCapability(deviceId, capabilityId, value),
-        logger: this.logger,
-      });
-      return nativeRequested ? { requested: true, transport: 'native_capability' } : { requested: false };
+      return this.requestNativeSteppedLoadStep(params, snapshot);
     }
 
     const triggerCard = this.getFlowTriggerCard('desired_stepped_load_changed');

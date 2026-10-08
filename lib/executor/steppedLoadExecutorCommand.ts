@@ -12,8 +12,8 @@ import type {
 } from './executablePlan';
 import {
   PELS_TARGET_STEP_CAPABILITY_ID,
-  type SteppedLoadStepRequestTransport,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isHomeyRequestTimeout } from '../utils/errorUtils';
 import type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
@@ -117,6 +117,7 @@ export type ExecuteSteppedLoadCommandParams = {
 
 type AcceptedSteppedLoadCommandParams = ExecuteSteppedLoadCommandParams & {
   commandTransport?: SteppedLoadStepRequestTransport;
+  reportedStepId?: string;
 };
 
 const markAcceptedSteppedLoadCommand = (
@@ -203,6 +204,7 @@ const logAcceptedSteppedLoadCommand = (
     planningPowerW: desiredStep.planningPowerW,
     ...transitionFields,
     ...(commandTransport ? { commandTransport } : {}),
+    ...(params.reportedStepId !== undefined ? { reportedStepId: params.reportedStepId } : {}),
   });
 };
 
@@ -459,10 +461,17 @@ export const executeSteppedLoadCommand = async (
       accepted = handleUnrequestedSteppedLoadResult(ctx, params, result.reason);
       return accepted;
     }
-    if (ctx.isSteppedCommandAuthorityCurrent?.() === false) return false;
+    if (ctx.isSteppedCommandAuthorityCurrent?.() === false) {
+      // A superseded command still reached Homey. Its folded observation must
+      // survive even though this executor no longer owns runtime bookkeeping.
+      logAcceptedSteppedLoadCommand(ctx, { ...params, commandTransport: result.transport,
+        reportedStepId: result.reportedStepId });
+      return false;
+    }
     accepted = recordAcceptedSteppedLoadCommand(ctx, {
       ...params,
       commandTransport: result.transport,
+      reportedStepId: result.reportedStepId,
     });
     return accepted;
   } catch (error) {

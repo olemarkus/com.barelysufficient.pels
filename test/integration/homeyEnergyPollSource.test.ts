@@ -23,12 +23,13 @@ describe('HomeyEnergyPollSource', () => {
   it('starts polling only when Homey Energy is the configured power source', async () => {
     const pollHomePower = vi.fn().mockResolvedValue({ powerW: 2100, meterDeviceId: 'meter-main' });
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
+    const debugStructured = vi.fn();
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       pollHomePower,
       recordPowerSample,
-      debugStructured: vi.fn(),
+      debugStructured,
       error: vi.fn(),
     });
 
@@ -46,6 +47,8 @@ describe('HomeyEnergyPollSource', () => {
 
     await vi.advanceTimersByTimeAsync(10_000);
     expect(pollHomePower).toHaveBeenCalledTimes(2);
+    expect(recordPowerSample).toHaveBeenCalledTimes(2);
+    expect(debugStructured).not.toHaveBeenCalled();
 
     source.stop();
     expect(vi.getTimerCount()).toBe(0);

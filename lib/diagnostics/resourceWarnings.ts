@@ -3,10 +3,11 @@ import { resolveSmapsSummary } from '../diagnostics/smapsRollup';
 import { getPerfSnapshot } from '../utils/perfCounters';
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from '../utils/planRebuildTrace';
 import { listRecentRuntimeSpans, listRuntimeSpans } from '../utils/runtimeTrace';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import { reclaimHeapPages } from './heapReclaim';
 
 const resourceWarningLogger = getLogger('perf/resource-warnings');
+const emitPerfDebug = getDebugEmitter('perf', 'perf');
 
 type HomeyEmitter = {
   on?: (event: string, listener: (payload: unknown) => void) => void;
@@ -221,10 +222,8 @@ type HeapReclaimer = {
   reclaim(trigger: HeapReclaimTrigger, nowMs: number): void;
 };
 
-// One record per reclaim, on the info channel: the before/after pair is the
-// evidence the next day's RSS curve gets read against. A runtime without an
-// exposed collector says so once and then stays silent, since nothing about
-// it changes between warnings.
+// Warning-triggered reclaims retain their before/after evidence at info;
+// routine maintenance belongs to perf debug. An unavailable collector warns once.
 const createHeapReclaimer = (): HeapReclaimer => {
   let lastReclaimAtMs: number | null = null;
   let unavailableLogged = false;
@@ -239,7 +238,7 @@ const createHeapReclaimer = (): HeapReclaimer => {
         resourceWarningLogger.warn({ event: 'heap_reclaim_unavailable', trigger, reason: outcome.reason });
         return;
       }
-      resourceWarningLogger.info({
+      const fields = {
         event: 'heap_pages_reclaimed',
         trigger,
         durationMs: outcome.durationMs,
@@ -247,7 +246,9 @@ const createHeapReclaimer = (): HeapReclaimer => {
         heapTotalAfterMb: outcome.after.heapTotalMb,
         rssBeforeMb: outcome.before.rssMb,
         rssAfterMb: outcome.after.rssMb,
-      });
+      };
+      if (trigger === 'memwarn') resourceWarningLogger.info(fields);
+      else emitPerfDebug(fields);
     },
   };
 };

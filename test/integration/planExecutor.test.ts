@@ -24,8 +24,8 @@ import {
 import { DEVICE_LAST_CONTROLLED_MS } from '../../lib/utils/settingsKeys';
 import {
   PELS_TARGET_STEP_CAPABILITY_ID,
-  type SteppedLoadStepRequestResult,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { SteppedLoadStepRequestResult } from '../../lib/ports/steppedLoadWrite';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlan,

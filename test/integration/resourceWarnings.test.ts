@@ -1,6 +1,7 @@
 import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { startResourceWarningListeners } from '../../lib/diagnostics/resourceWarnings';
+import { captureLogger } from '../utils/loggerCapture';
 
 const resolveSmapsSummaryMock = vi.fn();
 
@@ -140,26 +141,42 @@ describe('Homey resource warning perf logging', () => {
   it('reclaims on the backstop interval and stops with the listeners', async () => {
     const app = createApp();
     const logSpy = vi.spyOn(app, 'log').mockImplementation(() => undefined);
+    let capture: ReturnType<typeof captureLogger> | undefined;
     try {
       await app.onInit();
+      capture = captureLogger('info', ['perf']);
       // A second, module-level start on the same emitter, under fake timers so
       // only ITS interval is driven — the app's own polling stays real.
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
       const stop = startResourceWarningListeners({ homey: mockHomeyInstance });
       expect(stop).toBeDefined();
       logSpy.mockClear();
-      const reclaims = (): number => logSpy.mock.calls
-        .filter(([m]) => (JSON.parse(String(m)) as { event?: string; trigger?: string }).event === 'heap_pages_reclaimed'
-          && (JSON.parse(String(m)) as { trigger?: string }).trigger === 'interval')
-        .length;
+      const reclaims = (): number => capture?.findEvents('heap_pages_reclaimed').length ?? 0;
       vi.advanceTimersByTime(10 * 60_000);
       expect(reclaims()).toBe(1);
       stop?.();
       vi.advanceTimersByTime(10 * 60_000);
       expect(reclaims()).toBe(1);
     } finally {
+      capture?.restore();
       vi.useRealTimers();
       logSpy.mockRestore();
+    }
+  });
+
+  it('keeps scheduled heap cleanup out of default reports', () => {
+    vi.useFakeTimers();
+    const capture = captureLogger('info', []);
+    const stop = startResourceWarningListeners({ homey: mockHomeyInstance });
+    try {
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(capture.findEvents('heap_pages_reclaimed')).toHaveLength(0);
+      mockHomeyInstance.emit('memwarn', { count: 2, limit: 5 });
+      expect(capture.findEvent('homey_memwarn')).toBeDefined();
+    } finally {
+      stop?.();
+      capture.restore();
+      vi.useRealTimers();
     }
   });
 
