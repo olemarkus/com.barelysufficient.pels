@@ -94,7 +94,7 @@ Before this change, `kwhPerUnitProvenance.kWhPerUnit` on an active plan recorded
 
 Consequence: **two plans for the same device starting from different SoCs or temperatures can record different `kWhPerUnit` even when nothing in the model has changed.** This is intentional — the recorded value reflects what was actually used to size this plan. Operators reading provenance should treat it as "rate used for this plan," not "the device's learned rate."
 
-If a UI surface needs the stable learned mean separately, it can read `objectiveProfiles[deviceId].kwhPerUnit.mean` from the live tracker through `api.js` (the tracker persists to the userdata store, not a settings key).
+The settings page shows only the rate used for the plan (`resolvePlanKwhPerUnit` in `packages/shared-domain/src/deferredActivePlanResolvedView.ts`). The live learned profiles stay in the app and are not part of the settings page's power payload; a surface that needs the device's current learned mean must get it from a runtime producer, not from the plan.
 
 ## `displayConfidence` for the smart-task chip
 
@@ -110,7 +110,7 @@ The active-plan provenance carries two confidence values:
 3. Bands don't fully cover `[current, target]` (within a 1e-6 tolerance) → fall back to global.
 4. Otherwise → `min(confidence)` across overlapping bands.
 
-The UI consumer in `packages/settings-ui/src/ui/deadlinePlanResolvers.ts` reads `provenance.displayConfidence` first, falls back to `provenance.confidence`, then to the live profile's stat. Producer-resolved per `feedback_layering_resolution_in_producer.md`: the UI never branches on bands or per-band fields.
+Every smart-task surface (the live-task hero, the deadlines list, the Smart tasks widget) reads the chip through `resolveChipConfidence` in `packages/shared-domain/src/deadlineLabels.ts`: `provenance.displayConfidence` first, then `provenance.confidence`, else no chip. The plan's own provenance only, never the live profile, so all surfaces agree for one plan. Producer-resolved per `feedback_layering_resolution_in_producer.md`: the UI never branches on bands or per-band fields.
 
 ## Tunables
 

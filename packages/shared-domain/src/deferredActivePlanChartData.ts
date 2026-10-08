@@ -22,6 +22,7 @@ import {
   resolveStaircaseAnchor,
 } from './deferredPlanHistoryChartData';
 import { deadlineLabels } from './deadlineLabels';
+import { resolvePlanKwhPerUnit } from './deferredActivePlanResolvedView';
 
 const finiteOrNull = (raw: number | null | undefined): number | null => (
   raw === null || raw === undefined || !Number.isFinite(raw) ? null : raw
@@ -34,15 +35,6 @@ const pickTarget = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null 
 const pickStartProgress = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => finiteOrNull(
   plan.startProgressValue,
 );
-
-// Effective kWh-per-unit rate the planner used: the latest revision's resolved
-// display rate, falling back to the learned-profile mean on the provenance.
-// Positive-only — a zero/absent rate yields a null so the caller drops the
-// planned staircase rather than dividing by zero.
-const pickRate = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => {
-  const rate = finiteOrNull(plan.latest?.rateMean ?? plan.kwhPerUnitProvenance?.kWhPerUnit ?? null);
-  return rate !== null && rate > 0 ? rate : null;
-};
 
 const pickObservedSamples = (
   samples: ResolvedDeferredObjectiveActivePlanProgressSampleV1[] | undefined,
@@ -152,7 +144,7 @@ export const resolveActivePlanChartData = (
   const currentValue = finiteOrNull(options.currentValue ?? null);
   const withNow = appendNowReading(samples, nowMs, currentValue);
   const observed = anchorObservedAtStart(withNow, windowStartMs, startProgress);
-  const rate = pickRate(plan);
+  const rate = resolvePlanKwhPerUnit(plan);
   // Truthy guard covers both `null` and a defensively-omitted `undefined`
   // `latest`, and narrows it for the `.hours` read.
   const latest = plan.latest;

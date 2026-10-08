@@ -118,13 +118,9 @@ const buildCard = (params: {
     carChargeLimit,
     liveCompletion: plan.liveCompletion,
   });
-  // Mirror the hero's chip-confidence chain (see `resolveEnergyNeededKWh` in
-  // `deadlinePlanResolvers.ts`); `profileConfidence: null` collapses the
-  // live-profile step since the list doesn't load `objectiveProfiles`.
-  const confidence = resolveChipConfidence({
-    provenance: plan.kwhPerUnitProvenance,
-    profileConfidence: null,
-  });
+  // The hero's chip-confidence chain (`resolveEnergyNeededKWh` in
+  // `deadlinePlanResolvers.ts`): the plan's own provenance, one resolver.
+  const confidence = resolveChipConfidence(plan.kwhPerUnitProvenance);
   const learning = resolveSmartTaskLearning(plan.kwhPerUnitProvenance);
   const currentValue = resolveCurrentValue(device, plan);
   // A cached schedule stops governing the moment the device leaves the planned

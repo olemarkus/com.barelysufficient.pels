@@ -69,7 +69,7 @@ describe('projectPowerTrackerForUi', () => {
     expect(Object.keys(projected).sort()).toEqual([
       'buckets', 'controlledBuckets', 'dailyTotals', 'deviceBuckets', 'exportBuckets', 'exportDailyTotals',
       'generationBuckets', 'hourlyAverages', 'hourlySampleCounts', 'lastGenerationW', 'lastPowerW',
-      'lastTimestamp', 'objectiveProfiles', 'uncontrolledBuckets', 'unreliablePeriods',
+      'lastTimestamp', 'uncontrolledBuckets', 'unreliablePeriods',
     ]);
   });
 
@@ -78,13 +78,6 @@ describe('projectPowerTrackerForUi', () => {
     expect(Object.keys(projected.uncontrolledBuckets ?? {})).toEqual([hourKey(RECENT), hourKey(0)]);
     expect(projected.deviceBuckets).toEqual({
       heater: { [hourKey(RECENT)]: RECENT + 0.5, [hourKey(0)]: 0.5 },
-      charger: {},
-    });
-  });
-
-  it('keeps only the energy-per-unit mean and confidence of a learned profile', () => {
-    expect(projected.objectiveProfiles).toEqual({
-      heater: { kwhPerUnit: { mean: 0.8, confidence: 'medium' } },
       charger: {},
     });
   });

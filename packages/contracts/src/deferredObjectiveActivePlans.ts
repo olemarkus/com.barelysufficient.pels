@@ -207,8 +207,9 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // short-circuited or the rate wasn't a finite positive number. The `| null`
   // in the type is tolerated only so a hand-edited/forward-compat payload that
   // explicitly set it null still round-trips through the validator. That
-  // producer-side omission is why the field is optional, not legacy data; the
-  // UI falls back to the live learned-profile mean.
+  // producer-side omission is why the field is optional, not legacy data;
+  // consumers read the plan's rate through `resolvePlanKwhPerUnit`, which falls
+  // back to the provenance's learned mean, never the live profile.
   rateMean?: number | null;
   // Producer-resolved presentation-speed mode. See
   // `DeferredObjectiveActivePlanSpeedMode` for the enum + the
@@ -358,9 +359,10 @@ export type DeferredObjectiveActivePlanV1 = {
   deadlineAtMs: number;
   startedAtMs: number;
   pending: boolean;
-  // Per-plan provenance snapshot. Optional so older persisted plans without
-  // the field continue to load; the UI should treat absence as "unknown" and
-  // fall back to the live `objectiveProfiles` lookup.
+  // Per-plan provenance snapshot: the rate source, learned mean and confidence
+  // the plan was built with. Optional because the recorder writes it only once
+  // a rate source resolved; consumers treat absence as "no signal" (no
+  // confidence chip, no learned rate), never as a cue to read the live profile.
   kwhPerUnitProvenance?: DeferredObjectiveKwhPerUnitProvenanceV1;
   // Only meaningful when `pending` is true. Identifies why the recorder
   // couldn't produce a revision (e.g. price-aware optimisation off vs prices

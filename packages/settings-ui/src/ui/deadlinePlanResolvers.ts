@@ -7,7 +7,6 @@ import { getSteppedLoadLowestActiveStep } from '../../../shared-domain/src/devic
 import type {
   ObjectiveProfileConfidence,
 } from '../../../contracts/src/objectiveProfileTypes.ts';
-import type { SettingsUiObjectiveProfile, SettingsUiPowerTracker } from '../../../contracts/src/powerTrackerTypes.ts';
 import type {
   ObservedDeviceState,
   ObservedStateOfCharge,
@@ -22,9 +21,9 @@ import type {
   DeferredObjectiveActivePlanSpeedMode,
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import { resolvePlanKwhPerUnit } from '../../../shared-domain/src/deferredActivePlanResolvedView.ts';
 import { resolveChipConfidence, resolveSmartTaskLearning } from '../../../shared-domain/src/deadlineLabels.ts';
 import { resolveRemainingEnergyKWh } from '../../../shared-domain/src/energyQuantities.ts';
-import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../shared-domain/src/objectiveProfileBootstrap.ts';
 import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 
 
@@ -174,56 +173,23 @@ function buildTemperatureProgress(
   };
 }
 
-export const resolveProfile = (
-  powerTracker: SettingsUiPowerTracker | null,
-  deviceId: string,
-): SettingsUiObjectiveProfile | null => (
-  powerTracker?.objectiveProfiles?.[deviceId] ?? null
-);
-
-// Reads the producer-resolved flat display fields (`rateMean` / `speedMode`)
-// off the latest revision, with a back-compat fallback for legacy revisions
-// persisted before the recorder shipped them. The fallback reproduces what the
-// retired `resolveKwhPerUnitDisplayRate` / `resolveSpeedModeLabel` helpers did:
-//   - `speedMode`: absent → derive from `kwhPerUnitSource` (bootstrap →
-//     `learning`, else `auto`). Old revisions carry `kwhPerUnitSource`.
-//   - `rateMean`: absent → bootstrap constant when the (derived) mode is
-//     `learning` for an EV objective, else the live learned-profile mean.
+// Reads the producer-resolved display fields off the plan. `rateMean` is the
+// rate the plan was built with (`resolvePlanKwhPerUnit`), so the plan-inputs
+// row and the chart's planned staircase show one figure; null hides the row.
+// `speedMode` is the latest revision's, derived from `kwhPerUnitSource` for a
+// revision recorded without it (bootstrap → `learning`, else `auto`).
 // `usingBootstrap` (drives the "Estimated — refining…" note) equals
 // `speedMode === 'learning'`: bootstrap source is EV-cold-start only.
-export const resolveDisplayRateAndSpeedMode = (params: {
-  latest: DeferredObjectiveActivePlanRevisionV1;
-  profile: SettingsUiObjectiveProfile | null;
-  objectiveKind: DeferredObjectiveSettingsEntry['kind'];
-}): { rateMean: number | null; usingBootstrap: boolean; speedMode: DeferredObjectiveActivePlanSpeedMode } => {
-  const speedMode: DeferredObjectiveActivePlanSpeedMode = params.latest.speedMode
-    ?? (params.latest.kwhPerUnitSource === 'bootstrap' ? 'learning' : 'auto');
-  const usingBootstrap = speedMode === 'learning';
-  if (params.latest.rateMean !== undefined) {
-    return { rateMean: params.latest.rateMean, usingBootstrap, speedMode };
-  }
-  // An energy task's rate is exact (one kWh per kWh), so the recorder stores no
-  // rate and there is no per-unit rate row to show; a profile the device may
-  // have learned for another kind says nothing about it.
-  if (params.objectiveKind === 'energy') return { rateMean: null, usingBootstrap, speedMode };
-  // Legacy revision without the flat rate: reconstruct it the way the old UI
-  // resolver did, so pre-upgrade plans keep rendering the right rate until the
-  // next replan re-records the producer field.
-  if (usingBootstrap && params.objectiveKind === 'ev_soc') {
-    return { rateMean: BOOTSTRAP_EV_SOC_KWH_PER_PERCENT, usingBootstrap, speedMode };
-  }
-  const learnedMean = params.profile?.kwhPerUnit?.mean;
-  return {
-    rateMean: typeof learnedMean === 'number' && Number.isFinite(learnedMean) ? learnedMean : null,
-    usingBootstrap,
-    speedMode,
-  };
+export const resolveDisplayRateAndSpeedMode = (
+  activePlan: ResolvedDeferredObjectiveActivePlanV1 & { latest: DeferredObjectiveActivePlanRevisionV1 },
+): { rateMean: number | null; usingBootstrap: boolean; speedMode: DeferredObjectiveActivePlanSpeedMode } => {
+  const { latest } = activePlan;
+  const speedMode: DeferredObjectiveActivePlanSpeedMode = latest.speedMode
+    ?? (latest.kwhPerUnitSource === 'bootstrap' ? 'learning' : 'auto');
+  return { rateMean: resolvePlanKwhPerUnit(activePlan), usingBootstrap: speedMode === 'learning', speedMode };
 };
 
-export const resolveEnergyNeededKWh = (params: {
-  profile: SettingsUiObjectiveProfile | null;
-  activePlan: ResolvedDeferredObjectiveActivePlanV1;
-}): {
+export const resolveEnergyNeededKWh = (activePlan: ResolvedDeferredObjectiveActivePlanV1): {
   energyNeededKWh: number;
   // Mean-based estimate paired with the buffered `energyNeededKWh` for the
   // `expected…planned` range. Equals `energyNeededKWh` (range collapses) when
@@ -238,7 +204,7 @@ export const resolveEnergyNeededKWh = (params: {
   // authoritative even under `cannot_meet` (allocated hours can round to zero
   // for sub-second remaining buckets). The UI never needs its own learned
   // profile to render the timeline.
-  const revisionEnergy = params.activePlan.latest?.energyNeededKWh;
+  const revisionEnergy = activePlan.latest?.energyNeededKWh;
   if (!isFiniteNumber(revisionEnergy) || revisionEnergy <= 0) return null;
   // Absence encodes equality with `energyNeededKWh` (steady device, cold-start,
   // or a plan persisted before the variance buffer shipped). Routed through the
@@ -251,17 +217,14 @@ export const resolveEnergyNeededKWh = (params: {
   // rather than substituting `revisionEnergy` keeps this a read of the
   // resolver's result instead of a kept fallback derivation (root `AGENTS.md`).
   const energyExpectedKWh = resolveRemainingEnergyKWh({
-    energyExpectedKWh: params.activePlan.latest?.energyExpectedKWh,
+    energyExpectedKWh: activePlan.latest?.energyExpectedKWh,
     energyNeededKWh: revisionEnergy,
   });
   if (energyExpectedKWh === null) return null;
   // Producer-resolved per `feedback_layering_resolution_in_producer.md`: the
   // shared-domain helpers own the preference chain. The UI sees flat values
   // and never branches on provenance / source / kind.
-  const confidence = resolveChipConfidence({
-    provenance: params.activePlan.kwhPerUnitProvenance,
-    profileConfidence: params.profile?.kwhPerUnit?.confidence ?? null,
-  });
-  const learning = resolveSmartTaskLearning(params.activePlan.kwhPerUnitProvenance);
+  const confidence = resolveChipConfidence(activePlan.kwhPerUnitProvenance);
+  const learning = resolveSmartTaskLearning(activePlan.kwhPerUnitProvenance);
   return { energyNeededKWh: revisionEnergy, energyExpectedKWh, confidence, learning };
 };

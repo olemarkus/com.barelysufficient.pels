@@ -1,7 +1,4 @@
-import type {
-  SettingsUiObjectiveProfile,
-  SettingsUiPowerTracker,
-} from '../../packages/contracts/src/powerTrackerTypes';
+import type { SettingsUiPowerTracker } from '../../packages/contracts/src/powerTrackerTypes';
 import type { SettingsUiCapacityPeak, SettingsUiPowerReadings } from '../../packages/contracts/src/settingsUiApi';
 import { hasPowerMeasurement, resolveDisplayedPowerUpdateMs } from './lastTotalPower';
 import type { PowerTrackerState } from './trackerTypes';
@@ -53,19 +50,6 @@ const recentDeviceHours = (
   return recent;
 };
 
-const projectObjectiveProfiles = (
-  profiles: PowerTrackerState['objectiveProfiles'],
-): Record<string, SettingsUiObjectiveProfile> | undefined => {
-  if (profiles === undefined) return undefined;
-  const projected: Record<string, SettingsUiObjectiveProfile> = {};
-  for (const deviceId of Object.keys(profiles)) {
-    const stat = profiles[deviceId]?.kwhPerUnit;
-    projected[deviceId] = stat === undefined
-      ? {}
-      : { kwhPerUnit: { mean: stat.mean, confidence: stat.confidence } };
-  }
-  return projected;
-};
 /* eslint-enable functional/immutable-data */
 
 /**
@@ -92,7 +76,6 @@ export const projectPowerTrackerForUi = (tracker: PowerTrackerState, nowMs: numb
     exportBuckets: tracker.exportBuckets,
     exportDailyTotals: tracker.exportDailyTotals,
     deviceBuckets: recentDeviceHours(tracker.deviceBuckets, cutoffIso),
-    objectiveProfiles: projectObjectiveProfiles(tracker.objectiveProfiles),
   };
 };
 

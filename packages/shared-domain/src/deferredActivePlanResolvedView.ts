@@ -27,3 +27,16 @@ export const toResolvedActivePlan = (
     ? { ...base, objectiveKind: 'energy', deliveredKWh: readDeliveredEnergy(plan.deviceId, plan.deadlineAtMs) }
     : { ...base, objectiveKind: plan.objectiveKind };
 };
+
+/**
+ * The kWh-per-unit rate the plan was built with: the latest revision's
+ * recorded rate, else the learned mean on the plan's provenance, which the
+ * recorder carries forward across a revision that resolved no rate source.
+ * Null when the plan holds no usable positive rate: an energy task's rate is
+ * exact, so it records none. Never the live profile's mean, which can differ
+ * from what the plan was sized with.
+ */
+export const resolvePlanKwhPerUnit = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => {
+  const rate = plan.latest?.rateMean ?? plan.kwhPerUnitProvenance?.kWhPerUnit ?? null;
+  return rate !== null && Number.isFinite(rate) && rate > 0 ? rate : null;
+};

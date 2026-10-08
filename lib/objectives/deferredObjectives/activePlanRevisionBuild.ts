@@ -342,10 +342,10 @@ export const buildRevision = (params: {
     // Producer-resolved flat display fields (see `resolveRateMean` /
     // `resolveSpeedMode`). Gated on `source !== null` alongside
     // `kwhPerUnitSource` so revisions where the resolver short-circuited
-    // (target already met) stay byte-stable and the UI keeps falling back to
-    // the live learned-profile mean. `rateMean` is further suppressed when it
-    // didn't resolve to a usable positive number so we don't persist a
-    // misleading `null`.
+    // (target already met) stay byte-stable and consumers fall back to the
+    // plan's carried provenance (`resolvePlanKwhPerUnit`). `rateMean` is
+    // further suppressed when it didn't resolve to a usable positive number so
+    // we don't persist a misleading `null`.
     ...(source !== null ? { speedMode: resolveSpeedMode(source) } : {}),
     ...(rateMean !== null ? { rateMean } : {}),
     ...(floorShortfallCause !== 'none' ? { floorShortfallCause } : {}),
@@ -365,9 +365,9 @@ export const buildRevision = (params: {
   };
 };
 
-// Per-plan provenance is best-effort and only written when at least one
-// field has useful content; otherwise older consumers continue using the
-// fall-back lookup against the live profile store.
+// Per-plan provenance is best-effort and only written when a rate source
+// resolved; otherwise the recorder carries the plan's previous provenance
+// forward, and a plan without one shows no confidence signal.
 export const resolveProvenance = (
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanV1['kwhPerUnitProvenance'] | undefined => {

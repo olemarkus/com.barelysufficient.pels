@@ -3379,9 +3379,11 @@ export const resolveMissedHistoryCarHint = (entry: MissedRecourseEntry): string 
   return cause === null ? null : CAR_SIDE_MISS_HINT[cause] ?? null;
 };
 
-// Resolve the smart-task chip's underlying confidence value from the persisted
-// provenance + the live profile. Producer-side resolution lives here, not in
-// the UI consumer, per `feedback_layering_resolution_in_producer.md`.
+// Resolve the smart-task chip's underlying confidence value from the plan's
+// own provenance: the confidence the plan was built with, never the live
+// profile's, so the hero, the deadlines list and the widget agree for one plan.
+// Producer-side resolution lives here, not in the UI consumer, per
+// `feedback_layering_resolution_in_producer.md`.
 //
 // Preference order:
 //   1. `provenance.displayConfidence` — band-aware aggregate the recorder
@@ -3393,20 +3395,15 @@ export const resolveMissedHistoryCarHint = (entry: MissedRecourseEntry): string 
 //      raw-CV when no bands exist. Kept on the provenance for log/diagnostic
 //      parity; covers plans persisted after provenance shipped but before
 //      `displayConfidence` shipped.
-//   3. Live profile's `kwhPerUnit.confidence` — final fallback for plans
-//      persisted before provenance existed at all. Drainable population.
-//   4. `null` — no signal; the chip suppresses.
+//   3. `null` — no signal (no provenance, or a bootstrap rate); the chip
+//      suppresses.
 //
 // Returning a single flat value lets the UI consumer treat the result as
 // opaque — it never sees `provenance` / `kind` / `source`.
-export const resolveChipConfidence = (params: {
-  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
-  profileConfidence: 'low' | 'medium' | 'high' | null | undefined;
-}): 'low' | 'medium' | 'high' | null => (
-  params.provenance?.displayConfidence
-    ?? params.provenance?.confidence
-    ?? params.profileConfidence
-    ?? null
+export const resolveChipConfidence = (
+  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined,
+): 'low' | 'medium' | 'high' | null => (
+  provenance?.displayConfidence ?? provenance?.confidence ?? null
 );
 
 // Resolve display rows for the kWhPerUnit provenance snapshot. The caller
