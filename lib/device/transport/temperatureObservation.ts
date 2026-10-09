@@ -25,6 +25,15 @@ export function resolveTargetDeviceType(
   return temperature ? 'temperature' : 'onoff';
 }
 
+/**
+ * Whether the device has a control facet besides temperature: a binary axis or
+ * a stepped ladder. A device without one has nothing left to plan it by once its
+ * temperature facet is rejected, so it leaves the snapshot.
+ */
+export function hasControlFacetBesideTemperature(snapshot: TransportDeviceSnapshot): boolean {
+  return snapshot.binaryCapabilityId !== undefined || snapshot.steppedLoadProfile !== undefined;
+}
+
 /** Remove the complete temperature facet while leaving every other device facet intact. */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function removeTemperatureObservation(snapshot: TransportDeviceSnapshot): boolean {

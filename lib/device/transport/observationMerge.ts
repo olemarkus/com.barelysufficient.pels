@@ -15,9 +15,29 @@ import { incPerfCounter } from '../../utils/perfCounters';
 import { applyCapabilityObservation, clearCapabilityObservationIfMatched } from './observationApply';
 import { preserveNewerReportedStepObservation } from './reportedStepObservation';
 import { preserveNewerHomeBatteryReadings } from './homeBatteryObservation';
+import { recordCapabilityObservation } from './observationRecord';
+import { hasControlFacetBesideTemperature } from './temperatureObservation';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
+
+/** The whole-device read a retained observation is merged against. */
+type MergedReadPath = 'snapshot_refresh' | 'device_update';
+
+const TEMPERATURE_PAIR_CAPABILITY_IDS = ['measure_temperature', 'target_temperature'] as const;
+
+/**
+ * What a `device.update` read keeps once its temperature rejections are merged
+ * in. `sourceDatedCapabilityIds` names the capabilities whose retained
+ * observation the merge settled, at Homey's own timestamps or by leaving newer
+ * evidence in place; the update's receipt-time recorder must leave them alone.
+ */
+export type DeviceUpdateTemperatureMerge =
+    | { admitted: false }
+    | {
+        admitted: true;
+        sourceDatedCapabilityIds: readonly (typeof TEMPERATURE_PAIR_CAPABILITY_IDS)[number][];
+    };
 
 export function mergeFresherCapabilityObservations(params: {
     state: DeviceTransportObservationState;
@@ -68,30 +88,77 @@ export function mergeFresherCapabilityObservations(params: {
                 state,
                 snapshot,
                 sourceDevice,
-        });
+                readPath: 'snapshot_refresh',
+            });
         }
-        if (
-            hadTemperature
-            && snapshot.temperature === undefined
-            && !snapshot.binaryCapabilityId
-            && !snapshot.steppedLoadProfile
-        ) {
+        if (lostOnlyControlFacet(hadTemperature, snapshot)) {
             nextSnapshot.splice(index, 1);
         }
     }
 }
 /* eslint-enable functional/immutable-data */
 
+/**
+ * Owner: the transport observation merge. Holds a whole-device `device.update`
+ * read to the temperature rejections retained for its device, by the rule a
+ * refresh holds its fetched read to: only a finite reading dated at or after a
+ * rejection retires it, and an older one has the rejection reapplied, which
+ * strips the read's temperature facet.
+ *
+ * A malformed read after the rejection is ignored outright by the read contract
+ * (`deviceReadContract.ts`), so a conforming read carrying a pair older than the
+ * rejection is a race: a delayed or reordered frame. Without this, such a frame
+ * would re-admit a device the rejection evicted, on the very pair it
+ * superseded, and the next refresh would evict it again.
+ *
+ * A read that retires a rejection brings the pair back with each member dated
+ * by its own `lastUpdated`, and the pair is retained at those times, so a
+ * refresh whose fetch was issued before the rejection cannot roll it back.
+ *
+ * `admitted` is false when the read lost its temperature facet and has no other
+ * control facet: the device stays out, as a refresh would leave it.
+ */
+export function mergeTemperatureRejectionsIntoDeviceUpdate(
+    state: DeviceTransportObservationState,
+    snapshot: TransportDeviceSnapshot,
+    sourceDevice: HomeyDeviceLike,
+): DeviceUpdateTemperatureMerge {
+    const hadTemperature = snapshot.temperature !== undefined;
+    const retiredRejection = mergeTemperatureRejectionObservations({
+        state,
+        snapshot,
+        sourceDevice,
+        readPath: 'device_update',
+    });
+    if (lostOnlyControlFacet(hadTemperature, snapshot)) return { admitted: false };
+    const { temperature } = snapshot;
+    // A second rejection the read did not retire stripped the facet again.
+    if (!retiredRejection || temperature === undefined) return { admitted: true, sourceDatedCapabilityIds: [] };
+    retainTemperaturePair(state, snapshot, temperature, sourceDevice);
+    return { admitted: true, sourceDatedCapabilityIds: TEMPERATURE_PAIR_CAPABILITY_IDS };
+}
+
+/** The read lost its temperature facet to a rejection and has nothing else to plan the device by. */
+function lostOnlyControlFacet(hadTemperature: boolean, snapshot: TransportDeviceSnapshot): boolean {
+    return hadTemperature
+        && snapshot.temperature === undefined
+        && !hasControlFacetBesideTemperature(snapshot);
+}
+
+/** Merge each retained temperature rejection into the read; whether the read retired one. */
 function mergeTemperatureRejectionObservations(params: {
     state: DeviceTransportObservationState;
     snapshot: TransportDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
-}): void {
-    const { state, snapshot, sourceDevice } = params;
+    readPath: MergedReadPath;
+}): boolean {
+    const {
+        state, snapshot, sourceDevice, readPath,
+    } = params;
+    let retired = false;
     for (const capabilityId of ['target_temperature', 'measure_temperature'] as const) {
-        const observation = state.capabilityObservations.get(
-            buildCapabilityObservationKey(snapshot.id, capabilityId),
-        );
+        const observationKey = buildCapabilityObservationKey(snapshot.id, capabilityId);
+        const observation = state.capabilityObservations.get(observationKey);
         if (!observation || isFiniteNumber(observation.value)) continue;
         mergeCapabilityObservation({
             state,
@@ -100,6 +167,46 @@ function mergeTemperatureRejectionObservations(params: {
             capabilityId,
             sourceDevice,
             nextSnapshot: snapshot,
+            readPath,
+        });
+        // A rejection leaves the store only when a finite read at or after it retires it.
+        retired ||= !state.capabilityObservations.has(observationKey);
+    }
+    return retired;
+}
+
+/**
+ * Retain the pair a `device.update` re-admitted past a rejection, each member at
+ * the time Homey dated it. A member never replaces evidence PELS holds from
+ * later, such as a newer realtime reading or a local write the device has not
+ * echoed yet (`lib/device/AGENTS.md`, source trust order).
+ */
+function retainTemperaturePair(
+    state: DeviceTransportObservationState,
+    snapshot: TransportDeviceSnapshot,
+    temperature: NonNullable<TransportDeviceSnapshot['temperature']>,
+    sourceDevice: HomeyDeviceLike,
+): void {
+    const readings = [
+        ['measure_temperature', temperature.currentTemperature],
+        ['target_temperature', temperature.target.value],
+    ] as const;
+    for (const [capabilityId, value] of readings) {
+        const observedAt = getCapabilityLastUpdatedMs(sourceDevice, capabilityId);
+        // The read contract dates both members of an admitted pair (`deviceReadContract.ts`).
+        if (observedAt === undefined) continue;
+        const retained = state.capabilityObservations.get(buildCapabilityObservationKey(snapshot.id, capabilityId));
+        if (retained !== undefined && retained.observedAt > observedAt) continue;
+        recordCapabilityObservation({
+            state,
+            latestSnapshot: [],
+            deviceId: snapshot.id,
+            capabilityId,
+            value,
+            source: 'device_update',
+            observedAt,
+            snapshot,
+            countsTowardDeviceFreshness: true,
         });
     }
 }
@@ -147,7 +254,8 @@ function mergeSnapshotObservationsForDevice(params: {
             capabilityId: snapshot.binaryCapabilityId,
             sourceDevice,
             nextSnapshot: snapshot,
-            });
+            readPath: 'snapshot_refresh',
+        });
     }
 
     for (const target of snapshot.targets) {
@@ -158,6 +266,7 @@ function mergeSnapshotObservationsForDevice(params: {
             capabilityId: target.id,
             sourceDevice,
             nextSnapshot: snapshot,
+            readPath: 'snapshot_refresh',
         });
     }
 
@@ -172,6 +281,7 @@ function mergeSnapshotObservationsForDevice(params: {
             capabilityId,
             sourceDevice,
             nextSnapshot: snapshot,
+            readPath: 'snapshot_refresh',
         });
     }
     mergeStateOfChargeObservationsForDevice({
@@ -245,6 +355,7 @@ function mergeStateOfChargeObservationsForDevice(params: {
         capabilityId: newestCapabilityId,
         sourceDevice,
         nextSnapshot: snapshot,
+        readPath: 'snapshot_refresh',
     });
 }
 
@@ -277,6 +388,7 @@ function mergeCapabilityObservation(params: {
     capabilityId: string;
     sourceDevice: HomeyDeviceLike;
     nextSnapshot: TransportDeviceSnapshot;
+    readPath: MergedReadPath;
 }): void {
     const {
         state,
@@ -285,6 +397,7 @@ function mergeCapabilityObservation(params: {
         capabilityId,
         sourceDevice,
         nextSnapshot,
+        readPath,
     } = params;
     const observationKey = buildCapabilityObservationKey(deviceId, capabilityId);
     const observation = state.capabilityObservations.get(observationKey);
@@ -367,7 +480,7 @@ function mergeCapabilityObservation(params: {
     }
     emitConsolidation(observation.value, 'retained', 'retained_fresher');
     emitDeviceDebug({
-        event: 'snapshot_refresh_preserved_newer',
+        event: readPath === 'device_update' ? 'device_update_preserved_newer' : 'snapshot_refresh_preserved_newer',
         deviceId,
         deviceName,
         source: observation.source,
