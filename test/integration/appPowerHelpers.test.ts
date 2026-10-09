@@ -3,6 +3,8 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   recordDailyBudgetCap,
   recordPowerSampleForApp,
+  updateDailyBudgetAndRecordCapForApp,
+  type DailyBudgetCapSnapshot,
   type UpdateObjectiveProfiles,
 } from '../../lib/power/sampleIngest';
 import {
@@ -59,6 +61,45 @@ describe('recordDailyBudgetCap', () => {
     const result = recordDailyBudgetCap({ powerTracker, snapshot: snapshot as unknown as DailyBudgetUiPayload });
     expect(result).not.toBe(powerTracker);
     expect(result.dailyBudgetCaps).toEqual({ existing: 1, [bucketKey]: 2.5 });
+  });
+
+  it('records a cap once per change, not once per meter reading', () => {
+    // Each reading updates the budget and records the current bucket's cap.
+    // While the planned figure holds, a reading must hand back the tracker it
+    // was given, its caps map uncopied; a moved figure is recorded.
+    const bucketKey = '2024-01-01T00:00:00.000Z';
+    let plannedKWh = 2.5;
+    const dailyBudgetService = {
+      updateState: vi.fn(),
+      getSnapshot: (): DailyBudgetCapSnapshot => ({
+        todayKey: '2024-01-01',
+        days: {
+          '2024-01-01': {
+            budget: { enabled: true },
+            buckets: { plannedKWh: [plannedKWh], startUtc: [bucketKey] },
+            currentBucketIndex: 0,
+          },
+        },
+      }),
+    };
+    const readingFor = (powerTracker: PowerTrackerState) => updateDailyBudgetAndRecordCapForApp({
+      powerTracker,
+      dailyBudgetService,
+    });
+
+    const first = readingFor({ dailyBudgetCaps: { existing: 1 } });
+    expect(first.dailyBudgetCaps).toEqual({ existing: 1, [bucketKey]: 2.5 });
+
+    const unchanged = readingFor(first);
+    expect(unchanged).toBe(first);
+    expect(unchanged.dailyBudgetCaps).toBe(first.dailyBudgetCaps);
+
+    plannedKWh = 3;
+    const changed = readingFor(unchanged);
+    expect(changed).not.toBe(unchanged);
+    expect(changed.dailyBudgetCaps).not.toBe(unchanged.dailyBudgetCaps);
+    expect(changed.dailyBudgetCaps).toEqual({ existing: 1, [bucketKey]: 3 });
+    expect(dailyBudgetService.updateState).toHaveBeenCalledTimes(3);
   });
 });
 
