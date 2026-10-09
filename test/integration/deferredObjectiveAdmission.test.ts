@@ -206,6 +206,7 @@ const buildBuilder = (
   const capacityGuard = overrides.capacityGuard ?? createTestCapacityGuard({ homeId: 'main' });
   const capacitySettings = overrides.capacitySettings ?? { capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 };
   const deferredController = new DeferredObjectiveDecorationController({
+    hasSolarProduction: () => false,
     getThermalDirection: () => 'heating',
     getPrioritiesForDevices: (deviceIds) => new ModePriorityCatalog(overrides.priorityByModeRef?.current)
       .getOrder(overrides.modeRef?.current ?? 'Home', deviceIds, () => false),
@@ -350,6 +351,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const powerTrackerRef = { current: buildPowerTracker(DAY_START_UTC) };
     const modeRef = { current: 'Home' };
     const deferredController = new DeferredObjectiveDecorationController({
+      hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => buildSettings(),
@@ -598,6 +600,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
 
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const deferredController = new DeferredObjectiveDecorationController({
+      hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => ({

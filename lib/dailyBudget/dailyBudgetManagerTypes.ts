@@ -1,3 +1,4 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../power/tracker';
 import type { CombinedPriceData } from './dailyBudgetMath';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
@@ -40,7 +41,7 @@ export type DailyBudgetUpdateParams = {
   combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
   forcePlanRebuild?: boolean;
-  capacityBudgetKWh?: number;
+  planningCeiling: PowerLimitCeiling | null;
   refreshObservedStats?: boolean;
   refreshConfidence?: boolean;
   includeConfidenceBootstrapDebug?: boolean;

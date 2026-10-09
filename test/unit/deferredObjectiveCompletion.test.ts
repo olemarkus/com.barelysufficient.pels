@@ -10,6 +10,7 @@ import { resolveTaskCompletionDiagnostic } from '../../lib/objectives/deferredOb
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { mergeRecord, startRecord } from '../../lib/objectives/deferredObjectives/planHistoryInProgressState';
 import { partialDouble } from '../helpers/partialDouble';
+import { CAPACITY_ONLY_HORIZON_LIMIT } from '../helpers/powerLimitSettings';
 
 const diagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> = {}): DeferredObjectiveDiagnostic => {
   const resolved = partialDouble<DeferredObjectiveDiagnostic>({
@@ -118,6 +119,7 @@ describe('operational task completion', () => {
       targetEnergyKWh: 1, deadlineAtMs: 3_600_000,
     };
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: 0, objective: {
         id: 'heater:energy', kind: 'energy', enforcement: 'soft', energyNeededKWh: 0.0005,
         deadlineAtMs: objective.deadlineAtMs, deadlineMarginMs: 0, fullyReserved: false,

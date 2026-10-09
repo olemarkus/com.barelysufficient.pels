@@ -119,6 +119,7 @@ const buildRolloverPayloads = async () => {
     powerTracker: { buckets: { [firstBucketKey]: 0, [secondBucketKey]: 0 } },
     combinedPrices: { prices },
     priceOptimizationEnabled: true,
+    planningCeiling: null,
   }).snapshot;
 
   const after = manager.update({
@@ -128,6 +129,7 @@ const buildRolloverPayloads = async () => {
     powerTracker: { buckets: { [firstBucketKey]: 0, [secondBucketKey]: 0 } },
     combinedPrices: { prices },
     priceOptimizationEnabled: true,
+    planningCeiling: null,
   }).snapshot;
 
   return {

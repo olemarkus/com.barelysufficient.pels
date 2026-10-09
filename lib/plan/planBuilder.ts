@@ -36,7 +36,7 @@ import {
   computeDailyUsageSoftLimit,
   computeDynamicSoftLimit,
   computeShortfallThreshold,
-  isDailyBudgetBelowSustainableCapacity,
+  isDailyBudgetBelowPlanningCeiling,
 } from './planBudget';
 import {
   buildPlanContext,
@@ -354,7 +354,7 @@ export class PlanBuilder {
       power,
       planDevices: decidedDevices,
       restoreResult,
-      budgetPressureEligible: isDailyBudgetBelowSustainableCapacity(dailyBudgetSnapshot, this.capacitySettings),
+      budgetPressureEligible: isDailyBudgetBelowPlanningCeiling(dailyBudgetSnapshot, this.capacitySettings),
       smartTaskDrivingDeviceIds: decoration.drivingDeviceIds,
       nowTs,
     });

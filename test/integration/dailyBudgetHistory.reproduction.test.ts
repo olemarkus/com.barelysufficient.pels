@@ -27,6 +27,7 @@ describe('daily budget history reproduction', () => {
     };
 
     const history = manager.buildHistory({
+      planningCeiling: null,
       dayStartUtcMs: yesterdayStartUtcMs,
       timeZone: TZ,
       powerTracker,

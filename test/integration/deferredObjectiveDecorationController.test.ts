@@ -6,6 +6,7 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 const buildDevice = (): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, currentDrawKw: 0,
   id: 'dev',
@@ -46,6 +47,7 @@ describe('DeferredObjectiveDecorationController', () => {
     };
     const device = { ...buildDevice(), controlModel: 'binary_power' as const, control: fixtureControlPosture({ controllable }) };
     const controller = new DeferredObjectiveDecorationController({
+      hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => settings,
@@ -53,7 +55,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => capacityOnlyPowerLimits(10),
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
@@ -79,6 +81,7 @@ describe('DeferredObjectiveDecorationController', () => {
       objectivesByDeviceId: {},
     } as const));
     const controller = new DeferredObjectiveDecorationController({
+      hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings,
@@ -86,7 +89,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => capacityOnlyPowerLimits(10),
       getDeferredObjectiveActivePlans: () => null,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
@@ -106,6 +109,7 @@ describe('DeferredObjectiveDecorationController', () => {
     // task's reservations at the settle and disagree with the committed plan.
     const getStallClassification = vi.fn(() => undefined);
     const controller = new DeferredObjectiveDecorationController({
+      hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => ({
@@ -124,7 +128,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => capacityOnlyPowerLimits(10),
       getStallClassification,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
@@ -139,12 +143,13 @@ describe('DeferredObjectiveDecorationController', () => {
 
   it('returns the identity bundle (devices untouched) when the settings read returns nothing', () => {
     const controller = new DeferredObjectiveDecorationController({
+      hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => capacityOnlyPowerLimits(10),
       getDeferredObjectiveSettings: () => undefined,
       getDeferredObjectiveActivePlans: () => null,
       getTimeZone: () => 'UTC',

@@ -150,8 +150,10 @@ corrects the allowance without claiming device damage or enabling q90.
 Shortfalls below 0.25 kWh do not grow correction or select q90.
 On other days it decays by 0.75 and credits up to 10 kWh of reliably unused
 allowance. It snaps to zero below 0.25 kWh. `throughDateKey` prevents duplicate
-integration, and sustainable capacity times the actual local-day length bounds
-both the correction and the final suggestion.
+integration, and the planning ceiling (`planningPowerCeiling`: hard cap minus
+safety margin, or the grid import target, whichever enabled limit is lower) times
+the actual local-day length bounds both the correction and the final suggestion.
+With no power limit enabled neither is bounded by a ceiling.
 
 Auto-apply follows the recommendation in either direction. The correction is
 already included in that recommendation and cannot veto decreases. Version 3

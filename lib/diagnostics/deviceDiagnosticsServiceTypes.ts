@@ -47,7 +47,9 @@ export type DeviceDiagnosticsPlanObservation = {
   // into the energy the daily-budget evidence is measured in.
   expectedPowerKw: number;
   // Cause-independent daily-budget pressure. True whenever this device has
-  // unmet demand while the configured budget is below sustainable capacity.
+  // unmet demand while the configured budget is below the planning ceiling over
+  // the day (`isDailyBudgetBelowPlanningCeiling`), or any enabled budget when no
+  // power limit is enabled.
   budgetPressureDenied: boolean;
   /** Temperature demand held specifically by daily pace, while physically short of target. */
   budgetUnservedDenied: boolean;

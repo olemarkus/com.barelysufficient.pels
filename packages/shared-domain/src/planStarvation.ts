@@ -113,13 +113,19 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   // three permissions (`buildRescueCandidate`), and the per-device gate decides
   // which of them survive to be listed here.
   extraPermissionsTitle: 'Extra permissions',
-  // Factual at-cap honesty signal. The coordinated preview can show the device
-  // running now, but if the house is already pressed against the physical hard
-  // cap there is no room until something frees up. Names the real measured
-  // fact (at the hard cap), NOT a prompt to raise it — the hard cap is not a
-  // remedy (feedback_hard_cap_is_physical). Pairs with the "Running as soon as there’s
-  // room" flash for the same honesty when the rescue is committed.
-  atCapNote: 'Your hard cap is maxed out right now, so it may wait for room before running.',
+  // Factual at-limit honesty signal. The coordinated preview can show the device
+  // running now, but if the house is already pressed against an enabled power
+  // limit there is no room until something frees up. Names the real measured
+  // fact and the limit it is measured against (`atPowerLimitNow`), NOT a prompt
+  // to raise it — the hard cap is not a remedy (feedback_hard_cap_is_physical),
+  // and neither is the grid import limit. Keyed by limit so a switched-off hard
+  // cap is never blamed when the grid import limit is the one pressed. Pairs with
+  // the "Running as soon as there’s room" flash for the same honesty when the
+  // rescue is committed.
+  atPowerLimitNote: {
+    capacity: 'Your hard cap is maxed out right now, so it may wait for room before running.',
+    grid: 'Import is at your grid import limit right now, so it may wait for room before running.',
+  },
   // Preview couldn't be projected (no prices yet, missing reading, price
   // optimisation off). Distinct from a hard error.
   previewUnavailable: 'Can’t preview this yet — PELS needs more current data for this window.',

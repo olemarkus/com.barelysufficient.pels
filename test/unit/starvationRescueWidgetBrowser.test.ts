@@ -400,12 +400,14 @@ describe('starvation rescue widget browser', () => {
     expect(perms.hidden).toBe(true);
   });
 
-  test('an at-cap preview surfaces the factual honesty note', async () => {
+  // The note names the limit the backend reports as pressed, so a switched-off
+  // hard cap is never blamed when the grid import limit is the one reached.
+  test.each(['capacity', 'grid'] as const)('an at-limit (%s) preview surfaces the factual honesty note', async (limit) => {
     const homey = buildHomey({
       api: vi.fn(async (_method: string, path: string) => {
         if (path === '/devices') return READY_PAYLOAD;
         if (path === '/preview') {
-          return { ...OK_PREVIEW, estimate: { ...OK_PREVIEW.estimate, atCapNow: true } };
+          return { ...OK_PREVIEW, estimate: { ...OK_PREVIEW.estimate, atPowerLimitNow: limit } };
         }
         if (path === '/rescue') return { ok: true, runsCurrentHour: false };
         throw new Error(`unexpected ${path}`);
@@ -420,7 +422,8 @@ describe('starvation rescue widget browser', () => {
 
     const atCap = document.querySelector('[data-confirm-at-cap]') as HTMLElement;
     expect(atCap.hidden).toBe(false);
-    expect(atCap.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.atCapNote);
+    expect(atCap.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.atPowerLimitNote[limit]);
+    if (limit === 'grid') expect(atCap.textContent).not.toMatch(/hard cap/i);
   });
 
   test('a preview that is NOT at cap hides the at-cap note', async () => {
@@ -431,7 +434,7 @@ describe('starvation rescue widget browser', () => {
     click('[data-rescue-button]');
     await flushPromises();
 
-    // OK_PREVIEW carries no `atCapNow`, so the honesty note stays hidden.
+    // OK_PREVIEW carries no `atPowerLimitNow`, so the honesty note stays hidden.
     expect((document.querySelector('[data-confirm-at-cap]') as HTMLElement).hidden).toBe(true);
   });
 

@@ -10,6 +10,7 @@
 // future measurements, re-plans, or device response, so it is not a guarantee.
 // Legacy callers that omit the roster retain the isolated projection mode.
 
+import type { PowerLimitAxis } from './capacitySettings.js';
 import type { DeferredObjectiveSettingsEntry } from './deferredObjectiveSettings.js';
 
 // The candidate objective to project: the same shape the settings store
@@ -126,16 +127,20 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // as a shape (no y-axis values), so a rate label has nothing to label. Add one
   // when/if the chart grows axis values.
   priceSeries?: DeferredObjectivePlanPreviewPricePoint[];
-  // At-cap honesty flag. Even a coordinated preview cannot promise that the
+  // At-limit honesty flag. Even a coordinated preview cannot promise that the
   // measured house load will leave the planned capacity available right now.
-  // `atCapNow` is true when the candidate's plan would
-  // run the device in the CURRENT clock hour BUT the measured whole-home draw is
-  // already at/above the configured hard cap — so the projected "runs now"
-  // can overstate what physically runs until something frees up. It
-  // is a FACTUAL signal (measured draw vs the physical cap), NOT a prompt to
-  // raise the cap (the cap is physical). Absent when there is no usable
-  // measured-draw / hard-cap reading, or the current hour is not scheduled.
-  atCapNow?: boolean;
+  // `atPowerLimitNow` names the enabled power limit the measured whole-home
+  // draw is already pressed against (`capacity`: at the configured hard cap;
+  // `grid`: at the grid import target, where live control holds import; the one
+  // reached first when both are enabled) when the candidate's plan would run the
+  // device in the CURRENT
+  // clock hour — so the projected "runs now" can overstate
+  // what physically runs until something frees up. It is a FACTUAL signal
+  // (measured draw vs an enabled limit), NOT a prompt to raise the limit (the cap
+  // is physical), and never names a limit that is switched off. Absent when
+  // there is no usable measured-draw reading, no enabled limit is pressed, or
+  // the current hour is not scheduled.
+  atPowerLimitNow?: PowerLimitAxis;
   // The rescue "Extra permissions" that SURVIVED the candidate's per-device
   // gate (`AppSmartTaskApi.gateCandidateExtraPermissions`). The producer is handed the
   // already-gated candidate, so this reflects exactly what the rescue would

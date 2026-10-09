@@ -75,7 +75,7 @@ test('budget tomorrow card', async ({ page }) => {
 });
 
 test('over-cap warning', async ({ page }) => {
-  await seedWeatherOn(page, { cappedByCapacity: true });
+  await seedWeatherOn(page, { cappedByPowerLimit: 'capacity' });
   await openBudgetTab(page);
   const card = page.locator('#weather-tomorrow-card');
   await expect(card.locator('#weather-overcap-banner')).toBeVisible();

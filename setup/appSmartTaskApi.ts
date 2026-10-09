@@ -223,6 +223,7 @@ export class AppSmartTaskApi {
       priceOptimizationEnabled: this.ctx.priceOptimizationEnabled,
       // See `homeScope.ts`: probes pace against what the guard admits.
       capacitySettings: this.ctx.capacitySettings,
+      hasSolarProduction: this.ctx.deviceReads.hasProductionCandidate(),
       // The price store exposes a per-kWh RATE label; `previewDeferredObjectivePlan`
       // converts it to a money unit for the total `costEstimate`.
       priceRateLabel,

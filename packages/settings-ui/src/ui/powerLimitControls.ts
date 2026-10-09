@@ -1,4 +1,7 @@
-import { resolveCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
+import {
+  isCapacityPeriodMinutes,
+  resolveCapacityPeriodMinutes,
+} from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import type { CapacityScalarSettings, PowerLimitSettings } from '../../../contracts/src/capacitySettings.ts';
 import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
 import { isValidGridImportLimitKw, gridImportTargetKw } from '../../../shared-domain/src/settings/powerLimits.ts';
@@ -110,14 +113,77 @@ export const validatePowerLimitSettings = (settings: CapacityScalarSettings): vo
   }
 };
 
+// Every reader below reads the switches the same way: Grid import limit is on only
+// when its switch is selected.
+const isGridImportSwitchOn = (): boolean => settingsGridImportEnabledInput?.selected === true;
+
 export const readPowerLimitSettings = (fallback: CapacityScalarSettings): PowerLimitSettings => {
   const capacityEnabled = settingsCapacityEnabledInput?.selected ?? fallback.capacityEnabled;
   return {
     capacityEnabled,
-    gridImportLimitKw: settingsGridImportEnabledInput?.selected === true
+    gridImportLimitKw: isGridImportSwitchOn()
       ? readNumberInput(settingsGridImportLimitInput, 'Grid import limit') : null,
     limitKw: capacityEnabled ? readNumberInput(settingsCapacityLimitInput, 'Hard cap') : fallback.limitKw,
     marginKw: capacityEnabled ? readNumberInput(settingsCapacityMarginInput, 'Safety margin') : fallback.marginKw,
     periodMinutes: resolveCapacityPeriodMinutes(Number(settingsCapacityPeriodSelect?.value), fallback.periodMinutes),
+  };
+};
+
+/**
+ * What the Limits form shows right now, saved or not: which limits are switched
+ * on, and each value, `null` while that value is not a valid number. A display
+ * reads the switches here, so one unreadable value hides no limit and invents no
+ * other: the Budget page's limits card shows the switched-on limits and renders an
+ * unreadable value as unknown.
+ */
+export type PowerLimitFormView = {
+  capacityEnabled: boolean;
+  gridImportEnabled: boolean;
+  limitKw: number | null;
+  marginKw: number | null;
+  gridImportLimitKw: number | null;
+};
+
+const readFiniteInput = (input: MdFilledTextFieldElement | null): number | null => {
+  const value = Number.parseFloat(input?.value ?? '');
+  return Number.isFinite(value) ? value : null;
+};
+
+/** The Limits form as `PowerLimitFormView`; `null` while the Capacity limit switch is not rendered. */
+export const readPowerLimitFormView = (): PowerLimitFormView | null => {
+  if (!settingsCapacityEnabledInput) return null;
+  const gridImportLimitKw = readFiniteInput(settingsGridImportLimitInput);
+  return {
+    capacityEnabled: settingsCapacityEnabledInput.selected,
+    gridImportEnabled: isGridImportSwitchOn(),
+    limitKw: readFiniteInput(settingsCapacityLimitInput),
+    marginKw: readFiniteInput(settingsCapacityMarginInput),
+    gridImportLimitKw: gridImportLimitKw !== null && isValidGridImportLimitKw(gridImportLimitKw)
+      ? gridImportLimitKw
+      : null,
+  };
+};
+
+/**
+ * The Limits form's current values (saved or not) as power-limit settings, for a
+ * surface that only computes from them and must not throw: the Budget page's
+ * recommended daily maximum. `null` when the form cannot answer: the Capacity
+ * limit switch is not rendered yet, or a value the settings carry is not a valid
+ * number. Unlike `readPowerLimitSettings` it has no persisted fallback to fill in
+ * with, so it never mixes saved values into the form's.
+ */
+export const readPowerLimitFormSettings = (): PowerLimitSettings | null => {
+  const view = readPowerLimitFormView();
+  const periodMinutes = Number(settingsCapacityPeriodSelect?.value);
+  if (view === null || view.limitKw === null || view.marginKw === null || !isCapacityPeriodMinutes(periodMinutes)) {
+    return null;
+  }
+  if (view.gridImportEnabled && view.gridImportLimitKw === null) return null;
+  return {
+    capacityEnabled: view.capacityEnabled,
+    gridImportLimitKw: view.gridImportEnabled ? view.gridImportLimitKw : null,
+    limitKw: view.limitKw,
+    marginKw: view.marginKw,
+    periodMinutes,
   };
 };

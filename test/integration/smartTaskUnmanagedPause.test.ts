@@ -31,6 +31,7 @@ import { resolveSmartTaskDeviceExclusion } from '../../setup/appInit/smartTaskHo
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 import {
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
@@ -40,7 +41,7 @@ import {
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
 // to the FLOOR rung, so a high rate is what preserves these cases' behaviour.)
-const TEST_SUSTAINABLE_RATE_KW = 100;
+const TEST_PLANNING_CEILING_KW = 100;
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;
@@ -87,7 +88,8 @@ const buildDiagnosticsParams = (overrides: {
   deviceIds?: string[];
   resolveDeviceExclusion?: ResolveObjectiveDeviceExclusion;
 }) => ({
-  sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
+  powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
+  hasSolarProduction: false,
   nowMs: NOW_MS,
   timeZone: 'UTC',
   devices: overrides.devices,

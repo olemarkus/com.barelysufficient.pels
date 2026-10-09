@@ -123,11 +123,15 @@ card → `Choose temperature device` → Settings, Weather insight section.
   The suggestion also includes headroom, so the number is a component and not
   the whole delta. Overshoot is measured on budget-counted usage (metered less
   usage allowed beyond the budget), so that load never reads as going over.
-- When the suggestion is clamped by the hard cap (`cappedByCapacity`), a warn-tone
-  over-cap banner (`.banner banner--warning banner--stacked`) renders before the
-  verdict: `Tomorrow may need more than your hard cap allows`. The cap is the tariff step —
-  copy never suggests raising it; it states PELS will hold the cap. In that state the
-  ok-tone verdicts are suppressed (a capped day is never an "ok" landing).
+- When the suggestion is clamped by the planning ceiling (`cappedByPowerLimit` names
+  the limit that sets it), a warn-tone over-cap banner (`.banner banner--warning
+  banner--stacked`) renders before the verdict: `Tomorrow may need more than your hard
+  cap allows`, or `Tomorrow may need more than your grid import limit allows` when the
+  grid import limit sets the ceiling. The cap is the tariff step — copy never suggests
+  raising it; it states PELS will hold the cap (for the grid limit, that PELS reduces
+  flexible loads near it). In that state the ok-tone verdicts are suppressed (a capped
+  day is never an "ok" landing). With no power limit enabled nothing clamps the
+  suggestion and the banner never shows.
 - Verdict line (exactly one, current budget vs prediction quantiles):
   - current ≥ q90: `Your budget covers tomorrow with room to spare.` (ok)
   - q80 ≤ current < q90: `Your budget should cover tomorrow.` (ok)

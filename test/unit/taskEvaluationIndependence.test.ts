@@ -4,6 +4,7 @@ import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/t
 import type { TaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import type { DeferredObjectiveHorizonPlan } from '../../lib/objectives/deferredObjectives/types';
 import { partialDouble } from '../helpers/partialDouble';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 it('keeps admission, reservations and requested completion independent of reporting columns', () => {
   const plan = partialDouble<DeferredObjectiveHorizonPlan>({
@@ -37,7 +38,7 @@ it('keeps admission, reservations and requested completion independent of report
     return {
       admission: [...applyDeferredObjectiveAdmission([operational])],
       reservations: buildPriorityReservations({
-        evaluation: operational, objective, device: undefined, activePlans: null, sustainableRateKw: 10, nowMs: 0,
+        evaluation: operational, objective, device: undefined, activePlans: null, powerLimits: capacityOnlyPowerLimits(10), nowMs: 0,
       }),
       completion: resolveTaskCompletion({
         currentValue: operational.progress.value, requestedTarget: operational.requestedTarget,

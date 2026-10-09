@@ -1,6 +1,8 @@
 import { getDateKeyStartMs, getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
 import type { BudgetAdviceDecision } from '../../packages/contracts/src/budgetDiagnostics';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import { planningPowerCeiling } from '../../packages/shared-domain/src/settings/powerLimits';
 import type { Logger as PinoLogger } from 'pino';
 import type {
   WeatherAdvisorSettings,
@@ -25,8 +27,9 @@ type AutoApplyDeps = {
   getAppliedDailyBudgetKwh?: () => number | undefined;
   /** Notifies setup that the auto-apply landed so it can fire the Flow trigger; see WeatherCollectorDeps. */
   onDailyBudgetAutoApplied?: (info: { budgetKwh: number; forecastMeanTempC: number }) => void;
-  getSustainableCapacityKw?: () => number;
-  getTimeZone?: () => string;
+  /** The live power-limit settings; the recorded daily ceiling is their planning ceiling. */
+  getPowerLimitSettings: () => PowerLimitSettings;
+  getTimeZone: () => string;
   recordBudgetDecision?: (decision: BudgetAdviceDecision) => void;
   logger: PinoLogger;
 };
@@ -114,13 +117,15 @@ function recordDecision(
   }
 }
 
+// The planning ceiling over the target local day; null when no power limit is
+// enabled: nothing caps the day.
 function resolveDailyCeiling(targetDateKey: string, deps: AutoApplyDeps): number | null {
-  const capacityKw = deps.getSustainableCapacityKw?.();
-  const timeZone = deps.getTimeZone?.();
-  if (capacityKw === undefined || timeZone === undefined) return null;
+  const ceiling = planningPowerCeiling(deps.getPowerLimitSettings());
+  if (ceiling === null) return null;
+  const timeZone = deps.getTimeZone();
   const startMs = getDateKeyStartMs(targetDateKey, timeZone);
   const hours = (getNextLocalDayStartUtcMs(startMs, timeZone) - startMs) / (60 * 60 * 1000);
-  return capacityKw * hours;
+  return ceiling.kw * hours;
 }
 
 function readAppliedBudget(deps: AutoApplyDeps): number | null {

@@ -179,6 +179,7 @@ The plan is a cumulative curve. The current bucket's planned kWh is turned into 
 ## Interaction With Other Features
 
 - **Capacity limit (hard cap)**: Enforced whenever **Capacity limit** is on. Daily budget never bypasses it. Only projected breaches of the capacity period's hard-cap budget trigger urgent manual-action Flows.
+- **Planned hours**: No hour of the plan is planned above the lower enabled limit: the hard cap minus the safety margin, or the level where PELS starts reducing loads under the grid import limit. With Capacity limit off the hard cap no longer caps the hours; with no limit on, only your observed usage does.
 - **Daily pace**: Combined with the hourly pace by taking the tighter limit. Never triggers emergency alarms.
 - **Grid import limit**: Enforced whenever it is on. Daily budget never bypasses it.
 - **Budget-exempt devices**: Skipped by daily-budget control, but still visible in real usage and still count toward the grid import limit and the hard cap.

@@ -33,6 +33,7 @@ describe('daily budget next-day debug', () => {
     };
 
     logNextDayPlanDebug({
+      planningCeiling: null,
       debugStructured,
       shouldLog: true,
       context,
@@ -94,6 +95,7 @@ describe('daily budget next-day debug', () => {
       state,
       combinedPrices: null,
       priceOptimizationEnabled: false,
+      planningCeiling: null,
       defaultProfile,
     });
     const debugCall = debugStructured.mock.calls.find((call) => (
@@ -112,6 +114,7 @@ describe('daily budget next-day debug', () => {
       settings,
       combinedPrices: null,
       priceOptimizationEnabled: false,
+      planningCeiling: null,
     }).buckets;
 
     expect(logged?.plannedGrossUncontrolledKWh).toHaveLength(24);

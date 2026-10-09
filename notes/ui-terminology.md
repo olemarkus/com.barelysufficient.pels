@@ -31,6 +31,23 @@ Never say the grid has no power available: the grid is still supplying it. Where
 surface falls back to the shared reason formatter, a grid hold reads `Limited by
 the grid import limit`, never the hard cap.
 
+Copy about a plan that looks ahead names the limit that sets the planning ceiling
+(hard cap minus safety margin, or the grid import target, whichever enabled limit is
+lower), never a hard cap that is switched off. With no limit enabled, the copy that
+blames a limit does not render. The grid variants are:
+
+- Daily budget warning: `Daily budget exceeds what your grid import limit can deliver`,
+  body `… at most N kWh fits within your grid import limit …` (`dailyBudgetWarningStrings.ts`).
+- Daily budget field hint: `Recommended up to N kWh, what your grid import limit allows
+  in a day.` The hard cap keeps `(safe pace × 24h)`.
+- Smart-task preview note: `Import is at your grid import limit right now, so it may
+  wait for room before running.` (`planStarvation.ts`, `atPowerLimitNote`).
+- Weather card: `Tomorrow may need more than your grid import limit allows`, body
+  `… PELS will reduce flexible loads near the limit …` (`weatherInsightCopy.ts`).
+- Budget page "Current limits" card: only the limits that are on. Capacity limit
+  shows `Hard cap`, `Safety margin` and the safe-pace row; Grid import limit
+  shows a `Grid import limit N kW` row; neither shows `Power limits off`.
+
 The settings hint is “Reduce flexible loads when household import approaches this
 level.” Net import is the measurement, including negative export with solar. The
 settings explanation names meter cadence, device response and temporary overshoot,

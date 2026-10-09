@@ -238,6 +238,7 @@ export function buildMainHomeScope(
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getCapacitySettings: () => ctx.capacitySettings,
+    hasSolarProduction: () => ctx.deviceReads.hasProductionCandidate(),
     getPrioritiesForDevices,
     // Allocation-horizon price source, resolved from the price layer; shared
     // single source of truth so the objectives subsystem stays free of `lib/price`.

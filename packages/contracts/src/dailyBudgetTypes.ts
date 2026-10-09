@@ -1,3 +1,5 @@
+import type { PowerLimitAxis } from './capacitySettings.js';
+
 export type DailyBudgetModelSettings = {
   enabled: boolean;
   dailyBudgetKWh: number;
@@ -77,13 +79,25 @@ export type DailyBudgetProjectionState = {
   status: DailyBudgetStatus;
 };
 
+/**
+ * The most energy the enabled power limit lets a day hold (its planning
+ * ceiling over 24 hours), and which limit that is, so a warning names the limit
+ * that actually binds. `maxFittingDailyBudgetKWh` is 0 when that limit leaves
+ * no rate at all (a hard cap at or below its safety margin).
+ */
+export type DailyBudgetPowerLimitCeiling = {
+  limit: PowerLimitAxis;
+  maxFittingDailyBudgetKWh: number;
+};
+
 export type DailyBudgetAllocationPressure = {
   requestedBudgetKWh: number;
   plannedBudgetKWh: number;
   unallocatedBudgetKWh: number;
   saturationRatio: number;
   constrained: boolean;
-  maxFittingDailyBudgetKWh: number;
+  /** `null` when no power limit is enabled: no limit caps the day's energy. */
+  powerLimitCeiling: DailyBudgetPowerLimitCeiling | null;
 };
 
 export type ConfidenceDebug = {

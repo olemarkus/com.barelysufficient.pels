@@ -608,6 +608,9 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
 
 async function handlePowerLimitsChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.loadCapacitySettings();
+  // The daily budget's hours are capped by the planning ceiling, which these
+  // switches move, so the day is replanned now rather than at its next rebuild.
+  deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
   await rebuildPlanFromSettings(deps, 'power_limits');
 }
 

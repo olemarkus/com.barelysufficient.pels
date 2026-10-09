@@ -1,3 +1,4 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import { computePlanDeviation, type DayContext, type PriceData } from './dailyBudgetState';
 import type { ExistingPlanState, RebuildPlanDebug } from './dailyBudgetManagerTypes';
 import { getProfileBlendConfidence } from './dailyBudgetMath';
@@ -105,6 +106,17 @@ export function resolvePlanLockState(params: {
   };
 }
 
+// One string per planning ceiling, compared to notice that it moved.
+export const describePlanningCeiling = (ceiling: PowerLimitCeiling | null): string => (
+  ceiling === null ? 'none' : `${ceiling.limit}:${ceiling.kw}`
+);
+
+// Whether the ceiling of this update differs from the one the plan was built on;
+// `null` (no plan built yet) is no move.
+export const hasPlanningCeilingMoved = (lastPlanMark: string | null, mark: string): boolean => (
+  lastPlanMark !== null && mark !== lastPlanMark
+);
+
 export function shouldRebuildDailyBudgetPlan(params: {
   context: DayContext;
   enabled: boolean;
@@ -117,6 +129,8 @@ export function shouldRebuildDailyBudgetPlan(params: {
   lastPlanRebuildMs: number;
   /** The prices the plan is shaped on differ from those of the last build. */
   pricesChanged?: boolean;
+  /** The planning ceiling that caps the hours differs from the last build's. */
+  planningCeilingChanged: boolean;
 }): boolean {
   const {
     context,
@@ -129,6 +143,7 @@ export function shouldRebuildDailyBudgetPlan(params: {
     lastUsedNowKWh,
     lastPlanRebuildMs,
     pricesChanged,
+    planningCeilingChanged,
   } = params;
   if (!enabled) return false;
   if (frozen && !recomputeFrozenPlan) return false;
@@ -142,6 +157,7 @@ export function shouldRebuildDailyBudgetPlan(params: {
     planStateMismatch
     || Boolean(forcePlanRebuild)
     || Boolean(pricesChanged)
+    || planningCeilingChanged
     || usageChanged
     || lastPlanBucketStartUtcMs !== currentBucketStartUtcMs
     || context.nowMs - lastPlanRebuildMs >= PLAN_REBUILD_INTERVAL_MS
@@ -153,7 +169,7 @@ export function logDailyBudgetPlanDebug(params: {
   snapshot: DailyBudgetDayPayload;
   priceData: PriceData;
   priceOptimizationEnabled: boolean;
-  capacityBudgetKWh?: number;
+  planningCeiling: PowerLimitCeiling | null;
   settings: DailyBudgetSettings;
   state: DailyBudgetState;
   defaultProfile: number[];
@@ -166,7 +182,7 @@ export function logDailyBudgetPlanDebug(params: {
     snapshot,
     priceData,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     settings,
     state,
     defaultProfile,
@@ -183,7 +199,7 @@ export function logDailyBudgetPlanDebug(params: {
     snapshot,
     settings,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     priceData,
     state,
     defaultProfile,
@@ -206,7 +222,7 @@ function buildPlanDebugPayload(params: {
   snapshot: DailyBudgetDayPayload;
   settings: DailyBudgetSettings;
   priceOptimizationEnabled: boolean;
-  capacityBudgetKWh?: number;
+  planningCeiling: PowerLimitCeiling | null;
   priceData: PriceData;
   state: DailyBudgetState;
   defaultProfile: number[];
@@ -220,7 +236,7 @@ function buildPlanDebugPayload(params: {
     snapshot,
     settings,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     priceData,
     state,
     defaultProfile,
@@ -240,7 +256,7 @@ function buildPlanDebugPayload(params: {
         priceShapingFlexShare: settings.priceShapingFlexShare,
       },
       priceOptimizationEnabled,
-      capacityBudgetKWh: Number.isFinite(capacityBudgetKWh) ? capacityBudgetKWh : null,
+      planningCeiling,
       profileSampleCount: profileMeta.sampleCount,
       profileSplitSampleCount: profileMeta.splitSampleCount,
       profileBlendConfidence: getProfileBlendConfidence(profileMeta.sampleCount),

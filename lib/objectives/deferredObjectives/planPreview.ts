@@ -3,8 +3,8 @@ import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/defe
 import type { TaskReservationReader } from './taskDeliveryState';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
-import { resolveUsableCapacityKw } from '../../power/capacityModel';
-import type { CapacityLimitSettings } from '../../power/capacityModel';
+import { gridImportTargetKw } from '../../../packages/shared-domain/src/settings/powerLimits';
+import type { PowerLimitAxis, PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
@@ -51,11 +51,15 @@ export type PreviewDeferredObjectivePlanParams = {
   // preview's price-curve / cost readers pending the preview migration).
   buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
-  // The persisted capacity scalars, which carry BOTH readings this producer
-  // needs: the pace the probes run at (`limitKw - marginKw`) and the physical
-  // ceiling `atCapNow` is measured against. Handed over unresolved so the
-  // derivation happens here, in the domain, not in the wiring layer.
-  capacitySettings: CapacityLimitSettings;
+  // The persisted power-limit settings, which carry BOTH readings this producer
+  // needs: the planning ceiling the probes run at (resolved by the policy
+  // horizon) and the level `atPowerLimitNow` is measured against
+  // (`resolvePressedAt`). Handed over unresolved so the derivation happens here,
+  // in the domain, not in the wiring layer.
+  capacitySettings: PowerLimitSettings;
+  // Whether the home has solar production, as the live plan cycle reads it: a PV
+  // home's preview is not cut at the grid import target.
+  hasSolarProduction: boolean;
   // The main-home planning inputs and objectives: the candidate is planned
   // against the live roster, so the preview is priority-aware. The candidate's
   // own device (already produced by `toPlanDevice`) is among `devices` when it
@@ -119,7 +123,8 @@ export const previewDeferredObjectivePlan = (
     dailyBudgetSnapshot: params.dailyBudgetSnapshot,
     priceOptimizationEnabled: params.priceOptimizationEnabled,
     activePlans: params.activePlans,
-    sustainableRateKw: resolveUsableCapacityKw(params.capacitySettings),
+    powerLimits: params.capacitySettings,
+    hasSolarProduction: params.hasSolarProduction,
   }, {
     buildPriceHorizon: params.buildPriceHorizon,
     getPrioritiesForDevices: params.getPrioritiesForDevices,
@@ -181,27 +186,42 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 // genuinely pressed against the physical ceiling, not merely busy.
 const AT_CAP_THRESHOLD = 0.98;
 
-// Factual at-cap signal: is the candidate scheduled to run in the CURRENT clock
-// hour while the measured whole-home draw is already at/above the physical hard
-// cap? The schedule estimate cannot promise live capacity, so this corrects its
-// "runs now" implication with a measured
-// fact (draw vs cap), NEVER a suggestion to raise the cap (the cap is physical).
+// The draw at which each enabled limit counts as pressed: 98% of the hard cap
+// itself (not the pace the probes run at), and the grid import target, which
+// live control already holds import at, so 98% of the configured grid limit is
+// a level the draw almost never reaches. The lower one is reached first, so it is
+// the one pressed; `null` when no power limit is enabled.
+const resolvePressedAt = (settings: PowerLimitSettings): { limit: PowerLimitAxis; kw: number } | null => {
+  const capacityKw = settings.capacityEnabled ? settings.limitKw * AT_CAP_THRESHOLD : null;
+  const gridKw = settings.gridImportLimitKw === null ? null : gridImportTargetKw(settings.gridImportLimitKw);
+  if (gridKw !== null && (capacityKw === null || gridKw <= capacityKw)) return { limit: 'grid', kw: gridKw };
+  return capacityKw === null ? null : { limit: 'capacity', kw: capacityKw };
+};
+
+// Factual at-limit signal: is the candidate scheduled to run in the CURRENT clock
+// hour while the measured whole-home draw is already pressed against an ENABLED
+// power limit (`resolvePressedAt`)? The schedule estimate cannot promise live
+// capacity, so this corrects its "runs now" implication with a measured fact
+// (draw vs limit), NEVER a suggestion to raise the limit (the cap is physical).
+// It names that limit, so the note never blames a hard cap that is switched off.
 // Returns undefined when the inputs can't support the claim (no scheduled current
-// hour, or no whole-home reading yet) so the UI omits the line rather than
-// guessing. The last reading holds until the next one: a meter that went silent
-// is `lib/power`'s to escalate, not this line's to second-guess.
-const resolveAtCapNow = (
+// hour, no whole-home reading yet, no power limit enabled, the limit not reached)
+// so the UI omits the line rather than guessing. The last reading holds until the
+// next one: a meter that went silent is `lib/power`'s to escalate, not this
+// line's to second-guess.
+const resolveAtPowerLimitNow = (
   scheduledHours: readonly DeferredObjectivePlanPreviewHour[],
   request: PreviewDeferredObjectivePlanParams,
-): boolean | undefined => {
+): PowerLimitAxis | undefined => {
   const { nowMs, powerTracker } = request;
-  const hardCapKw = request.capacitySettings.limitKw;
+  const pressedAt = resolvePressedAt(request.capacitySettings);
+  if (pressedAt === null) return undefined;
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   const runsCurrentHour = scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
   if (!runsCurrentHour) return undefined;
   const { lastPowerW } = powerTracker;
   if (lastPowerW === undefined) return undefined;
-  return lastPowerW / 1000 >= hardCapKw * AT_CAP_THRESHOLD;
+  return lastPowerW / 1000 >= pressedAt.kw ? pressedAt.limit : undefined;
 };
 
 // Re-attach `enabled: true`, building each union member explicitly per `kind`.
@@ -300,7 +320,7 @@ const buildEstimateFromDiagnostic = (
   // the same basis as `scheduledHours`, so the widget joins them by `startsAtMs`.
   const priceSeries = buildDeferredObjectivePolicyWindowPrices(dailyBudgetSnapshot, nowMs, deadlineAtMs)
     .map((point) => ({ startsAtMs: point.startMs, price: point.price }));
-  const atCapNow = resolveAtCapNow(scheduledHours, request);
+  const atPowerLimitNow = resolveAtPowerLimitNow(scheduledHours, request);
   const floorShortfallCause = resolveFloorShortfallCause(diag.horizonPlan.statusDetail);
   let budgetRole: DeferredObjectivePlanPreviewEstimate['budgetRole'] = 'none';
   if (floorShortfallCause === 'budget') budgetRole = 'sole';
@@ -319,7 +339,7 @@ const buildEstimateFromDiagnostic = (
     costEstimate: cost,
     ...(cost !== null && costUnit ? { costUnit } : {}),
     ...(priceSeries.length > 0 ? { priceSeries } : {}),
-    ...(atCapNow !== undefined ? { atCapNow } : {}),
+    ...(atPowerLimitNow !== undefined ? { atPowerLimitNow } : {}),
     ...(grantedRescuePermissions ? { grantedRescuePermissions } : {}),
   };
 };

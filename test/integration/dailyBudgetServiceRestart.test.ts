@@ -7,6 +7,7 @@ import { partialDouble } from '../helpers/partialDouble';
 
 type AppHomey = Homey.App['homey'];
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 // Plain-restart invariant for the daily budget: a service reload over the
 // persisted settings and state (the app-restart seam) must not reallocate the hour in
@@ -54,7 +55,7 @@ function buildService(
     log: () => undefined,
     getPowerTracker: getTracker,
     getPriceOptimizationEnabled: () => false,
-    getCapacitySettings: () => ({ limitKw: 15, marginKw: 1 }),
+    getCapacitySettings: () => capacityOnlyPowerLimits(15, 1),
     combinedPricesReader: { readStore: () => null },
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
     dailyBudgetStateStore: createDailyBudgetStateStore(database),

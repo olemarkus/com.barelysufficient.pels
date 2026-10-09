@@ -14,6 +14,7 @@ import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { VAT_MULTIPLIER_STANDARD } from '../../lib/price/priceComponents';
 import { EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, PRICE_SCHEME } from '../../lib/utils/settingsKeys';
 import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 const TZ = 'Europe/Oslo';
 
@@ -58,7 +59,7 @@ describe('budgetPrice layered onto the producer from injected forecast surplus',
     const service = createService();
     service.setBudgetPriceInputs({
       getSurplusKwh: (ms) => (ms === Date.parse(hourA) ? 2 : 0),
-      expectedManagedDrawKwh: 4, // coverage on hourA = 2/4 = 0.5
+      getPowerLimitSettings: () => capacityOnlyPowerLimits(4), // coverage on hourA = 2/4 = 0.5
     });
 
     const byHour = new Map(service.getCombinedHourlyPrices().map((p) => [p.startsAt, p]));

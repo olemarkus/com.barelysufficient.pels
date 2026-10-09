@@ -17,6 +17,7 @@ import {
   WEATHER_ADVISOR_SETTINGS,
 } from '../../lib/utils/settingsKeys';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 // Integration seam: a settings write dispatched through the real
 // createSettingsHandler must reach the real collector (real history-store
@@ -128,7 +129,7 @@ const buildHarness = (
     getAppliedDailyBudgetKwh: () => 50,
     getBudgetCountedKwh: () => 18,
     readBudgetDecisions: () => [],
-    getSustainableCapacityKw: () => 5,
+    getPowerLimitSettings: () => capacityOnlyPowerLimits(5),
     getSettings: () => buildWeatherAdvisorSettings({ settings: homey.settings }),
     readMeterScopeSignature: () => readWholeHomeMeterScopeSignature(homeyCast),
     readMainMeterSelection: () => readMainMeterSelection(homey.settings),

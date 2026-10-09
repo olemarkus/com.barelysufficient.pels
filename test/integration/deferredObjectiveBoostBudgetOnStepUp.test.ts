@@ -269,6 +269,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   powerTracker.lastPowerW = STEP_LOW_KW * 1000;
 
   const deferredController = new DeferredObjectiveDecorationController({
+    hasSolarProduction: () => false,
     getThermalDirection: () => 'heating',
     getPrioritiesForDevices: createFixturePriorityQuery(),
     getDeferredObjectiveSettings: () => buildSettings(),

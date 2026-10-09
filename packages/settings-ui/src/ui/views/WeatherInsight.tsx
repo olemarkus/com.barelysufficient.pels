@@ -65,9 +65,12 @@ import {
   WEATHER_SETUP_BUDGET_HINT,
   WEATHER_SETUP_BUTTON,
   WEATHER_VALUE_NOT_CLEAR_YET,
+  WEATHER_WARN_OVER_GRID_LIMIT_BODY,
+  WEATHER_WARN_OVER_GRID_LIMIT_TITLE,
   WEATHER_WARN_OVER_HARDCAP_BODY,
   WEATHER_WARN_OVER_HARDCAP_TITLE,
 } from '../../../../shared-domain/src/weatherInsightCopy.ts';
+import type { PowerLimitAxis } from '../../../../contracts/src/capacitySettings.ts';
 import { WeatherCoverageBand, WeatherScatterChart } from './WeatherInsightChart.tsx';
 
 // Budget-page Tomorrow card + the Weather insight detail view. Spec of
@@ -104,18 +107,25 @@ const StateCard = ({ id, title, body, children }: {
   </section>
 );
 
+const OVER_LIMIT_COPY: Record<PowerLimitAxis, { title: string; body: string }> = {
+  capacity: { title: WEATHER_WARN_OVER_HARDCAP_TITLE, body: WEATHER_WARN_OVER_HARDCAP_BODY },
+  grid: { title: WEATHER_WARN_OVER_GRID_LIMIT_TITLE, body: WEATHER_WARN_OVER_GRID_LIMIT_BODY },
+};
+
 /**
- * Shown when the suggestion was capped by the hard cap — i.e. tomorrow's expected
- * usage is more than the cap can physically deliver in a day. Reuses the shared
+ * Shown when the suggestion was capped by an enabled power limit — i.e.
+ * tomorrow's expected usage is more than that limit can physically deliver in a
+ * day. Names the limit that sets the ceiling (the hard cap, or the grid import
+ * limit), never a hard cap that is switched off. Reuses the shared
  * `.banner banner--warning` primitive. The cap is physical: copy never suggests
  * raising it.
  */
-const WeatherOverCapBanner = () => (
+const WeatherOverCapBanner = ({ limit }: { limit: PowerLimitAxis }) => (
   <section class="banner banner--warning banner--stacked" id="weather-overcap-banner" role="status">
     <span class="banner__icon" aria-hidden="true"><WarningIcon /></span>
     <div class="banner__body">
-      <p class="banner__title">{WEATHER_WARN_OVER_HARDCAP_TITLE}</p>
-      <p class="banner__text">{WEATHER_WARN_OVER_HARDCAP_BODY}</p>
+      <p class="banner__title">{OVER_LIMIT_COPY[limit].title}</p>
+      <p class="banner__text">{OVER_LIMIT_COPY[limit].body}</p>
     </div>
   </section>
 );
@@ -138,9 +148,10 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       coldEveningSuspected: suggestion?.coldEveningSuspected,
     })
     : null;
-  // A capacity-capped day is never an "ok" landing; an ok-tone verdict would
+  // A limit-capped day is never an "ok" landing; an ok-tone verdict would
   // contradict the over-cap banner, so suppress it (the banner is the message).
-  const verdict = suggestion?.cappedByCapacity === true && rawVerdict?.tone === 'ok' ? null : rawVerdict;
+  const cappedBy = suggestion?.cappedByPowerLimit ?? null;
+  const verdict = cappedBy !== null && rawVerdict?.tone === 'ok' ? null : rawVerdict;
   return (
     <section id="weather-tomorrow-card" class="pels-surface-card budget-redesign-card weather-card">
       <MdElevation aria-hidden="true" />
@@ -194,9 +205,9 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
           )}
         </div>
       )}
-      {/* Tomorrow's demand exceeds what the hard cap can deliver — surfaced before
-          the verdict so the physical ceiling frames the budget judgment. */}
-      {suggestion?.cappedByCapacity === true && <WeatherOverCapBanner />}
+      {/* Tomorrow's demand exceeds what the binding power limit can deliver —
+          surfaced before the verdict so the physical ceiling frames the budget judgment. */}
+      {cappedBy !== null && <WeatherOverCapBanner limit={cappedBy} />}
       {verdict !== null && (
         <p class={`weather-card__verdict weather-card__verdict--${verdict.tone}`}>{verdict.text}</p>
       )}

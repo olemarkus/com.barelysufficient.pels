@@ -11,6 +11,7 @@ describe('daily budget plan caps/floors', () => {
 
   it('uses available observed cap directly when only uncontrolled observed cap exists', () => {
     const result = resolveRemainingCaps({
+      planningCeiling: null,
       bucketStartUtcMs,
       timeZone,
       splitSharesUncontrolled: [1],
@@ -135,6 +136,7 @@ describe('daily budget plan caps/floors', () => {
 
   it('does not scale caps by split share when controlled endpoint weight has no observed cap', () => {
     const result = resolveRemainingCaps({
+      planningCeiling: null,
       bucketStartUtcMs,
       timeZone,
       splitSharesUncontrolled: [0.8],

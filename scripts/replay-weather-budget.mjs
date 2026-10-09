@@ -68,7 +68,7 @@ for (const record of records) {
       fit,
       targetDateKey: record.dateKey,
       forecastMeanTempC: forecast.tempC,
-      capacityLimitKw: capacityKw,
+      planningCeilingKw: capacityKw,
       capacityDayHours: dayHours,
       budgetPressure: pressure
     }).suggestedBudgetKwh;
@@ -76,7 +76,7 @@ for (const record of records) {
       fit: conservativeFit,
       targetDateKey: record.dateKey,
       forecastMeanTempC: forecast.tempC,
-      capacityLimitKw: capacityKw,
+      planningCeilingKw: capacityKw,
       capacityDayHours: dayHours,
       budgetPressure: conservativePressure
     }).suggestedBudgetKwh;

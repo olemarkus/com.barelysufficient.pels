@@ -14,7 +14,6 @@ import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { readWholeHomeMeterScopeSignature } from '../weatherMeterScopeSignature';
 import { readHubCoordinates } from '../homeyLocationAdapter';
 import { createWeatherHistoryStoreForApp } from './weatherHistoryStore';
-import { resolveWeatherSustainableCapacityKw } from '../../lib/weather/weatherCapacity';
 
 const LONG_GAP_THRESHOLD_MS = 60 * 60 * 1000;
 /** Fallback contact for the MET User-Agent when the manifest has no homepage/support. */
@@ -111,7 +110,7 @@ export function createWeatherCollector(
     // The same day on the budget's own axis (metered less exempt), from the
     // budget owner, so an exempt device's energy is not read as an overshoot.
     getBudgetCountedKwh: (dateKey) => ctx.dailyBudgetService?.getBudgetCountedKwh(dateKey),
-    getSustainableCapacityKw: () => resolveWeatherSustainableCapacityKw(ctx.capacitySettings),
+    getPowerLimitSettings: () => ctx.capacitySettings,
     getSettings: () => buildWeatherAdvisorSettings({ settings: ctx.homey.settings }),
     // Meter-scope fingerprint for the start()-time invalidation reconcile —
     // composed here (setup) because lib/weather must not read the homes config.
@@ -150,7 +149,7 @@ export function createWeatherCollector(
     recomputeDerived: (state) => computeEnergySignatureUpdate(state, {
       getNowMs: () => ctx.getNow().getTime(),
       getTimeZone: () => ctx.getTimeZone(),
-      getCapacityLimitKw: () => resolveWeatherSustainableCapacityKw(ctx.capacitySettings),
+      getPowerLimitSettings: () => ctx.capacitySettings,
       logger,
     }),
     // Auto-apply seam: lib/weather never imports lib/dailyBudget, so the apply

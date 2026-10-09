@@ -381,7 +381,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       previousPlannedKWh: [1, Number.NaN, 3, 4],
-      capacityBudgetKWh: 2,
+      planningCeiling: { limit: 'capacity', kw: 2 },
       lockCurrentBucket: true,
       observedStats: observedHourlyStatsFixture(),
     });
@@ -394,6 +394,7 @@ describe('daily budget math helpers', () => {
 
   it('builds a plan without previous data and without a capacity cap', () => {
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs,
       bucketUsage: [1, 2, 0, 0],
       currentBucketIndex: 1,
@@ -414,6 +415,7 @@ describe('daily budget math helpers', () => {
 
   it('keeps controlled service floor independent from unmanaged reserve mode', () => {
     const buildReserveModePlan = (controlledUsageWeight: number) => buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs,
       bucketUsage: [0, 0, 0, 0],
       currentBucketIndex: 0,
@@ -445,6 +447,7 @@ describe('daily budget math helpers', () => {
 
   it('uses unmanaged reserve mode to raise uncontrolled reserve', () => {
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs,
       bucketUsage: [0, 0, 0, 0],
       currentBucketIndex: 0,
@@ -474,6 +477,7 @@ describe('daily budget math helpers', () => {
   it('publishes gross uncontrolled reserve separately from the net planned split', () => {
     const observedGrossBackground = Array.from({ length: 24 }, () => 2);
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs,
       bucketUsage: [0, 0, 0, 0],
       currentBucketIndex: 0,
@@ -502,6 +506,7 @@ describe('daily budget math helpers', () => {
   it('does not inflate gross background with the net daily-budget allowance', () => {
     const observedGrossBackground = Array.from({ length: 24 }, () => 1);
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs,
       bucketUsage: [0, 0, 0, 0],
       currentBucketIndex: 0,
@@ -529,6 +534,7 @@ describe('daily budget math helpers', () => {
 
   it('falls back to net planned background when gross reserve has no samples yet', () => {
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs,
       bucketUsage: [0, 0, 0, 0],
       currentBucketIndex: 0,
@@ -552,6 +558,7 @@ describe('daily budget math helpers', () => {
   it('preserves previous gross uncontrolled reserve for locked buckets', () => {
     const previousPlan = [1, 1, 1, 1];
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs,
       bucketUsage: [0, 0.2, 0, 0],
       currentBucketIndex: 1,
@@ -578,6 +585,7 @@ describe('daily budget math helpers', () => {
 
   it('scales observed min floors down when budget is lower than floors', () => {
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs,
       bucketUsage: [0, 0, 0, 0],
       currentBucketIndex: 0,
@@ -638,7 +646,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
-      capacityBudgetKWh: 4,
+      planningCeiling: { limit: 'capacity', kw: 4 },
       observedStats: observedHourlyStatsFixture(),
     });
 
@@ -681,7 +689,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
-      capacityBudgetKWh: 10,
+      planningCeiling: { limit: 'capacity', kw: 10 },
       controlledUsageWeight,
       observedPeakMarginRatio: 0,
       observedStats: observedHourlyStatsFixture({
@@ -708,6 +716,7 @@ describe('daily budget math helpers', () => {
     const p90 = [5, 0, ...Array.from({ length: 22 }, () => 0)];
 
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs: shortBucketStartUtcMs,
       bucketUsage: [0, 0],
       currentBucketIndex: 0,
@@ -744,6 +753,7 @@ describe('daily budget math helpers', () => {
     const observedControlledMax = [3, 3, ...Array.from({ length: 22 }, () => 0)];
 
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs: shortBucketStartUtcMs,
       bucketUsage: [0, 0],
       currentBucketIndex: 0,
@@ -784,6 +794,7 @@ describe('daily budget math helpers', () => {
     const observedUncontrolledMin = [0, 1, ...Array.from({ length: 22 }, () => 0)];
 
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs: shortBucketStartUtcMs,
       bucketUsage: [0, 0],
       currentBucketIndex: 0,
@@ -842,7 +853,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
-      capacityBudgetKWh: 10,
+      planningCeiling: { limit: 'capacity', kw: 10 },
       observedStats: observedHourlyStatsFixture(),
     });
 
@@ -887,7 +898,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
-      capacityBudgetKWh: 10,
+      planningCeiling: { limit: 'capacity', kw: 10 },
       observedStats: observedHourlyStatsFixture(),
     });
 
@@ -928,7 +939,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: false,
       priceShapingEnabled: false,
       controlledUsageWeight: 1,
-      capacityBudgetKWh: 2,
+      planningCeiling: { limit: 'capacity', kw: 2 },
       observedPeakMarginRatio: 0,
       observedStats: observedHourlyStatsFixture({
         profileObservedMaxControlledKWh: [1, 1, ...Array.from({ length: 22 }, () => 0)],
@@ -950,7 +961,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: false,
       priceShapingEnabled: false,
       controlledUsageWeight: 1,
-      capacityBudgetKWh: 2,
+      planningCeiling: { limit: 'capacity', kw: 2 },
       observedPeakMarginRatio: 0,
       observedStats: observedHourlyStatsFixture({
         profileObservedMaxControlledKWh: [10, 10, ...Array.from({ length: 22 }, () => 0)],
@@ -968,6 +979,7 @@ describe('daily budget math helpers', () => {
     const profileUncontrolled = Array.from({ length: 24 }, () => 0);
 
     const result = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs: shortBucketStartUtcMs,
       bucketUsage: [0, 0, 0],
       currentBucketIndex: 0,
@@ -1014,6 +1026,7 @@ describe('daily budget math helpers', () => {
     baseProfile[0] = 1;
     baseProfile[1] = 2;
     const flatPlan = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs: bucketStartUtcMs.slice(0, 2),
       bucketUsage: [0, 0],
       currentBucketIndex: 0,
@@ -1037,6 +1050,7 @@ describe('daily budget math helpers', () => {
     expect(flatPlan.plannedKWh[1]).toBeCloseTo(6, 6);
 
     const nearFlatPlan = buildPlan({
+      planningCeiling: null,
       bucketStartUtcMs: bucketStartUtcMs.slice(0, 2),
       bucketUsage: [0, 0],
       currentBucketIndex: 0,

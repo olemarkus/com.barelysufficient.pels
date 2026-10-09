@@ -33,6 +33,7 @@ import {
   WEATHER_SETUP_BODY,
   WEATHER_SETUP_BUTTON,
   WEATHER_SOURCE_FORECAST,
+  WEATHER_WARN_OVER_GRID_LIMIT_TITLE,
   WEATHER_WARN_OVER_HARDCAP_TITLE,
 } from '../../shared-domain/src/weatherInsightCopy';
 
@@ -107,7 +108,7 @@ const buildReadout = (
     beyondObservedWarm: false,
   },
   suggestion: {
-    kwh: 48, currentDailyBudgetKwh: 50, cappedByCapacity: false, budgetMayBeLimiting: false,
+    kwh: 48, currentDailyBudgetKwh: 50, cappedByPowerLimit: null, budgetMayBeLimiting: false,
     budgetPressureKwh: 0,
   },
   scatter: [{ tempBinC: 2, kwhMedian: 42, kwhQ1: 39, kwhQ3: 45, count: 12 }],
@@ -154,8 +155,10 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
     comparisonShowPrice: false,
     status: 'clean',
     busy: false,
-    hardCapKw: 12,
-    safetyMarginKw: 1,
+    powerLimitForm: {
+      capacityEnabled: true, gridImportEnabled: false, limitKw: 12, marginKw: 1, gridImportLimitKw: null,
+    },
+    planningCeiling: { limit: 'capacity', kw: 11 },
   },
   allocationWarning: null,
   priceLevelChip: null,
@@ -340,7 +343,7 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     const mount = mountIntoBody();
     const capped = buildReadout({
       suggestion: {
-        kwh: 290, currentDailyBudgetKwh: 50, cappedByCapacity: true, budgetMayBeLimiting: false,
+        kwh: 290, currentDailyBudgetKwh: 50, cappedByPowerLimit: 'capacity', budgetMayBeLimiting: false,
         budgetPressureKwh: 0,
       },
     });
@@ -358,6 +361,23 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     expect(mount.querySelector('#weather-overcap-banner')).toBeNull();
     // Uncapped: the ok verdict renders normally.
     expect(mount.querySelector('.weather-card__verdict--ok')).not.toBeNull();
+  });
+
+  it('names the grid import limit, not the hard cap, when that limit caps the suggestion', () => {
+    const mount = mountIntoBody();
+    const capped = buildReadout({
+      suggestion: {
+        kwh: 168, currentDailyBudgetKwh: 50, cappedByPowerLimit: 'grid', budgetMayBeLimiting: false,
+        budgetPressureKwh: 0,
+      },
+    });
+    renderBudgetOverview(mount, buildProps({ weatherInsight: { readout: capped, fetchFailed: false } }));
+    const banner = mount.querySelector('#weather-overcap-banner');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain(WEATHER_WARN_OVER_GRID_LIMIT_TITLE);
+    expect(banner?.textContent).not.toMatch(/hard cap/i);
+    expect(banner?.textContent?.toLowerCase()).not.toContain('raise');
+    expect(mount.querySelector('.weather-card__verdict--ok')).toBeNull();
   });
 
   it('S8: shows the Rough estimate chip with the colder-than-observed reason', () => {

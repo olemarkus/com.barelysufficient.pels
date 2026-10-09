@@ -43,6 +43,7 @@ import type {
   DeferredObjectiveStep,
 } from '../../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
+import { CAPACITY_ONLY_HORIZON_LIMIT } from '../helpers/powerLimitSettings';
 
 const HOUR_MS = 60 * 60 * 1000;
 const BASE_HOUR = Date.UTC(2026, 4, 30, 20); // 22:00 local-ish; absolute, DST-agnostic
@@ -172,6 +173,7 @@ const runSimulation = (params: {
       progressDirection: 'increasing',
     });
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs,
       objective: objective(deadlineAtMs, needKWh),

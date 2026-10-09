@@ -21,6 +21,24 @@ incident. The Main home supports grid control in the MVP; meter areas retain
 capacity control. See `docs/technical.md` for the shared telemetry, shedding,
 and restoration policies.
 
+Forward-looking plans use `planningCeiling` instead of `sustainableRateKw`: the
+daily budget's hourly caps and allocation warning, smart-task reserved headroom,
+budget-pressure eligibility and the weather budget suggestion. It is
+`sustainableRateKw` while Capacity limit is on, the grid import target while grid
+control is on, and the lower of the two with both; with neither on it is absent,
+and those plans apply no power-limit cap; a fully reserved smart task then
+commits its top rung, since nothing is left to verify. Because the grid limit is
+instantaneous, a smart task in a home with no solar production never books a rung
+above the grid import target while grid control is on (`DeferredObjectivePowerLimit`);
+a home with solar production keeps the whole ladder, since export can let such a
+rung run and live admission decides. A capacity-only home plans
+exactly as before. The planning-price appetite reads the configured ceiling (hard
+cap or grid import limit as configured) instead; with neither limit on it keeps
+the saved hard cap value, because it only sizes the solar blend and limits
+nothing (`lib/price/budgetPrice.ts`). The plan preview's at-limit note measures
+draw against 98% of the hard cap and against the grid import target. The live
+capacity pace is unchanged: it stays on `sustainableRateKw`.
+
 ## Canonical names
 
 The governing rule for this area: **one concept, one canonical name throughout the
@@ -32,6 +50,7 @@ code, one owner of the data point.** Everything below is written in these terms.
 | Buffer below the ceiling | `safetyMarginKw` | fixed | capacity settings | per home |
 | `hardCapKw - safetyMarginKw`, scaled to the selected period's energy allowance | `capacityPeriodAllowanceKWh` | import | capacity settings | per home |
 | The same value as the steady rate that spends it | `sustainableRateKw` | import | capacity settings | per home |
+| Lower enabled working rate (`sustainableRateKw` with Capacity limit on, grid import target with Grid import limit on); absent with neither | `planningCeiling` | import | `lib/power/capacityModel.ts` | per home |
 | Dynamic selected-period threshold derived from the allowance and the time left | `capacityPaceKw` | import | `lib/plan/planBudget.ts` | per home |
 | Exempt draw including projected power for observed-off devices | `projectedExemptKw` | import | `lib/plan/planUsage.ts` | per home |
 | Exempt draw from measured readings only | `measuredExemptKw` | import | `lib/power/usageAttribution.ts` | per home |
@@ -64,7 +83,8 @@ followable is keyed to something `grep` can still find after the next refactor.
 | `capacityPeriodAllowanceKWh` | `netBudgetKWh`, `hourBudgetKWh`, `budgetKWh` | `resolveUsableCapacityKWh` |
 | Capacity-period allowance exhausted | `hourlyBudgetExhausted` *(legacy local name)* | `computeDynamicSoftLimit` |
 | Capacity-period allowance remaining | `hourlyRemainingKWh` *(legacy local name)* | `computeDynamicSoftLimit` |
-| `sustainableRateKw` | *(landed in `lib/objectives/deferredObjectives/**` and its three wirings; elsewhere still a local inside `computeDynamicSoftLimit`)* | `resolveUsableCapacityKw` |
+| `sustainableRateKw` | *(a local inside `computeDynamicSoftLimit`; smart tasks plan against `planningCeiling` instead)* | `resolveUsableCapacityKw` |
+| `planningCeiling` | *(landed; `planningCeilingKw` where only the rate is read, in `lib/objectives/deferredObjectives/**`)* | `resolvePlanningPowerCeiling` |
 | `capacityPaceKw` | `allowedKw`, `capacitySoftLimit`; *(landed at the consumers, in the rebuild scheduler, and in every log field)* | `computeDynamicSoftLimit` |
 | `projectedExemptKw` | *(landed)* | `sumBudgetExemptProjectedUsageKw` |
 | `measuredExemptKw` | *(landed as a sum, not yet as a published scalar)* | `sumBudgetExemptMeasuredUsageKw` |

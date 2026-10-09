@@ -174,6 +174,16 @@ export const WEATHER_WARN_OVER_HARDCAP_TITLE = 'Tomorrow may need more than your
 export const WEATHER_WARN_OVER_HARDCAP_BODY = 'Tomorrow’s expected usage is higher than your hard cap '
   + 'can deliver in a day. PELS will hold the cap, so some managed usage may be limited in the coldest hours.';
 
+// The same warning when the grid import limit sets the day's ceiling (Capacity
+// limit off, or a grid limit below hard cap minus safety margin): naming the hard
+// cap there would blame a limit that is not binding. The grid import limit is not
+// a remedy either, and PELS is not a circuit breaker, so the body says PELS
+// reduces flexible loads rather than promising to hold import under the limit.
+export const WEATHER_WARN_OVER_GRID_LIMIT_TITLE = 'Tomorrow may need more than your grid import limit allows';
+export const WEATHER_WARN_OVER_GRID_LIMIT_BODY = 'Tomorrow’s expected usage is higher than your grid import '
+  + 'limit can deliver in a day. PELS will reduce flexible loads near the limit, so some managed usage may be '
+  + 'limited in the coldest hours.';
+
 export type WeatherVerdictTone = 'ok' | 'warn';
 export type WeatherTomorrowVerdict = { text: string; tone: WeatherVerdictTone };
 

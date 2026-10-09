@@ -1,6 +1,9 @@
 import { usableCapacityKw } from '../../packages/shared-domain/src/capacityAllowance';
 import { capacityPeriodEnergyKWh } from '../../packages/shared-domain/src/settings/capacityPeriod';
-import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import { planningPowerCeiling } from '../../packages/shared-domain/src/settings/powerLimits';
+import type {
+  CapacitySettings, PowerLimitCeiling, PowerLimitSettings,
+} from '../../packages/contracts/src/capacitySettings';
 
 /**
  * The two capacity settings the safe-pace family is derived from. In the canonical
@@ -37,4 +40,26 @@ export function resolveUsableCapacityKWh(capacitySettings: CapacitySettings): nu
 /** Hard-cap energy boundary for the configured billing window. */
 export function resolveHardCapacityKWh(capacitySettings: CapacitySettings): number {
   return capacityPeriodEnergyKWh(Math.max(0, capacitySettings.limitKw), capacitySettings.periodMinutes);
+}
+
+/**
+ * Owner of the house planning ceiling (`planningCeiling` in
+ * `notes/safe-pace-two-constraints.md`): the import rate the daily budget's
+ * hours, smart-task reservations and budget-pressure eligibility plan against
+ * (the weather suggestion and the Budget page's recommendation apply the same
+ * shared arithmetic, `planningPowerCeiling`, where this owner cannot be reached).
+ * It is the lower enabled limit, so a disabled Capacity limit stops shaping
+ * plans and an enabled grid import limit starts to; `null` when no power limit
+ * is enabled. With only Capacity limit on it equals `resolveUsableCapacityKw`.
+ *
+ * The live capacity pace is NOT this: it stays on the period allowance
+ * (`computeDynamicSoftLimit`), and live admission spends measured grid headroom.
+ */
+export function resolvePlanningPowerCeiling(settings: PowerLimitSettings): PowerLimitCeiling | null {
+  return planningPowerCeiling(settings);
+}
+
+/** The planning ceiling read as a rate alone, for consumers that never name the limit. */
+export function resolvePlanningCeilingKw(settings: PowerLimitSettings): number | null {
+  return resolvePlanningPowerCeiling(settings)?.kw ?? null;
 }

@@ -7,6 +7,7 @@ import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
 import { normalizeWeatherHistoryState } from '../../lib/weather/weatherHistory';
 import { WEATHER_ADVISOR_SETTINGS } from '../../lib/utils/settingsKeys';
 import type { EnergySignatureSuggestion, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 // Integration seam: the real store over an in-memory userdata database + the
 // real collector over the mock Homey settings — only the device transport
@@ -36,7 +37,7 @@ const buildCollector = (
   getAppliedDailyBudgetKwh: () => 50,
   getBudgetCountedKwh: () => 18,
   readBudgetDecisions: () => [],
-  getSustainableCapacityKw: () => 5,
+  getPowerLimitSettings: () => capacityOnlyPowerLimits(5),
   getSettings: () => buildWeatherAdvisorSettings({ settings: homey.settings }),
   readMeterScopeSignature: () => meterScopeSignature,
   readMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'meter-main' }),

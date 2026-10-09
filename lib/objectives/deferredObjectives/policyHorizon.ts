@@ -1,6 +1,9 @@
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { PriceHorizonEntry } from '../../../packages/planner-types/src/priceHorizon';
-import type { DeferredObjectiveHorizonBucket } from './types';
+import type { DeferredObjectiveHorizonBucket, DeferredObjectivePowerLimit } from './types';
+import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
+import { gridImportTargetKw } from '../../../packages/shared-domain/src/settings/powerLimits';
+import { resolvePlanningCeilingKw } from '../../power/capacityModel';
 
 export type { PriceHorizonEntry };
 
@@ -101,7 +104,7 @@ export type DeferredObjectivePolicyHorizonInputs = {
   // (its `startUtc` floors to the same epoch hour), its `controlledShareKWh` /
   // `backgroundKWh` / `grossBackgroundKWh` are overlaid onto that bucket.
   // When absent, the bucket runs with no daily-budget cap and the per-hour
-  // sustainable rate becomes the only constraint.
+  // planning ceiling becomes the only constraint.
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   // When true (an at-risk smart task that was granted the "exempt from budget"
   // rescue permission), the per-bucket daily-budget cap is lifted so the planner
@@ -109,12 +112,44 @@ export type DeferredObjectivePolicyHorizonInputs = {
   // soft daily-budget throttle; physical capacity stays enforced downstream at
   // admission and the capacity guard.
   exemptFromBudget: boolean;
-  // The rate the capacity guard will admit (`limitKw - marginKw`), which bounds
-  // each bucket's reserved headroom. Always supplied by the producer.
-  sustainableRateKw: number;
+  // The house's power-limit settings, from which the horizon resolves its
+  // planning ceiling (`resolvePlanningCeilingKw`, `lib/power`): the lower enabled
+  // limit's working rate (hard cap minus safety margin, grid import target),
+  // which bounds each bucket's reserved headroom. With only Capacity limit on it
+  // is the rate the capacity guard will admit (`limitKw - marginKw`). With no
+  // power limit enabled there is no ceiling, and no bucket carries a reserved
+  // headroom. The planner reads the same settings as a whole
+  // (`resolveDeferredObjectivePowerLimit`).
+  powerLimits: PowerLimitSettings;
+  // Whether the home has solar production (a role-detected PV device). Export can
+  // lift live grid headroom past the grid import target, so a PV home's plan is
+  // not cut at that target (`resolveDeferredObjectivePowerLimit`).
+  hasSolarProduction: boolean;
   // Hourly claims already made by higher-priority smart tasks. Physical power
   // is always deducted; planned energy is deducted only for non-exempt tasks.
   higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
+};
+
+/**
+ * How the house's enabled power limits bound a smart task's horizon plan
+ * (`DeferredObjectivePowerLimit`): unlimited with no power limit enabled, and
+ * otherwise limited. The grid import target is the admission ceiling only while
+ * Grid import limit is on in a home with no solar production: live admission
+ * spends signed net headroom, so solar export lets a rung above the target run,
+ * and with no per-hour solar forecast the plan keeps the whole ladder there and
+ * leaves the rung to live admission. A capacity-only home is limited with no
+ * admission ceiling, which plans exactly as before.
+ */
+export const resolveDeferredObjectivePowerLimit = (
+  powerLimits: PowerLimitSettings,
+  hasSolarProduction: boolean,
+): DeferredObjectivePowerLimit => {
+  if (resolvePlanningCeilingKw(powerLimits) === null) return { kind: 'unlimited' };
+  const { gridImportLimitKw } = powerLimits;
+  const admissionCeilingKw = gridImportLimitKw === null || hasSolarProduction
+    ? null
+    : gridImportTargetKw(gridImportLimitKw);
+  return { kind: 'limited', admissionCeilingKw };
 };
 
 export const buildDeferredObjectivePolicyHorizon = (
@@ -127,7 +162,7 @@ export const buildDeferredObjectivePolicyHorizon = (
     priceHorizon,
     dailyBudgetSnapshot,
     exemptFromBudget,
-    sustainableRateKw,
+    powerLimits,
     higherPriorityReservations,
   } = params;
   if (!priceOptimizationEnabled) {
@@ -146,7 +181,7 @@ export const buildDeferredObjectivePolicyHorizon = (
     buckets: mapPolicyBuckets(
       splitPolicyBucketsAtReservationBoundaries(sourceBuckets, higherPriorityReservations),
       exemptFromBudget,
-      sustainableRateKw,
+      resolvePlanningCeilingKw(powerLimits),
       higherPriorityReservations,
     ),
     horizonBucketCount: sourceBuckets.length,
@@ -259,8 +294,8 @@ type BudgetOverlay = {
 };
 
 // No matching snapshot bucket: run with no daily-budget cap. `backgroundKWh = 0`
-// (NOT null) is REQUIRED so `resolveReservedHeadroomKw` returns `sustainableRateKw` (the
-// per-hour sustainable rate becomes the constraint); `controlledShareKWh = null` keeps
+// (NOT null) is REQUIRED so `resolveReservedHeadroomKw` returns `planningCeilingKw` (the
+// per-hour planning ceiling becomes the constraint); `controlledShareKWh = null` keeps
 // `resolveMaxUsefulEnergyKWh` null (no daily-budget cap).
 const NO_BUDGET_OVERLAY: BudgetOverlay = {
   backgroundKWh: 0,
@@ -358,8 +393,8 @@ const collectDayBudgetOverlays = (
   // controlled share of 0 — clamping every smart task's allocation to zero useful
   // energy (`cannot_meet`) whenever the user has daily budget off. Contribute NO
   // overlay so each bucket falls through to `NO_BUDGET_OVERLAY` and the per-hour
-  // sustainable rate becomes the only constraint, matching the "no daily budget ⇒
-  // capacity only" contract.
+  // planning ceiling becomes the only constraint, matching the "no daily budget ⇒
+  // power limits only" contract.
   if (!day.budget.enabled) return [];
   const starts = day.buckets.startUtc;
   if (!Array.isArray(starts)) return [];
@@ -482,7 +517,7 @@ const coversHorizon = (params: {
 const mapPolicyBuckets = (
   buckets: PolicyBucketSource[],
   exemptFromBudget: boolean,
-  sustainableRateKw: number,
+  planningCeilingKw: number | null,
   higherPriorityReservations: readonly DeferredObjectivePriorityReservation[],
 ): DeferredObjectiveHorizonBucket[] => {
   return buckets.map((bucket) => {
@@ -490,7 +525,7 @@ const mapPolicyBuckets = (
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
     const reservedHeadroomKw = resolveReservedHeadroomKw(
       bucket,
-      sustainableRateKw,
+      planningCeilingKw,
       higher?.admissionPowerKw ?? 0,
     );
     return {
@@ -612,12 +647,16 @@ const resolveReservationsForBucket = (
 
 // Residual physical room after gross background and every higher-priority
 // smart-task step reservation. Clamped at zero; null means the physical inputs
-// were unavailable and the planner falls back to its existing live guards.
+// were unavailable, or no power limit is enabled so no ceiling exists to reserve
+// room under, and the planner falls back to its existing live guards.
 const resolveReservedHeadroomKw = (
   bucket: PolicyBucketSource,
-  sustainableRateKw: number,
+  planningCeilingKw: number | null,
   higherPriorityAdmissionPowerKw: number,
 ): number | null => {
+  // No ceiling is genuine absence, not a large rate: the key is omitted, which
+  // `resolveBucketStepCapacityKWh` and the step probes read as "no forecast".
+  if (planningCeilingKw === null) return null;
   // A pace of zero is reachable and is REPORTED, not suppressed: `modeCards.ts`
   // validates a Flow-set hard cap as `> 0` without comparing it to the persisted
   // margin, so `limitKw` below `marginKw` floors the rate at 0. Returning `null`
@@ -630,7 +669,7 @@ const resolveReservedHeadroomKw = (
   const durationHours = (bucket.endMs - bucket.startMs) / (60 * 60 * 1000);
   if (durationHours <= 0) return null;
   const uncontrolledKw = Math.max(0, physicalBackgroundKWh / durationHours);
-  return Math.max(0, sustainableRateKw - uncontrolledKw - Math.max(0, higherPriorityAdmissionPowerKw));
+  return Math.max(0, planningCeilingKw - uncontrolledKw - Math.max(0, higherPriorityAdmissionPowerKw));
 };
 
 const resolveMaxUsefulEnergyKWh = (

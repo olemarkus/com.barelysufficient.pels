@@ -163,20 +163,25 @@ export type DeferredObjectiveHorizonBucket = {
   price?: number | null;
   maxUsefulEnergyKWh?: number;
   // Producer-resolved per-bucket forecast of the physical headroom a smart task
-  // has in this hour: `sustainableRateKw` minus the gross background forecast
+  // has in this hour: `planningCeilingKw` minus the gross background forecast
   // (`plannedGrossUncontrolledKWh / duration`) minus higher-priority smart-task
   // claims. This stays separate from the net `plannedUncontrolledKWh` daily-budget
   // cap input, because solar can make net background lower than physical
-  // background load. `sustainableRateKw` is `limitKw - marginKw` — the rate the
-  // live guard actually admits. It used to be the RAW configured cap, which made
-  // this forecast one safety margin more generous than the runtime, and probed
-  // every rung inside that band as reachable.
+  // background load. `planningCeilingKw` is the lower enabled limit's working
+  // rate: `limitKw - marginKw` (the rate the live capacity guard actually
+  // admits) while Capacity limit is on, the grid import target while Grid import
+  // limit is on. It used to be the RAW configured cap, which made this forecast
+  // one safety margin more generous than the runtime, and probed every rung
+  // inside that band as reachable. With no power limit enabled there is no
+  // ceiling, so the producer omits the forecast.
   //
   // Two consumers, with different fallbacks when it is missing:
   //   - `resolveStepForBucket` (`horizonPlanner.ts`) promotes a FULLY-RESERVED
   //     task's committed floor to the highest rung this forecast admits. No
-  //     forecast ⇒ the floor stays at the min step: a commitment may not promise
-  //     more than the producer has verified.
+  //     forecast under a power limit ⇒ the floor stays at the min step: a
+  //     commitment may not promise more than the producer has verified. No
+  //     power limit at all (`DeferredObjectivePowerLimit` `unlimited`) ⇒ the top
+  //     rung: there is no ceiling to verify against, and live control admits it.
   //   - `resolveHighestStepWithinHeadroom` (`stepSelection.ts`) bounds the
   //     feasibility PROBES for every task, fully reserved or not. No forecast ⇒ the
   //     top rung, since nothing physical is known and a probe should not invent a
@@ -208,11 +213,33 @@ export type DeferredObjectiveHorizonBucket = {
   }>;
 };
 
+/**
+ * How the house's enabled power limits bound a smart task's plan, resolved from
+ * `PowerLimitSettings` by the policy horizon (`resolveDeferredObjectivePowerLimit`).
+ *  - `unlimited`: no power limit is enabled. No hour has a ceiling to forecast,
+ *    and live control admits every rung, so a fully reserved task commits its
+ *    top rung. This is not "no forecast": nothing is left to verify.
+ *  - `limited`: a planning ceiling exists, and each bucket's `reservedHeadroomKw`
+ *    forecasts the room under it (absent: the forecast is unavailable).
+ *    `admissionCeilingKw` is the grid import target while Grid import limit is
+ *    on in a home with no solar production. That limit is instantaneous: with
+ *    nothing exporting, live admission never lets a rung drawing above it run,
+ *    so the plan books no such rung. `null` with Capacity limit alone, an hourly
+ *    average that bounds energy, not any one rung, and `null` in a home with
+ *    solar production: live admission spends signed net headroom, so export can
+ *    let a rung above the target run, and with no per-hour solar forecast the
+ *    plan keeps the whole ladder and leaves that rung to live admission.
+ */
+export type DeferredObjectivePowerLimit =
+  | { kind: 'unlimited' }
+  | { kind: 'limited'; admissionCeilingKw: number | null };
+
 export type DeferredObjectiveHorizonInput = {
   nowMs: number;
   objective: DeferredObjective;
   steps: DeferredObjectiveStep[];
   buckets: DeferredObjectiveHorizonBucket[];
+  powerLimit: DeferredObjectivePowerLimit;
   // An active zero-hour commitment remains distinct from a fresh allocation.
   // The producer resolves commitment presence before entering the horizon engine.
   commitment:

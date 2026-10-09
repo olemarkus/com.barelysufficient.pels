@@ -25,16 +25,19 @@ const MAX_DAILY_BUDGET_KWH = 360;
  *    `budgetPressure.ts` for recovery and unused-allowance accounting.
  * 4. Floor at the 5th percentile of observed days — never suggest below what the
  *    home has demonstrably used.
- * 5. Clamp to the daily-budget setting bounds and (when known) the capacity
- *    sustainable-capacity ceiling × the target local day's 23/24/25 hours.
+ * 5. Clamp to the daily-budget setting bounds and (when a power limit is
+ *    enabled) the planning ceiling × the target local day's 23/24/25 hours.
+ *    The planning ceiling is hard cap minus safety margin with only Capacity
+ *    limit on, the grid import target with only Grid import limit on, the lower
+ *    of the two with both (`planningPowerCeiling`).
  */
 export type DailyBudgetSuggestionInput = {
   fit: EnergySignatureFit;
   /** Local date the suggestion is for; the fit's season term is evaluated on it. */
   targetDateKey: string;
   forecastMeanTempC: number;
-  /** Sustainable capacity rate (hard cap minus margin), in kW. */
-  capacityLimitKw?: number;
+  /** The planning ceiling's rate, in kW; absent when no power limit is enabled. */
+  planningCeilingKw?: number;
   /** Length of the target local day; 23/24/25 across DST. */
   capacityDayHours?: number;
   /** Accumulated budget-pressure term; absent when the loop has nothing to add. */
@@ -59,7 +62,7 @@ const OBSERVED_RANGE_SLACK_C = 2;
 
 export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyBudgetSuggestionResult {
   const {
-    fit, targetDateKey, forecastMeanTempC, capacityLimitKw, capacityDayHours = 24, budgetPressure,
+    fit, targetDateKey, forecastMeanTempC, planningCeilingKw, capacityDayHours = 24, budgetPressure,
   } = input;
   // Never extrapolate OUTSIDE the observed range in either direction: the
   // cold side underestimates exactly during cold snaps, and the warm side of
@@ -83,8 +86,8 @@ export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyB
   // budget that was actually applied — which already carried the headroom — so
   // the two compose rather than double-count.
   const pressureKwh = resolveBudgetPressureKwh({ state: budgetPressure });
-  const capacityCapKwh = capacityLimitKw !== undefined && capacityLimitKw > 0
-    ? capacityLimitKw * capacityDayHours
+  const capacityCapKwh = planningCeilingKw !== undefined && planningCeilingKw > 0
+    ? planningCeilingKw * capacityDayHours
     : Number.POSITIVE_INFINITY;
   const clamp = (modelledKwh: number): number => Math.min(
     MAX_DAILY_BUDGET_KWH,

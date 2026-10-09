@@ -579,7 +579,9 @@ const resolveBucketStepCapacityKWh = (
   // room holds 0.86 kWh, which a 1.38 kW charger takes in 37 minutes. Zeroing such
   // an hour is what made a budget-bound plan read as physically impossible, and it
   // enforced an instantaneous limit the live capacity guard already owns, at plan
-  // time, from a forecast average.
+  // time, from a forecast average. A grid import limit is the same trade: the
+  // forecast spends its target as an hourly rate, and live admission alone holds
+  // measured import under it.
   if (
     bucket.higherPriorityAdmissionPowerKw !== undefined
     && bucket.higherPriorityAdmissionPowerKw > 0

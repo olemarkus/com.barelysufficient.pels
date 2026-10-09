@@ -7,6 +7,8 @@ import type {
 } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { fitEnergySignature } from '../../packages/shared-domain/src/energySignature/energySignature';
 import { suggestDailyBudgetKwh } from './suggestDailyBudget';
+import { planningPowerCeiling } from '../../packages/shared-domain/src/settings/powerLimits';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
@@ -42,8 +44,11 @@ const PERSISTENCE_LOOKBACK_DAYS = 7;
 export type EnergySignatureServiceDeps = {
   getNowMs: () => number;
   getTimeZone: () => string;
-  /** Hard capacity cap (kW); the suggestion stays subordinate to it. */
-  getCapacityLimitKw: () => number | undefined;
+  /**
+   * The live power-limit settings; the suggestion stays subordinate to their
+   * planning ceiling (`planningPowerCeiling`), resolved here.
+   */
+  getPowerLimitSettings: () => PowerLimitSettings;
   logger: PinoLogger;
 };
 
@@ -78,7 +83,7 @@ export function computeEnergySignatureUpdate(
     ? buildSuggestion({
       fit,
       forecast,
-      capacityLimitKw: deps.getCapacityLimitKw(),
+      planningCeilingKw: planningPowerCeiling(deps.getPowerLimitSettings())?.kw,
       budgetPressure: state.budgetPressure,
       timeZone: deps.getTimeZone(),
       nowMs,
@@ -134,13 +139,14 @@ export function computeEnergySignatureUpdate(
 function buildSuggestion(params: {
   fit: EnergySignatureFit;
   forecast: ResolvedComingDay;
-  capacityLimitKw: number | undefined;
+  /** `undefined` when no power limit is enabled: nothing clamps the suggestion. */
+  planningCeilingKw: number | undefined;
   budgetPressure: WeatherHistoryState['budgetPressure'];
   timeZone: string;
   nowMs: number;
 }): EnergySignatureSuggestion {
   const {
-    fit, forecast, capacityLimitKw, budgetPressure, timeZone, nowMs,
+    fit, forecast, planningCeilingKw, budgetPressure, timeZone, nowMs,
   } = params;
   const targetDayStartMs = getDateKeyStartMs(forecast.targetDateKey, timeZone);
   const capacityDayHours = (getNextLocalDayStartUtcMs(targetDayStartMs, timeZone) - targetDayStartMs) / HOUR_MS;
@@ -152,7 +158,7 @@ function buildSuggestion(params: {
       fit,
       targetDateKey: forecast.targetDateKey,
       forecastMeanTempC: forecast.meanTempC,
-      capacityLimitKw,
+      planningCeilingKw,
       capacityDayHours,
       ...(budgetPressure !== undefined ? { budgetPressure } : {}),
     }),

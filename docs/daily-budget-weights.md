@@ -228,7 +228,9 @@ Notes:
 
 Final bucket cap is the minimum of:
 
-- capacity per-hour cap (if configured), and
+- the planning ceiling's per-hour cap: hard cap minus safety margin while Capacity limit is on,
+  the grid import target while Grid import limit is on, the lower of the two when both are, and
+  no cap when neither is, and
 - total observed-peak cap above.
 
 `w` does not affect the cap. Managed-device usage is still available as flexible room above the
@@ -344,8 +346,9 @@ full-flex allocation.
 - If background household usage regularly causes budget misses, use **Conservative** background usage reserve.
 - If too much budget is held back from managed devices, use **Balanced** background usage reserve.
 - If plan movement by price is too aggressive, lower **Managed device flexibility**.
-- If the budget cannot be fully allocated under capacity and historical caps, the Budget UI shows
-  an allocation warning; lower the daily budget or review which devices count as managed versus
+- If the budget cannot be fully allocated under the planning ceiling and historical caps, the
+  Budget UI shows an allocation warning naming the limit that sets the ceiling (hard cap or grid
+  import limit); lower the daily budget or review which devices count as managed versus
   background usage. The hard cap itself reflects your grid tariff step and is
   not a tuning knob.
 - If confidence stays low, verify regular power reporting and managed/background split data.

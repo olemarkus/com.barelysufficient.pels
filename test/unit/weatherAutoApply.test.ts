@@ -1,6 +1,7 @@
 import type { Logger as PinoLogger } from 'pino';
 import { performBudgetAutoApply } from '../../lib/weather/weatherAutoApply';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
+import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
 
 const NOW_MS = 1_700_000_000_000;
 const logger = { info: vi.fn() } as unknown as PinoLogger;
@@ -18,6 +19,8 @@ const deps = (over: Partial<Parameters<typeof performBudgetAutoApply>[1]> = {}) 
   getNowMs: () => NOW_MS,
   applySuggestedDailyBudget: vi.fn(() => true),
   onDailyBudgetAutoApplied: vi.fn(),
+  getPowerLimitSettings: () => capacityOnlyPowerLimits(10),
+  getTimeZone: () => 'UTC',
   logger,
   ...over,
 });
@@ -203,7 +206,23 @@ describe('recorded sustainable daily ceiling', () => {
     const recordBudgetDecision = vi.fn();
     performBudgetAutoApply(baseState({
       latestSuggestion: { ...baseState().latestSuggestion!, targetDateKey: dateKey },
-    }), deps({ recordBudgetDecision, getTimeZone: () => 'Europe/Oslo', getSustainableCapacityKw: () => 4.7 }));
+    }), deps({ recordBudgetDecision, getTimeZone: () => 'Europe/Oslo', getPowerLimitSettings: () => capacityOnlyPowerLimits(4.7) }));
     expect(recordBudgetDecision.mock.calls[0][0].sustainableDailyCeilingKwh).toBeCloseTo(4.7 * hours);
+  });
+
+  it('records the grid import target with Capacity limit off, and no ceiling only with no limit at all', () => {
+    const recordGrid = vi.fn();
+    performBudgetAutoApply(baseState(), deps({
+      recordBudgetDecision: recordGrid,
+      getPowerLimitSettings: () => powerLimits({ enabled: false, limitKw: 5, marginKw: 0.2 }, 10),
+    }));
+    expect(recordGrid.mock.calls[0][0].sustainableDailyCeilingKwh).toBeCloseTo(9.5 * 24);
+
+    const recordNone = vi.fn();
+    performBudgetAutoApply(baseState(), deps({
+      recordBudgetDecision: recordNone,
+      getPowerLimitSettings: () => powerLimits({ enabled: false, limitKw: 5, marginKw: 0.2 }, null),
+    }));
+    expect(recordNone.mock.calls[0][0].sustainableDailyCeilingKwh).toBeNull();
   });
 });

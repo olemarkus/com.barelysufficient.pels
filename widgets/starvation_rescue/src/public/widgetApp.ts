@@ -64,8 +64,8 @@ const PREVIEW_RESPONSE: StarvationRescuePreviewResponse = {
       { startsAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS, price: 104 },
     ],
     // The candidate runs in the current hour while the measured whole-home draw is
-    // already at the physical cap — surfaces the at-cap honesty note.
-    atCapNow: true,
+    // already at the physical cap — surfaces the at-limit honesty note.
+    atPowerLimitNow: 'capacity',
     // Both extra permissions survived the per-device gate — exercises the "Extra
     // permissions" summary with its canonical labels.
     grantedRescuePermissions: {

@@ -4,6 +4,7 @@ import { createTemperatureControlFencedActuator } from '../../setup/appInit/buil
 import {
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,
+  CAPACITY_ENABLED,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
@@ -15,6 +16,8 @@ import {
   DEVICE_HOME_ASSIGNMENTS,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
+  GRID_IMPORT_ENABLED,
+  GRID_IMPORT_LIMIT_KW,
   HOMEY_ENERGY_METER_DEVICE_ID,
   HOMES_CONFIG,
   MANAGED_DEVICES,
@@ -265,6 +268,23 @@ describe('createSettingsHandler', () => {
     expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
+
+  it.each([CAPACITY_ENABLED, GRID_IMPORT_ENABLED, GRID_IMPORT_LIMIT_KW])(
+    'replans the daily budget when %s moves the planning ceiling',
+    async (key) => {
+      // The daily budget's hours are capped by the planning ceiling these switches
+      // move; leaving the day on its old caps would keep shaping it against a
+      // Capacity limit that was just switched off.
+      const deps = buildDeps();
+      const handler = createSettingsHandler(deps);
+
+      await handler(key);
+
+      expect(deps.loadCapacitySettings).toHaveBeenCalled();
+      expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
+      expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+    },
+  );
 
   it('reloads capacity settings, refreshes snapshot, and rebuilds when device driver overrides change', async () => {
     const deps = buildDeps();

@@ -22,6 +22,7 @@ import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/price
 import { type MeteredPlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 import {
   createMemoryEnergyDeliveryStore,
   noDeviceExclusion,
@@ -40,7 +41,7 @@ const END_MS = DAY + 30 * HOUR_MS; // 06:00 next day, the deadline
 const CHEAP = 20;
 const EXPENSIVE = 90;
 const OUT_OF_HORIZON = 999;
-const TEST_SUSTAINABLE_RATE_KW = 100;
+const TEST_PLANNING_CEILING_KW = 100;
 
 // Inside the 22:00 → 06:00 window only 01:00, 02:00 and 03:00 are cheap: three
 // hours of a 2 kW element is exactly the 6 kWh asked for.
@@ -154,12 +155,13 @@ const runScenario = (tankFullAfterKWh: number, meterOnlyHourOfDay: number | null
     const device = buildRelay(drawKw, relayOn, nowMs);
     tracker.observe([device], settings, nowMs);
     const [diag] = buildFixtureDiagnostics({
+      hasSolarProduction: false,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
       isReservationSuppressed: () => false,
       getDeliveredEnergyKWh: tracker.getDeliveredKWh,
       getPrioritiesForDevices: createFixturePriorityQuery([device]),
-      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
+      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
       nowMs,
       timeZone: 'UTC',
       devices: [device],

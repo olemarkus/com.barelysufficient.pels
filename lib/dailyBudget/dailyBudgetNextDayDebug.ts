@@ -1,3 +1,4 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 import { buildPriceDebugData, type CombinedPriceData } from './dailyBudgetMath';
 import { buildDailyBudgetPreview } from './dailyBudgetPreview';
@@ -20,7 +21,7 @@ export function logNextDayPlanDebug(params: {
   state: DailyBudgetState;
   combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
-  capacityBudgetKWh?: number;
+  planningCeiling: PowerLimitCeiling | null;
   defaultProfile: number[];
 }): void {
   const {
@@ -31,7 +32,7 @@ export function logNextDayPlanDebug(params: {
     state,
     combinedPrices,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     defaultProfile,
   } = params;
   if (!shouldLog || !isEnabled(settings)) return;
@@ -43,7 +44,7 @@ export function logNextDayPlanDebug(params: {
     settings,
     combinedPrices,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     enabled: true,
     priceShapingEnabled: settings.priceShapingEnabled,
     profileWeights: profileData.combinedWeights,
@@ -66,7 +67,7 @@ export function logNextDayPlanDebug(params: {
     snapshot: preview,
     priceData,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     settings,
     state,
     defaultProfile,

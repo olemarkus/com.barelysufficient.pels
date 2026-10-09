@@ -230,11 +230,16 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   const projectable = isProjectable(response);
   const estimated = response.estimate.status !== 'unavailable';
   setLine(targets.confirmCostEl, projectable ? formatPreviewCostLine(response.estimate) : null);
-  // Factual at-cap honesty signal: the coordinated preview can show the device
-  // running now, but the backend flags `atCapNow` when the measured whole-home
-  // draw is already at the physical limit, so power may have to wait for room.
-  // Names the measured fact, never a prompt to raise the (physical) limit.
-  setLine(targets.confirmAtCapEl, projectable && response.estimate.atCapNow === true ? C.atCapNote : null);
+  // Factual at-limit honesty signal: the coordinated preview can show the device
+  // running now, but the backend names the enabled limit (`atPowerLimitNow`) when
+  // the measured whole-home draw is already pressed against it, so power may have
+  // to wait for room. Names the measured fact and that limit, never a prompt to
+  // raise the (physical) limit.
+  const { atPowerLimitNow } = response.estimate;
+  setLine(
+    targets.confirmAtCapEl,
+    projectable && atPowerLimitNow !== undefined ? C.atPowerLimitNote[atPowerLimitNow] : null,
+  );
   // The price curve with the scheduled hours highlighted — the SAME chart the
   // create widget renders. Shown only when projectable and a price series is
   // present; falls back to the text lines otherwise.

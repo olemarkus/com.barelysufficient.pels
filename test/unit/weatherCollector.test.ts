@@ -5,6 +5,7 @@ import { CONTROLLED_BACKFILL_VERSION } from '../../lib/weather/weatherHistory';
 import { TEMP_BACKFILL_VERSION } from '../../lib/weather/weatherInsightsBackfill';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { EnergySignatureSuggestion, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 const OSLO = 'Europe/Oslo';
 // 2026-01-10T10:00:00Z = 11:00 in Oslo (UTC+1, winter): local dateKey 2026-01-10.
@@ -46,7 +47,7 @@ const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness =>
     getAppliedDailyBudgetKwh: vi.fn(() => 50),
     getBudgetCountedKwh: vi.fn((): number | undefined => 42.5),
     readBudgetDecisions: vi.fn(() => []),
-    getSustainableCapacityKw: vi.fn(() => 5),
+    getPowerLimitSettings: vi.fn(() => capacityOnlyPowerLimits(5)),
     isManagedDevice: vi.fn(() => false),
     getUnreliablePeriods: vi.fn(() => []),
     getSettings: vi.fn(() => ({ enabled: true, outdoorDeviceId: 'out-1' })),

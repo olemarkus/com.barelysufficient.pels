@@ -12,6 +12,8 @@
 
 import { getHourStartInTimeZone } from '../utils/hourBuckets';
 import type { CombinedPriceFields } from './priceTypes';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import { configuredPowerCeiling } from '../../packages/shared-domain/src/settings/powerLimits';
 
 const clampUnit = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -53,18 +55,40 @@ export const resolvePlanningPrice = (budgetPrice: number | undefined, totalPrice
   typeof budgetPrice === 'number' && Number.isFinite(budgetPrice) ? budgetPrice : totalPrice
 );
 
+/**
+ * Stable estimate of the hour's flexible (managed) appetite (kWh), the blend
+ * denominator: the lower enabled power limit as configured
+ * (`configuredPowerCeiling`), the most a managed home could pull in an hour. A
+ * conservative, stable estimate that keeps the blend near `total`; with only
+ * Capacity limit on it is the hard cap, as it always was.
+ *
+ * With no power limit enabled the saved hard cap value stays the estimate. Here
+ * it sizes an appetite, it limits nothing: the blend only weighs forecast surplus
+ * against it. Dropping the estimate would drive the coverage to zero and lose the
+ * solar-aware planning price for exactly the homes that turn both limits off
+ * (no capacity tariff, often solar), which planned with it before the switches
+ * existed.
+ */
+export const resolveExpectedManagedDrawKwh = (settings: PowerLimitSettings): number => (
+  configuredPowerCeiling(settings)?.kw ?? settings.limitKw
+);
+
 /** Per-hour inputs the blend needs beyond the price entry itself. */
 export type BudgetPriceInputs = {
   /** Forecast self-consumable solar surplus for the hour CONTAINING `instantMs` (kWh). */
   getSurplusKwh: (instantMs: number) => number | undefined;
-  /** Stable estimate of the hour's flexible (managed) appetite (kWh). */
-  expectedManagedDrawKwh: number;
+  /**
+   * The live power-limit settings, read on every apply so a runtime limit change
+   * is reflected, not frozen at boot. The appetite is resolved from them here
+   * (`resolveExpectedManagedDrawKwh`), not in the wiring.
+   */
+  getPowerLimitSettings: () => PowerLimitSettings;
 };
 
 /**
  * Layer the planning price onto a combined price series, scheme-independently
  * (it reads only `total` + `exportPrice` off each entry). No-op (returns the input
- * untouched) when there is no flexible appetite — keeping non-prosumer behaviour
+ * untouched) when there is no flexible appetite, keeping non-prosumer behaviour
  * byte-identical.
  *
  * The forecast surplus is an hourly figure, so each entry asks for the hour it
@@ -80,7 +104,9 @@ export const applyBudgetPrices = <T extends CombinedPriceFields>(
   inputs: BudgetPriceInputs | undefined,
   timeZone: string,
 ): T[] => {
-  if (!inputs || !isPositiveFinite(inputs.expectedManagedDrawKwh)) return prices;
+  if (!inputs) return prices;
+  const expectedManagedDrawKwh = resolveExpectedManagedDrawKwh(inputs.getPowerLimitSettings());
+  if (!isPositiveFinite(expectedManagedDrawKwh)) return prices;
   return prices.map((entry) => {
     const startsAtMs = Date.parse(entry.startsAt);
     const surplusKwh = Number.isFinite(startsAtMs)
@@ -90,7 +116,7 @@ export const applyBudgetPrices = <T extends CombinedPriceFields>(
       totalPrice: entry.totalPrice,
       exportPrice: entry.exportPrice,
       surplusKwh,
-      expectedManagedDrawKwh: inputs.expectedManagedDrawKwh,
+      expectedManagedDrawKwh,
     });
     return typeof budgetPrice === 'number' ? { ...entry, budgetPrice } : entry;
   });

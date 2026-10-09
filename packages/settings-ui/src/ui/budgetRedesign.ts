@@ -1,9 +1,8 @@
 import './materialWeb.ts';
 import type { DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
-import {
-  settingsCapacityLimitInput,
-  settingsCapacityMarginInput,
-} from './dom.ts';
+import type { PowerLimitCeiling } from '../../../contracts/src/capacitySettings.ts';
+import { readPowerLimitFormSettings, readPowerLimitFormView } from './powerLimitControls.ts';
+import { planningPowerCeiling } from '../../../shared-domain/src/settings/powerLimits.ts';
 import { type CostDisplay } from './dailyBudgetCost.ts';
 import {
   renderBudgetOverview,
@@ -150,6 +149,11 @@ const getBudgetSurface = (): HTMLElement | null => (
   budgetSurface ??= document.getElementById('budget-redesign-surface')
 );
 
+const resolveFormPlanningCeiling = (): PowerLimitCeiling | null => {
+  const settings = readPowerLimitFormSettings();
+  return settings === null ? null : planningPowerCeiling(settings);
+};
+
 const resolveAdjustData = (): BudgetAdjustData => {
   const view = getBudgetAdjustView();
   const { costDisplay } = latestRenderState;
@@ -174,8 +178,10 @@ const resolveAdjustData = (): BudgetAdjustData => {
     comparisonShowPrice: priceReliable,
     status: view.status,
     busy: view.busy,
-    hardCapKw: Number.parseFloat(settingsCapacityLimitInput?.value ?? ''),
-    safetyMarginKw: Number.parseFloat(settingsCapacityMarginInput?.value ?? ''),
+    // The Limits form's current values, saved or not: the card shows them value
+    // by value, and the recommended maximum needs all of them valid.
+    powerLimitForm: readPowerLimitFormView(),
+    planningCeiling: resolveFormPlanningCeiling(),
   };
 };
 

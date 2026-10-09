@@ -3,8 +3,7 @@ import type { ModePriorityOrder } from '../../../packages/shared-domain/src/sett
 import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
 import { resolveObjectiveDeviceInputs } from '../types';
 import type { ThermalDirection } from '../../../packages/contracts/src/types';
-import { resolveUsableCapacityKw } from '../../power/capacityModel';
-import type { CapacitySettings } from '../../../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
@@ -36,10 +35,14 @@ export type DeferredObjectiveDecorationControllerDeps = {
   getTimeZone: () => string;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
-  // The persisted capacity scalars. The rate the guard admits is derived here,
+  // The persisted power-limit settings. The planning ceiling is derived here,
   // in the domain, rather than in the wiring layer that reads the settings:
-  // `lib/power` owns the subtraction, and `setup/` answers no power question.
-  getCapacitySettings: () => CapacitySettings;
+  // `lib/power` owns the ceiling, and `setup/` answers no power question.
+  getCapacitySettings: () => PowerLimitSettings;
+  // Whether the home has solar production (a role-detected PV device): export can
+  // lift live grid headroom past the grid import target, so the plan is not cut
+  // at that target in a PV home.
+  hasSolarProduction: () => boolean;
   /** Complete priority order from the current mode's catalog owner. */
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   // Price-layer allocation-horizon producer, injected by the wiring layer. The
@@ -139,7 +142,8 @@ export class DeferredObjectiveDecorationController {
         dailyBudgetSnapshot,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         activePlans: this.deps.getDeferredObjectiveActivePlans(),
-        sustainableRateKw: resolveUsableCapacityKw(this.deps.getCapacitySettings()),
+        powerLimits: this.deps.getCapacitySettings(),
+        hasSolarProduction: this.deps.hasSolarProduction(),
       }, this.readers, this.priorityAllocationTracker, LIVE_LANE)
         .filter((evaluation) => evaluation.deadlineAtMs > nowTs);
     } finally {

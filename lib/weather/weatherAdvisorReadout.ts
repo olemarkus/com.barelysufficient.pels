@@ -23,6 +23,8 @@ import {
   quantile,
 } from '../../packages/shared-domain/src/energySignature/energySignature';
 import { suggestDailyBudgetKwh } from './suggestDailyBudget';
+import { planningPowerCeiling } from '../../packages/shared-domain/src/settings/powerLimits';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
@@ -65,8 +67,12 @@ export type WeatherAdvisorReadoutInput = {
   currentDailyBudgetKwh?: number;
   /** Whether the daily budget feature is on — gates the auto-apply inert hint. */
   dailyBudgetEnabled?: boolean;
-  /** Hard capacity cap (kW); the suggestion stays subordinate to it. */
-  capacityLimitKw?: number;
+  /**
+   * The live power-limit settings; the suggestion stays subordinate to their
+   * planning ceiling (`planningPowerCeiling`), and the over-limit flag
+   * names the limit that sets it.
+   */
+  powerLimitSettings: PowerLimitSettings;
   nowMs: number;
   timeZone: string;
 };
@@ -297,8 +303,9 @@ function resolveTomorrowOutlook(
   if (!resolved) return null;
 
   const capacityDayHours = resolveLocalDayHours(tomorrowKey, input.timeZone);
-  const capacityCapKwh = input.capacityLimitKw !== undefined && input.capacityLimitKw > 0
-    ? input.capacityLimitKw * capacityDayHours
+  const ceiling = planningPowerCeiling(input.powerLimitSettings);
+  const capacityCapKwh = ceiling !== null && ceiling.kw > 0
+    ? ceiling.kw * capacityDayHours
     : Number.POSITIVE_INFINITY;
   return {
     prediction: {
@@ -314,11 +321,15 @@ function resolveTomorrowOutlook(
     suggestion: {
       kwh: resolved.result.suggestedBudgetKwh,
       currentDailyBudgetKwh: input.currentDailyBudgetKwh ?? null,
-      // True only when tomorrow's EXPECTED usage exceeds what the cap can deliver
+      // Set only when tomorrow's EXPECTED usage exceeds what the cap can deliver
       // in a day — the over-cap banner's actual claim. Gating on the predicted
       // demand (not the clamped suggestion) avoids a false positive when a tiny
       // hard cap clamps the [20,360] floor below the cap on a low-demand day.
-      cappedByCapacity: resolved.result.predictedKwh >= capacityCapKwh - 1e-6,
+      // It names the limit that sets the ceiling, so the banner never blames a
+      // hard cap that is switched off; with no power limit there is no cap.
+      cappedByPowerLimit: ceiling !== null && resolved.result.predictedKwh >= capacityCapKwh - 1e-6
+        ? ceiling.limit
+        : null,
       budgetMayBeLimiting: resolved.result.budgetMayBeLimiting,
       budgetPressureKwh: resolved.result.budgetPressureKwh,
       ...(resolved.coldEveningSuspected !== undefined
@@ -349,7 +360,7 @@ function recomputeTomorrowSuggestion(
       fit,
       targetDateKey: tomorrowKey,
       forecastMeanTempC: meanTempC,
-      capacityLimitKw: input.capacityLimitKw,
+      planningCeilingKw: planningPowerCeiling(input.powerLimitSettings)?.kw,
       capacityDayHours: resolveLocalDayHours(tomorrowKey, input.timeZone),
       ...(input.state.budgetPressure !== undefined ? { budgetPressure: input.state.budgetPressure } : {}),
     }),

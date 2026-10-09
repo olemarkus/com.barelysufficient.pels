@@ -2,6 +2,7 @@ import type { Logger as PinoLogger } from 'pino';
 import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
 import { fetchMetForecast } from '../../lib/weather/metForecast';
+import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
 import type {
   WeatherDailyRecord,
   WeatherHistoryState,
@@ -121,7 +122,7 @@ describe('weather MET forecast integration (MET HTTP boundary mocked)', () => {
       getAppliedDailyBudgetKwh: () => 50,
       getBudgetCountedKwh: () => undefined,
       readBudgetDecisions: () => [],
-      getSustainableCapacityKw: () => 5,
+      getPowerLimitSettings: () => capacityOnlyPowerLimits(5),
       isManagedDevice: () => false,
       getUnreliablePeriods: () => [],
       getSettings: () => ({ enabled: true, outdoorDeviceId: 'out-1' }),
@@ -143,7 +144,7 @@ describe('weather MET forecast integration (MET HTTP boundary mocked)', () => {
       recomputeDerived: (state) => computeEnergySignatureUpdate(state, {
         getNowMs: () => Date.now(),
         getTimeZone: () => OSLO,
-        getCapacityLimitKw: () => undefined,
+        getPowerLimitSettings: () => powerLimits({ enabled: false, limitKw: 5, marginKw: 0 }, null),
         logger: logger as unknown as PinoLogger,
       }),
       logger: logger as unknown as PinoLogger,
@@ -206,7 +207,7 @@ describe('weather MET forecast integration (MET HTTP boundary mocked)', () => {
       getAppliedDailyBudgetKwh: () => 50,
       getBudgetCountedKwh: () => undefined,
       readBudgetDecisions: () => [],
-      getSustainableCapacityKw: () => 5,
+      getPowerLimitSettings: () => capacityOnlyPowerLimits(5),
       isManagedDevice: () => false,
       getUnreliablePeriods: () => [],
       getSettings: () => ({ enabled: true, outdoorDeviceId: 'out-1' }),
@@ -226,7 +227,7 @@ describe('weather MET forecast integration (MET HTTP boundary mocked)', () => {
       recomputeDerived: (state) => computeEnergySignatureUpdate(state, {
         getNowMs: () => Date.now(),
         getTimeZone: () => OSLO,
-        getCapacityLimitKw: () => undefined,
+        getPowerLimitSettings: () => powerLimits({ enabled: false, limitKw: 5, marginKw: 0 }, null),
         logger: logger as unknown as PinoLogger,
       }),
       logger: logger as unknown as PinoLogger,

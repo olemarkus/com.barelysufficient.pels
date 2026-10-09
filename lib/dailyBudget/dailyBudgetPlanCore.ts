@@ -1,3 +1,4 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import { clamp } from '../../packages/shared-domain/src/utils/math';
 import {
   NEW_PLAN_BLEND_WEIGHT,
@@ -16,8 +17,7 @@ import {
 } from './dailyBudgetPlanCaps';
 import { buildPlanWeights, resolveSplitShares } from './dailyBudgetPlanWeights';
 import { buildPlannedSplit } from './dailyBudgetPlanSplit';
-import type { CombinedPriceData } from './dailyBudgetPrices';
-import { buildPriceFactors } from './dailyBudgetPrices';
+import { buildPriceFactors, type CombinedPriceData } from './dailyBudgetPrices';
 import type { ObservedHourlyStats } from './observedHourlyStats';
 
 // A previously planned bucket value only counts when the slot exists and holds
@@ -51,7 +51,7 @@ type BuildPlanParams = {
   previousPlannedUncontrolledKWh?: number[];
   previousPlannedGrossUncontrolledKWh?: number[];
   previousPlannedControlledKWh?: number[];
-  capacityBudgetKWh?: number;
+  planningCeiling: PowerLimitCeiling | null;
   lockCurrentBucket?: boolean;
   controlledUsageWeight?: number;
   observedStats: ObservedHourlyStats;
@@ -257,7 +257,7 @@ const resolvePlannedTotals = (params: {
       usedNowKWh,
       dailyBudgetKWh,
       previousPlannedKWh,
-      capacityBudgetKWh,
+      planningCeiling,
       timeZone,
       controlledUsageWeight,
       observedStats,
@@ -292,7 +292,7 @@ const resolvePlannedTotals = (params: {
     controlledUsageWeight: typeof controlledUsageWeight === 'number' ? controlledUsageWeight : 0,
     observedStats,
     observedPeakMarginRatio,
-    capacityBudgetKWh,
+    planningCeiling,
     usedInCurrent,
     remainingStartIndex: bounds.remainingStartIndex,
     currentBucketIndex: bounds.safeCurrentBucketIndex,

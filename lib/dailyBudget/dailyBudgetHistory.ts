@@ -1,3 +1,4 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../power/tracker';
 import {
   buildLocalDayBuckets,
@@ -26,6 +27,8 @@ export const buildDailyBudgetHistory = (params: {
   priceShapingEnabled: boolean;
   profileSampleCount: number;
   profileBreakdown?: { uncontrolled: number[]; controlled: number[] } | null;
+  /** The planning ceiling as the limits stand now; a closed day reports no allocation pressure. */
+  planningCeiling: PowerLimitCeiling | null;
 }): DailyBudgetDayPayload | null => {
   const {
     dayStartUtcMs,
@@ -36,6 +39,7 @@ export const buildDailyBudgetHistory = (params: {
     priceShapingEnabled,
     profileSampleCount,
     profileBreakdown,
+    planningCeiling,
   } = params;
 
   const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
@@ -130,5 +134,6 @@ export const buildDailyBudgetHistory = (params: {
     priceData,
     budget,
     frozen: false,
+    planningCeiling,
   });
 };

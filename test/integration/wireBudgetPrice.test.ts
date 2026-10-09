@@ -4,7 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { wireBudgetPrice } from '../../setup/appInit/wireBudgetPrice';
 import type { AppContext } from '../../lib/app/appContext';
-import type { BudgetPriceInputs } from '../../lib/price/budgetPrice';
+import { resolveExpectedManagedDrawKwh, type BudgetPriceInputs } from '../../lib/price/budgetPrice';
+import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
 
 const makeCtx = (params: {
   capture: (inputs: BudgetPriceInputs) => void;
@@ -13,7 +14,7 @@ const makeCtx = (params: {
 }): AppContext => ({
   priceCoordinator: { setBudgetPriceInputs: params.capture },
   dailyBudgetService: { getGrossBackgroundKwh: (hour: number) => params.grossByHour?.[hour] },
-  capacitySettings: { limitKw: params.limitKw ?? 5, marginKw: 0 },
+  capacitySettings: capacityOnlyPowerLimits(params.limitKw ?? 5),
   getTimeZone: () => 'UTC',
 } as unknown as AppContext);
 
@@ -25,16 +26,19 @@ describe('wireBudgetPrice — forecast-surplus composition', () => {
     const ctx = makeCtx({ capture: (i) => { captured = i; }, grossByHour: { 12: 0.5 }, limitKw: 7 });
     wireBudgetPrice(ctx, (ms) => (ms === noon ? 3 : undefined));
 
-    expect(captured?.expectedManagedDrawKwh).toBe(7);
+    expect(resolveExpectedManagedDrawKwh(captured!.getPowerLimitSettings())).toBe(7);
     expect(captured?.getSurplusKwh(noon)).toBeCloseTo(2.5, 9); // 3 − 0.5
   });
 
-  it('reflects a runtime capacity-limit change (live getter, not frozen at boot)', () => {
+  it('reflects a runtime power-limit change (live read, not frozen at boot)', () => {
     let captured: BudgetPriceInputs | undefined;
     const ctx = makeCtx({ capture: (i) => { captured = i; }, limitKw: 5 });
     wireBudgetPrice(ctx, () => 1);
     ctx.capacitySettings.limitKw = 9;
-    expect(captured?.expectedManagedDrawKwh).toBe(9);
+    expect(resolveExpectedManagedDrawKwh(captured!.getPowerLimitSettings())).toBe(9);
+    // A grid import limit, once on, sizes the appetite instead of the switched-off hard cap.
+    ctx.capacitySettings = powerLimits({ enabled: false, limitKw: 9, marginKw: 0 }, 6);
+    expect(resolveExpectedManagedDrawKwh(captured!.getPowerLimitSettings())).toBe(6);
   });
 
   it('reports no surplus when the forecast is unavailable', () => {
