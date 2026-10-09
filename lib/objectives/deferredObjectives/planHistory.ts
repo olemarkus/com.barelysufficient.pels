@@ -608,12 +608,6 @@ export class DeferredObjectivePlanHistoryRecorder {
     const active = [...this.inProgress.values()].map(toPersistedMeteredDeliveryState);
     return [...restored, ...active];
   }
-
-  // Test-only seam: clear in-progress state without touching persisted entries.
-  resetInProgressForTests(): void {
-    this.inProgress.clear();
-    this.lastDeliveryTickByDeviceId.clear();
-  }
 }
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */

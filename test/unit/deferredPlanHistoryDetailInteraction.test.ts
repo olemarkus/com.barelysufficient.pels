@@ -21,7 +21,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
-import { toResolvedLegacyPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { toResolvedLegacyPlanHistoryEntry } from '../utils/planHistoryFixtures';
 
 const HOUR_MS = 60 * 60 * 1000;
 // 2026-05-15: start 19:00 UTC, deadline 01:00 UTC next day (the mock's window).

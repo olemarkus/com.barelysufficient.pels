@@ -219,8 +219,8 @@ export function getBinaryControlPlan(snapshot?: BinaryControlPlanInput): BinaryC
   if (!snapshot || !hasBinaryAxis(snapshot)) return null;
   return {
     // Routed through `resolveCanSetControl` so the planner-side producer bit
-    // (consumed by the migrated `canTurnOnDevice`) and the legacy
-    // `getBinaryControlPlan().canSet` view stay bit-exact in lockstep.
+    // and the legacy `getBinaryControlPlan().canSet` view stay bit-exact in
+    // lockstep.
     canSet: resolveCanSetControl({
       binaryControl: snapshot.binaryControl,
       currentOn: snapshot.currentOn,
@@ -287,8 +287,8 @@ export type CanSetControlResolveInput = BinaryCapabilityResolveInput & {
  *  - `canSetControl === false`.
  *
  * Mirrors `getBinaryControlPlan(snapshot)?.canSet ?? false` exactly so the
- * migrated `canTurnOnDevice` gate stays byte-for-byte equivalent for the
- * existing snapshot shapes the executor passes in.
+ * actuator preflight (`DeviceWriteService.canTurnOnDevice`) stays byte-for-byte
+ * equivalent for the existing snapshot shapes the executor passes in.
  */
 export function resolveCanSetControl(input: CanSetControlResolveInput): boolean {
   if (!hasBinaryAxis(input)) return false;

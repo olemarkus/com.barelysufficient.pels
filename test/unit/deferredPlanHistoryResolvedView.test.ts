@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
-import { toResolvedLegacyPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE_MS = Date.UTC(2026, 4, 16, 7, 0, 0);
@@ -36,16 +36,21 @@ const buildRaw = (
   ...overrides,
 });
 
-describe('toResolvedLegacyPlanHistoryEntry', () => {
+const resolve = (entry: DeferredObjectivePlanHistoryEntry) => toResolvedPlanHistoryEntry(entry, {
+  name: 'Connected 300',
+  objectiveKind: entry.objectiveKind,
+});
+
+describe('toResolvedPlanHistoryEntry', () => {
   it('resolves a temperature entry (°C columns) to unit-agnostic values', () => {
-    const resolved = toResolvedLegacyPlanHistoryEntry(buildRaw());
+    const resolved = resolve(buildRaw());
     expect(resolved.targetValue).toBe(65);
     expect(resolved.startProgressValue).toBe(50);
     expect(resolved.finalProgressValue).toBe(64);
   });
 
   it('resolves an EV-SoC entry (% columns) to the same fields', () => {
-    const resolved = toResolvedLegacyPlanHistoryEntry(buildRaw({
+    const resolved = resolve(buildRaw({
       objectiveKind: 'ev_soc',
       targetTemperatureC: null,
       targetPercent: 80,
@@ -64,7 +69,7 @@ describe('toResolvedLegacyPlanHistoryEntry', () => {
     // a (malformed) temperature entry carrying a stray non-null `*Percent`
     // would surface that stray value. The recorder never produces this — the
     // test documents the single-non-null-column contract the producer assumes.
-    const resolved = toResolvedLegacyPlanHistoryEntry(buildRaw({
+    const resolved = resolve(buildRaw({
       objectiveKind: 'temperature',
       targetTemperatureC: 65,
       targetPercent: null,
@@ -73,7 +78,7 @@ describe('toResolvedLegacyPlanHistoryEntry', () => {
   });
 
   it('omits the raw kind-split columns from the resolved view', () => {
-    const resolved = toResolvedLegacyPlanHistoryEntry(buildRaw());
+    const resolved = resolve(buildRaw());
     for (const key of [
       'targetTemperatureC', 'targetPercent',
       'startProgressC', 'startProgressPercent',
@@ -84,7 +89,7 @@ describe('toResolvedLegacyPlanHistoryEntry', () => {
   });
 
   it('preserves every non-value field (including optionals)', () => {
-    const resolved = toResolvedLegacyPlanHistoryEntry(buildRaw());
+    const resolved = resolve(buildRaw());
     expect(resolved.id).toBe('entry-1');
     expect(resolved.objectiveKind).toBe('temperature');
     expect(resolved.outcome).toBe('met');
@@ -95,10 +100,10 @@ describe('toResolvedLegacyPlanHistoryEntry', () => {
   });
 
   it('resolves progress samples to a single `value` and keeps them absent when unset', () => {
-    const without = toResolvedLegacyPlanHistoryEntry(buildRaw());
+    const without = resolve(buildRaw());
     expect(without).not.toHaveProperty('progressSamples');
 
-    const withSamples = toResolvedLegacyPlanHistoryEntry(buildRaw({
+    const withSamples = resolve(buildRaw({
       progressSamples: [
         { atMs: DEADLINE_MS - 8 * HOUR_MS, valueC: 50, valuePercent: null },
         { atMs: DEADLINE_MS - 7 * HOUR_MS, valueC: 56, valuePercent: null },

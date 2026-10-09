@@ -3,7 +3,7 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory.ts';
-import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../test/utils/planHistoryFixtures.ts';
 import { HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE } from '../../shared-domain/src/homeScopeCopy.ts';
 import {
   renderDeadlinesList,

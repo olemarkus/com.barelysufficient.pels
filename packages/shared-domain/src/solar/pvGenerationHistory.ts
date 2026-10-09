@@ -182,8 +182,6 @@ const accumulateInterval = (
 };
 
 export type RecordPvSampleOptions = {
-  /** Overrides `PV_SAMPLE_MAX_GAP_MS` (tests only). */
-  maxGapMs?: number;
   /** SIGNED net home power (W, import positive) co-sampled with the generation
    *  reading; omitted when unknown. Producer-validated (finite) upstream. */
   netW?: number;
@@ -193,7 +191,7 @@ export type RecordPvSampleOptions = {
  * Fold one generation sample into the history. Energy for the interval since the
  * previous sample (`lastGenerationW × Δt`) is integrated and split across the
  * hours it spans. The first sample, an out-of-order sample, or one beyond
- * `maxGapMs` integrates nothing — out-of-order samples are ignored outright so the
+ * `PV_SAMPLE_MAX_GAP_MS` integrates nothing — out-of-order samples are ignored outright so the
  * cursor stays monotonic; a too-large gap re-anchors forward without crediting the
  * hole (leaving the straddled hour under-covered, hence excluded from training).
  */
@@ -203,7 +201,6 @@ export const recordPvSample = (
   atMs: number,
   options: RecordPvSampleOptions = {},
 ): PvGenerationHistory => {
-  const maxGapMs = options.maxGapMs ?? PV_SAMPLE_MAX_GAP_MS;
   const genW = finiteNonNegative(generationW);
   const { lastSampleMs, lastGenerationW, lastNetW, hourly } = history;
 
@@ -229,7 +226,7 @@ export const recordPvSample = (
   // Gap too large to trust: re-anchor forward and taint the hours the hole touched
   // — the hour it began in, and (when it ended mid-hour) the hour it ended in — so
   // neither is mistaken for complete however the deficit splits across the boundary.
-  if (atMs - lastSampleMs > maxGapMs) {
+  if (atMs - lastSampleMs > PV_SAMPLE_MAX_GAP_MS) {
     const taintedHourStarts = { ...(history.taintedHourStarts ?? {}) };
     taintedHourStarts[String(hourStartMs(lastSampleMs))] = true;
     if (atMs % HOUR_MS !== 0) taintedHourStarts[String(hourStartMs(atMs))] = true;

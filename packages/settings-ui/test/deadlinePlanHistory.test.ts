@@ -1,11 +1,11 @@
 import { h, render, type ComponentChild } from 'preact';
 import { describe, expect, it } from 'vitest';
-import { DeadlinePlanHistory } from '../src/ui/views/DeadlinePlanHistory.tsx';
+import { PlanHistoryCard } from '../src/ui/views/DeadlinePlanHistory.tsx';
 import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
-import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../test/utils/planHistoryFixtures.ts';
 
 const buildEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
@@ -44,14 +44,9 @@ const mountIntoBody = (vnode: ComponentChild): HTMLElement => {
   return mount;
 };
 
-describe('DeadlinePlanHistory', () => {
-  it('shows the empty state when there are no entries', () => {
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [], timeZone: 'UTC' }));
-    expect(mount.textContent).toContain('No past plans yet for this device.');
-  });
-
+describe('PlanHistoryCard', () => {
   it('renders a succeeded entry with an ok chip and a reached-at line', () => {
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [buildEntry()], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: buildEntry(), timeZone: 'UTC' }));
     const chip = mount.querySelector('.plan-chip--ok');
     expect(chip?.textContent).toBe('Succeeded');
     // Time formatting uses the system default locale via shared dateUtils helpers, so match
@@ -63,7 +58,7 @@ describe('DeadlinePlanHistory', () => {
 
   it('renders a missed entry with a warn chip and no reached-at line', () => {
     const entry = buildEntry({ outcome: 'missed', metAtMs: null, finalProgressC: 58 });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     const chip = mount.querySelector('.plan-chip--warn');
     expect(chip?.textContent).toBe('Missed');
     expect(mount.textContent).not.toContain('reached at');
@@ -78,7 +73,7 @@ describe('DeadlinePlanHistory', () => {
   // card and stays hidden on Succeeded / Abandoned rows.
   it('renders the muted reason line on Missed list cards', () => {
     const entry = buildEntry({ outcome: 'missed', metAtMs: null, finalProgressC: 58 });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     const reason = mount.querySelector('.plan-history-card__reason');
     expect(reason?.textContent).toBe("Why: Delivery blockers were not recorded for this earlier task.");
   });
@@ -105,20 +100,20 @@ describe('DeadlinePlanHistory', () => {
         contributors: [], intervals: [],
       },
     };
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     const reason = mount.querySelector('.plan-history-card__reason');
     expect(reason?.textContent)
       .toBe('Why: The daily budget held delivery back.');
   });
 
   it('does not render the reason line on Succeeded list cards', () => {
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [buildEntry()], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: buildEntry(), timeZone: 'UTC' }));
     expect(mount.querySelector('.plan-history-card__reason')).toBeNull();
   });
 
   it('does not render the reason line on Abandoned list cards', () => {
     const entry = buildEntry({ outcome: 'abandoned', metAtMs: null });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     expect(mount.querySelector('.plan-history-card__reason')).toBeNull();
   });
 
@@ -131,7 +126,7 @@ describe('DeadlinePlanHistory', () => {
       finalProgressC: null,
       metAtMs: null,
     });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     expect(mount.querySelector('.plan-chip--muted')?.textContent).toBe('Abandoned');
     expect(mount.textContent).toContain('reconstructed from settings');
   });
@@ -168,7 +163,7 @@ describe('DeadlinePlanHistory', () => {
       finalProgressC: 50,
       metAtMs: null,
     });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     expect(mount.querySelector('.plan-history-card__coverage')?.textContent)
       .toBe('Observed 0 of 5 scheduled hours');
   });
@@ -182,19 +177,19 @@ describe('DeadlinePlanHistory', () => {
     const stripped = entry as unknown as Record<string, unknown>;
     delete stripped.observedIntervals;
     delete stripped.discoveredFrom;
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [stripped as ResolvedDeferredObjectivePlanHistoryEntry],
+    const mount = mountIntoBody(h(PlanHistoryCard, {
+      entry: stripped as ResolvedDeferredObjectivePlanHistoryEntry,
       timeZone: 'UTC',
     }));
-    // The list and the outcome chip still render.
-    expect(mount.querySelector('.plan-history-list')).not.toBeNull();
+    // The card and the outcome chip still render.
+    expect(mount.querySelector('.plan-history-card')).not.toBeNull();
     expect(mount.querySelector('.plan-chip--ok')?.textContent).toBe('Succeeded');
     expect(mount.querySelector('.plan-history-card__coverage')).toBeNull();
   });
 
   it('renders an abandoned entry with a muted chip', () => {
     const entry = buildEntry({ outcome: 'abandoned', metAtMs: null });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     const chip = mount.querySelector('.plan-chip--muted');
     expect(chip?.textContent).toBe('Abandoned');
   });
@@ -212,7 +207,7 @@ describe('DeadlinePlanHistory', () => {
       finalProgressC: 26.0,
       targetTemperatureC: 40,
     });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     const progress = mount.querySelector('.plan-history-card__progress');
     expect(progress?.textContent).toContain('57.6 °C');
     expect(progress?.textContent).toContain('target 40.0 °C');
@@ -233,20 +228,20 @@ describe('DeadlinePlanHistory', () => {
       finalProgressC: 77.7,
       targetTemperatureC: 65,
     });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     const overshoot = mount.querySelector('.plan-history-card__overshoot');
     expect(overshoot?.textContent).toBe('Overshoot 12.7 °C');
   });
 
   it('keeps the past-list card overshoot line quiet on within-threshold Succeeded runs', () => {
     // Default buildEntry: finalProgressC = targetTemperatureC = 65 (no overshoot).
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [buildEntry()], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: buildEntry(), timeZone: 'UTC' }));
     expect(mount.querySelector('.plan-history-card__overshoot')).toBeNull();
   });
 
   it('renders a replaced entry with a distinct muted label', () => {
     const entry = buildEntry({ outcome: 'replaced', metAtMs: null });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     const chip = mount.querySelector('.plan-chip--muted');
     expect(chip?.textContent).toBe('Replaced');
   });
@@ -271,8 +266,8 @@ describe('DeadlinePlanHistory', () => {
       deliveredKWh: 18.2,
       costDisplay: { unit: 'kr', divisor: 100 },
     });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [entry],
+    const mount = mountIntoBody(h(PlanHistoryCard, {
+      entry: entry,
       timeZone: 'UTC',
     }));
     const cost = mount.querySelector('.plan-history-card__cost');
@@ -287,8 +282,8 @@ describe('DeadlinePlanHistory', () => {
       deliveredKWh: 1.5,
       costDisplay: { unit: 'kr', divisor: 100 },
     });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [entry],
+    const mount = mountIntoBody(h(PlanHistoryCard, {
+      entry: entry,
       timeZone: 'UTC',
     }));
     const cost = mount.querySelector('.plan-history-card__cost');
@@ -301,8 +296,8 @@ describe('DeadlinePlanHistory', () => {
     // formatter must assume øre/kr (divisor 100): 150 øre → ≈ 2 kr. This is the
     // core fix — a legacy øre entry must NOT render under a live Flow divisor.
     const entry = buildEntry({ totalCost: 150, deliveredKWh: 1.5 });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [entry],
+    const mount = mountIntoBody(h(PlanHistoryCard, {
+      entry: entry,
       timeZone: 'UTC',
     }));
     const cost = mount.querySelector('.plan-history-card__cost');
@@ -318,8 +313,8 @@ describe('DeadlinePlanHistory', () => {
       deliveredKWh: 4,
       costDisplay: { unit: 'EUR', divisor: 1 },
     });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [entry],
+    const mount = mountIntoBody(h(PlanHistoryCard, {
+      entry: entry,
       timeZone: 'UTC',
     }));
     const cost = mount.querySelector('.plan-history-card__cost');
@@ -336,8 +331,8 @@ describe('DeadlinePlanHistory', () => {
       deliveredKWh: 18.2,
       costDisplay: { unit: 'kr', divisor: 100 },
     });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [entry],
+    const mount = mountIntoBody(h(PlanHistoryCard, {
+      entry: entry,
       timeZone: 'UTC',
     }));
     const cost = mount.querySelector('.plan-history-card__cost');
@@ -347,8 +342,8 @@ describe('DeadlinePlanHistory', () => {
   it('suppresses the cost meta line when neither cost nor delivery was recorded', () => {
     // Default buildEntry carries no `totalCost` / `deliveredKWh` (legacy-shaped
     // entry) — the producer returns null and the line must not render.
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [buildEntry()],
+    const mount = mountIntoBody(h(PlanHistoryCard, {
+      entry: buildEntry(),
       timeZone: 'UTC',
     }));
     expect(mount.querySelector('.plan-history-card__cost')).toBeNull();
@@ -363,8 +358,8 @@ describe('DeadlinePlanHistory', () => {
       deliveredKWh: 18.2,
       costDisplay: { unit: '', divisor: 1 },
     });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [entry],
+    const mount = mountIntoBody(h(PlanHistoryCard, {
+      entry: entry,
       timeZone: 'UTC',
     }));
     const cost = mount.querySelector('.plan-history-card__cost');

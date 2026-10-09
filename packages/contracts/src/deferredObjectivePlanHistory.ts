@@ -440,7 +440,7 @@ export type BudgetOnlyMissRecord = Omit<DeferredObjectivePlanHistoryRecord, 'out
 // value columns (`targetTemperatureC`/`targetPercent`, `startProgress*`,
 // `finalProgress*`, and sample `valueC`/`valuePercent`) are RESOLVED to single
 // unit-agnostic numbers (`targetValue` / `startProgressValue` /
-// `finalProgressValue`, sample `value`) by `toResolvedLegacyPlanHistoryEntry` before
+// `finalProgressValue`, sample `value`) by `toResolvedPlanHistoryEntry` before
 // the entry reaches any consumer. The raw columns are intentionally ABSENT from
 // this type, so reading one is a compile error: consumers branch on
 // `objectiveKind` only to pick a display unit, never to pick a value.

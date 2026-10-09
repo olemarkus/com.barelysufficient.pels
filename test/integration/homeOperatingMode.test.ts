@@ -130,6 +130,7 @@ const buildRig = (): Rig => {
     mainModeCatalog: getHomeModeCatalogForTest(ctx),
     isMembershipReady: () => true,
     isRuntimeActive: () => true,
+    homesStore: createRawHomesStore(ctx.homey.settings),
     modeOwnershipTransfer: createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
   });
   return { ctx, registry };

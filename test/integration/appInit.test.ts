@@ -55,7 +55,6 @@ import {
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
 } from '../../setup/appInit';
-import { requirePlanEngine } from '../../setup/appInit/contextGuards';
 import { DeferredObjectivePlanHistoryRecorder, normalizeDeferredObjectivePlanHistory } from '../../lib/objectives/deferredObjectives';
 import { createPlanHistoryStore } from '../../lib/objectives/deferredObjectives/planHistoryStore';
 import { disableDeferredObjectiveInSettings } from '../../setup/appInit/deferredRecorders';
@@ -143,8 +142,9 @@ describe('app init plan service wiring', () => {
   });
 
   it('projects transport binary bindings into semantic planner fields', () => {
+    const planEngine = {} as NonNullable<AppContext['planEngine']>;
     const serviceCtx = createAppContextMock({
-      planEngine: {} as AppContext['planEngine'],
+      planEngine,
       latestTargetSnapshot: transportSnapshotFixtures([
         {
           available: true,
@@ -187,7 +187,7 @@ describe('app init plan service wiring', () => {
       getAssociatedCar: () => undefined,
       getSnapshot: () => serviceCtx.latestTargetSnapshot,
     } as unknown as AppContext['deviceManager'];
-    const service = createPlanService(serviceCtx, buildMainHomeScopeForTest(serviceCtx, () => false, () => false), requirePlanEngine(serviceCtx));
+    const service = createPlanService(serviceCtx, buildMainHomeScopeForTest(serviceCtx, () => false, () => false), planEngine);
 
     const planDevices = (service as unknown as {
       deps: { getPlanDevices: () => Array<{ id: string; currentOn?: boolean; objectiveKind?: string }> };
@@ -201,35 +201,14 @@ describe('app init plan service wiring', () => {
     expect(tempDevice?.currentOn).toBeUndefined();
   });
 
-  // The service takes its engine by value now, so an absent one is not
-  // expressible at the call. The fail-fast moved to the read the main-home
-  // wiring makes on its way in (`initPlanService`).
-  it('fails fast when plan engine wiring is missing', () => {
-    const ctx = createAppContextMock({
-      planEngine: undefined,
-      deviceManager: {
-        getAssociatedCar: () => undefined,
-        getSnapshot: () => [],
-      } as unknown as AppContext['deviceManager'],
-      resolveManagedState: () => true,
-      isCapacityControlEnabled: () => true,
-      isBudgetExempt: () => false,
-      debugLoggingTopics: new Set(),
-      getStructuredDebugEmitter: () => vi.fn(),
-    });
-
-    expect(() => requirePlanEngine(ctx)).toThrow(
-      'PlanEngine must be initialized before plan service setup.',
-    );
-  });
-
   it('fails fast when plan service device manager wiring is missing', () => {
+    const planEngine = {} as NonNullable<AppContext['planEngine']>;
     const ctx = createAppContextMock({
-      planEngine: {} as AppContext['planEngine'],
+      planEngine,
       deviceManager: undefined,
     });
 
-    expect(() => createPlanService(ctx, buildMainHomeScopeForTest(ctx, () => false, () => false), requirePlanEngine(ctx))).toThrow(
+    expect(() => createPlanService(ctx, buildMainHomeScopeForTest(ctx, () => false, () => false), planEngine)).toThrow(
       'DeviceTransport must be initialized before plan engine setup.',
     );
   });

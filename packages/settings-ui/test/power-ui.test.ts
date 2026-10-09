@@ -73,8 +73,8 @@ const captureRenderedPowerStats = async () => {
     renderHourlyPatternChartEcharts: hourlyPattern,
   }));
   try {
-    const { renderPowerStats } = await import('../src/ui/power.ts');
-    await renderPowerStats();
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
+    await refreshPowerData();
     return {
       dailyHistory: dailyHistory.mock.calls.at(-1)?.[0].points ?? [],
       hourlyPattern: hourlyPattern.mock.calls.at(-1)?.[0].points ?? [],
@@ -115,8 +115,8 @@ describe('power page stats (buckets-only)', () => {
     const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 7 * 24, 1.2);
     await installHomeyClient({ buckets });
 
-    const { renderPowerStats } = await import('../src/ui/power.ts');
-    await renderPowerStats();
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
+    await refreshPowerData();
 
     const weekdayEl = document.querySelector('#usage-weekday-avg') as HTMLElement;
     const weekendEl = document.querySelector('#usage-weekend-avg') as HTMLElement;
@@ -128,8 +128,8 @@ describe('power page stats (buckets-only)', () => {
     const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 24, 1.2);
     await installHomeyClient({ buckets });
 
-    const { renderPowerStats } = await import('../src/ui/power.ts');
-    await renderPowerStats();
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
+    await refreshPowerData();
 
     const chartRoot = document.querySelector('#hourly-pattern') as HTMLElement | null;
     expect(chartRoot).not.toBeNull();
@@ -145,8 +145,8 @@ describe('power page stats (buckets-only)', () => {
     const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 14 * 24, 1.2);
     await installHomeyClient({ buckets });
 
-    const { renderPowerStats } = await import('../src/ui/power.ts');
-    await renderPowerStats();
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
+    await refreshPowerData();
 
     const weekdayMetric = document.querySelector<HTMLElement>('[data-pattern-metric="weekday"]');
     const weekendMetric = document.querySelector<HTMLElement>('[data-pattern-metric="weekend"]');
@@ -183,8 +183,8 @@ describe('power page stats (buckets-only)', () => {
     const buckets = buildBuckets('2025-01-01T00:00:00.000Z', 5 * 24, 0.6);
     await installHomeyClient({ buckets });
 
-    const { renderPowerStats } = await import('../src/ui/power.ts');
-    await renderPowerStats();
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
+    await refreshPowerData();
 
     const chartRoot = document.querySelector('#daily-list') as HTMLElement | null;
     expect(chartRoot).not.toBeNull();
@@ -246,7 +246,7 @@ describe('power page stats (buckets-only)', () => {
   // moves buckets older than 30 days into `dailyTotals`. When both maps are
   // populated, the Daily-usage chart used to read from `dailyTotals` alone,
   // making it show the 14 days right before the 30-day cliff (e.g. 3–15 Apr on
-  // 16 May). The merge in `renderPowerStats` must fold recent bucket-derived days
+  // 16 May). The merge in `renderPowerStatsFromRead` must fold recent bucket-derived days
   // into the chart so the window advances forward to "today − 1".
   it('advances daily history window past stale dailyTotals using recent buckets', async () => {
     vi.useFakeTimers();
@@ -284,7 +284,7 @@ describe('power page stats (buckets-only)', () => {
 
   // Regression: `aggregateAndPruneHistory` folds only >30-day-old hours into
   // persisted `hourlyAverages`; the most-recent-30-days stay in `tracker.buckets`.
-  // `renderPowerStats` used to read persisted `hourlyAverages` outright once non-empty,
+  // `renderPowerStatsFromRead` used to read persisted `hourlyAverages` outright once non-empty,
   // dropping every recent hour from the Typical-day chart. The merge must fold
   // bucket-derived recent hours in additively.
   it('collapses a DST fall-back duplicated hour into one sample', async () => {
@@ -951,8 +951,8 @@ describe('power page stats (buckets-only)', () => {
       todayKey: '2025-01-06',
       days: { '2025-01-06': { budget: { enabled: true, dailyBudgetKWh: 12 } } },
     } as never);
-    const { renderPowerStats } = await import('../src/ui/power.ts');
-    await renderPowerStats();
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
+    await refreshPowerData();
 
     const params = captured as DailyParams | null;
     expect(params?.points).toHaveLength(1);
@@ -978,8 +978,8 @@ describe('power page stats (buckets-only)', () => {
       todayKey: '2025-01-06',
       days: { '2025-01-06': { budget: { enabled: false, dailyBudgetKWh: 12 } } },
     } as never);
-    const { renderPowerStats } = await import('../src/ui/power.ts');
-    await renderPowerStats();
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
+    await refreshPowerData();
 
     // null suppresses the mark line and the readout's budget context line.
     expect((captured as DailyParams | null)?.budgetKWh).toBeNull();
@@ -1004,8 +1004,8 @@ describe('power page stats (buckets-only)', () => {
     } as never);
     const { setActiveDailyBudgetFromPayload } = await import('../src/ui/activeDailyBudget.ts');
     setActiveDailyBudgetFromPayload(payloadWithBudget(12));
-    const { renderPowerStats } = await import('../src/ui/power.ts');
-    await renderPowerStats();
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
+    await refreshPowerData();
     expect(renderDaily.mock.lastCall?.[0]?.budgetKWh).toBe(12);
 
     renderDaily.mockClear();
@@ -1033,8 +1033,8 @@ describe('power page stats (buckets-only)', () => {
       }),
       renderHourlyPatternChartEcharts: vi.fn(() => true),
     }));
-    const { renderPowerStats } = await import('../src/ui/power.ts');
-    await renderPowerStats();
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
+    await refreshPowerData();
 
     expect((captured as DailyParams | null)?.leadingPartialDay).toBe(true);
   });

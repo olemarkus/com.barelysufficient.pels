@@ -735,7 +735,6 @@ describe('createCalibrationSnapshotMutationHook', () => {
     const hook = createCalibrationSnapshotMutationHook({
       getStore: () => store,
       debugStructured,
-      minIntervalMs: 30_000,
     });
     hook(makeSnapshot({ measuredPowerKw: 1.1 }), start);
     hook(makeSnapshot({ measuredPowerKw: 1.12 }), start + 1_000);
@@ -749,14 +748,13 @@ describe('createCalibrationSnapshotMutationHook', () => {
     // Regression: previously the debounce cursor was advanced before the
     // eligibility check, so an ineligible first call (e.g. stepCommandPending,
     // assumed step) would swallow the next valid sample for up to
-    // minIntervalMs — exactly the startup/step-change transitions this hook
+    // the 30 s debounce — exactly the startup/step-change transitions this hook
     // is meant to capture.
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
     const debugStructured = vi.fn();
     const hook = createCalibrationSnapshotMutationHook({
       getStore: () => store,
       debugStructured,
-      minIntervalMs: 30_000,
     });
     hook(makeSnapshot({ reportedStepId: undefined, measuredPowerKw: 1.1 }), start);
     expect(debugStructured).not.toHaveBeenCalled();
@@ -775,7 +773,6 @@ describe('createCalibrationSnapshotMutationHook', () => {
     const hook = createCalibrationSnapshotMutationHook({
       getStore: () => store,
       debugStructured,
-      minIntervalMs: 30_000,
     });
     // First call: above-step-ceiling rejection.
     hook(makeSnapshot({ measuredPowerKw: 1.81 }), start);
@@ -799,7 +796,6 @@ describe('createCalibrationSnapshotMutationHook', () => {
     const hook = createCalibrationSnapshotMutationHook({
       getStore: () => store,
       debugStructured,
-      minIntervalMs: 30_000,
     });
     const skipped = (reason: string) => expect.objectContaining({
       event: 'power_calibration_sample_skipped',
@@ -831,7 +827,6 @@ describe('createCalibrationSnapshotMutationHook', () => {
     const hook = createCalibrationSnapshotMutationHook({
       getStore: () => store,
       debugStructured,
-      minIntervalMs: 30_000,
     });
     hook(makeSnapshot({ reportedStepId: 'low', measuredPowerKw: 1.1 }), start);
     hook(makeSnapshot({ reportedStepId: 'medium', measuredPowerKw: 1.6 }), start + 1_000);

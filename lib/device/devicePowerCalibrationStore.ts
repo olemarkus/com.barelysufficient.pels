@@ -697,14 +697,14 @@ function isLowerPowerStep(
 }
 
 /**
- * Default per-(device, step) debounce for the event-driven hook. Telemetry
+ * Per-(device, step) debounce for the event-driven hook. Telemetry
  * from EV chargers and inverter-style heaters can publish `measure_power`
  * every 1–2 s; without this floor the EMA inside `recordSample` would saturate
  * its `alpha` term to MIN_ALPHA within ~30 s of operation and stop responding
  * to legitimate drift. Mirrors the prior `DEFAULT_CADENCE_MIN_INTERVAL_MS` that
  * the retired periodic sweep applied inside the store.
  */
-const DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS = 30_000;
+const HOOK_CADENCE_MIN_INTERVAL_MS = 30_000;
 
 /**
  * Build a `DeviceTransport.onSnapshotMutated` callback that forwards each
@@ -723,16 +723,12 @@ export function createCalibrationSnapshotMutationHook(params: {
    *  capture it. */
   getStore: () => PowerCalibrationStore;
   debugStructured?: StructuredDebugEmitter;
-  /** Override the per-(device, step) debounce. Defaults to 30 s. Set to 0 to
-   *  disable, primarily for tests. */
-  minIntervalMs?: number;
 }): (
   snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe,
   nowMs: number,
 ) => void {
   const { getStore, debugStructured } = params;
-  const minIntervalMs = params.minIntervalMs ?? DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS;
   const lastIngestMsByDeviceStep = new Map<string, number>();
   const lastSkipLogMsByDeviceStepReason = new Map<string, number>();
   // Whether this skip line may be written now, claiming the slot when it may.
@@ -742,18 +738,18 @@ export function createCalibrationSnapshotMutationHook(params: {
     if (debounceKey === null) return true;
     const skipKey = `${debounceKey}::${reason}`;
     const previous = lastSkipLogMsByDeviceStepReason.get(skipKey);
-    if (previous !== undefined && nowMs - previous < minIntervalMs) return false;
+    if (previous !== undefined && nowMs - previous < HOOK_CADENCE_MIN_INTERVAL_MS) return false;
     lastSkipLogMsByDeviceStepReason.set(skipKey, nowMs);
     return true;
   };
   return (snapshot, nowMs) => {
     const stepId = snapshot.reportedStepId;
-    const debounceKey = minIntervalMs > 0 && typeof stepId === 'string' && stepId.length > 0
+    const debounceKey = typeof stepId === 'string' && stepId.length > 0
       ? `${snapshot.id}::${stepId}`
       : null;
     if (debounceKey !== null) {
       const previous = lastIngestMsByDeviceStep.get(debounceKey);
-      if (previous !== undefined && nowMs - previous < minIntervalMs) return;
+      if (previous !== undefined && nowMs - previous < HOOK_CADENCE_MIN_INTERVAL_MS) return;
     }
     const outcome = getStore().ingestDeviceSnapshot(snapshot, nowMs);
     // Only record the debounce cursor on an accepted sample. The debounce
@@ -761,7 +757,7 @@ export function createCalibrationSnapshotMutationHook(params: {
     // `alpha` only advances on accepted samples — `recordSample` does not
     // mutate state on rejection. Debouncing on rejected outcomes
     // (`stale_observation`, `above_step_ceiling`, etc.) would silently drop
-    // the next valid sample for up to minIntervalMs without protecting
+    // the next valid sample for up to the debounce window without protecting
     // anything in return.
     if (outcome?.accepted === true && debounceKey !== null) {
       lastIngestMsByDeviceStep.set(debounceKey, nowMs);

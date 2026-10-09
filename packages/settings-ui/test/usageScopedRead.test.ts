@@ -310,14 +310,14 @@ describe('Usage panel scope states', () => {
 
   it('renders the honest unavailable state when the scoped read REJECTS', async () => {
     // Same surface contract as the producer-answered `unavailable` above, but
-    // for a thrown read: `renderPowerStats` must complete (not reject before
+    // for a thrown read: `renderPowerStatsFromRead` must complete (not reject before
     // the honest-state flip) and land the panel on the notice, never on the
     // previous home's figures under the new scope's chip.
     await installClient({ '/ui_homes': ROSTER_PAYLOAD });
     await selectArea();
-    const { renderPowerStats } = await import('../src/ui/power.ts');
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
 
-    await renderPowerStats();
+    await refreshPowerData();
 
     const panel = document.getElementById('usage-panel')!;
     expect(panel.dataset.scopeRead).toBe('unavailable');
@@ -340,14 +340,14 @@ describe('Usage panel scope states', () => {
     });
     await selectArea();
     const homeScope = await import('../src/ui/homeScope.ts');
-    const { renderPowerStats } = await import('../src/ui/power.ts');
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
 
-    await renderPowerStats();
+    await refreshPowerData();
     expect(document.getElementById('usage-panel')!.dataset.scopeRead).toBe('served');
     expect(document.getElementById('usage-hero-headline')!.textContent).toBe('0.7 kWh today');
 
     homeScope.selectHomeScope('main');
-    await renderPowerStats();
+    await refreshPowerData();
 
     const panel = document.getElementById('usage-panel')!;
     expect(panel.dataset.scopeRead).toBe('unavailable');
@@ -366,9 +366,9 @@ describe('Usage panel scope states', () => {
     });
     await selectArea();
     const homeScope = await import('../src/ui/homeScope.ts');
-    const { renderPowerStats } = await import('../src/ui/power.ts');
+    const { refreshPowerData } = await import('../src/ui/uiRefreshTasks.ts');
 
-    await renderPowerStats();
+    await refreshPowerData();
 
     const panel = document.getElementById('usage-panel')!;
     expect(panel.dataset.scopeRead).toBe('served');
@@ -376,7 +376,7 @@ describe('Usage panel scope states', () => {
     expect(document.getElementById('usage-hero-headline')!.textContent).toBe('0.7 kWh today');
 
     homeScope.selectHomeScope('main');
-    await renderPowerStats();
+    await refreshPowerData();
 
     expect(panel.dataset.scopeRead).toBe('served');
     expect(document.getElementById('usage-hero-headline')!.textContent).toBe('2.0 kWh today');

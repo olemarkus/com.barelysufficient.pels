@@ -42,11 +42,9 @@ const capitalize = (s: string): string => (
   s.length === 0 ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`
 );
 
-// Broader than the shared `isOffLikeState` in `deviceStatePredicates.ts`:
-// also treats empty / `'disappeared'` as off-for-display so the stepped card
-// renders the shared `Off` state word when the device has no fresh observation. Intentionally
-// not unified — the shared predicate is the strict off-or-unknown semantic
-// used elsewhere; this one is display-only.
+// Treats empty / `'off'` / `'unknown'` / `'disappeared'` as off-for-display so
+// the stepped card renders the shared `Off` state word when the device has no
+// fresh observation. Display-only.
 const isSteppedCardOffLikeState = (state: string | undefined): boolean => {
   const n = (state ?? '').trim().toLowerCase();
   return n === '' || n === 'off' || n === 'unknown' || n === 'disappeared';

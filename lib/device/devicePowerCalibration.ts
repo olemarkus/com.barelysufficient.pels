@@ -562,15 +562,3 @@ export function isStrictlyValidPersistedDevice(value: unknown): boolean {
   if (!isRecord(v.steps)) return false;
   return Object.values(v.steps).every(isPersistedStepShape);
 }
-
-export const POWER_CALIBRATION_CONSTANTS = {
-  MIN_ALPHA,
-  MAX_ALPHA,
-  CONFIDENCE_MIN_SAMPLES,
-  CONFIDENCE_MIN_SUSTAINED_SECONDS,
-  DEFAULT_FRESHNESS_WINDOW_MS,
-  SUSTAINED_SECONDS_GAP_CAP_MS,
-  NAMEPLATE_TOLERANCE_RATIO,
-  STEP_FLOOR_NAMEPLATE_RATIO,
-  RECENT_DRAW_DEFAULT_MIN_KW,
-} as const;

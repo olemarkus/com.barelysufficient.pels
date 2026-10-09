@@ -11,7 +11,7 @@ import type {
   DeferredObjectiveSettingsEntry,
 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObservedStateOfChargeProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../contracts/src/types.ts';
-import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../test/utils/planHistoryFixtures.ts';
 import { toResolvedActivePlan } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 
 const { resolveDeadlinesListCards, resolveDeadlinesHistoryEntries } = testExports;

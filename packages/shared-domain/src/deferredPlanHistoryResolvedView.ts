@@ -82,12 +82,3 @@ export const toResolvedPlanHistoryEntry = (
     progressDirection: record.progressDirection ?? 'increasing',
   };
 };
-
-/** Compatibility projection for already-validated legacy rows. Runtime API
- * producers must use `toResolvedPlanHistoryEntry` with current device data. */
-export const toResolvedLegacyPlanHistoryEntry = (
-  entry: DeferredObjectivePlanHistoryEntry,
-): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry(entry, {
-  name: entry.deviceName === null ? entry.deviceId : entry.deviceName,
-  objectiveKind: entry.objectiveKind,
-});

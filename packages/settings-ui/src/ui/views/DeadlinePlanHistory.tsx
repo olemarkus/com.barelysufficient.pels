@@ -15,11 +15,6 @@ import { formatPlanHistoryListCostAndDelivered } from '../../../../shared-domain
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { buildDeadlineHistoryHref } from '../deadlineUrls.ts';
 
-type DeadlinePlanHistoryProps = {
-  entries: ResolvedDeferredObjectivePlanHistoryEntry[];
-  timeZone: string;
-};
-
 export const PlanHistoryCard = ({ entry, timeZone }: {
   entry: ResolvedDeferredObjectivePlanHistoryEntry;
   timeZone: string;
@@ -110,29 +105,5 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
         <div class="plan-history-card__cost">{costLine}</div>
       )}
     </a>
-  );
-};
-
-export const DeadlinePlanHistory = ({
-  entries,
-  timeZone,
-}: DeadlinePlanHistoryProps) => {
-  if (entries.length === 0) {
-    return (
-      <section class="pels-surface-card plan-history-empty" aria-label="Past plans">
-        <p class="pels-card-supporting">No past plans yet for this device.</p>
-      </section>
-    );
-  }
-  return (
-    <section class="plan-history-list" aria-label="Past plans">
-      {entries.map((entry) => (
-        <PlanHistoryCard
-          key={entry.id}
-          entry={entry}
-          timeZone={timeZone}
-        />
-      ))}
-    </section>
   );
 };

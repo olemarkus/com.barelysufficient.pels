@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../contracts/src/settingsUiApi.ts';
-import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../test/utils/planHistoryFixtures.ts';
 
 // Stale-history-refresh race guard. PR1 made the independently-fetched history
 // callback re-render the active list (to thread the resolved `historyPresent`

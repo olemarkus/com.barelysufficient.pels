@@ -1,6 +1,5 @@
 import {
   isGrayStateDevice,
-  isOffLikeState,
   isOnLikeState,
   normalizeDeviceState,
 } from '../../packages/shared-domain/src/deviceStatePredicates';
@@ -34,25 +33,6 @@ describe('device state predicates', () => {
     it('returns false for empty / undefined', () => {
       expect(isOnLikeState(undefined)).toBe(false);
       expect(isOnLikeState('')).toBe(false);
-    });
-  });
-
-  describe('isOffLikeState', () => {
-    it('matches off and unknown', () => {
-      expect(isOffLikeState('off')).toBe(true);
-      expect(isOffLikeState('unknown')).toBe(true);
-    });
-
-    it('normalizes case and whitespace', () => {
-      // Previously planLegacy did not normalize — this pins the unified
-      // semantic.
-      expect(isOffLikeState('  OFF  ')).toBe(true);
-      expect(isOffLikeState('Unknown')).toBe(true);
-    });
-
-    it('rejects on-like values', () => {
-      expect(isOffLikeState('on')).toBe(false);
-      expect(isOffLikeState('disappeared')).toBe(false);
     });
   });
 
