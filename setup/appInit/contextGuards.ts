@@ -30,16 +30,24 @@ export function requireHomeMembership(ctx: AppContext): NonNullable<AppContext['
   return ctx.homeMembership;
 }
 
+/** Built by the `initPlanRuntime` step before Main's plan service, so every plan service finds it. */
+export function requireSnapshotWarmupGate(ctx: AppContext): NonNullable<AppContext['snapshotWarmupGate']> {
+  if (!ctx.snapshotWarmupGate) {
+    throw new Error('SnapshotWarmupGate must be initialized before plan service setup.');
+  }
+  return ctx.snapshotWarmupGate;
+}
+
 /**
  * The ONE PlanService presence guard. `AppContext.planService` is optional only
  * because of an initialisation cycle — `createPlanService(ctx, …)` needs the
  * context that holds the field — so every consumer that runs after
- * `AppServiceWiring.initPlanService` reads a value that is always there. Three
+ * `AppServiceWiring.initPlanRuntime` reads a value that is always there. Three
  * separate files had each redeclared this guard with its own message; they now
  * all call this one, which is why the message names no particular seam.
  *
  * Use it wherever a throw is the honest answer: a caller that runs after
- * `initPlanService` and can surface an error. Where a caller is a fire-and-forget
+ * `initPlanRuntime` and can surface an error. Where a caller is a fire-and-forget
  * `void` on a lane that is live earlier than that, use {@link resolvePlanService}
  * — a synchronous throw out of `void fn()` cannot be caught by the `.catch` the
  * call site appears to have.
@@ -53,11 +61,11 @@ export function requirePlanService(ctx: AppContext): PlanService {
 
 /**
  * The plan service as an explicit semantic result, for lanes that can genuinely
- * run before `initPlanService`.
+ * run before `initPlanRuntime`.
  *
  * The observed-state lane no longer needs this — its plan-dependent listeners
  * were moved into their own startup step (`subscribePlanObservedState`) after
- * `initPlanService`. The target-power reachability lane still does: its snapshot
+ * `initPlanRuntime`. The target-power reachability lane still does: its snapshot
  * mutation hook is bound with the transport during `initDeviceManager`, and it
  * requests the owning home's rebuild through a fire-and-forget `void` call. A
  * `requirePlanService` there throws SYNCHRONOUSLY, so it escapes past the

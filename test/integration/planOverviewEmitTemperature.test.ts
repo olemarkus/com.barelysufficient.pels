@@ -3,7 +3,7 @@ import { buildSettingsOverviewReadModel } from '../../lib/plan/settingsOverviewR
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
-import { buildOverviewDeviceCard } from '../utils/settingsOverviewFixture';
+import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 
 // The overview log and live-card seams share one atomic temperature resolver.
 // Pin that integration here: the shared-domain classifier reads the trio as one
@@ -42,6 +42,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     const captured: { deviceId: string; entry: Record<string, unknown> }[] = [];
     const plan = satisfiedTargetOnlyPlan();
     const deps = {
+      ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(plan.devices[0]), dryRun: false, nowMs: 0,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -51,6 +52,8 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     };
     const snapshot = buildSettingsOverviewReadModel(plan, deps)!;
     const changed = new DeviceOverviewTransitions().capture(snapshot, {
+      isOverviewDebugEnabled: () => false,
+      overviewDebugStructured: vi.fn(),
       deviceOverviewLogRecorder: { record: (deviceId: string, entry: Record<string, unknown>) => {
         captured.push({ deviceId, entry });
       } } as never,
@@ -78,6 +81,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       devices: [updatedDevice],
     } as DevicePlan;
     const deps = {
+      ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(updatedDevice), dryRun: false, nowMs: 0,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -92,6 +96,8 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
 
     new DeviceOverviewTransitions().capture(buildSettingsOverviewReadModel(stalePlan, deps)!, {
       ...deps,
+      isOverviewDebugEnabled: () => false,
+      overviewDebugStructured: vi.fn(),
       deviceOverviewLogRecorder: {
         record: (_deviceId: string, entry: Record<string, unknown>) => captured.push(entry),
       } as never,

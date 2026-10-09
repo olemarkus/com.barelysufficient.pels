@@ -459,6 +459,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     get priceOptimizationSettings() { return priceOptimizationSettings; },
     // Production's port with no registry behind it (`buildHomeRuntimeReadPort`).
     homeRuntimeRead: { readHome: () => ({ state: 'unavailable' }) },
+    // Production builds the gate before any plan service; this one has released.
+    snapshotWarmupGate: new SnapshotWarmupGate({ timeoutMs: 0 }),
     // Mirror the real `DeferredObjectiveStatusBus` surface. The lifecycle emitter
     // reads `getCurrent`/`hasActive` and writes via `publish`/`setCurrent`, so a
     // `{ subscribe, emit }` shim crashes any code that touches the bus. Default
@@ -566,7 +568,6 @@ export function createInitializedAppContextMock(options: AppContextMockOptions =
     planEngine: {
       state: { sheddingActive: false },
     } as never,
-    snapshotWarmupGate: new SnapshotWarmupGate({ timeoutMs: 0 }),
     ...options,
   });
   requireInitializedAppContext(context);

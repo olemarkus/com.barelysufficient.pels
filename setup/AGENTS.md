@@ -15,7 +15,7 @@
 ## External reads and startup
 
 - Homey `settings.get()` may return either `null` or `undefined` for an absent key. The owning reader uses `getKeys()` to distinguish a never-written key from a transient miss and preserves last-good behavior where appropriate. Never convert an unavailable read into a plausible domain default. See `notes/persisted-settings-state.md`.
-- Ordered startup builds optional `AppContext` services into required services. Assert an unavailable required service at the startup boundary (`requireInitializedAppContext` or a narrow `require*`); do not use `?.` or `??` to invent a value. Keep `subscribePlanObservedState` after `initPlanService` so listeners cannot reach an unwired planner.
+- Ordered startup builds optional `AppContext` services into required services. Assert an unavailable required service at the startup boundary (`requireInitializedAppContext` or a narrow `require*`); do not use `?.` or `??` to invent a value. Keep `subscribePlanObservedState` after `initPlanRuntime` so listeners cannot reach an unwired planner.
 - `app.ts` is the composition root. `setup/appInit/` holds boot factories and registrars; `setup/homeRuntime/` holds per-home factories used for Main and sub-homes. A new per-home factory belongs in `homeRuntime/`.
 - The configured Main meter and the provenance of a sampled reading are separate facts. The save seam rejects invalid meter ownership; runtime fences legacy or temporarily untrusted samples. Repair supported configuration problems at their producer rather than weakening either rule.
 

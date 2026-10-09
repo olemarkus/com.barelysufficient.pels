@@ -7,7 +7,6 @@
  * `PlanService.trackPlanChanges` / `resolveDebugSummaryState` methods.
  */
 import { incPerfCounter } from '../utils/perfCounters';
-import { getLogger } from '../logging/logger';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   buildPlanDebugSummaryEvent,
@@ -17,11 +16,9 @@ import {
 } from './planLogging';
 import type { DevicePlan, PlanChangeSet } from './planTypes';
 
-const logger = getLogger('plan/service');
-
 type PlanChangeTrackerDeps = {
-  debugStructured?: StructuredDebugEmitter;
-  isPlanDebugEnabled?: () => boolean;
+  debugStructured: StructuredDebugEmitter;
+  isPlanDebugEnabled: () => boolean;
 };
 
 type DebugSummaryState = {
@@ -67,8 +64,7 @@ export class PlanChangeTracker {
     }
 
     if (debugSummaryState.changed && debugSummaryState.event) {
-      const emit = this.deps.debugStructured ?? ((p: Record<string, unknown>) => logger.debug(p));
-      emit(debugSummaryState.event);
+      this.deps.debugStructured(debugSummaryState.event);
     }
 
     this.lastActionPlanSignature = actionSignature;
@@ -96,8 +92,7 @@ export class PlanChangeTracker {
   }): DebugSummaryState {
     const { plan, actionChanged, detailChanged, metaChanged } = params;
     const shouldCheck = (actionChanged || detailChanged || metaChanged)
-      && Boolean(this.deps.debugStructured)
-      && (this.deps.isPlanDebugEnabled?.() ?? true);
+      && this.deps.isPlanDebugEnabled();
     if (!shouldCheck) {
       return { event: null, signature: null, changed: false, emitted: false };
     }

@@ -202,7 +202,7 @@ export type AppServiceWiringDeps = {
 export class AppServiceWiring {
   // The main home's closure bundle for the plan factories. Built once (the
   // capacity-settings store port inside it is constructed a single time at
-  // this wiring site) and shared by `initPlanEngine`/`initPlanService`.
+  // this wiring site) and shared by `initPlanRuntime`.
   private readonly mainHomeScope: HomeScope;
 
   constructor(private readonly deps: AppServiceWiringDeps) {
@@ -584,7 +584,7 @@ export class AppServiceWiring {
 
   // Body in `setup/appInit/planObservedStateSubscription.ts`. Deliberately NOT folded into
   // `initDeviceManager`: these listeners reach the plan service, so they may not
-  // be live before `initPlanService`.
+  // be live before `initPlanRuntime`.
   subscribePlanObservedState(): void {
     this.deps.getObservedStateEmitter().onExternalTemperatureAdjusted(
       this.deps.ctx.observedTemperatureModeUpdates.accept.bind(this.deps.ctx.observedTemperatureModeUpdates),
@@ -659,7 +659,7 @@ export class AppServiceWiring {
    * Resolved, not asserted: the target-power reachability lane calls this as a
    * fire-and-forget `void` from a snapshot-mutation hook that is bound during
    * `initDeviceManager`. A synchronous throw there escapes the `.catch` chained
-   * at the call site and the `void` around it, so a pre-`initPlanService`
+   * at the call site and the `void` around it, so a pre-`initPlanRuntime`
    * mutation would crash boot rather than log. Before the service exists there
    * is no plan to rebuild and nothing to record — the first plan build reads the
    * freshly written reachability anyway.

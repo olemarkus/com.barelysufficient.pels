@@ -27,12 +27,14 @@ import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 import { buildSettingsOverviewReadModel } from '../../lib/plan/settingsOverviewReadModel';
 import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
+import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 
 describe('settingsUiApi', () => {
   const overviewFixture = (
     device: Parameters<typeof executionStateFixture>[0],
     meta = buildPlanMeta(),
   ) => buildSettingsOverviewReadModel({ generatedAtMs: 123456789, meta, devices: [device], storageReleases: [] }, {
+    ...overviewReadModelWiring(),
     nowMs: 123456789,
     dryRun: false,
     getDeviceExecutionState: () => executionStateFixture(device),

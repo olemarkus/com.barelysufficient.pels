@@ -33,6 +33,7 @@ import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerF
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanMeta, restoreTimingFixture, sheddingPlanFixture } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
+import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 
 const noop = (): void => undefined;
 const loggerMock: Logger = {
@@ -224,6 +225,7 @@ describe('class-resolved identity through the plan build', () => {
       devices: planDevices,
       storageReleases: [],
     }, {
+      ...overviewReadModelWiring(),
       getDeviceExecutionState: (deviceId) => {
         const device = planDevices.find((candidate) => candidate.id === deviceId);
         if (!device) throw new Error(`missing plan device ${deviceId}`);

@@ -6,6 +6,7 @@ import { PlanService } from '../../lib/plan/planService';
 import { mockHomeyInstance } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { openPlanBuildGate, buildPlanMeta } from '../utils/planTestUtils';
+import { planServiceWiring } from '../helpers/planServiceWiring';
 
 describe('Price level helpers', () => {
   it('exposes enum values and option metadata', () => {
@@ -130,6 +131,7 @@ describe('Price level flow cards', () => {
     app.registerFlowCards();
 
     const planService = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),

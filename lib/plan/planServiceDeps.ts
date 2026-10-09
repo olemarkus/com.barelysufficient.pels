@@ -87,7 +87,7 @@ export type PlanServiceDeps = {
    * to ask — which is a different thing from the car saying nothing, and the
    * card copy depends on the distinction (`notes/ev-charger-state-copy.md`).
    */
-  getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
+  getAssociatedCarChargingState: (deviceId: string) => EvChargingState | undefined;
   /**
    * The charger's battery level for the settings-UI card, from the observer that
    * owns it. The plan device carries the boost DECISION (`boostActive`), never
@@ -109,7 +109,7 @@ export type PlanServiceDeps = {
   // Producer `deviceType` map for the settings-UI control-mode card selection
   // (the planner no longer carries `controlModel`). Built once per serialize from
   /** Confirmed producer profile for UI; excludes any planner-only probe rung. */
-  getSteppedLoadProfileById?: () => Map<string, SteppedLoadProfile>;
+  getSteppedLoadProfileById: () => Map<string, SteppedLoadProfile>;
   /**
    * The EFFECTIVE (membership-gated) dry-run this home actuates on. Drives the
    * rebuild outcome AND the `dryRunEffective` the status blob publishes — there
@@ -129,16 +129,18 @@ export type PlanServiceDeps = {
   getCurrentHourPriceLevel: () => PriceLevel;
   /** The tracker's sample stamp — gated consumers only, so it always exists. */
   getLastPowerUpdate: () => number;
-  schedulePostActuationRefresh?: () => void;
-  loggers?: Loggers;
-  overviewDebugStructured?: StructuredDebugEmitter;
-  isOverviewDebugEnabled?: () => boolean;
-  // Optional in-memory recorder for the settings-UI device-log view. Captures
-  // the SAME overview-transition change boundary the debug log uses, but is
-  // NOT gated on the debug topic, so the view has data without the user
-  // enabling debug logging first.
-  deviceOverviewLogRecorder?: DeviceOverviewLogRecorder;
-  isPlanDebugEnabled?: () => boolean;
+  schedulePostActuationRefresh: () => void;
+  // `getStructuredLogger` can answer undefined, so `structuredLog` stays
+  // optional; the debug emitter always exists.
+  loggers: Loggers & { debugStructured: StructuredDebugEmitter };
+  overviewDebugStructured: StructuredDebugEmitter;
+  isOverviewDebugEnabled: () => boolean;
+  // In-memory recorder for the settings-UI device-log view. Captures the SAME
+  // overview-transition change boundary the debug log uses, but is NOT gated
+  // on the debug topic, so the view has data without the user enabling debug
+  // logging first.
+  deviceOverviewLogRecorder: DeviceOverviewLogRecorder;
+  isPlanDebugEnabled: () => boolean;
   deviceDiagnostics?: {
     getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceSnapshot['starvation'] | null;
   };
@@ -146,16 +148,15 @@ export type PlanServiceDeps = {
   // channel. The settings UI reads ONE `plan_updated` stream (the main home's
   // plan); a sub-home capacity bundle (R7b) must NOT clobber it with its own
   // partitioned plan payload, so it binds `false` and emits a scoped home-id
-  // invalidation instead. Omitted/undefined = the
-  // pre-R7b behavior (main always emits), preserving single-home byte-identity.
-  emitsUiRealtime?: boolean;
+  // invalidation instead.
+  emitsUiRealtime: boolean;
   // Hold the first plan rebuild until the first device snapshot resolves (or
   // a bounded timeout expires). Without the gate, a price/settings/realtime
   // trigger that arrives between `initDeviceManager` and the first snapshot
   // refresh runs the planner against an empty snapshot and publishes a
   // one-cycle `deferred_objective_unknown reasonCode:objective_missing_device`
   // status, which fires a spurious `waiting → unachievable` flow trigger.
-  snapshotWarmupGate?: SnapshotWarmupGate;
+  snapshotWarmupGate: SnapshotWarmupGate;
   /**
    * Whether a plan may be built at all this cycle. Owned and answered by the
    * wiring layer; the planner does not know what it is waiting on, and must not

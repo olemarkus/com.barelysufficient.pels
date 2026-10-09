@@ -54,6 +54,7 @@ import {
 } from '../utils/planTestUtils';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import { planServiceWiring } from '../helpers/planServiceWiring';
 
 type PlanServiceDeps = ConstructorParameters<typeof PlanService>[0];
 
@@ -139,6 +140,7 @@ const buildPlan = (
 const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanService>[0]> = {}) => {
   const { loggers: loggerOverrides, ...rest } = overrides;
   const deps = {
+    ...planServiceWiring(),
     homeId: 'main',
     hasStandingCommandGrant: () => false,
     getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
@@ -165,6 +167,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getLastPowerUpdate: () => 1_745_000_000_000,
     loggers: {
+      debugStructured: vi.fn(),
       ...loggerOverrides,
     },
     isOverviewDebugEnabled: () => true,
@@ -452,6 +455,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -515,6 +519,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1024,6 +1029,7 @@ describe('PlanService', () => {
         expectedPowerKw: 3, expectedPowerSource: 'default',
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1195,6 +1201,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1267,6 +1274,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1306,6 +1314,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockRejectedValue('boom');
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1331,7 +1340,7 @@ describe('PlanService', () => {
       readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
           });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -1360,6 +1369,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1413,6 +1423,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1508,6 +1519,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1597,6 +1609,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1699,6 +1712,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1774,6 +1788,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1855,6 +1870,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -1995,6 +2011,7 @@ describe('PlanService', () => {
         currentTemperature: 19,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2077,6 +2094,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2175,6 +2193,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2233,6 +2252,7 @@ describe('PlanService', () => {
     const syncPendingBinaryCommands = vi.fn(() => false);
     const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'keep'));
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2330,6 +2350,7 @@ describe('PlanService', () => {
     }];
     const syncPendingBinaryCommands = vi.fn(() => false);
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2410,6 +2431,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2521,6 +2543,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2610,6 +2633,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2659,6 +2683,7 @@ describe('PlanService', () => {
   it('reuses cached pels status computation when inputs are unchanged', () => {
     const buildPelsStatusSpy = vi.spyOn(pelsStatusModule, 'buildPelsStatus');
     const planService = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2718,6 +2743,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2775,6 +2801,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -2792,7 +2819,7 @@ describe('PlanService', () => {
       readSimulationSetting: () => false,
       getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getLastPowerUpdate: () => 1_745_000_000_000,
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
           });
 
     const beforePerf = getPerfSnapshot();
@@ -2820,7 +2847,7 @@ describe('PlanService', () => {
   it('suppresses structured rebuild logs for unchanged no-op rebuilds', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2834,7 +2861,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for initial rebuild reasons even without action changes', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2935,7 +2962,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for slow rebuilds even without action changes', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2962,7 +2989,7 @@ describe('PlanService', () => {
   it('emits plan_rebuild_completed at debug level when actionChanged but no actions applied (dry-run)', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
       getCapacityDryRun: () => true,
       readSimulationSetting: () => true,
     });
@@ -2992,7 +3019,7 @@ describe('PlanService', () => {
   it('emits plan_rebuild_completed with concrete deviceWriteCount when actuation wrote to devices', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
@@ -3029,7 +3056,7 @@ describe('PlanService', () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const schedulePostActuationRefresh = vi.fn();
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
       schedulePostActuationRefresh,
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -3076,7 +3103,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for failed rebuilds', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
     });
     (deps.planEngine.buildDevicePlanSnapshot as Mock).mockImplementation(async () => {
       vi.advanceTimersByTime(17);
@@ -3119,6 +3146,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -3183,6 +3211,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -3273,6 +3302,7 @@ describe('PlanService', () => {
         })];
       };
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -3329,6 +3359,7 @@ describe('PlanService', () => {
         currentTemperature: 21,
       })];
     const service = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),

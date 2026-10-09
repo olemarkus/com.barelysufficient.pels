@@ -1,4 +1,4 @@
-import { requireDeviceManager } from './contextGuards';
+import { requireDeviceManager, requireSnapshotWarmupGate } from './contextGuards';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { readHomeBatteryCard } from '../../lib/observer/observedDeviceStateProjection';
 import { requireDisplayedPowerUpdateMs } from '../../lib/power/lastTotalPower';
@@ -103,7 +103,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // of the single settings-UI plan channel with its partitioned plan).
     deviceDiagnostics: scope.getDeviceDiagnostics(),
     emitsUiRealtime: scope.emitsUiRealtime,
-    snapshotWarmupGate: ctx.snapshotWarmupGate,
+    snapshotWarmupGate: requireSnapshotWarmupGate(ctx),
     // Scope-owned, so each home gates on ITS OWN meter: a sub-home whose area
     // meter has never reported must not ride the main home's first sample.
     // ONE composed boolean, composed here in the wiring: the planner asks a

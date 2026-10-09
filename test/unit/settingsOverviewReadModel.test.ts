@@ -1,6 +1,6 @@
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { buildSettingsOverviewReadModel as buildPlan } from '../../lib/plan/settingsOverviewReadModel';
-import { buildOverviewDeviceCard } from '../utils/settingsOverviewFixture';
+import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
@@ -11,16 +11,20 @@ import type { HomeBatteryCardControl } from '../../lib/observer/observedDeviceSt
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 
 
+type SpecDeps = Omit<SettingsOverviewReadModelDeps,
+  'getDeviceExecutionState' | 'dryRun' | 'nowMs' | keyof ReturnType<typeof overviewReadModelWiring>>
+  & Partial<ReturnType<typeof overviewReadModelWiring>>;
+
 const buildDeviceCard = (
   device: DevicePlanDevice,
-  deps: Omit<SettingsOverviewReadModelDeps, 'getDeviceExecutionState' | 'dryRun' | 'nowMs'>,
+  deps: SpecDeps,
   profile?: SteppedLoadProfile,
-) => buildOverviewDeviceCard(device, { ...deps, getDeviceExecutionState: () => executionStateFixture(device),
-  dryRun: false, nowMs: 0 }, profile);
+) => buildOverviewDeviceCard(device, { ...overviewReadModelWiring(), ...deps,
+  getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: 0 }, profile);
 const buildSettingsOverviewReadModel = (
   plan: Parameters<typeof buildPlan>[0],
-  deps: Omit<SettingsOverviewReadModelDeps, 'getDeviceExecutionState' | 'dryRun' | 'nowMs'>,
-) => buildPlan(plan, { ...deps, getDeviceExecutionState: (id) => {
+  deps: SpecDeps,
+) => buildPlan(plan, { ...overviewReadModelWiring(), ...deps, getDeviceExecutionState: (id) => {
   const device = plan?.devices.find((candidate) => candidate.id === id);
   if (!device) throw new Error('missing fixture device');
   return executionStateFixture(device);
@@ -195,6 +199,7 @@ describe('settingsOverviewReadModel', () => {
       reason: { code, shortfallKw: 0.9 },
     });
     const wire = buildOverviewDeviceCard(device, {
+      ...overviewReadModelWiring(),
       ...absentTemperature, dryRun, nowMs: 0,
       getDeviceExecutionState: () => executionStateFixture(device),
     });
@@ -223,6 +228,7 @@ describe('settingsOverviewReadModel', () => {
     const device = steppedPlanDevice({ binaryCapabilityId: undefined, currentState: 'off',
       reportedStepId: 'off', selectedStepId: 'off', desiredStepId: 'low', plannedState: 'keep' });
     const wire = buildOverviewDeviceCard(device, {
+      ...overviewReadModelWiring(),
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), desiredBinary: null,
         resumeExpected: true, steppedTransitionPending: true }),
@@ -239,6 +245,7 @@ describe('settingsOverviewReadModel', () => {
       reportedStepId: 'medium', selectedStepId: 'max', desiredStepId: 'max', stepCommandPending: true });
     const confirmed = { steps: device.steppedLoadProfile.steps.filter((step) => step.id !== 'max') };
     const wire = buildOverviewDeviceCard(device, {
+      ...overviewReadModelWiring(),
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => executionStateFixture(device),
     }, confirmed);
@@ -255,6 +262,7 @@ describe('settingsOverviewReadModel', () => {
     const device = steppedPlanDevice({ currentState: 'off', reportedStepId: 'low',
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
     const wire = buildOverviewDeviceCard(device, {
+      ...overviewReadModelWiring(),
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), binaryProgress: 'pending',
         stepProgress: 'settled', resumeExpected: true, steppedTransitionPending: true }),
@@ -370,12 +378,14 @@ describe('settingsOverviewReadModel', () => {
     const device = buildPlanDevice({ id: 'heater', currentState: 'off', plannedState: 'keep',
       reason: { code: PLAN_REASON_CODES.restoreThrottled } });
     const wire = buildOverviewDeviceCard(device, {
+      ...overviewReadModelWiring(),
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), resumeExpected: true }),
     });
     expect(wire.status).toMatchObject({ kind: 'held', label: 'Limited · Off' });
     // With the command in flight it is resuming, whatever the reason.
     const inFlight = buildOverviewDeviceCard(device, {
+      ...overviewReadModelWiring(),
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), resumeExpected: true,
         binaryProgress: 'pending' }),
@@ -456,6 +466,7 @@ describe('settingsOverviewReadModel', () => {
   it('anchors a countdown to the decision when refreshing presentation later', () => {
     const device = buildPlanDevice({ reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 42 } });
     const wire = buildPlan({ generatedAtMs: 1_000, meta: buildPlanMeta({}), devices: [device], storageReleases: [] }, {
+      ...overviewReadModelWiring(),
       ...absentTemperature, dryRun: false, nowMs: 11_000,
       getDeviceExecutionState: () => executionStateFixture(device),
     });

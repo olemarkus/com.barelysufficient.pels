@@ -7,6 +7,24 @@ import {
 } from '../../lib/plan/settingsOverviewReadModel';
 import { buildPlanMeta } from './planTestUtils';
 
+type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
+  | 'getOverviewStarvation'
+  | 'getIdleClassification'
+  | 'getAssociatedCarChargingState'
+  | 'getSteppedLoadProfileById'>;
+
+/**
+ * The read-model deps the plan service always wires, for a spec that is not
+ * about them: no starvation, no idle classification, no associated car, no
+ * stepped profiles. A spec about one of them overrides it.
+ */
+export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
+  getOverviewStarvation: () => undefined,
+  getIdleClassification: () => undefined,
+  getAssociatedCarChargingState: () => undefined,
+  getSteppedLoadProfileById: () => new Map(),
+});
+
 /**
  * One device's overview card, built the way production builds it: through the
  * whole-plan read model, from a plan holding only that device. The plan's
