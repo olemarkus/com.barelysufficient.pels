@@ -3,15 +3,12 @@ import type { RestoreTiming } from './timing';
 import type { PlanEngineState } from '../planState';
 import {
   resolveCapacityRestoreBlockReason,
-  resolveMeterSettlingCountdownTiming,
-  resolveMeterSettlingRemainingSec,
+  resolveMeterSettlingReason,
 } from './timing';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { hasOtherDevicesBlockingSteppedRestore } from './coordination';
-import { buildMeterSettlingReason } from '../planReasonStrings';
 import {
   buildOffSteppedRestoreHoldUpdate,
-  buildOffSteppedRestoreShedUpdate,
   setRestorePlanDevice,
 } from './planDeviceUpdates';
 
@@ -59,34 +56,37 @@ export function applySteppedDeviceGates(params: {
     requestedStepId,
   } = params;
   const gateRestoredOneThisCycle = restoredOneThisCycle && !batchContinuation;
-  const lastRestoreTs = deviceIsActive
-    ? (state.actuation.lastDeviceRestoreMs[dev.id] ?? null)
-    : state.actuation.lastRestoreMs;
-  const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
-    timing, lastRestoreTs, restoredOneThisCycle: gateRestoredOneThisCycle,
-  });
-  if (meterSettlingRemainingSec !== null) {
-    const reason = buildMeterSettlingReason(
-      meterSettlingRemainingSec,
-      resolveMeterSettlingCountdownTiming({
-        timing, lastRestoreTs, restoredOneThisCycle: gateRestoredOneThisCycle,
-      }),
-    );
+  // Every gate holds the device the same way: an active device keeps its level
+  // with the gate's reason, an off one is held at its off step.
+  const reject = (
+    reason: DevicePlanDevice['reason'],
+    rejectionReason: 'meter_settling' | 'restore_gate' | 'waiting_for_other_recovery',
+  ): true => {
     setRestorePlanDevice(deviceMap, dev.id,
       deviceIsActive ? { reason } : buildOffSteppedRestoreHoldUpdate(dev, reason),
     );
-    emitSteppedRestoreGateRejection({
-      dev,
+    emitRestoreDebugEventOnChange({
       state,
-      restoreDebugKey,
-      phase,
-      rejectionReason: 'meter_settling',
-
-      availableHeadroom,
-      requestedStepId,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_stepped_rejected',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        currentStepId: dev.selectedStepId,
+        requestedStepId: requestedStepId ?? undefined,
+        availableKw: availableHeadroom,
+        decision: 'rejected',
+        rejectionReason,
+      },
     });
     return true;
-  }
+  };
+  const lastRestoreTs = deviceIsActive
+    ? (state.actuation.lastDeviceRestoreMs[dev.id] ?? null)
+    : state.actuation.lastRestoreMs;
+  const meterSettlingReason = resolveMeterSettlingReason(timing, lastRestoreTs, gateRestoredOneThisCycle);
+  if (meterSettlingReason !== null) return reject(meterSettlingReason, 'meter_settling');
   const gateTiming = deviceIsActive
     ? { ...timing, inRestoreCooldown: false as const, inCooldown: false as const }
     : timing;
@@ -94,22 +94,7 @@ export function applySteppedDeviceGates(params: {
     timing: gateTiming,
     restoredOneThisCycle: gateRestoredOneThisCycle,
   });
-  if (gateReason) {
-    setRestorePlanDevice(deviceMap, dev.id, deviceIsActive
-      ? { reason: gateReason }
-      : { ...buildOffSteppedRestoreShedUpdate(dev), reason: gateReason });
-    emitSteppedRestoreGateRejection({
-      dev,
-      state,
-      restoreDebugKey,
-      phase,
-      rejectionReason: 'restore_gate',
-
-      availableHeadroom,
-      requestedStepId,
-    });
-    return true;
-  }
+  if (gateReason) return reject(gateReason, 'restore_gate');
   const waitingForOtherRecovery = !batchContinuation
     && deviceIsActive
     && hasOtherDevicesBlockingSteppedRestore(deviceMap, dev.id, state.shedDecisions);
@@ -117,56 +102,6 @@ export function applySteppedDeviceGates(params: {
     timing: gateTiming,
     waitingForOtherRecovery,
   });
-  if (waitingReason) {
-    setRestorePlanDevice(deviceMap, dev.id, deviceIsActive
-      ? { reason: waitingReason }
-      : { ...buildOffSteppedRestoreShedUpdate(dev), reason: waitingReason });
-    emitSteppedRestoreGateRejection({
-      dev,
-      state,
-      restoreDebugKey,
-      phase,
-      rejectionReason: 'waiting_for_other_recovery',
-
-      availableHeadroom,
-      requestedStepId,
-    });
-    return true;
-  }
+  if (waitingReason) return reject(waitingReason, 'waiting_for_other_recovery');
   return false;
-}
-
-function emitSteppedRestoreGateRejection(params: {
-  dev: SteppedPlanDevice;
-  state: PlanEngineState;
-  restoreDebugKey: string;
-  phase: 'startup' | 'runtime';
-  rejectionReason: 'meter_settling' | 'restore_gate' | 'waiting_for_other_recovery';
-  availableHeadroom: number | null;
-  requestedStepId: string | null;
-}): void {
-  const {
-    dev,
-    state,
-    restoreDebugKey,
-    phase,
-    rejectionReason,
-    availableHeadroom,
-    requestedStepId,
-  } = params;
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_stepped_rejected',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      currentStepId: dev.selectedStepId,
-      requestedStepId: requestedStepId ?? undefined,
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      rejectionReason,
-    },
-  });
 }

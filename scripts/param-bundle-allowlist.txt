@@ -199,8 +199,8 @@ lib/plan/restore/helpers.ts 4
 lib/plan/restore/index.ts 1
 lib/plan/restore/marking.ts 1
 lib/plan/restore/steppedRestoreAdmission.ts 5
-lib/plan/restore/steppedRestoreGates.ts 2
-lib/plan/restore/timing.ts 4
+lib/plan/restore/steppedRestoreGates.ts 1
+lib/plan/restore/timing.ts 2
 lib/plan/shedding/candidateBuilders.ts 1
 lib/plan/shedding/candidateSkipLog.ts 1
 lib/plan/shedding/steppedCandidates.ts 6

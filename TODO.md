@@ -211,17 +211,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 - [ ] **Three user-visible need figures still use the deflated restore need.**
       *Persona:* owner (`notes/personas.md`) reading how much more power a device needs.
-      *Hypothesis:* `maybeApplyShortfallReason` (`lib/plan/planReasons.ts:76`),
-      `buildRestoreShortfallReason` (`lib/plan/restore/marking.ts:21`) and the off-state need
-      (`lib/plan/planOffStateReason.ts:49`) build their
-      numbers from bare `computeBaseRestoreNeed`, so they carry the same understatement the
+      *Hypothesis:* `maybeApplyShortfallReason` (`lib/plan/planReasons.ts`), the shortfall
+      marking (`lib/plan/restore/marking.ts`) and the off-state need
+      (`lib/plan/planOffStateReason.ts`) build their numbers through
+      `buildRestoreShortfallReason` (`lib/plan/restore/accounting.ts`) from bare
+      `computeBaseRestoreNeed`, so they carry the same understatement the
       ceiling-shortfall path had before 2026-08-08 — the recent-shed inflation
       (`applyRecentShedInflation`, 1.15× or +0.15 kW within five minutes of a shed) is missing.
       A device shed minutes ago is told it needs less than the restore gate will actually
       demand.
       *Why it's needed:* the owner acts on that number — freeing exactly the stated amount and
       finding the device still will not resume is the failure mode the ceiling path was fixed
-      to avoid. Fix direction: call the shared helper, as `resolveCeilingShortfall` now does.
+      to avoid. Fix direction: have `buildRestoreShortfallReason` call the shared helper, as
+      `resolveCeilingShortfall` now does.
       Source: planner timer-hold + shortfall-need fix, 2026-08-08. [P2]
 
 - [ ] **Bound the startup reservation on time spent HOLDING, not wall-clock since first sighting.**
@@ -335,7 +337,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       boundary. Source: adversarial review of the admission-slack removal, 2026-09-15. [P2]
 
 - [ ] **A second restore can be admitted against a reading that never saw the first.**
-      `resolveMeterSettlingRemainingSec` (`lib/plan/restore/timing.ts`) holds the lane until a
+      `resolveMeterSettlingReason` (`lib/plan/restore/timing.ts`) holds the lane until a
       measurement newer than the last restore arrives, but gives up after `RESTORE_COOLDOWN_MS`
       whether or not one did. Under `power_source = flow` samples follow the owner's Flow and a
       reading is trusted for ten minutes, so back-to-back restores can both be decided from one

@@ -14,8 +14,6 @@ export type ClassifiedPlanReason = {
 export type PlanReasonDecision =
   | { code: 'existing'; reason: DeviceReason }
   | { code: 'activation_backoff'; remainingMs: number; countdownTiming?: CountdownReasonTiming }
-  | { code: 'cooldown_shedding'; remainingSec: number | null; countdownTiming?: CountdownReasonTiming }
-  | { code: 'meter_settling'; remainingSec: number | null; countdownTiming?: CountdownReasonTiming }
   | { code: 'restore_headroom'; params: {
     neededKw: number;
     availableKw: number;
@@ -24,8 +22,7 @@ export type PlanReasonDecision =
     swapReserveKw?: number;
     effectiveAvailableKw?: number;
   } }
-  | { code: 'restore_pending'; remainingSec: number; countdownTiming?: CountdownReasonTiming }
-  | { code: 'shortfall'; neededKw: number; headroomKw: number };
+  | { code: 'restore_pending'; remainingSec: number; countdownTiming?: CountdownReasonTiming };
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled plan reason decision: ${String((value as { code?: string }).code)}`);
@@ -66,23 +63,6 @@ export function buildActivationBackoffReason(
     remainingSec: Math.max(1, Math.ceil(remainingMs / 1000)),
     ...normalizeCountdownTiming(countdownTiming),
   };
-}
-
-export function buildCooldownReason(
-  kind: 'shedding' | 'restore',
-  remainingSec: number | null,
-  countdownTiming?: CountdownReasonTiming,
-): DeviceReason {
-  const normalizedRemainingSec = remainingSec ?? 0;
-  return kind === 'shedding'
-    ? withCountdownTiming(
-      { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: normalizedRemainingSec },
-      countdownTiming,
-    )
-    : withCountdownTiming(
-      { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: normalizedRemainingSec },
-      countdownTiming,
-    );
 }
 
 export function buildMeterSettlingReason(
@@ -134,16 +114,10 @@ export function renderPlanReasonDecision(reason: PlanReasonDecision): DeviceReas
       return reason.reason;
     case 'activation_backoff':
       return buildActivationBackoffReason(reason.remainingMs, reason.countdownTiming);
-    case 'cooldown_shedding':
-      return buildCooldownReason('shedding', reason.remainingSec, reason.countdownTiming);
-    case 'meter_settling':
-      return buildMeterSettlingReason(reason.remainingSec, reason.countdownTiming);
     case 'restore_headroom':
       return buildRestoreHeadroomReason(reason.params);
     case 'restore_pending':
       return buildRestorePendingReason(reason.remainingSec, reason.countdownTiming);
-    case 'shortfall':
-      return buildShortfallReason(reason.neededKw, reason.headroomKw);
     default:
       return assertNever(reason);
   }

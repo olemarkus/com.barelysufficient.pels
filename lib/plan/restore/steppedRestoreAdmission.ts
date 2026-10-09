@@ -16,7 +16,7 @@ import {
 } from '../admission';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
 import {
-  buildOffSteppedRestoreShedUpdate,
+  buildSteppedRestoreHoldUpdate,
   resolveRejectedSteppedSwapUpdate,
   setRestorePlanDevice,
 } from './planDeviceUpdates';
@@ -33,6 +33,20 @@ export type SteppedSwapExecutor = (params: {
   admittedDeviceUpdate: Partial<DevicePlanDevice>;
   rejectedDeviceUpdate: Partial<DevicePlanDevice>;
 }) => SwapRestoreOutcome;
+
+/** The reason a stepped restore climb carries, admitted directly or through a swap. */
+function buildSteppedRestoreNeedReason(
+  dev: SteppedPlanDevice,
+  toStepId: string,
+  neededKw: number,
+): DevicePlanDevice['reason'] {
+  return {
+    code: PLAN_REASON_CODES.restoreNeed,
+    fromTarget: dev.selectedStepId,
+    toTarget: toStepId,
+    needKw: neededKw,
+  };
+}
 
 export function admitSteppedRestore(
   params: {
@@ -70,10 +84,9 @@ export function admitSteppedRestore(
     // that is already spoken for. Mirror the binary twin's posture (`rejectBinaryRestore`) so an
     // off stepped candidate is recorded as not-resumed rather than left targeting an active step.
     if (reserved.kind === 'blocked_by_reserve') {
-      setRestorePlanDevice(deviceMap, dev.id, {
-        ...(isOffSteppedRestoreCandidate(dev) ? buildOffSteppedRestoreShedUpdate(dev) : {}),
-        reason: buildReservedForStartReason(reserved.holderName),
-      });
+      setRestorePlanDevice(deviceMap, dev.id, buildSteppedRestoreHoldUpdate(
+        dev, buildReservedForStartReason(reserved.holderName),
+      ));
       return loop;
     }
     if (!batchContinuation && swapExecutor && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
@@ -91,12 +104,7 @@ export function admitSteppedRestore(
           desiredStepId: nextStep.id,
           targetStepId: nextStep.id,
           expectedPowerKw: nextStep.planningPowerW / 1000,
-          reason: {
-            code: PLAN_REASON_CODES.restoreNeed,
-            fromTarget: dev.selectedStepId,
-            toTarget: nextStep.id,
-            needKw: needed,
-          },
+          reason: buildSteppedRestoreNeedReason(dev, nextStep.id, needed),
         },
         rejectedDeviceUpdate: resolveRejectedSteppedSwapUpdate(dev),
       });
@@ -117,12 +125,7 @@ export function admitSteppedRestore(
   setRestorePlanDevice(deviceMap, dev.id, {
     desiredStepId: nextStep.id,
     expectedPowerKw: nextStep.planningPowerW / 1000,
-    reason: {
-      code: PLAN_REASON_CODES.restoreNeed,
-      fromTarget: dev.selectedStepId,
-      toTarget: nextStep.id,
-      needKw: needed,
-    },
+    reason: buildSteppedRestoreNeedReason(dev, nextStep.id, needed),
   });
   emitRestoreDebugEventOnChange({
     state,
@@ -257,10 +260,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(
     availableKw: availableHeadroom,
     marginKw: admission.marginKw,
   });
-  const update: Partial<DevicePlanDevice> = isOffSteppedRestoreCandidate(dev)
-    ? { ...buildOffSteppedRestoreShedUpdate(dev), reason }
-    : { reason };
-  setRestorePlanDevice(deviceMap, dev.id, update);
+  setRestorePlanDevice(deviceMap, dev.id, buildSteppedRestoreHoldUpdate(dev, reason));
   emitRestoreDebugEventOnChange({
     state,
     key: restoreDebugKey,

@@ -123,10 +123,7 @@ export function attemptSwapRestore(
     cycle.timing.nowTs,
   );
   for (const shedDev of swap.toShed) {
-    setDevice(deviceMap, shedDev.id, {
-      plannedState: 'shed',
-      reason: { code: PLAN_REASON_CODES.swappedOut, targetName: dev.name },
-    });
+    setDevice(deviceMap, shedDev.id, buildSwappedOutUpdate(dev.name));
     emitSwapDebug({
       event: 'restore_swap_shed',
       shedDeviceId: shedDev.id,
@@ -198,7 +195,7 @@ export function holdSteppedSwapDonor(
   clearRestoreDebugEvent(state, `stepped:${dev.id}`);
   setDevice(deviceMap, dev.id, isOffSteppedRestoreCandidate(dev)
     ? buildOffSteppedRestoreHoldUpdate(dev, { code: PLAN_REASON_CODES.swapPending, targetName: target.name })
-    : { plannedState: 'shed', reason: { code: PLAN_REASON_CODES.swappedOut, targetName: target.name } });
+    : buildSwappedOutUpdate(target.name));
   return true;
 }
 
@@ -321,6 +318,11 @@ function rejectSwapRestoreForMeasurement(
     },
   });
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
+}
+
+/** A swap donor paused to fund `targetName`'s restore. */
+function buildSwappedOutUpdate(targetName: string): Partial<DevicePlanDevice> {
+  return { plannedState: 'shed', reason: { code: PLAN_REASON_CODES.swappedOut, targetName } };
 }
 
 function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {

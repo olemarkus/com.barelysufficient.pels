@@ -22,11 +22,9 @@ import {
 } from './admission';
 import {
   resolveCapacityRestoreBlockReason,
-  resolveMeterSettlingCountdownTiming,
-  resolveMeterSettlingRemainingSec,
+  resolveMeterSettlingReason,
 } from './restore/timing';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
-import { buildMeterSettlingReason } from './planReasonStrings';
 import type { HoldLoopState, HoldPass } from './planReasonsShared';
 
 /**
@@ -62,12 +60,8 @@ export function resolveMeterSettlingHold(
 ): HoldDecision | null {
   const { timing, state } = pass;
   if (!restorePassTookCooldownLane(pass) || !wasShedLastPlan || !observedAtShedFloor) return null;
-  const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs: state.actuation.lastRestoreMs });
-  if (remainingSec === null) return null;
-  const reason = buildMeterSettlingReason(
-    remainingSec,
-    resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.actuation.lastRestoreMs }),
-  );
+  const reason = resolveMeterSettlingReason(timing, state.actuation.lastRestoreMs);
+  if (reason === null) return null;
   return { type: 'hold', reason: { code: 'existing', reason } };
 }
 
