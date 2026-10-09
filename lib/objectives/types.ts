@@ -5,6 +5,7 @@ import type {
   ThermalDirection,
 } from '../../packages/contracts/src/types';
 import type { ObjectiveProfileProgressDirection } from '../../packages/contracts/src/objectiveProfileTypes';
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 
 export type {
   DeviceObjectiveProfile,
@@ -120,6 +121,13 @@ export type ObjectiveDeviceInput = {
    */
   expectedPowerKw: number;
   planningPowerKw?: number;
+  /**
+   * What PELS may do with the device, structurally assignable from
+   * `PlanInputDevice`. A device with no standing command authority (Power limit
+   * off, or a battery or panel) draws as background, which the forecast already
+   * holds, so a lower task reserves nothing more for it.
+   */
+  control: DeviceControlPosture;
   /**
    * Producer-resolved current draw, structurally assignable from the plan
    * input's power axis (`MeteredPlanInputKind`). Required: a smart task plans

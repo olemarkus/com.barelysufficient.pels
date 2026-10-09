@@ -21,6 +21,7 @@ const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveD
   deviceType: 'onoff',
   currentDrawKw: 3,
   expectedPowerKw: 7,
+  control: { managed: true, commandAuthority: true },
   objectiveSessionInactive: false,
   thermalDirection: 'heating',
   ...extra,
@@ -30,7 +31,7 @@ const capabilityOnlyEv = (extra: Partial<ObjectiveDeviceInput> = {}): ObjectiveD
 // one synthetic rung at its live draw, not at the expected power.
 const plainOnOff: ObjectiveDeviceInput = {
   id: 'x', name: 'Plain', isEvCharger: false, deviceType: 'onoff', currentDrawKw: 3, expectedPowerKw: 7,
-  objectiveSessionInactive: false, thermalDirection: 'heating',
+  control: { managed: true, commandAuthority: true }, objectiveSessionInactive: false, thermalDirection: 'heating',
 };
 
 describe('lib/objectives de-kind — capability-only EV takes the EV branch', () => {

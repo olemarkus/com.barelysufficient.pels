@@ -6,14 +6,20 @@ import type { TaskEvaluation } from './taskEvaluation';
 
 const CONTENTION_EPSILON_KWH = 0.001;
 
-/** Attribute a fresh allocation shortfall to competing tasks only when removing them fits. */
+/**
+ * Attribute a fresh allocation shortfall to higher-priority load, the bookings of
+ * tasks above and the maximum steps reserved for devices above, only when
+ * removing that load fits.
+ */
 export const resolveHigherPriorityContentionEvaluation = (params: {
   evaluation: TaskEvaluation;
   higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
+  higherPriorityUnbookedPowerKw: number;
   buildWithoutReservations: () => TaskEvaluation;
 }): TaskEvaluation => {
   const { evaluation } = params;
-  if (evaluation.planning.kind === 'inactive' || params.higherPriorityReservations.length === 0) return evaluation;
+  if (evaluation.planning.kind === 'inactive') return evaluation;
+  if (params.higherPriorityReservations.length === 0 && params.higherPriorityUnbookedPowerKw <= 0) return evaluation;
   const { plan } = evaluation.planning;
   if (plan.frozenRead || plan.unplannedUsefulEnergyKWh <= CONTENTION_EPSILON_KWH) return evaluation;
   const control = params.buildWithoutReservations();

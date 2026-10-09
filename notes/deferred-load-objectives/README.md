@@ -302,14 +302,20 @@ the allocator actually applies stacks three caps via `Math.min`:
   is lower or Capacity limit is off; with no power limit enabled the forecast is omitted
   and the hour has no headroom cap)
   is the per-bucket physical headroom forecast from `policyHorizon.ts`
-  (`resolveReservedHeadroomKw`). The last term is the step power every higher-priority task
-  booked into that bucket, from the reservation ledger `buildDeferredObjectiveDiagnostics` builds
-  in priority order. A task whose device is parked at its target (the stall verdict that reports
-  it `satisfied`) adds nothing to that ledger: the device is not drawing its booking, so
-  holding step power for it only starves the tasks behind it. If its own controller starts it
-  again (a tank reheating at the bottom of its band), it competes live and the capacity guard
-  orders the two by priority. The verdict is read per cycle, so a device cycling across `:58`
-  settles changes the lower tasks' coordination context and replaces their commitment. `backgroundKWh` remains the
+  (`resolveReservedHeadroomKw`). The last term combines timed step-power bookings of
+  governing higher-priority tasks with the maximum known steps of higher-ranked devices
+  outside task control. A task that has reached its target contributes no booking, but its
+  device may resume ordinary control and is reserved at its maximum step. A task that no
+  longer governs its device (inactive, or past its deadline) is reserved at that maximum
+  instead of its settled bookings, never both; only a device with no known maximum keeps
+  its bookings. A device without a ladder is bounded at the larger of its live draw and
+  its expected power. A device whose task has confirmed non-delivery contributes nothing
+  until it draws again, so the tasks below take its room at the next settle. A device
+  PELS has no standing command authority over (Power limit off, a battery or panel)
+  contributes nothing either: its draw is background, which the forecast already holds.
+  A governing task's booked admission power is capped at the current profile maximum. The verdict is
+  read per cycle; a change across `:58` settles changes the lower tasks' forecast.
+  `backgroundKWh` remains the
   net daily-budget reserve for the pacing slice above; `grossBackgroundKWh` prevents solar
   self-consumption from overstating physical room. When the forecast is unavailable
   (`undefined`), this term is skipped; a forecast of zero correctly caps the hour at zero kWh.
@@ -1025,8 +1031,8 @@ relay-switched water heater, which has neither a temperature nor a battery level
   the tank is hot) stops taking energy, so the task can end `cannot_meet` / `missed` with a full
   tank. A relay has no setpoint, so the idle classifier gives no stall evidence to satisfy the task
   to satisfy an energy obligation. The generic non-delivery hold releases future reservations
-  after 15 minutes of claimed, settled, permitted delivery without measured draw. Resumed draw
-  clears the hold. The remaining requested energy stays unmet, with device-side attribution.
+  after 15 minutes of claimed, settled, permitted delivery without measured draw, and lower tasks
+  reserve nothing for the device while it holds. Resumed draw clears the hold. The remaining requested energy stays unmet, with device-side attribution.
 
 Values travel in the task's own unit, one per reading, so no layer below the settings entry keeps
 a column per kind. The diagnostic's progress is `currentValue` (for an energy task, the kWh
@@ -1214,8 +1220,9 @@ one wins) while preserving deadline margin. Status resolves from the result usin
 on every relevant plan cycle and emits its current-bucket recommendation as
 `expectedStepId`.
 
-Priority-adjusted horizon allocation is shipped: higher-priority tasks reserve their exact
-physical step and useful-energy intervals before lower-priority tasks are planned. The broader
+Priority-adjusted horizon allocation is shipped: governing higher-priority tasks reserve their
+booked physical step and useful-energy intervals, while higher-ranked devices outside task control
+reserve their maximum known step, before lower-priority tasks are planned. The broader
 energy-based milestone framework remains tracked in
 [`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md). The
 existing price behavior covers the same intent ("let soft objectives wait through expensive hours"): the

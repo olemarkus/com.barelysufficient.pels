@@ -271,7 +271,10 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   const deferredController = new DeferredObjectiveDecorationController({
     hasSolarProduction: () => false,
     getThermalDirection: () => 'heating',
-    getPrioritiesForDevices: createFixturePriorityQuery(),
+    getPrioritiesForDevices: createFixturePriorityQuery([
+      { id: STEP_DEVICE_ID, priority: 1 },
+      { id: LOWER_PRIORITY_ID, priority: 2 },
+    ]),
     getDeferredObjectiveSettings: () => buildSettings(),
     getTimeZone: () => 'UTC',
     getPowerTracker: () => powerTracker,

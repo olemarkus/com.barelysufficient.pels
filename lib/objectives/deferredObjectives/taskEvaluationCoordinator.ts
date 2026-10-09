@@ -15,7 +15,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeliveredEnergyReader } from './energyDelivery';
-import { resolveObjectiveSteps } from './objectiveSteps';
+import { resolveHighestObjectiveAdmissionPowerKw, resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import { isAheadOfHourMilestone } from './trajectoryMilestone';
 import { isPastHourSettleMark } from './settleWindow';
@@ -84,9 +84,16 @@ export type {
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export type TaskEvaluationReport = { evaluation: TaskEvaluation; diagnostic: DeferredObjectiveDiagnostic };
 
-const shouldReplaceCommitment = (fresh: boolean, contextChanged: boolean, reservationCount: number): boolean => (
-  fresh && (contextChanged || reservationCount > 0)
+const shouldReplaceCommitment = (fresh: boolean, contextChanged: boolean, higherPriorityLoad: boolean): boolean => (
+  fresh && (contextChanged || higherPriorityLoad)
 );
+
+// Any higher-priority load, booked or held at a device's maximum step, can move
+// under a frozen commitment, so a fresh allocation then replaces it.
+const holdsHigherPriorityLoad = (
+  task: CoordinatedDeferredObjective,
+  reservations: readonly DeferredObjectivePriorityReservation[],
+): boolean => reservations.length > 0 || task.higherPriorityUnbookedPowerKw > 0;
 
 const canAcceptThermalCompletion = (
   objective: DeferredObjectiveSettingsEntry,
@@ -132,15 +139,11 @@ export type TaskEvaluationReaders = {
   // Current mode-catalog priority producer. The batch allocator projects its
   // complete visible-plus-grace roster to unique relative ranks on every read.
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
-  // Idle-classifier reader. A task whose device is parked at its target (the
-  // stall verdict below) reserves nothing against lower-priority tasks: the
-  // device is not drawing its booking, so holding step power for it only
-  // starves the tasks behind it. If the device's own controller starts it
-  // again, it competes live and the capacity guard orders the two by priority.
-  // Every path that allocates passes it — the lifecycle emitter commits the
-  // lower tasks' schedules, the decoration path re-allocates them at the
-  // settle, and the preview projects them — so all three read the same
-  // reservation ledger. It never changes a status here: see
+  // Idle-classifier reader. A task whose device is parked at its target holds
+  // no timed task booking; the device returns to ordinary control, where its
+  // maximum known step is reserved for lower-priority tasks. Every allocation
+  // path passes the reader so lifecycle, decoration and preview agree on that
+  // transition. It never changes a status here: see
   // `reportStalledTasksAsSatisfied`.
   getStallClassification: DeferredObjectiveStallClassificationReader;
   // Durable device-exclusion resolver (this leafward subsystem reads neither
@@ -167,18 +170,56 @@ const isPreviewCandidate = (lane: TaskEvaluationLane, deviceId: string): boolean
 
 // A task holds its bookings against the tasks below while it may reserve, has not
 // been accepted as finished at its target, and its reservations are not
-// suppressed. Short-circuits so the suppression reader runs only for such a task.
+// suppressed.
 const holdsItsBookings = (
   task: OrderedDeferredObjective,
   completion: TaskEvaluation['completion'],
-  readers: TaskEvaluationReaders,
+  reservationSuppressed: boolean,
 ): boolean => task.reservationEligible && completion.kind !== 'accepted_near_target'
-  && !readers.isReservationSuppressed(task.deviceId, task.objective.deadlineAtMs);
+  && !reservationSuppressed;
 
-// A task that holds its bookings counts toward a lower one's booked ranks only
-// while it governs its device through its plan: allocated, unfinished and before
-// its deadline. Otherwise the device is back under ordinary control and its draw
-// reaches the tasks below as nothing, like a plain device's.
+// The higher-ranked load a task's forecast must hold. A higher device whose load
+// is already known needs no reserve: a governing task's device reaches the task
+// as its bookings, a device that delivery evidence confirms is not taking power
+// reaches it as nothing until it draws again, and a device PELS has no standing
+// command authority over (Power limit off, a battery or panel) draws as
+// background, which the forecast already holds. Every other higher device
+// reaches it as its maximum known step. A higher device with no known step cannot
+// be bounded, so the load is not accounted for and the task keeps its
+// minimum-step floor.
+const resolveHigherRankedLoad = (
+  higherRankedDeviceIds: readonly string[],
+  knownLoadHigherDeviceIds: ReadonlySet<string>,
+  deviceById: ReadonlyMap<string, ObjectiveDeviceInput>,
+): Pick<CoordinatedDeferredObjective, 'higherPriorityUnbookedPowerKw' | 'higherRankedLoadAccountedFor'> => {
+  let higherPriorityUnbookedPowerKw = 0;
+  let higherRankedLoadAccountedFor = true;
+  for (const higherId of higherRankedDeviceIds) {
+    if (knownLoadHigherDeviceIds.has(higherId)) continue;
+    const higherDevice = deviceById.get(higherId);
+    if (higherDevice?.control.commandAuthority === false) continue;
+    const maxStepPowerKw = higherDevice ? resolveHighestObjectiveAdmissionPowerKw(higherDevice) : null;
+    if (maxStepPowerKw === null) {
+      higherRankedLoadAccountedFor = false;
+    } else {
+      higherPriorityUnbookedPowerKw += maxStepPowerKw;
+    }
+  }
+  return { higherPriorityUnbookedPowerKw, higherRankedLoadAccountedFor };
+};
+
+// A task that no longer governs its device reaches the tasks below as the
+// device's maximum step, not also as the bookings it settled. Only a device with
+// no known maximum (one missing through grace) keeps its settled bookings.
+const reservesItsBookings = (
+  holdsBookings: boolean,
+  governs: boolean,
+  device: ObjectiveDeviceInput | undefined,
+): boolean => governs || (holdsBookings && (device === undefined
+  || resolveHighestObjectiveAdmissionPowerKw(device) === null));
+
+// A task governs its device while allocated, unfinished and before its deadline.
+// Otherwise lower tasks reserve the device's maximum known step as ordinary load.
 const governsItsDevice = (
   task: OrderedDeferredObjective,
   evaluation: TaskEvaluation,
@@ -208,13 +249,12 @@ export const buildDeferredObjectiveTaskResults = (
   });
   const reservations: DeferredObjectivePriorityReservation[] = [];
   let higherTaskBootstrapped = false;
-  // Tasks ahead that govern their device. Active ranks are unique and dense over
-  // the whole roster, so the devices above a task number exactly `priority - 1`:
-  // when the governing tasks ahead account for all of them, every load this task
-  // cannot displace reaches it as bookings, which gates its floor promotion.
-  let governingTasksAhead = 0;
+  const knownLoadHigherDeviceIds = new Set<string>();
   const results = ordered.map((orderedTask, index) => {
-    const task = { ...orderedTask, higherRankedLoadBooked: governingTasksAhead === orderedTask.priority - 1 };
+    const task: CoordinatedDeferredObjective = {
+      ...orderedTask,
+      ...resolveHigherRankedLoad(orderedTask.higherRankedDeviceIds, knownLoadHigherDeviceIds, deviceById),
+    };
     const { deviceId, objective, device } = task;
     // Lower-priority edits cannot churn an already-committed higher task.
     const rosterSignature = buildAllocationContextSignature(ordered.slice(0, index + 1));
@@ -246,7 +286,10 @@ export const buildDeferredObjectiveTaskResults = (
     const contentionEvaluation = resolveHigherPriorityContentionEvaluation({
       evaluation: diagnostic.evaluation,
       higherPriorityReservations: reservations,
-      buildWithoutReservations: () => buildDeferredObjectiveDiagnostic(snapshot, readers, task, [], true).evaluation,
+      higherPriorityUnbookedPowerKw: task.higherPriorityUnbookedPowerKw,
+      buildWithoutReservations: () => buildDeferredObjectiveDiagnostic(
+        snapshot, readers, { ...task, higherPriorityUnbookedPowerKw: 0 }, [], true,
+      ).evaluation,
     });
     const contentionResolved = reportHigherPriorityContention(diagnostic, contentionEvaluation);
     const freshAllocation = contentionEvaluation.planning.kind === 'allocated'
@@ -254,7 +297,9 @@ export const buildDeferredObjectiveTaskResults = (
     const coordinated: DeferredObjectiveDiagnostic = {
       ...contentionResolved,
       allocationContextSignature,
-      ...(shouldReplaceCommitment(freshAllocation, allocationContextChanged, reservations.length)
+      ...(shouldReplaceCommitment(
+        freshAllocation, allocationContextChanged, holdsHigherPriorityLoad(task, reservations),
+      )
         ? { replaceCommitment: true as const }
         : {}),
     };
@@ -263,8 +308,10 @@ export const buildDeferredObjectiveTaskResults = (
       ? readers.getStallClassification(deviceId) : undefined;
     const acceptedCompletion = completionWithEvidence(evaluation, thermalEvidence);
     const evaluationResult = { ...evaluation, completion: acceptedCompletion };
-    const holdsBookings = holdsItsBookings(task, acceptedCompletion, readers);
-    if (holdsBookings) {
+    const reservationSuppressed = readers.isReservationSuppressed(deviceId, objective.deadlineAtMs);
+    const holdsBookings = holdsItsBookings(task, acceptedCompletion, reservationSuppressed);
+    const governs = holdsBookings && governsItsDevice(task, evaluationResult, nowMs);
+    if (reservesItsBookings(holdsBookings, governs, device)) {
       const previousReservationCount = reservations.length;
       reservations.push(...buildPriorityReservations({
         evaluation: coordinated.evaluation,
@@ -278,7 +325,7 @@ export const buildDeferredObjectiveTaskResults = (
         higherTaskBootstrapped = true;
       }
     }
-    if (holdsBookings && governsItsDevice(task, evaluationResult, nowMs)) governingTasksAhead += 1;
+    if (reservationSuppressed || governs) knownLoadHigherDeviceIds.add(deviceId);
     return {
       evaluation: evaluationResult,
       diagnostic: { ...coordinated, evaluation: evaluationResult, completion: acceptedCompletion },
@@ -368,6 +415,7 @@ const buildDeferredObjectiveDiagnostic = (
     hasSolarProduction: snapshot.hasSolarProduction,
     exemptFromBudget: false,
     higherPriorityReservations,
+    higherPriorityUnbookedPowerKw: task.higherPriorityUnbookedPowerKw,
   };
   const progress = resolveObjectiveProgress(objective, task.device, readers.getDeliveredEnergyKWh);
   if (isObjectiveProgressSatisfied(progress)) {

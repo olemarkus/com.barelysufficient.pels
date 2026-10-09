@@ -30,7 +30,7 @@ describe('operational task contention', () => {
   it('attributes competing claims only after the unconstrained control allocation fits', () => {
     const constrained = evaluation(1);
     const result = resolveHigherPriorityContentionEvaluation({
-      evaluation: constrained, higherPriorityReservations: reservations,
+      evaluation: constrained, higherPriorityReservations: reservations, higherPriorityUnbookedPowerKw: 0,
       buildWithoutReservations: () => evaluation(0),
     });
     expect(result.planning).toMatchObject({ kind: 'allocated', plan: {
@@ -53,6 +53,7 @@ describe('operational task contention', () => {
       const result = resolveHigherPriorityContentionEvaluation({
         evaluation: evaluation(1, false, { currentBucket: booked, currentHourFacts: facts }),
         higherPriorityReservations: reservations,
+        higherPriorityUnbookedPowerKw: 0,
         buildWithoutReservations: () => evaluation(0),
       });
       return result.planning.kind === 'allocated' ? result.planning.plan.currentHourClaim : null;
@@ -64,11 +65,23 @@ describe('operational task contention', () => {
     expect(claimUnderContention({ ...NO_RELEASE_FACTS, coldStartFeasible: true })).toBe('released');
   });
 
+  it('attributes a shortfall to the maximum step reserved for a device above, with no bookings', () => {
+    const constrained = evaluation(1);
+    const attribute = (higherPriorityUnbookedPowerKw: number) => resolveHigherPriorityContentionEvaluation({
+      evaluation: constrained, higherPriorityReservations: [], higherPriorityUnbookedPowerKw,
+      buildWithoutReservations: () => evaluation(0),
+    });
+    expect(attribute(2).planning).toMatchObject({ kind: 'allocated', plan: {
+      status: 'at_risk', statusDetail: 'limited_by_higher_priority_task',
+    } });
+    expect(attribute(0)).toBe(constrained);
+  });
+
   it('keeps the original allocation when the control still falls short or is inactive', () => {
     const constrained = evaluation(1);
     for (const control of [evaluation(0.5), inactiveTaskEvaluation('lower-task', 3_600_000, 65)]) {
       expect(resolveHigherPriorityContentionEvaluation({
-        evaluation: constrained, higherPriorityReservations: reservations,
+        evaluation: constrained, higherPriorityReservations: reservations, higherPriorityUnbookedPowerKw: 0,
         buildWithoutReservations: () => control,
       })).toBe(constrained);
     }
@@ -78,7 +91,8 @@ describe('operational task contention', () => {
     const frozen = evaluation(1, true);
     const buildWithoutReservations = vi.fn(() => evaluation(0));
     expect(resolveHigherPriorityContentionEvaluation({
-      evaluation: frozen, higherPriorityReservations: reservations, buildWithoutReservations,
+      evaluation: frozen, higherPriorityReservations: reservations, higherPriorityUnbookedPowerKw: 0,
+      buildWithoutReservations,
     })).toBe(frozen);
     expect(buildWithoutReservations).not.toHaveBeenCalled();
   });

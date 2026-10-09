@@ -136,3 +136,17 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
     buildSyntheticChargeStep(device, activeDrawKw ?? device.expectedPowerKw),
   ]);
 };
+
+/**
+ * The most the device can draw on the current planner profile: its ladder's top
+ * rung. A device with no ladder has one rung, which plans at the live draw while
+ * the device is drawing; a modulating device can still rise to its expected
+ * power, so that bound takes the larger of the two.
+ */
+export const resolveHighestObjectiveAdmissionPowerKw = (device: ObjectiveDeviceInput): number | null => {
+  const steps = resolveObjectiveSteps(device);
+  if (steps.length === 0) return null;
+  const topRungKw = Math.max(...steps.map((step) => step.admissionPowerKw));
+  const highest = device.steppedLoadProfile ? topRungKw : Math.max(topRungKw, device.expectedPowerKw);
+  return highest > 0 ? highest : null;
+};

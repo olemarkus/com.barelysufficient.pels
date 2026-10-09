@@ -1,6 +1,6 @@
 import type MyApp from '../../app.ts';
 import { partialDouble } from '../helpers/partialDouble';
-import { createInertEnergyDelivery } from '../helpers/deferredObjectiveWiringFixtures';
+import { createInertEnergyDelivery, noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 /**
  * The smart-task surface `PelsApp` exposes to the widget host API and the
  * settings-UI handlers is a set of thin stubs delegating to two collaborators
@@ -103,6 +103,7 @@ const buildAppWithRecorders = (options: {
   app.deferredObjectivePlanHistoryRecorder = partialDouble<MyApp['deferredObjectivePlanHistoryRecorder']>({
     getHistorySnapshot: () => options.history as DeferredObjectivePlanHistoryV6,
     getInProgressTrajectory: () => null,
+    isReservationSuppressed: noReservationSuppression,
   });
   app.deferredObjectiveEnergyDelivery = createInertEnergyDelivery();
   return app;

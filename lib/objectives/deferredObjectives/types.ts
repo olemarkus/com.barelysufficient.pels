@@ -103,7 +103,8 @@ export type DeferredObjective = {
   energyExpectedKWh?: number;
   // Producer-resolved flat boolean: `true` iff the objective holds BOTH the
   // `exemptFromBudget === 'always'` AND `limitLowerPriorityDevices === 'always'`
-  // rescue permissions. Together they guarantee the soft daily budget won't cap
+  // rescue permissions and every higher-ranked load has a booking or a known
+  // maximum-step reserve. Together they guarantee the soft daily budget won't cap
   // this device AND lower-priority devices will yield power up to the hard cap
   // — i.e. the higher steps are as reliable as the min step (within the
   // reserved-headroom forecast). When `true`, `resolveStepForBucket`
@@ -189,9 +190,10 @@ export type DeferredObjectiveHorizonBucket = {
   //
   // Optional/backward-compat: missing means "no forecast".
   reservedHeadroomKw?: number;
-  // The concurrent DRAW higher-priority smart tasks have already claimed in this
-  // hour, in kW — the part of `reservedHeadroomKw`'s subtraction that is a real
-  // rate rather than an hourly average.
+  // Concurrent DRAW reserved for higher-priority devices in this hour: timed
+  // task bookings plus the maximum known steps of higher-ranked devices outside
+  // task control. It is the part of `reservedHeadroomKw`'s subtraction that is
+  // a real rate rather than an hourly average.
   //
   // Kept separate because the two components must be enforced differently. The
   // background term is a forecast AVERAGE (`grossBackgroundKWh / duration`) against

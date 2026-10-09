@@ -3,6 +3,7 @@ import { buildPriorityReservations } from '../../lib/objectives/deferredObjectiv
 import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
 import type { TaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import type { DeferredObjectiveHorizonPlan } from '../../lib/objectives/deferredObjectives/types';
+import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
 import { partialDouble } from '../helpers/partialDouble';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
@@ -51,4 +52,39 @@ it('keeps admission, reservations and requested completion independent of report
   expect(outcomes[0]?.completion).toEqual({ kind: 'unmet' });
   expect(outcomes[1]).toEqual(outcomes[0]);
   expect(outcomes[2]).toEqual(outcomes[0]);
+});
+
+it('caps a higher task booking at the current device maximum step', () => {
+  const plan = partialDouble<DeferredObjectiveHorizonPlan>({
+    plannedBuckets: [{
+      id: 'now', sourceBucketId: 'now', startMs: 0, endMs: 3_600_000, durationHours: 1,
+      price: null, reserve: false, current: true, usefulEnergyCapacityKWh: 1,
+      plannedUsefulEnergyKWh: 1, plannedAdmissionPowerKw: 5, booked: true,
+    }],
+  });
+  const evaluation: TaskEvaluation = {
+    deviceId: 'heater', deadlineAtMs: 3_600_000, requestedTarget: 60,
+    progress: { kind: 'known', value: 50, direction: 'increasing' },
+    completion: { kind: 'unmet' }, planning: { kind: 'allocated', plan },
+    permissions: { budgetExempt: false, limitLowerPriority: true, pauseLowerPriority: false },
+    targetControl: { kind: 'temperature', value: 60 },
+  };
+  const device = partialDouble<ObjectiveDeviceInput>({
+    id: 'heater',
+    steppedLoadProfile: { steps: [
+      { id: 'low', planningPowerW: 1250 },
+      { id: 'medium', planningPowerW: 1750 },
+      { id: 'max', planningPowerW: 3000 },
+    ] },
+  });
+  const reservations = buildPriorityReservations({
+    evaluation,
+    objective: {
+      enabled: true, kind: 'temperature', enforcement: 'soft',
+      targetTemperatureC: 60, deadlineAtMs: 3_600_000,
+    },
+    device, activePlans: null, powerLimits: capacityOnlyPowerLimits(9.5), nowMs: 0,
+  });
+  expect(reservations).toMatchObject([{ admissionPowerKw: 3 }]);
+  expect(reservations[0]?.energySegments[0]?.endMs).toBe(1_200_000);
 });

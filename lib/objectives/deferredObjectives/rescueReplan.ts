@@ -54,16 +54,16 @@ export const resolveHorizonPlanWithRescue = (
   //  1. exempt-from-budget `'always'` lifts the soft daily-budget cap.
   //  2. limit-lower-priority `'always'` lets the task displace lower-priority
   //     controlled devices when claiming physical headroom.
-  //  3. every device ranked above this one is booked (resolved by the
-  //     coordinator from the tasks it evaluated ahead of this one). The reserved-headroom forecast
-  //     (`planningCeiling − gross background − higher-priority bookings`)
-  //     leaves out controlled load, which holds only for load this task can
-  //     displace or whose draw it already knows. Permission 2 covers
-  //     lower ranks. A higher-ranked device can never be displaced, so its draw
-  //     must be in the forecast: a smart-task device's bookings are, a plain
-  //     device's draw is not. A task with no device above it is trivially booked.
+  //  3. every higher-ranked device has either its governing task's timed
+  //     booking or a maximum-step reserve in the headroom forecast
+  //     (`planningCeiling − gross background − higher-priority reserves`). A
+  //     higher-ranked device can never be displaced, so its draw must be in the
+  //     forecast; permission 2 covers lower ranks. A missing device or ladder
+  //     cannot provide that bound, so its lower task stays at the minimum-step
+  //     floor until the producer can resolve it. A task with no device above it
+  //     is trivially accounted for.
   // Anything weaker stays at the min-step floor.
-  const fullyReserved = task.higherRankedLoadBooked
+  const fullyReserved = task.higherRankedLoadAccountedFor
     && objective.rescue?.exemptFromBudget === 'always'
     && objective.rescue?.limitLowerPriorityDevices === 'always';
   const powerLimit = resolveDeferredObjectivePowerLimit(horizonInputs.powerLimits, horizonInputs.hasSolarProduction);
