@@ -192,7 +192,7 @@ module.exports = {
         + 'dailyBudgetConstants). tsPreCompilationDeps is unset, so this cruise sees only '
         + 'post-compilation (value) imports - `import type` stays legal and erased. A value '
         + 'both the runtime and the settings UI need lives in packages/shared-domain, which '
-        + 'ships (e.g. shared-domain/src/settings/settingsKeys.ts, dailyBudgetConstants.ts). '
+        + 'ships (e.g. shared-domain/src/settings/settingsKeys.ts, dailyBudgetSettings.ts). '
         + 'A value only the runtime needs stays in lib/, keyed by the contract\'s type where '
         + 'one exists (lib/utils/settingsUiBootstrapKeys.ts). '
         + 'settings-ui and the widgets\' browser code (widgets/*/src/public/) are exempt: '
