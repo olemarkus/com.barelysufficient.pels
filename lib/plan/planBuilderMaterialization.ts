@@ -184,7 +184,7 @@ export class PlanMaterializationStages {
       // The one resolved breach answer: this used to read the RAW total, which
       // survives a meter dropout, so a stale cached figure could claim a breach
       // PELS could not observe.
-      capacityBreached: power.capacityBreached || power.gridBreached,
+      physicalLimitBreached: power.physicalLimitBreached,
       budgetReleasableHeadroomHold: power.budgetReleasableHeadroomHold,
       // Use the availability left after temperature restores in this cycle.
       admissionInputs: buildCeilingShortfallInputs({
@@ -213,7 +213,7 @@ export class PlanMaterializationStages {
         lastDeviceShedMsById: this.state.actuation.lastDeviceShedMs,
         nowMs: restoreResult.timing.nowTs,
       }),
-      hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
+      hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
     })));
   }
 

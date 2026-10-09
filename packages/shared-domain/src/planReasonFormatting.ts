@@ -10,6 +10,7 @@ import {
   PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_GRID_IMPORT_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
+  PLAN_STATE_METER_SILENT_STATUS,
   formatReservedForStartStatus,
 } from './planStateLabels';
 import { formatStepDisplayLabel } from './steppedStepLabel';
@@ -50,6 +51,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.dailyBudget }
   | { code: typeof PLAN_REASON_CODES.gridImport }
   | { code: typeof PLAN_REASON_CODES.capacity }
+  | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
@@ -76,6 +78,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.dailyBudget,
   PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.meterSilent,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
@@ -107,6 +110,8 @@ function formatStaticReason(reason: StaticReason): string {
       return 'shed due to grid import limit';
     case PLAN_REASON_CODES.capacity:
       return 'shed due to capacity';
+    case PLAN_REASON_CODES.meterSilent:
+      return 'shed while the meter is silent';
     case PLAN_REASON_CODES.deferredObjectiveAvoid:
       return 'waiting for cheaper hours';
     case PLAN_REASON_CODES.awaitingSolarSurplus:
@@ -515,6 +520,10 @@ function formatStaticReasonUserFacing(reason: StaticReason): string {
       return PLAN_STATE_GRID_IMPORT_STATUS;
     case PLAN_REASON_CODES.capacity:
       return PLAN_STATE_CAPACITY_STATUS;
+    // Same string as the card: the card ladder reaches it through this
+    // formatter, so the card, device detail and the activity log agree.
+    case PLAN_REASON_CODES.meterSilent:
+      return PLAN_STATE_METER_SILENT_STATUS;
     case PLAN_REASON_CODES.deferredObjectiveAvoid:
       return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
     case PLAN_REASON_CODES.awaitingSolarSurplus:

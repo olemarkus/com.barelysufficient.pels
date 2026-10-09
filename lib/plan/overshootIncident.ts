@@ -1,6 +1,21 @@
-import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
+import {
+  pricedShedGrace,
+  resolveSoftOvershootDecision,
+  unpricedShedGrace,
+  type SoftOvershootDecision,
+} from './planOvershoot';
 
 const OVERSHOOT_ESCALATION_INTERVAL_MS = 30 * 1000;
+
+/**
+ * Over the grid import target: act at once. A grid breach bypasses the shed
+ * grace (`docs/technical.md` § "Grid import limit"), and it times no soft
+ * deficit, so it carries no deficit clock.
+ */
+const GRID_BREACH_DECISION: SoftOvershootDecision = { actionable: true, shedActionable: true, pendingSinceMs: null };
+
+/** No limit is enabled this build: there is nothing to be over. */
+const NO_LIMIT_DECISION: SoftOvershootDecision = { actionable: false, shedActionable: false, pendingSinceMs: null };
 
 /**
  * The overshoot incident the planner is in, if any — when it started, and when
@@ -32,16 +47,60 @@ export class OvershootIncident {
     return this.active;
   }
 
-  /** This build's soft-overshoot verdict, with the deficit clock carried across builds. */
+  /**
+   * This build's soft-overshoot verdict, with the deficit clock carried across
+   * builds: Capacity limit on, so the wait is priced against the period's
+   * remaining allowance (`pricedShedGrace`).
+   */
   decideSoft(
     headroomKw: number,
     hourRemainingKWh: number,
     restoreTransientPossible: boolean,
     nowTs: number,
   ): SoftOvershootDecision {
-    const decision = resolveSoftOvershootDecision(
-      headroomKw, hourRemainingKWh, restoreTransientPossible, this.softPendingSinceMs, nowTs,
-    );
+    return this.remember(resolveSoftOvershootDecision(
+      headroomKw, pricedShedGrace(hourRemainingKWh), restoreTransientPossible, this.softPendingSinceMs, nowTs,
+    ));
+  }
+
+  /**
+   * The same verdict with Capacity limit off: no period prices the wait, so a
+   * real deficit PELS may be driving gets the bounded maximum (`unpricedShedGrace`).
+   */
+  decideSoftUnpriced(headroomKw: number, restoreTransientPossible: boolean, nowTs: number): SoftOvershootDecision {
+    return this.remember(resolveSoftOvershootDecision(
+      headroomKw, unpricedShedGrace, restoreTransientPossible, this.softPendingSinceMs, nowTs,
+    ));
+  }
+
+  /**
+   * This build's verdict when the house is over its grid import target: shed
+   * now, without the grace.
+   *
+   * It also ENDS the soft-deficit clock. The clock times one soft deficit — a
+   * draw over the capacity or daily pace the grace is priced against — from the
+   * first build that saw it. A grid-breach build never judges that deficit, and
+   * its shed changes the draw the next soft decision reads, so carrying the
+   * pre-breach start across the breach would claim a continuity no build
+   * observed: a capacity deficit right after the breach would inherit the older
+   * start and could skip the grace it is owed. The soft deficit that remains
+   * once the house is back under its grid target is timed from the build that
+   * first sees it.
+   */
+  decideGridBreach(): SoftOvershootDecision {
+    return this.remember(GRID_BREACH_DECISION);
+  }
+
+  /**
+   * This build's verdict when no limit is enabled (no binding pace at all):
+   * nothing is over, and the soft-deficit clock ends, so a deficit after a
+   * limit is turned back on is timed from its own first build.
+   */
+  decideWithoutLimit(): SoftOvershootDecision {
+    return this.remember(NO_LIMIT_DECISION);
+  }
+
+  private remember(decision: SoftOvershootDecision): SoftOvershootDecision {
     this.softPendingSinceMs = decision.pendingSinceMs;
     return decision;
   }

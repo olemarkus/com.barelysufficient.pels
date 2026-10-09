@@ -1225,16 +1225,23 @@ export const steppedInputDevice = (
  */
 export const buildPlanMeta = (
   overrides: Partial<PlanMetaBase & PlanMeasuredMetaFields> = {},
-): DevicePlan['meta'] => ({
-  ...buildPlanMetaBase(overrides),
-  powerIsMeasured: true,
-  headroomKw: 1,
-  shortfallBudgetHeadroomKw: 1,
-  hardCapHeadroomKw: 5,
-  controlledKw: 2,
-  uncontrolledKw: 3,
-  ...overrides,
-});
+): DevicePlan['meta'] => {
+  const base = buildPlanMetaBase(overrides);
+  return {
+    ...base,
+    powerIsMeasured: true,
+    // Derived from the figures exactly as the producer resolves it
+    // (`resolveMeasuredPower`): over the capacity pace or the grid target.
+    physicalLimitBreached: (base.capacitySoftLimitKw !== null && base.totalKw > base.capacitySoftLimitKw)
+      || (base.gridImportTargetKw !== null && base.totalKw > base.gridImportTargetKw),
+    headroomKw: 1,
+    shortfallBudgetHeadroomKw: 1,
+    hardCapHeadroomKw: 5,
+    controlledKw: 2,
+    uncontrolledKw: 3,
+    ...overrides,
+  };
+};
 
 /** Overrides a spec passes to {@link buildPlanMeta}: any base field, any measured figure. */
 export type PlanMetaOverrides = Partial<PlanMetaBase & PlanMeasuredMetaFields>;

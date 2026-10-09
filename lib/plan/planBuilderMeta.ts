@@ -64,7 +64,9 @@ export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
     budgetPaceKw: context.budgetPaceKw,
     projectedExemptKw: context.projectedExemptKw,
     softLimitSource: context.softLimitSource,
-    capacityShortfall: context.capacitySoftLimit !== null && capacityGuard.isInShortfall(),
+    // As it stands: a build with Capacity limit off cleared the incident before
+    // anything read the guard (`PlanBuilder.buildPlanSnapshotWithTimings`).
+    capacityShortfall: capacityGuard.isInShortfall(),
     shortfallBudgetThresholdKw,
     hardCapLimitKw: capacityLimitKw,
     capacityPeriodMinutes: context.capacityPeriodMinutes,
@@ -121,6 +123,7 @@ export function resolveMeasuredMetaFields(
 ): PlanMeasuredMetaFields {
   return {
     powerIsMeasured: true,
+    physicalLimitBreached: power.physicalLimitBreached,
     headroomKw: power.headroomKw,
     shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw === null
       ? null : shortfallBudgetThresholdKw - reading.totalKw,

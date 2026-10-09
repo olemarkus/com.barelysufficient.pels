@@ -90,8 +90,10 @@ const incReasonCounter = (base: string, reason: string): void => {
  * coalesce into that one slot), or not now — and "not now" is decided at the
  * first gate that says so. The gates, in order: never before the first rebuild
  * is skipped; nothing actionable in shortfall → max-interval cadence only; a
- * hard-cap breach → now; a live holdoff → skip; a capacity boundary, a
- * meaningful power delta while converging, or the max interval → rebuild.
+ * new or worsening grid breach → now; nothing actionable → max-interval cadence
+ * only; a new, worsening or moving hard-cap or grid breach → now; a live holdoff
+ * → skip; a capacity boundary (a steady breach included), a meaningful power
+ * delta while converging, or the max interval → rebuild.
  *
  * This class OWNS its memory (`PlanRebuildThrottleMemory`). It used to be a
  * 21-field record of optionals held by the wiring layer and threaded through
@@ -134,6 +136,10 @@ export class PlanRebuildThrottle {
       capacityPaceKw: reading.capacityPaceKw,
       headroomKw: reading.capacityPaceKw === null ? null : reading.capacityPaceKw - reading.totalKw,
       shortfallThresholdKw: reading.shortfallThresholdKw,
+      // An incident counts only while the threshold it is judged against exists
+      // (`resolveShortfallThresholdKw`: none with Capacity limit off). A reading
+      // can arrive between a settings write that turns Capacity limit off and
+      // the build that clears the latched incident.
       isInShortfall: reading.shortfallThresholdKw !== null && this.deps.getCapacityGuard().isInShortfall(),
       hardCapBreach: resolveHardCapBreach(reading.totalKw, reading.shortfallThresholdKw),
       gridBreach: resolveHardCapBreach(
@@ -303,9 +309,7 @@ export class PlanRebuildThrottle {
     if (!decision.headroomTight && !signal.isInShortfall && !breached && this.hasBackoffState()) {
       this.resetBackoff();
     }
-    if (!breached && this.lastRebuild !== null && this.lastRebuild.hardCapBreach.breached) {
-      this.lastRebuild = { ...this.lastRebuild, hardCapBreach: NO_BREACH };
-    }
+    this.forgetClearedBreaches(signal);
     // Kept in sync on skips too, so a recovered state cannot carry an old floor forward.
     this.lastDecisionUnactionable = decision.tightUnactionable;
     incPerfCounters([
@@ -319,6 +323,21 @@ export class PlanRebuildThrottle {
       if (this.holdoff !== null && this.holdoff.cause === 'mitigation' && nowMs < this.holdoff.untilMs) {
         incPerfCounter('plan_rebuild_skipped_tight_mitigation_holdoff_total');
       }
+    }
+  }
+
+  /**
+   * A skipped reading under a limit forgets the breach the last rebuild ran
+   * on, for the hard cap and the grid alike, so a breach after a calm reading is
+   * new again (`isBreachEscalated`) rather than a repeat held to the backoff.
+   */
+  private forgetClearedBreaches(signal: PowerRebuildSignal): void {
+    if (this.lastRebuild === null) return;
+    if (!signal.hardCapBreach.breached && this.lastRebuild.hardCapBreach.breached) {
+      this.lastRebuild = { ...this.lastRebuild, hardCapBreach: NO_BREACH };
+    }
+    if (!signal.gridBreach.breached && this.lastRebuild.gridBreach.breached) {
+      this.lastRebuild = { ...this.lastRebuild, gridBreach: NO_BREACH };
     }
   }
 

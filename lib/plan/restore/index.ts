@@ -64,7 +64,7 @@ export function applyRestorePlan(params: {
   // carry that relationship implicitly: cleanup ran here and the gate was
   // re-evaluated thirty lines down, with nothing connecting them.
   const restoresPlannable = !guardInShortfall
-    && shouldPlanRestores(sheddingActive, effectiveTiming, state.hourlyBudgetExhausted);
+    && shouldPlanRestores(sheddingActive, effectiveTiming, state.capacityPeriodSpentFor(context));
   // The exempt lane admits restores too, and reaches `blockingTarget` through
   // `applyRestoreCandidates` — so a cycle it runs in is serviceable for a
   // reservation whose target that lane can actually consider.

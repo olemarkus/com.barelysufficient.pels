@@ -51,7 +51,7 @@ export function resolveSameMeasurementSheddingDecision(
       ? { kind: 'credit_pending_relief', pending }
       : { kind: 'proceed', escalatedSameSample: false, pending };
   }
-  if ((power.capacityBreached || power.gridBreached) && state.overshoot.shouldEscalate(nowTs)) {
+  if (power.physicalLimitBreached && state.overshoot.shouldEscalate(nowTs)) {
     return { kind: 'proceed', escalatedSameSample: true, pending: null };
   }
   return { kind: 'skip_same_sample', pending };

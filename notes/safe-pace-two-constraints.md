@@ -465,8 +465,9 @@ is sound. What it costs is that `bindingPaceKw` is the number every display
 surface shows, and it now moves with exempt draw.
 
 `capacityPaceKw` is genuinely un-rebased, so `capacityBreached` (evaluated against
-it) is an honest capacity-pace predicate. Only the budget side goes through the
-rebase.
+it) is an honest capacity-pace predicate, and `physicalLimitBreached` (it, or the
+grid import target) an honest physical-limit one. Only the budget side goes
+through the rebase.
 
 ## Where the rebase costs us
 
@@ -504,7 +505,8 @@ since `'capacity'` satisfies the `limitSource !== 'daily'` clause at
 In the ordinary case it does not, and the reasoning is worth recording so nobody
 "fixes" it twice: whenever the source is `'capacity'`, `bindingPaceKw ==
 capacityPaceKw`, so `headroom < 0` implies `P_import > capacityPaceKw`, which makes
-`capacityBreached` true and admits the exempt device by that clause anyway.
+`physicalLimitBreached` true and admits the exempt device by that clause anyway (a
+grid breach makes it true the same way, and sheds under the `'grid'` source).
 
 **But the two clauses are not equivalent in general.** The exhausted hour sheds
 while `P_import > capacityPaceKw` is false, so shedding runs with
@@ -643,7 +645,7 @@ Two further consequences:
   re-derive them, and re-check its `'none'` handling once `softLimitSource` carries
   `'both'` in the argmin sense.
 - Exempt shed candidacy could key off `overCapacityPace` instead of the
-  `limitSource !== 'daily' || capacityBreached` pair, but only with the caveat in
+  `limitSource !== 'daily' || physicalLimitBreached` pair, but only with the caveat in
   item 4: the two are equivalent in the ordinary case and **not** in the exhausted
   hour, where `overCapacityPace` is false while shedding must still run. The predicate
   has to be `overCapacityPace || hourlyBudgetExhausted`, with the exhausted hour carried

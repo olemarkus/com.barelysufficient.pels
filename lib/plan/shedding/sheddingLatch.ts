@@ -29,7 +29,7 @@ export function resolveSheddingLatch(
   overshoot: SheddingOvershootInput,
   shedSet: ReadonlySet<string>,
 ): boolean {
-  const hourlyBudgetExhausted = state.hourlyBudgetExhausted;
+  const hourlyBudgetExhausted = state.capacityPeriodSpentFor(context);
   const inOvershoot = overshoot.actionable || hourlyBudgetExhausted;
   const remainsOverLimit = power.headroomKw !== null && power.headroomKw < 0;
   if (inOvershoot && (shedSet.size > 0 || hourlyBudgetExhausted || remainsOverLimit)) return true;

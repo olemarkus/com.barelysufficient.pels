@@ -66,6 +66,35 @@ export function resolveShedGraceMs(params: {
   return Math.min(SHED_GRACE_MAX_MS, (tolerableKWh / deficitKw) * MS_PER_HOUR);
 }
 
+/** How long a deficit of this size may wait before shedding — priced or unpriced. */
+type ShedGraceForDeficit = (deficitKw: number) => number;
+
+/** Capacity limit on: the wait is priced against the period's remaining allowance (`resolveShedGraceMs`). */
+export const pricedShedGrace = (hourRemainingKWh: number): ShedGraceForDeficit => (
+  (deficitKw) => resolveShedGraceMs({ deficitKw, hourRemainingKWh })
+);
+
+/**
+ * Capacity limit off: no capacity period binds this cycle, so nothing prices
+ * the wait, and a real deficit gets the bounded maximum, `SHED_GRACE_MAX_MS` —
+ * the same answer a wide-open period gives a small deficit. The remaining
+ * period energy is still a fact (tracking continues), but no limit spends it.
+ *
+ * The deficit is the daily budget's, the one soft pace left — a soft
+ * constraint paced per bucket and never held back at a period boundary
+ * (`computeDailyUsageSoftLimit`), so the cost the priced grace bounds does not
+ * arise. Or it is the grid pace's, in one case: a battery hand-back debit
+ * (`StorageShedTerm.netCreditKw` below zero) can put the adjusted headroom
+ * under the grid target before the meter shows a grid breach. That deficit gets
+ * this grace too, until the meter shows the breach and the grid path sheds at
+ * once (`PlanBuilder.decideOvershoot`). Either way it is a grace only for a
+ * deficit PELS may itself be driving (`resolveSoftOvershootDecision`), so it
+ * never widens to a sustained overshoot.
+ */
+export const unpricedShedGrace: ShedGraceForDeficit = (deficitKw) => (
+  Number.isFinite(deficitKw) && deficitKw > 0 ? SHED_GRACE_MAX_MS : 0
+);
+
 /**
  * `restoreTransientPossible` is true only when this deficit is plausibly a
  * transient PELS itself caused — an activation attempt is open, meaning a
@@ -76,11 +105,16 @@ export function resolveShedGraceMs(params: {
  * shed directive without this decision.)
  *
  * `pendingSinceMs` is the deficit clock the previous decision answered, carried
- * by `OvershootIncident`; null when the last build was under.
+ * by `OvershootIncident`; null when the last build was under, was a grid breach,
+ * or had no limit to be over (`OvershootIncident.decideGridBreach` /
+ * `decideWithoutLimit` end the clock).
+ *
+ * `graceFor` is `pricedShedGrace` with Capacity limit on, `unpricedShedGrace`
+ * with it off — the builder's choice (`PlanBuilder.decideOvershoot`).
  */
 export function resolveSoftOvershootDecision(
   headroomKw: number,
-  hourRemainingKWh: number,
+  graceFor: ShedGraceForDeficit,
   restoreTransientPossible: boolean,
   previousPendingSinceMs: number | null,
   nowTs: number,
@@ -102,8 +136,6 @@ export function resolveSoftOvershootDecision(
   // Above the deadband the overshoot is real immediately, and is recorded as
   // such. Only the decision to act on it waits, and only while the deficit could
   // still be a restore PELS itself is driving.
-  const graceMs = restoreTransientPossible
-    ? resolveShedGraceMs({ deficitKw, hourRemainingKWh })
-    : 0;
+  const graceMs = restoreTransientPossible ? graceFor(deficitKw) : 0;
   return { actionable: true, shedActionable: elapsedMs >= graceMs, pendingSinceMs };
 }

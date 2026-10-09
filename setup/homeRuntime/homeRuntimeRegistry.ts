@@ -511,7 +511,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       bundle.rebuildForModeSettingsChange();
       return;
     }
-    if (isCapacityScalarSettingKey(baseKey)) bundle.reloadCapacityScalars();
+    if (isCapacityScalarSettingKey(baseKey)) bundle.onCapacityScalarWritten(baseKey);
   }
 
   /** Uninit: tear down every bundle (persisted suffixed state stays). */

@@ -7,6 +7,11 @@ const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryContr
   daily_budget: { kind: 'restricted', cause: 'budget_limited' },
   grid_import: { kind: 'restricted', cause: 'capacity_limited' },
   capacity: { kind: 'restricted', cause: 'capacity_limited' },
+  // PELS's own fail-closed decision with no measured room to admit anything:
+  // the same restriction a `capacity` hold recorded before the meter outage had
+  // a reason of its own. `observation_unavailable` is a DEVICE's observations,
+  // not the whole-home meter's, so it would misattribute the miss.
+  meter_silent: { kind: 'restricted', cause: 'capacity_limited' },
   shortfall: { kind: 'restricted', cause: 'capacity_limited' },
   hourly_budget: { kind: 'restricted', cause: 'capacity_limited' },
   insufficient_headroom: { kind: 'restricted', cause: 'capacity_limited' },

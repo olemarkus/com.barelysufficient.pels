@@ -143,6 +143,8 @@ const buildHarness = (
     homey: homeyCast as unknown as SettingsHandlerDeps['homey'],
     onPvForecastSourceObserved: vi.fn(),
     loadCapacitySettings: vi.fn(),
+    noteCapacitySettingWritten: vi.fn(),
+    recoverCapacitySettingsAfterSkippedWrite: vi.fn(),
     reloadExpectedPowerOverrides: vi.fn(),
     applyBatteryControlSettings: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),

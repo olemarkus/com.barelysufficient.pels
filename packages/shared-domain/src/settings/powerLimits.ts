@@ -2,16 +2,46 @@ import type { PowerLimitCeiling, PowerLimitSettings } from '../../../contracts/s
 import { usableCapacityKw } from '../capacityAllowance';
 import { isFiniteNumber } from '../numberGuards';
 
+/**
+ * One power-limit control as read back: its value, or `malformed` when what
+ * was read is not a value the control can hold. Malformed is a fact about the
+ * read, never a default: the reader decides what an unusable read means (the
+ * runtime store carries the last accepted posture for that control alone, the
+ * settings UI treats the whole block as unavailable).
+ */
+export type PowerLimitControlRead<T> = { state: 'resolved'; value: T } | { state: 'malformed' };
+
+const MALFORMED: { state: 'malformed' } = { state: 'malformed' };
+
+/** The Capacity limit switch. */
+export function resolveCapacityEnabledSetting(capacityEnabled: unknown): PowerLimitControlRead<boolean> {
+  return typeof capacityEnabled === 'boolean' ? { state: 'resolved', value: capacityEnabled } : MALFORMED;
+}
+
+/**
+ * The grid import pair: the switch and its threshold, resolved together
+ * because an enabled switch is only usable with a valid threshold. A disabled
+ * switch keeps whatever threshold is stored without enforcing it.
+ */
+export function resolveGridImportLimitSetting(
+  gridEnabled: unknown,
+  gridLimitKw: unknown,
+): PowerLimitControlRead<number | null> {
+  if (gridEnabled === false) return { state: 'resolved', value: null };
+  if (gridEnabled !== true || !isValidGridImportLimitKw(gridLimitKw)) return MALFORMED;
+  return { state: 'resolved', value: gridLimitKw };
+}
+
 /** Defaults apply only to keys that have never been written. A missed read is unavailable. */
 export function resolvePowerLimitSettings(
   capacityEnabled: unknown,
   gridEnabled: unknown,
   gridLimitKw: unknown,
 ): Pick<PowerLimitSettings, 'capacityEnabled' | 'gridImportLimitKw'> | null {
-  if (typeof capacityEnabled !== 'boolean' || typeof gridEnabled !== 'boolean') return null;
-  if (!gridEnabled) return { capacityEnabled, gridImportLimitKw: null };
-  if (!isValidGridImportLimitKw(gridLimitKw)) return null;
-  return { capacityEnabled, gridImportLimitKw: gridLimitKw };
+  const capacity = resolveCapacityEnabledSetting(capacityEnabled);
+  const grid = resolveGridImportLimitSetting(gridEnabled, gridLimitKw);
+  if (capacity.state === 'malformed' || grid.state === 'malformed') return null;
+  return { capacityEnabled: capacity.value, gridImportLimitKw: grid.value };
 }
 
 export const isValidGridImportLimitKw = (value: unknown): value is number => (

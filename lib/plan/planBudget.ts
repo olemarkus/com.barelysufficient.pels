@@ -177,13 +177,32 @@ export function computeShortfallThreshold(
   return remainingKWh / remainingHours;
 }
 
+/**
+ * The shortfall threshold this home is judged against, or `null` when Capacity
+ * limit is off: with no capacity period in force there is no hard-cap breach to
+ * project, so no threshold exists (genuine absence, not a missing read).
+ *
+ * The ONE owner of "is the capacity shortfall question asked at all". The plan
+ * build (once per build, from the settings it read once), the silent-meter pass,
+ * the rebuild throttle's reading, the periodic status log and the Flow alert
+ * condition all take the threshold from here and treat `null` as "capacity
+ * control is off"; none of them re-asks `capacityEnabled` beside it.
+ */
+export function resolveShortfallThresholdKw(
+  settings: PowerLimitSettings,
+  powerTracker: PowerTrackerState,
+  nowMs: number,
+): number | null {
+  return settings.capacityEnabled ? computeShortfallThreshold(settings, powerTracker, nowMs) : null;
+}
+
 /** Recheck period alerts against this home's live settings and accepted meter sample. */
 export function isCapacityShortfallAlertActive(
   guard: CapacityGuard,
   settings: PowerLimitSettings,
   tracker: PowerTrackerState,
 ): boolean {
-  return settings.capacityEnabled && guard.isShortfallAlertConditionActive(
-    resolveLastTotalPowerKw(tracker), computeShortfallThreshold(settings, tracker, Date.now()),
-  );
+  const thresholdKw = resolveShortfallThresholdKw(settings, tracker, Date.now());
+  return thresholdKw !== null
+    && guard.isShortfallAlertConditionActive(resolveLastTotalPowerKw(tracker), thresholdKw);
 }

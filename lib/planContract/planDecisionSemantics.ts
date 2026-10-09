@@ -59,6 +59,12 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.activationBackoff,
   PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
+  // The silent-meter fail-closed pass: with no measurement nothing admits a
+  // resume, a smart task's included. The pass marks every device `shed`, which
+  // `buildExecutableReleaseIntent` never consults, so this changes nothing
+  // today; it is listed so the classifier says so outright, where the budget
+  // pair above is deliberately left out.
+  PLAN_REASON_CODES.meterSilent,
   PLAN_REASON_CODES.cooldownRestore,
   PLAN_REASON_CODES.cooldownShedding,
   PLAN_REASON_CODES.insufficientHeadroom,
@@ -109,6 +115,12 @@ const COOLDOWN_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
 // Cooldowns, retry backoff, restore holds, and startup reservations moved here from the
 // pause table on 2026-08-08 — they are PELS keeping the device off, and the owner does not
 // experience them as a break in the hold.
+//
+// `meterSilent` is in neither table, deliberately: only the silent-meter pass mints it, and
+// that pass observes no diagnostics (`planBuilderSilentMeter.ts` never calls
+// `observeDiagnostics`), while every measured build re-derives its reasons. Give it a cause
+// here only together with a path that observes it, and a cause of its own — no existing one
+// describes a meter that stopped reporting.
 const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, PlanStarvationCountingCause>> = {
   [PLAN_REASON_CODES.gridImport]: 'capacity',
   [PLAN_REASON_CODES.capacity]: 'capacity',

@@ -35,8 +35,8 @@ import type { PlanEngineState } from './planState';
 import {
   computeDailyUsageSoftLimit,
   computeDynamicSoftLimit,
-  computeShortfallThreshold,
   isDailyBudgetBelowPlanningCeiling,
+  resolveShortfallThresholdKw,
 } from './planBudget';
 import {
   buildPlanContext,
@@ -46,7 +46,6 @@ import {
   resolveMeasuredPower,
   type MeasuredPower,
   type PlanContext,
-  type PlanLimits,
 } from './planContext';
 import { buildSheddingPlan, type SheddingPlan, type StorageShedTerm } from './shedding';
 import {
@@ -110,6 +109,12 @@ export class PlanBuilder {
   }
 
   private get capacityGuard(): CapacityGuard { return this.deps.capacityGuard; }
+  /**
+   * The live settings. A build reads this ONCE (`buildPlanSnapshotWithTimings`)
+   * and hands that one object to every stage, so no stage of a cycle can answer
+   * to a different Capacity limit or grid limit than another. A read outside a
+   * build takes its own snapshot the same way.
+   */
   private get capacitySettings(): PowerLimitSettings { return this.deps.getCapacitySettings(); }
 
   private get priceOptimizationSettings(): Record<string, PriceOptDeviceConfig> {
@@ -137,12 +142,14 @@ export class PlanBuilder {
   }
 
   /**
-   * The capacity pace as a plain read: the same number `stampCapacityPace`
-   * returns, override precedence included, and no write.
+   * The physical limit as a plain read: the lower of the capacity pace — the
+   * same number `stampCapacityPace` returns, override precedence included — and
+   * the grid import target (`resolvePhysicalPowerLimit`), `null` with both off.
+   * No write. (`computeCapacityPace` is the capacity axis alone.)
    *
    * Every caller outside the plan build gets this one. A periodic status log, a
    * Flow condition asking "is there available power", the rebuild scheduler's
-   * threshold input and the shortfall log line all ask what the pace *is*; none
+   * threshold input and the shortfall log line all ask what the limit *is*; none
    * of them is deciding a plan, so none of them may leave a stamp behind.
    *
    * The window this closes is narrow but real. Most of a build is one turn of
@@ -156,12 +163,18 @@ export class PlanBuilder {
    * against a period its own decision never saw.
    */
   public computeDynamicSoftLimit(): number | null {
-    return resolvePhysicalPowerLimit(this.capacitySettings, this.computeCapacityPace());
+    const settings = this.capacitySettings;
+    return resolvePhysicalPowerLimit(settings, this.readCapacityPace(settings, Date.now()));
   }
 
   /** Capacity-only diagnostic axis; grid import must not be labelled as period pace. */
   public computeCapacityPace(): number | null {
-    return this.capacitySettings.capacityEnabled ? this.resolveCapacityPace(Date.now()).paceKw : null;
+    return this.readCapacityPace(this.capacitySettings, Date.now());
+  }
+
+  /** The capacity pace as a plain read: `null` when Capacity limit is off, and no write. */
+  private readCapacityPace(settings: PowerLimitSettings, nowTs: number): number | null {
+    return settings.capacityEnabled ? this.resolveCapacityPace(settings, nowTs).paceKw : null;
   }
 
   /**
@@ -169,15 +182,21 @@ export class PlanBuilder {
    * the rest of this cycle reads off it. The one writer of both — keep it that
    * way, so "what capacity period is it" is answered once per plan rather than by whoever
    * last asked for the number.
+   *
+   * Both are facts about the period, stamped whether or not Capacity limit is
+   * on: period tracking continues when it is off. Only the returned pace says
+   * whether the capacity axis is in force — `null` with Capacity limit off — and
+   * every decision gates on that (`PlanEngineState.capacityPeriodSpentFor`,
+   * `decideOvershoot`), never on a fact forced to a stand-in.
    */
-  private stampCapacityPace(nowTs: number): number {
-    const resolved = this.resolveCapacityPace(nowTs);
+  private stampCapacityPace(settings: PowerLimitSettings, nowTs: number): number | null {
+    const resolved = this.resolveCapacityPace(settings, nowTs);
     this.state.hourlyRemainingKWh = resolved.remainingKWh;
     this.state.hourlyBudgetExhausted = resolved.hourlyBudgetExhausted;
-    return resolved.paceKw;
+    return settings.capacityEnabled ? resolved.paceKw : null;
   }
 
-  private resolveCapacityPace(nowTs: number): {
+  private resolveCapacityPace(settings: PowerLimitSettings, nowTs: number): {
     paceKw: number;
     remainingKWh: number;
     hourlyBudgetExhausted: boolean;
@@ -186,7 +205,7 @@ export class PlanBuilder {
     // about that period, not about which pace is in force, so an override replaces the pace
     // and leaves the budget untouched. Resolving it on both paths keeps
     // `hourlyRemainingKWh` a plain number for every consumer.
-    const result = computeDynamicSoftLimit(this.capacitySettings, this.powerTracker, nowTs);
+    const result = computeDynamicSoftLimit(settings, this.powerTracker, nowTs);
     const override = this.deps.getDynamicSoftLimitOverride();
     if (typeof override === 'number' && Number.isFinite(override)) {
       return { paceKw: override, remainingKWh: result.remainingKWh, hourlyBudgetExhausted: false };
@@ -199,13 +218,37 @@ export class PlanBuilder {
   }
 
   /**
-   * Compute the shortfall threshold for panic mode.
+   * The shortfall threshold for panic mode, as a read outside a build: `null`
+   * when Capacity limit is off (`resolveShortfallThresholdKw`, its one owner).
    * Shortfall should only trigger when projected selected-period usage would breach the hard cap
    * and no devices are left to shed.
    */
-  public computeShortfallThreshold(nowTs = Date.now()): number | null {
-    if (!this.capacitySettings.capacityEnabled) return null;
-    return computeShortfallThreshold(this.capacitySettings, this.powerTracker, nowTs);
+  public computeShortfallThreshold(): number | null {
+    return resolveShortfallThresholdKw(this.capacitySettings, this.powerTracker, Date.now());
+  }
+
+  /**
+   * The capacity axis this build decides against, resolved first and from the
+   * settings the build read once: the stamped pace (`stampCapacityPace`) and
+   * the shortfall threshold (`resolveShortfallThresholdKw`), both `null` when
+   * Capacity limit is off. The pace is the value the limits carry as
+   * `capacitySoftLimit`.
+   *
+   * Capacity limit off also cancels any incident it left open, before anything
+   * in the build reads the guard. With builds serialized (`PlanService`) this
+   * is what lets the build's own readers — `buildSheddingPlan`'s
+   * `guardInShortfall` and the meta's `capacityShortfall` — read
+   * `isInShortfall()` as it stands: an incident opens only through
+   * `recordPlanVerdict`, whose one caller (`reportShortfallToGuard`) asks
+   * nothing without a shortfall threshold, and there is none this build.
+   */
+  private async resolveCapacityCycle(
+    settings: PowerLimitSettings,
+    nowTs: number,
+  ): Promise<{ paceKw: number | null; shortfallThresholdKw: number | null }> {
+    const paceKw = this.stampCapacityPace(settings, nowTs);
+    if (paceKw === null) await this.capacityGuard.recordCapacityDisabled();
+    return { paceKw, shortfallThresholdKw: resolveShortfallThresholdKw(settings, this.powerTracker, nowTs) };
   }
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -214,7 +257,13 @@ export class PlanBuilder {
 
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const nowTs = Date.now();
-    if (!this.capacitySettings.capacityEnabled) await this.deps.capacityGuard.recordCapacityDisabled();
+    // Read ONCE. The limits, the shortfall threshold, the silent-meter pass, the
+    // overshoot log and the meta all answer to this one object, so a settings
+    // write landing mid-build cannot split the cycle across two postures.
+    const settings = this.capacitySettings;
+    const {
+      paceKw: capacityPaceKw, shortfallThresholdKw: shortfallBudgetThresholdKw,
+    } = await this.resolveCapacityCycle(settings, nowTs);
     // Evaluate deferred objectives at the planner boundary and translate active objectives
     // into a plain managed-device shape: a device PELS has no standing authority over
     // gains `commandAuthority` for the cycle (so it participates in shed/restore) without
@@ -242,9 +291,13 @@ export class PlanBuilder {
     });
     const context = trackPlanStage('plan_context_ms', () => buildPlanContext(
       admittedDevices,
-      this.capacitySettings,
+      settings,
       this.powerTracker,
-      this.resolvePlanLimits(admittedDevices, dailyBudgetSnapshot, nowTs),
+      // The limits this cycle is decided against — one resolution, held by the
+      // frame both passes build.
+      buildPlanLimits(
+        settings, capacityPaceKw, this.computeDailySoftLimit(dailyBudgetSnapshot, admittedDevices, nowTs),
+      ),
       // After the decoration, which is what stamps a smart task's deadline floor.
       this.deps.resolveTemperatureSetpoints(admittedDevices),
       nowTs,
@@ -254,10 +307,9 @@ export class PlanBuilder {
     // build — the silent-meter fail-closed pass — takes its directive here and
     // never constructs a `MeasuredPower` (owner ruling 2026-09-02).
     if (!reading.isMeasured) {
-      return this.silentMeter.build(context, reading, decoration, nowTs);
+      return this.silentMeter.build(context, reading, decoration, settings, shortfallBudgetThresholdKw, nowTs);
     }
     const power = resolveMeasuredPower(reading, context, admittedDevices);
-    const shortfallBudgetThresholdKw = this.computeShortfallThreshold(nowTs);
     // Smart-task precedence for the standing postures, shared by the
     // allocator and the hold so the two can never disagree.
     const postureExcludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
@@ -329,7 +381,7 @@ export class PlanBuilder {
       context: heldContext,
       power,
       reading,
-      capacityLimitKw: this.capacitySettings.limitKw,
+      capacityLimitKw: settings.limitKw,
       shortfallBudgetThresholdKw,
       powerTracker: this.powerTracker,
       deviceNameById: new Map(admittedDevices.map((d) => [d.id, d.name])),
@@ -345,16 +397,16 @@ export class PlanBuilder {
       dailyBudgetSnapshot,
       powerTracker: this.powerTracker,
       capacityGuard: this.capacityGuard,
-      capacityLimitKw: this.capacitySettings.limitKw,
+      capacityLimitKw: settings.limitKw,
       shortfallBudgetThresholdKw,
-      hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
+      hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(heldContext),
     }, power));
     this.stages.observeDiagnostics({
       context: heldContext,
       power,
       planDevices: decidedDevices,
       restoreResult,
-      budgetPressureEligible: isDailyBudgetBelowPlanningCeiling(dailyBudgetSnapshot, this.capacitySettings),
+      budgetPressureEligible: isDailyBudgetBelowPlanningCeiling(dailyBudgetSnapshot, settings),
       smartTaskDrivingDeviceIds: decoration.drivingDeviceIds,
       nowTs,
     });
@@ -363,25 +415,6 @@ export class PlanBuilder {
       devices: decidedDevices,
       storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
     };
-  }
-
-  /**
-   * The limits this cycle is decided against — one resolution, held by the
-   * frame both passes build. Stamps the capacity pace into the engine state
-   * (`hourlyRemainingKWh`, `hourlyBudgetExhausted`) as a side effect, exactly
-   * as before.
-   */
-  private resolvePlanLimits(
-    devices: PlanInputDevice[], dailyBudgetSnapshot: DailyBudgetUiPayload | null, nowTs: number,
-  ): PlanLimits {
-    const capacitySoftLimit = this.capacitySettings.capacityEnabled ? this.stampCapacityPace(nowTs) : null;
-    if (capacitySoftLimit === null) {
-      this.state.hourlyBudgetExhausted = false;
-      this.state.hourlyRemainingKWh = 0;
-    }
-    return buildPlanLimits(
-      this.capacitySettings, capacitySoftLimit, this.computeDailySoftLimit(dailyBudgetSnapshot, devices, nowTs),
-    );
   }
 
   /**
@@ -435,10 +468,10 @@ export class PlanBuilder {
     const heldStorage = this.deps.getCapacityDryRun()
       ? NO_STORAGE_RELIEF
       : decideStorageRelief(context.devices, power, this.state.storageLeverByDevice, surplusOffers, nowTs);
-    const overshootDecision = this.decideOvershoot(power, heldStorage.shed, nowTs);
+    const overshootDecision = this.decideOvershoot(context, power, heldStorage.shed, nowTs);
     // A clean whole-home sample: the house is under its pace, and the hour is
     // not spent (an exhausted hour admits nothing, however the draw reads).
-    if ((power.headroomKw === null || power.headroomKw >= 0) && !this.state.hourlyBudgetExhausted) {
+    if ((power.headroomKw === null || power.headroomKw >= 0) && !this.state.capacityPeriodSpentFor(context)) {
       this.recordCleanWholeHomeSample(context.devices, this.powerTracker.lastTimestamp);
     }
 
@@ -465,15 +498,26 @@ export class PlanBuilder {
     };
   }
 
-  private decideOvershoot(power: MeasuredPower, storage: StorageShedTerm, nowTs: number): SoftOvershootDecision {
-    if (power.gridBreached) return { actionable: true, shedActionable: true, pendingSinceMs: nowTs };
-    if (power.headroomKw === null) return { actionable: false, shedActionable: false, pendingSinceMs: null };
-    return this.state.overshoot.decideSoft(
-      power.headroomKw + storage.netCreditKw,
-      this.state.hourlyRemainingKWh,
-      this.hasOpenActivationAttempt(nowTs),
-      nowTs,
-    );
+  /**
+   * This build's overshoot verdict, always through the incident, so its
+   * soft-deficit clock reflects the build that just ran: a grid breach sheds at
+   * once and ends the clock, no limit at all ends it, and only a soft deficit
+   * is timed against the grace. The grace is priced against the capacity
+   * period's remaining allowance while Capacity limit is on; with it off
+   * (`capacitySoftLimit` null) nothing prices the wait, and it is the bounded
+   * maximum (`unpricedShedGrace`).
+   */
+  private decideOvershoot(
+    context: PlanContext, power: MeasuredPower, storage: StorageShedTerm, nowTs: number,
+  ): SoftOvershootDecision {
+    const incident = this.state.overshoot;
+    if (power.gridBreached) return incident.decideGridBreach();
+    if (power.headroomKw === null) return incident.decideWithoutLimit();
+    const headroomKw = power.headroomKw + storage.netCreditKw;
+    const restoreTransientPossible = this.hasOpenActivationAttempt(nowTs);
+    return context.capacitySoftLimit === null
+      ? incident.decideSoftUnpriced(headroomKw, restoreTransientPossible, nowTs)
+      : incident.decideSoft(headroomKw, this.state.hourlyRemainingKWh, restoreTransientPossible, nowTs);
   }
 
   /**

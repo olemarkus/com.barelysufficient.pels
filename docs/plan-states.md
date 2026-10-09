@@ -48,6 +48,7 @@ it once under **Power now** (`Safe pace now 1.9 kW · set by today's budget`).
 | **Waiting to resume — 50s** | A resume cooldown is running and this is the device PELS resumes first when the timer ends: turned-off devices go before stepped increases and thermostat raises, and priority orders each group. An active stepped device says **Waiting to increase — 50s**. |
 | **Waiting to resume — other devices are ahead** | The same cooldown holds this device, but another device is ahead of it in that order. Active stepped devices say **Waiting to increase — other devices are ahead**. |
 | **Waiting for power reading to stabilise** | PELS recently changed or observed a device and is waiting for meter readings to settle. |
+| **Waiting for a new power reading** | The whole-home meter stopped reporting for over 10 minutes, so PELS limited every managed device to be safe. This happens in every mode, even with every limit turned off, and lasts until a new reading arrives. |
 | **Delaying restart after recent failed attempt** | A previous resume caused new pressure, so PELS is waiting longer before trying again. |
 | **Waiting for cheaper hours** | A smart task booked this load into cheaper hours. More power would not start it. |
 | **Waiting for solar surplus** | A "run on solar surplus" device, waiting for the home to export enough. |
@@ -69,6 +70,7 @@ The raw plan still uses older internal identifiers. These are implementation ter
 | `reason: "staying off until turned on again"` | Off — the device was turned off elsewhere and PELS was asked to leave it off. |
 | `reason: "shed due to capacity"` | Limited; the card shows the power the device still needs. |
 | `reason: "shed due to grid import limit"` | Limited to keep import under the grid import limit; the card shows the power the device still needs. |
+| `reason: "shed while the meter is silent"` | Limited because the whole-home meter stopped reporting; the card shows **Waiting for a new power reading**. |
 | `reason: "shed due to daily budget"` | Limited by today's budget pacing; the card shows the power the device still needs, or offers **Let it run now**. |
 | `reason: "restore (...)"` | Waiting to resume, with the required and available power shown internally. |
 | `reason: "shortfall (...)"` | Manual action needed — hard cap may be exceeded. |

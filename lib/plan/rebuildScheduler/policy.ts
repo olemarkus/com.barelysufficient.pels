@@ -103,6 +103,19 @@ const resolveTightUnactionable = (
   return signal.unactionable && !signal.planConvergenceActive && boundaryActive;
 };
 
+/**
+ * A breach the last rebuild did not see: new (the last rebuild ran on a reading
+ * under that limit), or worse than the deficit it ran on by more than
+ * `MIN_HARD_CAP_DEFICIT_DELTA_KW`. One rule, and one tolerance, for the
+ * hard-cap breach and the grid breach.
+ */
+const isBreachEscalated = (breach: HardCapBreach, previous: HardCapBreach): boolean => (
+  breach.breached && (
+    !previous.breached
+    || breach.deficitKw > previous.deficitKw + MIN_HARD_CAP_DEFICIT_DELTA_KW
+  )
+);
+
 // `memory` supplies the two gates that are pure functions of it — the initial
 // sample and the invalidation latch — rather than being re-derived by the
 // caller and handed back. The rest are this stage's own derivations.
@@ -110,21 +123,28 @@ export const shouldRebuildFromDecision = (
   signal: PowerRebuildSignal,
   memory: PlanRebuildThrottleMemory,
   controlBoundaryActive: boolean,
-  hardCapBreachActive: boolean,
   backoffActive: boolean,
   deltaMeaningful: boolean,
   maxIntervalExceeded: boolean,
 ): boolean => {
-  if (memory.lastRebuild === null) return true;
-  const previousGrid = memory.lastRebuild.gridBreach;
-  // A new/worsening live breach invalidates the calm plan's no-action verdict.
-  // A steady, exhausted grid breach keeps the normal bounded refresh cadence.
-  if (signal.gridBreach.breached && (
-    !previousGrid.breached || signal.gridBreach.deficitKw > previousGrid.deficitKw
-    || deltaMeaningful || memory.suppressionInvalidated
-  )) return true;
+  const { lastRebuild } = memory;
+  if (lastRebuild === null) return true;
+  // A new or worsening grid breach invalidates the last plan's no-action
+  // verdict, which was taken against a house under (or less over) its grid
+  // target — the one physical breach allowed past the unactionable throttle.
+  if (isBreachEscalated(signal.gridBreach, lastRebuild.gridBreach)) return true;
   if (isUnactionableThrottleActive(signal, memory.suppressionInvalidated)) return maxIntervalExceeded;
-  if (hardCapBreachActive || signal.gridBreach.breached) return true;
+  // A breach of either physical limit earns a rebuild past the tight-noop
+  // backoff when the hard-cap breach escalated (the grid one returned above),
+  // the power moved meaningfully, or the max interval is up. Held steady, it
+  // falls through to the backoff like any tight boundary: the reading is what
+  // triggers a rebuild, and one that repeats a breach the last rebuild already
+  // answered changes nothing that rebuild did not see.
+  const breached = signal.hardCapBreach.breached || signal.gridBreach.breached;
+  if (
+    isBreachEscalated(signal.hardCapBreach, lastRebuild.hardCapBreach)
+    || (breached && (deltaMeaningful || maxIntervalExceeded))
+  ) return true;
   if (backoffActive) return false;
   return controlBoundaryActive
     || (signal.planConvergenceActive && deltaMeaningful)
@@ -148,18 +168,6 @@ export const resolveRebuildDecision = (
     && (lastRebuild === null || nowMs - lastRebuild.atMs >= maxIntervalMs);
   const periodBoundaryCrossed = lastRebuild !== null
     && Math.floor(nowMs / PLANNING_PERIOD_MS) !== Math.floor(lastRebuild.atMs / PLANNING_PERIOD_MS);
-  const lastBreach = lastRebuild !== null && lastRebuild.hardCapBreach.breached;
-  const repeatedHardCapBreach = hardCapBreachActive && lastBreach;
-  const hardCapDeficitIncreased = hardCapBreachActive
-    && lastRebuild !== null
-    && lastBreach
-    && signal.hardCapBreach.deficitKw > lastRebuild.hardCapBreach.deficitKw + MIN_HARD_CAP_DEFICIT_DELTA_KW;
-  const hardCapBreachShouldRebuild = hardCapBreachActive && (
-    !repeatedHardCapBreach
-    || deltaMeaningful
-    || hardCapDeficitIncreased
-    || maxIntervalExceeded
-  );
   const backoffActive = isTightNoopBackoffActive(
     signal,
     memory.holdoff,
@@ -177,7 +185,6 @@ export const resolveRebuildDecision = (
     signal,
     memory,
     controlBoundaryActive,
-    hardCapBreachShouldRebuild,
     backoffActive,
     deltaMeaningful,
     maxIntervalExceeded,

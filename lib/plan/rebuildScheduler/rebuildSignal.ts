@@ -22,11 +22,19 @@ export type PowerRebuildSignal = {
   totalKw: number;
   /** The configured hard cap in kW — the delta threshold scales off it. */
   limitKw: number;
-  /** The planner's live hourly threshold (`computeDynamicSoftLimit`). */
+  /**
+   * The planner's live physical limit (`computeDynamicSoftLimit`): the lower of
+   * the capacity pace and the grid import target, `null` with both off. The
+   * name predates grid control; it is no longer capacity-only.
+   */
   capacityPaceKw: number | null;
-  /** `capacityPaceKw - totalKw`. Negative means over pace. */
+  /**
+   * `capacityPaceKw - totalKw`. Negative means over the physical limit, so a
+   * grid breach is always a tight headroom too, which is what puts a steady
+   * grid breach under the tight-noop backoff.
+   */
   headroomKw: number | null;
-  /** Producer-resolved `computeShortfallThreshold`. */
+  /** Producer-resolved `resolveShortfallThresholdKw`: `null` with Capacity limit off. */
   shortfallThresholdKw: number | null;
   isInShortfall: boolean;
   hardCapBreach: HardCapBreach;

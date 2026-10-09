@@ -518,6 +518,8 @@ describe('settings-change recompute triggers', () => {
     recomputeHomeMembership: recompute,
     onPvForecastSourceObserved: vi.fn(),
     loadCapacitySettings: vi.fn(),
+    noteCapacitySettingWritten: vi.fn(),
+    recoverCapacitySettingsAfterSkippedWrite: vi.fn(),
     reloadExpectedPowerOverrides: vi.fn(),
     applyBatteryControlSettings: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),

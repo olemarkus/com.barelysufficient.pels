@@ -143,7 +143,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       needed: 5,
       deficitKw: 5,
       limitSource: 'capacity',
-      capacityBreached: context.capacityBreached,
+      physicalLimitBreached: context.physicalLimitBreached,
       storageLimit: { kind: 'measured' as const, drawKw: 5, levers: {} },
       state: createPlanEngineState(),
       deps: {

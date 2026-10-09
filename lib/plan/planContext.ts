@@ -136,11 +136,33 @@ export type MeasuredPower = {
   // headroom that exists only as an off exempt device's projection.
   capacityHeadroomKw: number | null;
   gridHeadroomKw: number | null;
+  /**
+   * The draw is above the grid import target. Read where grid pressure has its
+   * own policy: no shed grace (`PlanBuilder.decideOvershoot`), no recent-restore
+   * grace and the `grid` shed source (`buildShedCandidateParams`), and delivered
+   * relief retired on the next reading (`resolveSameMeasurementSheddingDecision`).
+   */
   gridBreached: boolean;
   /** `null` when no daily budget applies (sub-homes, budget disabled). */
   budgetHeadroomKw: number | null;
-  /** The draw is above the capacity pace. The one "is capacity breached" answer every stage reads. */
+  /**
+   * The draw is above the capacity pace — capacity ONLY, `false` with Capacity
+   * limit off. Read where only the capacity period is meant: the hard-cap
+   * shortfall verdict (`reportShortfallToGuard`). A stage asking "is the house
+   * over a limit a budget release cannot help with" reads
+   * `physicalLimitBreached` instead.
+   */
   capacityBreached: boolean;
+  /**
+   * The draw is above an enabled PHYSICAL limit: the capacity pace or the grid
+   * import target, whichever are on. The one "is a physical limit breached"
+   * answer every stage reads — the daily-budget exemption policy and shed
+   * attribution (`buildShedCandidateParams`, `resolveShedReason`), the
+   * same-sample escalation (`resolveSameMeasurementSheddingDecision`) and
+   * reason normalization (`normalizeShedReasons`) — so none of them recomposes
+   * it from the two axes.
+   */
+  physicalLimitBreached: boolean;
   // A headroom-blocked restore hold is releasable by the daily budget ONLY when
   // the daily pace binds and neither capacity nor grid is also breached: when
   // the total is over a physical limit too, that limit is the constraint doing
@@ -190,7 +212,9 @@ export function buildPlanContext(
  *
  * There is no exhausted-hour override here any more: an exhausted hour is a
  * FLAG (`PlanEngineState.hourlyBudgetExhausted`), and the stages that must act
- * on it — shedding everything, admitting no restore — read the flag. Forcing
+ * on it — shedding everything, admitting no restore — read it, through
+ * `PlanEngineState.capacityPeriodSpentFor` so it acts only while Capacity limit
+ * is on. Forcing
  * `-1` into these numbers to make those stages react was a decision smuggled
  * inside a measurement, and it surfaced as `1.0 kW above safe pace (0.0 kW)`
  * on the Overview beside a 0.1 kW draw.
@@ -208,6 +232,7 @@ export function resolveMeasuredPower(
   const capacityBreached = isCapacityBreached(drawKw, capacitySoftLimit);
   const gridHeadroomKw = limits.gridImportTargetKw === null ? null : reading.headroomKw(limits.gridImportTargetKw);
   const gridBreached = gridHeadroomKw !== null && gridHeadroomKw < 0;
+  const physicalLimitBreached = capacityBreached || gridBreached;
   return {
     drawKw,
     headroomKw: softLimit === null ? null : reading.headroomKw(softLimit),
@@ -221,6 +246,7 @@ export function resolveMeasuredPower(
       ))
       : null,
     capacityBreached,
-    budgetReleasableHeadroomHold: softLimitSource === 'daily' && !capacityBreached && !gridBreached,
+    physicalLimitBreached,
+    budgetReleasableHeadroomHold: softLimitSource === 'daily' && !physicalLimitBreached,
   };
 }

@@ -853,6 +853,13 @@ export type PlanMetaBase = {
  */
 export type PlanMeasuredMetaFields = {
   powerIsMeasured: true;
+  /**
+   * The draw is above an enabled physical limit — the capacity pace or the grid
+   * import target — resolved once (`MeasuredPower.physicalLimitBreached`) and
+   * published so a reader of the plan never re-derives it from the figures
+   * (`resolvePlanRemainingSheddableContext`).
+   */
+  physicalLimitBreached: boolean;
   headroomKw: number | null;
   shortfallBudgetHeadroomKw: number | null;
   hardCapHeadroomKw: number | null;

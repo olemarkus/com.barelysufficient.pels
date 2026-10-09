@@ -39,7 +39,10 @@ export async function reportShortfallToGuard(
   /** This cycle's storage stage: the holds a battery's candidate is priced from. */
   storage: StorageRelief,
 ): Promise<void> {
-  if (context.capacitySoftLimit === null || deps.shortfallThresholdKw === null) return;
+  // No threshold is Capacity limit off (`resolveShortfallThresholdKw`, from the
+  // same settings read the build's `capacitySoftLimit` came from): there is no
+  // hard-cap question to ask.
+  if (deps.shortfallThresholdKw === null) return;
   if (!applyShortfallPeriodCoverage(deps.capacityGuard, context.capacityPeriodCoverageComplete)) return;
   if (!isOverShortfallThreshold(power.drawKw, deps.shortfallThresholdKw)) {
     await deps.capacityGuard.recordCompletePeriodReading(power.drawKw, deps.shortfallThresholdKw);
@@ -73,8 +76,9 @@ function buildShortfallCapacityStateSummary(
     // Only a device with a power axis has reducible load to count.
     devices: devices.filter(isMeteredPlanDevice).map(toInputRemainingSheddableDevice),
     isAlreadyShed: (device) => shedSet.has(device.id),
-    limitSource: state.hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
-    capacityBreached: power.capacityBreached,
+    limitSource: state.capacityPeriodSpentFor(context) ? 'daily' : context.softLimitSource,
+    // Capacity only: the hard-cap incident is a capacity question.
+    breachOverridesExemption: power.capacityBreached,
   }));
   const candidates = walkShedCandidates(context, power, state, deps, storage);
   const remainingActionableControlledLoadW = roundPowerW(

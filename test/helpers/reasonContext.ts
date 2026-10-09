@@ -19,7 +19,7 @@ export const reasonContext = (overrides: Partial<ReasonContext> = {}): ReasonCon
   deferredObjectiveAvoidDeviceIds: new Set<string>(),
   postureHoldReasonById: new Map<string, DeviceReason>(),
   softLimitSource: null,
-  capacityBreached: false,
+  physicalLimitBreached: false,
   budgetReleasableHeadroomHold: false,
   hourlyBudgetExhausted: false,
   admissionInputs: null,

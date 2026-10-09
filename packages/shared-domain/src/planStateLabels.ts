@@ -104,6 +104,18 @@ export const PLAN_STATE_DAILY_BUDGET_STATUS = "Limited by today's daily budget";
 // not cap proximity).
 export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = "Waiting to resume — this capacity period's budget is spent";
 
+// Status line for `meterSilent` holds: the whole-home meter stopped reporting
+// for over 10 minutes and the fail-closed pass limited every managed device. It
+// states what the device needs — a new reading, which is also the only thing
+// that lets it resume (the plan-build gate blocks rebuilds until one arrives) —
+// and names no ceiling: with no measurement none is known to bind, and with
+// Capacity limit off "Limited by the hard cap" named a limit that was not even
+// on. No kW figure either: freeing power would not resume it. One string for
+// the card, device detail and the activity log, and it pairs with the Overview
+// banner's `Managed devices stay limited until a new reading arrives.`
+// Registered in `notes/ui-terminology.md`.
+export const PLAN_STATE_METER_SILENT_STATUS = 'Waiting for a new power reading';
+
 // Status line for devices held because the smart task is between planned hours
 // (the current hour was relatively expensive so the load was booked into cheaper
 // hours, or the task has not started yet, or it has already finished). The

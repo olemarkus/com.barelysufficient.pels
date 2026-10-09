@@ -231,6 +231,8 @@ export type HomeCapacityBundle = {
   recordMeterSample: (powerW: number, nowMs: number) => void;
   /** Suffix-hook: reload the capacity scalars into the guard + request a rebuild. */
   reloadCapacityScalars: () => void;
+  /** A home-scoped capacity scalar key (`baseKey`) was written: note the write, then reload. */
+  onCapacityScalarWritten: (baseKey: string) => void;
   /**
    * Stop timers/scheduler. Identity changes additionally clear and durably
    * persist meter freshness after the final pending-state flush.
@@ -538,7 +540,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   let capacityScalars: CapacityScalarSettings = SUB_HOME_CAPACITY_DEFAULTS;
   const capacityStore = createCapacitySettingsStore(ctx.homey.settings, homeId, () => capacityScalars);
   const initialCapacityRead = capacityStore.read();
-  if (initialCapacityRead.state === 'resolved') capacityScalars = initialCapacityRead.value;
+  if (initialCapacityRead.state !== 'unavailable') capacityScalars = initialCapacityRead.value;
 
   const tracker = createHomeTrackerPersistence({
     deps: createAreaTrackerDeps(ctx, homeId, isTornDown),

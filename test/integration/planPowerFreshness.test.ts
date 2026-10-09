@@ -14,6 +14,8 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { formatDeviceReasonUserFacing } from '../../packages/shared-domain/src/planReasonFormatting';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 // The producer resolves the reading. Tests state the two real inputs — what
 // the meter read and when it last sampled — and receive either a measured
@@ -199,11 +201,14 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     tracker: { lastTimestamp?: number; lastPowerW?: number };
     structuredLog?: { info?: ReturnType<typeof vi.fn>; warn?: ReturnType<typeof vi.fn> };
     state?: ReturnType<typeof createPlanEngineState>;
+    settings?: PowerLimitSettings;
   }): PlanBuilder {
+    const settings: PowerLimitSettings = params.settings
+      ?? { capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 };
     return new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => settings,
       getPowerTracker: () => params.tracker,
       structuredLog: params.structuredLog as never,
     }, params.state ?? createPlanEngineState());
@@ -277,6 +282,37 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
   // not a sentinel headroom the ordinary pipeline sizes a slice against. With
   // the old `-1` it shed "about 1 kW" of devices, a policy nobody chose; three
   // 1.2 kW candidates would have lost one.
+  // The pass sheds in every limit mode (the released Grid import limit
+  // changelog keeps meter-outage protection), and its cause is the same in all of
+  // them: the meter stopped reporting. Under `capacity` the activity log and
+  // device detail read "Limited by the hard cap" even with Capacity limit off.
+  it.each([
+    ['Capacity limit on', { capacityEnabled: true, gridImportLimitKw: null }],
+    ['grid import limit only', { capacityEnabled: false, gridImportLimitKw: 3.3 }],
+    ['both limits off', { capacityEnabled: false, gridImportLimitKw: null }],
+  ] as const)('names the silent meter, not a ceiling, with %s', async (_label, controls) => {
+    const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
+    const structuredLog = { info: vi.fn(), warn: vi.fn() };
+    const builder = buildBuilder({
+      tracker,
+      structuredLog,
+      settings: { ...controls, limitKw: 6, marginKw: 0.2, periodMinutes: 60 },
+    });
+
+    const plan = await builder.buildDevicePlanSnapshot([
+      buildDevice({ id: 'a', name: 'A', priority: 1, currentDrawKw: 1.2 }),
+      buildDevice({ id: 'b', name: 'B', priority: 2, currentDrawKw: 0, binaryControl: { on: false }, currentOn: false }),
+    ]);
+
+    expect(plan.meta.powerIsMeasured).toBe(false);
+    expect(plan.devices.map((dev) => dev.plannedState)).toEqual(['shed', 'shed']);
+    for (const dev of plan.devices) {
+      expect(dev.reason).toEqual({ code: 'meter_silent' });
+      expect(formatDeviceReasonUserFacing(dev.reason)).toBe('Waiting for a new power reading');
+    }
+    expect(structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_reason_pair_invalid' }));
+  });
+
   it('sheds every candidate on the silent-meter pass, not a one-kilowatt slice', async () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const structuredLog = { info: vi.fn(), warn: vi.fn() };

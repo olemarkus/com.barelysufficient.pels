@@ -180,11 +180,12 @@ export type ShedCandidateParams = {
   deficitKw: number;
   limitSource: PlanContext['softLimitSource'];
   /**
-   * Producer-resolved: measured above an enabled capacity or grid threshold.
-   * Resolved once in `buildShedCandidateParams`, so no candidate walk
-   * re-derives breach from a total (an unmeasured cycle is not breached).
+   * Producer-resolved: measured above an enabled capacity or grid threshold
+   * (`MeasuredPower.physicalLimitBreached`). Copied once in
+   * `buildShedCandidateParams`, so no candidate walk re-derives breach from a
+   * total (an unmeasured cycle is not breached).
    */
-  capacityBreached: boolean;
+  physicalLimitBreached: boolean;
   /** The build's resolved setpoints (`PlanContext.temperatureSetpoints`): whether a setpoint limit releases demand. */
   temperatureSetpoints: TemperatureSetpointsByDevice;
   /**

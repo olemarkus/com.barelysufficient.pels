@@ -1,5 +1,6 @@
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
+import type { PlanLimits } from './planContext';
 import { OvershootIncident } from './overshootIncident';
 import { ActuationRecord } from './actuationRecord';
 import { RestoreBackoff } from './restoreBackoff';
@@ -460,19 +461,38 @@ export class PlanEngineState {
    * writer per build is what keeps the shed decision and the reason/meta pass
    * that labels it answering to the same period. The `hourly*` spelling is a
    * retained local alias documented in `notes/safe-pace-two-constraints.md`.
+   *
+   * A FACT about the period, stamped on every build whether or not Capacity
+   * limit is on: period tracking continues when it is off. What acts on it is
+   * gated on the cycle's capacity pace — `capacityPeriodSpentFor` — so a spent
+   * period sheds, holds and labels nothing with Capacity limit off.
    */
   hourlyBudgetExhausted: boolean = false;
 
   /**
    * Remaining selected-period capacity budget (kWh) as of the last soft-limit
    * computation. Always resolved — the period budget is a fact about the period,
-   * independent of which pace is in force — so consumers read a plain number.
-   * Read by the shed grace to price what waiting would cost; 0 means the period is
-   * spent, which buys no grace at all. Written by `stampCapacityPace` only —
-   * same single-writer rule as `hourlyBudgetExhausted`. The `hourly*` spelling
-   * is the retained local alias from the terminology note.
+   * independent of which pace is in force and of whether Capacity limit is on —
+   * so consumers read a plain number. Read by the shed grace to price what
+   * waiting would cost; 0 means the period is spent, which buys no grace at all.
+   * With Capacity limit off nothing prices the wait against it
+   * (`PlanBuilder.decideOvershoot`). Written by `stampCapacityPace` only — same
+   * single-writer rule as `hourlyBudgetExhausted`. The `hourly*` spelling is the
+   * retained local alias from the terminology note.
    */
   hourlyRemainingKWh: number = 0;
+
+  /**
+   * Whether the spent period acts on this cycle: the stamped fact
+   * (`hourlyBudgetExhausted`) while the cycle has a capacity pace
+   * (`PlanLimits.capacitySoftLimit`, `null` with Capacity limit off). Every stage
+   * that acts on an exhausted period — shedding everything, the shedding latch,
+   * holding restores, the spent-period reason, the clean-sample stamp and the
+   * published flag — asks this, never the bare fact.
+   */
+  capacityPeriodSpentFor(limits: Pick<PlanLimits, 'capacitySoftLimit'>): boolean {
+    return limits.capacitySoftLimit !== null && this.hourlyBudgetExhausted;
+  }
 
   /** The overshoot incident in progress, if any — see `OvershootIncident`. */
   readonly overshoot = new OvershootIncident();
