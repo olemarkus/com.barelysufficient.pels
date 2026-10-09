@@ -1,6 +1,5 @@
 import { steppedPlanDevice } from '../utils/planTestUtils';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
-import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsServiceTypes';
 import { partialDouble } from '../helpers/partialDouble';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
@@ -231,13 +230,10 @@ const buildExecutor = (
       binaryControl: { on: false },
     },
   ],
-  // `structuredLog` / `debugStructured` are legacy injection points no longer on
-  // `PlanExecutorDeps` (the executor logs through a module-level pino logger).
-  // Tests still pass them as inert mocks for their (now trivially-true) negative
-  // assertions; accept them here and strip them before the typed deps literal.
-  overrides: Partial<PlanExecutorDeps> & { structuredLog?: unknown; debugStructured?: unknown } = {},
+  // The executor logs through a module-level pino logger, never an injected
+  // one: assert on its output through `logCapture`.
+  depsOverrides: Partial<PlanExecutorDeps> = {},
 ) => {
-  const { structuredLog: _structuredLog, debugStructured: _debugStructuredOverride, ...depsOverrides } = overrides;
   const snapshot = snapshotInput as (TransportDeviceSnapshot & EvObservedProbe)[];
   const triggerCards = {
     desired_stepped_load_changed: { trigger: vi.fn().mockResolvedValue(true) },
@@ -246,7 +242,6 @@ const buildExecutor = (
     flow_backed_device_start_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
     flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
   } as const;
-  const debugStructured = vi.fn();
   const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),
@@ -354,7 +349,6 @@ const buildExecutor = (
     flowBackedTurnOffTrigger: triggerCards.flow_backed_device_turn_off_requested,
     flowBackedStartChargingTrigger: triggerCards.flow_backed_device_start_charging_requested,
     flowBackedStopChargingTrigger: triggerCards.flow_backed_device_stop_charging_requested,
-    debugStructured,
   };
 };
 
@@ -2874,8 +2868,7 @@ describe('PlanExecutor stepped loads', () => {
         binaryControl: { on: false },
       },
     ];
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
-    const { executor, deviceManager } = buildExecutor(undefined, snapshot, { structuredLog });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
@@ -2886,9 +2879,13 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(structuredLog.info).not.toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'binary_command_applied' }),
-    );
+    // A restore dispatch logs its turn-on; `binary_command_applied` would need a
+    // confirming observation this case never delivers, so it is not the signal.
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded',
+      deviceId: 'dev-1',
+      desired: true,
+    }));
   });
 
   it('does not restore a stepped device when it is already on', async () => {
@@ -2951,8 +2948,7 @@ describe('PlanExecutor stepped loads', () => {
         binaryControl: { on: true },
       },
     ];
-    const noTargetsDebugStructured = vi.fn();
-    const noTargets = buildExecutor(undefined, noTargetsSnapshot, { debugStructured: noTargetsDebugStructured });
+    const noTargets = buildExecutor(undefined, noTargetsSnapshot);
     await noTargets.executor.applyPlanActions(steppedPlan({
       currentState: 'on',
       plannedState: 'shed',
@@ -2980,9 +2976,11 @@ describe('PlanExecutor stepped loads', () => {
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       },
     ];
-    const missingCapabilityDebugStructured = vi.fn();
-    const missingCapability = buildExecutor(undefined, missingCapabilitySnapshot, { debugStructured: missingCapabilityDebugStructured });
+    const missingCapability = buildExecutor(undefined, missingCapabilitySnapshot);
+    // Named for its own snapshot, so the assertion below cannot be met by the
+    // first half's event still in the capture.
     await missingCapability.executor.applyPlanActions(steppedPlan({
+      name: 'Heater',
       currentState: 'on',
       plannedState: 'shed',
       boostActive: false,
@@ -2994,7 +2992,7 @@ describe('PlanExecutor stepped loads', () => {
       event: 'binary_command_failed',
       reasonCode: 'control_request_failed',
       deviceId: 'dev-1',
-      deviceName: 'Tank',
+      deviceName: 'Heater',
       desired: false,
       logContext: 'capacity',
     }));
@@ -4066,12 +4064,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('normalizes a shed-constrained keep restore after binary activation', async () => {
     const snapshot = buildSnapshot({ binaryControl: { on: false } });
-    const structuredLog = { info: vi.fn() };
-    const debugStructured = vi.fn();
-    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot, {
-      structuredLog: partialDouble<PinoLogger>(structuredLog),
-      debugStructured,
-    });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan: DevicePlan = {
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
@@ -4110,9 +4103,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
-      event: 'restore_keep_invariant_shed_blocked',
-    }));
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
@@ -4168,12 +4158,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('does not emit restore_keep_invariant_shed_blocked for a true off restore while devices remain shed', async () => {
     const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const state = createPlanEngineState();
-    const structuredLog = { info: vi.fn() };
-    const debugStructured = vi.fn();
-    const { executor } = buildExecutor(state, snapshot, {
-      structuredLog: partialDouble<PinoLogger>(structuredLog),
-      debugStructured,
-    });
+    const { executor } = buildExecutor(state, snapshot);
 
     const plan: DevicePlan = {
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
@@ -4197,9 +4182,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
-    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
-      event: 'restore_keep_invariant_shed_blocked',
-    }));
   });
 
   it('normalizes stale desired steps to the same lowest restore step while devices remain shed', async () => {
@@ -4214,12 +4196,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     };
     const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const state = createPlanEngineState();
-    const structuredLog = { info: vi.fn() };
-    const debugStructured = vi.fn();
-    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot, {
-      structuredLog: partialDouble<PinoLogger>(structuredLog),
-      debugStructured,
-    });
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
 
     const shedDevice = withFixtureResidualKw({
       recordRestoreOnTargetApply: false,
@@ -4278,12 +4255,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('keeps shed-block dedupe state clear across admitted off restores', async () => {
     const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const state = createPlanEngineState();
-    const structuredLog = { info: vi.fn() };
-    const debugStructured = vi.fn();
-    const { executor, deviceManager } = buildExecutor(state, snapshot, {
-      structuredLog: partialDouble<PinoLogger>(structuredLog),
-      debugStructured,
-    });
+    const { executor, deviceManager } = buildExecutor(state, snapshot);
 
     const blockedPlan: DevicePlan = {
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
@@ -4321,12 +4293,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       event: 'restore_keep_invariant_shed_blocked',
     }));
 
-    debugStructured.mockClear();
     deviceManager.setCapability.mockClear();
     await executor.applyPlanActions(admittedPlan);
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
 
-    debugStructured.mockClear();
     await executor.applyPlanActions(blockedPlan);
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
@@ -4344,12 +4314,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       reportedStepId: 'max',
     });
     const state = createPlanEngineState();
-    const structuredLog = { info: vi.fn() };
-    const debugStructured = vi.fn();
-    const { executor, deviceManager } = buildExecutor(state, snapshot, {
-      structuredLog: partialDouble<PinoLogger>(structuredLog),
-      debugStructured,
-    });
+    const { executor, deviceManager } = buildExecutor(state, snapshot);
 
     const plan: DevicePlan = {
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
@@ -4394,10 +4359,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     // Restore must NOT be gated by the phantom shed-1.
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
-      event: 'restore_keep_invariant_shed_blocked',
-      deviceId: 'dev-1',
-    }));
-    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
       deviceId: 'dev-1',
     }));
