@@ -23,7 +23,6 @@ import { resolveShedBehavior } from '../packages/shared-domain/src/settings/shed
 import type {
   DecoratedDeviceSnapshot,
   DeviceDescriptorRead,
-  TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
 import type {
   SettingsUiHardCapConfigurationRead,
@@ -244,10 +243,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
 
   public getStarvedRescueDevices(): StarvationRescueDevice[] {
     return buildStarvedRescueDevices(this.context);
-  }
-
-  public setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
-    this.requireDeviceManager().setSnapshotForTests(snapshot);
   }
 
   public async refreshTargetDevicesSnapshot(options: RefreshTargetDevicesSnapshotOptions = {}): Promise<void> {

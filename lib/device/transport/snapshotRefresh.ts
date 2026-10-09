@@ -91,7 +91,7 @@ const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = SNAPSHOT_ABANDON_GRACE_READS;
  *
  * `fetchDevicesWithFallback` normalizes an empty `getRawDevices` result into a
  * successful empty list, so the retry loop never engages. If we committed that
- * unconditionally, `setSnapshot([])` would wipe a previously-populated snapshot.
+ * unconditionally, committing `[]` would wipe a previously-populated snapshot.
  *
  * Returns `true` (defer the commit) while the empty result is still within the
  * abandon-grace window AND under the consecutive-read threshold. Once either is
@@ -227,8 +227,8 @@ function commitRefreshedSnapshot(refresh: SnapshotRefreshService, params: {
     // cold for the same reason. Devices that all filtered out (none managed)
     // still count — the SDK spoke.
     refresh.refreshState.markWarm(!rawWasEmpty);
-    // After setSnapshot so latestSnapshotById is current. The grace-deferred
-    // path returns above (before setSnapshot), so the abandon-grace invariant
+    // After the commit so latestSnapshotById is current. The grace-deferred
+    // path returns above (before the commit), so the abandon-grace invariant
     // — no refresh event on a deferred empty read — holds by construction.
     refresh.observationBridge.dispatchStateRefresh(snapshot, ignoredReadIds);
     refresh.temperatureRecovery.completeAfterRefresh();

@@ -279,7 +279,7 @@ store, because:
      fed by the dispatcher push, with **zero consumer switch** (shadow-verified only).
      The events now carry the *decided* `ObservedDeviceState` value (enriched once at
      transport's `dispatchObservedStateChanged` funnel), and a new full-refresh batch
-     event fires from `commitRefreshedSnapshot` after `setSnapshot` (so the abandon-grace
+     event fires from `commitRefreshedSnapshot` after the snapshot commit (so the abandon-grace
      deferral never emits it). Apply is sequenced (per-device `observationSeq` primary,
      `observedAtMs` defensive fallback) + idempotent + prunes vanished devices. Shared
      refresh-event types + `projectObservedState` live in `packages/contracts`. Gate met:
@@ -311,10 +311,12 @@ store, because:
      itself is gone — no timeout ages a device observation out anywhere, so idle classification,
      the overview gray-state, and starvation counting read the last trusted value directly
      (`lib/observer/AGENTS.md`).
-     The test seam
-     `DeviceTransport.setSnapshotForTests` now mirrors the production refresh funnel
-     (`setSnapshot` + `dispatchObservedStateRefresh`) so the whole suite exercises the
-     projection-fed reader rather than the fallback. All three prereqs below were paid first.
+     Specs on a real transport seed devices through the production refresh
+     (`seedTransportDevices` in `test/helpers/deviceTransportHarness.ts`, or the app's own
+     refresh over mock devices), so they exercise the projection-fed reader rather than the
+     fallback; the `setSnapshotForTests` seam that imitated that funnel is gone. Specs that
+     swap in a transport double or set `latestTargetSnapshot` directly still bypass it. All three prereqs below
+     were paid first.
      **Before any reader is wired**, address the in-process-restart hazard: the
      projection shares the `PelsApp` lifecycle today, but the `set deviceManager` AppContext
      seam could swap transport in-process and reset its seq counter while the long-lived
