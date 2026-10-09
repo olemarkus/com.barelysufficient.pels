@@ -1,7 +1,7 @@
-import { attachTabShownResize } from './chartVisibilityResize.ts';
 import { readChartPalette } from './dayViewChart.ts';
 import { logSettingsWarn } from './logging.ts';
-import { initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import type { EChartsOption, EChartsType } from './echartsRegistry.ts';
+import { mountChart, resolveChartWidth, type MountedChart } from './echartsMount.ts';
 import {
   buildChartTooltipBase,
   buildPowerWeekReadout,
@@ -50,13 +50,11 @@ type HeatmapPalette = {
 // `public/style.css`) without two parallel literals.
 const DEFAULT_CHART_HEIGHT_FALLBACK = 240;
 const CHART_HEIGHT_VAR = '--pels-chart-week-height';
-const DEFAULT_CHART_WIDTH = 480;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_POWER_HEATMAP_DATE_KEYS = 370;
 
-let plot: EChartsType | null = null;
+let plot: MountedChart | null = null;
 let plotContainer: HTMLElement | null = null;
-let plotResizeObserver: ResizeObserver | null = null;
 
 const resolveChartHeight = (element: HTMLElement): number => {
   const raw = getComputedStyle(element).getPropertyValue(CHART_HEIGHT_VAR).trim();
@@ -64,16 +62,9 @@ const resolveChartHeight = (element: HTMLElement): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CHART_HEIGHT_FALLBACK;
 };
 
-const resolveChartSize = (element: HTMLElement) => {
-  const width = element.clientWidth > 0
-    ? element.clientWidth
-    : (element.parentElement?.clientWidth ?? 0);
-  const viewportWidth = document.documentElement?.clientWidth ?? 0;
-  const fallbackWidth = viewportWidth > 0
-    ? Math.min(DEFAULT_CHART_WIDTH, viewportWidth)
-    : DEFAULT_CHART_WIDTH;
-  return { width: width > 0 ? width : fallbackWidth, height: resolveChartHeight(element) };
-};
+const resolveHeatmapSize = (element: HTMLElement) => (
+  { width: resolveChartWidth(element), height: resolveChartHeight(element) }
+);
 
 const HEATMAP_PALETTE_VARS = {
   cellUnreliable: '--pels-chart-unreliable-cell',
@@ -107,7 +98,6 @@ const resolveCellRadius = (container: HTMLElement): number => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : HEATMAP_CELL_RADIUS_FALLBACK;
 };
 
-let detachTabShownResize: (() => void) | null = null;
 let plotReadout: ChartReadoutHandle | null = null;
 let plotReadoutHost: HTMLElement | null = null;
 
@@ -115,14 +105,6 @@ let plotReadoutHost: HTMLElement | null = null;
 // in `.power-week-chart` (see `packages/settings-ui/public/style.css`). This
 // module owns the ECharts lifecycle only; CSS owns the physical footprint.
 export const disposePowerWeekChart = (_container?: HTMLElement) => {
-  if (plotResizeObserver) {
-    plotResizeObserver.disconnect();
-    plotResizeObserver = null;
-  }
-  if (detachTabShownResize) {
-    detachTabShownResize();
-    detachTabShownResize = null;
-  }
   if (plotReadout) {
     plotReadout.detach();
     plotReadout = null;
@@ -139,32 +121,19 @@ export const disposePowerWeekChart = (_container?: HTMLElement) => {
 };
 
 const ensurePlot = (container: HTMLElement, readoutHost: HTMLElement | null): EChartsType => {
-  if (plot && plotContainer === container) return plot;
+  if (plot && plotContainer === container) return plot.chart;
 
   disposePowerWeekChart();
   container.replaceChildren();
 
-  plot = initEcharts(container, undefined, {
-    renderer: 'svg',
-    ...resolveChartSize(container),
-  });
+  plot = mountChart(container, resolveHeatmapSize);
   plotContainer = container;
   if (readoutHost) {
-    plotReadout = attachChartReadout({ chart: plot, host: readoutHost });
+    plotReadout = attachChartReadout({ chart: plot.chart, host: readoutHost });
     plotReadoutHost = readoutHost;
   }
 
-  if (typeof ResizeObserver === 'function') {
-    plotResizeObserver = new ResizeObserver(() => {
-      if (!plot || plotContainer !== container) return;
-      plot.resize(resolveChartSize(container));
-    });
-    plotResizeObserver.observe(container);
-  }
-
-  detachTabShownResize = attachTabShownResize({ container, chart: plot, resolveSize: resolveChartSize });
-
-  return plot;
+  return plot.chart;
 };
 
 const getLocalHour = (date: Date, timeZone: string): number => {
@@ -450,7 +419,7 @@ export const renderPowerWeekChart = (params: {
     const dayLabels = buildDayLabels(dateKeys, timeZone);
     const data = buildHeatmapDataFixed(entries, dateKeys, timeZone, palette);
     const readouts = buildCellReadouts(data, dayLabels);
-    chart.resize(resolveChartSize(container));
+    chart.resize(resolveHeatmapSize(container));
     chart.setOption(
       buildOption({
         palette, data, readouts, dayLabels, container,

@@ -11,6 +11,7 @@ import {
   type WidgetWindowBase,
 } from '../../../_shared/widgetRuntime';
 import { widgetErrorReporter, type WidgetErrorReporter } from '../../../_shared/widgetClientLog';
+import { closestDataValue } from '../../../_shared/widgetDom';
 import { PREVIEW_STARVATION_RESCUE_DEVICES } from './previewPayloads';
 import { renderWidget, type RenderTargets, type ViewState } from './render';
 import type {
@@ -133,11 +134,6 @@ type ClickAction =
   | { kind: 'rescue'; deviceId: string }
   | { kind: 'confirm' }
   | { kind: 'back' };
-
-const closestDataValue = (target: Element, selector: string, key: string): string | null => {
-  const el = target.closest(selector);
-  return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
-};
 
 export const resolveClickAction = (eventTarget: EventTarget | null): ClickAction | null => {
   if (!(eventTarget instanceof Element)) return null;

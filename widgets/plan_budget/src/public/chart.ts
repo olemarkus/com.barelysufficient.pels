@@ -15,12 +15,9 @@ import {
   resolveViewportHeight,
   type Geometry,
 } from './chartGeometry';
-import {
-  buildBarPath,
-  buildPathData,
-  clearNode,
-  createSvg,
-} from './chartSvg';
+import { buildBarPath, buildPathData } from './chartSvg';
+import { clearChildren } from '../../../_shared/widgetDom';
+import { createSvg } from '../../../_shared/widgetSvg';
 import { resolveYAxis, type YAxisTick } from './chartTicks';
 import type {
   PlanPriceWidgetEmptyPayload,
@@ -496,7 +493,7 @@ export const renderEmptyState = (
   const chartDocument = chartEl.ownerDocument;
   const { panel, viewport } = resolveGeometry(resolveViewportHeight(height));
 
-  clearNode(chartEl);
+  clearChildren(chartEl);
   applyViewBox(chartEl, viewport);
   chartEl.setAttribute('aria-label', payload.subtitle || PLAN_PRICE_WIDGET_ARIA.unavailable);
   chartEl.appendChild(createSvg(chartDocument, 'rect', {
@@ -538,7 +535,7 @@ export const renderReadyState = (
   const groups = createChartGroups(chartDocument);
   const metrics = resolvePlotMetrics(payload, half, geometry, pxPerUnit);
 
-  clearNode(chartEl);
+  clearChildren(chartEl);
   applyViewBox(chartEl, geometry.viewport);
   chartEl.setAttribute(
     'aria-label',

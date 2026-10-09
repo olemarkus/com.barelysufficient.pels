@@ -8,6 +8,8 @@ import type {
   DeferredPlanHistoryChartData,
   DeferredPlanHistoryChartPoint,
 } from '../../../../packages/shared-domain/src/deferredPlanHistoryChartData';
+import { clearChildren } from '../../../_shared/widgetDom';
+import { createSvg } from '../../../_shared/widgetSvg';
 
 // Compact planned-vs-actual trajectory for the smart-tasks detail panel: the
 // planned progress staircase (where the device should be heading toward target
@@ -20,8 +22,6 @@ import type {
 // ~96px SVG sparkline that fits the fixed 220px widget without a chart library.
 // Colour/stroke come from CSS classes (tokenised `--pw-*` in index.css), never
 // inline, so it tracks the dashboard light/dark theme.
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // A series needs at least two points to draw as a line. A lone planned anchor
 // (a `cannot_meet`/no-allocated-hours plan integrates to just the start point)
@@ -37,20 +37,6 @@ const VIEW = { width: 480, height: 96 };
 const PLOT = { left: 8, right: 472, top: 10, bottom: 86 };
 const PLOT_WIDTH = PLOT.right - PLOT.left;
 const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
-
-type SvgAttrs = Record<string, string | number>;
-
-const createSvg = <K extends keyof SVGElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  attrs: SvgAttrs,
-  text?: string,
-): SVGElementTagNameMap[K] => {
-  const el = doc.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
-  if (text !== undefined) el.textContent = text;
-  return el;
-};
 
 // Time → x across the [windowStart, windowEnd] span, clamped to the plot so a
 // point that sits exactly on (or just past) an edge doesn't draw outside it.
@@ -268,7 +254,7 @@ export const renderTrajectoryChart = (
   data: DeferredPlanHistoryChartData,
 ): boolean => {
   const doc = container.ownerDocument;
-  while (container.firstChild) container.removeChild(container.firstChild);
+  clearChildren(container);
 
   if (data.mode !== 'trajectory') return false;
   const hasPlanned = isDrawableLine(data.plannedOriginal);

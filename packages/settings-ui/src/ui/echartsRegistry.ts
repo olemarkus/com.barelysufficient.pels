@@ -12,7 +12,7 @@ import { format, init, use } from 'echarts/core';
 import { SVGRenderer } from 'echarts/renderers';
 import type { RefObject } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
-import { attachTabShownResize } from './chartVisibilityResize.ts';
+import { attachChartResize, type ChartSize } from './chartVisibilityResize.ts';
 
 type EChartsInitOpts = Record<string, unknown>;
 type EChartsOption = Record<string, unknown>;
@@ -89,8 +89,6 @@ export const initEcharts = (
 
 export const encodeHtml = (value: string): string => format.encodeHTML(value);
 
-type ChartSize = { width: number; height: number };
-
 type MountEchartsParams = {
   // Builds the option lazily on (re-)mount so the closure captures the fresh
   // palette / typography read off the live container at mount time.
@@ -124,7 +122,8 @@ type MountEchartsParams = {
 // reuse a persistent chart instance across re-render calls, expose external
 // `dispose`/`clear` entry points, and wrap rendering in try/catch fallbacks —
 // a lifecycle that does not collapse into a `useEffect` mount/unmount without
-// changing behavior.
+// changing behavior. They mount through `mountChart` (`echartsMount.ts`), which
+// shares this hook's resize wiring (`attachChartResize`).
 export const useEchartsMount = (
   params: MountEchartsParams,
 ): RefObject<HTMLDivElement | null> => {
@@ -149,16 +148,9 @@ export const useEchartsMount = (
     });
     chart.setOption(buildOption(container), { notMerge: true });
     onChartInit?.(chart, container);
-    const resizeObserver = typeof ResizeObserver === 'function'
-      ? new ResizeObserver(() => {
-        chart.resize(resolveSizeNow(container));
-      })
-      : null;
-    resizeObserver?.observe(container);
-    const detachTabShown = attachTabShownResize({ container, chart, resolveSize: resolveSizeNow });
+    const detachResize = attachChartResize(container, chart, resolveSizeNow);
     return () => {
-      resizeObserver?.disconnect();
-      detachTabShown();
+      detachResize();
       chart.dispose();
     };
     // `buildOption` closes over the caller-supplied deps already; including it

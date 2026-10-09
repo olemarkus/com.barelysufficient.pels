@@ -336,7 +336,9 @@ export default tseslint.config(
     rules: nodeTypeScriptRules,
   },
   {
-    files: ['widgets/*/src/**/*.ts'],
+    // A widget's app-process code: its node entries, and the shared `/log`
+    // handler they import.
+    files: ['widgets/*/src/**/*.ts', 'widgets/_shared/widgetClientLogApi.ts'],
     ignores: ['widgets/*/src/public/**/*.ts'],
     plugins: {
       functional,
@@ -627,7 +629,10 @@ export default tseslint.config(
     },
   },
   {
-    files: ['widgets/*/src/public/**/*.ts'],
+    // The WebView bundle: each widget's public/** and the browser-safe
+    // widgets/_shared modules bundled into it.
+    files: ['widgets/*/src/public/**/*.ts', 'widgets/_shared/**/*.ts'],
+    ignores: ['widgets/_shared/widgetClientLogApi.ts'],
     plugins: {
       functional,
       n: nodePlugin,
@@ -644,7 +649,8 @@ export default tseslint.config(
     rules: browserTypeScriptRules,
   },
   {
-    files: ['packages/settings-ui/src/**/*.ts', 'widgets/*/src/public/**/*.ts'],
+    files: ['packages/settings-ui/src/**/*.ts', 'widgets/*/src/public/**/*.ts', 'widgets/_shared/**/*.ts'],
+    ignores: ['widgets/_shared/widgetClientLogApi.ts'],
     languageOptions: {
       globals: {
         ...globals.browser,

@@ -266,6 +266,26 @@
   };
   var widgetErrorReporter = (widget, getHomey) => createWidgetErrorReporter({ widget, getHomey, now: () => Date.now() });
 
+  // widgets/_shared/widgetDom.ts
+  var clearChildren = (node) => {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  };
+  var setLine = (el, text) => {
+    const visible = Boolean(text && text.trim());
+    el.textContent = visible ? text : "";
+    el.hidden = !visible;
+  };
+  var hide = (el) => {
+    el.hidden = true;
+  };
+  var setVisible = (el, visible) => {
+    el.hidden = !visible;
+  };
+  var closestDataValue = (target, selector, key) => {
+    const el = target.closest(selector);
+    return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
+  };
+
   // widgets/starvation_rescue/src/public/previewPayloads.ts
   var PREVIEW_STARVATION_RESCUE_DEVICES = {
     state: "ready",
@@ -943,18 +963,25 @@
     return `${params.scheduledLabel} ${params.scheduledWindowLabel} \xB7 ${readyByPart}`;
   };
 
-  // widgets/create_smart_task/src/public/previewChart.ts
+  // widgets/_shared/widgetSvg.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
+  var createSvg = (chartDocument, tagName, attributes = {}, textContent = "") => {
+    const node = chartDocument.createElementNS(SVG_NS, tagName);
+    for (const [key, value] of Object.entries(attributes)) {
+      if (value === void 0 || value === null) continue;
+      node.setAttribute(key, String(value));
+    }
+    if (textContent) {
+      node.textContent = textContent;
+    }
+    return node;
+  };
+
+  // widgets/create_smart_task/src/public/previewChart.ts
   var VIEW = { width: 480, height: 108 };
   var PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
   var PLOT_WIDTH = PLOT.right - PLOT.left;
   var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
-  var createSvg = (doc, tag, attrs, text) => {
-    const el = doc.createElementNS(SVG_NS, tag);
-    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
-    if (text !== void 0) el.textContent = text;
-    return el;
-  };
   var bucketWidth = (count) => PLOT_WIDTH / Math.max(1, count);
   var bucketLeft = (index, count) => PLOT.left + bucketWidth(count) * index;
   var bucketCenter = (index, count) => bucketLeft(index, count) + bucketWidth(count) / 2;
@@ -995,7 +1022,7 @@
   };
   var renderPreviewChart = (container, { priceSeries, scheduledHours }) => {
     const doc = container.ownerDocument;
-    while (container.firstChild) container.removeChild(container.firstChild);
+    clearChildren(container);
     const count = priceSeries.length;
     const prices = priceSeries.map((point) => point.price).filter((p) => Number.isFinite(p));
     if (count < 2 || prices.length === 0) return false;
@@ -1050,22 +1077,25 @@
     return true;
   };
 
+  // widgets/_shared/smartTaskPreviewLines.ts
+  var formatPreviewEnergyLine = (estimate, energyLabel) => {
+    if (estimate.energyEstimateKWh === null) return null;
+    return `${energyLabel}: ${formatEnergyEstimateKWh({
+      energyPlannedKWh: estimate.energyEstimateKWh,
+      energyExpectedKWh: estimate.energyExpectedKWh
+    })}`;
+  };
+  var formatPreviewCostLine = (estimate) => {
+    if (estimate.costEstimate === null || !estimate.costUnit) return null;
+    return formatDeadlineCostMetaLine({
+      plannedTotalCost: estimate.costEstimate,
+      deliveredCost: null,
+      costUnit: estimate.costUnit
+    });
+  };
+
   // widgets/starvation_rescue/src/public/render.ts
   var C = STARVATION_RESCUE_WIDGET_COPY;
-  var clearChildren = (el) => {
-    while (el.firstChild) el.removeChild(el.firstChild);
-  };
-  var setLine = (el, text) => {
-    const visible = Boolean(text && text.trim());
-    el.textContent = visible ? text : "";
-    el.hidden = !visible;
-  };
-  var hide = (el) => {
-    el.hidden = true;
-  };
-  var setVisible = (el, visible) => {
-    el.hidden = !visible;
-  };
   var configureRescueButton = (button, device, offersRescue) => {
     button.hidden = !offersRescue;
     if (!offersRescue) return;
@@ -1134,21 +1164,6 @@
     scheduledLabel: C.scheduledLabel,
     readyByLabel: C.byLabel
   });
-  var formatEnergyLine = (estimate) => {
-    if (estimate.energyEstimateKWh === null) return null;
-    return `${C.energyLabel}: ${formatEnergyEstimateKWh({
-      energyPlannedKWh: estimate.energyEstimateKWh,
-      energyExpectedKWh: estimate.energyExpectedKWh
-    })}`;
-  };
-  var formatCostLine = (estimate) => {
-    if (estimate.costEstimate === null || !estimate.costUnit) return null;
-    return formatDeadlineCostMetaLine({
-      plannedTotalCost: estimate.costEstimate,
-      deliveredCost: null,
-      costUnit: estimate.costUnit
-    });
-  };
   var renderExtraPermissionsSummary = (targets, labels) => {
     setLine(targets.confirmPermsTitleEl, C.extraPermissionsTitle);
     clearChildren(targets.confirmPermsListEl);
@@ -1164,7 +1179,7 @@
   var renderOkPreview = (targets, response) => {
     const projectable = isProjectable(response);
     const estimated = response.estimate.status !== "unavailable";
-    setLine(targets.confirmCostEl, projectable ? formatCostLine(response.estimate) : null);
+    setLine(targets.confirmCostEl, projectable ? formatPreviewCostLine(response.estimate) : null);
     setLine(targets.confirmAtCapEl, projectable && response.estimate.atCapNow === true ? C.atCapNote : null);
     const charted = projectable && response.estimate.priceSeries !== void 0 && renderPreviewChart(targets.confirmChartEl, {
       priceSeries: response.estimate.priceSeries,
@@ -1172,7 +1187,7 @@
     });
     setVisible(targets.confirmChartEl, charted);
     setLine(targets.confirmWhenEl, formatWhenLine(response));
-    setLine(targets.confirmEnergyEl, estimated ? formatEnergyLine(response.estimate) : null);
+    setLine(targets.confirmEnergyEl, estimated ? formatPreviewEnergyLine(response.estimate, C.energyLabel) : null);
     setLine(
       targets.confirmUnavailableEl,
       resolveSmartTaskPreviewStatusCopy(
@@ -1332,10 +1347,6 @@
       ...generic,
       ...btns
     };
-  };
-  var closestDataValue = (target, selector, key) => {
-    const el = target.closest(selector);
-    return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
   };
   var resolveClickAction = (eventTarget) => {
     if (!(eventTarget instanceof Element)) return null;

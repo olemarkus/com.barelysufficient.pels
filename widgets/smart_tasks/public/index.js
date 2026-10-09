@@ -938,20 +938,37 @@
   // widgets/smart_tasks/src/smartTasksWidgetConstants.ts
   var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
 
-  // widgets/smart_tasks/src/public/trajectoryChart.ts
+  // widgets/_shared/widgetDom.ts
+  var clearChildren = (node) => {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  };
+  var setLine = (el, text) => {
+    const visible = Boolean(text && text.trim());
+    el.textContent = visible ? text : "";
+    el.hidden = !visible;
+  };
+
+  // widgets/_shared/widgetSvg.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
+  var createSvg = (chartDocument, tagName, attributes = {}, textContent = "") => {
+    const node = chartDocument.createElementNS(SVG_NS, tagName);
+    for (const [key, value] of Object.entries(attributes)) {
+      if (value === void 0 || value === null) continue;
+      node.setAttribute(key, String(value));
+    }
+    if (textContent) {
+      node.textContent = textContent;
+    }
+    return node;
+  };
+
+  // widgets/smart_tasks/src/public/trajectoryChart.ts
   var MIN_LINE_POINTS = 2;
   var isDrawableLine = (points) => (points?.length ?? 0) >= MIN_LINE_POINTS;
   var VIEW = { width: 480, height: 96 };
   var PLOT = { left: 8, right: 472, top: 10, bottom: 86 };
   var PLOT_WIDTH = PLOT.right - PLOT.left;
   var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
-  var createSvg = (doc, tag, attrs, text) => {
-    const el = doc.createElementNS(SVG_NS, tag);
-    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
-    if (text !== void 0) el.textContent = text;
-    return el;
-  };
   var makeXScale = (startMs, endMs) => {
     const span = endMs - startMs;
     if (!Number.isFinite(span) || span <= 0) return () => PLOT.left;
@@ -1089,7 +1106,7 @@
   };
   var renderTrajectoryChart = (container, data) => {
     const doc = container.ownerDocument;
-    while (container.firstChild) container.removeChild(container.firstChild);
+    clearChildren(container);
     if (data.mode !== "trajectory") return false;
     const hasPlanned = isDrawableLine(data.plannedOriginal);
     const hasRevised = isDrawableLine(data.plannedFinal);
@@ -1229,9 +1246,6 @@
     }
     return li;
   };
-  var clearChildren = (el) => {
-    while (el.firstChild) el.removeChild(el.firstChild);
-  };
   var renderEndedSection = (targets, endedRows) => {
     const { endedSectionEl, endedHeadingEl, endedRowsList, endedRowTemplate } = targets;
     clearChildren(endedRowsList);
@@ -1285,11 +1299,6 @@
     }
     overflowEl.hidden = true;
   };
-  var setOptionalLine = (el, text) => {
-    const visible = Boolean(text && text.trim());
-    el.textContent = visible ? text : "";
-    el.hidden = !visible;
-  };
   var renderChart = (el, chart) => {
     const drawn = chart !== null && renderTrajectoryChart(el, chart);
     el.hidden = !drawn;
@@ -1310,14 +1319,14 @@
     detailChipEl.textContent = row.statusLabel;
     detailChipEl.dataset.tone = row.tone;
     const deadlineLabel = row.deadlineLongLabel ?? row.finishLabel;
-    setOptionalLine(detailDeadlineEl, deadlineLabel ? `${row.etaVerb} ${deadlineLabel}` : null);
+    setLine(detailDeadlineEl, deadlineLabel ? `${row.etaVerb} ${deadlineLabel}` : null);
     detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
     detailTargetEl.hidden = false;
     renderChart(detailChartEl, row.chart);
-    setOptionalLine(detailWhyEl, row.whyLabel);
-    setOptionalLine(detailRecourseEl, row.recourseHint);
-    setOptionalLine(detailMetaEl, row.planMetaLabel);
-    setOptionalLine(detailConfidenceEl, row.confidenceLabel);
+    setLine(detailWhyEl, row.whyLabel);
+    setLine(detailRecourseEl, row.recourseHint);
+    setLine(detailMetaEl, row.planMetaLabel);
+    setLine(detailConfidenceEl, row.confidenceLabel);
   };
   var renderEndedDetail = (targets, row) => {
     const {
@@ -1334,14 +1343,14 @@
     detailHeaderEl.textContent = row.deviceName;
     detailChipEl.textContent = row.outcomeLabel;
     detailChipEl.dataset.tone = row.outcomeTone;
-    setOptionalLine(detailDeadlineEl, row.finishedLabel);
+    setLine(detailDeadlineEl, row.finishedLabel);
     detailTargetEl.textContent = row.progressLabel ?? targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
     detailTargetEl.hidden = false;
     renderChart(detailChartEl, row.chart);
-    setOptionalLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
-    setOptionalLine(detailRecourseEl, row.recourseHint);
-    setOptionalLine(detailMetaEl, null);
-    setOptionalLine(detailConfidenceEl, null);
+    setLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
+    setLine(detailRecourseEl, row.recourseHint);
+    setLine(detailMetaEl, null);
+    setLine(detailConfidenceEl, null);
   };
   var fallBackToList = (targets, payload) => {
     const { root, listView, detailView } = targets;

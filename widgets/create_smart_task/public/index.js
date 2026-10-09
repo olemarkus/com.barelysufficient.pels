@@ -828,6 +828,26 @@
   };
   var widgetErrorReporter = (widget, getHomey) => createWidgetErrorReporter({ widget, getHomey, now: () => Date.now() });
 
+  // widgets/_shared/widgetDom.ts
+  var clearChildren = (node) => {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  };
+  var setLine = (el, text) => {
+    const visible = Boolean(text && text.trim());
+    el.textContent = visible ? text : "";
+    el.hidden = !visible;
+  };
+  var hide = (el) => {
+    el.hidden = true;
+  };
+  var setVisible = (el, visible) => {
+    el.hidden = !visible;
+  };
+  var closestDataValue = (target, selector, key) => {
+    const el = target.closest(selector);
+    return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
+  };
+
   // widgets/create_smart_task/src/public/previewPayloads.ts
   var PREVIEW_CREATE_SMART_TASK_PAYLOADS = {
     // Gallery thumbnail: one temperature device and one EV charger so the gallery
@@ -998,25 +1018,24 @@
     }
   };
   var calendarDayIndex = (ms, timeZone) => {
+    let parts;
     try {
-      const ymd = new Intl.DateTimeFormat("en-CA", {
+      parts = new Intl.DateTimeFormat("en-CA", {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
         timeZone: timeZone ?? void 0
-      }).format(new Date(ms));
-      const [yPart, mPart, dPart] = ymd.split("-");
-      const y = Number(yPart);
-      const m = Number(mPart);
-      const d = Number(dPart);
-      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
-        throw new Error("unexpected en-CA date parts");
-      }
-      return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
+      }).formatToParts(new Date(ms));
     } catch {
       const date = new Date(ms);
       return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
     }
+    const readPart = (type) => Number(parts.find((part) => part.type === type)?.value);
+    const y = readPart("year");
+    const m = readPart("month");
+    const d = readPart("day");
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return Number.NaN;
+    return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
   };
   var formatSmartTaskDeadlineLong = (ms, nowMs, timeZone) => {
     const date = new Date(ms);
@@ -1069,18 +1088,25 @@
     SMART_TASK_DEVICE_GROUP_ORDER.map((group, index) => [group, index])
   );
 
-  // widgets/create_smart_task/src/public/previewChart.ts
+  // widgets/_shared/widgetSvg.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
+  var createSvg = (chartDocument, tagName, attributes = {}, textContent = "") => {
+    const node = chartDocument.createElementNS(SVG_NS, tagName);
+    for (const [key, value] of Object.entries(attributes)) {
+      if (value === void 0 || value === null) continue;
+      node.setAttribute(key, String(value));
+    }
+    if (textContent) {
+      node.textContent = textContent;
+    }
+    return node;
+  };
+
+  // widgets/create_smart_task/src/public/previewChart.ts
   var VIEW = { width: 480, height: 108 };
   var PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
   var PLOT_WIDTH = PLOT.right - PLOT.left;
   var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
-  var createSvg = (doc, tag, attrs, text) => {
-    const el = doc.createElementNS(SVG_NS, tag);
-    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
-    if (text !== void 0) el.textContent = text;
-    return el;
-  };
   var bucketWidth = (count) => PLOT_WIDTH / Math.max(1, count);
   var bucketLeft = (index, count) => PLOT.left + bucketWidth(count) * index;
   var bucketCenter = (index, count) => bucketLeft(index, count) + bucketWidth(count) / 2;
@@ -1121,7 +1147,7 @@
   };
   var renderPreviewChart = (container, { priceSeries, scheduledHours }) => {
     const doc = container.ownerDocument;
-    while (container.firstChild) container.removeChild(container.firstChild);
+    clearChildren(container);
     const count = priceSeries.length;
     const prices = priceSeries.map((point) => point.price).filter((p) => Number.isFinite(p));
     if (count < 2 || prices.length === 0) return false;
@@ -1176,22 +1202,25 @@
     return true;
   };
 
+  // widgets/_shared/smartTaskPreviewLines.ts
+  var formatPreviewEnergyLine = (estimate, energyLabel) => {
+    if (estimate.energyEstimateKWh === null) return null;
+    return `${energyLabel}: ${formatEnergyEstimateKWh({
+      energyPlannedKWh: estimate.energyEstimateKWh,
+      energyExpectedKWh: estimate.energyExpectedKWh
+    })}`;
+  };
+  var formatPreviewCostLine = (estimate) => {
+    if (estimate.costEstimate === null || !estimate.costUnit) return null;
+    return formatDeadlineCostMetaLine({
+      plannedTotalCost: estimate.costEstimate,
+      deliveredCost: null,
+      costUnit: estimate.costUnit
+    });
+  };
+
   // widgets/create_smart_task/src/public/render.ts
   var C = CREATE_SMART_TASK_WIDGET_COPY;
-  var clearChildren = (el) => {
-    while (el.firstChild) el.removeChild(el.firstChild);
-  };
-  var setLine = (el, text) => {
-    const visible = Boolean(text && text.trim());
-    el.textContent = visible ? text : "";
-    el.hidden = !visible;
-  };
-  var hide = (el) => {
-    el.hidden = true;
-  };
-  var setVisible = (el, visible) => {
-    el.hidden = !visible;
-  };
   var renderDeviceRow = (template, device) => {
     const fragment = template.content.cloneNode(true);
     const li = fragment.querySelector(".row");
@@ -1350,26 +1379,11 @@
   };
   var hasScheduledHours = (response) => response.estimate.scheduledHours.length > 0;
   var canCreateFromPreview = (response) => response.ok && response.estimate.status !== "unavailable" && response.estimate.status !== "invalid";
-  var formatEnergyLine = (estimate) => {
-    if (estimate.energyEstimateKWh === null) return null;
-    return `${C.energyLabel}: ${formatEnergyEstimateKWh({
-      energyPlannedKWh: estimate.energyEstimateKWh,
-      energyExpectedKWh: estimate.energyExpectedKWh
-    })}`;
-  };
-  var formatCostLine = (estimate) => {
-    if (estimate.costEstimate === null || !estimate.costUnit) return null;
-    return formatDeadlineCostMetaLine({
-      plannedTotalCost: estimate.costEstimate,
-      deliveredCost: null,
-      costUnit: estimate.costUnit
-    });
-  };
   var renderOkPreview = (targets, response) => {
     const { previewChartPriceEl, previewChartScheduledEl } = targets;
     const scheduled = hasScheduledHours(response);
     const estimated = response.estimate.status !== "unavailable";
-    const costLine = scheduled ? formatCostLine(response.estimate) : null;
+    const costLine = scheduled ? formatPreviewCostLine(response.estimate) : null;
     const verdictLine = resolveSmartTaskPreviewStatusCopy(
       response.estimate.status,
       response.estimate.unavailableReason,
@@ -1390,7 +1404,10 @@
     previewChartPriceEl.textContent = C.chartPrice;
     previewChartScheduledEl.textContent = C.chartScheduled;
     setLine(targets.previewWhenEl, response.scheduledWindowLabel ? `${C.scheduledLabel} ${response.scheduledWindowLabel}` : null);
-    setLine(targets.previewEnergyEl, estimated && !charted ? formatEnergyLine(response.estimate) : null);
+    setLine(
+      targets.previewEnergyEl,
+      estimated && !charted ? formatPreviewEnergyLine(response.estimate, C.energyLabel) : null
+    );
     setLine(targets.previewUnavailableEl, estimated ? null : verdictLine);
     setLine(targets.previewCaveatEl, estimated && response.estimate.status !== "satisfied" ? C.estimateCaveat : null);
   };
@@ -1650,10 +1667,6 @@
     ...source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}
   };
   var previewedDeadline = (response) => response.ok ? response.deadlineAtMs : void 0;
-  var closestDataValue = (target, selector, key) => {
-    const el = target.closest(selector);
-    return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
-  };
   var fetchDevices = async (homeyRef, usePreviewData, previewState, reporter) => {
     if (usePreviewData) return resolveCreateSmartTaskPreviewPayload(previewState);
     if (!homeyRef) return { state: "empty", subtitle: C2.notReady, hint: null };

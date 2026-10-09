@@ -32,29 +32,35 @@ export const formatLocalHHMM = (ms: number, timeZone: string | null): string => 
   }
 };
 
+// The calendar day `ms` falls on in `timeZone`, as days since the Unix epoch.
+// Read from `formatToParts` so it assumes neither the locale's separators nor
+// its field order; comparing calendar days (not durations) is DST-safe. NaN when
+// Intl formats the zone but does not name the day numerically: the caller then
+// gives the absolute "16 May 16:00" label, which is right in any zone, rather
+// than a "Today"/"Tomorrow" read off another zone's calendar. The host calendar
+// is used only when Intl rejects the zone outright, where `formatLocalHHMM`
+// falls back to the host clock too, so both halves still name one zone.
 const calendarDayIndex = (ms: number, timeZone: string | null): number => {
+  let parts: Intl.DateTimeFormatPart[];
   try {
-    const ymd = new Intl.DateTimeFormat('en-CA', {
+    parts = new Intl.DateTimeFormat('en-CA', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       timeZone: timeZone ?? undefined,
-    }).format(new Date(ms));
-    const [yPart, mPart, dPart] = ymd.split('-');
-    const y = Number(yPart);
-    const m = Number(mPart);
-    const d = Number(dPart);
-    // Guard against an unexpected `en-CA` separator / partial format in some
-    // runtimes: a non-numeric part would make `Date.UTC` return NaN and produce
-    // a bogus day index. Fall through to the local-date calc instead.
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
-      throw new Error('unexpected en-CA date parts');
-    }
-    return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
+    }).formatToParts(new Date(ms));
   } catch {
     const date = new Date(ms);
     return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
   }
+  const readPart = (type: Intl.DateTimeFormatPartTypes): number => (
+    Number(parts.find((part) => part.type === type)?.value)
+  );
+  const y = readPart('year');
+  const m = readPart('month');
+  const d = readPart('day');
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return Number.NaN;
+  return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
 };
 
 export const formatSmartTaskDeadlineLong = (

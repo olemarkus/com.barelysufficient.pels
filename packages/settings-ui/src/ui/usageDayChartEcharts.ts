@@ -1,4 +1,5 @@
-import { initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from './echartsRegistry.ts';
+import type { EChartsOption, EChartsType, SeriesOption } from './echartsRegistry.ts';
+import { mountChart, resolveChartSize, type MountedChart } from './echartsMount.ts';
 import { logSettingsWarn } from './logging.ts';
 import {
   formatAxisTick,
@@ -16,7 +17,6 @@ import {
   type ChartReadoutContent,
 } from './chartTooltipFormat.ts';
 import { attachChartReadout, prefersCoarsePointer, type ChartReadoutHandle } from './chartReadout.ts';
-import { attachTabShownResize } from './chartVisibilityResize.ts';
 import {
   SPLIT_BACKGROUND_LABEL,
   SPLIT_MANAGED_LABEL,
@@ -70,37 +70,15 @@ type UsageDayPalette = {
 };
 
 const DEFAULT_CHART_HEIGHT = 160;
-const DEFAULT_CHART_WIDTH = 480;
 
-let plot: EChartsType | null = null;
+let plot: MountedChart | null = null;
 let plotContainer: HTMLElement | null = null;
-let plotResizeObserver: ResizeObserver | null = null;
-let detachTabShownResize: (() => void) | null = null;
 let plotReadout: ChartReadoutHandle | null = null;
 let plotReadoutHost: HTMLElement | null = null;
 
-const resolveChartSize = (element: HTMLElement) => {
-  const width = element.clientWidth > 0
-    ? element.clientWidth
-    : (element.parentElement?.clientWidth ?? 0);
-  const viewportWidth = document.documentElement?.clientWidth ?? 0;
-  const fallbackWidth = viewportWidth > 0
-    ? Math.min(DEFAULT_CHART_WIDTH, viewportWidth)
-    : DEFAULT_CHART_WIDTH;
-  const height = element.clientHeight > 0 ? element.clientHeight : DEFAULT_CHART_HEIGHT;
-  return { width: width > 0 ? width : fallbackWidth, height };
-};
-
+const resolvePlotSize = (element: HTMLElement) => resolveChartSize(element, DEFAULT_CHART_HEIGHT);
 
 const disposePlot = () => {
-  if (plotResizeObserver) {
-    plotResizeObserver.disconnect();
-    plotResizeObserver = null;
-  }
-  if (detachTabShownResize) {
-    detachTabShownResize();
-    detachTabShownResize = null;
-  }
   if (plotReadout) {
     plotReadout.detach();
     plotReadout = null;
@@ -121,33 +99,21 @@ const disposePlot = () => {
 
 const ensurePlot = (container: HTMLElement, readoutHost: HTMLElement | null): EChartsType => {
   if (plot && plotContainer === container) {
-    return plot;
+    return plot.chart;
   }
 
   disposePlot();
   container.classList.add('usage-day-bars--echarts');
   container.replaceChildren();
 
-  plot = initEcharts(container, undefined, {
-    renderer: 'svg',
-    ...resolveChartSize(container),
-  });
+  plot = mountChart(container, resolvePlotSize);
   plotContainer = container;
   if (readoutHost) {
-    plotReadout = attachChartReadout({ chart: plot, host: readoutHost });
+    plotReadout = attachChartReadout({ chart: plot.chart, host: readoutHost });
     plotReadoutHost = readoutHost;
   }
 
-  if (typeof ResizeObserver === 'function') {
-    plotResizeObserver = new ResizeObserver(() => {
-      if (!plot || plotContainer !== container) return;
-      plot.resize(resolveChartSize(container));
-    });
-    plotResizeObserver.observe(container);
-  }
-  detachTabShownResize = attachTabShownResize({ container, chart: plot, resolveSize: resolveChartSize });
-
-  return plot;
+  return plot.chart;
 };
 
 const USAGE_DAY_PALETTE_VARS = {
