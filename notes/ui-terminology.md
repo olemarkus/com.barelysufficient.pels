@@ -682,6 +682,18 @@ smart task, because that is the case where the setting means the device never
 runs at all: *"This device has no Smart task, so nothing will start it while this
 is on."*
 
+**The policy applies only while Power-limit control is off** (owner ruling
+2026-09-25). With Power-limit control on, PELS already decides when the device
+runs, so `resolveStartPolicyInForce` (`lib/device/temperatureControlPosture.ts`)
+resolves it to `unrestricted` and leaves the stored choice untouched; it comes
+back into force when Power-limit control goes off, including from a Flow. The
+row shows only while Power-limit control is off, or when the device is already
+set, then with a hint saying the setting is paused. While in force it also grants
+PELS command authority over a managed device with a power reading, so while a
+smart task runs the device, PELS limits it under the hard cap like any other
+device. Since 2026-09-24 a task hour the task cannot finish without (unclaimed)
+lifts the hold as well as a booked one; deferred hours stay held.
+
 **The card has no copy for this policy, by ruling (2026-09-10).** The device reads
 `Off` and stops there. It is not being held back from anything — off is its
 baseline, which is what its owner configured — so the reason code is deliberately
@@ -700,7 +712,10 @@ the device is actually off, `Limited` for the cycle in between, as above. The po
 wins the behaviour — surplus is not a PELS start, so the device stays off when the
 sun arrives — and the card names the posture that is actually holding it. Naming
 the surplus one instead promised a resume that would never come, and sent the
-owner to tune an export threshold that could not release the device.
+owner to tune an export threshold that could not release the device. The
+combination is reachable because solar-only running needs command authority, not
+Power-limit control, and the start policy supplies that authority while
+Power-limit control is off.
 
 The tracking toggle is the one place the label varies by device kind, and it varies because *what happens* varies: a charger's level is a charging current, a generic stepped load's is a level. Both are resolved from `resolveDeviceDetailKind`, never hardcoded per screen.
 
@@ -710,7 +725,7 @@ The tracking toggle is the one place the label varies by device kind, and it var
 
 The dump-load toggle's helper copy states the reconcile contract explicitly — the user must learn from the toggle itself that a manual ON gets corrected: `PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.` ("enough … to cover it" is load-bearing — the allocator reserves the device's own restore draw before engaging, so a trickle of export is not enough.)
 
-The toggle is disabled (with a hint stating why) in two substates. Power-limit-control-off takes precedence when both apply: `Turn on Power-limit control above first — PELS needs it to switch this device on and off.` Otherwise, an active smart task: `Unavailable while this device has an active smart task — the task's schedule decides when it runs.` (Both mirror the runtime gate: the posture only takes effect when PELS actually controls the device's on/off — managed AND power-limit-controllable — and a device an active smart task governs is excluded from the surplus hold.)
+The toggle is disabled (with a hint stating why) in two substates. Power-limit-control-off takes precedence when both apply: `Turn on Power-limit control above first — PELS needs it to switch this device on and off.` Otherwise, an active smart task: `Unavailable while this device has an active smart task — the task's schedule decides when it runs.` (The page gates on Power-limit control; the runtime gates on command authority (`lib/plan/planSurplusAbsorb.ts`), which Power-limit control grants and which **Only PELS starts this device** also grants while Power-limit control is off. With both, the start policy wins, as above. A device an active smart task governs is excluded from the surplus hold in the task's booked and deferred hours; in an unclaimed hour it falls back to the surplus hold.)
 
 Scope guidance (v1) names the intended devices and warns against the cold-tank trap: `Good for pool pumps, towel dryers, and garage or cabin heaters. Not for your only water heater — on a run of cloudy days it would stay cold.` Do not soften the water-heater warning; a multi-day cloudy stretch means the tank never heats (comfort and legionella risk).
 
@@ -729,10 +744,15 @@ PELS, and it does not claim a human necessarily performed the action. Keep that
 name out of user-facing text. Source: `PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS` in
 `planStateLabels.ts`.
 
-The switch is offered for any device PELS can switch on and off. Like the
-dump-load and surplus rows, it is disabled while **Managed by PELS** or
-**Power-limit control** is off, because PELS does not resume the device then and
-the setting has no effect. The gate is not about detection, which is
+The switch is offered for any device PELS can switch on and off. The page
+disables it while **Managed by PELS** or **Power-limit control** is off, unless
+the device is already opted in. That is a page gate only, and the setting does
+have an effect with Power-limit control off: the runtime honours the hold
+whatever Power-limit control is set to, so a held device cannot be started by
+its smart task or by **Only PELS starts this device** until it is turned on
+(`lib/objectives/deferredObjectives/admission.ts`), and PELS does not turn it
+back on when Power-limit control goes off (`lib/executor/binaryExecutor.ts`).
+The page gate is not about detection, which is
 plan-independent (`setup/externalOffHoldDetection.ts`), and it does not make
 the hold safe to pair with Flows: a Flow that turns the device off arms the hold,
 and a later Flow that only turns Power-limit control on does not start the
