@@ -137,7 +137,8 @@ export const parseHomeScopedSettingsKey = (key: string): { baseKey: string; home
 // it still hold it as `true`; do not reuse the name for a new marker.
 // Other retired names are listed, and unset at boot, in
 // lib/store/retiredSettingsKeys.ts; do not reuse those either.
-// Runtime state for the above — which devices PELS is currently leaving off
+// Runtime state for RESPECT_EXTERNAL_OFF_DEVICES (the opt-in config, shared with
+// the settings UI) — which devices PELS is currently leaving off
 // because they were turned off outside PELS. Deliberately a separate key from
 // the config: clearing the opt-in must not lose the config, and vice versa.
 // Shape validated by `lib/observer/externalOffHold.ts`.

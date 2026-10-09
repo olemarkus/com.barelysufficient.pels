@@ -194,11 +194,14 @@ module.exports = {
         + 'both the runtime and the settings UI need lives in packages/shared-domain, which '
         + 'ships (e.g. shared-domain/src/settings/settingsKeys.ts, dailyBudgetConstants.ts, '
         + 'settingsUiBootstrapKeys.ts), and the contract imports its type from there. '
-        + 'settings-ui and widgets/** are exempt: esbuild bundles them (scripts/build-widgets.mjs '
-        + 'emits the committed widgets/*/api.js), so their imports are inlined.',
+        + 'settings-ui and the widgets\' browser code (widgets/*/src/public/) are exempt: '
+        + 'esbuild bundles them for the browser, so their imports are inlined. A widget\'s API '
+        + 'code (the rest of widgets/*/src/) is compiled by the root tsc and ships like lib/, '
+        + 'so it is covered.',
       severity: 'error',
       from: {
-        path: '^(app\\.ts|api\\.ts|lib/|setup/|flowCards/|drivers/|packages/shared-domain/src/)',
+        path: '^(app\\.ts|api\\.ts|lib/|setup/|flowCards/|drivers/|packages/shared-domain/src/'
+          + '|widgets/[^/]+/src/(?!public/))',
       },
       to: { path: '^packages/contracts/' },
     },
