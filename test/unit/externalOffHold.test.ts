@@ -101,6 +101,18 @@ describe('external-off hold policy — a hold is a key', () => {
     expect(policy.clearHold('a')).toBe(false);
   });
 
+  it('spends no write clearing a device that holds nothing', () => {
+    // The observed-ON sweep clears every device it sees on, every plan build,
+    // and almost none of them is held.
+    const store = fakeStore({ [holdKey('a')]: true });
+    const policy = build(store);
+    const unset = vi.spyOn(store, 'unset');
+    expect(policy.clearHold('b')).toBe(false);
+    expect(unset).not.toHaveBeenCalled();
+    expect(policy.clearHold('a')).toBe(true);
+    expect(unset).toHaveBeenCalledWith(holdKey('a'));
+  });
+
   it('one device is unaffected by another device being held or released', () => {
     const store = fakeStore();
     const policy = build(store);
