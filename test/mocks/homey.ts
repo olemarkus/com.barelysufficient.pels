@@ -749,6 +749,25 @@ export const setMockApiApp = (
   mockHomeyInstance.api._apiApps.set(appId, app);
 };
 
+/**
+ * Reset the per-test state of the shared mock Homey: settings values and
+ * listeners, every Flow card registry, and the recorded realtime events.
+ * Drivers, zones, location, API routes and the clock stay as the spec set them.
+ */
+export const resetMockHomey = (): void => {
+  mockHomeyInstance.settings.removeAllListeners();
+  mockHomeyInstance.settings.clear();
+  const { flow } = mockHomeyInstance;
+  flow._actionCardListeners = {};
+  flow._conditionCardListeners = {};
+  flow._triggerCardRunListeners = {};
+  flow._triggerCardTriggers = {};
+  flow._actionCardAutocompleteListeners = {};
+  flow._conditionCardAutocompleteListeners = {};
+  flow._triggerCardAutocompleteListeners = {};
+  mockHomeyInstance.api.clearRealtimeEvents();
+};
+
 export const setMockDrivers = (drivers: Record<string, MockDriver>) => {
   mockHomeyInstance.drivers.getDrivers = () => drivers;
   if (!autoEnableMockDevices) return;

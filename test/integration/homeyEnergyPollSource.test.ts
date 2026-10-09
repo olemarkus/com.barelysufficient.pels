@@ -2,14 +2,14 @@ import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { createHomeyEnergyPollSource } from '../../setup/appInit/createHomeyEnergyPollSource';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { requireConfiguredPowerSource } from '../../setup/powerSourceSettings';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 const mockPowerSource = () => requireConfiguredPowerSource(mockHomeyInstance.settings);
 
 describe('HomeyEnergyPollSource', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     // A healthy non-empty store with no source key is the genuine Flow default.
     mockHomeyInstance.settings.set('another_setting', true);
   });

@@ -15,7 +15,7 @@ import {
 import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
 import type { SmartTaskInProgressRead } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { partialDouble } from '../helpers/partialDouble';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 const settings = mockHomeyInstance.settings;
 
@@ -70,10 +70,7 @@ const HEATER = { id: 'heater', name: 'Living room' };
 const ACTIVE = { id: 'active-mode', name: 'Active mode', activeMode: true };
 
 beforeEach(() => {
-  settings.removeAllListeners();
-  settings.clear();
-  mockHomeyInstance.flow._actionCardListeners = {};
-  mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
+  resetMockHomey();
   settings.set(MODE_DEVICE_TARGETS, { Home: { heater: 21 }, Away: { heater: 16 } });
   settings.set(OPERATING_MODE_SETTING, 'Home');
 });

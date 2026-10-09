@@ -19,6 +19,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
   setMockGeolocation,
   MockDevice,
@@ -198,13 +199,7 @@ describe('Curtailment-inferred surplus (SDK-boundary e2e, zero-export home)', ()
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(NOW_MS);
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     setMockGeolocation(OSLO.latitude, OSLO.longitude);
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => radiationResponse() })));
   });

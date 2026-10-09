@@ -11,7 +11,7 @@
 // Driven only through the Homey SDK mock and the app's own userdata database,
 // which two apps booted in one test share — that is the restart. Observed
 // through the plan the app builds.
-import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
@@ -44,8 +44,7 @@ const plannedPlug = (app: ReturnType<typeof createApp>) => (
 
 describe('retained power across a restart (SDK-boundary e2e)', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set('managed_devices', { 'plug-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'plug-1': true });
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);

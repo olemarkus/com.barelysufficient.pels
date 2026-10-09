@@ -14,7 +14,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import {
   getSettingsUiDevicesPayload,
   getSettingsUiPlanPayload,
@@ -182,14 +182,13 @@ const installBoundary = (options: {
 
 describe('settings-UI `?homeId=` endpoints', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     mockHomeyInstance.app = null;
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
   });
 
   describe('an absent homeId keeps the whole-home payload byte-identical', () => {

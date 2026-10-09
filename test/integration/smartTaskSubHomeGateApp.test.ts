@@ -9,7 +9,7 @@ import type { AppContext } from '../../lib/app/appContext';
 // settings handler); the real diagnostics service is fed through its
 // production observe API for the starved-list case.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockZones } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockZones } from '../mocks/homey';
 import { cleanupApps } from '../utils/appTestUtils';
 import {
   initAppWithSubHome,
@@ -24,16 +24,7 @@ import { updateSettingsUiSmartTask } from '../../setup/settingsUiSmartTaskApi';
 
 describe('smart-task sub-home gate (app lanes)', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
     setMockZones({ ...SUB_HOME_ZONES });
     vi.clearAllTimers();
   });

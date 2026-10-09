@@ -4,7 +4,7 @@ import { PriceFlowTagPublisher, PRICE_FLOW_TAG_ID, PRICE_LIST_UPDATED_TRIGGER_ID
 import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { captureLogger } from '../utils/loggerCapture';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 
@@ -34,10 +34,8 @@ const day = (dateKey: string, count: number, total = 60): CombinedPriceEntry[] =
 );
 
 const resetMock = (): void => {
-  mockHomeyInstance.settings.clear();
+  resetMockHomey();
   mockHomeyInstance.flow._tokens = {};
-  mockHomeyInstance.flow._triggerCardTriggers = {};
-  mockHomeyInstance.flow._triggerCardRunListeners = {};
 };
 
 const triggersFor = (id: string): { tokens: Record<string, unknown> }[] => (

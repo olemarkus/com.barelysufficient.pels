@@ -1,5 +1,6 @@
 import {
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
   MockDriver,
   MockDevice,
@@ -54,8 +55,7 @@ vi.mock('../../lib/power/capacityGuard', () => ({
 
 describe('capacity settings propagation', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     capacityGuardInstances.splice(0, capacityGuardInstances.length);
     setMockDrivers({
       driverA: new MockDriver('driverA', [new MockDevice('dev-1', 'Heater', ['target_temperature'])]),

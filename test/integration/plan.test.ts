@@ -15,6 +15,7 @@ const executorOf = (app: { planEngine: unknown }): PlanExecutor => (
 import {
   getLatestPlanSnapshotForTests,
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
   MockDevice,
   MockDriver,
@@ -108,14 +109,7 @@ function createHoiaxWaterHeater(id: string, name: string = 'Connected 300') {
 
 describe('Device plan snapshot', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
     setAutoEnableMockDevices(true);
     vi.clearAllTimers();
   });
@@ -2754,14 +2748,7 @@ describe('Device plan snapshot', () => {
 
 describe('Dry run mode', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
     vi.clearAllTimers();
   });
 

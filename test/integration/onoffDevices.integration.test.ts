@@ -1,5 +1,6 @@
 import {
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
   MockDevice,
   MockDriver,
@@ -68,13 +69,7 @@ const buildOnOffApiDevice = (overrides?: Partial<{
 
 describe('On/off device integration', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
     vi.clearAllTimers();
   });

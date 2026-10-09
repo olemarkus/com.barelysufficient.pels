@@ -7,7 +7,7 @@
 // app-method lanes (create/rescue/candidates/starved list/relocation) live in
 // the integration-tier sibling `test/integration/smartTaskSubHomeGateApp.test.ts`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockZones } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockZones } from '../mocks/homey';
 import { cleanupApps } from '../utils/appTestUtils';
 import { initAppWithSubHome, SUB_HOME_ZONES } from '../utils/smartTaskSubHomeHarness';
 import { readAllObjectives } from '../../lib/objectives/deferredObjectives';
@@ -15,16 +15,7 @@ import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../packages/shared-domain/sr
 
 describe('smart-task sub-home gate (SDK boundary)', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
     setMockZones({ ...SUB_HOME_ZONES });
     vi.clearAllTimers();
   });

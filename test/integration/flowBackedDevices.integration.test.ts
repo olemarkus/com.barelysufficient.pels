@@ -1,5 +1,5 @@
 import { createApp, cleanupApps, getTransportSnapshotForTests } from '../utils/appTestUtils';
-import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../../lib/utils/settingsKeys';
 
@@ -104,15 +104,7 @@ async function runAction(cardId: string, args: Record<string, unknown>): Promise
 describe('Flow-backed device support', () => {
   beforeEach(() => {
     setMockDrivers({});
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     vi.clearAllTimers();
     vi.restoreAllMocks();
   });

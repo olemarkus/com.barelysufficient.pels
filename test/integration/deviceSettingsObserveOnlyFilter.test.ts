@@ -8,7 +8,7 @@
 //
 // Drives the REAL flow-card registrars against the shared mock flow seam.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import {
   registerBudgetExemptionCondition,
   registerBudgetExemptionCards,
@@ -40,15 +40,11 @@ const buildDeps = (): FlowCardDeps => ({
 } as unknown as FlowCardDeps);
 
 beforeEach(() => {
-  mockHomeyInstance.settings.clear();
+  resetMockHomey();
   // PELS always has settings keys, and an empty store is the SDK's transient
   // flake (`readSettingsKeyList`). A map the owner never wrote is a key missing
   // from a list that names others.
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
-  mockHomeyInstance.flow._actionCardListeners = {};
-  mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-  mockHomeyInstance.flow._conditionCardListeners = {};
-  mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
   infoSpy.mockClear();
 });
 

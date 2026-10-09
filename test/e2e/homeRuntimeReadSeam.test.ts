@@ -10,7 +10,7 @@
 // served payload, which is why the harness's `assertMembership` sanity check
 // (it reaches into `app.homeMembership`) stays an integration-lane option.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockZones } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockZones } from '../mocks/homey';
 import { cleanupApps } from '../utils/appTestUtils';
 import { initAppWithSubHome, SUB_HOME, SUB_HOME_ZONES, settleAsyncSeams } from '../utils/smartTaskSubHomeHarness';
 import { MAIN_HOME_ID, POWER_SOURCE } from '../../lib/utils/settingsKeys';
@@ -18,9 +18,7 @@ import type { AppContext } from '../../lib/app/appContext';
 
 describe('AppContext per-home runtime read seam', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     setMockZones({ ...SUB_HOME_ZONES });
     vi.clearAllTimers();

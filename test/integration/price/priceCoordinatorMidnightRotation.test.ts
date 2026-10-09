@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance } from '../../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../../mocks/homey';
 import { PriceCoordinator } from '../../../lib/price/priceCoordinator';
 import { createPriceOptimizationSettingsStore } from '../../../lib/price/priceOptimizationSettingsStore';
 import { createPriceDataStore } from '../../../lib/price/priceDataStore';
@@ -29,8 +29,7 @@ const createCoordinator = () => new PriceCoordinator({
 describe('PriceCoordinator midnight rotation scheduler', () => {
   beforeEach(() => {
     priceCache = createInMemoryPriceCache();
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
   });
 

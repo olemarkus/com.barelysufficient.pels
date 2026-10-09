@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { unsetRetiredSettingsKeys } from '../../lib/store/retiredSettingsKeys';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 // Keys nothing reads or writes any more ride along on every settings write,
 // which ships the whole settings object to Homey. They are unset at boot, only
@@ -8,8 +8,7 @@ import { mockHomeyInstance } from '../mocks/homey';
 // boot rather than failing it.
 describe('unsetRetiredSettingsKeys', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     vi.restoreAllMocks();
   });
 

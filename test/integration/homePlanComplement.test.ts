@@ -36,7 +36,7 @@ import {
   createHomesStore,
 } from '../../lib/home/homeRegistryStore';
 import { buildMainHomeScopeForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -111,7 +111,7 @@ const makeCtx = (service: HomeMembershipService | undefined) => createAppContext
 });
 
 beforeEach(() => {
-  mockHomeyInstance.settings.clear();
+  resetMockHomey();
   mockHomeyInstance.settings.set('test_fixture_initialized', true);
 });
 

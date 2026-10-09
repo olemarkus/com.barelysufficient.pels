@@ -4,7 +4,7 @@ import { WEATHER_ADVISOR_SETTINGS } from '../../lib/utils/settingsKeys';
 import { createWeatherCollector } from '../../setup/appInit/createWeatherCollector';
 import { HOMEY_LOCATION_API_PATH } from '../../setup/homeyLocationAdapter';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
-import { mockHomeyInstance, setMockGeolocation } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockGeolocation } from '../mocks/homey';
 
 const OUTDOOR_DEVICE_ID = 'weather-location-test-device';
 
@@ -34,7 +34,7 @@ describe('weather location Web API wiring', () => {
   afterEach(() => {
     stop?.();
     stop = undefined;
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     setMockGeolocation(59.91, 10.75);
     vi.unstubAllGlobals();
     vi.restoreAllMocks();

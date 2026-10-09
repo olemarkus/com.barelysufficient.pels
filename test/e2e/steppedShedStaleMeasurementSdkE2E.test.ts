@@ -26,7 +26,7 @@ import {
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
 
@@ -90,8 +90,7 @@ describe('stepped shed with a lagging power measurement (SDK-boundary e2e)', () 
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 7, 5, 20, 2, 4));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     setMockDrivers({});
   });
 

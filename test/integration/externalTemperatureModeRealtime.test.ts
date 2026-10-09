@@ -2,7 +2,7 @@ import { buildDeviceActuator } from '../../setup/appInit/buildDeviceActuator';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
 /** Realtime `device.update` frames arrive on the live feed's socket, as in externalOffHoldRealtime. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 
@@ -51,8 +51,7 @@ describe('external temperature changes reach the mode through observation', () =
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
     vi.setSystemTime(Date.UTC(2026, 8, 8, 12));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
   });
   afterEach(async () => { await cleanupApps(); vi.restoreAllMocks(); vi.useRealTimers(); });
 

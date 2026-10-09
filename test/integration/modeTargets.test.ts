@@ -1,6 +1,7 @@
 import type { InitializedAppContext } from '../../lib/app/appContext';
 import {
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
   MockDevice,
   MockDriver,
@@ -51,8 +52,7 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
 
 describe('Mode device targets', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set('price_scheme', 'flow');
     vi.clearAllTimers();
   });

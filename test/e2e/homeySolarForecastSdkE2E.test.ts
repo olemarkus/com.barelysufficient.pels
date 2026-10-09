@@ -6,7 +6,7 @@
 // observed through STRUCTURED LOGS only (`pv_forecast_homey*`,
 // `pv_forecast_source_selected`), per test/AGENTS.md.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
 import {
@@ -119,8 +119,7 @@ describe('PV-forecast source selection (SDK-boundary e2e)', () => {
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(NOW_MS);
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     // Open-Meteo stub: an empty-but-valid radiation payload keeps the learned
     // lane's network seam deterministic (its refresh parses to no data).
     vi.stubGlobal('fetch', vi.fn(async () => ({

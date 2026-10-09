@@ -7,7 +7,7 @@
 //
 // Drives the REAL `registerDeviceCapacityControlCards` against the shared mock flow seam.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { registerCapacityControlCondition, registerDeviceCapacityControlCards } from '../../flowCards/deviceSettingsCards';
 import { CAPACITY_LIMIT_KW, CONTROLLABLE_DEVICES } from '../../lib/utils/settingsKeys';
 import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
@@ -42,15 +42,11 @@ const buildDeps = (): FlowCardDeps => ({
 
 describe('capacity-control cards exclude solar devices and accept a home battery (FIX 2)', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     // PELS always has settings keys, and an empty store is the SDK's transient
     // flake (`readSettingsKeyList`). A map the owner never wrote is a key missing
     // from a list that names others.
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
     infoSpy.mockClear();
     controllableDevices = {};
     batteryControl = 'drivable';

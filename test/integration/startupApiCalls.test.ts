@@ -1,6 +1,6 @@
 import type { MockInstance } from 'vitest';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { mockHomeyInstance, MockDevice, MockDriver, setMockDrivers } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, MockDevice, MockDriver, setMockDrivers } from '../mocks/homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import { PRICE_SCHEME } from '../../lib/utils/settingsKeys';
 
@@ -9,8 +9,7 @@ describe('startup API calls', () => {
   let liveReportSpy: MockInstance | null = null;
 
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     setMockDrivers({});
     vi.clearAllMocks();
     fetchDynamicPricesSpy = null;

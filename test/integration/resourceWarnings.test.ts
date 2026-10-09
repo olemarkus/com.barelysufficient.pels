@@ -1,4 +1,4 @@
-import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { startResourceWarningListeners } from '../../lib/diagnostics/resourceWarnings';
 import { summarizeRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
@@ -13,13 +13,7 @@ vi.mock('../../lib/diagnostics/smapsRollup', () => ({
 describe('Homey resource warning perf logging', () => {
   beforeEach(() => {
     mockHomeyInstance.removeAllListeners();
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     setMockDrivers({});
     vi.clearAllTimers();
     resolveSmapsSummaryMock.mockReset();

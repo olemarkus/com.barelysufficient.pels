@@ -1,6 +1,13 @@
 import type MyApp from '../../app.ts';
 
-import { getLatestPlanSnapshotForTests, mockHomeyInstance, setMockDrivers, MockDriver, MockDevice } from '../mocks/homey';
+import {
+  getLatestPlanSnapshotForTests,
+  mockHomeyInstance,
+  resetMockHomey,
+  setMockDrivers,
+  MockDriver,
+  MockDevice,
+} from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 
@@ -21,7 +28,7 @@ describe('Mixed Type Restoration Throttling', () => {
         currentTime = 1000000000000;
         vi.setSystemTime(currentTime);
         vi.clearAllMocks();
-        mockHomeyInstance.settings.clear();
+        resetMockHomey();
         mockHomeyInstance.settings.set('operating_mode', 'Home');
         mockHomeyInstance.settings.set('capacity_limit', 10);
         mockHomeyInstance.settings.set('capacity_margin', 0);

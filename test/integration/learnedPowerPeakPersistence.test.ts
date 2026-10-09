@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { SettingsRepository } from '../../setup/settingsRepository';
 import { createLearnedPowerPeakState } from '../../lib/device/learnedPowerPeakState';
 import { DEVICE_POWER_PEAKS } from '../../lib/utils/settingsKeys';
@@ -31,7 +31,7 @@ describe('learned power peak persistence', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     vi.setSystemTime(NOW);
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     // A non-empty key list is the healthy case: PELS always has other settings
     // by the time this loads (the boot migrations write their marker first).
     mockHomeyInstance.settings.set('unrelated_key', true);

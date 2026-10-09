@@ -11,7 +11,7 @@
 // through the real Homey Energy poll; the clock is the faked SDK clock. The only
 // observations are what PELS persists back to that store (the daily-budget state).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import {
   cleanupApps,
   createApp,
@@ -119,8 +119,7 @@ describe('daily budget unfreeze across restart (SDK-boundary e2e)', () => {
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(BOOT_MS);
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     setMockDrivers({});
   });
 

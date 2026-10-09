@@ -1,5 +1,6 @@
 import {
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
 } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
@@ -58,13 +59,7 @@ const buildVThermoApiDevice = (overrides?: Partial<{
 
 describe('VThermo device integration', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     vi.clearAllTimers();
   });
 

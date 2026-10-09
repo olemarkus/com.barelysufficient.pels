@@ -3,7 +3,7 @@ import type MyApp from '../../app.ts';
 import { partialDouble } from '../helpers/partialDouble';
 import { PriceLevel, PRICE_LEVEL_OPTIONS } from '../../lib/price/priceLevels';
 import { PlanService } from '../../lib/plan/planService';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { openPlanBuildGate, buildPlanMeta } from '../utils/planTestUtils';
 import { planServiceWiring } from '../helpers/planServiceWiring';
@@ -27,14 +27,7 @@ describe('Price level helpers', () => {
 
 describe('Price level flow cards', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
+    resetMockHomey();
     vi.clearAllTimers();
   });
 

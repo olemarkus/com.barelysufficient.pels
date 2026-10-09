@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import { readPowerSourceChoice } from '../../setup/powerSourceChoice';
 import { readConfiguredPowerSource } from '../../setup/powerSourceSettings';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 describe('readConfiguredPowerSource', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     vi.restoreAllMocks();
   });
 
@@ -53,7 +53,7 @@ describe('readConfiguredPowerSource', () => {
 
 describe('readPowerSourceChoice', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     vi.restoreAllMocks();
   });
 

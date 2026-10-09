@@ -22,7 +22,7 @@ import {
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
 import api from '../../api';
@@ -218,9 +218,7 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     // the 8 kWh hard cap. Late in the hour the unused energy allowance would
     // legitimately let that instantaneous draw continue.
     vi.setSystemTime(Date.UTC(2026, 8, 15, 4, 1, 52));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._triggerCardTriggers = {};
+    resetMockHomey();
     setMockDrivers({});
   });
 

@@ -16,13 +16,12 @@ import {
   PRICE_OPTIMIZATION_SETTINGS,
   TEMPERATURE_CONTROL_MODES,
 } from '../../lib/utils/settingsKeys';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 const settings = mockHomeyInstance.settings;
 
 beforeEach(() => {
-  settings.removeAllListeners();
-  settings.clear();
+  resetMockHomey();
   // A real install always holds some key; an empty key list reads as a suspect store.
   settings.set('capacity_limit_kw', 10);
 });

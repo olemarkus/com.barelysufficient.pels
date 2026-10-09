@@ -3,6 +3,7 @@ import https from 'https';
 import {
   getLatestPlanSnapshotForTests,
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
   MockDevice,
   MockDriver,
@@ -254,13 +255,7 @@ describe('Spot price fetching', () => {
   const { setAllowConsoleError } = require('../setup.ts');
 
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     vi.clearAllTimers();
     mockHttpsGet = https.get as Mock;
     mockHttpsGet.mockReset();
@@ -803,13 +798,7 @@ describe('Grid tariff fetching', () => {
   let originalFetch: typeof global.fetch;
 
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     vi.clearAllTimers();
 
     // Mock global fetch for grid tariffs (uses fetch, not https)
@@ -1444,14 +1433,8 @@ describe('Price optimization', () => {
   };
 
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     priceCache = createInMemoryPriceCache();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     vi.clearAllTimers();
     mockHttpsGet = https.get as Mock;
     mockHttpsGet.mockReset();

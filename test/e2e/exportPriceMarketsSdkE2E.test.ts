@@ -20,7 +20,7 @@
 import type { Mock } from 'vitest';
 import https from 'https';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps, getStoredPriceCacheForTests } from '../utils/appTestUtils';
 import { flattenAllHours } from '../../lib/price/priceStore';
 import {
@@ -94,13 +94,7 @@ describe('Export (feed-in) pricing per market (SDK-boundary e2e)', () => {
     });
     // A winter date so the spot fixture's +01:00 offset is the correct Oslo offset.
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     // Default Homey Energy seam (overridden in the NL cases); default https = no data.
     setEnergyApi({
       fetchDynamicElectricityPrices: async () => ({ interval: 60, pricesPerInterval: [], priceUnit: 'NOK' }),
