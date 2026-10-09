@@ -1,5 +1,5 @@
 import type { PriceOptimizationSetup } from '../../../contracts/src/priceOptimizationSettings.ts';
-import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import type { AfterSetupDevice, AfterSetupFacts } from './afterSetupRecommendations.ts';
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceUtils.ts';

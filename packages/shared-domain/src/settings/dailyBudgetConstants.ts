@@ -1,3 +1,7 @@
+// Daily-budget setting bounds and option values that BOTH the runtime and the
+// settings UI use. This is their one copy: `lib/dailyBudget/dailyBudgetConstants.ts`
+// re-exports them beside the runtime-only tuning constants. They cannot live in
+// `packages/contracts`, which the packaged app does not ship.
 export const MIN_DAILY_BUDGET_KWH = 20;
 export const MAX_DAILY_BUDGET_KWH = 360;
 export const UNMANAGED_RESERVE_BALANCED_MODE = 0;

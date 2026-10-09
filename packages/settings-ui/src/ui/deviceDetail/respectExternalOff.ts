@@ -1,5 +1,5 @@
 import { state, hasActiveDeadlineObjective } from '../state.ts';
-import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
+import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { showToast } from '../toast.ts';

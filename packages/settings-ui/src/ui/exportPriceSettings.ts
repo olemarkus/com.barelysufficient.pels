@@ -20,7 +20,7 @@ import {
   EXPORT_PRICE_SOURCE,
   EXPORT_SPOT_FACTOR,
   PRICE_SCHEME,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 
 export type ExportPriceSettings = {
   enabled: boolean;

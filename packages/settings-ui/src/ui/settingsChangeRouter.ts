@@ -52,7 +52,7 @@ import {
   POWER_TRACKER_PERSISTED_EVENT,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { refreshCurrentModes } from './currentModes.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
 import { notifyHomeLimitsSettingChanged, notifyHomeLimitsStatusPublished } from './homeLimits.ts';

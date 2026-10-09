@@ -22,7 +22,7 @@ import {
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
 } from '../../lib/objectives/deferredObjectives';
-import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/objectives/deferredObjectives/objectiveStore';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type {
   DeferredObjectiveActivePlanStatusV1,

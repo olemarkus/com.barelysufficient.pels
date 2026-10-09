@@ -6,16 +6,16 @@ import { editDeviceModeTarget } from '../../lib/home/modeDeviceTargetWrite';
 import type { DeviceModeCatalogOutcome } from '../../lib/home/homeModeDeviceRead';
 import type { HomeModeCatalogSnapshot } from '../../lib/home/homeModeCatalog';
 import { readSmartTaskInProgress } from '../../lib/objectives/deferredObjectives';
-import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/objectives/deferredObjectives/objectiveStore';
-import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
-import { partialDouble } from '../helpers/partialDouble';
-import { writeDevicePriceAdjustment } from '../../lib/price/priceOptimizationSettingsStore';
-import { writeTemperatureControlMode } from '../../lib/device/temperatureControlSettings';
 import {
+  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   MODE_DEVICE_TARGETS,
   PRICE_OPTIMIZATION_SETTINGS,
   TEMPERATURE_CONTROL_MODES,
 } from '../../lib/utils/settingsKeys';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
+import { partialDouble } from '../helpers/partialDouble';
+import { writeDevicePriceAdjustment } from '../../lib/price/priceOptimizationSettingsStore';
+import { writeTemperatureControlMode } from '../../lib/device/temperatureControlSettings';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 const settings = mockHomeyInstance.settings;

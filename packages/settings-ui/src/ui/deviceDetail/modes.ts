@@ -21,7 +21,7 @@ import {
   MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
   homeScopedSettingsKey,
-} from '../../../../contracts/src/settingsKeys.ts';
+} from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { getSetting } from '../homey.ts';
 import { getHomeIdForUiDevice } from '../homeScope.ts';
 import {

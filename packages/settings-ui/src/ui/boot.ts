@@ -57,7 +57,7 @@ import { savePowerSourceSetting } from './powerSourceSave.ts';
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
   MAIN_HOME_ID,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   DEBUG_LOGGING_SCENARIOS,
   type DebugLoggingScenarioId,

@@ -5,7 +5,7 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
-import { MAIN_HOME_ID } from '../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../shared-domain/src/settings/settingsKeys.ts';
 import {
   getApiReadModel,
   homeScopedApiUri,

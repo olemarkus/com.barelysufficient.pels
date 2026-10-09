@@ -1,7 +1,7 @@
 import { getSetting } from './homey.ts';
 import {
   NORWAY_PRICE_MODEL, POWERHOUR_DEVICE_ID, PRICE_SCHEME,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   isPriceSchemeSetting,
   readPowerhourDeviceIdSetting,

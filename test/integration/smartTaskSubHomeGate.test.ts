@@ -40,10 +40,10 @@ import {
   type DeferredObjectiveDeviceWriteDeps,
 } from '../../lib/objectives/deferredObjectives/objectiveWrite';
 import {
-  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   readObjectiveForDevice,
   type ObjectiveSettingsStore,
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 import type { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';

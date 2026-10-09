@@ -9,7 +9,7 @@ import {
   UNMANAGED_RESERVE_BALANCED_MODE,
   UNMANAGED_RESERVE_CONSERVATIVE_MODE,
   UNMANAGED_RESERVE_MODE,
-} from '../../contracts/src/dailyBudgetConstants.ts';
+} from '../../shared-domain/src/settings/dailyBudgetConstants.ts';
 import {
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,

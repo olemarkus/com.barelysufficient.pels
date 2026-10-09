@@ -11,7 +11,7 @@ import {
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
   POWER_SOURCE,
-} from '../../contracts/src/settingsKeys.ts';
+} from '../../shared-domain/src/settings/settingsKeys.ts';
 import { loadCapacitySettings, saveSimulationModeSettings } from '../src/ui/capacity.ts';
 
 vi.mock('../src/ui/toast.ts', () => ({

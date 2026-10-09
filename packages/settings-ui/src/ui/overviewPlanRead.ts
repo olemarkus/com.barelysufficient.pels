@@ -2,7 +2,7 @@ import {
   CAPACITY_DRY_RUN,
   MAIN_HOME_ID,
   homeScopedSettingsKey,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { resolveHomeScopedRead, type HomeScopedRead } from '../../../contracts/src/homeScopedRead.ts';
 import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel, getSetting, homeScopedApiUri } from './homey.ts';

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DeferredObjectiveActivePlansV1 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
-import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING } from '../../contracts/src/settingsKeys.ts';
+import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING } from '../../shared-domain/src/settings/settingsKeys.ts';
 
 // The active-plans recorder persists every replan/session change via
 // `settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)`. The realtime handler

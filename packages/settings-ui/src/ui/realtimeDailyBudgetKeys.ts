@@ -8,7 +8,7 @@ import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   PRICE_OPTIMIZATION_ENABLED,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 
 // Keys whose change refreshes the daily-budget PLAN payload (the chart/hero
 // data), including inputs the allocator derives from (prices, capacity).

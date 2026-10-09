@@ -19,7 +19,7 @@ import {
   resetSettingsUiPowerStats,
 } from '../../setup/settingsUiApi';
 import { refreshSettingsUiFlowConflicts } from '../../setup/settingsUiFlowConflictApi';
-import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../packages/contracts/src/settingsUiApi';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../packages/shared-domain/src/settings/settingsUiBootstrapKeys';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';

@@ -41,7 +41,7 @@ import {
   type ExportPriceHandlersContext,
 } from '../src/ui/exportPriceSettings.ts';
 
-import { EXPORT_PRICE_SOURCE } from '../../contracts/src/settingsKeys.ts';
+import { EXPORT_PRICE_SOURCE } from '../../shared-domain/src/settings/settingsKeys.ts';
 
 const setSettingMock = setSetting as Mock;
 const getSettingMock = getSetting as Mock;

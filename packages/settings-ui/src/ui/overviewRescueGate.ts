@@ -2,7 +2,7 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { getHomeScope } from './homeScope.ts';
 import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadStarvationRescuableDevices } from './starvationRescue.ts';

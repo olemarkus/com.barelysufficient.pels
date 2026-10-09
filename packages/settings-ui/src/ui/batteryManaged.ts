@@ -1,4 +1,4 @@
-import { BATTERY_CONTROL_DEVICES } from '../../../contracts/src/settingsKeys.ts';
+import { BATTERY_CONTROL_DEVICES } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   parseBatteryControlDevices,
   type BatteryControlDevices,

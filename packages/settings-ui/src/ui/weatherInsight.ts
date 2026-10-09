@@ -4,7 +4,7 @@ import type {
   WeatherDeviceReading,
 } from '../../../contracts/src/weatherAdvisorTypes.ts';
 import { SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH } from '../../../contracts/src/settingsUiApi.ts';
-import { WEATHER_ADVISOR_SETTINGS } from '../../../contracts/src/settingsKeys.ts';
+import { WEATHER_ADVISOR_SETTINGS } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { isCalendarDateKey } from '../../../shared-domain/src/utils/dateUtils.ts';
 import { WEATHER_FIRST_ESTIMATE_TOAST } from '../../../shared-domain/src/weatherInsightCopy.ts';
 import { callApi, getSetting, setSetting } from './homey.ts';

@@ -1,3 +1,11 @@
+/**
+ * The settings keys the settings UI bootstrap (`/ui_bootstrap`) carries. The
+ * runtime reads exactly these when it builds the payload, and the contract types
+ * the payload's `settings` record by them, so both read this one list. It
+ * cannot live in `packages/contracts`, which the packaged app does not ship.
+ * `scripts/lib/settingsUiBootstrapKeys.cjs` keeps a JS copy for Node scripts,
+ * pinned to this list by `test/unit/settingsUiScripts.test.ts`.
+ */
 export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'capacity_enabled',
   'grid_import_enabled',
@@ -49,3 +57,5 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'deferred_objectives',
   'weather_advisor_settings',
 ] as const;
+
+export type SettingsUiBootstrapKey = (typeof SETTINGS_UI_BOOTSTRAP_KEYS)[number];

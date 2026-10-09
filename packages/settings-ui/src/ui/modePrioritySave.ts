@@ -1,5 +1,9 @@
 import { ModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
-import { CAPACITY_PRIORITIES, MAIN_HOME_ID, homeScopedSettingsKey } from '../../../contracts/src/settingsKeys.ts';
+import {
+  CAPACITY_PRIORITIES,
+  MAIN_HOME_ID,
+  homeScopedSettingsKey,
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
 import { priorityList } from './dom.ts';
 import { getHomeScope } from './homeScope.ts';

@@ -18,6 +18,7 @@ import type {
   DeviceOverviewStrings,
 } from '../../shared-domain/src/deviceOverview.js';
 import type { DeviceStatus } from './deviceStatus.js';
+import type { SettingsUiBootstrapKey } from '../../shared-domain/src/settings/settingsUiBootstrapKeys.js';
 import type { EvCarChargerMatchHistory } from './evCarLink.js';
 
 export type { DeviceStartPolicy };
@@ -130,60 +131,6 @@ export const SETTINGS_UI_SMART_TASK_CANCEL_PATH = '/ui_smart_task_cancel';
 // settings UI client matches this prefix to keep callers in a bounded
 // loading/retry state instead of surfacing a hard error.
 export const SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX = 'PELS_APP_NOT_READY:';
-
-export const SETTINGS_UI_BOOTSTRAP_KEYS = [
-  'capacity_enabled',
-  'grid_import_enabled',
-  'grid_import_limit_kw',
-  'capacity_limit_kw',
-  'capacity_margin_kw',
-  'capacity_period_minutes',
-  'capacity_dry_run',
-  'homey_energy_meter_device_id',
-  'capacity_priorities',
-  'mode_device_targets',
-  'operating_mode',
-  'controllable_devices',
-  'managed_devices',
-  'device_control_profiles',
-  'device_target_power_configs',
-  'budget_exempt_devices',
-  'respect_external_off_devices',
-  'device_start_policies',
-  'temperature_control_disabled_devices',
-  'temperature_control_modes',
-  'temperature_boost_settings',
-  'native_ev_wiring_devices',
-  'device_driver_overrides',
-  'mode_aliases',
-  'overshoot_behaviors',
-  'price_optimization_settings',
-  'price_optimization_enabled',
-  'price_scheme',
-  'powerhour_device_id',
-  'norway_price_model',
-  'price_area',
-  'provider_surcharge',
-  'price_threshold_percent',
-  'price_min_diff_ore',
-  'nettleie_fylke',
-  'nettleie_orgnr',
-  'nettleie_tariffgruppe',
-  'export_price_enabled',
-  'export_spot_factor',
-  'export_fixed',
-  'daily_budget_enabled',
-  'daily_budget_kwh',
-  'daily_budget_price_shaping_enabled',
-  'daily_budget_controlled_weight',
-  'daily_budget_price_flex_share',
-  'debug_logging_topics',
-  'debug_logging_enabled',
-  'deferred_objectives',
-  'weather_advisor_settings',
-] as const;
-
-export type SettingsUiBootstrapKey = (typeof SETTINGS_UI_BOOTSTRAP_KEYS)[number];
 
 export type SettingsUiSettingsPatch = {
   settings: Partial<Record<SettingsUiBootstrapKey, unknown>>;

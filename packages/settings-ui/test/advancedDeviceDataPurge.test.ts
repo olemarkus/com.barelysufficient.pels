@@ -7,7 +7,7 @@ import {
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
-} from '../../contracts/src/settingsKeys.ts';
+} from '../../shared-domain/src/settings/settingsKeys.ts';
 import { createHomeyMock } from './helpers/homeyApiMock.ts';
 
 const DEVICE_ID = 'heater-1';

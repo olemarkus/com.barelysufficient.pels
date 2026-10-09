@@ -7,7 +7,7 @@ import {
   reloadPriceOptimizationSettings,
   writePriceOptimizationSettings,
 } from '../src/ui/priceConfigSettingsIo.ts';
-import { PRICE_OPTIMIZATION_SETTINGS } from '../../contracts/src/settingsKeys.ts';
+import { PRICE_OPTIMIZATION_SETTINGS } from '../../shared-domain/src/settings/settingsKeys.ts';
 
 /* -------------------------------------------------------------------------- *
  * Every page write of `price_optimization_settings` stores the page's whole

@@ -1,7 +1,9 @@
 'use strict';
 
-// Node-executed scripts cannot import the TypeScript contract module directly.
-// Keep this JS-safe copy in sync with packages/contracts/src/settingsUiApi.ts.
+// Node-executed scripts cannot import the TypeScript module directly (Node 22.17,
+// the oldest supported, needs a flag to strip types). Keep this JS-safe copy in
+// sync with packages/shared-domain/src/settings/settingsUiBootstrapKeys.ts;
+// test/unit/settingsUiScripts.test.ts fails when they differ.
 const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'capacity_enabled',
   'grid_import_enabled',

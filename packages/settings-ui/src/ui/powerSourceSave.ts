@@ -5,7 +5,7 @@ import {
   getSetting,
   getSettingFresh,
 } from './homey.ts';
-import { POWER_SOURCE } from '../../../contracts/src/settingsKeys.ts';
+import { POWER_SOURCE } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   SETTINGS_UI_HOMES_SAVE_PATH,
   type SettingsUiHomesSaveRefusal,

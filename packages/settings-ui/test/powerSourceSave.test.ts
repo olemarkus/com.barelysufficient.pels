@@ -18,7 +18,7 @@ import {
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
   POWER_SOURCE,
-} from '../../contracts/src/settingsKeys';
+} from '../../shared-domain/src/settings/settingsKeys';
 
 const POWER_SOURCE_DOM = [
   '<md-filled-text-field id="settings-capacity-limit"></md-filled-text-field>',

@@ -1,6 +1,6 @@
 import { registerAllowSmartTaskRescueCard } from '../../flowCards/smartTaskRescueCard';
 import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives';
-import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/objectives/deferredObjectives/objectiveStore';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 

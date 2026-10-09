@@ -7,7 +7,7 @@ import {
   vi,
 } from 'vitest';
 import { SETTINGS_UI_HOMES_SAVE_PATH } from '../../contracts/src/settingsUiHomes.ts';
-import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../../contracts/src/settingsKeys.ts';
+import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../../shared-domain/src/settings/settingsKeys.ts';
 
 type Deferred<T> = {
   promise: Promise<T>;

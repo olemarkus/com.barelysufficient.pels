@@ -1,6 +1,6 @@
 import { deviceDetailBudgetExempt } from '../dom.ts';
 import { state } from '../state.ts';
-import { BUDGET_EXEMPT_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
+import { BUDGET_EXEMPT_DEVICES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 

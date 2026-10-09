@@ -11,7 +11,7 @@ import {
   MIN_DAILY_BUDGET_KWH,
   PRICE_SHAPING_FLEX_SHARE,
   UNMANAGED_RESERVE_MODE,
-} from '../../../contracts/src/dailyBudgetConstants.ts';
+} from '../../../shared-domain/src/settings/dailyBudgetConstants.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
@@ -26,7 +26,6 @@ import {
   SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_HUB_MARKET_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
-  SETTINGS_UI_BOOTSTRAP_KEYS,
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_REFRESH_DEVICES_PATH,
@@ -42,6 +41,7 @@ import {
   SETTINGS_UI_SMART_TASK_UPDATE_PATH,
   SETTINGS_UI_SMART_TASK_CANCEL_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../../shared-domain/src/settings/settingsUiBootstrapKeys.ts';
 import { SETTINGS_UI_HOMES_PATH, SETTINGS_UI_HOMES_SAVE_PATH } from '../../../contracts/src/settingsUiHomes.ts';
 import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
@@ -52,7 +52,7 @@ import {
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   HOMEY_ENERGY_METER_DEVICE_ID,
   POWER_SOURCE,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import type { HomeySettingsClient } from '../../src/ui/homey.ts';
 import { uiDeviceFixture } from './deviceStatusFixture.ts';
 

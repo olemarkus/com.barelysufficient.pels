@@ -2,7 +2,7 @@ import type {
   DeviceExpectedPowerOverrides,
   ExpectedPowerOverride,
 } from '../../../../contracts/src/types.ts';
-import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../../../contracts/src/settingsKeys.ts';
+import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { expectedPowerSourceLine } from '../../../../shared-domain/src/expectedPowerCopy.ts';
 import { isSteppedLoadProfileActive } from '../deviceControlProfiles.ts';
 import { supportsPowerDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';

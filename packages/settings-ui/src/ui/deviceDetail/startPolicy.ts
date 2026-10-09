@@ -1,5 +1,5 @@
 import { state, hasActiveDeadlineObjective } from '../state.ts';
-import { DEVICE_START_POLICIES } from '../../../../contracts/src/settingsKeys.ts';
+import { DEVICE_START_POLICIES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   isDeviceStartPolicyMap,
   resolveDeviceStartPolicy,

@@ -23,7 +23,7 @@ import {
   MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
   homeScopedSettingsKey,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { showToast, showToastError } from './toast.ts';
 import { isHomeBatteryDeviceId, resolveManagedState, state } from './state.ts';
 import { renderPriorityBatteryNote } from './deviceDetail/batterySection.ts';

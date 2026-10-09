@@ -190,10 +190,10 @@ module.exports = {
         + 'drivers/**, packages/shared-domain/**) crashes the app at '
         + 'boot with MODULE_NOT_FOUND (prod outage 2026-06-12, suggestDailyBudget.ts -> '
         + 'dailyBudgetConstants). tsPreCompilationDeps is unset, so this cruise sees only '
-        + 'post-compilation (value) imports - `import type` stays legal and erased. Values '
-        + 'needed at runtime live in duplicated runtime-safe copies (lib/dailyBudget/'
-        + 'dailyBudgetConstants.ts, lib/utils/settingsUiBootstrapKeys.ts, shared-domain '
-        + 'locals); the duplication is the sanctioned price of the packaging boundary. '
+        + 'post-compilation (value) imports - `import type` stays legal and erased. A value '
+        + 'both the runtime and the settings UI need lives in packages/shared-domain, which '
+        + 'ships (e.g. shared-domain/src/settings/settingsKeys.ts, dailyBudgetConstants.ts, '
+        + 'settingsUiBootstrapKeys.ts), and the contract imports its type from there. '
         + 'settings-ui and widgets/** are exempt: esbuild bundles them (scripts/build-widgets.mjs '
         + 'emits the committed widgets/*/api.js), so their imports are inlined.',
       severity: 'error',

@@ -8,7 +8,7 @@ import {
   type SettingsUiPowerPayload,
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { callApi, getApiReadModel } from './homey.ts';
 import { getHomeScope, readHomeMembership } from './homeScope.ts';
 import { setPlanUnmeasured } from './planMeasurementSignal.ts';

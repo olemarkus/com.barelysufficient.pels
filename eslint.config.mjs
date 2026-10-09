@@ -156,8 +156,8 @@ const CONTRACTS_VALUE_IMPORT_FORBID_PATTERN = {
   group: ['**/packages/contracts/**', '**/contracts/src/**', '@pels/contracts', '@pels/contracts/**'],
   allowTypeImports: true,
   message: 'packages/contracts does not exist in the packaged app (sanitize deletes it): a value '
-    + 'import here crashes the app at boot. Use `import type`, or a runtime-safe duplicate '
-    + '(lib/dailyBudget/dailyBudgetConstants.ts, lib/utils/settingsUiBootstrapKeys.ts pattern).',
+    + 'import here crashes the app at boot. Use `import type`, or put a value both sides need '
+    + 'in packages/shared-domain (shared-domain/src/settings/settingsKeys.ts pattern).',
 };
 
 const HOMEY_SDK_FORBID_PATH = {
