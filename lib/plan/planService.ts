@@ -163,6 +163,8 @@ export class PlanService {
   private changeTracker: PlanChangeTracker;
   private readonly rebuildHost: PlanRebuildHost;
   private readonly queuedLiveSyncs = new Map<PendingTargetObservationSource, Promise<boolean>>();
+  /** The plan input of the build in progress, held for reads made from inside it; `null` between builds. */
+  private buildDevices: readonly PlanInputDevice[] | null = null;
 
   constructor(private deps: PlanServiceDeps) {
     this.idleClassifier = createIdleClassifier({
@@ -194,7 +196,17 @@ export class PlanService {
       stampPlanGeneratedAt: (plan, nowMs) => this.stampPlanGeneratedAt(plan, nowMs),
       preservePlanGeneratedAt: (plan, basePlan) => this.preservePlanGeneratedAt(plan, basePlan),
       emitPlanUpdated: (plan) => this.emitPlanUpdated(plan),
+      buildOver: (devices, build) => this.buildOver(devices, build),
     };
+  }
+
+  private async buildOver(devices: readonly PlanInputDevice[], build: () => Promise<DevicePlan>): Promise<DevicePlan> {
+    this.buildDevices = devices;
+    try {
+      return await build();
+    } finally {
+      this.buildDevices = null;
+    }
   }
 
   buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -224,9 +236,19 @@ export class PlanService {
     return resolveTaskDeliveryControl(device, execution);
   }
 
-  /** Validate observer completion evidence against current accepted observations without rebuilding. */
+  /**
+   * Validate observer completion evidence against current accepted observations without rebuilding.
+   *
+   * A build asks this once per active temperature smart task, from inside its
+   * decoration. It then reads the devices that build is deciding on: projecting
+   * the whole home again per task would repeat the build's own input work for
+   * one device each time. Any other caller while a build is in flight (the
+   * lifecycle clock, the smart-task API) reads that same list, at most one build
+   * old; outside a build it projects the current input.
+   */
   getStallEvidence(deviceId: string): StallEvidence | undefined {
-    const current = this.deps.getPlanDevices().find((device) => device.id === deviceId);
+    const devices = this.buildDevices ?? this.deps.getPlanDevices();
+    const current = devices.find((device) => device.id === deviceId);
     const decision = this.getLatestPlanSnapshot()?.devices.find((device) => device.id === deviceId);
     const temperature = this.deps.getObservedTemperature(deviceId);
     if (!current || !isMeteredPlanDevice(current) || !decision || !current.available
