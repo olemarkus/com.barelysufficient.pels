@@ -1944,7 +1944,11 @@ describe('Device plan snapshot', () => {
     await app['powerSamplePipeline'].recordPowerSample(5000);
     await flushPromises();
 
-    expect(rebuildSpy).toHaveBeenCalledTimes(2);
+    // Both samples were decided. Boot can still land a settings rebuild in
+    // this window (the mode catalog persists missing ranks once membership
+    // settles), which says nothing about the samples, so count only theirs.
+    const sampleRebuilds = rebuildSpy.mock.calls.filter(([reason]) => reason !== 'settings');
+    expect(sampleRebuilds).toHaveLength(2);
     expect(putSpy).toHaveBeenCalledTimes(1);
   });
 
