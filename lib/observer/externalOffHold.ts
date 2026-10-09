@@ -231,13 +231,16 @@ export const createExternalOffHoldPolicy = (
     const keyList = readSettingsKeyList(store);
     const wasHeld = keyList.status === 'resolved'
       && keyList.keys.includes(perDeviceKey(deviceId));
+    // The observed-ON sweep calls this every plan cycle for every device it sees
+    // on, and almost none of them is held. A key list that resolved without the
+    // key is a clean answer that there is nothing to clear, so no write is spent.
+    if (keyList.status === 'resolved' && !wasHeld) return false;
     try {
-      // Unconditional and idempotent: unsetting a key that is not there costs
-      // nothing and cannot touch another device, so there is no read to get
-      // right first and no pending-write state to carry. A throw leaves the key
-      // in place; the observed-ON sweep calls this every plan cycle for every
-      // device it sees on, so the retry is the ordinary path rather than
-      // machinery this module has to own.
+      // Idempotent: unsetting a key cannot touch another device, so an
+      // unreadable key list is no reason to hold back. The unset lands either
+      // way, and there is no pending-write state to carry. A throw leaves the
+      // key in place; the next sweep retries, so the retry is the ordinary path
+      // rather than machinery this module has to own.
       store.unset(perDeviceKey(deviceId));
     } catch {
       return false;
