@@ -32,6 +32,7 @@ import {
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { getHourStartInTimeZone } from '../../lib/utils/hourBuckets';
 import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { DEFAULT_SURPLUS_LIFT_C } from '../../packages/shared-domain/src/settings/priceOptimization';
 
 // Mock the https module
 vi.mock('https', () => ({
@@ -1873,13 +1874,13 @@ describe('Price optimization', () => {
         ...settings['water-heater-1'],
         priceConfigured: true,
         surplusWilling: false,
-        surplusDelta: 0,
+        surplusDelta: DEFAULT_SURPLUS_LIFT_C,
       },
       'water-heater-2': {
         ...settings['water-heater-2'],
         priceConfigured: true,
         surplusWilling: false,
-        surplusDelta: 0,
+        surplusDelta: DEFAULT_SURPLUS_LIFT_C,
       },
     });
   });
@@ -1920,7 +1921,7 @@ describe('Price optimization', () => {
         ...newSettings['water-heater-1'],
         priceConfigured: true,
         surplusWilling: false,
-        surplusDelta: 0,
+        surplusDelta: DEFAULT_SURPLUS_LIFT_C,
       },
     });
   });

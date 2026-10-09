@@ -7,6 +7,7 @@ import {
 } from '../utils/settingsKeys';
 import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
 import {
+  DEFAULT_SURPLUS_LIFT_C,
   encodePriceAdjustment,
   resolvePriceConfigured,
   type PriceAdjustmentKind,
@@ -84,7 +85,7 @@ const classifyDeviceSetting = (value: unknown): PriceOptimizationDeviceSettingRe
       expensiveDelta: value.expensiveDelta,
       priceConfigured: resolvePriceConfigured(value.enabled, storedPriceConfigured),
       surplusWilling: value.surplusWilling === true,
-      surplusDelta: typeof value.surplusDelta === 'number' ? value.surplusDelta : 0,
+      surplusDelta: typeof value.surplusDelta === 'number' ? value.surplusDelta : DEFAULT_SURPLUS_LIFT_C,
     },
   };
 };

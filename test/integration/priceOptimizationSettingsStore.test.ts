@@ -6,6 +6,7 @@ import {
   PRICE_THRESHOLD_PERCENT,
 } from '../../lib/utils/settingsKeys';
 import { MockSettings } from '../mocks/homey';
+import { DEFAULT_SURPLUS_LIFT_C } from '../../packages/shared-domain/src/settings/priceOptimization';
 
 describe('createPriceOptimizationSettingsStore setup read', () => {
   it('names a malformed operational device-settings read as unavailable', () => {
@@ -32,7 +33,8 @@ describe('createPriceOptimizationSettingsStore setup read', () => {
           expensiveDelta: -5,
           priceConfigured: true,
           surplusWilling: false,
-          surplusDelta: 0,
+          // The same lift the settings UI shows for an entry that stores none.
+          surplusDelta: DEFAULT_SURPLUS_LIFT_C,
         },
       },
     });

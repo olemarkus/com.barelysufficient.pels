@@ -7,6 +7,13 @@ export const resolvePriceConfigured = (enabled: boolean, storedValue: boolean): 
   enabled || storedValue !== false
 );
 
+/**
+ * The solar-surplus lift, in °C, for an entry that stores none. The settings UI
+ * offers it as the starting value and the runtime applies it, so an entry with
+ * no stored lift reads the same on both sides.
+ */
+export const DEFAULT_SURPLUS_LIFT_C = 2;
+
 /** The largest Cheap-hour boost or Expensive-hour reduction any editor accepts, in °C. */
 export const MAX_PRICE_ADJUSTMENT_C = 20;
 
