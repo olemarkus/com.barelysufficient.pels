@@ -95,7 +95,6 @@ export const EXPORT_PRICE_SOURCE = 'export_price_source';
 export const EXPORT_PRICE_ENABLED = 'export_price_enabled';
 export const EXPORT_SPOT_FACTOR = 'export_spot_factor';
 export const EXPORT_FIXED = 'export_fixed';
-export const POWER_CALIBRATION = 'power_calibration';
 // Mirror of WEATHER_ADVISOR_SETTINGS in lib/utils/settingsKeys.ts — keep both
 // in sync (the settings UI can't import lib).
 export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
