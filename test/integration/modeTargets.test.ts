@@ -136,4 +136,35 @@ describe('Mode device targets', () => {
 
     expect(heater.getSetCapabilityValue('target_temperature')).toBe(65);
   });
+
+  it('fills a missing target once per process, so a user-clear survives later refreshes', async () => {
+    // The fill pass remembers what it filled on its instance, so the app must
+    // hold ONE: an instance per refresh would forget the fill and put a cleared
+    // entry straight back.
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_temperature', 'measure_power']);
+    await heater.setCapabilityValue('measure_power', 1000);
+    await heater.setCapabilityValue('measure_temperature', 20);
+    await heater.setCapabilityValue('target_temperature', 21);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: {}, Away: {} });
+
+    const app = createApp();
+    await app.onInit();
+    await app.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
+
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({
+      Home: { 'dev-1': 21 },
+      Away: { 'dev-1': 21 },
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: {}, Away: { 'dev-1': 21 } });
+    await app.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
+
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({ Home: {}, Away: { 'dev-1': 21 } });
+  });
 });

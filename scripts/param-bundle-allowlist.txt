@@ -318,7 +318,7 @@ packages/shared-domain/src/utils/airtreatmentShedTemperature.ts 1
 packages/shared-domain/src/utils/dateUtils.ts 1
 packages/shared-domain/src/weatherInsightCopy.ts 7
 setup/appDebugHelpers.ts 2
-setup/appDeviceSupport.ts 2
+setup/appDeviceSupport.ts 1
 setup/appInit/appHomeMembershipOptions.ts 1
 setup/appInit/buildDeviceParseProviders.ts 1
 setup/appInit/planEngineWiring.ts 1

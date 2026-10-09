@@ -54,7 +54,7 @@ import type {
   HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPriceSourcePayloads,
 } from './packages/contracts/src/settingsUiApi';
 import {
-  createModeTargetPersistence,
+  createModeDeviceTargetFill,
   createTemperatureShedFloorDefaults,
 } from './setup/appInit/createSnapshotSettingsPasses';
 import * as homeMode from './setup/homeRuntime/homeOperatingMode';
@@ -456,7 +456,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     seedTemperatureShedFloorDefaults: (snapshot, operatingModeResolver) => (
       createTemperatureShedFloorDefaults(this.ctx, this.homeModeCatalog)(snapshot, operatingModeResolver)
     ),
-    persistFilledModeTargets: () => createModeTargetPersistence(this.ctx)(),
+    persistFilledModeTargets: () => this.modeDeviceTargetFill.persist(),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
     emitFlowBackedRefreshRequests: async (deviceIds) => this.emitFlowBackedRefreshRequests(deviceIds),
     emitSettingsUiDevicesUpdated: () => this.emitSettingsUiDevicesUpdated(),
@@ -534,6 +534,11 @@ class PelsApp extends PelsAppBase implements AppContext {
     (deviceIds) => this.homeModeCatalog.getPrioritiesForDevices(deviceIds),
   );
   protected readonly smartTaskPayloads = new AppSmartTaskPayloads(this.ctx);
+  // The snapshot refresh's mode-target fill pass, built once so the entries it
+  // already filled are remembered for the life of the process. Declared after
+  // `ctx`, which it reads at construction; the snapshot helpers above only call
+  // it once the app is running.
+  private readonly modeDeviceTargetFill = createModeDeviceTargetFill(this.ctx);
   // Boot/teardown orchestration + per-service construction. Public lifecycle
   // and init delegators live on AppRuntimeApi; AppServiceWiring routes through
   // this instance so integration-test method overrides remain observable.

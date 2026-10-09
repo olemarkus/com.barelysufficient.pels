@@ -22,7 +22,6 @@ setup/powerSamplePipeline.ts 1
 
 # --- Device/snapshot lane (→ lib/device) -----------------------------------
 setup/appSnapshotHelpers.ts 2
-setup/appDeviceSupport.ts 1
 
 # --- Home lane (→ lib/home) -----------------------------------------------
 # The membership service and Main-meter authority now live in lib/home.

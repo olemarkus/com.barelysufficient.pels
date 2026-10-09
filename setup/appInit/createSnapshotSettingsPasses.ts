@@ -9,10 +9,11 @@
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
+import { ModeDeviceTargetFill } from '../../lib/home/modeDeviceTargetFill';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   seedTemperatureShedFloorDefaults,
-  persistFilledModeTargets,
+  listModeTargetFillDevices,
   type ResolveOperatingModeForDevice,
 } from '../appDeviceSupport';
 import { resolveHomeIdForModeCatalogSeed, resolveOperatingModeForDevice } from '../homeRuntime/homeOperatingMode';
@@ -31,18 +32,22 @@ export const createTemperatureShedFloorDefaults = (ctx: AppContext, homeModeCata
   debugStructured: ctx.getStructuredDebugEmitter('devices', 'devices'),
 });
 
-export const createModeTargetPersistence = (
-  ctx: AppContext,
-): (() => void) => () => persistFilledModeTargets({
+/**
+ * The app's one mode-target fill pass. Construct it once: what it already filled
+ * lives on the instance, and a second instance would forget it.
+ */
+export const createModeDeviceTargetFill = (ctx: AppContext): ModeDeviceTargetFill => new ModeDeviceTargetFill(
+  ctx.homey.settings,
   // This settings pass needs the same runtime configuration and observer values
   // used by planning; inventory metadata stays on DeviceReads.
-  devices: ctx.getPlanInputSnapshot().map((device) => toPlanDevice(
-    ctx,
-    device,
-    createDefaultToPlanDeviceOptions(),
-  )),
-  settings: ctx.homey.settings,
-  resolveHomeIdForDevice: (deviceId) => resolveHomeIdForModeCatalogSeed(ctx, deviceId),
-  structuredLog: (event) => ctx.getStructuredLogger('devices')?.info(event),
-  debugStructured: ctx.getStructuredDebugEmitter('devices', 'devices'),
-});
+  () => listModeTargetFillDevices(
+    ctx.getPlanInputSnapshot().map((device) => toPlanDevice(
+      ctx,
+      device,
+      createDefaultToPlanDeviceOptions(),
+    )),
+    ctx.homey.settings,
+  ),
+  (deviceId) => resolveHomeIdForModeCatalogSeed(ctx, deviceId),
+  (event) => ctx.getStructuredLogger('devices')?.info(event),
+);

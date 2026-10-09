@@ -1537,11 +1537,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the change would re-learn are the owner's. Done when a profile persist touches one row and
       `meta` names the layout. Found in the store design audit, 2026-09-07. [P2]
 
-- [ ] **Six setup files still hold runtime state, above the boundaries `arch:check` enforces.**
+- [ ] **Three setup files still hold runtime state, above the boundaries `arch:check` enforces.**
       `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
-      by `scripts/check-setup-stateless.mjs`. Six files predate the rule and sit in
-      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (33
-      declarations; 21 files / 104 at the guard's introduction). **Two of the six files will never
+      by `scripts/check-setup-stateless.mjs`. Three files predate the rule and sit in
+      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (10
+      declarations; 21 files / 104 at the guard's introduction). **Two of the three files will never
       move** — `powerSamplePipeline.ts` and `appSnapshotHelpers.ts` are orchestrators whose imports
       close every domain destination. Their STATE can still move, so this entry's done-condition
       stands: `powerSamplePipeline.ts`'s state move is tracked as `` `schedulePlanRebuild` is still
@@ -1559,9 +1559,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       over the request ``);
       (b) solar — DONE;
       (c) device — `targetPowerProbeScheduler.ts` and `appFlowBacked.ts` are DONE (`lib/device/`).
-      `appDeviceSupport.ts` still holds a module-level `Set` and imports
-      `lib/plan/planTemperatureDevice`, which `no-device-to-peer-except-power` forbids, so that type
-      guard has to be resolved before it can follow. `appNativeWiring.ts` has its own entry,
+      `appDeviceSupport.ts` is DONE: its module-level `Set` was the mode-target fill's record of
+      what it filled, which now lives on the one `ModeDeviceTargetFill` the app builds
+      (`lib/home/modeDeviceTargetFill.ts`). `appNativeWiring.ts` has its own entry,
       `` `setup/appNativeWiring.ts` still owns conflict-apply logic above its domains ``,
       while `appSnapshotHelpers.ts` has none — its state move is part of this umbrella and is not
       tracked separately;
