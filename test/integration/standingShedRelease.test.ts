@@ -14,7 +14,6 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { inputDevice } from '../utils/planConvergenceFixtures';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection';
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
@@ -26,6 +25,7 @@ import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 /**
  * The shed PELS undoes when it loses its authority, driven through real plan
@@ -57,26 +57,13 @@ const makeHarness = (shedBehavior: ShedBehavior = { action: 'turn_off' }): Harne
   let limitKw = 50;
   let decorate: ((devices: PlanInputDevice[]) => DeferredDecorationBundle) | null = null;
   const builder = new PlanBuilder({
-    leaveOffOnRelease: () => 'released',
-    getInferredSurplusKw: () => 0,
-    getCapacityDryRun: () => false,
+    ...planBuilderWiring(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
-    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getPriceOptimizationSettings: () => ({}),
-      getShedBehavior: () => shedBehavior,
-    }),
-    getPriceOptimizationSettings: () => ({}),
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getShedBehavior: () => shedBehavior }),
     getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: totalW }),
-    getDailyBudgetSnapshot: () => null,
     getShedBehavior: () => shedBehavior,
     getDynamicSoftLimitOverride: () => limitKw,
-    log: vi.fn(),
     // One record of PELS's in-flight writes, as in production: the builder and
     // the executor's release lane read the same one.
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),

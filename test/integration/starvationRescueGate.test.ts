@@ -20,15 +20,12 @@ import {
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveRescuePermissions,
 } from '../../lib/objectives/deferredObjectives';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 const LATCHED_TOTAL_W = 1.5 * 1000;
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
 
 // GATE TRACE (PR3 step 0): prove that a smart task carrying `rescue.exemptFromBudget`
 // on a CAP-ON (controllable=true), daily-budget-starved temperature device actually
@@ -217,28 +214,13 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getDeliveredEnergyKWh: noDeliveredEnergy,
   });
   return new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+    ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
-    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => true,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getPriceOptimizationSettings: () => ({}),
-      getShedBehavior: () => ({ action: 'turn_off' }),
-    }),
-    getPriceOptimizationSettings: () => ({}),
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationEnabled: () => true }),
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-    log: vi.fn(),
-    pendingBinaryCommandStore: emptyPendingStore,
-    getDynamicSoftLimitOverride: () => null,
   }, createPlanEngineState());
 };
 

@@ -1,12 +1,10 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { buildIdentityDecorationBundle } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 const buildDevice = (id: string, priority: number): PlanInputDevice => withBinaryDiscriminant({
   ...buildPlanInputDevice({
@@ -36,23 +34,10 @@ describe('PlanBuilder relative priority constraint', () => {
     lastPowerW = (0) * 1000;
     const decoratedPriorities: Record<string, number | undefined> = {};
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+      ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-      getDailyBudgetSnapshot: () => null,
       // The live dependency is intentionally stale: every consumer in this
       // cycle must use the relative ranks snapshotted on the input devices.
       getShedBehavior: () => ({ action: 'turn_off' }),
@@ -60,9 +45,6 @@ describe('PlanBuilder relative priority constraint', () => {
         for (const device of input.devices) decoratedPriorities[device.id] = device.priority;
         return buildIdentityDecorationBundle(input.devices);
       },
-      log: vi.fn(),
-      pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
-      getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([

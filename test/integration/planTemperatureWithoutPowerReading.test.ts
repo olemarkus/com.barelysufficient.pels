@@ -1,13 +1,11 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 /**
  * A temperature device with no power reading goes through the temperature logic
@@ -39,27 +37,18 @@ describe('temperature device without a power reading', () => {
   type ShedBehavior = { action: 'turn_off' } | { action: 'set_temperature'; temperature: number };
 
   const buildBuilder = (shedBehavior: ShedBehavior = { action: 'turn_off' }): PlanBuilder => new PlanBuilder({
-    leaveOffOnRelease: () => 'released',
-    getInferredSurplusKw: () => 0,
-    getCapacityDryRun: () => false,
-    setCapacityInShortfall: vi.fn(),
+    ...planBuilderWiring(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getModeDeviceTargets: () => MODE_TARGETS,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getShedBehavior: () => shedBehavior,
     }),
-    getPriceOptimizationSettings: () => ({}),
     getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 5400 }),
-    getDailyBudgetSnapshot: () => null,
     // Far under what the house draws: a real deficit, so the power-limiting
     // logic runs and chooses what to limit.
     getDynamicSoftLimitOverride: () => 1.84,
     getShedBehavior: () => shedBehavior,
-    log: vi.fn(),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
-    decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, createPlanEngineState());
 
   const heaterFields = {
