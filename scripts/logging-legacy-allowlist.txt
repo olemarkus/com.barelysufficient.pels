@@ -55,7 +55,6 @@ lib/plan/admission/headroomReserve.ts 1
 lib/plan/admission/surplusAbsorb.ts 1
 lib/plan/planBoost.ts 1
 lib/plan/planBuilderSilentMeter.ts 1
-lib/plan/planChangeTracker.ts 1
 lib/plan/planServiceRebuild.ts 1
 lib/plan/rebuildScheduler/telemetryObserver.ts 1
 

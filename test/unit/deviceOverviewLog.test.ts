@@ -12,12 +12,13 @@ import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildOverviewSteppedLoad } from '../../lib/plan/planOverviewSteppedState';
 import type { SettingsUiDeviceLogEntry } from '../../packages/contracts/src/settingsUiApi';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
-import { buildOverviewDeviceCard } from '../utils/settingsOverviewFixture';
+import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 
 // The log seam receives the same resolved presentation as the UI.
 // Keep the decision anchor and display clock fixed; these tests do not advance time.
 const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => buildOverviewDeviceCard(device, {
+  ...overviewReadModelWiring(),
   getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: 0,
   getObservedTemperature: () => ({ kind: 'absent' }),
   getObservedStateOfCharge: () => ({ kind: 'absent' }),

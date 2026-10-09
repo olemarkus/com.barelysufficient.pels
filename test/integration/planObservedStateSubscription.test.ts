@@ -129,7 +129,7 @@ describe('subscribePlanObservedState', () => {
     expect(deps.invalidateRebuildSuppression).toHaveBeenCalledWith('charger-1');
   });
 
-  // If this step is ever moved back before `initPlanService`, boot-time
+  // If this step is ever moved back before `initPlanRuntime`, boot-time
   // observations fail loudly here instead of silently losing their sync.
   it('asserts when an observation arrives before the plan service is wired', () => {
     const deps = buildDeps(undefined);

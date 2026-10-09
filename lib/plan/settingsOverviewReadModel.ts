@@ -38,13 +38,13 @@ export type SettingsOverviewReadModelDeps = {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
   dryRun: boolean;
   nowMs: number;
-  getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
-  getIdleClassification?: (deviceId: string) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
+  getOverviewStarvation: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
+  getIdleClassification: (deviceId: string) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
   // EV charging state is observed state — the observer is its canonical source
   // (`ObservedDeviceState.evChargingState`), not the planner. The read model
   // uses it to resolve presentation; the raw string never reaches the UI.
   getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
-  getAssociatedCarChargingState?: (deviceId: string) => EvChargingState | undefined;
+  getAssociatedCarChargingState: (deviceId: string) => EvChargingState | undefined;
   // The device's battery level, for the charger card. Observer-owned like the
   // plug-state above: the plan device carries the boost DECISION, never the
   // reading it was made from.
@@ -57,7 +57,7 @@ export type SettingsOverviewReadModelDeps = {
   // built-once map sourced from the raw, undecorated snapshot so there is no
   // re-decoration side effect. Stepped-ness is NOT resolved from a map: it is
   // the plan device's own ladder (`buildOverviewSteppedLoad`).
-  getSteppedLoadProfileById?: () => Map<string, SteppedLoadProfile>;
+  getSteppedLoadProfileById: () => Map<string, SteppedLoadProfile>;
 };
 
 function resolveFiniteKWh(value: number | undefined): number | undefined {
@@ -230,8 +230,8 @@ function buildLoadOverviewDevice(
   // was demoted to a generic card.
   const execution = deps.getDeviceExecutionState(device.id);
   const steppedLoad = buildOverviewSteppedLoad(device, execution, confirmedSteppedLoadProfile);
-  const starvation = deps.getOverviewStarvation?.(device.id) ?? undefined;
-  const idleClassification = deps.getIdleClassification?.(device.id);
+  const starvation = deps.getOverviewStarvation(device.id) ?? undefined;
+  const idleClassification = deps.getIdleClassification(device.id);
   const stateOfCharge = resolveOverviewStateOfCharge(device.id, deps);
   const overviewShape = {
     ...device,
@@ -246,7 +246,7 @@ function buildLoadOverviewDevice(
     execution, starvation, idleClassification, stateOfCharge,
     binaryControllable: isBinaryPlanDevice(device),
     evChargingState: resolveOverviewEvChargingState(device.id, deps),
-    carChargingState: deps.getAssociatedCarChargingState?.(device.id),
+    carChargingState: deps.getAssociatedCarChargingState(device.id),
   };
   const presentation = buildDeviceStatus(overviewShape, deps.dryRun, reasonAnchorMs);
   const status = presentation.reason?.countdown ? { ...presentation, reason: { ...presentation.reason,
@@ -273,7 +273,7 @@ export function buildSettingsOverviewReadModel(
 ): SettingsUiPlanSnapshot | null {
   if (!plan) return null;
   // Built once per serialize (not per device) so the raw-snapshot scan stays O(n).
-  const steppedLoadProfileById = deps.getSteppedLoadProfileById?.() ?? new Map<string, SteppedLoadProfile>();
+  const steppedLoadProfileById = deps.getSteppedLoadProfileById();
   return {
     generatedAtMs: plan.generatedAtMs,
     meta: buildSettingsOverviewMetaReadModel(plan.meta),

@@ -65,6 +65,6 @@ export const runBootMigrations = (params: BootMigrationsParams): void => {
   // `migrateBlobToPerKeyIfNeeded`). Idempotent: a no-op once the marker is set.
   // Must run BEFORE the deferred recorders load their configs (they read the
   // per-device keys), which holds: this runs in `runStartupSettingsMigrations`,
-  // ahead of `initPlanEngine`.
+  // ahead of `initPlanRuntime`.
   migrateBlobToPerKeyIfNeeded(homey.settings);
 };

@@ -94,7 +94,7 @@ export async function performPlanRebuild(
       stopSpan();
       const rebuildLogLevel = getPlanRebuildLogLevel(trigger, durationMs, outcome);
       if (rebuildLogLevel) {
-        (host.deps.loggers?.structuredLog ?? logger)[rebuildLogLevel]({
+        (host.deps.loggers.structuredLog ?? logger)[rebuildLogLevel]({
           event: 'plan_rebuild_completed',
           durationMs,
           buildMs: outcome.buildMs,
@@ -139,7 +139,7 @@ async function executePlanRebuild(
   const hadShedding = hasShedding(stampedPlan);
 
   if (isDryRun && hadShedding) {
-    (host.deps.loggers?.structuredLog ?? logger).info({
+    (host.deps.loggers.structuredLog ?? logger).info({
       event: 'shedding_dry_run_skipped',
       message: 'Dry run: shedding planned but not executed',
     });
@@ -331,11 +331,11 @@ async function maybeApplyPlanChanges(
     ({ deviceWriteCount, commandRequestCount, deviceApplyFailureCount, writtenDeviceIds } = actuation);
     appliedActions = deviceWriteCount > 0 || commandRequestCount > 0;
     if (appliedActions) {
-      host.deps.schedulePostActuationRefresh?.();
+      host.deps.schedulePostActuationRefresh();
     }
     refreshLatestPlanSnapshotPendingState(host);
   } catch (error) {
-    (host.deps.loggers?.structuredLog ?? logger).error({
+    (host.deps.loggers.structuredLog ?? logger).error({
       event: 'plan_actions_apply_failed',
       error: normalizeError(error),
     });

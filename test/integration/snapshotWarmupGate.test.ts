@@ -4,6 +4,7 @@ import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { createInitializedAppContextMock } from '../helpers/appContextTestHelpers';
 import { openPlanBuildGate } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { planServiceWiring } from '../helpers/planServiceWiring';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -186,6 +187,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -243,6 +245,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -290,6 +293,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
 
     const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
+      ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),

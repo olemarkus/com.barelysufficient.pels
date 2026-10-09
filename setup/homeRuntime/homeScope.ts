@@ -168,7 +168,7 @@ export type HomeScope = {
    * constructor, BEFORE `initDeviceDiagnosticsService` sets
    * `ctx.deviceDiagnosticsService`; a frozen value would strand the main engine
    * and service on `undefined` (no starvation, no plan-diagnostics observation).
-   * The engine/service read this at their own construction (`initPlanEngine`),
+   * The engine/service read this at their own construction (`initPlanRuntime`),
    * which runs AFTER diagnostics init, so the getter resolves the real recorder.
    */
   getDeviceDiagnostics: () => DeviceDiagnosticsService | undefined;

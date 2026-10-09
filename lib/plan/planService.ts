@@ -123,7 +123,7 @@ const buildOverviewPublication = (
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
     getObservedEvChargingState: deps.getObservedEvChargingState,
-    getAssociatedCarChargingState: (deviceId) => deps.getAssociatedCarChargingState?.(deviceId),
+    getAssociatedCarChargingState: deps.getAssociatedCarChargingState,
     getObservedStateOfCharge: deps.getObservedStateOfCharge,
     getObservedTemperature: deps.getObservedTemperature,
     getHomeBatteryCard: (deviceId) => readHomeBatteryCardForHome(deps.homeId, deps.getHomeBatteryCard, deviceId),
@@ -166,8 +166,8 @@ export class PlanService {
 
   constructor(private deps: PlanServiceDeps) {
     this.idleClassifier = createIdleClassifier({
-      structuredLog: deps.loggers?.structuredLog,
-      debugStructured: deps.loggers?.debugStructured,
+      structuredLog: deps.loggers.structuredLog,
+      debugStructured: deps.loggers.debugStructured,
     });
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
@@ -175,10 +175,10 @@ export class PlanService {
       getCurrentHourPriceLevel: deps.getCurrentHourPriceLevel,
       getLastPowerUpdate: deps.getLastPowerUpdate,
       getCapacityDryRun: deps.getCapacityDryRun,
-      structuredLog: deps.loggers?.structuredLog,
+      structuredLog: deps.loggers.structuredLog,
     });
     this.changeTracker = new PlanChangeTracker({
-      debugStructured: deps.loggers?.debugStructured,
+      debugStructured: deps.loggers.debugStructured,
       isPlanDebugEnabled: deps.isPlanDebugEnabled,
     });
     this.rebuildHost = {
@@ -247,9 +247,8 @@ export class PlanService {
   }
 
   // Recorded device-overview transitions for the settings-UI device-log view.
-  // Empty when no recorder is wired (e.g. tests that omit the dep).
   getDeviceLogUiPayload(): SettingsUiDeviceLogPayload {
-    return this.deps.deviceOverviewLogRecorder?.getUiPayload() ?? { version: 1, entriesByDeviceId: {} };
+    return this.deps.deviceOverviewLogRecorder.getUiPayload();
   }
 
   handleShortfall(deficitKw: number): Promise<void> {
@@ -440,7 +439,7 @@ export class PlanService {
     // does not block `enqueuePlanOperation` ordering and, once released,
     // subsequent rebuilds skip straight to the queue with no overhead.
     const gate = this.deps.snapshotWarmupGate;
-    if (gate && !gate.isReleased()) {
+    if (!gate.isReleased()) {
       const waitStart = Date.now();
       await gate.wait();
       addPerfDuration('plan_rebuild_warmup_wait_ms', Date.now() - waitStart);
@@ -507,7 +506,7 @@ export class PlanService {
       })
       .catch((error) => {
         this.withHomeLogContext(() => {
-          (this.deps.loggers?.structuredLog ?? logger).error({
+          (this.deps.loggers.structuredLog ?? logger).error({
             event: 'plan_operation_failed',
             message: errorMessage,
             error: normalizeError(error),
@@ -585,13 +584,13 @@ export class PlanService {
     // A sub-home capacity bundle (R7b) shares the single settings-UI
     // `plan_updated` channel with the main home; only the main plan drives it.
     // Areas invalidate their scoped read instead of replacing Main's payload.
-    const event = this.deps.emitsUiRealtime === false ? PLAN_STATUS_PUBLISHED_EVENT : 'plan_updated';
-    const payload = this.deps.emitsUiRealtime === false ? { homeId: this.deps.homeId } : snapshot;
+    const event = this.deps.emitsUiRealtime ? 'plan_updated' : PLAN_STATUS_PUBLISHED_EVENT;
+    const payload = this.deps.emitsUiRealtime ? snapshot : { homeId: this.deps.homeId };
     const api = this.deps.homey.api;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
       realtime.call(api, event, payload)
-        .catch((err: unknown) => (this.deps.loggers?.structuredLog ?? logger).error({
+        .catch((err: unknown) => (this.deps.loggers.structuredLog ?? logger).error({
           event: 'plan_updated_emit_failed',
           realtimeEvent: event,
           error: normalizeError(err),
