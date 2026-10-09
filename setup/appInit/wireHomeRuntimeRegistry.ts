@@ -16,6 +16,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
 import type { HomeRuntimeReadPort } from '../../lib/home/homeRuntimeRead';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
+import { createHomesStore } from '../../lib/home/homeRegistryStore';
 import { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import { createModeOwnershipTransfer } from '../homeRuntime/createModeOwnershipTransfer';
 import { emitPlanStatusPublishedForApp } from '../settingsUiAppRuntime';
@@ -32,6 +33,7 @@ export const createHomeRuntimeRegistryForApp = (
     mainModeCatalog: homeModeCatalog,
     isMembershipReady,
     isRuntimeActive,
+    homesStore: createHomesStore(ctx.homey.settings),
     modeOwnershipTransfer: createModeOwnershipTransfer(ctx, homeModeCatalog),
   });
   registry.reconcile();

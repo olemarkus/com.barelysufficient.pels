@@ -43,7 +43,6 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { isCapacityScalarSettingKey } from '../../lib/power/capacitySettingsStore';
 import type { PowerSource } from '../../lib/power/powerSource';
-import { createHomesStore } from '../../lib/home/homeRegistryStore';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { PowerSourceEpochFence } from '../../lib/power/powerSourceEpochFence';
 import {
@@ -84,8 +83,8 @@ export type HomeRuntimeRegistryDeps = {
   isMembershipReady: () => boolean;
   /** Producer-resolved GA activation posture from the membership service. */
   isRuntimeActive: () => boolean;
-  /** Store override for tests; defaults to the real settings-backed store. */
-  homesStore?: HomesStore;
+  /** The `homes_config` store, built by the caller like the transfer below. */
+  homesStore: HomesStore;
   /**
    * `lib/home`'s ownership transfer, built by the caller. Handed over rather
    * than constructed here so this class holds a reference to a component
@@ -96,7 +95,6 @@ export type HomeRuntimeRegistryDeps = {
 
 export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
   private readonly bundles = new Map<HomeId, HomeCapacityBundle>();
-  private readonly homesStore: HomesStore;
   // Source epochs are observed synchronously at the settings-event boundary,
   // before the serialized async handler runs. Authorization stays closed until
   // the latest observed generation has durably reset and replaced every bundle
@@ -114,7 +112,6 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
   private subHomesUnderFlowWarned = false;
 
   constructor(private readonly deps: HomeRuntimeRegistryDeps) {
-    this.homesStore = deps.homesStore ?? createHomesStore(deps.ctx.homey.settings);
     this.epoch = new PowerSourceEpochFence(() => this.tryReadConfiguredPowerSource());
     this.handledRuntimeActive = deps.isRuntimeActive();
   }
@@ -212,7 +209,7 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
       return false;
     }
 
-    const read = this.homesStore.read();
+    const read = this.deps.homesStore.read();
     // 'suspect' = persisted truth unknown → keep the current bundles running.
     if (read.state === 'suspect') {
       this.scheduleRecoveryRetry();

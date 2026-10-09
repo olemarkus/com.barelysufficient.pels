@@ -340,7 +340,7 @@ const renderUsageHistorySections = () => {
 // payload refresh into `activeDailyBudget.ts`, and on a value change this
 // repaints the daily-history chart from the cached stats so the mark line,
 // over-budget bar tinting, and readout budget context track the new budget
-// without refetching power stats. No-op until the first `renderPowerStats`
+// without refetching power stats. No-op until the first `renderPowerStatsFromRead`
 // has populated the cache — boot resolves the budget payload before the
 // first stats render, and that render reads the fresh value itself.
 setActiveDailyBudgetChangeListener(() => {
@@ -490,13 +490,12 @@ const applyUsageScopeReadState = (state: 'served' | 'unavailable'): void => {
  * (`refreshPowerData`'s run generation): checked after every await, before the
  * paints that follow it, so a read that settles late — superseded by a newer
  * refresh, typically a scope pick mid-flight — is dropped instead of painting
- * a stale home's figures over the newer run's. Every production caller routes
- * through `refreshPowerData` (boot and the stats reset included), so the
- * always-current default is a test-only convenience.
+ * a stale home's figures over the newer run's. Every caller routes through
+ * `refreshPowerData` (boot and the stats reset included).
  */
 export const renderPowerStatsFromRead = async (
   read: UsagePowerRead,
-  isCurrentRun: () => boolean = () => true,
+  isCurrentRun: () => boolean,
 ) => {
   try {
     // ONE discriminated read drives this render pass: the honest-state flip,
@@ -538,10 +537,6 @@ export const renderPowerStatsFromRead = async (
     if (isCurrentRun()) clearUsagePanelLoadingState();
   }
 };
-
-export const renderPowerStats = async (isCurrentRun: () => boolean = () => true) => (
-  renderPowerStatsFromRead(await readUsagePower(), isCurrentRun)
-);
 
 // Empty state for the selected week's hourly-detail chart (split out to keep
 // `renderPowerUsage` within the cognitive-complexity lint budget). The

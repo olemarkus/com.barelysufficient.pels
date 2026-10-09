@@ -118,6 +118,7 @@ const buildRig = (): Rig => {
       return membershipReady;
     },
     isRuntimeActive: () => runtimeActive,
+    homesStore: createRawHomesStore(ctx.homey.settings),
     modeOwnershipTransfer: createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
   });
   return {

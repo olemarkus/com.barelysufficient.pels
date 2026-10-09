@@ -16,7 +16,7 @@ import {
   SMART_TASK_EXTRA_PERMISSION_LABELS,
 } from '../../shared-domain/src/deadlineLabels.ts';
 import type { SmartTaskEditSnapshot } from '../src/ui/smartTaskEdit.ts';
-import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../test/utils/planHistoryFixtures.ts';
 
 const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
   kind: 'temperature',

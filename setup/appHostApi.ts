@@ -65,6 +65,7 @@ import {
   resolveDeviceManagedState,
 } from '../lib/device/deviceRoleReads';
 import type { HomeBatteryDevicesRead } from '../lib/ports/homeBatteryDevices';
+import { isManagedFilterActive } from './appDeviceSupport';
 import type { CapacityScalarSettings } from '../packages/contracts/src/capacitySettings';
 import type { PriceOptimizationSetupRead } from '../packages/contracts/src/priceOptimizationSettings';
 
@@ -249,12 +250,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     this.requireDeviceManager().setSnapshotForTests(snapshot);
   }
 
-  public parseDevicesForTests(
-    list: Parameters<DeviceTransportPort['parseDeviceListForTests']>[0],
-  ): TargetDeviceSnapshot[] {
-    return this.requireDeviceManager().parseDeviceListForTests(list);
-  }
-
   public async refreshTargetDevicesSnapshot(options: RefreshTargetDevicesSnapshotOptions = {}): Promise<void> {
     await this.context.snapshotHelpers.refreshTargetDevicesSnapshot(options);
   }
@@ -285,9 +280,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     this.context.managedDevices,
     deviceId,
   );
-  protected isManagedFilterActive = (): boolean => (
-    Object.values(this.context.managedDevices).some((value) => value === true)
-  );
+  protected isManagedFilterActive = (): boolean => isManagedFilterActive(this.context.managedDevices);
   protected getDeviceDriverIdOverride = (deviceId: string): string | undefined => {
     const override = this.context.deviceDriverOverrides[deviceId]?.trim();
     return override || undefined;

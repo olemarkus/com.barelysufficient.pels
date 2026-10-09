@@ -24,7 +24,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toPlanDevice } from '../../setup/appInit';
 import {
   createEmptyPowerCalibrationSnapshot,
-  POWER_CALIBRATION_CONSTANTS,
   recordSample,
 } from '../../lib/device/devicePowerCalibration';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
@@ -302,9 +301,5 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
       binaryControl: { on: false },
     })));
     expect(result.confirmedNotDrawing).toBe(false);
-  });
-
-  it('exposes the recent-draw window constant for diagnostics', () => {
-    expect(POWER_CALIBRATION_CONSTANTS.RECENT_DRAW_DEFAULT_MIN_KW).toBe(0.05);
   });
 });

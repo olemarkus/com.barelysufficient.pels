@@ -16,7 +16,6 @@ export const normalizeDeviceState = (value: string | undefined): string => (
 );
 
 const NON_ON_LIKE_STATES = ['off', 'unknown', 'not_applicable', 'disappeared'] as const;
-const OFF_LIKE_STATES = ['off', 'unknown'] as const;
 const GRAY_CURRENT_STATES = ['unknown', 'disappeared'] as const;
 
 export const isOnLikeState = (value: string | undefined): boolean => {
@@ -24,10 +23,6 @@ export const isOnLikeState = (value: string | undefined): boolean => {
   if (!normalized) return false;
   return !(NON_ON_LIKE_STATES as readonly string[]).includes(normalized);
 };
-
-export const isOffLikeState = (value: string | undefined): boolean => (
-  (OFF_LIKE_STATES as readonly string[]).includes(normalizeDeviceState(value))
-);
 
 export type GrayStateDeviceInput = {
   available?: boolean;

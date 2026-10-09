@@ -3,7 +3,7 @@ import { buildSettingsOverviewReadModel } from '../../lib/plan/settingsOverviewR
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
-import { buildSettingsOverviewDeviceReadModel } from '../../lib/plan/settingsOverviewReadModel';
+import { buildOverviewDeviceCard } from '../utils/settingsOverviewFixture';
 
 // The overview log and live-card seams share one atomic temperature resolver.
 // Pin that integration here: the shared-domain classifier reads the trio as one
@@ -97,7 +97,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       } as never,
     }, describeNoDecision);
 
-    expect(buildSettingsOverviewDeviceReadModel(updatedDevice, deps, 0).status.kind).toBe('idle');
+    expect(buildOverviewDeviceCard(updatedDevice, deps).status.kind).toBe('idle');
     expect(captured[0]?.stateKind).toBe('idle');
   });
 });

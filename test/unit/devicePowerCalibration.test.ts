@@ -7,7 +7,6 @@ import {
   mergeRecoveredCalibrationHistory,
   normalizePersistedPowerCalibration,
   toPersistedPowerCalibrationValue,
-  POWER_CALIBRATION_CONSTANTS,
   POWER_CALIBRATION_VERSION,
   pruneStale,
   recordSample,
@@ -459,16 +458,6 @@ describe('normalizePersistedPowerCalibration', () => {
     // Earlier builds read only `version: 1`, so the mark must not change it.
     expect(persisted.version).toBe(1);
     expect(normalizePersistedPowerCalibration(persisted)).toEqual({ kind: 'loaded', snapshot });
-  });
-});
-
-describe('exposed constants', () => {
-  it('matches the documented gates', () => {
-    expect(POWER_CALIBRATION_CONSTANTS.CONFIDENCE_MIN_SAMPLES).toBe(5);
-    expect(POWER_CALIBRATION_CONSTANTS.CONFIDENCE_MIN_SUSTAINED_SECONDS).toBe(300);
-    expect(POWER_CALIBRATION_CONSTANTS.DEFAULT_FRESHNESS_WINDOW_MS).toBe(60_000);
-    expect(POWER_CALIBRATION_CONSTANTS.NAMEPLATE_TOLERANCE_RATIO).toBe(0.02);
-    expect(POWER_CALIBRATION_CONSTANTS.STEP_FLOOR_NAMEPLATE_RATIO).toBe(0.3);
   });
 });
 

@@ -17,13 +17,6 @@ export function requireDeviceManager(ctx: AppContext) {
   return ctx.deviceManager;
 }
 
-export function requirePlanEngine(ctx: AppContext) {
-  if (!ctx.planEngine) {
-    throw new Error('PlanEngine must be initialized before plan service setup.');
-  }
-  return ctx.planEngine;
-}
-
 /**
  * The ONE PlanService presence guard. `AppContext.planService` is optional only
  * because of an initialisation cycle — `createPlanService(ctx, …)` needs the

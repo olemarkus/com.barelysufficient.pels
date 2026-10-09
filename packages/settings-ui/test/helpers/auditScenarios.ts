@@ -44,7 +44,7 @@ import type {
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { toResolvedLegacyPlanHistoryEntry } from '../../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../../test/utils/planHistoryFixtures.ts';
 import type {
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../../contracts/src/deviceDiagnosticsTypes.ts';

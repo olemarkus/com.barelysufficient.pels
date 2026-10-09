@@ -1,23 +1,22 @@
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
-import {
-  buildSettingsOverviewDeviceReadModel as buildDevice,
-  buildSettingsOverviewReadModel as buildPlan,
-} from '../../lib/plan/settingsOverviewReadModel';
+import { buildSettingsOverviewReadModel as buildPlan } from '../../lib/plan/settingsOverviewReadModel';
+import { buildOverviewDeviceCard } from '../utils/settingsOverviewFixture';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import type { SettingsOverviewReadModelDeps } from '../../lib/plan/settingsOverviewReadModel';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { HomeBatteryCardControl } from '../../lib/observer/observedDeviceStateProjection';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 
 
-const buildSettingsOverviewDeviceReadModel = (
-  device: Parameters<typeof buildDevice>[0],
+const buildDeviceCard = (
+  device: DevicePlanDevice,
   deps: Omit<SettingsOverviewReadModelDeps, 'getDeviceExecutionState' | 'dryRun' | 'nowMs'>,
-  profile?: Parameters<typeof buildDevice>[3],
-) => buildDevice(device, { ...deps, getDeviceExecutionState: () => executionStateFixture(device),
-  dryRun: false, nowMs: 0 }, 0, profile);
+  profile?: SteppedLoadProfile,
+) => buildOverviewDeviceCard(device, { ...deps, getDeviceExecutionState: () => executionStateFixture(device),
+  dryRun: false, nowMs: 0 }, profile);
 const buildSettingsOverviewReadModel = (
   plan: Parameters<typeof buildPlan>[0],
   deps: Omit<SettingsOverviewReadModelDeps, 'getDeviceExecutionState' | 'dryRun' | 'nowMs'>,
@@ -168,7 +167,7 @@ describe('settingsOverviewReadModel', () => {
 
   it('exposes resolved presentation without control axes, targets or plan reasons', () => {
     const device = steppedPlanDevice({ reportedStepId: 'low', desiredStepId: 'max', stepCommandPending: true });
-    const wire = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
+    const wire = buildDeviceCard(device, absentTemperature);
     expect(wire.status.cardKind).toBe('stepped');
     expect(wire.status.rail?.activeIndex).toBe(1);
     for (const key of ['currentState', 'plannedState', 'reason', 'stateKind', 'stateTone',
@@ -181,7 +180,7 @@ describe('settingsOverviewReadModel', () => {
 
   it('does not expose a selected fallback as observed rail position', () => {
     const device = steppedPlanDevice({ reportedStepId: undefined, selectedStepId: 'medium', desiredStepId: 'max' });
-    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).status.rail?.activeIndex).toBeNull();
+    expect(buildDeviceCard(device, absentTemperature).status.rail?.activeIndex).toBeNull();
   });
 
   it.each([
@@ -195,10 +194,10 @@ describe('settingsOverviewReadModel', () => {
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
       reason: { code, shortfallKw: 0.9 },
     });
-    const wire = buildDevice(device, {
+    const wire = buildOverviewDeviceCard(device, {
       ...absentTemperature, dryRun, nowMs: 0,
       getDeviceExecutionState: () => executionStateFixture(device),
-    }, 0);
+    });
 
     expect(wire.status.kind).toBe(dryRun ? 'active' : 'held');
     expect(wire.status.reason?.text).toBe(dryRun
@@ -212,7 +211,7 @@ describe('settingsOverviewReadModel', () => {
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
       reason: { code: PLAN_REASON_CODES.capacity },
     });
-    const wire = buildSettingsOverviewDeviceReadModel(device, {
+    const wire = buildDeviceCard(device, {
       ...absentTemperature,
       getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' }),
     });
@@ -223,11 +222,11 @@ describe('settingsOverviewReadModel', () => {
   it('uses executor-owned step-only restoration and pending movement in presentation', () => {
     const device = steppedPlanDevice({ binaryCapabilityId: undefined, currentState: 'off',
       reportedStepId: 'off', selectedStepId: 'off', desiredStepId: 'low', plannedState: 'keep' });
-    const wire = buildDevice(device, {
+    const wire = buildOverviewDeviceCard(device, {
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), desiredBinary: null,
         resumeExpected: true, steppedTransitionPending: true }),
-    }, 0);
+    });
     expect(wire.status).toMatchObject({ kind: 'resuming', label: 'Resuming',
       reason: { text: 'Turning on to Low' } });
   });
@@ -239,10 +238,10 @@ describe('settingsOverviewReadModel', () => {
     const device = steppedPlanDevice({ isEvCharger: true, currentState: 'on', plannedState: 'keep',
       reportedStepId: 'medium', selectedStepId: 'max', desiredStepId: 'max', stepCommandPending: true });
     const confirmed = { steps: device.steppedLoadProfile.steps.filter((step) => step.id !== 'max') };
-    const wire = buildDevice(device, {
+    const wire = buildOverviewDeviceCard(device, {
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => executionStateFixture(device),
-    }, 0, confirmed);
+    }, confirmed);
 
     expect(wire.status.kind).toBe('active');
     expect(wire.status.reason).toBeNull();
@@ -255,17 +254,17 @@ describe('settingsOverviewReadModel', () => {
   it('shows binary restore movement even when a stepped device already reports its desired step', () => {
     const device = steppedPlanDevice({ currentState: 'off', reportedStepId: 'low',
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
-    const wire = buildDevice(device, {
+    const wire = buildOverviewDeviceCard(device, {
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), binaryProgress: 'pending',
         stepProgress: 'settled', resumeExpected: true, steppedTransitionPending: true }),
-    }, 0);
+    });
     expect(wire.status).toMatchObject({ kind: 'resuming', reason: { text: 'Turning on to Low' } });
   });
 
   it.each(['unavailable', 'manual'] as const)('suppresses stale idle guidance when %s', (kind) => {
     const device = buildPlanDevice({ available: kind !== 'unavailable', controllable: kind !== 'manual' });
-    const wire = buildSettingsOverviewDeviceReadModel(device, {
+    const wire = buildDeviceCard(device, {
       ...absentTemperature,
       getIdleClassification: () => 'unresponsive',
     });
@@ -280,7 +279,7 @@ describe('settingsOverviewReadModel', () => {
       binaryCapabilityId: 'evcharger_charging',
     });
 
-    const read = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
+    const read = buildDeviceCard(device, absentTemperature);
     expect(read.isEvCharger).toBe(true);
     // …and still reports no plug-state, which is the honest half of the answer.
     expect(read).not.toHaveProperty('evChargingState');
@@ -288,7 +287,7 @@ describe('settingsOverviewReadModel', () => {
 
   it('does not call a non-charger a charger just because it reported something', () => {
     const device = buildPlanDevice({ id: 'heater-1' });
-    expect(buildSettingsOverviewDeviceReadModel(device, {
+    expect(buildDeviceCard(device, {
       ...absentTemperature,
       getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' } as const),
     }).isEvCharger).toBe(false);
@@ -302,7 +301,7 @@ describe('settingsOverviewReadModel', () => {
     // already projected away its own session bookkeeping, so the read model
     // re-shapes nothing (`notes/ev-soc-layering.md`). The level still comes from
     // the producer's fixture so this cannot drift from a shape it can emit.
-    expect(buildSettingsOverviewDeviceReadModel(device, {
+    expect(buildDeviceCard(device, {
       ...absentTemperature,
       getObservedStateOfCharge: () => ({
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
@@ -319,12 +318,12 @@ describe('settingsOverviewReadModel', () => {
     // says there is none: that one is a statement about a charger that does
     // report, and it reaches the card as `stateOfCharge` with an unavailable
     // level rather than as no reading at all.
-    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).stateOfCharge).toBeUndefined();
+    expect(buildDeviceCard(device, absentTemperature).stateOfCharge).toBeUndefined();
   });
 
   it('emits no battery reading for a device that has none', () => {
     const device = buildPlanDevice({ id: 'heater-1' });
-    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).stateOfCharge).toBeUndefined();
+    expect(buildDeviceCard(device, absentTemperature).stateOfCharge).toBeUndefined();
   });
 
   it('includes the observer battery percentage in the complete stepped charger fact', () => {
@@ -332,13 +331,13 @@ describe('settingsOverviewReadModel', () => {
       binaryCapabilityId: 'evcharger_charging', currentState: 'on', reportedStepId: 'low' });
     const getObservedStateOfCharge = vi.fn(() => ({ kind: 'observed' as const,
       value: { level: stateOfChargeFixture({ percent: 64, observedAtMs: 1_000 }).level } }));
-    const wire = buildSettingsOverviewDeviceReadModel(device, {
+    const wire = buildDeviceCard(device, {
       ...absentTemperature, getObservedStateOfCharge,
       getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
     });
     expect(wire.status.factText).toBe('Charging · 64 % · level Low');
     expect(getObservedStateOfCharge).toHaveBeenCalledTimes(1);
-    expect(buildSettingsOverviewDeviceReadModel(device, absentTemperature).status.factText).toBe('Level Low');
+    expect(buildDeviceCard(device, absentTemperature).status.factText).toBe('Level Low');
   });
 
   it.each([
@@ -350,7 +349,7 @@ describe('settingsOverviewReadModel', () => {
   ])('keeps the charger exception in the fact line for %s', (_case, overrides, factText, reasonText) => {
     const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState: 'on',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', ...overrides });
-    const wire = buildSettingsOverviewDeviceReadModel(device, {
+    const wire = buildDeviceCard(device, {
       ...absentTemperature,
       getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' } as const),
     });
@@ -362,7 +361,7 @@ describe('settingsOverviewReadModel', () => {
     const device = buildPlanDevice({ id: 'heater', currentState: 'on', plannedState: 'shed', currentDrawKw: 1.2,
       reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30, countdownStartedAtMs: 0,
         countdownTotalSec: 60 } });
-    const wire = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
+    const wire = buildDeviceCard(device, absentTemperature);
     expect(wire.status.reason?.text).not.toMatch(/\d+s/);
     expect(wire.status.reason?.countdown).toEqual({ kind: 'beside_text', endsAtMs: 60_000, totalSec: 60 });
   });
@@ -370,17 +369,17 @@ describe('settingsOverviewReadModel', () => {
   it('reads an off device the plan would resume, held by a hold reason, as limited', () => {
     const device = buildPlanDevice({ id: 'heater', currentState: 'off', plannedState: 'keep',
       reason: { code: PLAN_REASON_CODES.restoreThrottled } });
-    const wire = buildDevice(device, {
+    const wire = buildOverviewDeviceCard(device, {
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), resumeExpected: true }),
-    }, 0);
+    });
     expect(wire.status).toMatchObject({ kind: 'held', label: 'Limited · Off' });
     // With the command in flight it is resuming, whatever the reason.
-    const inFlight = buildDevice(device, {
+    const inFlight = buildOverviewDeviceCard(device, {
       ...absentTemperature, dryRun: false, nowMs: 0,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), resumeExpected: true,
         binaryProgress: 'pending' }),
-    }, 0);
+    });
     expect(inFlight.status).toMatchObject({ kind: 'resuming', label: 'Resuming' });
   });
 
@@ -388,7 +387,7 @@ describe('settingsOverviewReadModel', () => {
     const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState: 'on',
       plannedState: 'shed', reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
       reason: { code: PLAN_REASON_CODES.capacity } });
-    const wire = buildSettingsOverviewDeviceReadModel(device, {
+    const wire = buildDeviceCard(device, {
       ...absentTemperature,
       getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' } as const),
     });
@@ -399,13 +398,13 @@ describe('settingsOverviewReadModel', () => {
   it('resolves card kind in the backend', () => {
     // The UI selects the supplied card kind without receiving raw device facets.
     const binary = buildPlanDevice({ id: 'bin-1' });
-    const binaryRead = buildSettingsOverviewDeviceReadModel(binary, absentTemperature);
+    const binaryRead = buildDeviceCard(binary, absentTemperature);
     expect(binaryRead.status.cardKind).toBe('binary');
     expect(binaryRead.status.factText).toBeNull();
 
     // Stepped-ness comes from the device's own ladder, not from any label.
     const stepped = steppedPlanDevice({ id: 'step-1' });
-    expect(buildSettingsOverviewDeviceReadModel(stepped, absentTemperature).status.cardKind).toBe('stepped');
+    expect(buildDeviceCard(stepped, absentTemperature).status.cardKind).toBe('stepped');
   });
 
   it('keeps a stored-profile stepped device stepped', () => {
@@ -421,7 +420,7 @@ describe('settingsOverviewReadModel', () => {
     // ladder is now the discriminant, so there is no producer setting left to
     // disagree with it.
     const stepped = steppedPlanDevice({ id: 'stored-profile-step' });
-    expect(buildSettingsOverviewDeviceReadModel(stepped, absentTemperature).status.cardKind).toBe('stepped');
+    expect(buildDeviceCard(stepped, absentTemperature).status.cardKind).toBe('stepped');
   });
 
   it('keeps observed temperature presentation when effective control is binary', () => {
@@ -449,7 +448,7 @@ describe('settingsOverviewReadModel', () => {
   it('publishes a stable countdown without the planner reason', () => {
     const device = buildPlanDevice({ reason: { code: PLAN_REASON_CODES.cooldownRestore,
       remainingSec: 42, countdownStartedAtMs: 10 } });
-    const wire = buildSettingsOverviewDeviceReadModel(device, absentTemperature);
+    const wire = buildDeviceCard(device, absentTemperature);
     expect(wire.status.reason?.countdown?.endsAtMs).toBe(42_010);
     expect(wire).not.toHaveProperty('reason');
   });
@@ -482,7 +481,7 @@ describe('settingsOverviewReadModel', () => {
       currentDrawKw: 1.4,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     });
-    expect(buildSettingsOverviewDeviceReadModel(drawing, observedTemperature(21, 22)).status.kind).not.toBe('idle');
+    expect(buildDeviceCard(drawing, observedTemperature(21, 22)).status.kind).not.toBe('idle');
 
     const settled = buildPlanDevice({
       id: 'thermo',
@@ -494,7 +493,7 @@ describe('settingsOverviewReadModel', () => {
       currentDrawKw: 0,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     });
-    expect(buildSettingsOverviewDeviceReadModel(settled, observedTemperature(21, 22)).status.kind).toBe('idle');
+    expect(buildDeviceCard(settled, observedTemperature(21, 22)).status.kind).toBe('idle');
   });
   describe('boost on the wire', () => {
     // One bit, carried through as the planner decided it. The read model used to
@@ -514,11 +513,11 @@ describe('settingsOverviewReadModel', () => {
         ...absentTemperature,
         getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
       };
-      expect(buildSettingsOverviewDeviceReadModel(boosting(), deps).boostActive).toBe(true);
+      expect(buildDeviceCard(boosting(), deps).boostActive).toBe(true);
     });
 
     it('carries the same bit for a temperature device, with no second answer beside it', () => {
-      const device = buildSettingsOverviewDeviceReadModel(
+      const device = buildDeviceCard(
         boosting({ deviceType: 'temperature', currentTarget: 21, currentTemperature: 20 }),
         absentTemperature,
       );
@@ -530,7 +529,7 @@ describe('settingsOverviewReadModel', () => {
     });
 
     it('does not courier the device\'s identity or ordering onto the wire', () => {
-      const device = buildSettingsOverviewDeviceReadModel(boosting(), absentTemperature);
+      const device = buildDeviceCard(boosting(), absentTemperature);
       // `priority` and `zone` are settings/registry facts about the DEVICE. The
       // Overview reads them from the device list it already renders from — the
       // list owns membership and order — so a copy here is a second source for
@@ -540,7 +539,7 @@ describe('settingsOverviewReadModel', () => {
     });
 
     it('does not courier the configured boost thresholds onto the wire', () => {
-      const device = buildSettingsOverviewDeviceReadModel(boosting(), absentTemperature);
+      const device = buildDeviceCard(boosting(), absentTemperature);
       // The THRESHOLDS are settings. The settings UI reads them from the settings
       // store it already owns (`state.{temperature,ev}BoostSettings`), so a copy
       // on the plan wire is a second source for one fact and nothing ever read
@@ -550,7 +549,7 @@ describe('settingsOverviewReadModel', () => {
     });
 
     it('reports not boosting when the device is not boosting', () => {
-      const device = buildSettingsOverviewDeviceReadModel(buildPlanDevice({
+      const device = buildDeviceCard(buildPlanDevice({
         id: 'dev',
         reason: { code: PLAN_REASON_CODES.keep, detail: null },
       }), absentTemperature);
@@ -581,7 +580,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says a battery PELS holds for the limit is supplying, without a sign', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'relief' }), battery());
+    const card = buildDeviceCard(batteryDevice({ kind: 'relief' }), battery());
     expect(card.status).toMatchObject({
       label: 'Supplying',
       kind: 'active',
@@ -595,13 +594,13 @@ describe('settingsOverviewReadModel home battery card', () => {
 
   it('never says an unavailable battery holds the limit, so the hero does not name it supplying', () => {
     const device = { ...batteryDevice({ kind: 'relief' }), available: false };
-    const card = buildSettingsOverviewDeviceReadModel(device, battery());
+    const card = buildDeviceCard(device, battery());
     expect(card.status).toMatchObject({ kind: 'unavailable', powerText: null });
     expect(card.homeBattery).toEqual({ activity: 'supplying', power: { kind: 'observed', kw: 2.4 }, holdsLimit: false });
   });
 
   it('names what a battery held for the limit still does, not what the plan asked', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'relief' }), battery({ signedW: 1500 }));
+    const card = buildDeviceCard(batteryDevice({ kind: 'relief' }), battery({ signedW: 1500 }));
     expect(card.status).toMatchObject({
       label: 'Charging',
       powerText: '1.5 kW',
@@ -615,13 +614,13 @@ describe('settingsOverviewReadModel home battery card', () => {
     { name: 'too little to name', signedW: -30 },
     { name: 'no power reading', signedW: null },
   ])('gives a held battery reporting $name no power, so the hero has no figure', ({ signedW }) => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'relief' }), battery({ signedW }));
+    const card = buildDeviceCard(batteryDevice({ kind: 'relief' }), battery({ signedW }));
     expect(card.status).toMatchObject({ label: 'Supplying', powerText: null });
     expect(card.homeBattery).toEqual({ activity: 'supplying', power: { kind: 'absent' }, holdsLimit: false });
   });
 
   it('says a battery PELS holds to store solar is charging from solar', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'surplus' }), battery({ signedW: 1800, percent: 41 }));
+    const card = buildDeviceCard(batteryDevice({ kind: 'surplus' }), battery({ signedW: 1800, percent: 41 }));
     expect(card.status).toMatchObject({
       label: 'Charging',
       powerText: '1.8 kW',
@@ -630,7 +629,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says a battery PELS caps for a device is charging less, never storing solar', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice({ kind: 'cap_for_device' }), battery({ signedW: 600 }));
+    const card = buildDeviceCard(batteryDevice({ kind: 'cap_for_device' }), battery({ signedW: 600 }));
     expect(card.status).toMatchObject({
       label: 'Charging',
       powerText: '0.6 kW',
@@ -639,7 +638,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says a battery whose charge PELS caps is Limited · Charging, with the charge it waits for', () => {
-    const card = buildSettingsOverviewDeviceReadModel(
+    const card = buildDeviceCard(
       batteryDevice({ kind: 'charge_limit', heldBackKw: 2.4 }),
       battery({ signedW: 600, percent: 52 }),
     );
@@ -656,7 +655,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says a battery capped at its full charge waits to charge faster, without a figure', () => {
-    const card = buildSettingsOverviewDeviceReadModel(
+    const card = buildDeviceCard(
       batteryDevice({ kind: 'charge_limit', heldBackKw: 0 }),
       battery({ signedW: 0 }),
     );
@@ -666,7 +665,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says a battery in its own mode is in its own mode, with what it is doing', () => {
-    const card = buildSettingsOverviewDeviceReadModel(batteryDevice(), battery({ signedW: -400, percent: 78 }));
+    const card = buildDeviceCard(batteryDevice(), battery({ signedW: -400, percent: 78 }));
     expect(card.status).toMatchObject({
       label: 'Own mode',
       kind: 'idle',
@@ -678,7 +677,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says its own app is in charge of a battery whose Power-limit control is off', () => {
-    const card = buildSettingsOverviewDeviceReadModel(
+    const card = buildDeviceCard(
       batteryDevice({ kind: 'power_limit_off' }), battery({ signedW: -400, percent: 78 }),
     );
     expect(card.status).toMatchObject({
@@ -693,7 +692,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   it.each([{ kind: 'none' }, { kind: 'power_limit_off' }] as const)(
     'says PELS can only watch a battery whose app gives Homey no power setting ($kind hold)',
     (hold) => {
-      const card = buildSettingsOverviewDeviceReadModel(batteryDevice(hold), battery({ control: 'observe_only' }));
+      const card = buildDeviceCard(batteryDevice(hold), battery({ control: 'observe_only' }));
       expect(card.status).toMatchObject({
         label: 'Own mode',
         kind: 'idle',
@@ -705,7 +704,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   it.each([{ kind: 'none' }, { kind: 'power_limit_off' }] as const)(
     'says PELS can only watch a battery whose app refused its claim ($kind hold)',
     (hold) => {
-      const card = buildSettingsOverviewDeviceReadModel(batteryDevice(hold), battery({ control: 'watch_only' }));
+      const card = buildDeviceCard(batteryDevice(hold), battery({ control: 'watch_only' }));
       expect(card.status).toMatchObject({
         label: 'Own mode',
         kind: 'idle',

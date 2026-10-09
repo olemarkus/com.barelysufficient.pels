@@ -6,7 +6,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
-import { toResolvedLegacyPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedLegacyPlanHistoryEntry } from '../../../test/utils/planHistoryFixtures.ts';
 
 // Mock the ECharts registry to avoid mounting real ECharts in JSDOM. The
 // `useEchartsMount` stub mirrors the production hook's shape — it still runs

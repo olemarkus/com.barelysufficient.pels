@@ -203,17 +203,6 @@ function buildHomeBatteryOverviewDevice(
   };
 }
 
-export function buildSettingsOverviewDeviceReadModel(
-  device: DevicePlan['devices'][number],
-  deps: SettingsOverviewReadModelDeps,
-  reasonAnchorMs: number,
-  confirmedSteppedLoadProfile?: SteppedLoadProfile,
-): SettingsUiPlanDeviceSnapshot {
-  const homeBattery = deps.getHomeBatteryCard(device.id);
-  if (homeBattery.kind === 'battery') return buildHomeBatteryOverviewDevice(device, homeBattery, deps);
-  return buildLoadOverviewDevice(device, deps, reasonAnchorMs, confirmedSteppedLoadProfile);
-}
-
 /** Every device's card but a home battery's. */
 function buildLoadOverviewDevice(
   device: DevicePlan['devices'][number],
