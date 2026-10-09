@@ -363,24 +363,25 @@ export type AppContext = {
   // Cached device→home membership for the multi-home feature: the read-only
   // join of the homes registry + pins + the transport's zone tree + snapshot
   // zone ids. Recomputed after each committed snapshot refresh, on zone-tree
-  // commits, and on `homes_config`/`device_home_assignments` writes. NO
-  // control-path consumer yet (the planner wiring lands in a sibling PR).
+  // commits, and on `homes_config`/`device_home_assignments` writes.
   // Typed as the lib/home PORT on purpose: ctx consumers get only the
   // provenance-free control surface — the diagnostics view (per-device
   // `source`) is reachable solely through the setup-internal seam the
-  // `ui_homes` endpoint uses. Assigned by `AppServiceWiring.initHomeMembership`
-  // and cleared at uninit; optional so tests building a bare context are
-  // unaffected.
+  // `ui_homes` endpoint uses. Assigned by `AppServiceWiring.initHomeMembership`.
+  // Optional for two real reasons: Main's mode catalog reads it before that
+  // step, and `runUninit` clears it so in-flight work that resumes after
+  // shutdown stops recomputing. A caller that only runs inside its lifetime
+  // reads it through `requireHomeMembership`.
   homeMembership?: HomeMembershipPort;
   // Read-only access to each sub-home runtime's ALREADY-COMMITTED state (last
   // committed plan snapshot, that home's tracker state, bundle diagnostics) for
   // the settings UI. Typed as the lib/home PORT because the backing
-  // `HomeRuntimeRegistry` is a private `AppServiceWiring` field that must not
-  // be handed out — the same reason `homeMembership` is a port. Sub-homes only:
-  // the main home keeps the existing unsuffixed ctx reads. Assigned by
-  // `AppServiceWiring.initHomeRuntimeRegistry` and cleared at uninit; optional
-  // so tests building a bare context are unaffected.
-  homeRuntimeRead?: HomeRuntimeReadPort;
+  // `HomeRuntimeRegistry` is a private field of the app that must not be handed
+  // out — the same reason `homeMembership` is a port. Sub-homes only: the main
+  // home keeps the existing unsuffixed ctx reads. Built once over the app's
+  // registry handle, so it answers `unavailable` before
+  // `initHomeRuntimeRegistry` and again after `runUninit` drops the registry.
+  readonly homeRuntimeRead: HomeRuntimeReadPort;
   planEngine?: PlanEngine;
   lifecycleFallback?: LifecycleFallbackPort;
   // The Main home's battery control owner: claim admission, claim records and
@@ -442,8 +443,9 @@ export type AppContext = {
   // Released after the first device snapshot refresh succeeds, or after the
   // configured timeout — whichever comes first. Holds the first
   // `rebuildPlanFromCache` so the planner does not run against an empty
-  // snapshot. Optional so tests that build a context without going through
-  // `app.ts` are unaffected.
+  // snapshot. Built by the `initPlanRuntime` startup step, so it is required
+  // once startup completes (`InitializedServiceKey`); its timeout starts at
+  // construction, which is why it is not built earlier.
   snapshotWarmupGate?: SnapshotWarmupGate;
   /**
    * Main's 10-minute meter-silence policy (`lib/power/meterSilence.ts`): the
@@ -471,7 +473,8 @@ type InitializedServiceKey =
   | 'priceCoordinator'
   | 'deviceManager'
   | 'planEngine'
-  | 'planService';
+  | 'planService'
+  | 'snapshotWarmupGate';
 
 /**
  * Trusted context after ordered startup has constructed every required service.
@@ -488,4 +491,5 @@ export function requireInitializedAppContext(ctx: AppContext): asserts ctx is In
   if (!ctx.deviceManager) throw new Error('DeviceTransport must be initialized');
   if (!ctx.planEngine) throw new Error('PlanEngine must be initialized');
   if (!ctx.planService) throw new Error('PlanService must be initialized');
+  if (!ctx.snapshotWarmupGate) throw new Error('SnapshotWarmupGate must be initialized');
 }

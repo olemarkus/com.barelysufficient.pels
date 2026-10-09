@@ -76,6 +76,7 @@ import {
   AppServiceWiring,
   createHomeRuntimeRegistryForApp,
   createPreparedMainReconcileFence,
+  buildHomeRuntimeReadPort,
   type MainAuthorityRecoveryRequest,
   type MainShortfallSideEffectGate,
   type HomeRuntimeRegistry,
@@ -548,6 +549,9 @@ class PelsApp extends PelsAppBase implements AppContext {
   private homeMembershipService?: HomeMembershipService;
 
   private homeRuntimeRegistry?: HomeRuntimeRegistry;
+  // The settings UI's per-home read: a closure over the handle above, so the
+  // registry itself never reaches the context.
+  public readonly homeRuntimeRead = buildHomeRuntimeReadPort(() => this.homeRuntimeRegistry);
 
   private mainShortfallSideEffectGate?: MainShortfallSideEffectGate;
 

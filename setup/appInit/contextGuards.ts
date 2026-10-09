@@ -18,6 +18,19 @@ export function requireDeviceManager(ctx: AppContext) {
 }
 
 /**
+ * Device→home membership. `AppContext.homeMembership` is optional for real
+ * reasons — Main's mode catalog reads it before `initHomeMembership`, and
+ * `runUninit` clears it as a shutdown kill switch — so this is for a caller
+ * whose whole lifetime sits inside membership's, where absence is a wiring bug.
+ */
+export function requireHomeMembership(ctx: AppContext): NonNullable<AppContext['homeMembership']> {
+  if (!ctx.homeMembership) {
+    throw new Error('HomeMembership must be initialized before use.');
+  }
+  return ctx.homeMembership;
+}
+
+/**
  * The ONE PlanService presence guard. `AppContext.planService` is optional only
  * because of an initialisation cycle — `createPlanService(ctx, …)` needs the
  * context that holds the field — so every consumer that runs after

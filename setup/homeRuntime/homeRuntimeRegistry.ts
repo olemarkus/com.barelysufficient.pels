@@ -44,6 +44,7 @@ import {
 import { isCapacityScalarSettingKey } from '../../lib/power/capacitySettingsStore';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
+import { requireHomeMembership } from '../appInit/contextGuards';
 import { PowerSourceEpochFence } from '../../lib/power/powerSourceEpochFence';
 import {
   logBundleReplacementFailure,
@@ -189,7 +190,9 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     homeId: HomeId;
     hooks: OwningHomeHooks;
   } | undefined {
-    const homeId = this.deps.ctx.homeMembership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
+    // The registry exists only while membership does (built after
+    // `initHomeMembership`, dropped before `runUninit` clears it).
+    const homeId = requireHomeMembership(this.deps.ctx).getHomeIdForDevice(deviceId);
     if (homeId === MAIN_HOME_ID) return undefined;
     const bundle = this.bundles.get(homeId);
     return bundle?.isTornDown() === false

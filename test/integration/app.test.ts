@@ -150,6 +150,7 @@ const initApp = async (app: MyApp) => {
   app.dailyBudgetService.updateState({ refreshObservedStats: false });
   app['loadPriceOptimizationSettings']();
   await app['initDeviceManager']();
+  app['serviceWiring'].initHomeMembership();
   app['initBatteryControl']();
   app['initCapacityGuard']();
   app['initPlanRuntime']();
@@ -2112,6 +2113,8 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+    // The pending command below is PELS applying this mode target.
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 18 } });
 
     const app = createApp();
     await initApp(app);

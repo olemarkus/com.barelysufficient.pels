@@ -144,9 +144,9 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
       // (with an empty snapshot, the next rebuild after a successful refresh
       // will produce a valid horizon plan).
       if (snapshotRefreshSucceeded) {
-        appContext.snapshotWarmupGate?.release('snapshot_ready');
+        appContext.snapshotWarmupGate.release('snapshot_ready');
       } else {
-        appContext.snapshotWarmupGate?.release('timeout');
+        appContext.snapshotWarmupGate.release('timeout');
       }
     }
     incPerfCounters([

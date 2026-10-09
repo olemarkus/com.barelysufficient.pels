@@ -301,7 +301,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       expect(getSettingsUiDevicesPayload({ homey, query }).devices).toEqual([]);
     });
 
-    it('refuses every home while the read port is unwired (boot / uninit)', () => {
+    it('refuses every home when homey.app carries no read port', () => {
       const { homey } = installBoundary({ hasReadPort: false });
       const query = { homeId: AREA_ID };
       expect(getSettingsUiPlanPayload({ homey, query })).toEqual({

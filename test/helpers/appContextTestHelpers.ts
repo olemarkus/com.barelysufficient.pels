@@ -36,6 +36,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
+import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import type {
@@ -456,6 +457,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getCreateSmartTaskCandidateDevices: () => ({ state: 'ready', devices: latestTargetSnapshot }),
     get priceOptimizationEnabled() { return priceOptimizationEnabled; },
     get priceOptimizationSettings() { return priceOptimizationSettings; },
+    // Production's port with no registry behind it (`buildHomeRuntimeReadPort`).
+    homeRuntimeRead: { readHome: () => ({ state: 'unavailable' }) },
     // Mirror the real `DeferredObjectiveStatusBus` surface. The lifecycle emitter
     // reads `getCurrent`/`hasActive` and writes via `publish`/`setCurrent`, so a
     // `{ subscribe, emit }` shim crashes any code that touches the bus. Default
@@ -563,6 +566,7 @@ export function createInitializedAppContextMock(options: AppContextMockOptions =
     planEngine: {
       state: { sheddingActive: false },
     } as never,
+    snapshotWarmupGate: new SnapshotWarmupGate({ timeoutMs: 0 }),
     ...options,
   });
   requireInitializedAppContext(context);

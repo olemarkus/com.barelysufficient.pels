@@ -142,10 +142,11 @@ export class SettingsUiHomeScopeAdapter {
    * One sub-home's already-committed reading, or `null` when it cannot be
    * served.
    *
-   * `null` folds the boot/uninit window (no port on the context yet or any
-   * more) into the port's own `unavailable` — both mean "this producer has no
-   * committed state for that home", and neither is a value a consumer may
-   * reinterpret.
+   * `null` folds an unreadable `homey.app` (the SDK types it without this
+   * port, and it is absent during boot) into the port's own `unavailable` (no
+   * registry before `initHomeRuntimeRegistry` or after `runUninit`) — both
+   * mean "this producer has no committed state for that home", and neither is
+   * a value a consumer may reinterpret.
    */
   public readRuntime(scope: ResolvedSubHomeScope): HomeRuntimeReading | null {
     const read = this.app()?.homeRuntimeRead?.readHome(scope.homeId);
