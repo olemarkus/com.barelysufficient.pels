@@ -47,7 +47,7 @@ export const buildPlanHeadroomLogFields = (
   return {
     totalKw: meta.totalKw,
     softLimitKw: meta.softLimitKw,
-    shortfallBudgetThresholdKw: meta.shortfallBudgetThresholdKw ?? null,
+    shortfallBudgetThresholdKw: meta.shortfallBudgetThresholdKw,
     ...measured,
     capacityShortfall: meta.capacityShortfall,
   };

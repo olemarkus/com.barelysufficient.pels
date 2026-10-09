@@ -855,12 +855,12 @@ describe('MyApp initialization', () => {
     // last rebuild dispatched just now. A third reading that has moved therefore
     // queues behind the 2 s min interval — the rebuild this case cancels.
     const warmUp = [
-      sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9300, capacityPaceKw: 9 }),
-      sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9500, capacityPaceKw: 9 }),
+      sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9300, powerLimitKw: 9 }),
+      sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9500, powerLimitKw: 9 }),
     ];
     await vi.advanceTimersByTimeAsync(2000);
     await Promise.all(warmUp);
-    const pending = sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9700, capacityPaceKw: 9 });
+    const pending = sampleThrottle(app.planRebuildThrottle, { currentPowerW: 9700, powerLimitKw: 9 });
 
     expect(app.timers.has('planRebuild')).toBe(true);
 

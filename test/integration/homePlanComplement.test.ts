@@ -423,7 +423,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       getLatestPlanSnapshot: vi.fn(() => null),
       getLatestPublishedPlan: () => null,
       rebuildPlanFromCache: vi.fn(async () => unchangedRebuildOutcome()),
-      computeDynamicSoftLimit: () => 9.5,
+      computePhysicalPowerLimit: () => 9.5,
     } as unknown as PlanService;
     const nowMs = Date.UTC(2026, 0, 15, 12, 0, 0);
     const guard = createTestCapacityGuard({ homeId: 'main' });

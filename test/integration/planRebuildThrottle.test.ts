@@ -34,14 +34,14 @@ import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 const SHORTFALL_THRESHOLD_KW = 4.961;
 
 // Grid-only, as `powerSamplePipeline` hands it over: the scheduler's
-// `capacityPaceKw` is `computeDynamicSoftLimit`, the physical limit — with
+// `powerLimitKw` is `computePhysicalPowerLimit`, the physical limit — with
 // Capacity limit off, the 3.135 kW grid target of a 3.3 kW limit — and there is
 // no shortfall threshold (`resolveShortfallThresholdKw`).
 const GRID_LIMIT_KW = 3.3;
 const gridSample = (currentPowerW: number, posture: Partial<ThrottleSampleForTest> = {}): ThrottleSampleForTest => ({
   currentPowerW,
   gridImportLimitKw: GRID_LIMIT_KW,
-  capacityPaceKw: gridImportTargetKw(GRID_LIMIT_KW),
+  powerLimitKw: gridImportTargetKw(GRID_LIMIT_KW),
   shortfallThresholdKw: null,
   ...posture,
 });
@@ -74,7 +74,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 2000, reading: { currentPowerW: 0 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('headroom_tight');
   });
@@ -88,8 +88,8 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 0, reading: { currentPowerW: 0 } },
     });
 
-    const first = sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
-    const second = sampleThrottle(throttle, { currentPowerW: 9700, capacityPaceKw: 9 });
+    const first = sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
+    const second = sampleThrottle(throttle, { currentPowerW: 9700, powerLimitKw: 9 });
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(2000);
@@ -106,8 +106,8 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 0, reading: { currentPowerW: 0 } },
     });
 
-    const pending = sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
-    void sampleThrottle(throttle, { currentPowerW: 9700, capacityPaceKw: 8.7 });
+    const pending = sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
+    void sampleThrottle(throttle, { currentPowerW: 9700, powerLimitKw: 8.7 });
     await vi.advanceTimersByTimeAsync(2000);
     await pending;
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -115,7 +115,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     // The rebuild ran for the later sample: judged against 9700 W, 9750 W is no
     // meaningful change, where against 9500 W it would be.
     await vi.advanceTimersByTimeAsync(2000);
-    await sampleThrottle(throttle, { currentPowerW: 9750, capacityPaceKw: 20, planConvergenceActive: true });
+    await sampleThrottle(throttle, { currentPowerW: 9750, powerLimitKw: 20, planConvergenceActive: true });
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
@@ -126,7 +126,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 0, reading: { currentPowerW: 0 } },
     });
 
-    const pending = sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
+    const pending = sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
 
     await vi.advanceTimersByTimeAsync(1999);
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -142,7 +142,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 0, reading: { currentPowerW: 0 } },
     });
 
-    const pending = sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
+    const pending = sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
     scheduler.cancelAll('test_cancel');
 
     await expect(pending).resolves.toBe('test_cancel');
@@ -171,8 +171,8 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     await initial;
     rebuildPlanFromCache.mockClear();
 
-    const hardCapPending = sampleThrottle(throttle, { currentPowerW: 10_600, capacityPaceKw: 9 });
-    const signalPending = sampleThrottle(throttle, { currentPowerW: 9_200, capacityPaceKw: 9 });
+    const hardCapPending = sampleThrottle(throttle, { currentPowerW: 10_600, powerLimitKw: 9 });
+    const signalPending = sampleThrottle(throttle, { currentPowerW: 9_200, powerLimitKw: 9 });
     await throttle.execute();
     await Promise.all([hardCapPending, signalPending]);
 
@@ -186,7 +186,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 1000, reading: { currentPowerW: 5000 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 5050, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 5050, powerLimitKw: 9 });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
@@ -195,10 +195,10 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 1000, reading: { currentPowerW: 5000, capacityPaceKw: 9 } },
+      lastRebuild: { msAgo: 1000, reading: { currentPowerW: 5000, powerLimitKw: 9 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 5000, capacityPaceKw: 8.2 });
+    await sampleThrottle(throttle, { currentPowerW: 5000, powerLimitKw: 8.2 });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
@@ -215,7 +215,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
 
     // Pace 10, not 9: against a 9 kW pace the reading is tight (-0.01 kW) and
     // would rebuild on the control boundary.
-    await sampleThrottle(throttle, { currentPowerW: 9010, capacityPaceKw: 10 });
+    await sampleThrottle(throttle, { currentPowerW: 9010, powerLimitKw: 10 });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
@@ -227,7 +227,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 1000, reading: { currentPowerW: 9050 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 9060, capacityPaceKw: 10 });
+    await sampleThrottle(throttle, { currentPowerW: 9060, powerLimitKw: 10 });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
@@ -239,7 +239,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 30_000, reading: { currentPowerW: 9050 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 9060, capacityPaceKw: 10 });
+    await sampleThrottle(throttle, { currentPowerW: 9060, powerLimitKw: 10 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('max_interval');
   });
@@ -251,7 +251,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 1000, reading: { currentPowerW: 5000 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 6200, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 6200, powerLimitKw: 9 });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
@@ -263,7 +263,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 30_000, reading: { currentPowerW: 5000 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 5050, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 5050, powerLimitKw: 9 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
@@ -278,12 +278,12 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
 
     // Headroom derives to +3.8 kW (not tight), so the rebuild can only come from
     // the delta branch, which is gated behind convergence.
-    await sampleThrottle(throttle, { currentPowerW: 5200, capacityPaceKw: 9, planConvergenceActive: true });
+    await sampleThrottle(throttle, { currentPowerW: 5200, powerLimitKw: 9, planConvergenceActive: true });
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('power_sample_convergence');
 
     // Stamped: 5250 W is no meaningful change from 5200 W, where it would be from 5000 W.
     await vi.advanceTimersByTimeAsync(2000);
-    await sampleThrottle(throttle, { currentPowerW: 5250, capacityPaceKw: 9, planConvergenceActive: true });
+    await sampleThrottle(throttle, { currentPowerW: 5250, powerLimitKw: 9, planConvergenceActive: true });
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
@@ -301,12 +301,12 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 0, reading: { currentPowerW: 1000 } },
     });
 
-    const first = sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
+    const first = sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
     await vi.advanceTimersByTimeAsync(2000);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
     // Arrives while the first rebuild is in flight, so it queues behind it.
-    const second = sampleThrottle(throttle, { currentPowerW: 9700, capacityPaceKw: 8.7 });
+    const second = sampleThrottle(throttle, { currentPowerW: 9700, powerLimitKw: 8.7 });
     resolveRebuild?.(unchangedRebuildOutcome());
     await first;
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -328,10 +328,10 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 0, reading: { currentPowerW: 1000 } },
     });
 
-    const first = sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
+    const first = sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
     // The due time passes without the timer having run — a busy event loop.
     vi.setSystemTime(Date.now() + 2000);
-    const second = sampleThrottle(throttle, { currentPowerW: 9700, capacityPaceKw: 8.8 });
+    const second = sampleThrottle(throttle, { currentPowerW: 9700, powerLimitKw: 8.8 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     await Promise.all([first, second]);
@@ -345,9 +345,9 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, powerLimitKw: 20 } },
     });
-    const tightSample = { currentPowerW: 9500, capacityPaceKw: 9 };
+    const tightSample = { currentPowerW: 9500, powerLimitKw: 9 };
 
     await sampleThrottle(throttle, tightSample);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -381,9 +381,9 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, powerLimitKw: 20 } },
     });
-    const tightSample = { currentPowerW: 9500, capacityPaceKw: 9 };
+    const tightSample = { currentPowerW: 9500, powerLimitKw: 9 };
 
     await sampleThrottle(throttle, tightSample);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -404,13 +404,13 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, powerLimitKw: 20 } },
     });
-    await sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(2000);
-    await sampleThrottle(throttle, { currentPowerW: 9700, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 9700, powerLimitKw: 9 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
   });
@@ -422,9 +422,9 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       .mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, powerLimitKw: 20 } },
     });
-    const tightSample = { currentPowerW: 9500, capacityPaceKw: 9 };
+    const tightSample = { currentPowerW: 9500, powerLimitKw: 9 };
 
     await sampleThrottle(throttle, tightSample);
     await vi.advanceTimersByTimeAsync(15_000);
@@ -453,7 +453,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       capacityGuard: await createGuardInShortfall(),
       lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500 } },
     });
-    const shortfallSample = { currentPowerW: 9500, capacityPaceKw: 9 };
+    const shortfallSample = { currentPowerW: 9500, powerLimitKw: 9 };
 
     await sampleThrottle(throttle, shortfallSample);
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('shortfall');
@@ -472,10 +472,10 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       capacityGuard: await createGuardInShortfall(),
       lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500 } },
     });
-    await sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
 
     await vi.advanceTimersByTimeAsync(2000);
-    await sampleThrottle(throttle, { currentPowerW: 9700, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 9700, powerLimitKw: 9 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
   });
@@ -485,13 +485,13 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       capacityGuard: await createGuardInShortfall(),
-      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9300, capacityPaceKw: 9.5 } },
+      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9300, powerLimitKw: 9.5 } },
     });
     // A no-op in shortfall arms the backoff.
-    await sampleThrottle(throttle, { currentPowerW: 9300, capacityPaceKw: 9.5 });
+    await sampleThrottle(throttle, { currentPowerW: 9300, powerLimitKw: 9.5 });
 
     // The same watts against a 9.2 kW threshold: a new hard-cap breach.
-    await sampleThrottle(throttle, { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 });
+    await sampleThrottle(throttle, { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
     expect(rebuildPlanFromCache).toHaveBeenNthCalledWith(2, 'shortfall');
@@ -503,12 +503,12 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       .mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9300, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9300, powerLimitKw: 20 } },
     });
     // A tight rebuild that acted arms the mitigation holdoff.
-    await sampleThrottle(throttle, { currentPowerW: 9300, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 9300, powerLimitKw: 9 });
 
-    await sampleThrottle(throttle, { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 });
+    await sampleThrottle(throttle, { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
     expect(rebuildPlanFromCache).toHaveBeenNthCalledWith(2, 'hard_cap_breach');
@@ -516,7 +516,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
 
   it('skips unchanged repeated hard-cap breaches before shortfall is active', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
-    const breach = { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 };
+    const breach = { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 };
     // The last rebuild ran for this very breach: same deficit, same power.
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
@@ -535,9 +535,9 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     // A 0.25 kW deficit both times: only the power delta can earn this rebuild.
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 0, reading: { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.05 } },
+      lastRebuild: { msAgo: 0, reading: { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.05 } },
     });
-    const movedBreach = { currentPowerW: 9450, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 };
+    const movedBreach = { currentPowerW: 9450, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 };
 
     await sampleThrottle(throttle, movedBreach);
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('hard_cap_breach');
@@ -549,13 +549,13 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
 
   it('clears hard-cap breach state once a sample is no longer breached', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
-    const breach = { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 };
+    const breach = { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 };
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       lastRebuild: { msAgo: 0, reading: breach },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 9000, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 });
+    await sampleThrottle(throttle, { currentPowerW: 9000, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 });
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
 
     // The breach was forgotten, so the same breach again is a new one.
@@ -571,7 +571,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 9500, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 9500, powerLimitKw: 9 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledWith('shortfall');
   });
@@ -591,7 +591,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     });
 
     // 200 W delta vs last — "meaningful", but nothing to shed.
-    await sampleThrottle(throttle, { currentPowerW: 10_600, capacityPaceKw: 9, unactionable: true });
+    await sampleThrottle(throttle, { currentPowerW: 10_600, powerLimitKw: 9, unactionable: true });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
     expect(recordReading).not.toHaveBeenCalled();
@@ -604,7 +604,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 31_000, reading: { currentPowerW: 10_400 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 10_600, capacityPaceKw: 9, unactionable: true });
+    await sampleThrottle(throttle, { currentPowerW: 10_600, powerLimitKw: 9, unactionable: true });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
@@ -616,7 +616,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       lastRebuild: { msAgo: 5000, reading: { currentPowerW: 10_400 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 10_600, capacityPaceKw: 9, unactionable: false });
+    await sampleThrottle(throttle, { currentPowerW: 10_600, powerLimitKw: 9, unactionable: false });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
@@ -629,7 +629,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     });
 
     await sampleThrottle(throttle, {
-      currentPowerW: 10_600, capacityPaceKw: 9, planConvergenceActive: true, unactionable: true,
+      currentPowerW: 10_600, powerLimitKw: 9, planConvergenceActive: true, unactionable: true,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -644,13 +644,13 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     });
     throttle.onObservation();
 
-    await sampleThrottle(throttle, { currentPowerW: 10_600, capacityPaceKw: 9, unactionable: true });
+    await sampleThrottle(throttle, { currentPowerW: 10_600, powerLimitKw: 9, unactionable: true });
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
     // Spent: a grown breach 16 s later (past any backoff, inside the max interval)
     // is held by the unactionable throttle again instead of rebuilding.
     await vi.advanceTimersByTimeAsync(16_000);
-    await sampleThrottle(throttle, { currentPowerW: 10_800, capacityPaceKw: 9, unactionable: true });
+    await sampleThrottle(throttle, { currentPowerW: 10_800, powerLimitKw: 9, unactionable: true });
     await vi.advanceTimersByTimeAsync(15_000);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
@@ -686,11 +686,11 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     });
     throttle.onObservation();
 
-    await sampleThrottle(throttle, { currentPowerW: 10_600, capacityPaceKw: 9, unactionable: true });
+    await sampleThrottle(throttle, { currentPowerW: 10_600, powerLimitKw: 9, unactionable: true });
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(16_000);
-    await sampleThrottle(throttle, { currentPowerW: 10_800, capacityPaceKw: 9, unactionable: true });
+    await sampleThrottle(throttle, { currentPowerW: 10_800, powerLimitKw: 9, unactionable: true });
     await vi.advanceTimersByTimeAsync(15_000);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
@@ -705,7 +705,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       rebuildPlanFromCache,
       lastRebuild: { msAgo: 2000, reading: { currentPowerW: 0 } },
     });
-    const tightSample = { currentPowerW: 9500, capacityPaceKw: 9 };
+    const tightSample = { currentPowerW: 9500, powerLimitKw: 9 };
 
     await sampleThrottle(throttle, tightSample);
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('headroom_tight');
@@ -728,7 +728,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     });
     throttle.onObservation();
 
-    const pending = sampleThrottle(throttle, { currentPowerW: 10_600, capacityPaceKw: 9, unactionable: true });
+    const pending = sampleThrottle(throttle, { currentPowerW: 10_600, powerLimitKw: 9, unactionable: true });
 
     await vi.advanceTimersByTimeAsync(9000);
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -755,7 +755,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       rebuildPlanFromCache,
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 10_600, capacityPaceKw: 9, unactionable: true });
+    await sampleThrottle(throttle, { currentPowerW: 10_600, powerLimitKw: 9, unactionable: true });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
@@ -780,11 +780,11 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
     });
 
     await vi.advanceTimersByTimeAsync(29_999);
-    await sampleThrottle(throttle, { currentPowerW: 5300, capacityPaceKw: 9.5 });
+    await sampleThrottle(throttle, { currentPowerW: 5300, powerLimitKw: 9.5 });
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
-    await sampleThrottle(throttle, { currentPowerW: 5300, capacityPaceKw: 9.5 });
+    await sampleThrottle(throttle, { currentPowerW: 5300, powerLimitKw: 9.5 });
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('power_delta');
   });
 
@@ -795,7 +795,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
       lastRebuild: { msAgo: 2500, reading: { currentPowerW: 5000 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 5300, capacityPaceKw: 9.5, planConvergenceActive: true });
+    await sampleThrottle(throttle, { currentPowerW: 5300, powerLimitKw: 9.5, planConvergenceActive: true });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
@@ -821,14 +821,14 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9310, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9310, powerLimitKw: 20 } },
     });
     // A tight no-op arms the backoff.
-    await sampleThrottle(throttle, { currentPowerW: 9310, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 9310, powerLimitKw: 9 });
     const beforeSkippedBackoff = getPerfSnapshot().counts.plan_rebuild_skipped_tight_noop_backoff_total ?? 0;
 
     await sampleThrottle(throttle, {
-      currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2, planConvergenceActive: true,
+      currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2, planConvergenceActive: true,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
@@ -838,7 +838,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
 
   it('skips signal scheduling for unchanged repeated hard-cap breaches', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
-    const breach = { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 };
+    const breach = { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 };
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       lastRebuild: { msAgo: 2500, reading: breach },
@@ -854,9 +854,9 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 } },
+      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 } },
     });
-    const grownBreach = { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.0 };
+    const grownBreach = { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.0 };
 
     await sampleThrottle(throttle, grownBreach);
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('hard_cap_breach');
@@ -868,7 +868,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
 
   it('still rebuilds repeated hard-cap breaches at the max interval', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
-    const breach = { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 };
+    const breach = { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 };
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
       lastRebuild: { msAgo: 30_000, reading: breach },
@@ -886,11 +886,11 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
     const { throttle } = await createTestPlanRebuildThrottle({
       capacityGuard,
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9310, capacityPaceKw: 9.5 } },
+      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9310, powerLimitKw: 9.5 } },
     });
 
     await sampleThrottle(throttle, {
-      currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2, planConvergenceActive: true,
+      currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2, planConvergenceActive: true,
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('hard_cap_breach');
@@ -905,7 +905,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
       lastRebuild: { msAgo: 0, reading: { currentPowerW: 5000 } },
     });
 
-    const pending = sampleThrottle(throttle, { currentPowerW: 5300, capacityPaceKw: 9.5, planConvergenceActive: true });
+    const pending = sampleThrottle(throttle, { currentPowerW: 5300, powerLimitKw: 9.5, planConvergenceActive: true });
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(2000);
@@ -921,7 +921,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
       lastRebuild: { msAgo: 2500, reading: { currentPowerW: 5000 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 5050, capacityPaceKw: 9.5, planConvergenceActive: true });
+    await sampleThrottle(throttle, { currentPowerW: 5050, powerLimitKw: 9.5, planConvergenceActive: true });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
@@ -930,10 +930,10 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9300, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9300, powerLimitKw: 20 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 9600, capacityPaceKw: 9.5 });
+    await sampleThrottle(throttle, { currentPowerW: 9600, powerLimitKw: 9.5 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
@@ -945,10 +945,10 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
     const { throttle } = await createTestPlanRebuildThrottle({
       capacityGuard,
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9310, capacityPaceKw: 9.5 } },
+      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9310, powerLimitKw: 9.5 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 });
+    await sampleThrottle(throttle, { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     // The stub builds no plan, so no verdict reached the guard.
@@ -962,12 +962,12 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
       lastRebuild: { msAgo: 0, reading: { currentPowerW: 5000 } },
     });
     // A convergence rebuild queued behind the 2 s min interval.
-    const pending = sampleThrottle(throttle, { currentPowerW: 5300, capacityPaceKw: 9.5, planConvergenceActive: true });
+    const pending = sampleThrottle(throttle, { currentPowerW: 5300, powerLimitKw: 9.5, planConvergenceActive: true });
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
 
-    void sampleThrottle(throttle, { currentPowerW: 9300, capacityPaceKw: 9.5, shortfallThresholdKw: 9.2 });
+    void sampleThrottle(throttle, { currentPowerW: 9300, powerLimitKw: 9.5, shortfallThresholdKw: 9.2 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('hard_cap_breach');
     await pending;
@@ -1001,10 +1001,10 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
     const { throttle } = await createTestPlanRebuildThrottle({
       capacityGuard,
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9600, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9600, powerLimitKw: 20 } },
     });
 
-    await sampleThrottle(throttle, { currentPowerW: 9600, capacityPaceKw: 9 });
+    await sampleThrottle(throttle, { currentPowerW: 9600, powerLimitKw: 9 });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('headroom_tight');
     expect(onShortfall).not.toHaveBeenCalled();
@@ -1022,7 +1022,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
     });
 
     await sampleThrottle(throttle, {
-      currentPowerW: 5300, totalKw: 5.267, capacityPaceKw: 3.9, shortfallThresholdKw: SHORTFALL_THRESHOLD_KW, shortfallUnrecoverable: true,
+      currentPowerW: 5300, totalKw: 5.267, powerLimitKw: 3.9, shortfallThresholdKw: SHORTFALL_THRESHOLD_KW, shortfallUnrecoverable: true,
     });
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -1054,7 +1054,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
       await sampleThrottle(throttle, {
         currentPowerW: powerW,
         totalKw: 5.267,
-        capacityPaceKw: 3.9,
+        powerLimitKw: 3.9,
         shortfallThresholdKw: SHORTFALL_THRESHOLD_KW,
         planConvergenceActive: isPlanActivelyConverging(planState, { unactionable: planUnactionable }),
         shortfallUnrecoverable: true,
@@ -1075,7 +1075,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
       lastRebuild: { msAgo: 2500, reading: { currentPowerW: 5267 } },
     });
     const recovering = {
-      currentPowerW: 4600, capacityPaceKw: 3.9, shortfallThresholdKw: SHORTFALL_THRESHOLD_KW, shortfallUnrecoverable: true,
+      currentPowerW: 4600, powerLimitKw: 3.9, shortfallThresholdKw: SHORTFALL_THRESHOLD_KW, shortfallUnrecoverable: true,
     };
 
     // Within the max interval, the unrecoverable-shortfall skip suppresses the full
@@ -1104,7 +1104,7 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
       lastRebuild: { msAgo: 2500, reading: { currentPowerW: 5267 } },
     });
     const returnedLoad = {
-      currentPowerW: 6100, capacityPaceKw: 3.9, shortfallThresholdKw: SHORTFALL_THRESHOLD_KW, shortfallUnrecoverable: true,
+      currentPowerW: 6100, powerLimitKw: 3.9, shortfallThresholdKw: SHORTFALL_THRESHOLD_KW, shortfallUnrecoverable: true,
     };
     throttle.onObservation();
 
@@ -1126,11 +1126,11 @@ describe('PlanRebuildThrottle — intervals, breaches and the shortfall gate', (
     }));
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9300, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2500, reading: { currentPowerW: 9300, powerLimitKw: 20 } },
     });
     addPerfDurationMock.mockClear();
 
-    const pending = sampleThrottle(throttle, { currentPowerW: 9600, capacityPaceKw: 9.5 });
+    const pending = sampleThrottle(throttle, { currentPowerW: 9600, powerLimitKw: 9.5 });
 
     expect(addPerfDurationMock).not.toHaveBeenCalledWith('power_sample_rebuild_ms', expect.any(Number));
 
@@ -1153,13 +1153,13 @@ describe('PlanRebuildThrottle.onObservation', () => {
     vi.useRealTimers();
   });
 
-  const tightSample = { currentPowerW: 9500, capacityPaceKw: 9 };
+  const tightSample = { currentPowerW: 9500, powerLimitKw: 9 };
 
   it('clears the no-op backoff built from a now-stale "nothing is actionable" verdict', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, powerLimitKw: 20 } },
     });
     await sampleThrottle(throttle, tightSample);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -1184,7 +1184,7 @@ describe('PlanRebuildThrottle.onObservation', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(actedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, capacityPaceKw: 20 } },
+      lastRebuild: { msAgo: 2000, reading: { currentPowerW: 9500, powerLimitKw: 20 } },
     });
     await sampleThrottle(throttle, tightSample);
 
@@ -1205,7 +1205,7 @@ describe('PlanRebuildThrottle.onObservation', () => {
     throttle.onObservation();
 
     // Still judged against the 5000 W rebuild: a 50 W change is not meaningful.
-    await sampleThrottle(throttle, { currentPowerW: 5050, capacityPaceKw: 9, planConvergenceActive: true });
+    await sampleThrottle(throttle, { currentPowerW: 5050, powerLimitKw: 9, planConvergenceActive: true });
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 });
@@ -1224,7 +1224,7 @@ describe('PlanRebuildThrottle — the unrecoverable-shortfall gate', () => {
     vi.useRealTimers();
   });
 
-  const heldSample = { currentPowerW: 5000, capacityPaceKw: 9, shortfallUnrecoverable: true };
+  const heldSample = { currentPowerW: 5000, powerLimitKw: 9, shortfallUnrecoverable: true };
 
   it('holds the rebuild while the shortfall is unrecoverable and unchanged, and hands the guard the reading', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
@@ -1282,7 +1282,7 @@ describe('PlanRebuildThrottle — the unrecoverable-shortfall gate', () => {
 
     // Out of shortfall the gate does not apply; a tight sample then rebuilds as usual.
     const outOfShortfall = await throttleAfterRebuild(createTestCapacityGuard({ homeId: 'main' }));
-    await sampleThrottle(outOfShortfall.throttle, { ...heldSample, capacityPaceKw: 5 });
+    await sampleThrottle(outOfShortfall.throttle, { ...heldSample, powerLimitKw: 5 });
     expect(outOfShortfall.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
     const invalidated = await throttleAfterRebuild(await createGuardInShortfall());

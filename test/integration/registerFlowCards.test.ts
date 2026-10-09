@@ -18,6 +18,7 @@ import type { ReportSteppedLoadActualStepResult } from '../../lib/executor/stepp
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
+import type { ObservedHeadroom } from '../../lib/power/lastTotalPower';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -112,9 +113,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getCurrentPriceLevel: vi.fn() as never,
     getPriceLevelChangesWithin: vi.fn() as never,
     recordPowerSample: vi.fn().mockResolvedValue(undefined),
-    getHeadroom: vi.fn(() => null),
-    getPowerLimitKw: () => 9.5,
-    getLatchedTotalKw: () => null,
+    getHeadroom: vi.fn((): ObservedHeadroom => ({ kind: 'unmeasured' })),
     getSnapshot: vi.fn().mockResolvedValue([]),
     getDeviceDescriptors: vi.fn().mockResolvedValue([]),
     getControllableDevices: () => ({}),
@@ -473,6 +472,91 @@ describe('registerFlowCards', () => {
     await expect(actionListeners.enable_device_capacity_control({ device: 'dev-1' })).resolves.toBe(true);
 
     expect(deps.homey.settings.set).toHaveBeenCalledWith('controllable_devices', { 'dev-1': true });
+  });
+
+  describe('headroom conditions', () => {
+    const decision: HeadroomForDeviceDecision = {
+      allowed: true,
+      cooldownSource: null,
+      cooldownRemainingSec: null,
+      observedKw: 1.25,
+      calculatedHeadroomForDeviceKw: null,
+      penaltyLevel: 0,
+      requiredKwWithPenalty: 1,
+      clearRemainingSec: null,
+      dropFromKw: null,
+      dropToKw: null,
+    };
+
+    it.each<[ObservedHeadroom, boolean]>([
+      [{ kind: 'unmeasured' }, false],
+      [{ kind: 'unlimited', totalKw: 3 }, true],
+      [{ kind: 'measured', totalKw: 3.5, limitKw: 5, headroomKw: 1.5 }, true],
+      [{ kind: 'measured', totalKw: 3.6, limitKw: 5, headroomKw: 1.4 }, false],
+    ])('has_capacity_for answers %o with %s for 1.5 kW', async (headroom, expected) => {
+      const { deps, actionListeners } = buildDeps({ getHeadroom: () => headroom });
+
+      registerFlowCards(deps);
+
+      await expect(actionListeners.has_capacity_for({ required_kw: 1.5 })).resolves.toBe(expected);
+    });
+
+    it('has_headroom_for_device refuses an unmeasured meter without asking the planner', async () => {
+      const evaluateHeadroomForDevice = vi.fn(() => decision);
+      const { deps, actionListeners } = buildDeps({
+        getHeadroom: () => ({ kind: 'unmeasured' }),
+        getSnapshot: vi.fn().mockResolvedValue([nativeSteppedSnapshot()]),
+        evaluateHeadroomForDevice,
+      });
+
+      registerFlowCards(deps);
+
+      await expect(actionListeners.has_headroom_for_device({ device: { id: 'dev-1' }, required_kw: 1 }))
+        .resolves.toBe(false);
+      expect(evaluateHeadroomForDevice).not.toHaveBeenCalled();
+    });
+
+    it.each<[ObservedHeadroom]>([
+      [{ kind: 'unlimited', totalKw: 3 }],
+      [{ kind: 'measured', totalKw: 4.6, limitKw: 5, headroomKw: 0.4 }],
+    ])('has_headroom_for_device hands %o to the planner unchanged', async (headroom) => {
+      const evaluateHeadroomForDevice = vi.fn(() => decision);
+      const { deps, actionListeners } = buildDeps({
+        getHeadroom: () => headroom,
+        getSnapshot: vi.fn().mockResolvedValue([nativeSteppedSnapshot()]),
+        evaluateHeadroomForDevice,
+      });
+
+      registerFlowCards(deps);
+
+      await expect(actionListeners.has_headroom_for_device({ device: { id: 'dev-1' }, required_kw: 1 }))
+        .resolves.toBe(true);
+      expect(evaluateHeadroomForDevice).toHaveBeenCalledWith(expect.objectContaining({ headroom, requiredKw: 1 }));
+    });
+
+    it.each<[ObservedHeadroom, number | null, number]>([
+      [{ kind: 'unlimited', totalKw: 3 }, null, 3],
+      [{ kind: 'measured', totalKw: 4.6, limitKw: 5, headroomKw: 0.4 }, 5, 4.6],
+    ])('has_headroom_for_device logs the reading it decided on (%o)', async (headroom, powerLimitKw, currentPowerKw) => {
+      // The limit and the total come off the one headroom read, so the line
+      // cannot pair the decision with a later reading.
+      const getHeadroom = vi.fn(() => headroom);
+      const { deps, actionListeners } = buildDeps({
+        getHeadroom,
+        getSnapshot: vi.fn().mockResolvedValue([nativeSteppedSnapshot()]),
+        evaluateHeadroomForDevice: vi.fn(() => decision),
+      });
+
+      registerFlowCards(deps);
+
+      await actionListeners.has_headroom_for_device({ device: { id: 'dev-1' }, required_kw: 1 });
+      expect(getHeadroom).toHaveBeenCalledTimes(1);
+      expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'headroom_for_device_checked',
+        powerLimitKw,
+        currentPowerKw,
+      }));
+    });
   });
 
   it('keeps EV SoC card registration when generic flow-backed cards are unavailable', () => {

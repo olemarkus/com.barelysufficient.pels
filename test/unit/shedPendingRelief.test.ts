@@ -58,7 +58,7 @@ const pendingFor = (
   devices: PlanInputDevice[],
   powerW = 6_378,
 ): PendingShedRelief => {
-  const pending = resolvePendingShedRelief(latch, devices, powerW, NOW, {});
+  const pending = resolvePendingShedRelief(latch, devices, powerW, NOW, {}, true);
   if (pending === null) throw new Error('expected relief to be pending');
   return pending;
 };
@@ -326,8 +326,8 @@ describe('resolvePendingShedRelief', () => {
   });
 
   it('answers nothing without a latch or without watts on the sample', () => {
-    expect(resolvePendingShedRelief(null, [charger()], 6_378, NOW, {})).toBeNull();
-    expect(resolvePendingShedRelief(chargerLatch(), [charger()], null, NOW, {})).toBeNull();
+    expect(resolvePendingShedRelief(null, [charger()], 6_378, NOW, {}, true)).toBeNull();
+    expect(resolvePendingShedRelief(chargerLatch(), [charger()], null, NOW, {}, true)).toBeNull();
   });
 });
 
@@ -420,6 +420,7 @@ describe('latchShedDecision', () => {
       LATCHED_READING_W - 5_980,
       NOW + 10_000,
       {},
+      true,
     );
     expect(landed?.totalKw).toBe(0);
     expect(landed?.held.size).toBe(0);

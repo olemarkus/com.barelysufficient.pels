@@ -333,7 +333,7 @@ export class PowerSamplePipeline {
               gridImportLimitKw: capacitySettings.gridImportLimitKw,
               totalKw: requireLastTotalPowerKw(admittedTracker),
               limitKw: capacitySettings.limitKw,
-              capacityPaceKw: planService.computeDynamicSoftLimit(),
+              powerLimitKw: planService.computePhysicalPowerLimit(),
               shortfallThresholdKw: planEngine.computeShortfallThreshold(),
             },
             posture,

@@ -333,9 +333,24 @@ describe('resolveClaimedReserveKw', () => {
 });
 
 describe('resolveReserveAdmission', () => {
-  const admit = (availableHeadroom: number, neededKw: number, reserves: ReturnType<typeof reserve>[]) => (
-    resolveReserveAdmission({ dev: { id: 'thermostat', priority: 10 }, availableHeadroom, neededKw, reserves })
-  );
+  // A headroom figure always constrains: only a `null` one is `unconstrained` (the case below), so
+  // the numeric cases read the constrained variants' figures directly.
+  const admit = (availableHeadroom: number, neededKw: number, reserves: ReturnType<typeof reserve>[]) => {
+    const result = resolveReserveAdmission({
+      dev: { id: 'thermostat', priority: 10 }, availableHeadroom, neededKw, reserves,
+    });
+    if (result.kind === 'unconstrained') throw new Error('a numeric headroom resolved unconstrained');
+    return result;
+  };
+
+  it('is unconstrained when there is no headroom figure, whatever the reservations', () => {
+    expect(resolveReserveAdmission({
+      dev: { id: 'thermostat', priority: 10 },
+      availableHeadroom: null,
+      neededKw: 0.8,
+      reserves: [reserve('heater', 1, 1.25)],
+    })).toEqual({ kind: 'unconstrained' });
+  });
 
   it('admits when there is room even after the reservation', () => {
     expect(admit(4, 0.8, [reserve('heater', 1, 1.25)]).kind).toBe('admitted');
@@ -345,7 +360,7 @@ describe('resolveReserveAdmission', () => {
     // needed 0.8 + 0.25 admission reserve + 0.25 floor = 1.3 required. Raw 1.6 clears it;
     // effective 0.41 does not.
     const result = admit(1.6, 0.8, [reserve('heater', 1, 1.19)]);
-    expect(result.kind).toBe('blocked_by_reserve');
+    if (result.kind !== 'blocked_by_reserve') throw new Error(`expected blocked_by_reserve, got ${result.kind}`);
     expect(result.reservedKw).toBeCloseTo(1.19, 5);
   });
 
@@ -355,8 +370,8 @@ describe('resolveReserveAdmission', () => {
 
   it('is untouched when nothing outranks the device', () => {
     const result = admit(1.6, 0.8, [reserve('lesser', 20, 1.19)]);
-    expect(result.kind).toBe('admitted');
-    expect(result.reservedKw).toBe(0);
+    if (result.kind !== 'admitted') throw new Error(`expected admitted, got ${result.kind}`);
+    // Admitted against the raw figure: nothing was taken off it.
     expect(result.effectiveHeadroomKw).toBe(1.6);
   });
 
@@ -365,9 +380,11 @@ describe('resolveReserveAdmission', () => {
     // so a reservation made the swap path more permissive than no reservation at all. A large
     // pending restore can push available headroom negative.
     const result = admit(-2.6, 1.5, [reserve('heater', 1, 1.4)]);
-    expect(result.effectiveHeadroomKw).toBeCloseTo(-4.0, 5);
+    if (result.kind !== 'insufficient') throw new Error(`expected insufficient, got ${result.kind}`);
+    expect(result.availableKw).toBe(-2.6);
     expect(result.reservedKw).toBeCloseTo(1.4, 5);
-    expect(result.kind).toBe('insufficient');
+    // The figure the callers hand the swap path.
+    expect(result.availableKw - result.reservedKw).toBeCloseTo(-4.0, 5);
   });
 
   it('preserves the FULL claim when it exceeds available power', () => {
@@ -376,8 +393,9 @@ describe('resolveReserveAdmission', () => {
     // tight-power case the reservation exists for. Callers subtract `reservedKw` before handing
     // headroom to the swap, so it must carry the whole claim.
     const result = admit(0.4, 0.5, [reserve('heater', 1, 3.6)]);
+    if (result.kind !== 'insufficient') throw new Error(`expected insufficient, got ${result.kind}`);
     expect(result.reservedKw).toBeCloseTo(3.6, 5);
-    expect(result.effectiveHeadroomKw).toBeCloseTo(-3.2, 5);
+    expect(result.availableKw - result.reservedKw).toBeCloseTo(-3.2, 5);
   });
 
   it('names the reservation even when the claim exceeds all available power', () => {

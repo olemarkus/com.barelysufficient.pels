@@ -55,7 +55,7 @@ import type { RestoreHeadroomAxes } from './restore/headroomLedger';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
 import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
-import { resolveReserveAdmission, type HeadroomReserve } from './admission';
+import { isReserveAdmitted, resolveReserveAdmission, type HeadroomReserve } from './admission';
 import { applyRecentShedInflation, computeBaseRestoreNeed } from './restore/accounting';
 import { buildSwapCandidates, type SwapLedger } from './swap';
 import { ceilToDisplayKw } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -166,7 +166,7 @@ export function resolveCeilingShortfall(params: {
   if (reserved.kind === 'blocked_by_reserve') {
     return { kind: 'blocked_by_reserve', holderName: reserved.holderName };
   }
-  if (reserved.kind === 'admitted') return { kind: 'no_gap' };
+  if (isReserveAdmitted(reserved)) return { kind: 'no_gap' };
   const plainGapKw = -reserved.admission.marginKw;
 
   // Swap-aware gap, off the reservation-adjusted base (the restore lane hands
@@ -178,7 +178,7 @@ export function resolveCeilingShortfall(params: {
     dev,
     [...inputs.onDevices],
     inputs.swapLedger,
-    reserved.effectiveHeadroomKw,
+    reserved.availableKw - reserved.reservedKw,
     neededKw,
     inputs.restoredThisCycle,
   );

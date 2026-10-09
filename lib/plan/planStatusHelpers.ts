@@ -93,8 +93,13 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
     // The `?? meta.softLimitKw` tail this used to carry existed only to restore
     // required-ness after `roundOptional` widened it to `| undefined`. The
     // overload keeps a required number required, so the tail is gone.
+    //
+    // A grid-bound soft limit IS the grid import target (`resolveSoftLimitSource`
+    // answers `'grid'` only when the target is the binding minimum), and the
+    // target is not rounded here, so neither is the limit: the two keep reading
+    // the same number.
     softLimitKw: meta.softLimitSource === 'grid'
-      ? meta.gridImportTargetKw : roundTo(meta.softLimitKw, PLAN_META_KW_STEP),
+      ? meta.softLimitKw : roundTo(meta.softLimitKw, PLAN_META_KW_STEP),
     capacitySoftLimitKw: roundTo(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
     ...dailyPaceComposition,
     shortfallBudgetThresholdKw: roundTo(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
@@ -118,7 +123,7 @@ export const normalizePelsStatus = (status: PelsStatus): PelsStatus => {
   return {
     ...status,
     headroomKw: roundTo(status.headroomKw, PLAN_META_KW_STEP),
-    hourlyLimitKw: roundTo(status.hourlyLimitKw, PLAN_META_KW_STEP),
+    powerLimitKw: roundTo(status.powerLimitKw, PLAN_META_KW_STEP),
     hourlyUsageKwh: roundTo(status.hourlyUsageKwh, PLAN_META_KWH_STEP) ?? status.hourlyUsageKwh,
     dailyBudgetRemainingKwh: roundTo(status.dailyBudgetRemainingKwh, PLAN_META_KWH_STEP),
     shortfallBudgetThresholdKw: roundTo(status.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),

@@ -263,7 +263,7 @@ describe('the limit hold and its credit', () => {
     expect(later.shed.netCreditKw).toBeCloseTo(1.3);
 
     const latch = { powerW: 6000, decisions: new Map([['battery', [{ decidedAtMs: NOW, creditedKw: 1 }]]]), stepTargets: new Map() };
-    const pending = resolvePendingShedRelief(latch, [device], 6000, NOW + 5_000, later.levers);
+    const pending = resolvePendingShedRelief(latch, [device], 6000, NOW + 5_000, later.levers, true);
     expect(pending?.totalKw).toBeCloseTo(1);
     // Together exactly the 2.3 kW it was spent for, never a watt twice.
     expect((pending?.totalKw ?? 0) + later.shed.netCreditKw).toBeCloseTo(2.3);
@@ -279,7 +279,7 @@ describe('the limit hold and its credit', () => {
 
   it('credits nothing to pending relief for a battery PELS no longer holds', () => {
     const latch = { powerW: 6000, decisions: new Map([['battery', [{ decidedAtMs: NOW, creditedKw: 1 }]]]), stepTargets: new Map() };
-    const pending = resolvePendingShedRelief(latch, [battery({ signedPowerW: 2000 })], 6000, NOW + 5_000, {});
+    const pending = resolvePendingShedRelief(latch, [battery({ signedPowerW: 2000 })], 6000, NOW + 5_000, {}, true);
     expect(pending?.totalKw).toBe(0);
     expect(pending?.held.size).toBe(0);
   });

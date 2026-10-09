@@ -240,6 +240,14 @@ export type SettingsUiPlanDeviceStarvation = {
 };
 
 /**
+ * The limit binding this plan cycle: the lowest of the enabled capacity pace,
+ * daily budget pace and grid import target, `null` when none is enabled. One
+ * source, never a "both": the grid wins an exact tie, and capacity wins a near
+ * tie with daily pacing (`resolveSoftLimitSource`, `lib/plan/planContext.ts`).
+ */
+export type SoftLimitSource = 'capacity' | 'daily' | 'grid' | null;
+
+/**
  * NO `[key: string]: unknown` index signature — same reasoning as
  * `SettingsUiPlanDeviceSnapshot` below, which carries the full rationale. This
  * shape lost several fixture-only fields (`hardLimitKw`, a duplicate of
@@ -264,7 +272,7 @@ export type SettingsUiPlanMetaSnapshotBase = {
   /** `null` = no daily budget axis this cycle. Always emitted. */
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
-  softLimitSource: 'capacity' | 'daily' | 'grid' | null;
+  softLimitSource: SoftLimitSource;
   /** From `capacitySettings.limitKw` — a plain number, never absent or null. */
   hardCapLimitKw: number;
   capacityPeriodMinutes: CapacityPeriodMinutes;

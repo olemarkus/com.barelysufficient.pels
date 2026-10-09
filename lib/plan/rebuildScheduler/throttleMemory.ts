@@ -1,4 +1,4 @@
-import type { HardCapBreach } from './rebuildSignal';
+import type { LimitBreach } from './rebuildSignal';
 
 /** The rebuild that last ran: when, and what the policy thresholds the next sample against. */
 export type LastRebuild = {
@@ -9,8 +9,8 @@ export type LastRebuild = {
    * runs, the previous rebuild's breach stands here, so a sample arriving
    * mid-flight is judged against the last verdict that finished.
    */
-  hardCapBreach: HardCapBreach;
-  gridBreach: HardCapBreach;
+  hardCapBreach: LimitBreach;
+  gridBreach: LimitBreach;
 };
 
 /**

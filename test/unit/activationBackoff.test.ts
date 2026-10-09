@@ -24,6 +24,7 @@ import {
 import type { MeteredDevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice as baseBuildPlanDevice } from '../utils/planTestUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { HeadroomWithReading } from '../../lib/power/lastTotalPower';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import {
   evaluateHeadroomForDevice,
@@ -39,6 +40,12 @@ import { buildDeviceDiagnosticsRecorderStub } from '../mocks/deviceDiagnosticsRe
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
 const FIXTURE_TOTAL_KW = 3;
+
+// The headroom card's reading against the same fixture total: the engine
+// decides on `headroomKw`, and the limit is whatever sits that far above it.
+const measuredHeadroom = (headroomKw: number): HeadroomWithReading => ({
+  kind: 'measured', totalKw: FIXTURE_TOTAL_KW, limitKw: FIXTURE_TOTAL_KW + headroomKw, headroomKw,
+});
 
 const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   devices: [],
@@ -105,10 +112,27 @@ describe('activation backoff', () => {
       available: true,
       lastFreshDataMs: start,
     });
-    const decision = evaluateHeadroomForDevice(state, { devices: [unknownRunningDevice], device: unknownRunningDevice, headroom: 0.5, requiredKw: 1.0 }, start, undefined);
+    const decision = evaluateHeadroomForDevice(state, { devices: [unknownRunningDevice], device: unknownRunningDevice, headroom: measuredHeadroom(0.5), requiredKw: 1.0 }, start, undefined);
     expect(decision?.observedKw).toBe(0);
     expect(decision?.calculatedHeadroomForDeviceKw).toBe(0.5);
     expect(decision?.allowed).toBe(false);
+  });
+
+  it('allows any load with no power limit enabled, and logs no headroom figure', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const device = withHeadroomCurrentOn({
+      id: 'dev-1',
+      name: 'Heater',
+      binaryControl: { on: false },
+      available: true,
+      lastFreshDataMs: start,
+    });
+    const decision = evaluateHeadroomForDevice(state, {
+      devices: [device], device, headroom: { kind: 'unlimited', totalKw: FIXTURE_TOTAL_KW }, requiredKw: 50,
+    }, start, undefined);
+    expect(decision.allowed).toBe(true);
+    expect(decision.calculatedHeadroomForDeviceKw).toBeNull();
   });
 
   it('credits a running device its measured draw in headroom math', () => {
@@ -132,7 +156,7 @@ describe('activation backoff', () => {
       measuredPowerKw: 1.2,
       expectedPowerKw: 1.2,
     });
-    const decision = evaluateHeadroomForDevice(state, { devices: [runningNonMeteredDevice], device: runningNonMeteredDevice, headroom: 0.3, requiredKw: 1.2 }, start, undefined);
+    const decision = evaluateHeadroomForDevice(state, { devices: [runningNonMeteredDevice], device: runningNonMeteredDevice, headroom: measuredHeadroom(0.3), requiredKw: 1.2 }, start, undefined);
     expect(decision?.observedKw).toBe(1.2);
     expect(decision?.calculatedHeadroomForDeviceKw).toBeCloseTo(1.5);
     expect(decision?.allowed).toBe(true);
@@ -155,7 +179,7 @@ describe('activation backoff', () => {
       measuredPowerKw: 1.2,
       expectedPowerKw: 1.2,
     });
-    const decision = evaluateHeadroomForDevice(state, { devices: [staleStableDevice], device: staleStableDevice, headroom: 0.3, requiredKw: 1.2 }, start, undefined);
+    const decision = evaluateHeadroomForDevice(state, { devices: [staleStableDevice], device: staleStableDevice, headroom: measuredHeadroom(0.3), requiredKw: 1.2 }, start, undefined);
     expect(decision?.observedKw).toBe(1.2);
     expect(decision?.calculatedHeadroomForDeviceKw).toBeCloseTo(1.5);
     expect(decision?.allowed).toBe(true);
@@ -180,7 +204,7 @@ describe('activation backoff', () => {
       lastFreshDataMs: start,
       expectedPowerKw: 1.5,
     });
-    const decision = evaluateHeadroomForDevice(state, { devices: [unavailableDevice], device: unavailableDevice, headroom: 0.3, requiredKw: 1.5 }, start, undefined);
+    const decision = evaluateHeadroomForDevice(state, { devices: [unavailableDevice], device: unavailableDevice, headroom: measuredHeadroom(0.3), requiredKw: 1.5 }, start, undefined);
     expect(decision?.observedKw).toBe(0);
     expect(decision?.calculatedHeadroomForDeviceKw).toBeCloseTo(0.3);
     expect(decision?.allowed).toBe(false);
@@ -623,7 +647,7 @@ describe('activation backoff', () => {
       currentDrawKw: 0,
     };
 
-    expect(evaluateHeadroomForDevice(state, { devices: [offDevice], device: offDevice, headroom: 0.5, requiredKw: 0.1 }, start, undefined)?.penaltyLevel).toBe(0);
+    expect(evaluateHeadroomForDevice(state, { devices: [offDevice], device: offDevice, headroom: measuredHeadroom(0.5), requiredKw: 0.1 }, start, undefined)?.penaltyLevel).toBe(0);
 
     const steppedUpDevice = {
       ...offDevice,
@@ -632,7 +656,7 @@ describe('activation backoff', () => {
       expectedPowerKw: 3.2,
       currentDrawKw: 3.2,
     };
-    evaluateHeadroomForDevice(state, { devices: [steppedUpDevice], device: steppedUpDevice, headroom: 0.3, requiredKw: 3.2 }, start + 60 * 1000, undefined);
+    evaluateHeadroomForDevice(state, { devices: [steppedUpDevice], device: steppedUpDevice, headroom: measuredHeadroom(0.3), requiredKw: 3.2 }, start + 60 * 1000, undefined);
 
     const steppedDownDevice = {
       ...steppedUpDevice,
@@ -640,7 +664,7 @@ describe('activation backoff', () => {
       expectedPowerKw: 1,
       currentDrawKw: 1,
     };
-    const setbackDecision = evaluateHeadroomForDevice(state, { devices: [steppedDownDevice], device: steppedDownDevice, headroom: 0.3, requiredKw: 1.1 }, start + 2 * 60 * 1000, undefined);
+    const setbackDecision = evaluateHeadroomForDevice(state, { devices: [steppedDownDevice], device: steppedDownDevice, headroom: measuredHeadroom(0.3), requiredKw: 1.1 }, start + 2 * 60 * 1000, undefined);
     expect(setbackDecision?.cooldownSource).toBeNull();
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(setbackDecision?.allowed).toBe(true);
@@ -651,7 +675,7 @@ describe('activation backoff', () => {
       expectedPowerKw: 3.2,
       currentDrawKw: 3.2,
     };
-    const recoveredDecision = evaluateHeadroomForDevice(state, { devices: [recoveredDevice], device: recoveredDevice, headroom: 0.2, requiredKw: 3.2 }, start + 3 * 60 * 1000 + 1, undefined);
+    const recoveredDecision = evaluateHeadroomForDevice(state, { devices: [recoveredDevice], device: recoveredDevice, headroom: measuredHeadroom(0.2), requiredKw: 3.2 }, start + 3 * 60 * 1000 + 1, undefined);
 
     expect(recoveredDecision?.penaltyLevel).toBe(0);
     expect(recoveredDecision?.requiredKwWithPenalty).toBe(3.2);

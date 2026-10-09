@@ -5,14 +5,17 @@ import {
   computeProjectedPeriodEnergyKWh,
   isProjectedOverHardCap,
 } from '../../packages/shared-domain/src/hourEnergyProjection';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
 import type { DevicePlan, PlanMeta } from './planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
 /**
  * The live status of a home, published by its plan service into
  * `planStatusRegistry.ts` and read by the settings-UI API, the headroom widget
- * and the Insights driver — whose capabilities mirror these fields by name, so
- * a published field is a contract even when nothing else in the repo reads it.
+ * and the Insights driver. It is held in memory and nothing outside the app
+ * reads it (`planStatusRegistry.ts`). The Insights driver's capabilities
+ * mirror the fields named in its `STATUS_CAPABILITY_MAP`; the capability ids,
+ * not these field names, are what a dashboard or a Flow sees.
  */
 export type PelsStatus = {
   /**
@@ -24,21 +27,36 @@ export type PelsStatus = {
    * `powerNowKw` is the one field whose `null` spelling predates that and stays.
    */
   headroomKw?: number;
-  /** Historical binding-rate field, retained for existing widget/Flow consumers. */
-  hourlyLimitKw?: number;
+  /**
+   * The binding power limit (`meta.softLimitKw`): the lowest of the enabled
+   * capacity pace, daily budget pace and grid import target. `null` when none
+   * is enabled — a real state, not a missing figure: the headroom widget shows
+   * its "power limits off" state, and the Insights driver clears
+   * `pels_hourly_limit_kw` (which mirrors this field) and `pels_headroom`.
+   */
   powerLimitKw: number | null;
-  capacityPaceKw?: number;
-  gridImportLimitKw?: number;
-  gridImportLimited: boolean;
   hourlyUsageKwh: number;
   dailyBudgetRemainingKwh?: number;
   dailyBudgetExceeded?: boolean;
   limitReason?: 'none' | 'hourly' | 'daily' | 'both';
   capacityShortfall?: boolean;
-  shortfallBudgetThresholdKw?: number;
+  /**
+   * `null` when Capacity limit is off: no capacity period, no threshold
+   * (`resolveShortfallThresholdKw`). This and the two headroom figures below
+   * are read by no PELS surface; they stay because `SettingsUiPowerStatus`
+   * (`packages/contracts/src/settingsUiApi.ts`) declares them, so the settings
+   * API's `ui_power` response and its `power_updated` push promise them.
+   */
+  shortfallBudgetThresholdKw: number | null;
   shortfallBudgetHeadroomKw?: number | null;
   hardCapHeadroomKw?: number | null;
   projectedOverHardCap?: boolean;
+  /**
+   * The measured draw under a second name (see `resolveMeasuredStatusFields`).
+   * Not declared in `SettingsUiPowerStatus` and read by nothing in this repo:
+   * it reaches the `ui_power` response and the `power_updated` push only
+   * because both serve this object whole.
+   */
   totalKw?: number;
   controlledKw?: number;
   uncontrolledKw?: number;
@@ -97,22 +115,13 @@ export function buildPelsStatus(params: {
   const limitReason = resolveLimitReason(plan, summary);
   return {
     ...resolveMeasuredStatusFields(plan.meta),
-    hourlyLimitKw: plan.meta.softLimitKw ?? undefined,
     powerLimitKw: plan.meta.softLimitKw,
-    capacityPaceKw: plan.meta.capacitySoftLimitKw ?? undefined,
-    gridImportLimitKw: plan.meta.gridImportLimitKw ?? undefined,
-    gridImportLimited: plan.meta.powerIsMeasured && (
-      (plan.meta.gridImportTargetKw !== null && plan.meta.totalKw > plan.meta.gridImportTargetKw)
-      || plan.devices.some((device) => (
-        device.plannedState === 'shed' && device.reason.code === PLAN_REASON_CODES.gridImport
-      ))
-    ),
     hourlyUsageKwh: plan.meta.hourUsedKWh,
     dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh ?? 0,
     dailyBudgetExceeded: plan.meta.dailyBudgetExceeded ?? false,
     limitReason,
     capacityShortfall: plan.meta.capacityShortfall ?? false,
-    shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw ?? undefined,
+    shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw,
     priceLevel,
     devicesOn: summary.devicesOn,
     devicesOff: summary.devicesOff,
@@ -128,9 +137,10 @@ export function buildPelsStatus(params: {
  * (its existing convention — `totalKw` too) and never by a
  * number; `powerNowKw` keeps its published `null` spelling.
  *
- * `hardCapHeadroomKw`: no PELS surface consumes it any more (the headroom
- * widget moved to `projectedOverHardCap`); kept because the field names are
- * the shape the Insights driver and the widget were built against.
+ * `hardCapHeadroomKw` and `shortfallBudgetHeadroomKw`: no PELS surface reads
+ * them (the headroom widget moved to `projectedOverHardCap`); they are kept
+ * because the settings-UI power API contract (`SettingsUiPowerStatus`)
+ * declares them.
  */
 function resolveMeasuredStatusFields(
   meta: PlanMeta,
@@ -150,12 +160,13 @@ function resolveMeasuredStatusFields(
     powerKnown: true,
     // Same figure as `powerNowKw`, under the name the blob has published for a
     // meter area since R7b. No PELS surface reads it — the per-home Limits card
-    // reads `powerNowKw` — and it is kept for the same reason as
-    // `hardCapHeadroomKw` below: a field the status has shipped is not withdrawn
-    // on the strength of having no reader in this repo. What DID change is that it used
-    // to be resolved out in `buildPelsStatus` from `dryRunEffective !== undefined`
-    // — i.e. from home kind — which both overloaded that boolean and published
-    // the figure on a meter area's UNMEASURED plan.
+    // reads `powerNowKw` — and, unlike `hardCapHeadroomKw` below, the settings
+    // API's contract (`SettingsUiPowerStatus`) does not declare it: it reaches
+    // `ui_power` and `power_updated` only because they serve the status whole.
+    // What DID change is that it used to be resolved out in `buildPelsStatus`
+    // from `dryRunEffective !== undefined` — i.e. from home kind — which both
+    // overloaded that boolean and published the figure on a meter area's
+    // UNMEASURED plan.
     totalKw: meta.totalKw,
     // A projection FROM the reading, so it stands or falls with the reading. On
     // the silent-meter fail-closed pass `meta.totalKw` is the carried pre-outage
@@ -210,8 +221,6 @@ function resolveProjectedOverHardCap(meta: PlanMeta): boolean | undefined {
   });
 }
 
-type LimitSource = DevicePlan['meta']['softLimitSource'];
-
 type SharedLimitParams = {
   plan: DevicePlan;
   summary: PlanStatusSummary;
@@ -220,7 +229,7 @@ type SharedLimitParams = {
 };
 
 type HourlyLimitParams = SharedLimitParams & {
-  limitSource: LimitSource;
+  limitSource: SoftLimitSource;
   capacitySourceActive: boolean;
 };
 
@@ -240,11 +249,11 @@ type PlanStatusSummary = {
 // producer (`resolveSoftLimitSource`) answers `'capacity'` when the two paces
 // coincide, never a third "both" state. Not to be confused with `limitReason`
 // below, whose four-member union DOES include a real `'both'`.
-function isDailySourceActive(limitSource: LimitSource): boolean {
+function isDailySourceActive(limitSource: SoftLimitSource): boolean {
   return limitSource === 'daily';
 }
 
-function isCapacitySourceActive(limitSource: LimitSource): boolean {
+function isCapacitySourceActive(limitSource: SoftLimitSource): boolean {
   return limitSource === 'capacity';
 }
 

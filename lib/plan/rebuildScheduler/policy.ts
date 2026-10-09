@@ -1,7 +1,7 @@
 import type { PlanRebuildTrigger, PowerSampleRebuildTrigger } from '../planRebuildTrigger';
 import {
   resolveHeadroomTight,
-  type HardCapBreach,
+  type LimitBreach,
   type PowerRebuildSignal,
   type RebuildCadence,
 } from './rebuildSignal';
@@ -51,7 +51,7 @@ const PLANNING_PERIOD_MS = 15 * 60 * 1000;
 
 const MIN_REBUILD_DELTA_W = 100;
 const MIN_REBUILD_DELTA_RATIO = 0.005; // 0.5% of limit
-const MIN_HARD_CAP_DEFICIT_DELTA_KW = 0.001;
+const MIN_LIMIT_DEFICIT_DELTA_KW = 0.001;
 const TIGHT_NOOP_BACKOFF_MS = [15_000, 30_000, 60_000];
 const TIGHT_NOOP_BACKOFF_MAX_MS = 120_000;
 export const TIGHT_MITIGATION_HOLDOFF_MS = 15_000;
@@ -106,13 +106,13 @@ const resolveTightUnactionable = (
 /**
  * A breach the last rebuild did not see: new (the last rebuild ran on a reading
  * under that limit), or worse than the deficit it ran on by more than
- * `MIN_HARD_CAP_DEFICIT_DELTA_KW`. One rule, and one tolerance, for the
+ * `MIN_LIMIT_DEFICIT_DELTA_KW`. One rule, and one tolerance, for the
  * hard-cap breach and the grid breach.
  */
-const isBreachEscalated = (breach: HardCapBreach, previous: HardCapBreach): boolean => (
+const isBreachEscalated = (breach: LimitBreach, previous: LimitBreach): boolean => (
   breach.breached && (
     !previous.breached
-    || breach.deficitKw > previous.deficitKw + MIN_HARD_CAP_DEFICIT_DELTA_KW
+    || breach.deficitKw > previous.deficitKw + MIN_LIMIT_DEFICIT_DELTA_KW
   )
 );
 
@@ -220,7 +220,7 @@ export const resolveRebuildReason = (
   return 'unknown';
 };
 
-export const resolveRebuildIntentKind = (hardCapBreach: HardCapBreach): RebuildIntentKind => (
+export const resolveRebuildIntentKind = (hardCapBreach: LimitBreach): RebuildIntentKind => (
   hardCapBreach.breached ? 'hardCap' : 'signal'
 );
 

@@ -1280,6 +1280,9 @@ const buildPlanMetaBase = (
   projectedExemptKw: null,
   softLimitSource: 'capacity',
   capacityShortfall: false,
+  // Capacity-bound, so the producer writes a threshold; 6 kW is the one the
+  // measured default `shortfallBudgetHeadroomKw: 1` implies at 5 kW drawn.
+  shortfallBudgetThresholdKw: 6,
   hardCapLimitKw: 10,
   capacityPeriodMinutes: 60,
   capacityPeriodCoverageComplete: true,

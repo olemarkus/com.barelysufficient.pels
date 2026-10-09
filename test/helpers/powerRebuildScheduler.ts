@@ -35,7 +35,7 @@ export type ThrottleSampleForTest = {
   totalKw?: number;
   limitKw?: number;
   /** Defaults to `limitKw`. */
-  capacityPaceKw?: number | null;
+  powerLimitKw?: number | null;
   gridImportLimitKw?: number | null;
   /** Defaults to `limitKw`. */
   shortfallThresholdKw?: number | null;
@@ -55,7 +55,7 @@ export const sampleThrottle = (
       currentPowerW: sample.currentPowerW,
       totalKw: sample.totalKw ?? sample.currentPowerW / 1000,
       limitKw,
-      capacityPaceKw: sample.capacityPaceKw === undefined ? limitKw : sample.capacityPaceKw,
+      powerLimitKw: sample.powerLimitKw === undefined ? limitKw : sample.powerLimitKw,
       shortfallThresholdKw: sample.shortfallThresholdKw === undefined ? limitKw : sample.shortfallThresholdKw,
     },
     {

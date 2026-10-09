@@ -41,7 +41,7 @@ describe('buildHeadroomWidgetPayload', () => {
     // the last-known figures dimmed, with `currentKw` computed from a headroom
     // the planner had synthesized.
     const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { powerKnown: false, hourlyLimitKw: 7, lastPowerUpdate: NOW - 5_000 } },
+      status: { state: 'live', status: { powerKnown: false, powerLimitKw: 7, lastPowerUpdate: NOW - 5_000 } },
       nowMs: NOW,
     });
     expect(payload).toEqual({ state: 'empty', subtitle: 'No new power readings' });
@@ -53,7 +53,7 @@ describe('buildHeadroomWidgetPayload', () => {
         state: 'live',
         status: {
           headroomKw: 3.8,
-          hourlyLimitKw: 7,
+          powerLimitKw: 7,
           devicesOff: 2,
           priceLevel: 'cheap',
           lastPowerUpdate: NOW - 5_000,
@@ -75,7 +75,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('reports at_pace (not danger) when draw reaches safe pace with the hour on track', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 0, hourlyLimitKw: 6.3, projectedOverHardCap: false } },
+      status: { state: 'live', status: { headroomKw: 0, powerLimitKw: 6.3, projectedOverHardCap: false } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', currentKw: 6.3, limitState: 'at_pace' });
@@ -83,7 +83,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('reports near when approaching but below the safe pace', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 0.5, hourlyLimitKw: 6 } },
+      status: { state: 'live', status: { headroomKw: 0.5, powerLimitKw: 6 } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', limitState: 'near' });
@@ -93,7 +93,7 @@ describe('buildHeadroomWidgetPayload', () => {
     // The flag means "this hour is projected past the cap's kWh" — it is never
     // derived widget-side from instantaneous kW vs the cap.
     const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 0, hourlyLimitKw: 6.3, projectedOverHardCap: true } },
+      status: { state: 'live', status: { headroomKw: 0, powerLimitKw: 6.3, projectedOverHardCap: true } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', limitState: 'over_cap' });
@@ -101,7 +101,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('does not escalate to over_cap when the trajectory flag is absent', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: -0.5, hourlyLimitKw: 6 } },
+      status: { state: 'live', status: { headroomKw: -0.5, powerLimitKw: 6 } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', limitState: 'at_pace' });
@@ -109,7 +109,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('clamps negative current to zero', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 8, hourlyLimitKw: 7 } },
+      status: { state: 'live', status: { headroomKw: 8, powerLimitKw: 7 } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', currentKw: 0 });
@@ -121,7 +121,7 @@ describe('buildHeadroomWidgetPayload', () => {
         state: 'live',
         status: {
           headroomKw: 1,
-          hourlyLimitKw: 5,
+          powerLimitKw: 5,
           lastPowerUpdate: NOW - 120_000,
         },
       },
@@ -132,7 +132,7 @@ describe('buildHeadroomWidgetPayload', () => {
 
   test('maps unknown price level to "unknown"', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 1, hourlyLimitKw: 5, priceLevel: undefined } },
+      status: { state: 'live', status: { headroomKw: 1, powerLimitKw: 5, priceLevel: undefined } },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', priceLevel: 'unknown' });

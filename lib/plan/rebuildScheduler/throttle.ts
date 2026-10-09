@@ -1,7 +1,7 @@
-import { gridImportTargetKw } from '../../../packages/shared-domain/src/settings/powerLimits';
 import type CapacityGuard from '../../power/capacityGuard';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from '../../utils/perfCounters';
 import type { PlanRebuildTrigger, PowerSampleRebuildTrigger } from '../planRebuildTrigger';
+import { resolveGridImportTargetKw } from '../powerLimitMath';
 import {
   isTightReason,
   POWER_SAMPLE_REBUILD_CADENCE,
@@ -17,9 +17,9 @@ import {
   type RebuildOutcome,
 } from './policy';
 import {
-  resolveHardCapBreach,
+  resolveLimitBreach,
   type AdmittedPowerReading,
-  type HardCapBreach,
+  type LimitBreach,
   type PlanRebuildPosture,
   type PowerRebuildSignal,
 } from './rebuildSignal';
@@ -32,7 +32,7 @@ export {
   type RebuildHoldoff,
 } from './throttleMemory';
 
-const NO_BREACH: HardCapBreach = { breached: false, deficitKw: 0 };
+const NO_BREACH: LimitBreach = { breached: false, deficitKw: 0 };
 
 type RebuildDeferred = {
   promise: Promise<void | string>;
@@ -133,19 +133,15 @@ export class PlanRebuildThrottle {
       currentPowerW: reading.currentPowerW,
       totalKw: reading.totalKw,
       limitKw: reading.limitKw,
-      capacityPaceKw: reading.capacityPaceKw,
-      headroomKw: reading.capacityPaceKw === null ? null : reading.capacityPaceKw - reading.totalKw,
+      headroomKw: reading.powerLimitKw === null ? null : reading.powerLimitKw - reading.totalKw,
       shortfallThresholdKw: reading.shortfallThresholdKw,
       // An incident counts only while the threshold it is judged against exists
       // (`resolveShortfallThresholdKw`: none with Capacity limit off). A reading
       // can arrive between a settings write that turns Capacity limit off and
       // the build that clears the latched incident.
       isInShortfall: reading.shortfallThresholdKw !== null && this.deps.getCapacityGuard().isInShortfall(),
-      hardCapBreach: resolveHardCapBreach(reading.totalKw, reading.shortfallThresholdKw),
-      gridBreach: resolveHardCapBreach(
-        reading.totalKw,
-        reading.gridImportLimitKw === null ? null : gridImportTargetKw(reading.gridImportLimitKw),
-      ),
+      hardCapBreach: resolveLimitBreach(reading.totalKw, reading.shortfallThresholdKw),
+      gridBreach: resolveLimitBreach(reading.totalKw, resolveGridImportTargetKw(reading.gridImportLimitKw)),
       planConvergenceActive: posture.planConvergenceActive,
       unactionable: posture.unactionable,
     };

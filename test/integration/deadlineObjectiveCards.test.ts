@@ -303,7 +303,7 @@ const buildDeps = (overrides: {
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     recordPowerSample: async () => {},
     setCapacityLimit: () => {},
-    getHeadroom: () => null,
+    getHeadroom: () => ({ kind: 'unmeasured' as const }),
     getSnapshot: async () => overrides.snapshot,
     refreshSnapshot: async () => {},
     getHomeyDevicesForFlow: async () => [],

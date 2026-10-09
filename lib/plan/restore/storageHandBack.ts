@@ -33,7 +33,7 @@ import type { DevicePlanDevice } from '../planTypes';
 import type { StorageLeverState } from '../planState';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { resolveOwnModeChargeAboveHoldW } from '../battery/storageLadder';
-import { resolveReserveAdmission } from '../admission';
+import { buildReserveAdmittedLogFields, resolveReserveAdmission } from '../admission';
 import { computeRestoreBufferKw } from './accounting';
 import { canAdmitWithinBatch, canAttemptBatchContinuation, recordBatchAdmission } from './batch';
 import { shouldWaitForOtherRecovery } from './coordination';
@@ -89,7 +89,7 @@ export function planStorageHandBack(
     dev, availableHeadroom, neededKw, reserves: headroomReserves,
   });
   if (reserved.kind === 'blocked_by_reserve') return reject('reserved_for_start');
-  if (reserved.kind !== 'admitted') {
+  if (reserved.kind === 'insufficient') {
     // Waiting for room: the restores ranked below it wait behind it, as they
     // would behind a waiting load, so a smaller one never takes the room first.
     // eslint-disable-next-line no-param-reassign, functional/immutable-data -- the pass's own running fact
@@ -106,7 +106,7 @@ export function planStorageHandBack(
       deviceName: dev.name,
       phase,
       neededKw,
-      availableKw: reserved.effectiveHeadroomKw,
+      availableKw: buildReserveAdmittedLogFields(reserved).effectiveHeadroomKw,
       decision: 'admitted',
     },
   });

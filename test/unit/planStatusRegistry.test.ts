@@ -6,7 +6,7 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 const status = (headroomKw: number): PelsStatus => ({
   headroomKw,
   powerLimitKw: 8,
-  gridImportLimited: false,
+  shortfallBudgetThresholdKw: null,
   hourlyUsageKwh: 0.4,
   priceLevel: PriceLevel.NORMAL,
   devicesOn: 1,

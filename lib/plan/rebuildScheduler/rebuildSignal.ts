@@ -23,29 +23,31 @@ export type PowerRebuildSignal = {
   /** The configured hard cap in kW — the delta threshold scales off it. */
   limitKw: number;
   /**
-   * The planner's live physical limit (`computeDynamicSoftLimit`): the lower of
-   * the capacity pace and the grid import target, `null` with both off. The
-   * name predates grid control; it is no longer capacity-only.
-   */
-  capacityPaceKw: number | null;
-  /**
-   * `capacityPaceKw - totalKw`. Negative means over the physical limit, so a
-   * grid breach is always a tight headroom too, which is what puts a steady
-   * grid breach under the tight-noop backoff.
+   * The reading's `powerLimitKw - totalKw`, `null` with no physical limit on.
+   * Negative means over the physical limit, so a grid breach is always a tight
+   * headroom too, which is what puts a steady grid breach under the tight-noop
+   * backoff.
    */
   headroomKw: number | null;
   /** Producer-resolved `resolveShortfallThresholdKw`: `null` with Capacity limit off. */
   shortfallThresholdKw: number | null;
   isInShortfall: boolean;
-  hardCapBreach: HardCapBreach;
-  gridBreach: HardCapBreach;
+  /** The draw against the shortfall threshold: the capacity period's hard-cap breach. */
+  hardCapBreach: LimitBreach;
+  /** The draw against the grid import target. */
+  gridBreach: LimitBreach;
   /** The last plan is still converging, so power deltas are worth rebuilding on. */
   planConvergenceActive: boolean;
   /** The last plan proved nothing can be shed or restored. */
   unactionable: boolean;
 };
 
-export type HardCapBreach = {
+/**
+ * The draw against one limit line — the hard cap's shortfall threshold
+ * (`hardCapBreach`) or the grid import target (`gridBreach`). Both use this one
+ * shape and one escalation rule (`isBreachEscalated`).
+ */
+export type LimitBreach = {
   breached: boolean;
   deficitKw: number;
 };
@@ -70,7 +72,11 @@ export type AdmittedPowerReading = {
   currentPowerW: number;
   totalKw: number;
   limitKw: number;
-  capacityPaceKw: number | null;
+  /**
+   * The planner's live physical limit (`computePhysicalPowerLimit`): the lower
+   * of the capacity pace and the grid import target, `null` with both off.
+   */
+  powerLimitKw: number | null;
   shortfallThresholdKw: number | null;
 };
 
@@ -89,10 +95,11 @@ export type PlanRebuildPosture = {
 
 export const resolveHeadroomTight = (headroomKw: number | null): boolean => headroomKw !== null && headroomKw <= 0;
 
-export const resolveHardCapBreach = (
+/** The draw against one limit; a `null` limit (that limit off) is never breached. */
+export const resolveLimitBreach = (
   totalKw: number,
-  shortfallThresholdKw: number | null,
-): HardCapBreach => {
-  const deficitKw = shortfallThresholdKw === null ? 0 : Math.max(0, totalKw - shortfallThresholdKw);
+  limitKw: number | null,
+): LimitBreach => {
+  const deficitKw = limitKw === null ? 0 : Math.max(0, totalKw - limitKw);
   return { breached: deficitKw > 0, deficitKw };
 };

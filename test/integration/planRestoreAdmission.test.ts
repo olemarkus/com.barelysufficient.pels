@@ -1,5 +1,4 @@
 import {
-  buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   isRestoreAdmitted,
 } from '../../lib/plan/admission';
@@ -22,12 +21,5 @@ describe('admission/reserve', () => {
     expect(isRestoreAdmitted(buildRestoreAdmissionMetrics({ availableKw: 0.97, neededKw: 0.98 }))).toBe(false);
     expect(isRestoreAdmitted(buildRestoreAdmissionMetrics({ availableKw: 0.98, neededKw: 0.98 }))).toBe(true);
     expect(isRestoreAdmitted(buildRestoreAdmissionMetrics({ availableKw: 1.4, neededKw: 0.98 }))).toBe(true);
-  });
-
-  it('logs the one figure the decision was made on', () => {
-    const fields = buildRestoreAdmissionLogFields(
-      buildRestoreAdmissionMetrics({ availableKw: 1.02, neededKw: 0.98 }),
-    );
-    expect(fields).toEqual({ marginKw: expect.closeTo(0.04, 6) });
   });
 });

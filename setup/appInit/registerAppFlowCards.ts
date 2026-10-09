@@ -6,7 +6,7 @@ import {
 } from './contextGuards';
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
-import { resolveLastTotalPowerKw, resolveObservedHeadroomKw } from '../../lib/power/lastTotalPower';
+import { resolveObservedHeadroom } from '../../lib/power/lastTotalPower';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   hasMainHomeSmartTaskAuthority,
@@ -70,9 +70,7 @@ export function registerAppFlowCards(
     },
     // The power owner projects the accepted meter sample against the planner's
     // enabled capacity/grid ceiling, keeping the Flow condition on that limit.
-    getHeadroom: () => resolveObservedHeadroomKw(ctx.powerTracker, ctx.computeDynamicSoftLimit()),
-    getLatchedTotalKw: () => resolveLastTotalPowerKw(ctx.powerTracker),
-    getPowerLimitKw: () => ctx.computeDynamicSoftLimit(),
+    getHeadroom: () => resolveObservedHeadroom(ctx.powerTracker, ctx.computeDynamicSoftLimit()),
     getSnapshot: () => ctx.getFlowSnapshot(),
     getDeviceDescriptors: () => ctx.getFlowDeviceDescriptors(),
     getControllableDevices: () => ctx.controllableDevices,

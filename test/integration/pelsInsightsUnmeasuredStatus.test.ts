@@ -19,7 +19,7 @@ beforeAll(async () => {
 
 const MEASURED_STATUS = {
   headroomKw: 2.4,
-  hourlyLimitKw: 6,
+  powerLimitKw: 6,
   hourlyUsageKwh: 1.2,
   controlledKw: 1.8,
   uncontrolledKw: 1.8,
@@ -34,7 +34,7 @@ const MEASURED_STATUS = {
 // The silent-meter fail-closed status: `powerKnown: false` and every measured
 // figure omitted (`lib/plan/pelsStatus.ts`, `resolveMeasuredStatusFields`).
 const UNMEASURED_STATUS = {
-  hourlyLimitKw: 6,
+  powerLimitKw: 6,
   hourlyUsageKwh: 1.4,
   powerNowKw: null,
   powerKnown: false,
@@ -73,6 +73,32 @@ describe('pels_insights — an unmeasured status clears the measured capabilitie
     await device.updateFromStatus({ ...UNMEASURED_STATUS, powerKnown: undefined });
 
     expect(device.capabilityValues.get('pels_headroom')).toBe(2.4);
+  });
+});
+
+describe('pels_insights — no enabled power limit clears the limit capabilities', () => {
+  // Every power limit turned off: the plan has no binding limit, so the status
+  // publishes `powerLimitKw: null` and omits `headroomKw` (`lib/plan/pelsStatus.ts`).
+  const NO_LIMIT_STATUS = { ...MEASURED_STATUS, headroomKw: undefined, powerLimitKw: null };
+
+  it('mirrors the binding limit into pels_hourly_limit_kw', async () => {
+    const device = new PelsInsightsDevice();
+    await device.updateFromStatus(MEASURED_STATUS);
+
+    expect(device.capabilityValues.get('pels_hourly_limit_kw')).toBe(6);
+  });
+
+  it('stops charting the last limit and the headroom under it once no limit is enabled', async () => {
+    const device = new PelsInsightsDevice();
+    await device.updateFromStatus(MEASURED_STATUS);
+    expect(device.capabilityValues.get('pels_headroom')).toBe(2.4);
+
+    await device.updateFromStatus(NO_LIMIT_STATUS);
+
+    expect(device.capabilityValues.get('pels_headroom')).toBeNull();
+    expect(device.capabilityValues.get('pels_hourly_limit_kw')).toBeNull();
+    // The measurement is still there: the measured split keeps updating.
+    expect(device.capabilityValues.get('pels_controlled_power')).toBe(1.8);
   });
 });
 

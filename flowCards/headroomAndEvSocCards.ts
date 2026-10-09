@@ -4,6 +4,7 @@ import type {
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
 import type { HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
+import type { HeadroomWithReading } from '../lib/power/lastTotalPower';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import {
@@ -45,7 +46,7 @@ async function checkHeadroomForDevice(
   if (!deviceId || requiredKw === null || requiredKw < 0) return false;
 
   const headroom = deps.getHeadroom();
-  if (headroom === null && (deps.getLatchedTotalKw() === null || deps.getPowerLimitKw() !== null)) return false;
+  if (headroom.kind === 'unmeasured') return false;
 
   const snapshot = await deps.getSnapshot();
   const deviceSnap = snapshot.find((d) => d.id === deviceId);
@@ -64,6 +65,7 @@ async function checkHeadroomForDevice(
     deviceSnap,
     deviceId,
     requiredKw,
+    headroom,
     decision,
   });
 
@@ -75,6 +77,8 @@ function logHeadroomCheck(params: {
   deviceSnap: TargetDeviceSnapshot | undefined;
   deviceId: string;
   requiredKw: number;
+  /** The reading the decision was made on; the line logs its figures, not a second read. */
+  headroom: HeadroomWithReading;
   decision: HeadroomForDeviceDecision;
 }): void {
   const {
@@ -82,14 +86,16 @@ function logHeadroomCheck(params: {
     deviceSnap,
     deviceId,
     requiredKw,
+    headroom,
     decision,
   } = params;
   deps.debugStructured({
     event: 'headroom_for_device_checked',
     deviceId,
     deviceName: deviceSnap?.name,
-    powerLimitKw: deps.getPowerLimitKw(),
-    currentPowerKw: deps.getLatchedTotalKw(),
+    // `null`: no power limit enabled (`unlimited`), the log's spelling of no ceiling.
+    powerLimitKw: headroom.kind === 'measured' ? headroom.limitKw : null,
+    currentPowerKw: headroom.totalKw,
     deviceConsumptionKw: decision.observedKw,
     expectedPowerKw: deviceSnap?.expectedPowerKw ?? null,
     expectedPowerSource: deviceSnap?.expectedPowerSource ?? null,

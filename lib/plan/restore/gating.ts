@@ -13,10 +13,11 @@ import {
   resolveMeterSettlingReason,
 } from './timing';
 import {
+  buildReserveAdmittedLogFields,
   buildReservedForStartReason,
-  buildRestoreAdmissionLogFields,
-  buildRestoreAdmissionMetrics,
+  isReserveAdmitted,
   resolveReserveAdmission,
+  type ReserveInsufficient,
 } from '../admission';
 import { getRestoreNeed } from './support';
 import { buildMeterSettlingReason } from '../planReasonStrings';
@@ -111,12 +112,12 @@ export function planRestoreForDevice(
   const reserved = resolveReserveAdmission({
     dev, availableHeadroom, neededKw: restoreNeed.needed, reserves: headroomReserves,
   });
-  const { admission, effectiveHeadroomKw } = reserved;
   const powerSource = resolveRestorePowerSource(dev);
-  if (reserved.kind === 'admitted') {
+  if (isReserveAdmitted(reserved)) {
     const penaltyFields = restoreNeed.penaltyLevel > 0
       ? { penaltyLevel: restoreNeed.penaltyLevel, penaltyExtraKw: restoreNeed.penaltyExtraKw }
       : {};
+    const admittedLog = buildReserveAdmittedLogFields(reserved);
     emitRestoreDebugEventOnChange({
       state,
       key: restoreDebugKey,
@@ -129,8 +130,8 @@ export function planRestoreForDevice(
         estimatedPowerKw: restoreNeed.devPower,
         powerSource,
         neededKw: restoreNeed.needed,
-        availableKw: effectiveHeadroomKw,
-        ...buildRestoreAdmissionLogFields(admission),
+        availableKw: admittedLog.effectiveHeadroomKw,
+        marginKw: admittedLog.marginKw,
         decision: 'admitted',
         ...penaltyFields,
       },
@@ -139,8 +140,6 @@ export function planRestoreForDevice(
     recordBatchAdmission(batchState, restoreNeed.needed);
     return { availableHeadroom: spendPowerHeadroom(availableHeadroom, restoreNeed.needed), restoredOneThisCycle: true };
   }
-
-  if (availableHeadroom === null) return loop;
 
   // The reservation is the ONLY thing standing in the way: there is enough raw power, it is just
   // spoken for. Say so on the card, and stop here rather than falling through to the swap path —
@@ -200,11 +199,10 @@ function rejectBinaryRestoreForInsufficientHeadroom(
   dev: DevicePlanDevice,
   loop: RestoreLoopState,
   restoreNeed: ReturnType<typeof getRestoreNeed>,
-  admission: ReturnType<typeof buildRestoreAdmissionMetrics>,
+  reserved: ReserveInsufficient,
 ): RestoreLoopState {
   const { state, deviceMap, phase } = cycle;
-  const { availableHeadroom } = loop;
-  if (availableHeadroom === null) return loop;
+  const { admission, availableKw: availableHeadroom } = reserved;
   const powerSource = resolveRestorePowerSource(dev);
   const restoreDebugKey = `binary:${dev.id}`;
   setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate({
@@ -225,7 +223,7 @@ function rejectBinaryRestoreForInsufficientHeadroom(
       powerSource,
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
-      ...buildRestoreAdmissionLogFields(admission),
+      marginKw: admission.marginKw,
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
     },
@@ -245,17 +243,16 @@ function handleInsufficientBinaryRestoreHeadroom(
   dev: DevicePlanDevice,
   loop: RestoreLoopState,
   restoreNeed: ReturnType<typeof getRestoreNeed>,
-  reserved: ReturnType<typeof resolveReserveAdmission>,
+  reserved: ReserveInsufficient,
 ): RestoreLoopState {
   const { batchState } = cycle;
   const { onDevices } = lane;
-  const { availableHeadroom, restoredOneThisCycle } = loop;
-  if (reserved.kind === 'admitted' || availableHeadroom === null) return loop;
-  const { admission, reservedKw: reservedHeadroomKw } = reserved;
+  const { restoredOneThisCycle } = loop;
+  const { availableKw, reservedKw: reservedHeadroomKw } = reserved;
   const restoreDebugKey = `binary:${dev.id}`;
   const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);
   const rejectDirectly = (): RestoreLoopState => (
-    rejectBinaryRestoreForInsufficientHeadroom(cycle, dev, loop, restoreNeed, admission)
+    rejectBinaryRestoreForInsufficientHeadroom(cycle, dev, loop, restoreNeed, reserved)
   );
   if (batchContinuation) return rejectDirectly();
 
@@ -273,7 +270,7 @@ function handleInsufficientBinaryRestoreHeadroom(
     cycle,
     onDevices,
     dev,
-    availableHeadroom - reservedHeadroomKw,
+    availableKw - reservedHeadroomKw,
     restoreNeed,
     restoreDebugKey,
     { admitted: {}, rejected: {} },

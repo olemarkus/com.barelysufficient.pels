@@ -12,6 +12,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import type { PublishedPlan } from './publishedPlan';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
 import { isPlanDeviceObservedOn, isSteppedLoadDevice } from './planSteppedLoad';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type {
@@ -252,7 +253,7 @@ function roundPowerW(powerKw: number): number {
 }
 
 type RemainingSheddableContext = {
-  limitSource: 'capacity' | 'daily' | 'grid' | null;
+  limitSource: SoftLimitSource;
   physicalLimitBreached: boolean;
 };
 
@@ -418,7 +419,7 @@ export type PlanDebugSummaryEvent = {
   softLimitKw: number | null;
   capacitySoftLimitKw: number | null;
   dailySoftLimitKw: number | null;
-  softLimitSource: DevicePlan['meta']['softLimitSource'] | null;
+  softLimitSource: SoftLimitSource;
   headroomKw: number | null;
   restoreBlockedCount: number;
   restoreBlockedReasons: PlanReasonGroup[];
@@ -434,7 +435,7 @@ export function buildPlanDebugSummaryEvent(plan: DevicePlan): PlanDebugSummaryEv
     softLimitKw: roundPlanDebugNumber(plan.meta.softLimitKw),
     capacitySoftLimitKw: roundPlanDebugNumber(plan.meta.capacitySoftLimitKw),
     dailySoftLimitKw: roundPlanDebugNumber(plan.meta.dailySoftLimitKw),
-    softLimitSource: plan.meta.softLimitSource ?? null,
+    softLimitSource: plan.meta.softLimitSource,
     headroomKw: plan.meta.powerIsMeasured ? roundPlanDebugNumber(plan.meta.headroomKw) : null,
     restoreBlockedCount: categories.restoreBlockedCount,
     restoreBlockedReasons: categories.restoreBlockedReasons,

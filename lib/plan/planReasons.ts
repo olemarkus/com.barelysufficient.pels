@@ -1,4 +1,5 @@
 import type { DevicePlanDevice } from './planTypes';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
 import {
   PLAN_REASON_CODES,
   resolveRestoreShortfallKw,
@@ -90,7 +91,7 @@ export type ReasonContext = {
    */
   readonly postureHoldReasonById: ReadonlyMap<string, DeviceReason>;
   /** Plan-level binding constraint; `'daily'` re-attributes carried `capacity` reasons. */
-  readonly softLimitSource: 'capacity' | 'daily' | 'grid' | null;
+  readonly softLimitSource: SoftLimitSource;
   /** Over an enabled capacity or grid threshold (`MeasuredPower.physicalLimitBreached`). Producer-resolved. */
   readonly physicalLimitBreached: boolean;
   /** Daily pace binding with neither capacity nor grid also breached. Producer-resolved. */

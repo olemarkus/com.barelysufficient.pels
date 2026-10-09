@@ -14,6 +14,7 @@ import type {
   HeadroomCardCooldownSource,
   HeadroomCardDeviceLike,
 } from './planHeadroomSupport';
+import type { HeadroomWithReading } from '../power/lastTotalPower';
 
 export type {
   HeadroomCardCooldownSource,
@@ -33,11 +34,15 @@ export {
  * carried unchanged through the app context and the plan service. `device` is
  * also an element of `devices`: the card already found it, and carrying it
  * beats making the engine search and answer null when it is not there.
+ *
+ * `headroom` is the power owner's reading (`resolveObservedHeadroom`): the card
+ * answers an unmeasured meter itself, so only `unlimited` (no power limit
+ * enabled, no ceiling to check) and a `measured` amount reach the engine.
  */
 export type HeadroomCardQuery = {
   devices: HeadroomCardDeviceLike[];
   device: HeadroomCardDeviceLike;
-  headroom: number | null;
+  headroom: HeadroomWithReading;
   requiredKw: number;
 };
 
@@ -80,6 +85,11 @@ export type HeadroomForDeviceDecision = {
   cooldownSource: HeadroomCardCooldownSource | null;
   cooldownRemainingSec: number | null;
   observedKw: number;
+  /**
+   * For the card's log line only: the headroom plus the device's own draw,
+   * `null` when no power limit is enabled (`unlimited`). `allowed` is decided
+   * on the headroom's kind, never on this null.
+   */
   calculatedHeadroomForDeviceKw: number | null;
   penaltyLevel: number;
   requiredKwWithPenalty: number;
@@ -100,8 +110,11 @@ export const evaluateHeadroomForDevice = (
   emitActivationTransition(diagnostics, device.name, penaltyInfo.transition);
 
   const observedKw = resolveObservedHeadroomDeviceKw(device);
-  const calculatedHeadroomForDeviceKw = headroom === null ? null : headroom + observedKw;
   const penalty = applyActivationPenalty(requiredKw, penaltyInfo.penaltyLevel);
+  // The device's own draw is credited back: it is already inside the reading.
+  // With no power limit enabled there is no ceiling, so the device fits.
+  const fitsHeadroom = headroom.kind === 'unlimited'
+    || headroom.headroomKw + observedKw >= penalty.requiredKwWithPenalty;
   const cooldown = resolveHeadroomCardCooldown(state, device.id, nowTs);
   // For the card's log line only: seconds until the setback block lifts, 0 once
   // it has while the penalty level still stands, null with no penalty at all.
@@ -110,13 +123,11 @@ export const evaluateHeadroomForDevice = (
   if (block !== null) clearRemainingSec = Math.ceil(block.remainingMs / 1000);
   else if (penaltyInfo.penaltyLevel > 0) clearRemainingSec = 0;
   return {
-    allowed: cooldown === null && (
-      calculatedHeadroomForDeviceKw === null || calculatedHeadroomForDeviceKw >= penalty.requiredKwWithPenalty
-    ),
+    allowed: cooldown === null && fitsHeadroom,
     cooldownSource: cooldown?.source ?? null,
     cooldownRemainingSec: cooldown?.remainingSec ?? null,
     observedKw,
-    calculatedHeadroomForDeviceKw,
+    calculatedHeadroomForDeviceKw: headroom.kind === 'measured' ? headroom.headroomKw + observedKw : null,
     penaltyLevel: penaltyInfo.penaltyLevel,
     requiredKwWithPenalty: penalty.requiredKwWithPenalty,
     clearRemainingSec,

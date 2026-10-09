@@ -199,6 +199,10 @@ export function resolveClaimedReserveKw(params: {
 /**
  * How a restore candidate fares once the startup reservations in play are taken off the table.
  *
+ *  - `unconstrained` — there is no headroom figure to admit against (no limit is on), so no
+ *                    reservation or margin applies; proceed. It used to be an `admitted` result
+ *                    carrying a `null` admission and headroom, which made every admitted reader
+ *                    re-ask what a null meant.
  *  - `admitted`      — enough power after the reservations; proceed.
  *  - `blocked_by_reserve` — there is enough RAW power, it is just promised to a more important
  *                    device. The caller must stand down with `buildReservedForStartReason` and
@@ -206,19 +210,17 @@ export function resolveClaimedReserveKw(params: {
  *                    block that is already promised would defeat the reservation and issue the
  *                    very write it exists to avoid.
  *  - `insufficient`  — short of power regardless of any reservation; the caller's normal
- *                    shortfall/swap handling applies, against `reservedKw`-adjusted headroom so a
- *                    swap still cannot eat the promised block.
+ *                    shortfall/swap handling applies, against `reservedKw`-adjusted headroom
+ *                    (`availableKw - reservedKw`) so a swap still cannot eat the promised block.
+ *                    `availableKw` is the RAW headroom the rejection reports on the card and in
+ *                    the log.
  *
  * One discriminated result rather than two parallel metric bundles: judging on the wrong one of
  * `admission` / `rawAdmission` was representable and silent.
  */
 export type ReserveAdmission =
-  | {
-    kind: 'admitted';
-    admission: RestoreAdmissionMetrics | null;
-    effectiveHeadroomKw: number | null;
-    reservedKw: number;
-  }
+  | { kind: 'unconstrained' }
+  | { kind: 'admitted'; admission: RestoreAdmissionMetrics; effectiveHeadroomKw: number }
   // Carries the holder's NAME, resolved here rather than re-derived by each
   // caller: this is the only branch on which a holder is guaranteed to exist
   // (it needs `claimedKw > 0`, i.e. a live claiming reserve), so resolving it in
@@ -232,7 +234,30 @@ export type ReserveAdmission =
     reservedKw: number;
     holderName: string;
   }
-  | { kind: 'insufficient'; admission: RestoreAdmissionMetrics; effectiveHeadroomKw: number; reservedKw: number };
+  | { kind: 'insufficient'; admission: RestoreAdmissionMetrics; availableKw: number; reservedKw: number };
+
+/** A result that lets the restore proceed: admitted against a headroom figure, or unconstrained by any. */
+export type ReserveAdmitted = Extract<ReserveAdmission, { kind: 'admitted' | 'unconstrained' }>;
+
+/** A result short of power regardless of any reservation: the shortfall/swap lane's input. */
+export type ReserveInsufficient = Extract<ReserveAdmission, { kind: 'insufficient' }>;
+
+export function isReserveAdmitted(reserved: ReserveAdmission): reserved is ReserveAdmitted {
+  return reserved.kind === 'admitted' || reserved.kind === 'unconstrained';
+}
+
+/**
+ * The figures an admitted restore's log line reports: the headroom it was admitted against after
+ * reservations, and its margin. An unconstrained admission had no headroom figure, and its log line
+ * spells that as `null` for both — the log's "no figure", never a number. The one place that null
+ * is produced.
+ */
+export function buildReserveAdmittedLogFields(
+  reserved: ReserveAdmitted,
+): { effectiveHeadroomKw: number | null; marginKw: number | null } {
+  if (reserved.kind === 'unconstrained') return { effectiveHeadroomKw: null, marginKw: null };
+  return { effectiveHeadroomKw: reserved.effectiveHeadroomKw, marginKw: reserved.admission.marginKw };
+}
 
 export function resolveReserveAdmission(params: {
   dev: Pick<DevicePlanDevice, 'id' | 'priority'>;
@@ -241,9 +266,7 @@ export function resolveReserveAdmission(params: {
   reserves: readonly HeadroomReserve[];
 }): ReserveAdmission {
   const { dev, availableHeadroom, neededKw, reserves } = params;
-  if (availableHeadroom === null) {
-    return { kind: 'admitted', admission: null, effectiveHeadroomKw: null, reservedKw: 0 };
-  }
+  if (availableHeadroom === null) return { kind: 'unconstrained' };
   const claimedKw = resolveClaimedReserveKw({ dev, reserves });
 
   // Signed, unclamped, on purpose. The reserve is an amount that must stay FREE, not a ceiling on
@@ -260,7 +283,7 @@ export function resolveReserveAdmission(params: {
 
   const admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroomKw, neededKw });
   if (isRestoreAdmitted(admission)) {
-    return { kind: 'admitted', admission, effectiveHeadroomKw, reservedKw };
+    return { kind: 'admitted', admission, effectiveHeadroomKw };
   }
   // Branch on the claiming reserve itself, not on whether the two headroom figures happen to
   // differ: with `availableHeadroom === 0` and a live claim they are equal, and the reservation
@@ -289,9 +312,9 @@ export function resolveReserveAdmission(params: {
         holderName: holder.deviceName,
       };
     }
-    return { kind: 'insufficient', admission: rawAdmission, effectiveHeadroomKw, reservedKw };
+    return { kind: 'insufficient', admission: rawAdmission, availableKw: availableHeadroom, reservedKw };
   }
-  return { kind: 'insufficient', admission, effectiveHeadroomKw, reservedKw };
+  return { kind: 'insufficient', admission, availableKw: availableHeadroom, reservedKw };
 }
 
 /**

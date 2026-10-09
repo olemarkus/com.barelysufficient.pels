@@ -1,4 +1,5 @@
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
@@ -802,17 +803,20 @@ export type PlanMetaBase = {
   dailySoftLimitKw: number | null;
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
-  // No `'both'`. `resolveSoftLimitSource` (`planBuilder.ts`) is total over
-  // these two — when the paces coincide within `SOFT_LIMIT_EPSILON` it answers
-  // `'capacity'`, not a third "they meet here" state — and `PlanContext`
-  // already types it `SoftLimitSource = 'capacity' | 'daily'`. The third
-  // member was declared here and on the wire with nothing able to produce it,
-  // which bought a dead branch in every consumer that switched on it.
-  softLimitSource: 'capacity' | 'daily' | 'grid' | null;
+  // One binding source (`SoftLimitSource`, shared with the wire), and no
+  // `'both'`: `resolveSoftLimitSource` (`planContext.ts`) answers `'grid'` on
+  // an exact tie with the grid target, and `'capacity'` when the capacity and
+  // daily paces coincide within `SOFT_LIMIT_EPSILON` — never a "they meet
+  // here" state. A `'both'` member was once declared here and on the wire with
+  // nothing able to produce it, which bought a dead branch in every consumer
+  // that switched on it.
+  softLimitSource: SoftLimitSource;
   capacityShortfall: boolean;
-  // Genuinely absent when there is no capacity guard: the threshold is the
-  // guard's own, and `getCapacityGuard()` returns `undefined` before wiring.
-  shortfallBudgetThresholdKw?: number | null;
+  // Always written, by both meta writers (`buildPlanMetaBase`). `null` when
+  // Capacity limit is off: with no capacity period in force there is no
+  // hard-cap breach to project, so no threshold exists
+  // (`resolveShortfallThresholdKw`, its one owner).
+  shortfallBudgetThresholdKw: number | null;
   // From `capacitySettings.limitKw`, a plain required `number` passed straight
   // through — so neither `?` nor `| null` was ever right here.
   hardCapLimitKw: number;

@@ -64,7 +64,7 @@ export async function buildSheddingPlan(
   const wasSheddingActive = state.sheddingActive;
   // Resolved before the guard hears about the reading: its shortfall path
   // awaits a settings write, and the latch must read the hour this build
-  // decided on (`PlanBuilder.computeDynamicSoftLimit`). A battery limited this
+  // decided on (`PlanBuilder.computePhysicalPowerLimit`). A battery limited this
   // cycle is something limited, as a shed device is.
   const sheddingActive = resolveSheddingLatch(
     context, power, state, overshoot, new Set([...shedSet, ...storageSetpoints.keys()]),

@@ -16,7 +16,9 @@ const deviceLogger = getLogger('driver/pels-insights');
  * publish. `powerKnown: false` — the silent-meter fail-closed pass — omits
  * every measured figure, and the capabilities that mirror them are CLEARED
  * rather than left charting the last measured value through the outage
- * (`MEASURED_CAPABILITY_IDS`).
+ * (`MEASURED_CAPABILITY_IDS`). `powerLimitKw: null` — no power limit enabled —
+ * clears the capabilities that only exist against a limit the same way
+ * (`LIMIT_CAPABILITY_IDS`).
  */
 type CapabilityEntry = {
   key: keyof PelsStatus;
@@ -26,7 +28,7 @@ type CapabilityEntry = {
 
 const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
   { key: 'headroomKw', id: 'pels_headroom', type: 'number' },
-  { key: 'hourlyLimitKw', id: 'pels_hourly_limit_kw', type: 'number' },
+  { key: 'powerLimitKw', id: 'pels_hourly_limit_kw', type: 'number' },
   { key: 'hourlyUsageKwh', id: 'pels_hourly_usage', type: 'number' },
   { key: 'dailyBudgetRemainingKwh', id: 'pels_daily_budget_remaining_kwh', type: 'number' },
   { key: 'dailyBudgetExceeded', id: 'pels_daily_budget_exceeded', type: 'boolean' },
@@ -89,6 +91,19 @@ const DEFAULT_MODE = 'Home';
 const MEASURED_CAPABILITY_IDS: readonly string[] = [
   'pels_headroom', 'pels_controlled_power', 'pels_uncontrolled_power',
 ];
+
+// The status figures that exist only against an enabled power limit. With no
+// limit on, the blob carries `powerLimitKw: null` and omits `headroomKw` (there
+// is nothing to have headroom against); keeping their last values would chart
+// a limit the owner turned off, and room under it.
+const LIMIT_CAPABILITY_IDS: readonly string[] = [
+  'pels_headroom', 'pels_hourly_limit_kw',
+];
+
+const shouldClearCapability = (status: PelsStatus, id: string): boolean => (
+  (status.powerKnown === false && MEASURED_CAPABILITY_IDS.includes(id))
+  || (status.powerLimitKw === null && LIMIT_CAPABILITY_IDS.includes(id))
+);
 
 const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
   if (type === 'string') return typeof value === 'string' && value.length > 0;
@@ -346,10 +361,11 @@ class PelsInsightsDevice extends Homey.Device {
         const value = status[key];
         if (shouldSetCapability(value, type)) {
           await this.setCapabilityValue(id, value);
-        } else if (status.powerKnown === false && MEASURED_CAPABILITY_IDS.includes(id)) {
-          // Unmeasured: the blob omitted the figure on purpose, so the
-          // capability is cleared — a null reads as "no value" on the
-          // Insights chart, never as the last measured watts.
+        } else if (shouldClearCapability(status, id)) {
+          // Unmeasured, or no limit enabled: the blob omitted the figure on
+          // purpose, so the capability is cleared — a null reads as "no value"
+          // on the Insights chart, never as the last measured watts or the
+          // last enabled limit.
           await this.setCapabilityValue(id, null);
         }
       }

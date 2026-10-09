@@ -182,6 +182,11 @@ type ReliefShare = {
  * against this cycle's reading — or null when there is no latch, or this sample
  * carries no watts to count against. Nothing standing is an answer too: its
  * `retained` latch is what retires the rest for good.
+ *
+ * `creditDelivered` says whether relief a device's meter shows delivered keeps
+ * its credit until the whole-home reading shows it. The one production caller
+ * answers `false` under grid pressure, where delivered relief is retired on the
+ * next reading (`shedding/AGENTS.md` § "Grid import pressure").
  */
 export function resolvePendingShedRelief(
   latch: ShedPlanLatch | null,
@@ -189,7 +194,7 @@ export function resolvePendingShedRelief(
   powerW: number | null,
   nowTs: number,
   storageLevers: StorageLevers,
-  creditDelivered = true,
+  creditDelivered: boolean,
 ): PendingShedRelief | null {
   if (latch === null || powerW === null) return null;
   const devicesById = new Map(devices.map((device) => [device.id, device]));

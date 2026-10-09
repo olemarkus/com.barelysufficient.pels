@@ -54,7 +54,7 @@ const reading = (currentPowerW: number, shortfallThresholdKw = 20) => ({
   currentPowerW,
   totalKw: currentPowerW / 1000,
   limitKw: 10,
-  capacityPaceKw: 9,
+  powerLimitKw: 9,
   shortfallThresholdKw,
 });
 
