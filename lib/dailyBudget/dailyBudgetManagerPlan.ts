@@ -21,6 +21,7 @@ import type {
   DailyBudgetSettings,
   DailyBudgetState,
 } from './dailyBudgetTypes';
+import { OBSERVED_HOURLY_STATS_FIELDS } from './observedHourlyStats';
 
 type NumericArraySummary = {
   length: number;
@@ -267,22 +268,9 @@ function buildPlanDebugPayload(params: {
 }
 
 function buildObservedStatsDebugMeta(state: DailyBudgetState): Record<string, unknown> {
-  return {
-    profileObservedMaxUncontrolledKWh: summarizeNumericArray(state.profileObservedMaxUncontrolledKWh),
-    profileObservedMaxControlledKWh: summarizeNumericArray(state.profileObservedMaxControlledKWh),
-    profileObservedMinUncontrolledKWh: summarizeNumericArray(state.profileObservedMinUncontrolledKWh),
-    profileObservedMinControlledKWh: summarizeNumericArray(state.profileObservedMinControlledKWh),
-    profileObservedP50UncontrolledKWh: summarizeNumericArray(state.profileObservedP50UncontrolledKWh),
-    profileObservedP75UncontrolledKWh: summarizeNumericArray(state.profileObservedP75UncontrolledKWh),
-    profileObservedP90UncontrolledKWh: summarizeNumericArray(state.profileObservedP90UncontrolledKWh),
-    profileObservedUncontrolledSampleCounts: summarizeNumericArray(state.profileObservedUncontrolledSampleCounts),
-    profileObservedP50GrossUncontrolledKWh: summarizeNumericArray(state.profileObservedP50GrossUncontrolledKWh),
-    profileObservedP75GrossUncontrolledKWh: summarizeNumericArray(state.profileObservedP75GrossUncontrolledKWh),
-    profileObservedP90GrossUncontrolledKWh: summarizeNumericArray(state.profileObservedP90GrossUncontrolledKWh),
-    profileObservedGrossUncontrolledSampleCounts: summarizeNumericArray(
-      state.profileObservedGrossUncontrolledSampleCounts,
-    ),
-  };
+  return Object.fromEntries(
+    OBSERVED_HOURLY_STATS_FIELDS.map((field) => [field, summarizeNumericArray(state[field])]),
+  );
 }
 
 function summarizeNumericArray(values?: number[] | null): NumericArraySummary | null {

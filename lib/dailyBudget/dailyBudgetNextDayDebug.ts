@@ -4,6 +4,7 @@ import { buildDailyBudgetPreview } from './dailyBudgetPreview';
 import type { DayContext, PriceData } from './dailyBudgetState';
 import type { DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';
 import { logDailyBudgetPlanDebug } from './dailyBudgetManagerPlan';
+import { resolveObservedHourlyStats } from './observedHourlyStats';
 import { getEffectiveProfileData, getProfileSplitSampleCount } from './dailyBudgetProfile';
 import type { StructuredDebugEmitter } from '../logging/logger';
 
@@ -49,14 +50,7 @@ export function logNextDayPlanDebug(params: {
     profileSampleCount: profileData.sampleCount,
     profileSplitSampleCount: getProfileSplitSampleCount(state),
     profileBreakdown: profileData.breakdown,
-    profileObservedMaxUncontrolledKWh: state.profileObservedMaxUncontrolledKWh,
-    profileObservedMaxControlledKWh: state.profileObservedMaxControlledKWh,
-    profileObservedMinUncontrolledKWh: state.profileObservedMinUncontrolledKWh,
-    profileObservedMinControlledKWh: state.profileObservedMinControlledKWh,
-    profileObservedP50UncontrolledKWh: state.profileObservedP50UncontrolledKWh,
-    profileObservedP75UncontrolledKWh: state.profileObservedP75UncontrolledKWh,
-    profileObservedP90UncontrolledKWh: state.profileObservedP90UncontrolledKWh,
-    profileObservedUncontrolledSampleCounts: state.profileObservedUncontrolledSampleCounts,
+    observedStats: resolveObservedHourlyStats(state),
   });
   const bucketStartUtcMs = preview.buckets.startUtc.map((ts) => new Date(ts).getTime());
   const priceData: PriceData = buildPriceDebugData({

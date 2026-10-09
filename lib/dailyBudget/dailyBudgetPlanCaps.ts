@@ -9,6 +9,7 @@ import {
   UNCONTROLLED_RESERVE_MIN_KWH,
   UNCONTROLLED_RESERVE_TAIL_RATIO_FOR_MAX,
 } from './dailyBudgetConstants';
+import type { ObservedHourlyStats } from './observedHourlyStats';
 
 const PLAN_CAP_EPSILON = 1e-6;
 
@@ -38,8 +39,7 @@ export function resolveRemainingCaps(params: {
   splitSharesUncontrolled: number[];
   splitSharesControlled: number[];
   controlledUsageWeight: number;
-  profileObservedMaxUncontrolledKWh?: number[];
-  profileObservedMaxControlledKWh?: number[];
+  observedStats: ObservedHourlyStats;
   observedPeakMarginRatio?: number;
   capacityBudgetKWh?: number;
   usedInCurrent: number;
@@ -49,8 +49,7 @@ export function resolveRemainingCaps(params: {
   const {
     bucketStartUtcMs,
     timeZone,
-    profileObservedMaxUncontrolledKWh,
-    profileObservedMaxControlledKWh,
+    observedStats,
     observedPeakMarginRatio,
     capacityBudgetKWh,
     usedInCurrent,
@@ -69,8 +68,8 @@ export function resolveRemainingCaps(params: {
     .map((bucketStartMs, index) => {
       const bucketIndex = remainingStartIndex + index;
       const hour = getZonedParts(new Date(bucketStartMs), timeZone).hour;
-      const uncontrolledCap = resolveObservedCap(profileObservedMaxUncontrolledKWh?.[hour], marginRatio);
-      const controlledCap = resolveObservedCap(profileObservedMaxControlledKWh?.[hour], marginRatio);
+      const uncontrolledCap = resolveObservedCap(observedStats.profileObservedMaxUncontrolledKWh[hour], marginRatio);
+      const controlledCap = resolveObservedCap(observedStats.profileObservedMaxControlledKWh[hour], marginRatio);
       const observedTotalCap = sumAvailableCaps({
         uncontrolledCap,
         controlledCap,
@@ -89,16 +88,7 @@ export function resolveRemainingFloors(params: {
   splitSharesUncontrolled: number[];
   splitSharesControlled: number[];
   controlledUsageWeight: number;
-  profileObservedMinUncontrolledKWh?: number[];
-  profileObservedMinControlledKWh?: number[];
-  profileObservedP50UncontrolledKWh?: number[];
-  profileObservedP75UncontrolledKWh?: number[];
-  profileObservedP90UncontrolledKWh?: number[];
-  profileObservedUncontrolledSampleCounts?: number[];
-  profileObservedP50GrossUncontrolledKWh?: number[];
-  profileObservedP75GrossUncontrolledKWh?: number[];
-  profileObservedP90GrossUncontrolledKWh?: number[];
-  profileObservedGrossUncontrolledSampleCounts?: number[];
+  observedStats: ObservedHourlyStats;
   observedPeakMarginRatio?: number;
   usedInCurrent: number;
   remainingStartIndex: number;
@@ -114,6 +104,13 @@ export function resolveRemainingFloors(params: {
     bucketStartUtcMs,
     timeZone,
     controlledUsageWeight,
+    observedStats,
+    observedPeakMarginRatio,
+    usedInCurrent,
+    remainingStartIndex,
+    currentBucketIndex,
+  } = params;
+  const {
     profileObservedMinUncontrolledKWh,
     profileObservedMinControlledKWh,
     profileObservedP50UncontrolledKWh,
@@ -124,11 +121,7 @@ export function resolveRemainingFloors(params: {
     profileObservedP75GrossUncontrolledKWh,
     profileObservedP90GrossUncontrolledKWh,
     profileObservedGrossUncontrolledSampleCounts,
-    observedPeakMarginRatio,
-    usedInCurrent,
-    remainingStartIndex,
-    currentBucketIndex,
-  } = params;
+  } = observedStats;
   const marginRatio = Number.isFinite(observedPeakMarginRatio)
     ? Math.max(0, observedPeakMarginRatio ?? 0)
     : OBSERVED_HOURLY_PEAK_MARGIN_RATIO;
@@ -144,16 +137,16 @@ export function resolveRemainingFloors(params: {
       const hour = getZonedParts(new Date(bucketStartMs), timeZone).hour;
       const reserve = resolveUncontrolledReserve({
         hour,
-        p50: profileObservedP50UncontrolledKWh?.[hour],
-        p75: profileObservedP75UncontrolledKWh?.[hour],
-        p90: profileObservedP90UncontrolledKWh?.[hour],
-        samples: profileObservedUncontrolledSampleCounts?.[hour],
-        fallbackMinObserved: profileObservedMinUncontrolledKWh?.[hour],
+        p50: profileObservedP50UncontrolledKWh[hour],
+        p75: profileObservedP75UncontrolledKWh[hour],
+        p90: profileObservedP90UncontrolledKWh[hour],
+        samples: profileObservedUncontrolledSampleCounts[hour],
+        fallbackMinObserved: profileObservedMinUncontrolledKWh[hour],
         marginRatio,
         reserveAggressiveness,
       });
       diagnosticsHours.push(reserve.diagnostic);
-      const controlledMin = resolveObservedMin(profileObservedMinControlledKWh?.[hour], marginRatio);
+      const controlledMin = resolveObservedMin(profileObservedMinControlledKWh[hour], marginRatio);
       const totalFloor = reserve.reservedUncontrolledKWh + controlledFloorWeight * controlledMin;
       if (bucketIndex === currentBucketIndex) {
         return Math.max(0, totalFloor - usedInCurrent);
@@ -177,11 +170,10 @@ export function resolveRemainingFloors(params: {
     bucketStartUtcMs,
     timeZone,
     profileObservedMinUncontrolledKWh,
-    profileObservedP50UncontrolledKWh: profileObservedP50GrossUncontrolledKWh ?? profileObservedP50UncontrolledKWh,
-    profileObservedP75UncontrolledKWh: profileObservedP75GrossUncontrolledKWh ?? profileObservedP75UncontrolledKWh,
-    profileObservedP90UncontrolledKWh: profileObservedP90GrossUncontrolledKWh ?? profileObservedP90UncontrolledKWh,
-    profileObservedUncontrolledSampleCounts: profileObservedGrossUncontrolledSampleCounts
-      ?? profileObservedUncontrolledSampleCounts,
+    profileObservedP50UncontrolledKWh: profileObservedP50GrossUncontrolledKWh,
+    profileObservedP75UncontrolledKWh: profileObservedP75GrossUncontrolledKWh,
+    profileObservedP90UncontrolledKWh: profileObservedP90GrossUncontrolledKWh,
+    profileObservedUncontrolledSampleCounts: profileObservedGrossUncontrolledSampleCounts,
     observedPeakMarginRatio,
     applyFromIndex: currentBucketIndex,
     reserveAggressiveness,
@@ -204,11 +196,11 @@ export function resolveRemainingFloors(params: {
 export function buildUncontrolledReserveFloors(params: {
   bucketStartUtcMs: number[];
   timeZone: string;
-  profileObservedMinUncontrolledKWh?: number[];
-  profileObservedP50UncontrolledKWh?: number[];
-  profileObservedP75UncontrolledKWh?: number[];
-  profileObservedP90UncontrolledKWh?: number[];
-  profileObservedUncontrolledSampleCounts?: number[];
+  profileObservedMinUncontrolledKWh: number[];
+  profileObservedP50UncontrolledKWh: number[];
+  profileObservedP75UncontrolledKWh: number[];
+  profileObservedP90UncontrolledKWh: number[];
+  profileObservedUncontrolledSampleCounts: number[];
   observedPeakMarginRatio?: number;
   applyFromIndex: number;
   reserveAggressiveness?: number;
@@ -233,11 +225,11 @@ export function buildUncontrolledReserveFloors(params: {
     const hour = getZonedParts(new Date(bucketStartMs), timeZone).hour;
     return resolveUncontrolledReserve({
       hour,
-      p50: profileObservedP50UncontrolledKWh?.[hour],
-      p75: profileObservedP75UncontrolledKWh?.[hour],
-      p90: profileObservedP90UncontrolledKWh?.[hour],
-      samples: profileObservedUncontrolledSampleCounts?.[hour],
-      fallbackMinObserved: profileObservedMinUncontrolledKWh?.[hour],
+      p50: profileObservedP50UncontrolledKWh[hour],
+      p75: profileObservedP75UncontrolledKWh[hour],
+      p90: profileObservedP90UncontrolledKWh[hour],
+      samples: profileObservedUncontrolledSampleCounts[hour],
+      fallbackMinObserved: profileObservedMinUncontrolledKWh[hour],
       marginRatio,
       reserveAggressiveness,
     }).reservedUncontrolledKWh;
@@ -247,7 +239,7 @@ export function buildUncontrolledReserveFloors(params: {
 function buildUncontrolledReserveDataPresence(params: {
   bucketStartUtcMs: number[];
   timeZone: string;
-  profileObservedUncontrolledSampleCounts?: number[];
+  profileObservedUncontrolledSampleCounts: number[];
   applyFromIndex: number;
 }): boolean[] {
   const {
@@ -259,14 +251,14 @@ function buildUncontrolledReserveDataPresence(params: {
   return bucketStartUtcMs.map((bucketStartMs, index) => {
     if (index < applyFromIndex) return false;
     const hour = getZonedParts(new Date(bucketStartMs), timeZone).hour;
-    return normalizeSampleCount(profileObservedUncontrolledSampleCounts?.[hour]) > 0;
+    return normalizeSampleCount(profileObservedUncontrolledSampleCounts[hour]) > 0;
   });
 }
 
 export function buildControlledMinFloors(params: {
   bucketStartUtcMs: number[];
   timeZone: string;
-  profileObservedMinControlledKWh?: number[];
+  profileObservedMinControlledKWh: number[];
   observedPeakMarginRatio?: number;
   applyFromIndex: number;
   controlledUsageWeight?: number;
@@ -285,7 +277,7 @@ export function buildControlledMinFloors(params: {
   return bucketStartUtcMs.map((bucketStartMs, index) => {
     if (index < applyFromIndex) return 0;
     const hour = getZonedParts(new Date(bucketStartMs), timeZone).hour;
-    return weight * resolveObservedMin(profileObservedMinControlledKWh?.[hour], marginRatio);
+    return weight * resolveObservedMin(profileObservedMinControlledKWh[hour], marginRatio);
   });
 }
 

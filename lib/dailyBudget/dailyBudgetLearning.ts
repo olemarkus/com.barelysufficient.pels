@@ -9,6 +9,7 @@ import { OBSERVED_HOURLY_PEAK_WINDOW_DAYS } from './dailyBudgetConstants';
 import { buildObservedHourlyStatsFromWindow } from './dailyBudgetObservedStats';
 import { normalizeWeights, sumArray } from './dailyBudgetMath';
 import type { DailyBudgetState } from './dailyBudgetTypes';
+import type { ObservedHourlyStats } from './observedHourlyStats';
 
 export function buildBucketUsageSplit(params: {
   bucketStartUtcMs: number[];
@@ -251,18 +252,7 @@ const buildNextLearningState = (params: {
   bucketUsage: ReturnType<typeof buildBucketUsageSplit>;
   dayUncontrolledWeights: number[] | null;
   dayControlledWeights: number[] | null;
-  observedMaxUncontrolled: number[];
-  observedMaxControlled: number[];
-  observedMinUncontrolled: number[];
-  observedMinControlled: number[];
-  observedP50Uncontrolled: number[];
-  observedP75Uncontrolled: number[];
-  observedP90Uncontrolled: number[];
-  observedUncontrolledSampleCounts: number[];
-  observedP50GrossUncontrolled: number[];
-  observedP75GrossUncontrolled: number[];
-  observedP90GrossUncontrolled: number[];
-  observedGrossUncontrolledSampleCounts: number[];
+  observedStats: ObservedHourlyStats;
 }): DailyBudgetState => {
   const {
     state,
@@ -272,18 +262,7 @@ const buildNextLearningState = (params: {
     bucketUsage,
     dayUncontrolledWeights,
     dayControlledWeights,
-    observedMaxUncontrolled,
-    observedMaxControlled,
-    observedMinUncontrolled,
-    observedMinControlled,
-    observedP50Uncontrolled,
-    observedP75Uncontrolled,
-    observedP90Uncontrolled,
-    observedUncontrolledSampleCounts,
-    observedP50GrossUncontrolled,
-    observedP75GrossUncontrolled,
-    observedP90GrossUncontrolled,
-    observedGrossUncontrolledSampleCounts,
+    observedStats,
   } = params;
   const previousSampleCount = resolveProfileSampleCount(state);
   const previousSplitSampleCount = resolveProfileSplitSampleCount(state);
@@ -317,18 +296,7 @@ const buildNextLearningState = (params: {
     profileControlledShare: nextControlledShare,
     profileSampleCount: nextSampleCount,
     profileSplitSampleCount: nextSplitSampleCount,
-    profileObservedMaxUncontrolledKWh: observedMaxUncontrolled,
-    profileObservedMaxControlledKWh: observedMaxControlled,
-    profileObservedMinUncontrolledKWh: observedMinUncontrolled,
-    profileObservedMinControlledKWh: observedMinControlled,
-    profileObservedP50UncontrolledKWh: observedP50Uncontrolled,
-    profileObservedP75UncontrolledKWh: observedP75Uncontrolled,
-    profileObservedP90UncontrolledKWh: observedP90Uncontrolled,
-    profileObservedUncontrolledSampleCounts: observedUncontrolledSampleCounts,
-    profileObservedP50GrossUncontrolledKWh: observedP50GrossUncontrolled,
-    profileObservedP75GrossUncontrolledKWh: observedP75GrossUncontrolled,
-    profileObservedP90GrossUncontrolledKWh: observedP90GrossUncontrolled,
-    profileObservedGrossUncontrolledSampleCounts: observedGrossUncontrolledSampleCounts,
+    ...observedStats,
   });
 };
 
@@ -384,21 +352,7 @@ export function finalizePreviousDayLearning(params: {
   });
   const observedWindowEndMs = resolveObservedWindowEndMs(nowMs, windowResult.windowEndUtcMs);
   const observedWindowStartMs = observedWindowEndMs - OBSERVED_HOURLY_PEAK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-  const {
-    observedMaxUncontrolled,
-    observedMaxControlled,
-    observedMinUncontrolled,
-    observedMinControlled,
-    observedP50Uncontrolled,
-    observedP75Uncontrolled,
-    observedP90Uncontrolled,
-    observedUncontrolledSampleCounts,
-    observedP50GrossUncontrolled,
-    observedP75GrossUncontrolled,
-    observedP90GrossUncontrolled,
-    observedGrossUncontrolledSampleCounts,
-    windowBucketCount,
-  } = buildObservedHourlyStatsFromWindow({
+  const { stats: observedStats, windowBucketCount } = buildObservedHourlyStatsFromWindow({
     powerTracker,
     timeZone,
     windowStartUtcMs: observedWindowStartMs,
@@ -412,18 +366,7 @@ export function finalizePreviousDayLearning(params: {
     bucketUsage,
     dayUncontrolledWeights,
     dayControlledWeights,
-    observedMaxUncontrolled,
-    observedMaxControlled,
-    observedMinUncontrolled,
-    observedMinControlled,
-    observedP50Uncontrolled,
-    observedP75Uncontrolled,
-    observedP90Uncontrolled,
-    observedUncontrolledSampleCounts,
-    observedP50GrossUncontrolled,
-    observedP75GrossUncontrolled,
-    observedP90GrossUncontrolled,
-    observedGrossUncontrolledSampleCounts,
+    observedStats,
   });
 
   const usageKindLabel = bucketUsage.usedControlledData ? 'split' : 'total';

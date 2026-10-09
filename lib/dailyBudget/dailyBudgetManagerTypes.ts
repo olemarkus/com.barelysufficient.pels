@@ -2,8 +2,12 @@ import type { PowerTrackerState } from '../power/tracker';
 import type { CombinedPriceData } from './dailyBudgetMath';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
 import type { PriceData } from './dailyBudgetState';
-import type { DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';
-import type { DailyBudgetStatePersistReason } from './dailyBudgetTypes';
+import type {
+  DailyBudgetSettings,
+  DailyBudgetState,
+  DailyBudgetStatePersistReason,
+} from './dailyBudgetTypes';
+import { OBSERVED_HOURLY_STATS_FIELDS } from './observedHourlyStats';
 
 export type DailyBudgetManagerDeps = {
   log: (...args: unknown[]) => void;
@@ -113,18 +117,7 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     , isNumberOrUndefined(state.profileControlledShare)
     , isNonNegativeNumberOrUndefined(state.profileSampleCount)
     , isNonNegativeNumberOrUndefined(state.profileSplitSampleCount)
-    , isHourlyArrayOrUndefined(state.profileObservedMaxUncontrolledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedMaxControlledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedMinUncontrolledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedMinControlledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedP50UncontrolledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedP75UncontrolledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedP90UncontrolledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedUncontrolledSampleCounts)
-    , isHourlyArrayOrUndefined(state.profileObservedP50GrossUncontrolledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedP75GrossUncontrolledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedP90GrossUncontrolledKWh)
-    , isHourlyArrayOrUndefined(state.profileObservedGrossUncontrolledSampleCounts)
+    , OBSERVED_HOURLY_STATS_FIELDS.every((field) => isHourlyArrayOrUndefined(state[field]))
     , isNullableStringOrUndefined(state.profileObservedStatsConfigKey)
     , isFiniteNumberArrayOrUndefined(state.plannedKWh)
     , isFiniteNumberArrayOrUndefined(state.plannedUncontrolledKWh)
