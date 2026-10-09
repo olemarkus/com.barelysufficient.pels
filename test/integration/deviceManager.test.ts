@@ -29,6 +29,7 @@ import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
+import { capabilityReadings, celsius, homeyDevice, setable } from '../helpers/homeyDevicePayload';
 
 const mockApiGet = vi.fn();
 const mockApiPut = vi.fn().mockResolvedValue(undefined);
@@ -60,29 +61,19 @@ const stampedBefore = (evidence: { observedAtMs: number } | undefined, offsetMs:
 const BASELINE_OFFSET_MS = -60_000;
 
 const buildRealtimeDevices = () => ({
-    dev1: {
-        id: 'dev1',
-        name: 'Heater',
-        capabilities: ['measure_power', 'onoff'],
-        class: 'heater',
-        capabilitiesObj: {
-            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-        },
-    },
+    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+        measure_power: 1000,
+        onoff: true,
+    }, stampedNow(BASELINE_OFFSET_MS)),
 });
 
 // Shared fixtures for the transient-empty-read abandon-grace tests. Kept at
 // module scope so the assertions stay flat (no extra describe/callback nesting).
 const GRACE_POPULATED_PAYLOAD = {
-    dev1: {
-        id: 'dev1', name: 'Heater', class: 'heater',
-        capabilities: ['measure_power', 'onoff'],
-        capabilitiesObj: {
-            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-        },
-    },
+    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+        measure_power: 1000,
+        onoff: true,
+    }, stampedNow()),
 };
 
 const snapshotDeviceId = (device: { id: string }): string => device.id;
@@ -183,43 +174,23 @@ describe('DeviceTransport', () => {
                 getBudgetExempt: (deviceId) => deviceId === 'thermo-1',
             });
 
-            const [parsed] = await seedTransportDevices(parsingDeviceManager, [{
-                id: 'thermo-1',
-                name: 'Hall Thermostat',
-                class: 'thermostat',
-                zoneName: 'Hallway',
-                capabilities: [
-                    'onoff',
-                    'measure_temperature',
-                    'target_temperature',
-                    'measure_power',
-                ],
-                capabilitiesObj: {
-                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z', setable: true },
-                    measure_temperature: {
-                        value: 19.5,
-                        id: 'measure_temperature',
-                        units: '°C',
-                        lastUpdated: '2026-04-01T11:52:00.000Z',
-                    },
-                    target_temperature: {
-                        value: 21,
-                        id: 'target_temperature',
-                        units: '°C',
-                        min: 5,
-                        max: 30,
-                        step: 0.5,
-                        lastUpdated: '2026-04-01T11:51:00.000Z',
-                    },
-                    measure_power: {
-                        value: 730,
-                        id: 'measure_power',
-                        lastUpdated: '2026-04-01T11:53:00.000Z',
-                    },
+            const [parsed] = await seedTransportDevices(parsingDeviceManager, [homeyDevice(
+                {
+                    id: 'thermo-1',
+                    name: 'Hall Thermostat',
+                    class: 'thermostat',
+                    zoneName: 'Hallway',
+                    settings: { load: 900 },
+                    available: false,
                 },
-                settings: { load: 900 },
-                available: false,
-            }]);
+                {
+                    onoff: setable(false),
+                    measure_temperature: { value: 19.5, units: '°C', lastUpdated: '2026-04-01T11:52:00.000Z' },
+                    target_temperature: { value: 21, units: '°C', min: 5, max: 30, step: 0.5, lastUpdated: '2026-04-01T11:51:00.000Z' },
+                    measure_power: { value: 730, lastUpdated: '2026-04-01T11:53:00.000Z' },
+                },
+                '2026-04-01T11:50:00.000Z',
+            )]);
 
             expect(parsed).toEqual(expect.objectContaining({
                 id: 'thermo-1',
@@ -286,18 +257,16 @@ describe('DeviceTransport', () => {
             // The parse REPORTS the mode and does not interpret it: the
             // vocabulary that turns it into a direction is the observer's
             // (`resolveThermalDirection`). Normalized only — trimmed, lowercased.
-            const [parsed] = await seedTransportDevices(deviceManager, [{
-                id: 'heatpump-1',
-                name: 'Living Room Heat Pump',
-                class: 'heatpump',
-                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'thermostat_mode'],
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    measure_temperature: { value: 25, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                    target_temperature: { value: 22, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    thermostat_mode: { value: mode, id: 'thermostat_mode', lastUpdated: stampedNow() },
+            const [parsed] = await seedTransportDevices(deviceManager, [homeyDevice(
+                { id: 'heatpump-1', name: 'Living Room Heat Pump', class: 'heatpump' },
+                {
+                    onoff: true,
+                    measure_temperature: celsius(25),
+                    target_temperature: celsius(22),
+                    thermostat_mode: mode,
                 },
-            }]);
+                stampedNow(),
+            )]);
 
             expect(parsed.thermostatMode).toBe(reported);
         });
@@ -311,11 +280,11 @@ describe('DeviceTransport', () => {
                 name: 'Availability Boundary',
                 class: 'thermostat',
                 capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                    target_temperature: { value: 22, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                },
+                capabilitiesObj: capabilityReadings({
+                    onoff: true,
+                    measure_temperature: celsius(20),
+                    target_temperature: celsius(22),
+                }, stampedNow()),
                 ...availability,
             }]);
 
@@ -381,26 +350,11 @@ describe('DeviceTransport', () => {
             // device with `settings.load` exposes `measure_power` and
             // `meter_power`. The invented shape was the sole evidence for a gate
             // term that admitted nobody.
-            const [parsed] = await seedTransportDevices(deviceManager, [{
-                id: 'socket-subcap',
-                name: 'Socket With Internal Power',
-                class: 'socket',
-                capabilities: ['onoff', 'measure_power', 'measure_power.leak'],
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:53:00.000Z' },
-                    measure_power: {
-                        value: 730,
-                        id: 'measure_power',
-                        lastUpdated: '2026-04-01T11:53:00.000Z',
-                    },
-                    'measure_power.leak': {
-                        value: 4200,
-                        id: 'measure_power.leak',
-                        lastUpdated: '2026-04-01T11:53:00.000Z',
-                    },
-                },
-                settings: { load: 900 },
-            }]);
+            const [parsed] = await seedTransportDevices(deviceManager, [homeyDevice(
+                { id: 'socket-subcap', name: 'Socket With Internal Power', class: 'socket', settings: { load: 900 } },
+                { onoff: true, measure_power: 730, 'measure_power.leak': 4200 },
+                '2026-04-01T11:53:00.000Z',
+            )]);
 
             expect(parsed).toEqual(expect.objectContaining({
                 id: 'socket-subcap',
@@ -413,16 +367,11 @@ describe('DeviceTransport', () => {
         });
 
         it('keeps the binary facet when exact temperature measurement support is missing', async () => {
-            const [parsed] = await seedTransportDevices(deviceManager, [{
-                id: 'bad-thermo',
-                name: 'Broken Thermostat',
-                class: 'thermostat',
-                capabilities: ['onoff', 'target_temperature'],
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                },
-            }]);
+            const [parsed] = await seedTransportDevices(deviceManager, [homeyDevice(
+                { id: 'bad-thermo', name: 'Broken Thermostat', class: 'thermostat' },
+                { onoff: true, target_temperature: celsius(21) },
+                stampedNow(),
+            )]);
 
             expect(parsed).toEqual(expect.objectContaining({
                 id: 'bad-thermo',
@@ -434,32 +383,20 @@ describe('DeviceTransport', () => {
         });
 
         it('drops a temperature-only device when either member of the pair is malformed', async () => {
-            const parsed = await seedTransportDevices(deviceManager, [{
-                id: 'temp-only-broken',
-                name: 'Broken Tank',
-                class: 'thermostat',
-                capabilities: ['measure_temperature', 'target_temperature'],
-                capabilitiesObj: {
-                    measure_temperature: { value: Number.NaN, id: 'measure_temperature' },
-                    target_temperature: { value: 60, id: 'target_temperature', units: '°C' },
-                },
-            }]);
+            const parsed = await seedTransportDevices(deviceManager, [homeyDevice(
+                { id: 'temp-only-broken', name: 'Broken Tank', class: 'thermostat' },
+                { measure_temperature: Number.NaN, target_temperature: celsius(60) },
+            )]);
 
             expect(parsed).toEqual([]);
         });
     });
 
     describe('runtime managed filter', () => {
-        const buildDevice = (id: string, capValue: unknown) => ({
-            id,
-            name: id,
-            class: 'heater',
-            capabilities: ['measure_power', 'onoff'],
-            capabilitiesObj: {
-                measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                onoff: { value: capValue, id: 'onoff', lastUpdated: stampedNow() },
-            },
-        });
+        const buildDevice = (id: string, capValue: unknown) => homeyDevice({ id, name: id, class: 'heater' }, {
+            measure_power: 1000,
+            onoff: { value: capValue },
+        }, stampedNow());
 
         it('drops unmanaged devices from the runtime snapshot when at least one device is explicitly managed', async () => {
             const dm = createTestDeviceTransport(homeyMock, loggerMock, {
@@ -516,16 +453,10 @@ describe('DeviceTransport', () => {
     });
 
     describe('getUiPickerDevices', () => {
-        const buildDevice = (id: string, capValue: unknown) => ({
-            id,
-            name: id,
-            class: 'heater',
-            capabilities: ['measure_power', 'onoff'],
-            capabilitiesObj: {
-                measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                onoff: { value: capValue, id: 'onoff', lastUpdated: stampedNow() },
-            },
-        });
+        const buildDevice = (id: string, capValue: unknown) => homeyDevice({ id, name: id, class: 'heater' }, {
+            measure_power: 1000,
+            onoff: { value: capValue },
+        }, stampedNow());
 
         it('returns only unmanaged-eligible devices, leaving out any device whose read never conformed, managed or not', async () => {
             const dm = createTestDeviceTransport(homeyMock, loggerMock, {
@@ -818,28 +749,25 @@ describe('DeviceTransport', () => {
         it('populates snapshot with controllable devices', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                dev1: homeyDevice(
+                    {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     },
-                },
-                dev2: {
-                    id: 'dev2',
-                    name: 'Light',
-                    class: 'socket',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 120, id: 'measure_power', lastUpdated: stampedNow() },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                    {
+                        measure_power: 1000,
+                        measure_temperature: celsius(21),
+                        target_temperature: celsius(20),
+                        onoff: true,
                     },
-                },
+                    stampedNow(),
+                ),
+                dev2: homeyDevice({ id: 'dev2', name: 'Light', class: 'socket' }, {
+                    measure_power: 120,
+                    onoff: true,
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1009,14 +937,7 @@ describe('DeviceTransport', () => {
             });
             await dispatchingManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 500, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, { measure_power: 500, onoff: true }),
             });
             mockGetLiveReport.mockResolvedValue({
                 items: [
@@ -1050,14 +971,7 @@ describe('DeviceTransport', () => {
             });
             await dispatchingManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 500, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, { measure_power: 500, onoff: true }),
             });
             mockGetLiveReport.mockResolvedValue({
                 items: [{ type: 'device', id: 'dev1', values: { W: 500 } }],
@@ -1082,14 +996,7 @@ describe('DeviceTransport', () => {
             });
             await dispatchingManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 500, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, { measure_power: 500, onoff: true }),
             });
 
             const sample = await dispatchingManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
@@ -1101,17 +1008,11 @@ describe('DeviceTransport', () => {
         it('includes airtreatment temperature devices in snapshot', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Nordic S4 REL',
-                    class: 'airtreatment',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                    capabilitiesObj: {
-                        measure_power: { value: 250, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 18, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 19, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Nordic S4 REL', class: 'airtreatment' }, {
+                    measure_power: 250,
+                    measure_temperature: celsius(18),
+                    target_temperature: celsius(19),
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1132,17 +1033,11 @@ describe('DeviceTransport', () => {
         it('includes EV chargers by default', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: true, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
-                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
-                        measure_power: { value: 7200, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(true),
+                    evcharger_charging_state: 'plugged_in_charging',
+                    measure_power: 7200,
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1166,20 +1061,12 @@ describe('DeviceTransport', () => {
                     name: 'Malformed Class Device',
                     class: { value: 'heater' },
                     capabilities: ['onoff'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', setable: true, lastUpdated: stampedNow() },
-                    },
+                    capabilitiesObj: capabilityReadings({ onoff: setable(true) }, stampedNow()),
                 },
-                heater1: {
-                    id: 'heater1',
-                    name: 'Valid Heater',
-                    class: 'heater',
-                    capabilities: ['onoff', 'measure_power'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', setable: true, lastUpdated: stampedNow() },
-                        measure_power: { value: 750, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
+                heater1: homeyDevice({ id: 'heater1', name: 'Valid Heater', class: 'heater' }, {
+                    onoff: setable(true),
+                    measure_power: 750,
+                }, stampedNow()),
             });
 
             await expect(deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } })).resolves.toBeNull();
@@ -1198,18 +1085,12 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['onoff', 'evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', setable: true, lastUpdated: stampedNow() },
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
-                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    onoff: setable(true),
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_paused',
+                    measure_power: 0,
+                }, stampedNow()),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1232,26 +1113,11 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: {
-                            value: false,
-                            id: 'evcharger_charging',
-                            setable: true,
-                            lastUpdated: '2026-04-01T11:59:59.000Z',
-                        },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_charging',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-04-01T12:00:00.000Z',
-                        },
-                        measure_power: { value: 7100, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: { value: false, setable: true, lastUpdated: '2026-04-01T11:59:59.000Z' },
+                    evcharger_charging_state: 'plugged_in_charging',
+                    measure_power: 7100,
+                }, '2026-04-01T12:00:00.000Z'),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1318,17 +1184,11 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Zaptec',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
-                        evcharger_charging_state: { value: 'plugged_in_complete', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Zaptec', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_complete',
+                    measure_power: 0,
+                }, stampedNow()),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1344,16 +1204,10 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Vendor Charger',
-                    class: 'evcharger',
-                    capabilities: ['onoff', 'measure_power'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        measure_power: { value: 1200, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Vendor Charger', class: 'evcharger' }, {
+                    onoff: true,
+                    measure_power: 1200,
+                }, stampedNow()),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1375,16 +1229,10 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Vendor Charger',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: true, id: 'evcharger_charging', lastUpdated: stampedNow() },
-                        measure_power: { value: 1200, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Vendor Charger', class: 'evcharger' }, {
+                    evcharger_charging: true,
+                    measure_power: 1200,
+                }, stampedNow()),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1400,18 +1248,11 @@ describe('DeviceTransport', () => {
         it('propagates Homey availability state into snapshot entries', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Unavailable Nordic',
-                    class: 'airtreatment',
-                    available: false,
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                    capabilitiesObj: {
-                        measure_power: { value: 250, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 18, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 19, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Unavailable Nordic', class: 'airtreatment', available: false }, {
+                    measure_power: 250,
+                    measure_temperature: celsius(18),
+                    target_temperature: celsius(19),
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1424,18 +1265,11 @@ describe('DeviceTransport', () => {
         it('includes measured power zero when load setting is present', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                    capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    },
-                    settings: { load: 600 },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater', settings: { load: 600 } }, {
+                    measure_power: 0,
+                    measure_temperature: celsius(21),
+                    target_temperature: celsius(20),
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1449,18 +1283,17 @@ describe('DeviceTransport', () => {
         it('treats settings.load=0 as unset configured load and keeps no-power thermostats unsupported', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'VThermo',
-                    class: 'thermostat',
-                    capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                dev1: homeyDevice(
+                    {
+                        id: 'dev1',
+                        name: 'VThermo',
+                        class: 'thermostat',
+                        capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
+                        settings: { load: 0 },
                     },
-                    settings: { load: 0 },
-                },
+                    { onoff: true, measure_temperature: celsius(21), target_temperature: celsius(20) },
+                    stampedNow(),
+                ),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1475,21 +1308,21 @@ describe('DeviceTransport', () => {
         it('keeps Homey Energy metadata as structural support without fabricating a reading', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Virtual Light',
-                    class: 'socket',
-                    capabilities: ['onoff'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                    energyObj: {
-                        approximation: {
-                            usageOn: 110,
-                            usageOff: 10,
+                dev1: homeyDevice(
+                    {
+                        id: 'dev1',
+                        name: 'Virtual Light',
+                        class: 'socket',
+                        energyObj: {
+                            approximation: {
+                                usageOn: 110,
+                                usageOff: 10,
+                            },
                         },
                     },
-                },
+                    { onoff: true },
+                    stampedNow(),
+                ),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1508,16 +1341,16 @@ describe('DeviceTransport', () => {
             // of the boot read demoting the device.
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Garage heater plug',
-                    class: 'socket',
-                    capabilities: ['onoff'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                dev1: homeyDevice(
+                    {
+                        id: 'dev1',
+                        name: 'Garage heater plug',
+                        class: 'socket',
+                        settings: { energy_value_on: 1200, load: 1500 },
                     },
-                    settings: { energy_value_on: 1200, load: 1500 },
-                },
+                    { onoff: true },
+                    stampedNow(),
+                ),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1535,17 +1368,9 @@ describe('DeviceTransport', () => {
         it('does not treat empty Homey Energy metadata as structural power support', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Virtual Light',
-                    class: 'socket',
-                    capabilities: ['onoff'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                    energyObj: {},
-                    energy: {},
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Virtual Light', class: 'socket', energyObj: {}, energy: {} }, {
+                    onoff: true,
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1559,15 +1384,9 @@ describe('DeviceTransport', () => {
             try {
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Virtual Light',
-                        class: 'socket',
-                        capabilities: ['onoff'],
-                        capabilitiesObj: {
-                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Virtual Light', class: 'socket' }, {
+                        onoff: true,
+                    }, stampedNow()),
                 });
                 mockGetLiveReport.mockResolvedValue({
                     items: [
@@ -1598,18 +1417,18 @@ describe('DeviceTransport', () => {
         it('keeps off Homey Energy devices supported while their live reading is absent', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Virtual Light',
-                    class: 'socket',
-                    capabilities: ['onoff'],
-                    capabilitiesObj: {
-                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
+                dev1: homeyDevice(
+                    {
+                        id: 'dev1',
+                        name: 'Virtual Light',
+                        class: 'socket',
+                        energyObj: {
+                            W: 125,
+                        },
                     },
-                    energyObj: {
-                        W: 125,
-                    },
-                },
+                    { onoff: false },
+                    stampedNow(),
+                ),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1628,17 +1447,11 @@ describe('DeviceTransport', () => {
             await deviceManager.init();
 
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 20, id: 'target_temperature', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    measure_temperature: celsius(21),
+                    target_temperature: 20,
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1657,34 +1470,22 @@ describe('DeviceTransport', () => {
 
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'AC',
-                    class: 'airconditioning',
-                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
-                    capabilitiesObj: {
-                        meter_power: { value: 100, id: 'meter_power', lastUpdated: '2026-01-01T00:00:30.000Z' },
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: '2026-01-01T00:00:30.000Z' },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: '2026-01-01T00:00:30.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'AC', class: 'airconditioning' }, {
+                    meter_power: 100,
+                    target_temperature: celsius(21),
+                    measure_temperature: celsius(20),
+                }, '2026-01-01T00:00:30.000Z'),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
             vi.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'AC',
-                    class: 'airconditioning',
-                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
-                    capabilitiesObj: {
-                        meter_power: { value: 101, id: 'meter_power', lastUpdated: '2026-01-01T01:00:30.000Z' },
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: '2026-01-01T01:00:30.000Z' },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: '2026-01-01T01:00:30.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'AC', class: 'airconditioning' }, {
+                    meter_power: 101,
+                    target_temperature: celsius(21),
+                    measure_temperature: celsius(20),
+                }, '2026-01-01T01:00:30.000Z'),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1708,17 +1509,10 @@ describe('DeviceTransport', () => {
             vi.useFakeTimers();
             const startMs = Date.parse('2026-01-01T00:00:00.000Z');
             vi.setSystemTime(startMs);
-            const meterDevice = (minute: number) => ({
-                id: 'dev1', name: 'Heater', class: 'heater',
-                capabilities: ['meter_power', 'onoff'],
-                capabilitiesObj: {
-                    meter_power: {
-                        value: 100 + minute / 60, id: 'meter_power',
-                        lastUpdated: new Date(startMs + minute * 60_000).toISOString(),
-                    },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            const meterDevice = (minute: number) => homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                meter_power: 100 + minute / 60,
+                onoff: { value: true, lastUpdated: stampedNow() },
+            }, new Date(startMs + minute * 60_000).toISOString());
             await deviceManager.init();
             mockApiGet.mockResolvedValue({ dev1: meterDevice(0) });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1760,34 +1554,22 @@ describe('DeviceTransport', () => {
 
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'AC',
-                    class: 'airconditioning',
-                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
-                    capabilitiesObj: {
-                        meter_power: { value: 100, id: 'meter_power', lastUpdated: stampedNow() },
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'AC', class: 'airconditioning' }, {
+                    meter_power: 100,
+                    target_temperature: celsius(21),
+                    measure_temperature: celsius(20),
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
             vi.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'AC',
-                    class: 'airconditioning',
-                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
-                    capabilitiesObj: {
-                        meter_power: { value: 99, id: 'meter_power', lastUpdated: stampedNow() },
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'AC', class: 'airconditioning' }, {
+                    meter_power: 99,
+                    target_temperature: celsius(21),
+                    measure_temperature: celsius(20),
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1805,17 +1587,15 @@ describe('DeviceTransport', () => {
             // observation, so the last trusted rate carries forward.
             vi.useFakeTimers();
             vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
-            const buildAc = (meterKwh: number, meterAt: string, temperature: number) => ({
-                id: 'dev1',
-                name: 'AC',
-                class: 'airconditioning',
-                capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
-                capabilitiesObj: {
-                    meter_power: { value: meterKwh, id: 'meter_power', lastUpdated: meterAt },
-                    target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    measure_temperature: { value: temperature, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+            const buildAc = (meterKwh: number, meterAt: string, temperature: number) => homeyDevice(
+                { id: 'dev1', name: 'AC', class: 'airconditioning' },
+                {
+                    meter_power: { value: meterKwh, lastUpdated: meterAt },
+                    target_temperature: celsius(21),
+                    measure_temperature: celsius(temperature),
                 },
-            });
+                stampedNow(),
+            );
             const readMeasuredPowerKw = () => (
                 deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe
             ).measuredPowerKw;
@@ -1841,16 +1621,10 @@ describe('DeviceTransport', () => {
                 endMs: Date.parse('2026-01-01T01:00:30.000Z'),
             });
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'AC',
-                class: 'airconditioning',
-                capabilities: ['target_temperature', 'measure_temperature'],
-                capabilitiesObj: {
-                    target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'AC', class: 'airconditioning' }, {
+                target_temperature: celsius(21),
+                measure_temperature: celsius(21),
+            }, stampedNow()));
             const withoutMeter = deviceManager.getSnapshot()[0] as (
                 TargetDeviceSnapshot & MeasuredPowerObservedProbe
             ) | undefined;
@@ -1873,28 +1647,16 @@ describe('DeviceTransport', () => {
             });
             await refreshDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                'dev-a': {
-                    id: 'dev-a',
-                    name: 'Mock A',
-                    class: 'socket',
-                    driverId: 'homey:app:com.example:mock',
-                    capabilities: ['onoff', 'measure_power'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        measure_power: { value: 50, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
-                'dev-b': {
-                    id: 'dev-b',
-                    name: 'Mock B',
-                    class: 'socket',
-                    driverId: 'homey:app:com.example:mock',
-                    capabilities: ['onoff', 'measure_power'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        measure_power: { value: 80, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
+                'dev-a': homeyDevice(
+                    { id: 'dev-a', name: 'Mock A', class: 'socket', driverId: 'homey:app:com.example:mock' },
+                    { onoff: true, measure_power: 50 },
+                    stampedNow(),
+                ),
+                'dev-b': homeyDevice(
+                    { id: 'dev-b', name: 'Mock B', class: 'socket', driverId: 'homey:app:com.example:mock' },
+                    { onoff: true, measure_power: 80 },
+                    stampedNow(),
+                ),
             });
 
             await refreshDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1915,11 +1677,11 @@ describe('DeviceTransport', () => {
                     name: 'Heater',
                     class: 'heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 20, id: 'target_temperature', lastUpdated: stampedNow() },
-                    },
+                    capabilitiesObj: capabilityReadings({
+                        measure_power: 1000,
+                        measure_temperature: celsius(21),
+                        target_temperature: 20,
+                    }, stampedNow()),
                     targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
                 },
             });
@@ -1955,26 +1717,14 @@ describe('DeviceTransport', () => {
             await managedDeviceManager.init();
 
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Managed heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                },
-                dev2: {
-                    id: 'dev2',
-                    name: 'Unmanaged heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 900, id: 'measure_power', lastUpdated: stampedNow() },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Managed heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, stampedNow()),
+                dev2: homeyDevice({ id: 'dev2', name: 'Unmanaged heater', class: 'heater' }, {
+                    measure_power: 900,
+                    onoff: true,
+                }, stampedNow()),
             });
 
             await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -1982,16 +1732,10 @@ describe('DeviceTransport', () => {
             onObservedControlState(managedDeviceManager, realtimeListener);
 
             // device.update for unmanaged dev2 should be ignored
-            emitDeviceUpdate({
-                id: 'dev2',
-                name: 'Unmanaged heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 2000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev2', name: 'Unmanaged heater', class: 'heater' }, {
+                measure_power: 2000,
+                onoff: false,
+            }, stampedNow()));
 
             expect(realtimeListener).not.toHaveBeenCalled();
             expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev2')).toBeUndefined();
@@ -2013,32 +1757,20 @@ describe('DeviceTransport', () => {
             onObservedControlState(managedDeviceManager, realtimeListener);
 
             // device.update should be ignored while unmanaged
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 2000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 2000,
+                onoff: true,
+            }, stampedNow()));
             expect(realtimeListener).not.toHaveBeenCalled();
 
             managedState.dev1 = true;
             await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
             // Now device.update should be handled
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 3000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 3000,
+                onoff: false,
+            }, stampedNow()));
 
             expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
                 measuredPowerKw: 3,
@@ -2061,16 +1793,10 @@ describe('DeviceTransport', () => {
                 .toEqual(expect.objectContaining({ id: 'dev1' }));
 
             managedState.dev1 = false;
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 2000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 2000,
+                onoff: true,
+            }, stampedNow()));
 
             expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev1'))
                 .toEqual(expect.objectContaining({ id: 'dev1' }));
@@ -2086,17 +1812,11 @@ describe('DeviceTransport', () => {
             );
             await managedDeviceManager.init();
             const validDevice = {
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_temperature', 'target_temperature', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_temperature: { value: 20, id: 'measure_temperature', lastUpdated: stampedNow() },
-                        target_temperature: { value: 21, id: 'target_temperature', lastUpdated: stampedNow() },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_temperature: 20,
+                    target_temperature: 21,
+                    onoff: true,
+                }, stampedNow()),
             };
             mockApiGet.mockResolvedValue(validDevice);
             await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -2130,16 +1850,10 @@ describe('DeviceTransport', () => {
 
             // Trigger update 2000W via device.update; like Homey's full device
             // object, it re-reports the unchanged onoff value.
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 2000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 2000,
+                onoff: true,
+            }, stampedNow()));
 
             const snapshot = deviceManager.getSnapshot();
             expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(2);
@@ -2163,16 +1877,10 @@ describe('DeviceTransport', () => {
             // Seed an onoff:true baseline stamped before the injected
             // onoff:false below, so that update is a genuine on→off change.
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: { value: true, lastUpdated: '2026-03-20T05:59:00.000Z' },
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
             await deviceManager.init();
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -2187,16 +1895,10 @@ describe('DeviceTransport', () => {
                 }),
             }));
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 500,
+                onoff: false,
+            }, stampedNow()));
 
             observedSources = deviceManager.getDebugObservedSources('dev1');
             expect(observedSources?.deviceUpdate).toEqual(expect.objectContaining({
@@ -2217,22 +1919,11 @@ describe('DeviceTransport', () => {
 
         it('ignores a device.update that omits the declared onoff value: evidence, snapshot and events stand', async () => {
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'dev1',
-                name: 'Hall Thermostat',
-                class: 'thermostat',
-                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    measure_temperature: {
-                        value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                    },
-                    target_temperature: {
-                        value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                    },
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice(
+                { id: 'dev1', name: 'Hall Thermostat', class: 'thermostat' },
+                { onoff: true, measure_temperature: celsius(20), target_temperature: celsius(20), measure_power: 1000 },
+                stampedNow(BASELINE_OFFSET_MS),
+            )]);
             await emitCapability('dev1', 'onoff', true);
             const trustedOnEvidence = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
             expect(trustedOnEvidence).toEqual(expect.objectContaining({
@@ -2248,17 +1939,15 @@ describe('DeviceTransport', () => {
             // A changed target and power arrive, but onoff is declared without a
             // value: the read breaks the device-read contract, so it is neither
             // read as "off" nor merged around the gap. None of it is taken.
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Hall Thermostat',
-                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
-                class: 'thermostat',
-                capabilitiesObj: {
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
-                    measure_power: { value: 500, id: 'measure_power' },
+            emitDeviceUpdate(homeyDevice(
+                {
+                    id: 'dev1',
+                    name: 'Hall Thermostat',
+                    capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
+                    class: 'thermostat',
                 },
-            });
+                { measure_temperature: celsius(20), target_temperature: celsius(19), measure_power: 500 },
+            ));
 
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(snapshotBefore);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(trustedOnEvidence);
@@ -2268,22 +1957,11 @@ describe('DeviceTransport', () => {
 
         it('keeps realtime binary evidence through target-only and power-only device.update payloads', async () => {
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'dev1',
-                name: 'Hall Thermostat',
-                class: 'thermostat',
-                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    measure_temperature: {
-                        value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                    },
-                    target_temperature: {
-                        value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                    },
-                    measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice(
+                { id: 'dev1', name: 'Hall Thermostat', class: 'thermostat' },
+                { onoff: true, measure_temperature: celsius(20), target_temperature: celsius(20), measure_power: 500 },
+                stampedNow(BASELINE_OFFSET_MS),
+            )]);
 
             await emitCapability('dev1', 'onoff', false);
             const realtimeEvidence = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
@@ -2294,30 +1972,27 @@ describe('DeviceTransport', () => {
             }));
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Hall Thermostat',
-                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
-                class: 'thermostat',
-                capabilitiesObj: {
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+            emitDeviceUpdate(homeyDevice(
+                {
+                    id: 'dev1',
+                    name: 'Hall Thermostat',
+                    capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
+                    class: 'thermostat',
                 },
-            });
+                { measure_temperature: celsius(20), target_temperature: celsius(19) },
+            ));
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(realtimeEvidence);
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Hall Thermostat',
-                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
-                class: 'thermostat',
-                capabilitiesObj: {
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
-                    measure_power: { value: 500, id: 'measure_power' },
+            emitDeviceUpdate(homeyDevice(
+                {
+                    id: 'dev1',
+                    name: 'Hall Thermostat',
+                    capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
+                    class: 'thermostat',
                 },
-            });
+                { measure_temperature: celsius(20), target_temperature: celsius(19), measure_power: 500 },
+            ));
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(realtimeEvidence);
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation)
@@ -2327,14 +2002,10 @@ describe('DeviceTransport', () => {
         it('keeps the trusted realtime-off observation when a later pull omits onoff (two-source reconcile)', async () => {
             // 1. Pull with a trusted onoff=true → currentOn:true.
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:00:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, '2026-06-03T06:00:00.000Z'),
             });
             await deviceManager.init();
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -2348,13 +2019,11 @@ describe('DeviceTransport', () => {
             //    OMITS its value: the read breaks the device-read contract and is
             //    ignored, so the entry it would have replaced stands.
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice(
+                    { id: 'dev1', name: 'Heater', class: 'heater', capabilities: ['measure_power', 'onoff'] },
+                    { measure_power: 1000 },
+                    '2026-06-03T06:05:00.000Z',
+                ),
             });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -2370,28 +2039,20 @@ describe('DeviceTransport', () => {
             // timestamp, so the observer consolidates to the retained realtime OFF
             // — and logs both sources + the consolidated result for visibility.
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:00:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, '2026-06-03T06:00:00.000Z'),
             });
             await deviceManager.init();
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             await emitCapability('dev1', 'onoff', false);
 
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:01:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: { value: true, lastUpdated: '2026-06-03T06:01:00.000Z' },
+                }, '2026-06-03T06:05:00.000Z'),
             });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -2412,14 +2073,10 @@ describe('DeviceTransport', () => {
             // agreement on a counter instead. This is the case that was 100% of the
             // event's production volume.
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:00:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, '2026-06-03T06:00:00.000Z'),
             });
             await deviceManager.init();
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -2427,14 +2084,10 @@ describe('DeviceTransport', () => {
             const agreedBefore = getPerfSnapshot().counts.binary_observation_agreed_total ?? 0;
 
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
-                        onoff: { value: false, id: 'onoff', lastUpdated: '2026-06-03T06:01:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: { value: false, lastUpdated: '2026-06-03T06:01:00.000Z' },
+                }, '2026-06-03T06:05:00.000Z'),
             });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -2453,14 +2106,10 @@ describe('DeviceTransport', () => {
             // cannot be ordered against the push, so the read breaks the
             // device-read contract and is ignored whole: currentOn stays OFF.
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:00:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, '2026-06-03T06:00:00.000Z'),
             });
             await deviceManager.init();
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -2468,14 +2117,10 @@ describe('DeviceTransport', () => {
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1', name: 'Heater', class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
-                        onoff: { value: true, id: 'onoff' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: { value: 1000, lastUpdated: '2026-06-03T06:05:00.000Z' },
+                    onoff: true,
+                }),
             });
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -2559,32 +2204,21 @@ describe('DeviceTransport', () => {
                 const originalObservedAt = '2026-06-03T06:00:00.000Z';
                 const originalObservedAtMs = new Date(originalObservedAt).getTime();
                 await deviceManager.init();
-                await seedTransportDevices(deviceManager, [{
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['onoff', 'measure_power'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: originalObservedAt },
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: originalObservedAt },
-                    },
-                }]);
+                await seedTransportDevices(deviceManager, [homeyDevice(
+                    { id: 'dev1', name: 'Heater', class: 'heater' },
+                    { onoff: true, measure_power: 1000 },
+                    originalObservedAt,
+                )]);
                 expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(expect.objectContaining({
                     source: 'snapshot_refresh',
                     observedAtMs: originalObservedAtMs,
                 }));
                 vi.setSystemTime(new Date('2026-06-03T06:05:00.000Z'));
 
-                emitDeviceUpdate({
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['onoff', 'measure_power'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        onoff: { value: false, id: 'onoff', lastUpdated: '2026-06-03T05:59:00.000Z' },
-                        measure_power: { value: 750, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    onoff: false,
+                    measure_power: { value: 750, lastUpdated: '2026-06-03T06:05:00.000Z' },
+                }, '2026-06-03T05:59:00.000Z'));
 
                 const device = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
                 // The update did land: only its stale onoff was refused.
@@ -2604,44 +2238,19 @@ describe('DeviceTransport', () => {
             const newerRawObservedAt = '2026-06-03T06:05:00.000Z';
             const newerRawObservedAtMs = new Date(newerRawObservedAt).getTime();
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: true, id: 'evcharger_charging', setable: true, lastUpdated: newerRawObservedAt,
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: newerRawObservedAt,
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: newerRawObservedAt },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice({ id: 'ev1', name: 'Charger', class: 'evcharger' }, {
+                evcharger_charging: setable(true),
+                evcharger_charging_state: 'plugged_in_paused',
+                measure_power: 0,
+            }, newerRawObservedAt)]);
             const reconcileListener = vi.fn();
             onObservedControlState(deviceManager, reconcileListener);
 
-            emitDeviceUpdate({
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: false,
-                        id: 'evcharger_charging',
-                        setable: true,
-                        lastUpdated: '2026-06-03T06:04:00.000Z',
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_paused',
-                        id: 'evcharger_charging_state',
-                        lastUpdated: '2026-06-03T06:05:00.000Z',
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Charger', class: 'evcharger' }, {
+                evcharger_charging: { value: false, setable: true, lastUpdated: '2026-06-03T06:04:00.000Z' },
+                evcharger_charging_state: 'plugged_in_paused',
+                measure_power: 0,
+            }, '2026-06-03T06:05:00.000Z'));
 
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
                 evCharging: true,
@@ -2654,44 +2263,19 @@ describe('DeviceTransport', () => {
             const newerObservedAt = '2026-06-03T06:05:00.000Z';
             const newerObservedAtMs = new Date(newerObservedAt).getTime();
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: true, id: 'evcharger_charging', setable: true, lastUpdated: newerObservedAt,
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: newerObservedAt,
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: newerObservedAt },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice({ id: 'ev1', name: 'Charger', class: 'evcharger' }, {
+                evcharger_charging: setable(true),
+                evcharger_charging_state: 'plugged_in_charging',
+                measure_power: 0,
+            }, newerObservedAt)]);
             const reconcileListener = vi.fn();
             onObservedControlState(deviceManager, reconcileListener);
 
-            emitDeviceUpdate({
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: false,
-                        id: 'evcharger_charging',
-                        setable: true,
-                        lastUpdated: '2026-06-03T06:04:00.000Z',
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_paused',
-                        id: 'evcharger_charging_state',
-                        lastUpdated: '2026-06-03T06:04:00.000Z',
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-06-03T06:04:00.000Z' },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Charger', class: 'evcharger' }, {
+                evcharger_charging: setable(false),
+                evcharger_charging_state: 'plugged_in_paused',
+                measure_power: 0,
+            }, '2026-06-03T06:04:00.000Z'));
 
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
                 binaryControl: { on: true },
@@ -2713,42 +2297,17 @@ describe('DeviceTransport', () => {
             const stateObservedAt = '2026-06-03T06:05:00.000Z';
             const stateObservedAtMs = new Date(stateObservedAt).getTime();
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: true, id: 'evcharger_charging', setable: true, lastUpdated: stateObservedAt,
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: stateObservedAt,
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stateObservedAt },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice({ id: 'ev1', name: 'Charger', class: 'evcharger' }, {
+                evcharger_charging: setable(true),
+                evcharger_charging_state: 'plugged_in_charging',
+                measure_power: 0,
+            }, stateObservedAt)]);
 
-            emitDeviceUpdate({
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: false,
-                        id: 'evcharger_charging',
-                        setable: true,
-                        lastUpdated: '2026-06-03T06:06:00.000Z',
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_charging',
-                        id: 'evcharger_charging_state',
-                        lastUpdated: '2026-06-03T06:05:00.000Z',
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-06-03T06:06:00.000Z' },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Charger', class: 'evcharger' }, {
+                evcharger_charging: setable(false),
+                evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: '2026-06-03T06:05:00.000Z' },
+                measure_power: 0,
+            }, '2026-06-03T06:06:00.000Z'));
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
                 evCharging: false,
                 evChargingState: 'plugged_in_charging',
@@ -2757,26 +2316,11 @@ describe('DeviceTransport', () => {
 
             const reconcileListener = vi.fn();
             onObservedControlState(deviceManager, reconcileListener);
-            emitDeviceUpdate({
-                id: 'ev1',
-                name: 'Charger',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: false,
-                        id: 'evcharger_charging',
-                        setable: true,
-                        lastUpdated: '2026-06-03T06:06:00.000Z',
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_paused',
-                        id: 'evcharger_charging_state',
-                        lastUpdated: '2026-06-03T06:04:30.000Z',
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-06-03T06:06:00.000Z' },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Charger', class: 'evcharger' }, {
+                evcharger_charging: setable(false),
+                evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: '2026-06-03T06:04:30.000Z' },
+                measure_power: 0,
+            }, '2026-06-03T06:06:00.000Z'));
 
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
                 binaryControl: { on: false },
@@ -2792,22 +2336,12 @@ describe('DeviceTransport', () => {
             try {
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Hall Thermostat',
-                        class: 'thermostat',
-                        capabilities: ['onoff', 'measure_temperature', 'measure_power', 'target_temperature'],
-                        capabilitiesObj: {
-                            onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                            measure_temperature: {
-                                value: 20, id: 'measure_temperature', units: '°C', lastUpdated: '2026-04-01T11:59:00.000Z',
-                            },
-                            measure_power: { value: 100, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                            target_temperature: {
-                                value: 20, id: 'target_temperature', units: '°C', lastUpdated: '2026-04-01T11:59:00.000Z',
-                            },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Hall Thermostat', class: 'thermostat' }, {
+                        onoff: false,
+                        measure_temperature: celsius(20),
+                        measure_power: 100,
+                        target_temperature: celsius(20),
+                    }, '2026-04-01T11:59:00.000Z'),
                 });
                 await deviceManager.init();
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -2824,18 +2358,12 @@ describe('DeviceTransport', () => {
                 // The power and target readings are well-formed and changed, but
                 // the read as a whole breaks the device-read contract, so none of
                 // it is taken.
-                emitDeviceUpdate({
-                    id: 'dev1',
-                    name: 'Hall Thermostat',
-                    capabilities: ['onoff', 'measure_temperature', 'measure_power', 'target_temperature'],
-                    class: 'thermostat',
-                    capabilitiesObj: {
-                        onoff: { value: 'unknown' as unknown as boolean, id: 'onoff' },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                        measure_power: { value: 500, id: 'measure_power' },
-                        target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Hall Thermostat', class: 'thermostat' }, {
+                    onoff: 'unknown' as unknown as boolean,
+                    measure_temperature: celsius(20),
+                    measure_power: 500,
+                    target_temperature: celsius(19),
+                }));
 
                 expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(snapshotBefore);
                 expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(evidenceBefore);
@@ -2852,31 +2380,15 @@ describe('DeviceTransport', () => {
         it('uses device.update capability lastUpdated as the binary evidence timestamp', async () => {
             const observedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'dev1',
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['onoff', 'measure_power'],
-                capabilitiesObj: {
-                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z' },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                onoff: false,
+                measure_power: 0,
+            }, '2026-04-01T11:50:00.000Z')]);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['onoff', 'measure_power'],
-                class: 'heater',
-                capabilitiesObj: {
-                    onoff: {
-                        value: true,
-                        id: 'onoff',
-                        lastUpdated: new Date(observedAtMs).toISOString(),
-                    },
-                    measure_power: { value: 500, id: 'measure_power', lastUpdated: new Date(observedAtMs).toISOString() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                onoff: true,
+                measure_power: 500,
+            }, new Date(observedAtMs).toISOString()));
 
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(expect.objectContaining({
                 source: 'device_update',
@@ -2907,28 +2419,16 @@ describe('DeviceTransport', () => {
                 source: 'snapshot_refresh' as const,
             };
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'dev1',
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['onoff', 'measure_power'],
-                capabilitiesObj: {
-                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z' },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                onoff: false,
+                measure_power: 0,
+            }, '2026-04-01T11:50:00.000Z')]);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(cachedEvidence);
 
-            await deliver({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['onoff', 'measure_power'],
-                class: 'heater',
-                capabilitiesObj: {
-                    onoff: { value: true, id: 'onoff' },
-                    measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow() },
-                },
-            });
+            await deliver(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                onoff: true,
+                measure_power: { value: 500, lastUpdated: stampedNow() },
+            }));
 
             const dev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(dev1?.binaryControl?.on).toBe(false);
@@ -2940,34 +2440,18 @@ describe('DeviceTransport', () => {
             // Off at the last refresh, then a realtime push saw it on. A
             // device.update stamped between the two is older than the push.
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'dev1',
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['onoff', 'measure_power'],
-                capabilitiesObj: {
-                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                onoff: false,
+                measure_power: 0,
+            }, stampedNow(BASELINE_OFFSET_MS))]);
             await emitCapability('dev1', 'onoff', true);
             const newerEvidence = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
             expect(newerEvidence).toEqual(expect.objectContaining({ source: 'realtime_capability', observedValue: true }));
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['onoff', 'measure_power'],
-                class: 'heater',
-                capabilitiesObj: {
-                    onoff: {
-                        value: false,
-                        id: 'onoff',
-                        lastUpdated: stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2),
-                    },
-                    measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2) },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                onoff: false,
+                measure_power: 500,
+            }, stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2)));
 
             const snapshotDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(newerEvidence);
@@ -2979,34 +2463,18 @@ describe('DeviceTransport', () => {
             // Off at the last refresh, then a realtime push saw it on. The next
             // pull is stamped between the two, so it is older than the push.
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'dev1',
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['onoff', 'measure_power'],
-                capabilitiesObj: {
-                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                onoff: false,
+                measure_power: 0,
+            }, stampedNow(BASELINE_OFFSET_MS))]);
             await emitCapability('dev1', 'onoff', true);
             const newerEvidence = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
             expect(newerEvidence).toEqual(expect.objectContaining({ source: 'realtime_capability', observedValue: true }));
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['onoff', 'measure_power'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        onoff: {
-                            value: false,
-                            id: 'onoff',
-                            lastUpdated: stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2),
-                        },
-                        measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    onoff: false,
+                    measure_power: 500,
+                }, stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2)),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -3018,16 +2486,10 @@ describe('DeviceTransport', () => {
         });
 
         it('clears binary evidence when a device disappears from snapshot refresh', async () => {
-            await seedTransportDevices(deviceManager, [{
-                id: 'dev1',
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['onoff', 'measure_power'],
-                capabilitiesObj: {
-                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z' },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                onoff: false,
+                measure_power: 0,
+            }, '2026-04-01T11:50:00.000Z')]);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeDefined();
 
             // A single empty read is held under abandon-grace; drive past the
@@ -3041,16 +2503,10 @@ describe('DeviceTransport', () => {
         });
 
         it('clears binary evidence on destroy', async () => {
-            await seedTransportDevices(deviceManager, [{
-                id: 'dev1',
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['onoff', 'measure_power'],
-                capabilitiesObj: {
-                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z' },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                onoff: false,
+                measure_power: 0,
+            }, '2026-04-01T11:50:00.000Z')]);
 
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeDefined();
 
@@ -3064,45 +2520,20 @@ describe('DeviceTransport', () => {
             getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
             });
             await evDeviceManager.init();
-            await seedTransportDevices(evDeviceManager, [{
-                id: 'ev1',
-                name: 'Easee',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T11:50:00.000Z',
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: '2026-04-01T11:50:00.000Z',
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
-                },
-            }]);
+            await seedTransportDevices(evDeviceManager, [homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                evcharger_charging: setable(false),
+                evcharger_charging_state: 'plugged_in_paused',
+                measure_power: 0,
+            }, '2026-04-01T11:50:00.000Z')]);
             expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(expect.objectContaining({
                 observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
             }));
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: {
-                            value: false,
-                            id: 'evcharger_charging',
-                            setable: true,
-                            lastUpdated: '2026-04-01T12:00:00.000Z',
-                        },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_paused',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-04-01T12:00:00.000Z',
-                        },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_paused',
+                    measure_power: 0,
+                }, '2026-04-01T12:00:00.000Z'),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -3128,21 +2559,11 @@ describe('DeviceTransport', () => {
             await evDeviceManager.init();
             // Paused at the last refresh, then a realtime push of the command
             // capability. The next pull is stamped between the two.
-            await seedTransportDevices(evDeviceManager, [{
-                id: 'ev1',
-                name: 'Easee',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                },
-            }]);
+            await seedTransportDevices(evDeviceManager, [homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                evcharger_charging: setable(false),
+                evcharger_charging_state: 'plugged_in_paused',
+                measure_power: 0,
+            }, stampedNow(BASELINE_OFFSET_MS))]);
             await emitCapability('ev1', 'evcharger_charging', false);
             const newerEvidence = evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1');
             expect(newerEvidence).toEqual(expect.objectContaining({
@@ -3152,26 +2573,11 @@ describe('DeviceTransport', () => {
             }));
             const staleAt = stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2);
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: {
-                            value: false,
-                            id: 'evcharger_charging',
-                            setable: true,
-                            lastUpdated: staleAt,
-                        },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_paused',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: staleAt,
-                        },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: staleAt },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_paused',
+                    measure_power: 0,
+                }, staleAt),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -3188,42 +2594,17 @@ describe('DeviceTransport', () => {
             getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
             });
             await evDeviceManager.init();
-            await seedTransportDevices(evDeviceManager, [{
-                id: 'ev1',
-                name: 'Easee',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: {
-                        value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T11:59:00.000Z',
-                    },
-                    evcharger_charging_state: {
-                        value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: '2026-04-01T11:59:00.000Z',
-                    },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                },
-            }]);
+            await seedTransportDevices(evDeviceManager, [homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                evcharger_charging: setable(false),
+                evcharger_charging_state: 'plugged_in_paused',
+                measure_power: 0,
+            }, '2026-04-01T11:59:00.000Z')]);
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: {
-                            value: false,
-                            id: 'evcharger_charging',
-                            setable: true,
-                            lastUpdated: '2026-04-01T11:59:00.000Z',
-                        },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_charging',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-04-01T12:00:00.000Z',
-                        },
-                        measure_power: { value: 7100, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: { value: false, setable: true, lastUpdated: '2026-04-01T11:59:00.000Z' },
+                    evcharger_charging_state: 'plugged_in_charging',
+                    measure_power: 7100,
+                }, '2026-04-01T12:00:00.000Z'),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -3263,19 +2644,11 @@ describe('DeviceTransport', () => {
                     observedAtMs: new Date(readAt).getTime(),
                     source: 'snapshot_refresh' as const,
                 };
-                await seedTransportDevices(evDeviceManager, [{
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: true, id: 'evcharger_charging', lastUpdated: readAt },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: readAt,
-                        },
-                        measure_power: { value: 7000, id: 'measure_power', lastUpdated: readAt },
-                    },
-                }]);
+                await seedTransportDevices(evDeviceManager, [homeyDevice(
+                    { id: 'ev1', name: 'Easee', class: 'evcharger' },
+                    { evcharger_charging: true, evcharger_charging_state: 'plugged_in_charging', measure_power: 7000 },
+                    readAt,
+                )]);
                 expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(previousRawEvidence);
 
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
@@ -3306,19 +2679,11 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.init();
                 const readAt = '2026-04-01T11:40:00.000Z';
-                await seedTransportDevices(evDeviceManager, [{
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: true, id: 'evcharger_charging', lastUpdated: readAt },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: readAt,
-                        },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: readAt },
-                    },
-                }]);
+                await seedTransportDevices(evDeviceManager, [homeyDevice(
+                    { id: 'ev1', name: 'Easee', class: 'evcharger' },
+                    { evcharger_charging: true, evcharger_charging_state: 'plugged_in_paused', measure_power: 0 },
+                    readAt,
+                )]);
                 // The charger's own switch report is the raw command evidence.
                 vi.setSystemTime(new Date('2026-04-01T11:50:00.000Z'));
                 await emitCapability('ev1', 'evcharger_charging', false);
@@ -3344,15 +2709,15 @@ describe('DeviceTransport', () => {
                 // Declares both EV axes but answers neither: the read breaks the
                 // device-read contract, so it is ignored whole and the entry and
                 // evidence stand as they were.
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power' },
+                emitDeviceUpdate(homeyDevice(
+                    {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     },
-                });
+                    { measure_power: 0 },
+                ));
 
                 expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(previousEvidence);
                 expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toEqual(snapshotBeforeUpdate);
@@ -3377,16 +2742,10 @@ describe('DeviceTransport', () => {
 
             expect(deviceManager.getDebugObservedSources('dev1')).toBeNull();
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: true,
+            }, stampedNow()));
 
             expect(deviceManager.getDebugObservedSources('dev1')).toBeNull();
         });
@@ -3395,32 +2754,20 @@ describe('DeviceTransport', () => {
             // Seed an onoff:true baseline stamped before the injected
             // onoff:false below, so that update is a genuine true→false change.
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: { value: true, lastUpdated: '2026-03-20T05:59:00.000Z' },
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
             await deviceManager.init();
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: false,
+            }, stampedNow()));
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 binaryControl: { on: false },
@@ -3453,16 +2800,10 @@ describe('DeviceTransport', () => {
 
         it('publishes the observed realtime confirmation of a local onoff write', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: false,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
@@ -3472,16 +2813,10 @@ describe('DeviceTransport', () => {
 
             await deviceManager.setCapability('dev1', 'onoff', true);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: true,
+            }, stampedNow()));
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 binaryControl: { on: true },
@@ -3491,16 +2826,10 @@ describe('DeviceTransport', () => {
 
         it('publishes the observed realtime confirmation before the local write resolves', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: false,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             let resolveWrite: (() => void) | undefined;
@@ -3515,16 +2844,10 @@ describe('DeviceTransport', () => {
 
             const setCapabilityPromise = deviceManager.setCapability('dev1', 'onoff', true);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: true,
+            }, stampedNow()));
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 binaryControl: { on: true },
@@ -3537,16 +2860,10 @@ describe('DeviceTransport', () => {
 
         it('does not fabricate drift when an accepted write has not changed observed state', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
@@ -3559,16 +2876,10 @@ describe('DeviceTransport', () => {
             await deviceManager.setCapability('dev1', 'onoff', false);
 
             // Contradictory device.update (fight-back from device) — first observation decides
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: true,
+            }, stampedNow()));
 
             expect(realtimeListener).not.toHaveBeenCalled();
             // The accepted write publishes unchanged observer truth once. The
@@ -3585,16 +2896,10 @@ describe('DeviceTransport', () => {
 
         it('keeps equal realtime control truth quiet after an accepted write', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
@@ -3621,16 +2926,10 @@ describe('DeviceTransport', () => {
 
         it('publishes a matching realtime onoff confirmation as observed truth', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
@@ -3652,18 +2951,12 @@ describe('DeviceTransport', () => {
             vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Thermostat',
-                        class: 'thermostat',
-                        capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
-                        capabilitiesObj: {
-                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                            target_temperature: { value: 20, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5, lastUpdated: stampedNow() },
-                            measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                            measure_power: { value: 360, id: 'measure_power', lastUpdated: stampedNow() },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Thermostat', class: 'thermostat' }, {
+                        onoff: true,
+                        target_temperature: { value: 20, units: '°C', min: 5, max: 40, step: 0.5 },
+                        measure_temperature: celsius(20),
+                        measure_power: 360,
+                    }, stampedNow()),
                 });
 
                 await deviceManager.init();
@@ -3677,17 +2970,11 @@ describe('DeviceTransport', () => {
                 await vi.advanceTimersByTimeAsync(90_000);
                 expect(realtimeListener).not.toHaveBeenCalled();
 
-                emitDeviceUpdate({
-                    id: 'dev1',
-                    name: 'Thermostat',
-                    class: 'thermostat',
-                    capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
-                    capabilitiesObj: {
-                        target_temperature: { value: 21, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5, lastUpdated: stampedNow() },
-                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        measure_power: { value: 360, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Thermostat', class: 'thermostat' }, {
+                    target_temperature: { value: 21, units: '°C', min: 5, max: 40, step: 0.5 },
+                    measure_temperature: celsius(20),
+                    measure_power: 360,
+                }, stampedNow()));
 
                 // After the settle window expires the held off-state is released.
                 // This update omits the `onoff` capability, so the control capability
@@ -3713,16 +3000,10 @@ describe('DeviceTransport', () => {
 
         it('first confirming device.update settles the window; subsequent fight-back triggers normal reconcile', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
@@ -3733,30 +3014,18 @@ describe('DeviceTransport', () => {
             await deviceManager.setCapability('dev1', 'onoff', false);
 
             // First update confirms the local write — settle window closes
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: false,
+            }, stampedNow()));
             expect(realtimeListener).toHaveBeenCalledOnce();
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: false } }));
 
             // Second update fights back — settle window is gone, treated as normal drift
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(1000) },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(1000) },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: true,
+            }, stampedNow(1000)));
 
             expect(realtimeListener).toHaveBeenCalledTimes(2);
             expect(realtimeListener).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -3768,16 +3037,10 @@ describe('DeviceTransport', () => {
 
         it('first contradictory device.update triggers drift; subsequent observations are normal', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
@@ -3788,16 +3051,10 @@ describe('DeviceTransport', () => {
             await deviceManager.setCapability('dev1', 'onoff', false);
 
             // First observation is contradictory — drift emitted immediately, window closed
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: true,
+            }, stampedNow()));
 
             expect(realtimeListener).not.toHaveBeenCalled();
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -3809,16 +3066,10 @@ describe('DeviceTransport', () => {
             vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        onoff: true,
+                    }, stampedNow()),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -3828,16 +3079,10 @@ describe('DeviceTransport', () => {
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 // The next refresh lists the home's devices without this one.
                 mockApiGet.mockResolvedValue({
-                    dev2: {
-                        id: 'dev2',
-                        name: 'Lamp socket',
-                        class: 'socket',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 20, id: 'measure_power', lastUpdated: stampedNow() },
-                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        },
-                    },
+                    dev2: homeyDevice({ id: 'dev2', name: 'Lamp socket', class: 'socket' }, {
+                        measure_power: 20,
+                        onoff: true,
+                    }, stampedNow()),
                 });
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 expect(deviceManager.getSnapshot().map(snapshotDeviceId)).toEqual(['dev2']);
@@ -3854,16 +3099,10 @@ describe('DeviceTransport', () => {
             vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        onoff: true,
+                    }, stampedNow()),
                 });
 
                 await deviceManager.init();
@@ -3872,15 +3111,10 @@ describe('DeviceTransport', () => {
                 onObservedControlState(deviceManager, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
-                emitDeviceUpdate({
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, stampedNow()));
 
                 await vi.advanceTimersByTimeAsync(90_000);
 
@@ -3894,16 +3128,11 @@ describe('DeviceTransport', () => {
         describe('binary settle — first observation decides', () => {
             // The baseline read is stamped a minute back; a device.update is
             // stamped when it is built, so it is the newer read.
-            const heaterDevice = (on: boolean, offsetMs = 0) => ({
-                id: 'dev1',
-                name: 'Heater',
-                class: 'heater',
-                capabilities: ['measure_power', 'onoff'],
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(offsetMs) },
-                    onoff: { value: on, id: 'onoff', lastUpdated: stampedNow(offsetMs) },
-                },
-            });
+            const heaterDevice = (on: boolean, offsetMs = 0) => homeyDevice(
+                { id: 'dev1', name: 'Heater', class: 'heater' },
+                { measure_power: 1000, onoff: on },
+                stampedNow(offsetMs),
+            );
             const heaterOnDevice = (offsetMs?: number) => heaterDevice(true, offsetMs);
             const heaterOffDevice = (offsetMs?: number) => heaterDevice(false, offsetMs);
 
@@ -3999,21 +3228,11 @@ describe('DeviceTransport', () => {
                     });
                     await evDeviceManager.init();
                     mockApiGet.mockResolvedValue({
-                        ev1: {
-                            id: 'ev1',
-                            name: 'Easee',
-                            class: 'evcharger',
-                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                            capabilitiesObj: {
-                                evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T12:00:00.000Z' },
-                                evcharger_charging_state: {
-                                    value: 'plugged_in_paused',
-                                    id: 'evcharger_charging_state',
-                                    lastUpdated: '2026-04-01T12:00:00.000Z',
-                                },
-                                measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
-                            },
-                        },
+                        ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_paused',
+                            measure_power: 0,
+                        }, '2026-04-01T12:00:00.000Z'),
                     });
                     await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                     const realtimeListener = vi.fn();
@@ -4044,26 +3263,11 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
                     getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                        capabilitiesObj: {
-                            evcharger_charging: {
-                                value: false,
-                                id: 'evcharger_charging',
-                                setable: true,
-                                lastUpdated: '2026-04-01T12:00:00.000Z',
-                            },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_paused',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-04-01T12:00:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
-                        },
-                    },
+                    ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: 'plugged_in_paused',
+                        measure_power: 0,
+                    }, '2026-04-01T12:00:00.000Z'),
                 });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 const realtimeListener = vi.fn();
@@ -4097,20 +3301,11 @@ describe('DeviceTransport', () => {
                     name: 'Easee',
                     class: 'evcharger',
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: {
-                            value: charging,
-                            id: 'evcharger_charging',
-                            setable: true,
-                            lastUpdated: stampedNow(offsetMs),
-                        },
-                        evcharger_charging_state: {
-                            value: state,
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-04-01T12:00:00.000Z',
-                        },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(offsetMs) },
-                    },
+                    capabilitiesObj: capabilityReadings({
+                        evcharger_charging: setable(charging),
+                        evcharger_charging_state: { value: state, lastUpdated: '2026-04-01T12:00:00.000Z' },
+                        measure_power: 0,
+                    }, stampedNow(offsetMs)),
                 });
                 mockApiGet.mockResolvedValue({ ev1: evDevice(true, 'plugged_in', BASELINE_OFFSET_MS) });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4156,21 +3351,11 @@ describe('DeviceTransport', () => {
                     const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock);
                     await evDeviceManager.init();
                     mockApiGet.mockResolvedValue({
-                        ev1: {
-                            id: 'ev1',
-                            name: 'Easee',
-                            class: 'evcharger',
-                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                            capabilitiesObj: {
-                                evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T12:00:00.000Z' },
-                                evcharger_charging_state: {
-                                    value: 'plugged_in_paused',
-                                    id: 'evcharger_charging_state',
-                                    lastUpdated: '2026-04-01T12:00:00.000Z',
-                                },
-                                measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
-                            },
-                        },
+                        ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_paused',
+                            measure_power: 0,
+                        }, '2026-04-01T12:00:00.000Z'),
                     });
                     await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                     const liveStateListener = vi.fn();
@@ -4224,16 +3409,10 @@ describe('DeviceTransport', () => {
 
         it('preserves local onoff state after a successful binary write', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: false,
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4261,18 +3440,12 @@ describe('DeviceTransport', () => {
 
         it('keeps a target write pending until realtime confirmation arrives', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '\u00B0C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 22, id: 'target_temperature', units: '\u00B0C', lastUpdated: stampedNow() },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    measure_temperature: celsius(21),
+                    target_temperature: celsius(22),
+                    onoff: true,
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4301,19 +3474,13 @@ describe('DeviceTransport', () => {
 
         it('admits only the exact target_temperature capability', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Multi-zone Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'target_temperature.zone1', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '\u00B0C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 22, id: 'target_temperature', units: '\u00B0C', lastUpdated: stampedNow() },
-                        'target_temperature.zone1': { value: 20, id: 'target_temperature.zone1', units: '\u00B0C' },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Multi-zone Heater', class: 'heater' }, {
+                    measure_power: { value: 1000, lastUpdated: stampedNow() },
+                    measure_temperature: { value: 21, units: '\u00B0C', lastUpdated: stampedNow() },
+                    target_temperature: { value: 22, units: '\u00B0C', lastUpdated: stampedNow() },
+                    'target_temperature.zone1': celsius(20),
+                    onoff: { value: true, lastUpdated: stampedNow() },
+                }),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4326,16 +3493,10 @@ describe('DeviceTransport', () => {
 
         it('does not change observed onoff state after an accepted binary write', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: false,
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4349,20 +3510,10 @@ describe('DeviceTransport', () => {
 
         it('does not trust optimistic local off when a later pull omits onoff', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
-                        onoff: {
-                            value: true,
-                            id: 'onoff',
-                            lastUpdated: '2026-06-03T06:00:00.000Z',
-                        },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, '2026-06-03T06:00:00.000Z'),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4376,15 +3527,11 @@ describe('DeviceTransport', () => {
             }));
 
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice(
+                    { id: 'dev1', name: 'Heater', class: 'heater', capabilities: ['measure_power', 'onoff'] },
+                    { measure_power: 1000 },
+                    '2026-06-03T06:05:00.000Z',
+                ),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4402,18 +3549,12 @@ describe('DeviceTransport', () => {
 
         it('emits reconcile event when target temperature changes via device.update', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    measure_temperature: celsius(21),
+                    target_temperature: celsius(20),
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
@@ -4421,18 +3562,12 @@ describe('DeviceTransport', () => {
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                    target_temperature: { value: 18, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                measure_temperature: celsius(21),
+                target_temperature: celsius(18),
+                onoff: true,
+            }, stampedNow()));
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
@@ -4452,64 +3587,36 @@ describe('DeviceTransport', () => {
 
         it('applies target temperature from device.update and snapshot refresh uses latest API value', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        target_temperature: {
-                            value: 23,
-                            id: 'target_temperature',
-                            units: '°C',
-                            lastUpdated: '2026-03-12T19:22:37.776Z',
-                        },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    measure_temperature: celsius(21),
+                    target_temperature: { value: 23, units: '°C', lastUpdated: '2026-03-12T19:22:37.776Z' },
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
             // device.update changes target to 26.5
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                    target_temperature: { value: 26.5, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                measure_temperature: celsius(21),
+                target_temperature: celsius(26.5),
+                onoff: true,
+            }, stampedNow()));
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 targets: [expect.objectContaining({ id: 'target_temperature', value: 26.5 })],
             }));
 
             // Snapshot refresh returns the new target value
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        target_temperature: {
-                            value: 26.5,
-                            id: 'target_temperature',
-                            units: '°C',
-                            lastUpdated: stampedNow(),
-                        },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    measure_temperature: celsius(21),
+                    target_temperature: celsius(26.5),
+                    onoff: true,
+                }, stampedNow()),
             });
 
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4524,62 +3631,34 @@ describe('DeviceTransport', () => {
             try {
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                            target_temperature: {
-                                value: 23,
-                                id: 'target_temperature',
-                                units: '°C',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        measure_temperature: celsius(21),
+                        target_temperature: celsius(23),
+                        onoff: true,
+                    }, '2026-03-20T05:59:00.000Z'),
                 });
 
                 await deviceManager.init();
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
-                emitDeviceUpdate({
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                        target_temperature: { value: 23, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    measure_temperature: celsius(21),
+                    target_temperature: celsius(23),
+                    onoff: true,
+                }, stampedNow()));
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 await deviceManager.setCapability('dev1', 'target_temperature', 16);
 
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T05:59:30.000Z' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:30.000Z' },
-                            target_temperature: {
-                                value: 16,
-                                id: 'target_temperature',
-                                units: '°C',
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:30.000Z' },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 0,
+                        measure_temperature: celsius(21),
+                        target_temperature: celsius(16),
+                        onoff: true,
+                    }, '2026-03-20T05:59:30.000Z'),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4597,23 +3676,12 @@ describe('DeviceTransport', () => {
             try {
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                            target_temperature: {
-                                value: 23,
-                                id: 'target_temperature',
-                                units: '°C',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        measure_temperature: celsius(21),
+                        target_temperature: celsius(23),
+                        onoff: true,
+                    }, '2026-03-20T05:59:00.000Z'),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4631,23 +3699,12 @@ describe('DeviceTransport', () => {
                 }));
 
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:30.000Z' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:30.000Z' },
-                            target_temperature: {
-                                value: 23,
-                                id: 'target_temperature',
-                                units: '°C',
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:30.000Z' },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        measure_temperature: celsius(21),
+                        target_temperature: celsius(23),
+                        onoff: true,
+                    }, '2026-03-20T05:59:30.000Z'),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4667,23 +3724,12 @@ describe('DeviceTransport', () => {
             try {
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                            target_temperature: {
-                                value: 23,
-                                id: 'target_temperature',
-                                units: '°C',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        measure_temperature: celsius(21),
+                        target_temperature: celsius(23),
+                        onoff: true,
+                    }, '2026-03-20T05:59:00.000Z'),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4699,23 +3745,12 @@ describe('DeviceTransport', () => {
                 }));
 
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                            target_temperature: {
-                                value: 16,
-                                id: 'target_temperature',
-                                units: '°C',
-                                lastUpdated: stampedNow(),
-                            },
-                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        measure_temperature: celsius(21),
+                        target_temperature: celsius(16),
+                        onoff: true,
+                    }, stampedNow()),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4734,24 +3769,10 @@ describe('DeviceTransport', () => {
                 await deviceManager.init();
                 vi.setSystemTime(new Date('2026-03-20T06:10:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: {
-                                value: 1000,
-                                id: 'measure_power',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            onoff: {
-                                value: true,
-                                id: 'onoff',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        onoff: true,
+                    }, '2026-03-20T05:59:00.000Z'),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4771,35 +3792,19 @@ describe('DeviceTransport', () => {
                 await deviceManager.init();
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: {
-                                value: 1000,
-                                id: 'measure_power',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        onoff: true,
+                    }, '2026-03-20T05:59:00.000Z'),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
-                emitDeviceUpdate({
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 2865, id: 'measure_power', lastUpdated: stampedNow() },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 2865,
+                    onoff: true,
+                }, stampedNow()));
 
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     measuredPowerKw: 2.865,
@@ -4807,20 +3812,10 @@ describe('DeviceTransport', () => {
                 }));
 
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: {
-                                value: 1000,
-                                id: 'measure_power',
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:30.000Z' },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        onoff: true,
+                    }, '2026-03-20T05:59:30.000Z'),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4840,18 +3835,12 @@ describe('DeviceTransport', () => {
 
         it('applies target temperature change from device.update and emits reconcile', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    measure_temperature: celsius(21),
+                    target_temperature: celsius(20),
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
@@ -4860,18 +3849,12 @@ describe('DeviceTransport', () => {
             onObservedControlState(deviceManager, realtimeListener);
 
             // device.update with target changed from 20 to 18
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                    target_temperature: { value: 18, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                measure_temperature: celsius(21),
+                target_temperature: celsius(18),
+                onoff: true,
+            }, stampedNow()));
 
             // The target change is applied to the snapshot
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -4891,18 +3874,12 @@ describe('DeviceTransport', () => {
 
             // Subsequent device.update with same value does not trigger reconcile
             realtimeListener.mockClear();
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(1000) },
-                    measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(1000) },
-                    target_temperature: { value: 18, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(1000) },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(1000) },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                measure_temperature: celsius(21),
+                target_temperature: celsius(18),
+                onoff: true,
+            }, stampedNow(1000)));
 
             expect(realtimeListener).not.toHaveBeenCalled();
         });
@@ -4911,32 +3888,20 @@ describe('DeviceTransport', () => {
             // Seed a real timestamped onoff:true baseline so the injected
             // onoff:true below is genuinely a no-change.
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, '2026-03-20T05:59:00.000Z'),
             });
             await deviceManager.init();
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 2865, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 2865,
+                onoff: true,
+            }, stampedNow()));
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 binaryControl: { on: true },
@@ -4952,24 +3917,10 @@ describe('DeviceTransport', () => {
                 await deviceManager.init();
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: {
-                                value: 1000,
-                                id: 'measure_power',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            onoff: {
-                                value: true,
-                                id: 'onoff',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        onoff: true,
+                    }, '2026-03-20T05:59:00.000Z'),
                 });
 
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -4980,16 +3931,10 @@ describe('DeviceTransport', () => {
                 });
 
                 vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
-                emitDeviceUpdate({
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: false,
+                }, stampedNow()));
 
                 expect(freshnessSeenAtEmit).toEqual([
                     new Date('2026-03-20T06:05:00.000Z').getTime(),
@@ -5009,37 +3954,21 @@ describe('DeviceTransport', () => {
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T05:59:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                        },
-                    },
+                    ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: 'plugged_in',
+                        measure_power: 0,
+                    }, '2026-03-20T05:59:00.000Z'),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
-                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_paused',
+                    measure_power: 0,
+                }, stampedNow()));
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     binaryControl: { on: false },
@@ -5059,34 +3988,22 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: true, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(true),
+                    evcharger_charging_state: 'plugged_in_charging',
+                    measure_power: 0,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             const realtimeListener = vi.fn();
             onObservedControlState(evDeviceManager, realtimeListener);
 
-            emitDeviceUpdate({
-                id: 'ev1',
-                name: 'Easee',
-                class: 'evcharger',
-                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                capabilitiesObj: {
-                    evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
-                    evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
-                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                evcharger_charging: setable(false),
+                evcharger_charging_state: 'plugged_in_paused',
+                measure_power: 0,
+            }, stampedNow()));
 
             expect(realtimeListener).toHaveBeenCalledOnce();
             expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
@@ -5112,17 +4029,11 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_charging',
+                    measure_power: 0,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5146,17 +4057,11 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        evcharger_charging_state: { value: 'plugged_in', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in',
+                    measure_power: 0,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5183,31 +4088,21 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.init();
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_paused',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 51,
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_paused',
+                            measure_battery: 51,
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5237,17 +4132,11 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
-                        },
-                    },
+                    ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: 'plugged_in_charging',
+                        measure_power: 0,
+                    }, '2026-03-20T06:00:00.000Z'),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5274,31 +4163,21 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.init();
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 51,
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: 51,
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5308,31 +4187,21 @@ describe('DeviceTransport', () => {
                 onObservedState(evDeviceManager, liveStateListener);
                 onObservedControlState(evDeviceManager, reconcileListener);
 
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: [
-                        'evcharger_charging',
-                        'evcharger_charging_state',
-                        'measure_power',
-                        'measure_battery',
-                    ],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:05:00.000Z' },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_charging',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-03-20T06:05:00.000Z',
-                        },
-                        measure_battery: {
-                            id: 'measure_battery',
-                            value: 52,
-                            lastUpdated: '2026-03-20T06:05:00.000Z',
-                        },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:05:00.000Z' },
+                emitDeviceUpdate(homeyDevice(
+                    {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                     },
-                });
+                    {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: 'plugged_in_charging',
+                        measure_battery: 52,
+                        measure_power: 0,
+                    },
+                    '2026-03-20T06:05:00.000Z',
+                ));
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 52, observedAtMs: expect.any(Number) },
@@ -5357,17 +4226,11 @@ describe('DeviceTransport', () => {
         it('ignores realtime state of charge capability updates for non-EV devices', async () => {
             // A battery-powered radiator thermostat reports its own battery level.
             await deviceManager.init();
-            await seedTransportDevices(deviceManager, [{
-                id: 'trv1',
-                name: 'Radiator Thermostat',
-                class: 'thermostat',
-                capabilities: ['target_temperature', 'measure_temperature', 'measure_battery'],
-                capabilitiesObj: {
-                    target_temperature: { value: 21, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                    measure_battery: { value: 80, id: 'measure_battery', lastUpdated: stampedNow() },
-                },
-            }]);
+            await seedTransportDevices(deviceManager, [homeyDevice(
+                { id: 'trv1', name: 'Radiator Thermostat', class: 'thermostat' },
+                { target_temperature: celsius(21), measure_temperature: celsius(20), measure_battery: 80 },
+                stampedNow(),
+            )]);
             const snapshot = () => deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe;
             expect(snapshot()?.id).toBe('trv1');
 
@@ -5382,17 +4245,11 @@ describe('DeviceTransport', () => {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { id: 'evcharger_charging', value: false, setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_paused',
+                    measure_power: 0,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5421,54 +4278,28 @@ describe('DeviceTransport', () => {
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T05:59:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T05:59:00.000Z' },
-                        },
-                    },
+                    ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: 'plugged_in',
+                        measure_power: 0,
+                    }, '2026-03-20T05:59:00.000Z'),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow() },
-                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow() },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_paused',
+                    measure_power: 0,
+                }, stampedNow()));
 
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T05:59:30.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T05:59:30.000Z' },
-                        },
-                    },
+                    ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: 'plugged_in',
+                        measure_power: 0,
+                    }, '2026-03-20T05:59:30.000Z'),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5495,37 +4326,22 @@ describe('DeviceTransport', () => {
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                            'measure_soc_level',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 50,
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            measure_soc_level: {
-                                id: 'measure_soc_level',
-                                value: 55,
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery', 'measure_soc_level'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: { value: 50, lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_soc_level: { value: 55, lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5534,37 +4350,22 @@ describe('DeviceTransport', () => {
                 await emitCapability('ev1', 'measure_soc_level', 72);
 
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                            'measure_soc_level',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 50,
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            measure_soc_level: {
-                                id: 'measure_soc_level',
-                                value: 55,
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery', 'measure_soc_level'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: { value: 50, lastUpdated: '2026-03-20T05:59:30.000Z' },
+                            measure_soc_level: { value: 55, lastUpdated: '2026-03-20T05:59:30.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5591,87 +4392,57 @@ describe('DeviceTransport', () => {
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 50,
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: { value: 50, lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: [
-                        'evcharger_charging',
-                        'evcharger_charging_state',
-                        'measure_power',
-                        'measure_battery',
-                    ],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:01.000Z' },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_charging',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-03-20T06:00:00.000Z',
-                        },
-                        measure_battery: {
-                            id: 'measure_battery',
-                            value: 61,
-                            lastUpdated: '2026-03-20T06:00:01.000Z',
-                        },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:01.000Z' },
-                    },
-                });
-
-                mockApiGet.mockResolvedValue({
-                    ev1: {
+                emitDeviceUpdate(homeyDevice(
+                    {
                         id: 'ev1',
                         name: 'Easee',
                         class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 50,
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
-                        },
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                     },
+                    {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                        measure_battery: 61,
+                        measure_power: 0,
+                    },
+                    '2026-03-20T06:00:01.000Z',
+                ));
+
+                mockApiGet.mockResolvedValue({
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
+                        },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: { value: 50, lastUpdated: '2026-03-20T05:59:30.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -5697,87 +4468,57 @@ describe('DeviceTransport', () => {
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_soc_level',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_soc_level: {
-                                id: 'measure_soc_level',
-                                value: 50,
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_soc_level'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_soc_level: { value: 50, lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: [
-                        'evcharger_charging',
-                        'evcharger_charging_state',
-                        'measure_power',
-                        'measure_soc_level',
-                    ],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:01.000Z' },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_charging',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-03-20T06:00:00.000Z',
-                        },
-                        measure_soc_level: {
-                            id: 'measure_soc_level',
-                            value: 61,
-                            lastUpdated: '2026-03-20T06:00:01.000Z',
-                        },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:01.000Z' },
-                    },
-                });
-
-                mockApiGet.mockResolvedValue({
-                    ev1: {
+                emitDeviceUpdate(homeyDevice(
+                    {
                         id: 'ev1',
                         name: 'Easee',
                         class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_soc_level',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_soc_level: {
-                                id: 'measure_soc_level',
-                                value: 50,
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
-                        },
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_soc_level'],
                     },
+                    {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                        measure_soc_level: 61,
+                        measure_power: 0,
+                    },
+                    '2026-03-20T06:00:01.000Z',
+                ));
+
+                mockApiGet.mockResolvedValue({
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_soc_level'],
+                        },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_soc_level: { value: 50, lastUpdated: '2026-03-20T05:59:30.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -5803,31 +4544,21 @@ describe('DeviceTransport', () => {
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 50,
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: 50,
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5839,31 +4570,21 @@ describe('DeviceTransport', () => {
                 // The level goes because the SESSION ended, not because time
                 // passed: a level is retired by a plug-out and by nothing else.
                 vi.setSystemTime(new Date('2026-03-20T06:45:00.000Z'));
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: [
-                        'evcharger_charging',
-                        'evcharger_charging_state',
-                        'measure_power',
-                        'measure_battery',
-                    ],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:44:00.000Z' },
-                        evcharger_charging_state: {
-                            value: 'plugged_out',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-03-20T06:44:00.000Z',
-                        },
-                        measure_battery: {
-                            id: 'measure_battery',
-                            value: 50,
-                            lastUpdated: '2026-03-20T06:00:00.000Z',
-                        },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:44:00.000Z' },
+                emitDeviceUpdate(homeyDevice(
+                    {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                     },
-                });
+                    {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: 'plugged_out',
+                        measure_battery: { value: 50, lastUpdated: '2026-03-20T06:00:00.000Z' },
+                        measure_power: 0,
+                    },
+                    '2026-03-20T06:44:00.000Z',
+                ));
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
                     level: { kind: 'unavailable', reasonCode: 'not_connected' },
@@ -5892,37 +4613,22 @@ describe('DeviceTransport', () => {
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                            'measure_soc_level',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 50,
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            measure_soc_level: {
-                                id: 'measure_soc_level',
-                                value: 55,
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery', 'measure_soc_level'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: { value: 50, lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_soc_level: { value: 55, lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -5932,37 +4638,22 @@ describe('DeviceTransport', () => {
                 await emitCapability('ev1', 'measure_battery', 70);
 
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                            'measure_soc_level',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:03.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 70,
-                                lastUpdated: '2026-03-20T06:00:03.000Z',
-                            },
-                            measure_soc_level: {
-                                id: 'measure_soc_level',
-                                value: 55,
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:03.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery', 'measure_soc_level'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                            measure_battery: 70,
+                            measure_soc_level: { value: 55, lastUpdated: '2026-03-20T05:59:30.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:03.000Z',
+                    ),
                 });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
@@ -5971,37 +4662,22 @@ describe('DeviceTransport', () => {
                 }));
 
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                            'measure_soc_level',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 70,
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_soc_level: {
-                                id: 'measure_soc_level',
-                                value: 55,
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery', 'measure_soc_level'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: 70,
+                            measure_soc_level: { value: 55, lastUpdated: '2026-03-20T05:59:30.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -6026,31 +4702,21 @@ describe('DeviceTransport', () => {
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 50,
-                                lastUpdated: '2026-03-20T05:59:00.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: { value: 50, lastUpdated: '2026-03-20T05:59:00.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -6058,60 +4724,40 @@ describe('DeviceTransport', () => {
                 await emitCapability('ev1', 'measure_battery', 61);
 
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:02.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 61,
-                                lastUpdated: '2026-03-20T06:00:02.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:02.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                            measure_battery: 61,
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:02.000Z',
+                    ),
                 });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: [
-                            'evcharger_charging',
-                            'evcharger_charging_state',
-                            'measure_power',
-                            'measure_battery',
-                        ],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-03-20T06:00:00.000Z' },
-                            evcharger_charging_state: {
-                                value: 'plugged_in_charging',
-                                id: 'evcharger_charging_state',
-                                lastUpdated: '2026-03-20T06:00:00.000Z',
-                            },
-                            measure_battery: {
-                                id: 'measure_battery',
-                                value: 50,
-                                lastUpdated: '2026-03-20T05:59:30.000Z',
-                            },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-03-20T06:00:00.000Z' },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power', 'measure_battery'],
                         },
-                    },
+                        {
+                            evcharger_charging: setable(false),
+                            evcharger_charging_state: 'plugged_in_charging',
+                            measure_battery: { value: 50, lastUpdated: '2026-03-20T05:59:30.000Z' },
+                            measure_power: 0,
+                        },
+                        '2026-03-20T06:00:00.000Z',
+                    ),
                 });
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -6152,15 +4798,9 @@ describe('DeviceTransport', () => {
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Zaptec',
-                        class: 'evcharger',
-                        capabilities: ['measure_power'],
-                        capabilitiesObj: {
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                        },
-                    },
+                    ev1: homeyDevice({ id: 'ev1', name: 'Zaptec', class: 'evcharger' }, {
+                        measure_power: 0,
+                    }, stampedNow()),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -6169,15 +4809,9 @@ describe('DeviceTransport', () => {
                 }));
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Zaptec',
-                    class: 'evcharger',
-                    capabilities: ['measure_power'],
-                    capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Zaptec', class: 'evcharger' }, {
+                    measure_power: 0,
+                }, stampedNow()));
 
                 flowReportedCapabilities['alarm_generic.car_connected'] = {
                     value: true,
@@ -6207,16 +4841,10 @@ describe('DeviceTransport', () => {
 
         it('does not fabricate drift when an accepted write has not changed observed state', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             await deviceManager.init();
@@ -6230,16 +4858,10 @@ describe('DeviceTransport', () => {
             }));
 
             // The device still reports the previously observed value.
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: true,
+            }, stampedNow()));
 
             expect(realtimeListener).not.toHaveBeenCalled();
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -6251,16 +4873,10 @@ describe('DeviceTransport', () => {
             vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        },
-                    },
+                    dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        onoff: true,
+                    }, stampedNow(BASELINE_OFFSET_MS)),
                 });
 
                 await deviceManager.init();
@@ -6270,16 +4886,10 @@ describe('DeviceTransport', () => {
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
 
-                emitDeviceUpdate({
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                        onoff: { value: false, id: 'onoff', lastUpdated: stampedNow() },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    onoff: false,
+                }, stampedNow()));
 
                 await vi.advanceTimersByTimeAsync(90_000);
 
@@ -6301,29 +4911,22 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Zaptec',
-                        class: 'evcharger',
-                        driverId: 'homey:app:com.zaptec:go',
-                        ownerUri: 'homey:app:com.zaptec',
-                        capabilities: [
-                            'measure_power',
-                            'charging_button',
-                            'charge_mode',
-                            'alarm_generic.car_connected',
-                        ],
-                        capabilitiesObj: {
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                            charging_button: { value: true, id: 'charging_button', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                            charge_mode: { value: 'Charging', id: 'charge_mode', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                            'alarm_generic.car_connected': {
-                                value: true,
-                                id: 'alarm_generic.car_connected',
-                                lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                            },
+                    ev1: homeyDevice(
+                        {
+                            id: 'ev1',
+                            name: 'Zaptec',
+                            class: 'evcharger',
+                            driverId: 'homey:app:com.zaptec:go',
+                            ownerUri: 'homey:app:com.zaptec',
                         },
-                    },
+                        {
+                            measure_power: 0,
+                            charging_button: setable(true),
+                            charge_mode: 'Charging',
+                            'alarm_generic.car_connected': true,
+                        },
+                        stampedNow(BASELINE_OFFSET_MS),
+                    ),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -6337,29 +4940,22 @@ describe('DeviceTransport', () => {
                     binaryWriteCapabilityId: 'charging_button',
                 }));
 
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Zaptec',
-                    class: 'evcharger',
-                    driverId: 'homey:app:com.zaptec:go',
-                    ownerUri: 'homey:app:com.zaptec',
-                    capabilities: [
-                        'measure_power',
-                        'charging_button',
-                        'charge_mode',
-                        'alarm_generic.car_connected',
-                    ],
-                    capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                        charging_button: { value: false, id: 'charging_button', setable: true, lastUpdated: stampedNow() },
-                        charge_mode: { value: 'Charging', id: 'charge_mode', lastUpdated: stampedNow() },
-                        'alarm_generic.car_connected': {
-                            value: true,
-                            id: 'alarm_generic.car_connected',
-                            lastUpdated: stampedNow(),
-                        },
+                emitDeviceUpdate(homeyDevice(
+                    {
+                        id: 'ev1',
+                        name: 'Zaptec',
+                        class: 'evcharger',
+                        driverId: 'homey:app:com.zaptec:go',
+                        ownerUri: 'homey:app:com.zaptec',
                     },
-                });
+                    {
+                        measure_power: 0,
+                        charging_button: setable(false),
+                        charge_mode: 'Charging',
+                        'alarm_generic.car_connected': true,
+                    },
+                    stampedNow(),
+                ));
 
                 expect(realtimeListener).toHaveBeenCalledOnce();
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -6382,29 +4978,22 @@ describe('DeviceTransport', () => {
                     getNativeEvWiringEnabled: () => true,
                 });
                 await evDeviceManager.init();
-                const zaptecPayload = (chargingButton: boolean) => ({
-                    id: 'ev1',
-                    name: 'Zaptec',
-                    class: 'evcharger',
-                    driverId: 'homey:app:com.zaptec:go',
-                    ownerUri: 'homey:app:com.zaptec',
-                    capabilities: [
-                        'measure_power',
-                        'charging_button',
-                        'charge_mode',
-                        'alarm_generic.car_connected',
-                    ],
-                    capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow() },
-                        charging_button: { value: chargingButton, id: 'charging_button', setable: true, lastUpdated: stampedNow() },
-                        charge_mode: { value: 'Charging', id: 'charge_mode', lastUpdated: stampedNow() },
-                        'alarm_generic.car_connected': {
-                            value: true,
-                            id: 'alarm_generic.car_connected',
-                            lastUpdated: stampedNow(),
-                        },
+                const zaptecPayload = (chargingButton: boolean) => homeyDevice(
+                    {
+                        id: 'ev1',
+                        name: 'Zaptec',
+                        class: 'evcharger',
+                        driverId: 'homey:app:com.zaptec:go',
+                        ownerUri: 'homey:app:com.zaptec',
                     },
-                });
+                    {
+                        measure_power: 0,
+                        charging_button: setable(chargingButton),
+                        charge_mode: 'Charging',
+                        'alarm_generic.car_connected': true,
+                    },
+                    stampedNow(),
+                );
                 mockApiGet.mockResolvedValue({ ev1: zaptecPayload(true) });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -6438,41 +5027,20 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: true, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T11:59:00.000Z' },
-                            evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                            measure_power: { value: 7000, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                        },
-                    },
+                    ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                        evcharger_charging: setable(true),
+                        evcharger_charging_state: 'plugged_in_charging',
+                        measure_power: 7000,
+                    }, '2026-04-01T11:59:00.000Z'),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: {
-                            value: false,
-                            id: 'evcharger_charging',
-                            setable: true,
-                            lastUpdated: '2026-04-01T12:00:00.000Z',
-                        },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_charging',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-04-01T12:00:00.000Z',
-                        },
-                        measure_power: { value: 7000, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_charging',
+                    measure_power: 7000,
+                }, '2026-04-01T12:00:00.000Z'));
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     binaryControl: { on: false },
@@ -6507,17 +5075,11 @@ describe('DeviceTransport', () => {
                     const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock);
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
-                    ev1: {
-                        id: 'ev1',
-                        name: 'Easee',
-                        class: 'evcharger',
-                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                        capabilitiesObj: {
-                            evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T11:59:00.000Z' },
-                            evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                            measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                        },
-                    },
+                    ev1: homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                        evcharger_charging: setable(false),
+                        evcharger_charging_state: 'plugged_in_paused',
+                        measure_power: 0,
+                    }, '2026-04-01T11:59:00.000Z'),
                 });
 
                 await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -6527,21 +5089,11 @@ describe('DeviceTransport', () => {
                 vi.setSystemTime(new Date('2026-04-01T11:59:59.000Z'));
                 await evDeviceManager.setCapability('ev1', 'evcharger_charging', false);
 
-                emitDeviceUpdate({
-                    id: 'ev1',
-                    name: 'Easee',
-                    class: 'evcharger',
-                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
-                    capabilitiesObj: {
-                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T12:00:00.000Z' },
-                        evcharger_charging_state: {
-                            value: 'plugged_in_paused',
-                            id: 'evcharger_charging_state',
-                            lastUpdated: '2026-04-01T12:00:00.000Z',
-                        },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T12:00:00.000Z' },
-                    },
-                });
+                emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
+                    evcharger_charging: setable(false),
+                    evcharger_charging_state: 'plugged_in_paused',
+                    measure_power: 0,
+                }, '2026-04-01T12:00:00.000Z'));
 
                 expect(realtimeListener).not.toHaveBeenCalled();
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -6567,29 +5119,22 @@ describe('DeviceTransport', () => {
                 });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
-                ev1: {
-                    id: 'ev1',
-                    name: 'Zaptec',
-                    class: 'evcharger',
-                    driverId: 'homey:app:com.zaptec:go',
-                    ownerUri: 'homey:app:com.zaptec',
-                    capabilities: [
-                        'measure_power',
-                        'charging_button',
-                        'charge_mode',
-                        'alarm_generic.car_connected',
-                    ],
-                    capabilitiesObj: {
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        charging_button: { value: true, id: 'charging_button', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        charge_mode: { value: 'Charging', id: 'charge_mode', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        'alarm_generic.car_connected': {
-                            value: true,
-                            id: 'alarm_generic.car_connected',
-                            lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                        },
+                ev1: homeyDevice(
+                    {
+                        id: 'ev1',
+                        name: 'Zaptec',
+                        class: 'evcharger',
+                        driverId: 'homey:app:com.zaptec:go',
+                        ownerUri: 'homey:app:com.zaptec',
                     },
-                },
+                    {
+                        measure_power: 0,
+                        charging_button: setable(true),
+                        charge_mode: 'Charging',
+                        'alarm_generic.car_connected': true,
+                    },
+                    stampedNow(BASELINE_OFFSET_MS),
+                ),
             });
 
             await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -6644,16 +5189,10 @@ describe('DeviceTransport', () => {
             const realtimeListener = vi.fn();
             onObservedControlState(managedDeviceManager, realtimeListener);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 2865, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 2865,
+                onoff: true,
+            }, stampedNow()));
 
             expect(realtimeListener).not.toHaveBeenCalled();
             expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev1')).toBeUndefined();
@@ -6663,40 +5202,24 @@ describe('DeviceTransport', () => {
 
         it('does not emit reconcile event for temperature-only generic device changes', async () => {
             mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    class: 'heater',
-                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_temperature: {
-                            value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                        },
-                        target_temperature: {
-                            value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
-                        },
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    measure_power: 1000,
+                    measure_temperature: celsius(21),
+                    target_temperature: celsius(20),
+                    onoff: true,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
             await deviceManager.init();
             await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
-            emitDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff', 'measure_temperature', 'target_temperature'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                    measure_temperature: { value: 23, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                    target_temperature: { value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
-                },
-            });
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000,
+                onoff: true,
+                measure_temperature: celsius(23),
+                target_temperature: celsius(20),
+            }, stampedNow()));
 
             expect(realtimeListener).not.toHaveBeenCalled();
         });
@@ -6717,30 +5240,18 @@ describe('DeviceTransport', () => {
         describe('per-capability realtime updates', () => {
             // Baseline reads, stamped before the capability events a test sends.
             const buildOnoffDevice = () => ({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['onoff', 'measure_power'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    onoff: true,
+                    measure_power: 500,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
             const buildTempDevice = () => ({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Thermostat',
-                    capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
-                    class: 'thermostat',
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5, lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_temperature: { value: 20, id: 'measure_temperature', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                        measure_power: { value: 360, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Thermostat', class: 'thermostat' }, {
+                    onoff: true,
+                    target_temperature: { value: 20, units: '°C', min: 5, max: 40, step: 0.5 },
+                    measure_temperature: 20,
+                    measure_power: 360,
+                }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
             it('triggers reconcile when onoff is changed externally via capability event', async () => {
@@ -6832,15 +5343,9 @@ describe('DeviceTransport', () => {
                 // outside the snapshot whose capability events still arrive.
                 mockApiGet.mockResolvedValue({
                     ...buildOnoffDevice(),
-                    car1: {
-                        id: 'car1',
-                        name: 'Polestar',
-                        class: 'car',
-                        capabilities: ['ev_charging_state'],
-                        capabilitiesObj: {
-                            ev_charging_state: { value: 'plugged_out', id: 'ev_charging_state', lastUpdated: stampedNow() },
-                        },
-                    },
+                    car1: homeyDevice({ id: 'car1', name: 'Polestar', class: 'car' }, {
+                        ev_charging_state: 'plugged_out',
+                    }, stampedNow()),
                 });
                 await deviceManager.init();
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
@@ -6903,39 +5408,19 @@ describe('DeviceTransport', () => {
 
         describe('tracked capability freshness and reconcile semantics', () => {
             const buildOnoffDevice = () => ({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['onoff', 'measure_power'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                        measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                    onoff: true,
+                    measure_power: 500,
+                }, '2026-04-01T11:59:00.000Z'),
             });
 
             const buildThermostatDevice = () => ({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Thermostat',
-                    capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
-                    class: 'thermostat',
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                        target_temperature: {
-                            value: 20,
-                            id: 'target_temperature',
-                            units: '°C',
-                            min: 5,
-                            max: 40,
-                            step: 0.5,
-                            lastUpdated: '2026-04-01T11:59:00.000Z',
-                        },
-                        measure_temperature: { value: 19, id: 'measure_temperature', units: '°C', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                        measure_power: { value: 360, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                    },
-                },
+                dev1: homeyDevice({ id: 'dev1', name: 'Thermostat', class: 'thermostat' }, {
+                    onoff: true,
+                    target_temperature: { value: 20, units: '°C', min: 5, max: 40, step: 0.5 },
+                    measure_temperature: celsius(19),
+                    measure_power: 360,
+                }, '2026-04-01T11:59:00.000Z'),
             });
 
             it('realtime onoff update advances freshness and triggers reconcile', async () => {
@@ -7008,23 +5493,12 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                            capabilitiesObj: {
-                                measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                                measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                                target_temperature: {
-                                    value: 23,
-                                    id: 'target_temperature',
-                                    units: '°C',
-                                    lastUpdated: stampedNow(),
-                                },
-                                onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            measure_power: 1000,
+                            measure_temperature: celsius(21),
+                            target_temperature: celsius(23),
+                            onoff: true,
+                        }, stampedNow()),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -7046,23 +5520,12 @@ describe('DeviceTransport', () => {
                     expect(liveStateListener).not.toHaveBeenCalled();
                     expect(reconcileListener).not.toHaveBeenCalled();
 
-                    emitDeviceUpdate({
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
-                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
-                            target_temperature: {
-                                value: 18,
-                                id: 'target_temperature',
-                                units: '°C',
-                                lastUpdated: stampedNow(),
-                            },
-                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        },
-                    });
+                    emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                        measure_power: 1000,
+                        measure_temperature: celsius(21),
+                        target_temperature: celsius(18),
+                        onoff: true,
+                    }, stampedNow()));
 
                     expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value)
                         .toBe(18);
@@ -7141,16 +5604,10 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            class: 'heater',
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                                measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 0,
+                        }, '2026-04-01T11:59:00.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -7475,16 +5932,10 @@ describe('DeviceTransport', () => {
                     capabilities: thermostat.capabilities.filter((capabilityId) => capabilityId !== 'onoff'),
                     capabilitiesObj: temperatureCapabilities,
                 };
-                const binarySurvivor = {
-                    id: 'dev2',
-                    name: 'Binary survivor',
-                    class: 'socket',
-                    capabilities: ['onoff', 'measure_power'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                };
+                const binarySurvivor = homeyDevice({ id: 'dev2', name: 'Binary survivor', class: 'socket' }, {
+                    onoff: true,
+                    measure_power: 500,
+                }, stampedNow());
                 mockApiGet.mockResolvedValue({ dev1: temperatureOnlyDevice, dev2: binarySurvivor });
                 await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -7548,24 +5999,10 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            capabilitiesObj: {
-                                onoff: {
-                                    value: true,
-                                    id: 'onoff',
-                                    lastUpdated: '2026-04-01T11:59:00.000Z',
-                                },
-                                measure_power: {
-                                    value: 500,
-                                    id: 'measure_power',
-                                    lastUpdated: '2026-04-01T11:59:00.000Z',
-                                },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 500,
+                        }, '2026-04-01T11:59:00.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -7578,24 +6015,10 @@ describe('DeviceTransport', () => {
                     // Advance wall-clock time well past T1 before the next snapshot refresh
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            capabilitiesObj: {
-                                onoff: {
-                                    value: false,
-                                    id: 'onoff',
-                                    lastUpdated: '2026-04-01T11:59:30.000Z',
-                                },
-                                measure_power: {
-                                    value: 500,
-                                    id: 'measure_power',
-                                    lastUpdated: '2026-04-01T11:59:30.000Z',
-                                },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: false,
+                            measure_power: 500,
+                        }, '2026-04-01T11:59:30.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -7616,16 +6039,10 @@ describe('DeviceTransport', () => {
                     // Initial refresh: tracked capabilities have T0 timestamps
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                                measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 500,
+                        }, '2026-04-01T11:55:00.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                     const freshnessAfterFirstRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
@@ -7634,16 +6051,10 @@ describe('DeviceTransport', () => {
                     // Advance wall clock; second refresh with same (no newer) tracked timestamps — no retained obs
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                                measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 500,
+                        }, '2026-04-01T11:55:00.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -7674,25 +6085,15 @@ describe('DeviceTransport', () => {
                     // target is not a number: the read breaks the device-read
                     // contract and none of it is taken.
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
-                    emitDeviceUpdate({
-                        id: 'dev1',
-                        name: 'Thermostat',
-                        class: 'thermostat',
-                        capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
-                        capabilitiesObj: {
-                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T12:01:00.000Z' },
-                            target_temperature: {
-                                value: 'unknown' as unknown as number,
-                                id: 'target_temperature',
-                                units: '°C',
-                                min: 5,
-                                max: 40,
-                                step: 0.5,
-                            },
-                            measure_temperature: { value: 19, id: 'measure_temperature', units: '°C', lastUpdated: '2026-04-01T12:01:00.000Z' },
-                            measure_power: { value: 360, id: 'measure_power', lastUpdated: '2026-04-01T12:01:00.000Z' },
+                    emitDeviceUpdate(homeyDevice(
+                        { id: 'dev1', name: 'Thermostat', class: 'thermostat' },
+                        {
+                            onoff: { value: true, lastUpdated: '2026-04-01T12:01:00.000Z' },
+                            target_temperature: { value: 'unknown' as unknown as number, units: '°C', min: 5, max: 40, step: 0.5 },
+                            measure_temperature: { value: 19, units: '°C', lastUpdated: '2026-04-01T12:01:00.000Z' },
+                            measure_power: { value: 360, lastUpdated: '2026-04-01T12:01:00.000Z' },
                         },
-                    });
+                    ));
 
                     expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBe(20);
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessBefore);
@@ -7700,26 +6101,12 @@ describe('DeviceTransport', () => {
 
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Thermostat',
-                            capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
-                            class: 'thermostat',
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:59:30.000Z' },
-                                target_temperature: {
-                                    value: 20,
-                                    id: 'target_temperature',
-                                    units: '°C',
-                                    min: 5,
-                                    max: 40,
-                                    step: 0.5,
-                                    lastUpdated: '2026-04-01T11:59:30.000Z',
-                                },
-                                measure_temperature: { value: 19, id: 'measure_temperature', units: '°C', lastUpdated: '2026-04-01T11:59:30.000Z' },
-                                measure_power: { value: 360, id: 'measure_power', lastUpdated: '2026-04-01T11:59:30.000Z' },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Thermostat', class: 'thermostat' }, {
+                            onoff: true,
+                            target_temperature: { value: 20, units: '°C', min: 5, max: 40, step: 0.5 },
+                            measure_temperature: celsius(19),
+                            measure_power: 360,
+                        }, '2026-04-01T11:59:30.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -7737,16 +6124,10 @@ describe('DeviceTransport', () => {
                     // Initial refresh: tracked capabilities have T0 timestamps
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                                measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 500,
+                        }, '2026-04-01T11:55:00.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                     const freshnessAfterFirstRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
@@ -7755,16 +6136,10 @@ describe('DeviceTransport', () => {
                     // Second refresh: measure_power has a newer timestamp T1 > T0
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                                measure_power: { value: 600, id: 'measure_power', lastUpdated: '2026-04-01T12:05:00.000Z' },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: { value: 600, lastUpdated: '2026-04-01T12:05:00.000Z' },
+                        }, '2026-04-01T11:55:00.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -7784,17 +6159,11 @@ describe('DeviceTransport', () => {
                     // Initial refresh: tracked capabilities have T0 timestamps
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power', 'alarm_battery'],
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                                measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                                alarm_battery: { value: false, id: 'alarm_battery', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 500,
+                            alarm_battery: false,
+                        }, '2026-04-01T11:55:00.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                     const freshnessAfterFirstRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
@@ -7803,17 +6172,11 @@ describe('DeviceTransport', () => {
                     // Second refresh: only alarm_battery (untracked) has a newer timestamp
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power', 'alarm_battery'],
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                                measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                                alarm_battery: { value: true, id: 'alarm_battery', lastUpdated: '2026-04-01T12:08:00.000Z' },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 500,
+                            alarm_battery: { value: true, lastUpdated: '2026-04-01T12:08:00.000Z' },
+                        }, '2026-04-01T11:55:00.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
@@ -7833,24 +6196,10 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            capabilitiesObj: {
-                                onoff: {
-                                    value: true,
-                                    id: 'onoff',
-                                    lastUpdated: '2026-04-01T11:59:00.000Z',
-                                },
-                                measure_power: {
-                                    value: 1000,
-                                    id: 'measure_power',
-                                    lastUpdated: '2026-04-01T11:59:00.000Z',
-                                },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 1000,
+                        }, '2026-04-01T11:59:00.000Z'),
                     });
                     await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
                     const before = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
@@ -7915,16 +6264,10 @@ describe('DeviceTransport', () => {
 
                     const initialAt = new Date('2026-04-01T11:55:00.000Z').toISOString();
                     const deviceData = {
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: initialAt },
-                                measure_power: { value: 500, id: 'measure_power', lastUpdated: initialAt },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 500,
+                        }, initialAt),
                     };
                     mockApiGet.mockImplementation(buildPathAwareMock(deviceData));
 
@@ -7953,16 +6296,10 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
 
                     const deviceData = {
-                        dev1: {
-                            id: 'dev1',
-                            name: 'Heater',
-                            class: 'heater',
-                            capabilities: ['onoff', 'measure_power'],
-                            capabilitiesObj: {
-                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                                measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:55:00.000Z' },
-                            },
-                        },
+                        dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                            onoff: true,
+                            measure_power: 500,
+                        }, '2026-04-01T11:55:00.000Z'),
                     };
                     mockApiGet.mockImplementation(buildPathAwareMock(deviceData));
 
@@ -8111,16 +6448,10 @@ describe('DeviceTransport', () => {
             await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
             const realtimeListener = vi.fn();
             onObservedControlState(managedDeviceManager, realtimeListener);
-            const heaterUpdate = (on: boolean) => ({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 5000, id: 'measure_power', lastUpdated: stampedNow() },
-                    onoff: { value: on, id: 'onoff', lastUpdated: stampedNow() },
-                },
-            });
+            const heaterUpdate = (on: boolean) => homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 5000,
+                onoff: on,
+            }, stampedNow());
 
             // While managed, the same kind of update does reach the listener.
             emitDeviceUpdate(heaterUpdate(false));
