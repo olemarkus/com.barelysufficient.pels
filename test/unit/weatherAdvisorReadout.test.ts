@@ -10,6 +10,7 @@ import {
   type WeatherAdvisorReadoutInput,
 } from '../../lib/weather/weatherAdvisorReadout';
 import { shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
+import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
 
 // 2026-06-11 12:00 UTC; the test timezone is UTC so dateKeys stay literal.
 const NOW_MS = Date.UTC(2026, 5, 11, 12, 0, 0);
@@ -73,6 +74,8 @@ const baseInput = (overrides: Partial<WeatherAdvisorReadoutInput> = {}): Weather
   settings: { enabled: true, outdoorDeviceId: 'dev-outdoor' },
   state: { records: recentDays(30) },
   backfillRunning: false,
+  // No power limit unless a case enables one: nothing caps the suggestion.
+  powerLimitSettings: powerLimits({ enabled: false, limitKw: 10, marginKw: 0 }, null),
   nowMs: NOW_MS,
   timeZone: 'UTC',
   ...overrides,
@@ -373,10 +376,10 @@ describe('buildWeatherAdvisorReadout', () => {
   it('marks the suggestion as capacity-capped when expected demand exceeds cap × 24h', () => {
     const payload = payloadFor(withState(
       { records: recentDays(30), latestFit: fit() },
-      { capacityLimitKw: 1, currentDailyBudgetKwh: 20 },
+      { powerLimitSettings: capacityOnlyPowerLimits(1), currentDailyBudgetKwh: 20 },
     ));
     // Prediction (~29 kWh) > cap × 24 (24 kWh) → genuinely over-cap.
-    expect(payload?.suggestion?.cappedByCapacity).toBe(true);
+    expect(payload?.suggestion?.cappedByPowerLimit).toBe('capacity');
     expect(payload?.suggestion?.kwh).toBeLessThanOrEqual(24);
     expect(payload?.suggestion?.currentDailyBudgetKwh).toBe(20);
   });
@@ -386,10 +389,39 @@ describe('buildWeatherAdvisorReadout', () => {
     // but tomorrow's predicted demand (8 kWh, uncorrelated) fits — so not over-cap.
     const payload = payloadFor(withState(
       { records: recentDays(30), latestFit: fit({ model: 'uncorrelated', medianDayKwh: 8 }) },
-      { capacityLimitKw: 0.5 },
+      { powerLimitSettings: capacityOnlyPowerLimits(0.5) },
     ));
     expect(payload?.prediction?.kwh).toBeLessThan(12);
-    expect(payload?.suggestion?.cappedByCapacity).toBe(false);
+    expect(payload?.suggestion?.cappedByPowerLimit).toBeNull();
+  });
+
+  it('caps nothing and flags no limit at a switched-off hard cap when no power limit is enabled', () => {
+    const payload = payloadFor(withState(
+      { records: recentDays(30), latestFit: fit() },
+      { powerLimitSettings: powerLimits({ enabled: false, limitKw: 1, marginKw: 0 }, null), currentDailyBudgetKwh: 20 },
+    ));
+    // Prediction (~29 kWh) is above the hidden 1 kW hard cap × 24, but that cap shapes nothing.
+    expect(payload?.suggestion?.cappedByPowerLimit).toBeNull();
+    expect(payload?.suggestion?.kwh).toBeGreaterThan(24);
+  });
+
+  it('names the grid import limit when its target sets the ceiling', () => {
+    // Capacity limit off; a grid limit targeting 1 kW (24 kWh a day) sets the ceiling.
+    const payload = payloadFor(withState(
+      { records: recentDays(30), latestFit: fit() },
+      { powerLimitSettings: powerLimits({ enabled: false, limitKw: 10, marginKw: 0 }, 1 / 0.95) },
+    ));
+    expect(payload?.suggestion?.cappedByPowerLimit).toBe('grid');
+    expect(payload?.suggestion?.kwh).toBeLessThanOrEqual(24 + 1e-6);
+  });
+
+  it('names the lower limit when both are enabled', () => {
+    // A 10 kW hard cap does not bind; the grid limit targeting 1 kW does.
+    const payload = payloadFor(withState(
+      { records: recentDays(30), latestFit: fit() },
+      { powerLimitSettings: powerLimits({ enabled: true, limitKw: 10, marginKw: 0 }, 1 / 0.95) },
+    ));
+    expect(payload?.suggestion?.cappedByPowerLimit).toBe('grid');
   });
 
   it('decimates usable days into 1 °C bins and ships raw recent days with quality', () => {

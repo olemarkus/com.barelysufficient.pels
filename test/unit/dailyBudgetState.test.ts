@@ -174,6 +174,7 @@ describe('daily budget state helpers', () => {
       usedNowKWh: 20,
     });
     const snapshot = buildDailyBudgetSnapshot({
+      planningCeiling: null,
       context,
       settings: buildSettings({ dailyBudgetKWh: 24 }),
       enabled: true,
@@ -201,6 +202,7 @@ describe('daily budget state helpers', () => {
       usedNowKWh: 2,
     });
     const snapshot = buildDailyBudgetSnapshot({
+      planningCeiling: null,
       context,
       settings: buildSettings({ dailyBudgetKWh: 12 }),
       enabled: true,
@@ -228,6 +230,7 @@ describe('daily budget state helpers', () => {
       usedNowKWh: 8,
     });
     const snapshot = buildDailyBudgetSnapshot({
+      planningCeiling: null,
       context,
       settings: buildSettings({ dailyBudgetKWh: 12 }),
       enabled: true,
@@ -264,13 +267,16 @@ describe('daily budget state helpers', () => {
       priceData: { priceShapingActive: true },
       budget: buildBudgetState({ remainingKWh: 10 }),
       frozen: false,
-      usableCapacityKw: 2,
+      planningCeiling: { limit: 'capacity', kw: 2 },
     });
 
-    expect(snapshot.state.allocationPressure?.maxFittingDailyBudgetKWh).toBeCloseTo(48, 6);
+    expect(snapshot.state.allocationPressure?.powerLimitCeiling).toEqual({
+      limit: 'capacity',
+      maxFittingDailyBudgetKWh: 48,
+    });
   });
 
-  it('reports a zero daily ceiling when usable capacity is missing', () => {
+  it('names the grid import limit when its target sets the daily ceiling', () => {
     const context = buildSnapshotContext({
       currentBucketIndex: 2,
       budgetControlBucketUsage: [0, 0, 1, 0],
@@ -287,9 +293,36 @@ describe('daily budget state helpers', () => {
       priceData: { priceShapingActive: true },
       budget: buildBudgetState({ remainingKWh: 10 }),
       frozen: false,
+      planningCeiling: { limit: 'grid', kw: 7 },
     });
 
-    expect(snapshot.state.allocationPressure?.maxFittingDailyBudgetKWh).toBe(0);
+    expect(snapshot.state.allocationPressure?.powerLimitCeiling).toEqual({
+      limit: 'grid',
+      maxFittingDailyBudgetKWh: 168,
+    });
+  });
+
+  it('reports no daily ceiling when no power limit is enabled', () => {
+    const context = buildSnapshotContext({
+      currentBucketIndex: 2,
+      budgetControlBucketUsage: [0, 0, 1, 0],
+      budgetControlUsedNowKWh: 2,
+      usedNowKWh: 2,
+    });
+    const snapshot = buildDailyBudgetSnapshot({
+      planningCeiling: null,
+      context,
+      settings: buildSettings({ dailyBudgetKWh: 12 }),
+      enabled: true,
+      plannedKWh: [0, 0, 3, 2],
+      plannedUncontrolledKWh: [0, 0, 0, 0],
+      plannedControlledKWh: [0, 0, 3, 2],
+      priceData: { priceShapingActive: true },
+      budget: buildBudgetState({ remainingKWh: 10 }),
+      frozen: false,
+    });
+
+    expect(snapshot.state.allocationPressure?.powerLimitCeiling).toBeNull();
   });
 
   it('does not report allocation pressure after the day has ended', () => {
@@ -299,6 +332,7 @@ describe('daily budget state helpers', () => {
       usedNowKWh: 8,
     });
     const snapshot = buildDailyBudgetSnapshot({
+      planningCeiling: null,
       context,
       settings: buildSettings({ dailyBudgetKWh: 12 }),
       enabled: true,

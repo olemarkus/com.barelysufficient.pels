@@ -64,7 +64,7 @@ The suggestion follows the forecast, but it also learns from how recent days wen
 
 When the correction is at least 1 kWh, the line names it: *"… 6.0 kWh of the suggestion covers recent demand beyond your budget."*, or for the second case *"The suggestion includes 6.0 kWh of extra room based on recent demand."* The number is the part of the suggestion the correction accounts for, not the whole difference from your current budget, since the suggestion also includes ordinary headroom.
 
-Only usage counted toward your daily budget can count as going over it. Energy used by devices allowed beyond today's budget still shows in your real usage, but it never counts as going over the budget. The correction grows by at most 10 kWh per day and never goes past what your hard cap can deliver in a day. It fades on days that bring no new evidence, and fades faster when usage stays under the budget.
+Only usage counted toward your daily budget can count as going over it. Energy used by devices allowed beyond today's budget still shows in your real usage, but it never counts as going over the budget. The correction grows by at most 10 kWh per day and never goes past what your power limit can deliver in a day: the hard cap minus its safety margin, or the grid import limit's reduction level when that is lower or Capacity limit is off. With no power limit on, nothing caps it. It fades on days that bring no new evidence, and fades faster when usage stays under the budget.
 
 ## What PELS learned about your home
 
@@ -91,6 +91,8 @@ If tomorrow's expected usage is more than your [hard cap](getting-started.md#ter
 *Figure 6. When the suggestion bumps against the hard cap, PELS warns you plainly and tells you what will happen: it holds the cap and limits some managed usage in the coldest hours.*
 
 The hard cap is your **grid tariff step** (effekttrinn) — not a budget you can nudge up to make the warning go away. Raising it to fit a cold day would defeat its purpose. The honest response to this warning is to expect that managed devices (water heater, floor heating, EV charging) will be paced harder in the coldest hours, and to plan flexible load accordingly.
+
+When the **Grid import limit** sets the day's ceiling instead (Capacity limit is off, or the grid limit is the lower of the two), the same warning names it: *"Tomorrow may need more than your grid import limit allows"*, and says PELS will reduce flexible loads near the limit, so some managed usage may be limited in the coldest hours. With no power limit on, nothing caps the suggestion and the warning never shows.
 
 ## When the forecast isn't available
 

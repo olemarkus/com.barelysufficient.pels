@@ -3,8 +3,9 @@ import {
   computeDailyUsageSoftLimit,
   computeDynamicSoftLimit,
   computeShortfallThreshold,
-  isDailyBudgetBelowSustainableCapacity,
+  isDailyBudgetBelowPlanningCeiling,
 } from '../../lib/plan/planBudget';
+import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
 import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 
 const budgetSnapshot = (dailyBudgetKWh: number, hours: number, enabled = true): DailyBudgetUiPayload => {
@@ -55,17 +56,41 @@ describe('planBudget', () => {
   });
 
   describe('budget-pressure eligibility', () => {
-    const capacity = { limitKw: 5, marginKw: 0.5, periodMinutes: 60 } as const;
+    const capacity = capacityOnlyPowerLimits(5, 0.5);
 
     it('stays active below hard cap minus margin for the actual local-day length', () => {
-      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(112.4, 25), capacity)).toBe(true);
-      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(112.5, 25), capacity)).toBe(false);
-      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(103.4, 23), capacity)).toBe(true);
-      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(103.5, 23), capacity)).toBe(false);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(112.4, 25), capacity)).toBe(true);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(112.5, 25), capacity)).toBe(false);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(103.4, 23), capacity)).toBe(true);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(103.5, 23), capacity)).toBe(false);
     });
 
     it('is inactive when daily-budget control is disabled', () => {
-      expect(isDailyBudgetBelowSustainableCapacity(budgetSnapshot(40, 24, false), capacity)).toBe(false);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(40, 24, false), capacity)).toBe(false);
+    });
+
+    it('stays active for any enabled budget when no power limit is enabled', () => {
+      // Nothing caps the day but the budget, so the budget is the binding limit;
+      // a switched-off 5 kW hard cap must not decide (360 kWh > 4.5 kW × 24 h).
+      const noLimits = powerLimits({ enabled: false, limitKw: 5, marginKw: 0.5 }, null);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(360, 24), noLimits)).toBe(true);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(40, 24, false), noLimits)).toBe(false);
+    });
+
+    it('compares against the grid import target once Capacity limit is off', () => {
+      // 17 kW grid limit: target 16.15 kW, 387.6 kWh over 24 h. The hidden 4.5 kW
+      // capacity rate (108 kWh) no longer decides.
+      const gridOnly = powerLimits({ enabled: false, limitKw: 5, marginKw: 0.5 }, 17);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(200, 24), gridOnly)).toBe(true);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(387.5, 24), gridOnly)).toBe(true);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(387.7, 24), gridOnly)).toBe(false);
+    });
+
+    it('compares against the lower limit when both are enabled', () => {
+      // Capacity 10 − 0.2 = 9.8 kW (235.2 kWh); grid 7.4 kW → 7.03 kW (168.72 kWh).
+      const both = powerLimits({ enabled: true, limitKw: 10, marginKw: 0.2 }, 7.4);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(168.7, 24), both)).toBe(true);
+      expect(isDailyBudgetBelowPlanningCeiling(budgetSnapshot(168.8, 24), both)).toBe(false);
     });
   });
 

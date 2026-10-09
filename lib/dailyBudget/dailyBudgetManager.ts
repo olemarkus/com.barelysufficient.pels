@@ -1,8 +1,10 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../power/tracker';
-import { buildDefaultProfile, buildPlan, buildPriceDebugData } from './dailyBudgetMath';
-import type { CombinedPriceData } from './dailyBudgetMath';
+import { buildDefaultProfile, buildPlan, buildPriceDebugData, type CombinedPriceData } from './dailyBudgetMath';
 import { buildSnapshotAndLogDebug } from './dailyBudgetManagerSnapshot';
 import {
+  describePlanningCeiling,
+  hasPlanningCeilingMoved,
   resolveExistingPlanState,
   resolvePlanLockState,
   shouldRebuildDailyBudgetPlan,
@@ -46,10 +48,7 @@ import {
 } from './dailyBudgetConfidenceCache';
 import { resolveDailyBudgetPersistReason } from './dailyBudgetStatePersistence';
 import { getLogger } from '../logging/logger';
-import {
-  resolveStoredPlanBreakdown,
-  type StoredPlanBreakdown,
-} from './dailyBudgetStoredPlanBreakdown';
+import { resolveStoredPlanBreakdown, type StoredPlanBreakdown } from './dailyBudgetStoredPlanBreakdown';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
 const moduleLogger = getLogger('daily_budget');
@@ -70,6 +69,16 @@ export class DailyBudgetManager {
    * In memory only: a restart rebuilds the plan anyway.
    */
   private lastPlanPriceSignature: string | null = null;
+  /**
+   * The planning ceiling the plan was last built on (`describePlanningCeiling`).
+   * Toggling a power limit forces a replan, but that replan can read settings
+   * that have not caught up yet; comparing on every update replans as soon as the
+   * accepted ceiling moves, whoever asked for the update. `null` until a plan is
+   * built. In memory only: a restart rebuilds the plan anyway.
+   */
+  private lastPlanCeilingMark: string | null = null;
+  /** The planning ceiling of the latest update: an input of tomorrow's preview. */
+  private planningCeilingMark = '';
   private confidenceCache: ConfidenceCache = createConfidenceCache();
   /** `describeClosedDaysHistory` as of the last update. */
   private closedDaysHistoryMark = '';
@@ -111,7 +120,7 @@ export class DailyBudgetManager {
    * after the fact, or a change to the learned model.
    */
   getAdjacentDaysInputsMark(): string {
-    return `${this.closedDaysHistoryMark}|${this.learnedModelRevision}`;
+    return `${this.closedDaysHistoryMark}|${this.learnedModelRevision}|${this.planningCeilingMark}`;
   }
   update(params: DailyBudgetUpdateParams): DailyBudgetUpdate {
     const {
@@ -122,7 +131,7 @@ export class DailyBudgetManager {
       combinedPrices,
       priceOptimizationEnabled,
       forcePlanRebuild,
-      capacityBudgetKWh,
+      planningCeiling,
       refreshObservedStats = true,
       refreshConfidence = false,
       includeConfidenceBootstrapDebug = false,
@@ -132,6 +141,7 @@ export class DailyBudgetManager {
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker });
     this.closedDaysHistoryMark = describeClosedDaysHistory(powerTracker, context);
+    this.planningCeilingMark = describePlanningCeiling(planningCeiling);
     if (persistReason) this.markDirty(persistReason);
     const profileResult = ensureDailyBudgetProfile(this.state, DEFAULT_PROFILE);
     if (profileResult.changed) this.markDirty('manual');
@@ -157,7 +167,7 @@ export class DailyBudgetManager {
       priceOptimizationEnabled,
       forcePlanRebuild,
       recomputeFrozenPlan,
-      capacityBudgetKWh,
+      planningCeiling,
     });
     const budget = { ...computeBudgetState({
       context,
@@ -196,7 +206,7 @@ export class DailyBudgetManager {
       context,
       defaultProfile: DEFAULT_PROFILE,
       confidenceDebug: cr.debug,
-      capacityBudgetKWh,
+      planningCeiling,
       combinedPrices,
       priceOptimizationEnabled,
     });
@@ -276,7 +286,7 @@ export class DailyBudgetManager {
     context: DayContext; settings: DailyBudgetSettings; enabled: boolean; planStateMismatch: boolean;
     existingPlan: number[] | null; combinedPrices?: CombinedPriceData | null;
     priceOptimizationEnabled: boolean; forcePlanRebuild?: boolean; recomputeFrozenPlan?: boolean;
-    capacityBudgetKWh?: number;
+    planningCeiling: PowerLimitCeiling | null;
   }): PlanResult {
     const { context, enabled } = params;
     const priceSignature = computeAdjacentDaysSeedSignature(context.dateKey, params.combinedPrices ?? null);
@@ -291,12 +301,14 @@ export class DailyBudgetManager {
       lastUsedNowKWh: this.state.lastUsedNowKWh,
       lastPlanRebuildMs: this.lastPlanRebuildMs,
       pricesChanged: this.lastPlanPriceSignature !== null && priceSignature !== this.lastPlanPriceSignature,
+      planningCeilingChanged: hasPlanningCeilingMoved(this.lastPlanCeilingMark, this.planningCeilingMark),
     });
     const shouldLog = enabled && shouldRebuildPlan;
 
     if (enabled && shouldRebuildPlan) {
       const rebuilt = this.rebuildPlan(params);
       this.lastPlanPriceSignature = priceSignature;
+      this.lastPlanCeilingMark = this.planningCeilingMark;
       return { ...rebuilt, shouldLog };
     }
 
@@ -323,7 +335,7 @@ export class DailyBudgetManager {
   private rebuildPlan(params: {
     context: DayContext; settings: DailyBudgetSettings; existingPlan: number[] | null;
     combinedPrices?: CombinedPriceData | null; priceOptimizationEnabled: boolean;
-    capacityBudgetKWh?: number;
+    planningCeiling: PowerLimitCeiling | null;
   }): {
     plannedKWh: number[];
     plannedUncontrolledKWh: number[];
@@ -339,7 +351,7 @@ export class DailyBudgetManager {
       existingPlan,
       combinedPrices,
       priceOptimizationEnabled,
-      capacityBudgetKWh,
+      planningCeiling,
     } = params;
     const lockState = resolvePlanLockState({
       context,
@@ -365,7 +377,7 @@ export class DailyBudgetManager {
       previousPlannedUncontrolledKWh: this.state.plannedUncontrolledKWh,
       previousPlannedGrossUncontrolledKWh: this.state.plannedGrossUncontrolledKWh,
       previousPlannedControlledKWh: this.state.plannedControlledKWh,
-      capacityBudgetKWh,
+      planningCeiling,
       lockCurrentBucket: lockState.lockCurrentBucket,
       controlledUsageWeight: settings.controlledUsageWeight,
       observedStats: resolveObservedHourlyStats(this.state),
@@ -492,6 +504,7 @@ export class DailyBudgetManager {
     dayStartUtcMs: number; timeZone: string; powerTracker: PowerTrackerState;
     combinedPrices?: CombinedPriceData | null; priceOptimizationEnabled: boolean;
     priceShapingEnabled: boolean; controlledUsageWeight?: number;
+    planningCeiling: PowerLimitCeiling | null;
   }): DailyBudgetDayPayload | null {
     const profileBreakdown = getProfileBreakdown(
       this.state,
@@ -508,7 +521,7 @@ export class DailyBudgetManager {
   buildPreview(params: {
     dayStartUtcMs: number; timeZone: string; settings: DailyBudgetSettings;
     combinedPrices?: CombinedPriceData | null; priceOptimizationEnabled: boolean;
-    capacityBudgetKWh?: number;
+    planningCeiling: PowerLimitCeiling | null;
   }): DailyBudgetDayPayload {
     const profileResult = ensureDailyBudgetProfile(this.state, DEFAULT_PROFILE);
     if (profileResult.changed) this.markDirty('manual');

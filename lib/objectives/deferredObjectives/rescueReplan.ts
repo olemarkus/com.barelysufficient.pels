@@ -1,6 +1,7 @@
 import { planDeferredObjectiveHorizon } from './horizonPlanner';
 import {
   buildDeferredObjectivePolicyHorizon,
+  resolveDeferredObjectivePowerLimit,
   type DeferredObjectivePolicyHorizonInputs,
   type DeferredObjectivePolicyHorizonResult,
 } from './policyHorizon';
@@ -55,7 +56,7 @@ export const resolveHorizonPlanWithRescue = (
   //     controlled devices when claiming physical headroom.
   //  3. every device ranked above this one is booked (resolved by the
   //     coordinator from the tasks it evaluated ahead of this one). The reserved-headroom forecast
-  //     (`sustainableRate − gross background − higher-priority bookings`)
+  //     (`planningCeiling − gross background − higher-priority bookings`)
   //     leaves out controlled load, which holds only for load this task can
   //     displace or whose draw it already knows. Permission 2 covers
   //     lower ranks. A higher-ranked device can never be displaced, so its draw
@@ -65,6 +66,7 @@ export const resolveHorizonPlanWithRescue = (
   const fullyReserved = task.higherRankedLoadBooked
     && objective.rescue?.exemptFromBudget === 'always'
     && objective.rescue?.limitLowerPriorityDevices === 'always';
+  const powerLimit = resolveDeferredObjectivePowerLimit(horizonInputs.powerLimits, horizonInputs.hasSolarProduction);
   const planForBuckets = (
     buckets: ResolvedHorizonBuckets,
   ): DeferredObjectiveHorizonPlan => planDeferredObjectiveHorizon({
@@ -81,6 +83,7 @@ export const resolveHorizonPlanWithRescue = (
     },
     steps,
     buckets,
+    powerLimit,
     commitment: commitment === undefined
       ? { kind: 'uncommitted' }
       : { kind: 'committed', hours: commitment },

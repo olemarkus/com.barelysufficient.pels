@@ -1534,7 +1534,7 @@
         currentDailyBudgetKwh: settings.daily_budget_enabled !== false
           ? Number(settings.daily_budget_kwh ?? 0)
           : null,
-        cappedByCapacity: advisor.cappedByCapacity === true,
+        cappedByPowerLimit: advisor.cappedByPowerLimit ?? null,
         budgetMayBeLimiting: advisor.budgetMayBeLimiting === true,
         budgetPressureKwh: Number(advisor.budgetPressureKwh ?? 0),
       },

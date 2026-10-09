@@ -47,6 +47,9 @@ import type { AllocationWarning } from '../dailyBudgetAllocationWarning.ts';
 import type { PriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
 import { priceRateLabelToAmountUnit } from '../../../../shared-domain/src/price/priceUnitLabel.ts';
 import { usableCapacityKw } from '../../../../shared-domain/src/capacityAllowance.ts';
+import { formatRecommendedMaxHint } from '../../../../shared-domain/src/dailyBudgetWarningStrings.ts';
+import type { PowerLimitCeiling } from '../../../../contracts/src/capacitySettings.ts';
+import type { PowerLimitFormView } from '../powerLimitControls.ts';
 import { WEATHER_INSIGHT_TITLE } from '../../../../shared-domain/src/weatherInsightCopy.ts';
 import {
   WeatherBudgetCard,
@@ -146,8 +149,20 @@ export type BudgetAdjustData = {
   comparisonShowPrice: boolean;
   status: BudgetAdjustStatus;
   busy: boolean;
-  hardCapKw: number;
-  safetyMarginKw: number;
+  /**
+   * The Limits form value by value (`readPowerLimitFormView`): the "Current
+   * limits" card shows the limits that are switched on, an unreadable value as
+   * unknown. `null` while the form is not rendered: the card then shows the
+   * capacity rows with unknown values, as it always has.
+   */
+  powerLimitForm: PowerLimitFormView | null;
+  /**
+   * The planning ceiling of the form's settings once every value is valid
+   * (`readPowerLimitFormSettings`, `planningPowerCeiling`): the daily budget's
+   * recommended maximum is sized from it and names it. `null` with no power
+   * limit on or a value unreadable: no recommendation then.
+   */
+  planningCeiling: PowerLimitCeiling | null;
 };
 
 export type BudgetOverviewProps = {
@@ -645,6 +660,12 @@ const formatKw = (value: number): string => (
 
 const onOff = (value: boolean): string => (value ? 'On' : 'Off');
 
+// A Limits form value the form cannot answer yet (not rendered, or not a valid
+// number) renders as unknown.
+const formatFormKw = (value: number | null | undefined): string => (
+  value === null || value === undefined ? '-- kW' : formatKw(value)
+);
+
 type ComparisonRow = { label: string; current: string; candidate: string; delta?: string };
 
 const formatSignedKWhDelta = (diff: number): string => {
@@ -753,11 +774,20 @@ const BudgetAdjustView = ({
     status,
     busy,
   } = adjust;
-  const hourStartPaceKw = Number.isFinite(adjust.hardCapKw) && Number.isFinite(adjust.safetyMarginKw)
-    ? usableCapacityKw(adjust.hardCapKw, adjust.safetyMarginKw)
+  const form = adjust.powerLimitForm;
+  // Never show configuration that does not apply: which rows show comes from the
+  // switches alone, so an unreadable value never hides a limit that is on or
+  // brings back one that is off.
+  const showCapacity = form === null || form.capacityEnabled;
+  const showGridImport = form !== null && form.gridImportEnabled;
+  const hourStartPaceKw = form !== null && form.capacityEnabled && form.limitKw !== null && form.marginKw !== null
+    ? usableCapacityKw(form.limitKw, form.marginKw)
     : null;
-  const recommendedMaxKWh = hourStartPaceKw !== null && hourStartPaceKw > 0
-    ? Math.min(MAX_DAILY_BUDGET_KWH, hourStartPaceKw * 24)
+  // Sized from the planning ceiling, not the hard cap alone: with Capacity limit
+  // off, or a lower grid import limit, the hard cap is not what caps the day.
+  const { planningCeiling } = adjust;
+  const recommendedMax = planningCeiling !== null && planningCeiling.kw > 0
+    ? { limit: planningCeiling.limit, kWh: Math.min(MAX_DAILY_BUDGET_KWH, planningCeiling.kw * 24) }
     : null;
   const reserveValueText = `${reserveLabelFor(draft.controlledWeight)} reserve`;
   const flexibilityValueText = `${flexibilityLabelFor(draft.priceFlexShare)} flexibility`;
@@ -812,8 +842,10 @@ const BudgetAdjustView = ({
               <FieldHint>
                 The selected day's energy plan.
                 <span class="field__hint-range">{` Range ${MIN_DAILY_BUDGET_KWH}–${MAX_DAILY_BUDGET_KWH} kWh.`}</span>
-                {recommendedMaxKWh !== null && recommendedMaxKWh < MAX_DAILY_BUDGET_KWH ? (
-                  <span class="field__hint-range">{` Recommended up to ${formatKWh(recommendedMaxKWh, 1)} (safe pace × 24h).`}</span>
+                {recommendedMax !== null && recommendedMax.kWh < MAX_DAILY_BUDGET_KWH ? (
+                  <span class="field__hint-range">
+                    {formatRecommendedMaxHint(recommendedMax.limit, formatKWh(recommendedMax.kWh, 1))}
+                  </span>
                 ) : null}
               </FieldHint>
             </span>
@@ -1001,30 +1033,46 @@ const BudgetAdjustView = ({
                 budget-constrained value. Not phrased as a ceiling — the live
                 safe pace legitimately rises above it (even above the cap)
                 late in an under-used period. One phrasing on both pages. */}
-            {hourStartPaceKw !== null ? (
+            {showCapacity && hourStartPaceKw !== null ? (
               <div class="settings-result" role="group">
                 <span class="settings-result__label">With these settings, safe pace starts each period at</span>
                 <strong class="settings-result__value">{formatKw(hourStartPaceKw)}</strong>
                 <span class="settings-result__note">(hard cap minus safety margin; it adapts as the period is used)</span>
               </div>
-            ) : (
+            ) : null}
+            {showCapacity && hourStartPaceKw === null ? (
               <p class="pels-card-supporting">Safe pace adapts through each capacity period to keep it within the hard cap.</p>
-            )}
+            ) : null}
+            {!showCapacity && !showGridImport ? (
+              <p class="pels-card-supporting">Power limits off</p>
+            ) : null}
           </div>
         </div>
         <MdOutlinedButton class="budget-context-action" data-settings-target="limits">
           Open Limits &amp; safety
         </MdOutlinedButton>
-        <div class="budget-settings-list budget-settings-list--compact">
-          <div class="budget-setting-row">
-            <span class="budget-setting-row__label">Hard cap</span>
-            <span class="budget-setting-row__value">{formatKw(adjust.hardCapKw)}</span>
+        {showCapacity || showGridImport ? (
+          <div class="budget-settings-list budget-settings-list--compact">
+            {showCapacity ? (
+              <>
+                <div class="budget-setting-row">
+                  <span class="budget-setting-row__label">Hard cap</span>
+                  <span class="budget-setting-row__value">{formatFormKw(form?.limitKw)}</span>
+                </div>
+                <div class="budget-setting-row">
+                  <span class="budget-setting-row__label">Safety margin</span>
+                  <span class="budget-setting-row__value">{formatFormKw(form?.marginKw)}</span>
+                </div>
+              </>
+            ) : null}
+            {showGridImport ? (
+              <div class="budget-setting-row">
+                <span class="budget-setting-row__label">Grid import limit</span>
+                <span class="budget-setting-row__value">{formatFormKw(form?.gridImportLimitKw)}</span>
+              </div>
+            ) : null}
           </div>
-          <div class="budget-setting-row">
-            <span class="budget-setting-row__label">Safety margin</span>
-            <span class="budget-setting-row__value">{formatKw(adjust.safetyMarginKw)}</span>
-          </div>
-        </div>
+        ) : null}
       </section>
     </div>
   );

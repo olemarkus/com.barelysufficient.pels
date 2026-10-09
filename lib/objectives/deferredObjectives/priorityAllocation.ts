@@ -24,6 +24,8 @@ import {
 } from './stepSelection';
 import type { DeferredObjectiveStep } from './types';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
+import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
+import { resolvePlanningCeilingKw } from '../../power/capacityModel';
 
 const HOUR_MS = 60 * 60 * 1000;
 const EPSILON_KWH = 0.001;
@@ -244,22 +246,22 @@ type ReservationHour = DeferredObjectiveActivePlanHourV1 & {
 const resolveLegacyAdmissionPowerKw = (params: {
   hour: DeferredObjectiveActivePlanHourV1;
   device: ObjectiveDeviceInput | undefined;
-  sustainableRateKw: number;
+  planningCeilingKw: number | null;
   deadlineAtMs: number;
 }): number => {
   const persisted = params.hour.plannedAdmissionPowerKw;
   if (typeof persisted === 'number' && Number.isFinite(persisted) && persisted > 0) return persisted;
+  const durationHours = Math.min(
+    1,
+    Math.max(
+      Number.EPSILON,
+      (
+        Math.min(params.hour.startsAtMs + HOUR_MS, params.deadlineAtMs)
+        - (params.hour.coversFromMs ?? params.hour.startsAtMs)
+      ) / HOUR_MS,
+    ),
+  );
   if (params.device) {
-    const durationHours = Math.min(
-      1,
-      Math.max(
-        Number.EPSILON,
-        (
-          Math.min(params.hour.startsAtMs + HOUR_MS, params.deadlineAtMs)
-          - (params.hour.coversFromMs ?? params.hour.startsAtMs)
-        ) / HOUR_MS,
-      ),
-    );
     const step = selectMinimumStepForEnergy({
       steps: resolveObjectiveSteps(params.device),
       energyKWh: params.hour.plannedKWh,
@@ -268,14 +270,19 @@ const resolveLegacyAdmissionPowerKw = (params: {
     });
     if (step) return step.admissionPowerKw;
   }
-  return params.sustainableRateKw;
+  // No rung to read (a missing device, or none active): the booking may take the
+  // whole planning ceiling, the conservative reading. With no power limit enabled
+  // there is no ceiling to take, and nothing reserves room under one
+  // (`resolveReservedHeadroomKw`), so the booking's own average rate, its energy
+  // over the span it covers, is the only figure the facts support.
+  return params.planningCeilingKw ?? params.hour.plannedKWh / durationHours;
 };
 
 const reservationsFromHours = (params: {
   deviceId: string;
   hours: readonly ReservationHour[];
   device: ObjectiveDeviceInput | undefined;
-  sustainableRateKw: number;
+  planningCeilingKw: number | null;
   exemptFromBudget: boolean;
   deadlineAtMs: number;
 }): DeferredObjectivePriorityReservation[] => params.hours.flatMap((hour) => {
@@ -290,7 +297,7 @@ const reservationsFromHours = (params: {
     admissionPowerKw: resolveLegacyAdmissionPowerKw({
       hour,
       device: params.device,
-      sustainableRateKw: params.sustainableRateKw,
+      planningCeilingKw: params.planningCeilingKw,
       deadlineAtMs: params.deadlineAtMs,
     }),
     exemptFromBudget: params.exemptFromBudget,
@@ -355,7 +362,7 @@ export const buildPriorityReservations = (params: {
   objective: DeferredObjectiveSettingsEntry;
   device: ObjectiveDeviceInput | undefined;
   activePlans: DeferredObjectiveActivePlansV1 | null;
-  sustainableRateKw: number;
+  powerLimits: PowerLimitSettings;
   nowMs: number;
 }): DeferredObjectivePriorityReservation[] => {
   const { evaluation } = params;
@@ -413,7 +420,7 @@ export const buildPriorityReservations = (params: {
     hours: persistedHours,
     deviceId: evaluation.deviceId,
     device: params.device,
-    sustainableRateKw: params.sustainableRateKw,
+    planningCeilingKw: resolvePlanningCeilingKw(params.powerLimits),
     exemptFromBudget,
     deadlineAtMs: params.objective.deadlineAtMs,
   }));

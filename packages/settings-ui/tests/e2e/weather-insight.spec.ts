@@ -118,7 +118,7 @@ test.describe('Weather insight', () => {
       (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
         settings: {
           weather_advisor_settings: {
-            enabled: true, outdoorDeviceId: 'dev_outdoor', cappedByCapacity: true,
+            enabled: true, outdoorDeviceId: 'dev_outdoor', cappedByPowerLimit: 'capacity',
           },
           daily_budget_enabled: true,
           daily_budget_kwh: 50,

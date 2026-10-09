@@ -33,11 +33,12 @@ import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dail
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
+import { capacityOnlyPowerLimits, CAPACITY_ONLY_HORIZON_LIMIT } from '../helpers/powerLimitSettings';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
 // to the FLOOR rung, so a high rate is what preserves these cases' behaviour.)
-const TEST_SUSTAINABLE_RATE_KW = 100;
+const TEST_PLANNING_CEILING_KW = 100;
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_MS = Date.UTC(2026, 0, 1, 0);
@@ -189,7 +190,8 @@ type BuildTimeResult = {
 const runBuildTime = (horizonPrices: readonly number[], energyNeededKWh: number): BuildTimeResult => {
   const snapshot = snapshotFor(horizonPrices);
   const horizon = buildDeferredObjectivePolicyHorizon({
-    sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
+    hasSolarProduction: false,
+    powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
     nowMs: NOW_MS,
     deadlineAtMs: DEADLINE_MS,
     priceOptimizationEnabled: true,
@@ -201,6 +203,7 @@ const runBuildTime = (horizonPrices: readonly number[], energyNeededKWh: number)
   expect(horizon.reasonCode).toBeNull(); // the producer accepted the price horizon
 
   const plan = planDeferredObjectiveHorizon({
+    powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
     aheadOfHourMilestone: false,
     nowMs: NOW_MS,
     objective: objective(energyNeededKWh),
@@ -237,7 +240,8 @@ const runBuildTimeSingleHour = (price: number): number => {
   const singleHourDeadlineMs = DAY_START_MS + (CURRENT_HOUR + 1) * HOUR_MS;
   const snapshot = snapshotFor([price]);
   const horizon = buildDeferredObjectivePolicyHorizon({
-    sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
+    hasSolarProduction: false,
+    powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
     nowMs: singleHourNowMs,
     deadlineAtMs: singleHourDeadlineMs,
     priceOptimizationEnabled: true,
@@ -248,6 +252,7 @@ const runBuildTimeSingleHour = (price: number): number => {
   });
   expect(horizon.reasonCode).toBeNull();
   const plan = planDeferredObjectiveHorizon({
+    powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
     aheadOfHourMilestone: false,
     nowMs: DAY_START_MS + CURRENT_HOUR * HOUR_MS,
     objective: objective(0.8), // < 1 kWh step capacity, so the cap is not the binding limit
@@ -350,7 +355,8 @@ describe('smart-task horizon does not bridge gaps in the price feed', () => {
 
   it('accepts a contiguous price horizon covering the deadline', () => {
     const horizon = buildDeferredObjectivePolicyHorizon({
-      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
+      hasSolarProduction: false,
+      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
       nowMs: gapNowMs,
       deadlineAtMs: gapDeadlineMs,
       priceOptimizationEnabled: true,
@@ -368,7 +374,8 @@ describe('smart-task horizon does not bridge gaps in the price feed', () => {
     // 14:00 (which would let the allocator schedule the missing 13:00 hour at the
     // 12:00 price). The gap must surface as `objective_missing_price_horizon`.
     const horizon = buildDeferredObjectivePolicyHorizon({
-      sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
+      hasSolarProduction: false,
+      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
       nowMs: gapNowMs,
       deadlineAtMs: gapDeadlineMs,
       priceOptimizationEnabled: true,

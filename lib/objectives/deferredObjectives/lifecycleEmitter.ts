@@ -2,8 +2,7 @@ import type { TaskReservationReader } from './taskDeliveryState';
 import { reportTaskDeliveryStatus, type TaskDeliveryReader } from './deliveryEvidence';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type { PowerTrackerState } from '../../power/tracker';
-import { resolveUsableCapacityKw } from '../../power/capacityModel';
-import type { CapacitySettings } from '../../../packages/contracts/src/capacitySettings';
+import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { BuildPriceHorizon } from './diagnosticsBridge';
@@ -78,10 +77,14 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   buildPriceHorizon: BuildPriceHorizon;
   getPriceOptimizationEnabled: () => boolean;
   getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
-  // The persisted capacity scalars. The rate the guard admits is derived here,
+  // The persisted power-limit settings. The planning ceiling is derived here,
   // in the domain, rather than in the wiring layer that reads the settings:
-  // `lib/power` owns the subtraction, and `setup/` answers no power question.
-  getCapacitySettings: () => CapacitySettings;
+  // `lib/power` owns the ceiling, and `setup/` answers no power question.
+  getCapacitySettings: () => PowerLimitSettings;
+  // Whether the home has solar production (a role-detected PV device): export can
+  // lift live grid headroom past the grid import target, so the plan is not cut
+  // at that target in a PV home.
+  hasSolarProduction: () => boolean;
   /** Complete priority order from the current mode's catalog owner. */
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   getDeferredObjectiveDebugStructured?: () => StructuredDebugEmitter | undefined;
@@ -197,7 +200,8 @@ export class DeferredObjectiveLifecycleEmitter {
       dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
       priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
       activePlans,
-      sustainableRateKw: resolveUsableCapacityKw(this.deps.getCapacitySettings()),
+      powerLimits: this.deps.getCapacitySettings(),
+      hasSolarProduction: this.deps.hasSolarProduction(),
     }, this.readers, this.priorityAllocationTracker, LIVE_LANE), this.deps.getStallClassification, activePlans);
 
     // Plan-history record, using this tick's (pre-write) snapshot.

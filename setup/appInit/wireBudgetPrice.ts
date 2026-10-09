@@ -7,8 +7,8 @@
 // surplus_h = max(0, PV_forecast_h − gross_background_h): PV first offsets the
 // always-on gross uncontrolled load; only the remainder is surplus that flexible
 // load can soak up at the (low/negative) export price. The expected managed draw —
-// the blend denominator — is the capacity limit (the most a managed home could pull
-// in an hour), a conservative, stable estimate that keeps the blend near `total`.
+// the blend denominator — is resolved by the price layer from the power-limit
+// settings handed over here (`resolveExpectedManagedDrawKwh`, `lib/price/budgetPrice.ts`).
 
 import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
@@ -16,9 +16,9 @@ import type { AppContext } from '../../lib/app/appContext';
 
 /**
  * Inject the forecast surplus as the planning-price input. The price coordinator,
- * daily-budget background, capacity, and timezone all come off the (public) app
- * context; only the PV forecast — an app-private field — is passed in. A no-op until
- * both the price coordinator and daily-budget service exist.
+ * daily-budget background, power-limit settings, and timezone all come off the
+ * (public) app context; only the PV forecast — an app-private field — is passed in.
+ * A no-op until both the price coordinator and daily-budget service exist.
  */
 export function wireBudgetPrice(
   ctx: AppContext,
@@ -27,8 +27,8 @@ export function wireBudgetPrice(
   const { priceCoordinator, dailyBudgetService } = ctx;
   if (!priceCoordinator || !dailyBudgetService) return;
   priceCoordinator.setBudgetPriceInputs({
-    // A getter so a runtime capacity-limit change is reflected, not frozen at boot.
-    get expectedManagedDrawKwh() { return ctx.capacitySettings.limitKw; },
+    // Read per apply so a runtime power-limit change is reflected, not frozen at boot.
+    getPowerLimitSettings: () => ctx.capacitySettings,
     getSurplusKwh: (hourStartMs) => {
       const pvKwh = getForecastKwh(hourStartMs);
       const hourOfDay = getZonedParts(new Date(hourStartMs), ctx.getTimeZone()).hour;

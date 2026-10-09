@@ -25,6 +25,7 @@ import { WeatherBackfillChain } from './weatherBackfillChain';
 import { performBudgetAutoApply } from './weatherAutoApply';
 import { budgetEvidenceLogFields } from './weatherRollupLog';
 import { foldBudgetPressureDay } from '../../packages/shared-domain/src/energySignature/budgetPressure';
+import { planningPowerCeiling } from '../../packages/shared-domain/src/settings/powerLimits';
 import { type BudgetHistoryReader, createBudgetHistoryReader } from './budgetDiagnosticsHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -679,12 +680,14 @@ export class WeatherCollector {
     const timeZone = this.deps.getTimeZone();
     const dayStartMs = getDateKeyStartMs(record.dateKey, timeZone);
     const dayLengthHours = (getNextLocalDayStartUtcMs(dayStartMs, timeZone) - dayStartMs) / HOUR_MS;
+    // No power limit enabled: no ceiling, so the carried pressure is not clamped.
+    const ceiling = planningPowerCeiling(this.deps.getPowerLimitSettings());
     this.state = {
       ...this.state,
       budgetPressure: foldBudgetPressureDay(
         this.state.budgetPressure,
         record,
-        this.deps.getSustainableCapacityKw() * dayLengthHours,
+        ceiling === null ? undefined : ceiling.kw * dayLengthHours,
       ),
     };
   }

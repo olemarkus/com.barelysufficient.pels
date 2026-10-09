@@ -297,7 +297,10 @@ the allocator actually applies stacks three caps via `Math.min`:
   legitimately be 0 for an hour, which is a forecast of no room rather than a physical
   limit; see "Booking is decided by price, not by forecast room" below for what that means downstream.
 - **Forecast hard-cap headroom** — `bucket.reservedHeadroomKw × durationHours`, where
-  `reservedHeadroomKw = sustainableRateKw − grossBackgroundKWh/duration − higherPriorityAdmissionPowerKw`
+  `reservedHeadroomKw = planningCeilingKw − grossBackgroundKWh/duration − higherPriorityAdmissionPowerKw`
+  (`planningCeilingKw`: hard cap minus safety margin, or the grid import target when that
+  is lower or Capacity limit is off; with no power limit enabled the forecast is omitted
+  and the hour has no headroom cap)
   is the per-bucket physical headroom forecast from `policyHorizon.ts`
   (`resolveReservedHeadroomKw`). The last term is the step power every higher-priority task
   booked into that bucket, from the reservation ledger `buildDeferredObjectiveDiagnostics` builds

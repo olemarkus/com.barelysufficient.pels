@@ -90,7 +90,7 @@ describe('suggestDailyBudgetKwh', () => {
     const result = suggestDailyBudgetKwh({
       fit: baseFit,
       targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 0,
-      capacityLimitKw: 2,
+      planningCeilingKw: 2,
       budgetPressure: { algorithmVersion: 3 as const, kwh: 40, throughDateKey: '2026-07-31' },
     });
     expect(result.suggestedBudgetKwh).toBe(48); // 2 kW × 24 h still wins
@@ -131,10 +131,10 @@ describe('suggestDailyBudgetKwh', () => {
   });
 
   it('caps at the capacity ceiling and clamps to the daily-budget bounds', () => {
-    const capped = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, capacityLimitKw: 2 });
+    const capped = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, planningCeilingKw: 2 });
     expect(capped.suggestedBudgetKwh).toBe(48); // 2 kW × 24 h
     // The physical cap outranks the 20 kWh setting minimum.
-    const tinyCap = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, capacityLimitKw: 0.5 });
+    const tinyCap = suggestDailyBudgetKwh({ fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, planningCeilingKw: 0.5 });
     expect(tinyCap.suggestedBudgetKwh).toBe(12);
     const warmFit = { ...baseFit, baseLoadKwhPerDay: 6, medianDayKwh: 7, lowObservedDayKwh: 5, residualQ80: 0.2 };
     const floor = suggestDailyBudgetKwh({ fit: warmFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: 20 });
@@ -143,10 +143,10 @@ describe('suggestDailyBudgetKwh', () => {
 
   it('uses the target local-day length for the sustainable capacity ceiling', () => {
     const shortDay = suggestDailyBudgetKwh({
-      fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, capacityLimitKw: 2, capacityDayHours: 23,
+      fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, planningCeilingKw: 2, capacityDayHours: 23,
     });
     const longDay = suggestDailyBudgetKwh({
-      fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, capacityLimitKw: 2, capacityDayHours: 25,
+      fit: baseFit, targetDateKey: TARGET_DATE_KEY, forecastMeanTempC: -8, planningCeilingKw: 2, capacityDayHours: 25,
     });
     expect(shortDay.suggestedBudgetKwh).toBe(46);
     expect(longDay.suggestedBudgetKwh).toBe(50);

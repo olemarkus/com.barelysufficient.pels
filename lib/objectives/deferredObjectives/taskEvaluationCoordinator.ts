@@ -1,3 +1,4 @@
+import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import { buildUnallocatedTaskEvaluation } from './taskEvaluationProducer';
 import { hasEstablishedActivePlan } from './completionDiagnostic';
 import { resolveTaskCompletion } from './taskCompletion';
@@ -116,7 +117,11 @@ export type TaskEvaluationSnapshot = {
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
   activePlans: DeferredObjectiveActivePlansV1 | null;
-  sustainableRateKw: number;
+  // The house's power-limit settings; the policy horizon and the reservation
+  // ledger resolve the planning ceiling from them.
+  powerLimits: PowerLimitSettings;
+  // Whether the home has solar production; see `DeferredObjectivePolicyHorizonInputs`.
+  hasSolarProduction: boolean;
 };
 
 // The readers an evaluation consults, supplied once by the lane that owns them.
@@ -266,7 +271,7 @@ export const buildDeferredObjectiveTaskResults = (
         objective,
         device,
         activePlans,
-        sustainableRateKw: snapshot.sustainableRateKw,
+        powerLimits: snapshot.powerLimits,
         nowMs,
       }));
       if (freshAllocation && reservations.length > previousReservationCount) {
@@ -359,7 +364,8 @@ const buildDeferredObjectiveDiagnostic = (
     // Allocation-horizon price source, resolved by the wiring-injected producer.
     priceHorizon: readers.buildPriceHorizon(nowMs, objective.deadlineAtMs),
     dailyBudgetSnapshot: snapshot.dailyBudgetSnapshot,
-    sustainableRateKw: snapshot.sustainableRateKw,
+    powerLimits: snapshot.powerLimits,
+    hasSolarProduction: snapshot.hasSolarProduction,
     exemptFromBudget: false,
     higherPriorityReservations,
   };

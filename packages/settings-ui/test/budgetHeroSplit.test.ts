@@ -43,8 +43,10 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
     comparisonShowPrice: false,
     status: 'clean',
     busy: false,
-    hardCapKw: 12,
-    safetyMarginKw: 1,
+    powerLimitForm: {
+      capacityEnabled: true, gridImportEnabled: false, limitKw: 12, marginKw: 1, gridImportLimitKw: null,
+    },
+    planningCeiling: { limit: 'capacity', kw: 11 },
   },
   allocationWarning: null,
   priceLevelChip: null,

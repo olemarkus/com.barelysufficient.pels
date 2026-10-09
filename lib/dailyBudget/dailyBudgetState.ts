@@ -1,3 +1,5 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
+import type { DailyBudgetAllocationPressure } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { PowerTrackerState } from '../power/tracker';
 import {
   buildLocalDayBuckets,
@@ -366,7 +368,7 @@ export const buildDailyBudgetSnapshot = (params: {
   budget: BudgetState;
   frozen: boolean;
   confidenceDebug?: ConfidenceDebug;
-  usableCapacityKw?: number;
+  planningCeiling: PowerLimitCeiling | null;
   // Stable day-start profile weights (sum ≈ 1) — drives the chart's single
   // budget-pace reference and the producer-resolved projection. Today's caller
   // passes the profile's combinedWeights; other paths fall back to plan weights.
@@ -384,7 +386,7 @@ export const buildDailyBudgetSnapshot = (params: {
     budget,
     frozen,
     confidenceDebug,
-    usableCapacityKw,
+    planningCeiling,
     stableWeights,
   } = params;
   const allocationPressure = computeAllocationPressure({
@@ -392,7 +394,7 @@ export const buildDailyBudgetSnapshot = (params: {
     enabled,
     context,
     plannedKWh,
-    usableCapacityKw,
+    planningCeiling,
   });
 
   // Stable day-start pace weights. Today's caller passes the profile's
@@ -474,12 +476,13 @@ function computeAllocationPressure(params: {
   enabled: boolean;
   context: DayContext;
   plannedKWh: number[];
-  usableCapacityKw?: number;
-}) {
-  const { dailyBudgetKWh, enabled, context, plannedKWh, usableCapacityKw } = params;
-  const maxFittingDailyBudgetKWh = Number.isFinite(usableCapacityKw) && usableCapacityKw! > 0
-    ? usableCapacityKw! * HOURS_PER_DAY
-    : 0;
+  planningCeiling: PowerLimitCeiling | null;
+}): DailyBudgetAllocationPressure {
+  const { dailyBudgetKWh, enabled, context, plannedKWh, planningCeiling } = params;
+  const powerLimitCeiling = planningCeiling === null ? null : {
+    limit: planningCeiling.limit,
+    maxFittingDailyBudgetKWh: Math.max(0, planningCeiling.kw) * HOURS_PER_DAY,
+  };
   if (context.currentBucketIndex >= plannedKWh.length) {
     return {
       requestedBudgetKWh: 0,
@@ -487,7 +490,7 @@ function computeAllocationPressure(params: {
       unallocatedBudgetKWh: 0,
       saturationRatio: 1,
       constrained: false,
-      maxFittingDailyBudgetKWh,
+      powerLimitCeiling,
     };
   }
 
@@ -509,7 +512,7 @@ function computeAllocationPressure(params: {
     unallocatedBudgetKWh,
     saturationRatio,
     constrained: enabled && unallocatedBudgetKWh > meaningfulGapKWh,
-    maxFittingDailyBudgetKWh,
+    powerLimitCeiling,
   };
 }
 

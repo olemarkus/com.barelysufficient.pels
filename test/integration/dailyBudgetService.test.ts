@@ -4,6 +4,8 @@ import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
 import type Homey from 'homey';
 import { partialDouble } from '../helpers/partialDouble';
+import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { Logger } from '../../lib/logging/logger';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 
@@ -110,7 +112,7 @@ function buildService(): DailyBudgetService {
     log: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => false,
-    getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null },
+    getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null },
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
     dailyBudgetStateStore: { read: () => null, write: stateWrites },
   });
@@ -215,6 +217,38 @@ describe('DailyBudgetService', () => {
       '2025-03-17',
       '2025-03-18',
     ]);
+  });
+
+  // A power-limit toggle forces a replan, but that replan may still read the old
+  // settings; the owner must catch the accepted ceiling moving on any later
+  // update, or tomorrow stays capped by a limit that is off.
+  it('re-seeds tomorrow on a routine update once the accepted planning ceiling moves', () => {
+    let powerLimitSettings = capacityOnlyPowerLimits(5, 0.2);
+    const homey = partialDouble<AppHomey>({
+      settings: partialDouble<AppHomey['settings']>({ get: vi.fn(() => null), set: vi.fn() }),
+      clock: partialDouble<AppHomey['clock']>({ getTimezone: () => TZ }),
+    });
+    const service = new DailyBudgetService({
+      getTimeZone: () => TZ,
+      log: () => undefined,
+      getPowerTracker: () => ({ buckets: {} }),
+      getPriceOptimizationEnabled: () => false,
+      getCapacitySettings: () => powerLimitSettings,
+      combinedPricesReader: { readStore: () => null },
+      dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
+      dailyBudgetStateStore: { read: () => null, write: vi.fn() },
+    });
+    const tomorrowBuilder = vi.fn(() => null);
+    service['buildTomorrowPreview'] = tomorrowBuilder;
+    service['buildYesterdayHistory'] = vi.fn(() => null);
+
+    service.updateState({ nowMs: NOW_MS });
+    service.updateState({ nowMs: NOW_MS + 1_000 });
+    expect(tomorrowBuilder).toHaveBeenCalledTimes(1);
+
+    powerLimitSettings = powerLimits({ enabled: false, limitKw: 5, marginKw: 0.2 }, 17);
+    service.updateState({ nowMs: NOW_MS + 2_000 });
+    expect(tomorrowBuilder).toHaveBeenCalledTimes(2);
   });
 
   it('seeds tomorrow on a hot-path update once tomorrow prices become available', () => {
@@ -536,7 +570,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
+      getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: partialDouble<Logger>({ error: error as Logger['error'] }),
     });
     service['manager'].update = vi.fn(() => {
@@ -559,7 +593,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
+      getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: partialDouble<Logger>({ info: info as Logger['info'] }),
     });
     service['manager'].update = vi.fn(() => ({
@@ -596,7 +630,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
+      getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: partialDouble<Logger>({ info: info as Logger['info'] }),
     });
     service['manager'].update = vi.fn(() => ({
@@ -627,7 +661,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
+      getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: partialDouble<Logger>({ info: info as Logger['info'] }),
     });
     service['manager'].update = vi.fn(() => ({
@@ -653,7 +687,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
+      getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: partialDouble<Logger>({ info: info as Logger['info'] }),
     });
     const snapshots = [
@@ -693,17 +727,20 @@ describe('DailyBudgetService', () => {
     }));
   });
 
-  it('uses usable hourly capacity when updating daily budget plans', () => {
+  // The planning ceiling the day's hours are capped by follows the power-limit
+  // switches, never a hidden hard cap: a 5 kW capacity user who switches to a
+  // 17 kW grid import limit must stop being paced near 4.8 kW.
+  const planningCeilingForUpdate = (settings: PowerLimitSettings): unknown => {
     const service = new DailyBudgetService({
       dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 5, marginKw: 1 }),
+      getCapacitySettings: () => settings,
       combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
     });
-    const updateSpy = vi.fn(() => ({
+    const updateSpy = vi.fn((_params: { planningCeiling?: unknown }) => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -715,9 +752,28 @@ describe('DailyBudgetService', () => {
 
     service.updateState();
 
-    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
-      capacityBudgetKWh: 4,
-    }));
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    return updateSpy.mock.calls[0]?.[0].planningCeiling;
+  };
+
+  it('uses usable hourly capacity when updating daily budget plans', () => {
+    expect(planningCeilingForUpdate(capacityOnlyPowerLimits(5, 1))).toEqual({ limit: 'capacity', kw: 4 });
+  });
+
+  it('plans with no power-limit cap when both limits are off', () => {
+    expect(planningCeilingForUpdate(powerLimits({ enabled: false, limitKw: 5, marginKw: 0.2 }, null))).toBeNull();
+  });
+
+  it('caps the hours by the grid import target once Capacity limit is off', () => {
+    expect(planningCeilingForUpdate(powerLimits({ enabled: false, limitKw: 5, marginKw: 0.2 }, 17)))
+      .toEqual({ limit: 'grid', kw: 17 * 0.95 });
+  });
+
+  it('caps the hours by the lower limit when both are on', () => {
+    expect(planningCeilingForUpdate(powerLimits({ enabled: true, limitKw: 10, marginKw: 0.2 }, 7.4)))
+      .toEqual({ limit: 'grid', kw: 7.4 * 0.95 });
+    expect(planningCeilingForUpdate(powerLimits({ enabled: true, limitKw: 5, marginKw: 0.2 }, 17)))
+      .toEqual({ limit: 'capacity', kw: expect.closeTo(4.8, 9) });
   });
 
   it('throttles low-priority daily budget state writes from frequent updates', () => {

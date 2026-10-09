@@ -1,4 +1,5 @@
 import type { Logger as PinoLogger } from 'pino';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 import type {
   EnergySignatureFit,
   MetDaySummary,
@@ -37,7 +38,7 @@ const buildDeps = () => {
     deps: {
       getNowMs: () => NOW_MS,
       getTimeZone: () => OSLO,
-      getCapacityLimitKw: () => 10,
+      getPowerLimitSettings: () => capacityOnlyPowerLimits(10),
       logger: logger as unknown as PinoLogger,
     },
   };

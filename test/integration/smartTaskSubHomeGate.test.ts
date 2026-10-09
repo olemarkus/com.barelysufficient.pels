@@ -57,11 +57,12 @@ import {
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { transportSnapshotFixture, transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
 // to the FLOOR rung, so a high rate is what preserves these cases' behaviour.)
-const TEST_SUSTAINABLE_RATE_KW = 100;
+const TEST_PLANNING_CEILING_KW = 100;
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;
@@ -239,7 +240,8 @@ const buildDiagnosticsParams = (overrides: {
   devices: Array<MeteredPlanInputDevice & { thermalDirection: 'heating' }>;
   isDeviceInSubHome?: (deviceId: string) => boolean;
 }) => ({
-  sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
+  powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
+  hasSolarProduction: false,
   nowMs: NOW_MS,
   timeZone: 'UTC',
   devices: overrides.devices,
@@ -817,6 +819,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       (deviceId: string) => (deviceId === 'heater-sub' ? 'sub_home' as const : null),
     );
     const controller = new DeferredObjectiveDecorationController({
+      hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
       getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings({
@@ -827,7 +830,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       getPowerTracker: () => ({ lastTimestamp: NOW_MS }),
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => capacityOnlyPowerLimits(10),
       resolveDeviceExclusion,
       getDeferredObjectiveActivePlans: () => null,
       getStallClassification: noStallEvidence,

@@ -4,6 +4,8 @@
  * consumed by the settings UI. Browser-safe: types only, no runtime imports.
  */
 
+import type { PowerLimitAxis } from './capacitySettings.js';
+
 export type WeatherAdvisorSettings = {
   enabled: boolean;
   /** Device whose `measure_temperature` reports the current outdoor temperature. */
@@ -468,8 +470,13 @@ export type WeatherAdvisorSuggestion = {
   kwh: number;
   /** The active daily budget for comparison; null when the daily budget is off. */
   currentDailyBudgetKwh: number | null;
-  /** Tomorrow's expected usage exceeds sustainable capacity over the target local day. */
-  cappedByCapacity: boolean;
+  /**
+   * The enabled power limit whose planning ceiling tomorrow's expected usage
+   * exceeds over the target local day (hard cap minus safety margin, or grid
+   * import target), so the banner names it; `null` when usage fits or no power
+   * limit is enabled.
+   */
+  cappedByPowerLimit: PowerLimitAxis | null;
   /** The daily budget has recently been limiting the home — the suggestion was raised to match. */
   budgetMayBeLimiting: boolean;
   /** kWh the budget-pressure loop added; named in the reason line when it is worth showing. */

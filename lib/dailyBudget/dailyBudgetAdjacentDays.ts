@@ -7,7 +7,8 @@ import {
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { readCombinedPriceData } from '../price/priceStore';
 import type { CombinedPricesReader } from '../price/combinedPricesReader';
-import { resolveUsableCapacityKw } from '../power/capacityModel';
+import { resolvePlanningPowerCeiling } from '../power/capacityModel';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { getLogger } from '../logging/logger';
@@ -24,7 +25,7 @@ const moduleLogger = getLogger('dailyBudget/service');
 export type DailyBudgetAdjacentDayDeps = {
   resolveTimeZone: () => string;
   combinedPricesReader: CombinedPricesReader;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getCapacitySettings: () => PowerLimitSettings;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   structuredLog?: PinoLogger;
@@ -42,14 +43,14 @@ export const buildTomorrowPreview = (
     const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
     const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
     const combinedPrices = readCombinedPriceData(deps.combinedPricesReader, new Date(nowMs), timeZone);
-    const capacityBudgetKWh = resolveUsableCapacityKw(deps.getCapacitySettings());
+    const planningCeiling = resolvePlanningPowerCeiling(deps.getCapacitySettings());
     return manager.buildPreview({
       dayStartUtcMs: tomorrowStartUtcMs,
       timeZone,
       settings,
       combinedPrices,
       priceOptimizationEnabled: deps.getPriceOptimizationEnabled(),
-      capacityBudgetKWh,
+      planningCeiling,
     });
   } catch (error) {
     (deps.structuredLog ?? moduleLogger).error({
@@ -98,6 +99,7 @@ export const buildYesterdayHistory = (
       priceOptimizationEnabled: deps.getPriceOptimizationEnabled(),
       priceShapingEnabled: settings.priceShapingEnabled,
       controlledUsageWeight: settings.controlledUsageWeight,
+      planningCeiling: resolvePlanningPowerCeiling(deps.getCapacitySettings()),
     });
   } catch (error) {
     (deps.structuredLog ?? moduleLogger).error({

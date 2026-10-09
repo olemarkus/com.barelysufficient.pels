@@ -28,6 +28,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/hoursRemainingCrossings';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
 import { withMaterializedEvPlugState } from '../utils/planTestUtils';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
@@ -73,6 +74,7 @@ const buildEvSettings = (deadlineAtMs: number): DeferredObjectiveSettingsV1 => (
 const buildDeps = (
   overrides: Partial<DeferredObjectiveLifecycleEmitterDeps> = {},
 ): DeferredObjectiveLifecycleEmitterDeps => ({
+  hasSolarProduction: () => false,
   getDeferredObjectiveSettings: () => ({ version: 1, objectivesByDeviceId: {} } as DeferredObjectiveSettingsV1),
   getTimeZone: () => 'UTC',
   getDevices: () => [],
@@ -82,7 +84,7 @@ const buildDeps = (
   buildPriceHorizon: () => [],
   getPriceOptimizationEnabled: () => false,
   getDeferredObjectiveActivePlans: () => null,
-  getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+  getCapacitySettings: () => capacityOnlyPowerLimits(10),
   getPrioritiesForDevices: createFixturePriorityQuery(),
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,

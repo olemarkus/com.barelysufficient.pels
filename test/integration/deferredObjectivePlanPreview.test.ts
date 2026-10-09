@@ -22,6 +22,7 @@ import type { ActivePlanPersistDeps } from '../../lib/objectives/deferredObjecti
 import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type {
@@ -30,6 +31,7 @@ import type {
 } from '../../lib/plan/planTypes';
 import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { hoursWithPlannedEnergy } from '../../packages/shared-domain/src/deferredPlanBookedHours';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 import {
   fixtureCurrentDrawKw,
   type FixtureBoostFields,
@@ -311,21 +313,32 @@ type PreviewContext = {
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
-  // Both readings come from one owner: the probes pace at `limitKw - marginKw`
-  // while `atCapNow` measures against `limitKw`. Most cases use a zero margin,
-  // which makes the two equal.
-  capacitySettings: { limitKw: number; marginKw: number };
+  // Both readings come from one owner: the probes pace at the planning ceiling
+  // (`limitKw - marginKw` while only Capacity limit is on) while
+  // `atPowerLimitNow` measures against the configured limit (`limitKw`). Most
+  // cases use a zero margin, which makes the two equal. Capacity limit on and
+  // grid import limit off unless a case says otherwise.
+  capacitySettings: Pick<PowerLimitSettings, 'limitKw' | 'marginKw'>
+    & Partial<Pick<PowerLimitSettings, 'capacityEnabled' | 'gridImportLimitKw'>>;
+  // No solar production unless a case says otherwise.
+  hasSolarProduction?: boolean;
   // Optional override for the price-RATE label fed into the preview. Defaults
   // to "øre/kWh" (the Norway scheme) so most cases exercise the rate→amount
   // conversion (costUnit must come back "øre").
   priceRateLabel?: string;
 };
 
+// Capacity limit on and grid import limit off unless the case says otherwise.
+const previewPowerLimits = (capacitySettings: PreviewContext['capacitySettings']): PowerLimitSettings => ({
+  capacityEnabled: true, gridImportLimitKw: null, periodMinutes: 60, ...capacitySettings,
+});
+
 const runPreview = (params: {
   deviceId: string;
   candidate: DeferredObjectivePlanPreviewCandidate;
   ctx: PreviewContext;
 }) => previewDeferredObjectivePlan({
+  hasSolarProduction: params.ctx.hasSolarProduction ?? false,
   nowMs: NOW_MS,
   timeZone: 'UTC',
   getThermalDirection: () => 'heating',
@@ -345,7 +358,7 @@ const runPreview = (params: {
   powerTracker: params.ctx.powerTracker,
   dailyBudgetSnapshot: params.ctx.dailyBudgetSnapshot,
   priceOptimizationEnabled: params.ctx.priceOptimizationEnabled,
-  capacitySettings: params.ctx.capacitySettings,
+  capacitySettings: previewPowerLimits(params.ctx.capacitySettings),
   priceRateLabel: params.ctx.priceRateLabel ?? 'øre/kWh',
 });
 
@@ -398,6 +411,7 @@ describe('previewDeferredObjectivePlan', () => {
       },
     });
     const [highDiagnostic] = buildDeferredObjectiveDiagnostics({
+      hasSolarProduction: false,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [highDevice],
@@ -406,7 +420,7 @@ describe('previewDeferredObjectivePlan', () => {
       dailyBudgetSnapshot: snapshot,
       priceOptimizationEnabled: true,
       activePlans: null,
-      sustainableRateKw: 1.5,
+      powerLimits: capacityOnlyPowerLimits(1.5),
     });
     // kWh the high task promises per hour; a 0 kWh booking reserves nothing.
     const highKWhByHour = new Map(hoursWithPlannedEnergy(buildHoursFromHorizonPlan(highDiagnostic!.evaluation) ?? [])
@@ -421,6 +435,99 @@ describe('previewDeferredObjectivePlan', () => {
     ))).toBe(true);
   });
 
+  // The planning ceiling, never a persisted hard cap that is switched off,
+  // decides whether two EVs on the same 1 kW rung may share an hour. The daily
+  // budget is off, so the ceiling is the only cap on an hour.
+  const ceilingContention = (capacitySettings: PreviewContext['capacitySettings']): boolean => {
+    const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
+    const candidate = evCandidate({ deadlineAtMs });
+    const highDevice = buildEvDevice({ priority: 1 });
+    const lowDevice = buildEvDevice({ id: 'ev-2', name: 'Second EV', priority: 2 });
+    const profile = buildEvPowerTracker().objectiveProfiles?.['ev-1'];
+    const priced = buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) });
+    const snapshot: DailyBudgetUiPayload = {
+      ...priced,
+      days: Object.fromEntries(Object.entries(priced.days).map(([key, day]) => [
+        key, { ...day, budget: { ...day.budget, enabled: false } },
+      ])),
+    };
+    const estimate = runPreview({
+      deviceId: 'ev-2',
+      candidate,
+      ctx: {
+        device: lowDevice,
+        devices: [highDevice, lowDevice],
+        settings: buildSettings({ deviceId: 'ev-1', candidate }),
+        powerTracker: buildEvPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
+        dailyBudgetSnapshot: snapshot,
+        priceOptimizationEnabled: true,
+        capacitySettings,
+      },
+    });
+    const [highDiagnostic] = buildDeferredObjectiveDiagnostics({
+      hasSolarProduction: false,
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [highDevice],
+      settings: buildSettings({ deviceId: 'ev-1', candidate }),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: snapshot,
+      priceOptimizationEnabled: true,
+      activePlans: null,
+      powerLimits: previewPowerLimits(capacitySettings),
+    });
+    const highKWhByHour = new Map(hoursWithPlannedEnergy(buildHoursFromHorizonPlan(highDiagnostic!.evaluation) ?? [])
+      .map((hour) => [hour.startsAtMs, hour.plannedKWh]));
+    expect(highKWhByHour.size).toBeGreaterThan(0);
+    // kWh at 1 kW is hours of draw: above 1 kWh in an hour, both charged at once.
+    return estimate.scheduledHours.some((hour) => (
+      (highKWhByHour.get(hour.startsAtMs) ?? 0) + hour.plannedKWh > 1 + 1e-6
+    ));
+  };
+
+  it('lets two EVs share an hour under a 10 kW hard cap, and not under a 1.5 kW one', () => {
+    // Capacity-only: the ceiling is the hard cap minus its margin, as it always was.
+    expect(ceilingContention({ limitKw: 10, marginKw: 0 })).toBe(true);
+    expect(ceilingContention({ limitKw: 1.5, marginKw: 0 })).toBe(false);
+  });
+
+  it('reserves no room under a switched-off hard cap when no power limit is enabled', () => {
+    expect(ceilingContention({ limitKw: 1.5, marginKw: 0, capacityEnabled: false, gridImportLimitKw: null }))
+      .toBe(true);
+  });
+
+  // Grid limit targeting 1.5 kW: a 10 kW hard cap must not let the two EVs share
+  // an hour, whether Capacity limit is off or on (the lower grid ceiling binds).
+  it.each([
+    { name: 'Capacity limit off', capacityEnabled: false },
+    { name: 'both limits on', capacityEnabled: true },
+  ])('plans against the grid import target, not a 10 kW hard cap ($name)', ({ capacityEnabled }) => {
+    expect(ceilingContention({ limitKw: 10, marginKw: 0, capacityEnabled, gridImportLimitKw: 1.5 / 0.95 })).toBe(false);
+  });
+
+  // A 1 kW rung under a 0.9 kW grid limit (target 0.855 kW): with nothing
+  // exporting it can never run, so the preview plans nothing. In a PV home export
+  // can lift live headroom past the target, so the preview keeps the rung.
+  it.each([
+    { name: 'no solar production', hasSolarProduction: false, plans: false },
+    { name: 'solar production', hasSolarProduction: true, plans: true },
+  ])('cuts the ladder at the grid import target only with $name', ({ hasSolarProduction, plans }) => {
+    const estimate = runPreview({
+      deviceId: 'ev-1',
+      candidate: evCandidate({ deadlineAtMs: DEADLINE_FAR_MS }),
+      ctx: {
+        device: buildEvDevice(),
+        powerTracker: buildEvPowerTracker(),
+        dailyBudgetSnapshot: buildSnapshot(),
+        priceOptimizationEnabled: true,
+        capacitySettings: { limitKw: 10, marginKw: 0, capacityEnabled: false, gridImportLimitKw: 0.9 },
+        hasSolarProduction,
+      },
+    });
+    expect(estimate.scheduledHours.length > 0).toBe(plans);
+    if (!plans) expect(estimate.status).toBe('cannot_meet');
+  });
+
   it('keeps a missing higher commitment ahead of a compacted preview candidate', () => {
     const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
     const candidate = evCandidate({ deadlineAtMs });
@@ -433,6 +540,7 @@ describe('previewDeferredObjectivePlan', () => {
     });
     const dailyBudgetSnapshot = buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) });
     const [highDiagnostic] = buildDeferredObjectiveDiagnostics({
+      hasSolarProduction: false,
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [highDevice],
@@ -440,7 +548,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker,
       dailyBudgetSnapshot,
       priceOptimizationEnabled: true,
-      sustainableRateKw: 1.5,
+      powerLimits: capacityOnlyPowerLimits(1.5),
       getPrioritiesForDevices: createFixturePriorityQuery([
         { id: 'z-high', priority: 1 }, { id: 'a-low', priority: 2 },
       ]),
@@ -544,14 +652,15 @@ describe('previewDeferredObjectivePlan', () => {
     expect(estimate.priceSeries).toBeUndefined();
   });
 
-  // ── At-cap honesty signal (atCapNow) ──────────────────────────────────────
-  // The in-isolation preview is optimistic about headroom. `atCapNow` corrects
-  // its "runs now" implication with a measured FACT: the candidate is scheduled
-  // in the current clock hour AND the measured whole-home draw is already at the
-  // physical hard cap.
+  // ── At-limit honesty signal (atPowerLimitNow) ─────────────────────────────
+  // The in-isolation preview is optimistic about headroom. `atPowerLimitNow`
+  // corrects its "runs now" implication with a measured FACT: the candidate is
+  // scheduled in the current clock hour AND the measured whole-home draw is
+  // already at an enabled limit (the physical hard cap, or the grid import
+  // limit), which it names.
   const CURRENT_HOUR_START_MS = Math.floor(NOW_MS / HOUR_MS) * HOUR_MS;
 
-  it('flags atCapNow when the current hour is scheduled and measured draw is at the hard cap', () => {
+  it('flags the hard cap when the current hour is scheduled and measured draw is at the hard cap', () => {
     const ctx: PreviewContext = {
       device: buildEvDevice(),
       powerTracker: buildEvPowerTracker({ lastPowerW: 10_000, lastTimestamp: NOW_MS }),
@@ -564,10 +673,10 @@ describe('previewDeferredObjectivePlan', () => {
       deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
     });
     expect(estimate.scheduledHours.some((hour) => hour.startsAtMs === CURRENT_HOUR_START_MS)).toBe(true);
-    expect(estimate.atCapNow).toBe(true);
+    expect(estimate.atPowerLimitNow).toBe('capacity');
   });
 
-  it('does not flag atCapNow when measured draw is comfortably below the hard cap', () => {
+  it('does not flag a limit when measured draw is comfortably below the hard cap', () => {
     const ctx: PreviewContext = {
       device: buildEvDevice(),
       powerTracker: buildEvPowerTracker({ lastPowerW: 2_000, lastTimestamp: NOW_MS }),
@@ -578,14 +687,14 @@ describe('previewDeferredObjectivePlan', () => {
     const estimate = runPreview({
       deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
     });
-    expect(estimate.atCapNow).toBe(false);
+    expect(estimate.atPowerLimitNow).toBeUndefined();
   });
 
-  // The regression that made this pair of inputs necessary: `atCapNow` briefly
+  // The regression that made this pair of inputs necessary: the at-cap flag (then `atCapNow`) briefly
   // shared the probes' input, so a home with a safety margin saw "your hard cap
   // is maxed out" fire one margin early. The cap is physical and does not move
   // when the margin does.
-  it('measures atCapNow against the hard cap, not the pace the probes run at', () => {
+  it('measures the hard cap itself, not the pace the probes run at', () => {
     const ctx: PreviewContext = {
       device: buildEvDevice(),
       // 9.0 kW: above the 8 kW pace a 2 kW margin leaves, below the 10 kW cap.
@@ -598,10 +707,10 @@ describe('previewDeferredObjectivePlan', () => {
       deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
     });
     expect(estimate.scheduledHours.some((hour) => hour.startsAtMs === CURRENT_HOUR_START_MS)).toBe(true);
-    expect(estimate.atCapNow).toBe(false);
+    expect(estimate.atPowerLimitNow).toBeUndefined();
   });
 
-  it('claims atCapNow off the last whole-home reading, however old', () => {
+  it('claims the limit off the last whole-home reading, however old', () => {
     // The last reading holds until the next one. A meter that went silent is
     // `lib/power`'s to escalate; the preview does not re-judge its freshness.
     const ctx: PreviewContext = {
@@ -614,7 +723,51 @@ describe('previewDeferredObjectivePlan', () => {
     const estimate = runPreview({
       deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
     });
-    expect(estimate.atCapNow).toBe(true);
+    expect(estimate.atPowerLimitNow).toBe('capacity');
+  });
+
+  // A switched-off Capacity limit keeps its persisted hard cap, but the note must
+  // never blame it: with no enabled limit there is nothing to be pressed against,
+  // and with a grid import limit on, that is the limit the draw reaches.
+  const atLimitFor = (
+    lastPowerW: number,
+    capacitySettings: PreviewContext['capacitySettings'],
+  ) => runPreview({
+    deviceId: 'ev-1',
+    candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }),
+    ctx: {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker({ lastPowerW, lastTimestamp: NOW_MS }),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      capacitySettings,
+    },
+  }).atPowerLimitNow;
+
+  it('flags no limit at a switched-off hard cap when no power limit is enabled', () => {
+    expect(atLimitFor(10_000, {
+      limitKw: 10, marginKw: 0, capacityEnabled: false, gridImportLimitKw: null,
+    })).toBeUndefined();
+  });
+
+  it('names the grid import limit once import reaches its target, where live control holds it', () => {
+    // 7.4 kW limit: target 7.03 kW. 7.05 kW is past the target but below 98% of
+    // the limit (7.25 kW), a level live control keeps import from reaching.
+    expect(atLimitFor(7_050, {
+      limitKw: 10, marginKw: 0.2, capacityEnabled: false, gridImportLimitKw: 7.4,
+    })).toBe('grid');
+    expect(atLimitFor(7_000, {
+      limitKw: 10, marginKw: 0.2, capacityEnabled: false, gridImportLimitKw: 7.4,
+    })).toBeUndefined();
+  });
+
+  it('names the lower of the two limits when both are enabled', () => {
+    expect(atLimitFor(7_300, {
+      limitKw: 10, marginKw: 0.2, capacityEnabled: true, gridImportLimitKw: 7.4,
+    })).toBe('grid');
+    expect(atLimitFor(10_000, {
+      limitKw: 10, marginKw: 0.2, capacityEnabled: true, gridImportLimitKw: 17,
+    })).toBe('capacity');
   });
 
   // ── Granted rescue permissions (honest "Extra permissions" summary) ────────
@@ -920,12 +1073,13 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
     'matches recorder hours, energy, and finish for a $name objective',
     ({ deviceId, device, powerTracker, candidate }) => {
       const dailyBudgetSnapshot = buildSnapshot();
-      const sustainableRateKw = 10;
+      const capacitySettings = { limitKw: 10, marginKw: 0 };
 
       // Live path: build the diagnostic exactly as the plan cycle does, feed it
       // to the recorder, and read what it persists.
       const settings = buildSettings({ deviceId, candidate });
       const diagnostics = buildDeferredObjectiveDiagnostics({
+        hasSolarProduction: false,
         nowMs: NOW_MS,
         timeZone: 'UTC',
         devices: [device],
@@ -934,7 +1088,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
         dailyBudgetSnapshot,
         priceOptimizationEnabled: true,
         activePlans: null,
-        sustainableRateKw,
+        powerLimits: previewPowerLimits(capacitySettings),
       });
       expect(diagnostics).toHaveLength(1);
       const diag = diagnostics[0]!;
@@ -963,7 +1117,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
         candidate,
         ctx: {
           device, powerTracker, dailyBudgetSnapshot, priceOptimizationEnabled: true,
-          capacitySettings: { limitKw: sustainableRateKw, marginKw: 0 },
+          capacitySettings,
         },
       });
 

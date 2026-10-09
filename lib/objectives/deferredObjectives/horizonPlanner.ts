@@ -24,6 +24,7 @@ import type {
   DeferredObjectiveHorizonStatus,
   DeferredObjectiveHorizonStatusDetail,
   DeferredObjectivePlannedBucket,
+  DeferredObjectivePowerLimit,
   DeferredObjectiveStep,
 } from './types';
 
@@ -36,6 +37,17 @@ type NonEmptyObjectiveSteps = [DeferredObjectiveStep, ...DeferredObjectiveStep[]
 const topObjectiveStep = (steps: NonEmptyObjectiveSteps): DeferredObjectiveStep => (
   steps.at(-1) ?? steps[0]
 );
+
+// The rungs live admission can let run under the house's power limits. Only an
+// instantaneous ceiling (the grid import target) removes rungs; order is kept.
+const admitUnderPowerLimit = (
+  steps: NonEmptyObjectiveSteps,
+  powerLimit: DeferredObjectivePowerLimit,
+): DeferredObjectiveStep[] => {
+  if (powerLimit.kind === 'unlimited' || powerLimit.admissionCeilingKw === null) return steps;
+  const ceilingKw = powerLimit.admissionCeilingKw;
+  return steps.filter((step) => step.admissionPowerKw <= ceilingKw);
+};
 
 export const planDeferredObjectiveHorizon = (
   input: DeferredObjectiveHorizonInput,
@@ -75,14 +87,28 @@ export const planDeferredObjectiveHorizon = (
   }
 
   const steps = normalizeObjectiveSteps(input.steps);
-  const activeSteps = getActiveObjectiveSteps(steps);
-  if (!hasObjectiveSteps(activeSteps)) {
+  const deviceSteps = getActiveObjectiveSteps(steps);
+  if (!hasObjectiveSteps(deviceSteps)) {
     return buildEmptyPlan({
       input,
       deadlineMarginMs,
       energyNeededKWh,
       status: 'invalid',
       statusDetail: 'missing_active_step',
+    });
+  }
+  // The ladder the plan books from is the rungs live admission can let run: under
+  // a grid import limit a rung above its target never does
+  // (`DeferredObjectivePowerLimit`). Capacity alone bounds energy, not rungs, so a
+  // capacity-only home keeps its whole ladder.
+  const activeSteps = admitUnderPowerLimit(deviceSteps, input.powerLimit);
+  if (!hasObjectiveSteps(activeSteps)) {
+    return buildEmptyPlan({
+      input,
+      deadlineMarginMs,
+      energyNeededKWh,
+      status: 'cannot_meet',
+      statusDetail: 'no_bucket_capacity',
     });
   }
 
@@ -117,7 +143,7 @@ export const planDeferredObjectiveHorizon = (
   // ceiling in `resolveBucketStepCapacityKWh`.
   const fullyReserved = input.objective.fullyReserved;
   const stepForBucket: StepForBucket = (bucket) => (
-    resolveStepForBucket(bucket, activeSteps, fullyReserved)
+    resolveStepForBucket(bucket, activeSteps, fullyReserved, input.powerLimit)
   );
   const allocation = resolveAllocation({
     stepForBucket,
@@ -294,7 +320,9 @@ const resolveClimbedBandFeasibility = (params: {
 // `reservedHeadroomKw` forecast. Hours with generous forecast headroom
 // commit at a higher step's capacity; hours with tight forecast headroom
 // stay at the lower step. Buckets lacking a forecast fall back to
-// `activeSteps[0]` (we cannot promise more than the producer has verified).
+// `activeSteps[0]` (we cannot promise more than the producer has verified),
+// except with no power limit enabled: there is no ceiling to verify against and
+// live control admits every rung, so the floor is the top rung.
 // Single-step devices (`activeSteps.length === 1`) trivially keep the min
 // step on every bucket.
 //
@@ -313,8 +341,10 @@ const resolveStepForBucket = (
   bucket: { reservedHeadroomKw?: number | undefined },
   activeSteps: NonEmptyObjectiveSteps,
   fullyReserved: boolean,
+  powerLimit: DeferredObjectivePowerLimit,
 ): DeferredObjectiveStep => {
   if (!fullyReserved || activeSteps.length === 1) return activeSteps[0];
+  if (powerLimit.kind === 'unlimited') return topObjectiveStep(activeSteps);
   // Same scan the feasibility probes use, with the opposite default: no forecast ⇒
   // the FLOOR step, because we cannot promise more than the producer has verified.
   return resolveHighestStepWithinHeadroom(activeSteps, bucket.reservedHeadroomKw) ?? activeSteps[0];

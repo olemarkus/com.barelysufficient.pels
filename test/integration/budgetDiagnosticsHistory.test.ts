@@ -6,6 +6,7 @@ import { createWeatherHistoryStore } from '../../lib/weather/weatherHistoryStore
 import { createBudgetAdviceHistoryStore } from '../../lib/weather/budgetAdviceHistoryStore';
 import { readBudgetDailyHistory, readBudgetDecisionHistory } from '../../lib/weather/budgetDiagnosticsHistory';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 const NOW = Date.UTC(2026, 9, 3);
 const TZ = 'Europe/Oslo';
@@ -86,7 +87,7 @@ describe('persisted budget diagnostics history', () => {
         },
       }, {
         getSettings: () => ({ enabled: true, autoApplyDailyBudget: true }),
-        getNowMs: () => NOW, getTimeZone: () => TZ, getSustainableCapacityKw: () => 4.7,
+        getNowMs: () => NOW, getTimeZone: () => TZ, getPowerLimitSettings: () => capacityOnlyPowerLimits(4.7),
         getAppliedDailyBudgetKwh: () => currentBudget,
         applySuggestedDailyBudget: (value) => { currentBudget = value; return true; },
         recordBudgetDecision: (record) => h.decisions.record(record),

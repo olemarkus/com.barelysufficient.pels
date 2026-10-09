@@ -903,7 +903,7 @@ describe('resolveAllocationWarning', () => {
       unallocatedBudgetKWh: 0,
       saturationRatio: 0,
       constrained: false,
-      maxFittingDailyBudgetKWh: 48,
+      powerLimitCeiling: { limit: 'capacity', maxFittingDailyBudgetKWh: 48 },
     };
     expect(resolveAllocationWarning(payload)).toBeNull();
   });
@@ -916,7 +916,7 @@ describe('resolveAllocationWarning', () => {
       unallocatedBudgetKWh: 7.5,
       saturationRatio: 0.375,
       constrained: true,
-      maxFittingDailyBudgetKWh: 48,
+      powerLimitCeiling: { limit: 'capacity', maxFittingDailyBudgetKWh: 48 },
     };
     const result = resolveAllocationWarning(payload);
     expect(result?.title).toBe('Daily budget exceeds what your hard cap can deliver');
@@ -939,7 +939,7 @@ describe('resolveAllocationWarning', () => {
       unallocatedBudgetKWh: 6,
       saturationRatio: 0.25,
       constrained: true,
-      maxFittingDailyBudgetKWh: 48,
+      powerLimitCeiling: { limit: 'capacity', maxFittingDailyBudgetKWh: 48 },
     };
     expect(resolveAllocationWarning(payload)).toBeNull();
   });
@@ -952,7 +952,7 @@ describe('resolveAllocationWarning', () => {
       unallocatedBudgetKWh: 7.5,
       saturationRatio: 0.375,
       constrained: true,
-      maxFittingDailyBudgetKWh: 0,
+      powerLimitCeiling: { limit: 'capacity', maxFittingDailyBudgetKWh: 0 },
     };
     const result = resolveAllocationWarning(payload);
     expect(result?.body).toContain('60.0 kWh');
@@ -960,6 +960,41 @@ describe('resolveAllocationWarning', () => {
     expect(result?.body).toContain('hard cap');
     expect(result?.body).not.toMatch(/hourly/i);
     expect(result?.body).not.toContain('48.0');
+  });
+
+  it('names the grid import limit, not the hard cap, when its target sets the ceiling', () => {
+    // Capacity limit off (or a grid limit below hard cap minus margin): the day's
+    // ceiling is the grid import target, and blaming the hard cap would name a
+    // limit that is not binding.
+    const payload = buildPayload({ budgetKWh: 200 });
+    (payload.state as { allocationPressure?: unknown }).allocationPressure = {
+      requestedBudgetKWh: 200,
+      plannedBudgetKWh: 168,
+      unallocatedBudgetKWh: 32,
+      saturationRatio: 0.84,
+      constrained: true,
+      powerLimitCeiling: { limit: 'grid', maxFittingDailyBudgetKWh: 168 },
+    };
+    const result = resolveAllocationWarning(payload);
+    expect(result?.title).toBe('Daily budget exceeds what your grid import limit can deliver');
+    expect(result?.body).toContain('grid import limit');
+    expect(result?.body).toContain('168.0 kWh');
+    expect(`${result?.title} ${result?.body}`).not.toMatch(/hard cap/i);
+  });
+
+  it('shows no limit warning when no power limit is enabled', () => {
+    // Observed-peak caps can still leave the plan short, but with no power limit
+    // there is no limit to blame and no ceiling to lower the budget to.
+    const payload = buildPayload({ budgetKWh: 60 });
+    (payload.state as { allocationPressure?: unknown }).allocationPressure = {
+      requestedBudgetKWh: 12,
+      plannedBudgetKWh: 4.5,
+      unallocatedBudgetKWh: 7.5,
+      saturationRatio: 0.375,
+      constrained: true,
+      powerLimitCeiling: null,
+    };
+    expect(resolveAllocationWarning(payload)).toBeNull();
   });
 
   it('quotes the configured daily budget, not the remaining requestedBudgetKWh', () => {
@@ -974,7 +1009,7 @@ describe('resolveAllocationWarning', () => {
       unallocatedBudgetKWh: 15,
       saturationRatio: 0.25,
       constrained: true,
-      maxFittingDailyBudgetKWh: 48,
+      powerLimitCeiling: { limit: 'capacity', maxFittingDailyBudgetKWh: 48 },
     };
     const result = resolveAllocationWarning(payload);
     expect(result?.body).toContain('60.0 kWh');

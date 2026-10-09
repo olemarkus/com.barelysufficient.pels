@@ -1,3 +1,4 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import { buildPlanBreakdown } from './dailyBudgetBreakdown';
 import {
   buildDailyBudgetSnapshot,
@@ -47,7 +48,7 @@ export function buildSnapshot(params: {
   context: DayContext;
   defaultProfile: number[];
   confidenceDebug?: ConfidenceDebug;
-  usableCapacityKw?: number;
+  planningCeiling: PowerLimitCeiling | null;
 }): DailyBudgetDayPayload {
   const {
     state,
@@ -58,7 +59,7 @@ export function buildSnapshot(params: {
     context,
     defaultProfile,
     confidenceDebug,
-    usableCapacityKw,
+    planningCeiling,
   } = params;
   const profileData = getEffectiveProfileData(state, settings, defaultProfile);
   const breakdown = plan.plannedUncontrolledKWh && plan.plannedControlledKWh
@@ -83,7 +84,7 @@ export function buildSnapshot(params: {
     budget,
     frozen: Boolean(state.frozen),
     confidenceDebug,
-    usableCapacityKw,
+    planningCeiling,
     // Stable day-start weights for the single budget-pace reference + projection.
     stableWeights: profileData.combinedWeights,
   });
@@ -100,7 +101,7 @@ export function buildSnapshotAndLogDebug(params: {
   context: DayContext;
   defaultProfile: number[];
   confidenceDebug?: ConfidenceDebug;
-  capacityBudgetKWh?: number;
+  planningCeiling: PowerLimitCeiling | null;
   combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
 }): DailyBudgetDayPayload {
@@ -115,7 +116,7 @@ export function buildSnapshotAndLogDebug(params: {
     context,
     defaultProfile,
     confidenceDebug,
-    capacityBudgetKWh,
+    planningCeiling,
     combinedPrices,
     priceOptimizationEnabled,
   } = params;
@@ -130,7 +131,7 @@ export function buildSnapshotAndLogDebug(params: {
     context,
     defaultProfile,
     confidenceDebug,
-    usableCapacityKw: capacityBudgetKWh,
+    planningCeiling,
   });
   logPlanDebugIfNeeded({
     debugStructured,
@@ -138,7 +139,7 @@ export function buildSnapshotAndLogDebug(params: {
     snapshot,
     priceData: plan.priceData,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     settings,
     state,
     defaultProfile,
@@ -153,7 +154,7 @@ export function buildSnapshotAndLogDebug(params: {
     state,
     combinedPrices,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     defaultProfile,
   });
   logReserveDebug({
@@ -171,7 +172,7 @@ export function logPlanDebugIfNeeded(params: {
   snapshot: DailyBudgetDayPayload;
   priceData: PriceData;
   priceOptimizationEnabled: boolean;
-  capacityBudgetKWh?: number;
+  planningCeiling: PowerLimitCeiling | null;
   settings: DailyBudgetSettings;
   state: DailyBudgetState;
   defaultProfile: number[];
@@ -190,7 +191,7 @@ export function logPlanDebugIfNeeded(params: {
     snapshot,
     priceData,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     settings,
     state,
     defaultProfile,
@@ -204,7 +205,7 @@ export function logPlanDebugIfNeeded(params: {
     snapshot,
     priceData,
     priceOptimizationEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     settings,
     state,
     defaultProfile,

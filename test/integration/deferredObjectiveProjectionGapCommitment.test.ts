@@ -31,6 +31,7 @@ import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/pla
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 import type {
   DecoratedDeviceSnapshot,
   MeasuredPowerObservedProbe,
@@ -40,7 +41,7 @@ import type {
 // reserved-headroom forecast never selects a lower rung than the case intends.
 // (Omission was NOT equivalent — an absent forecast pins `resolveStepForBucket`
 // to the FLOOR rung, so a high rate is what preserves these cases' behaviour.)
-const TEST_SUSTAINABLE_RATE_KW = 100;
+const TEST_PLANNING_CEILING_KW = 100;
 
 const HOUR_MS = 60 * 60 * 1000;
 const MIN_MS = 60 * 1000;
@@ -232,12 +233,13 @@ const buildDiagnostic = (
   device: MeteredPlanInputDevice & { thermalDirection: 'heating' },
   activePlans: DeferredObjectiveActivePlansV1 | null,
 ): DeferredObjectiveDiagnostic | undefined => buildFixtureDiagnostics({
+  hasSolarProduction: false,
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
   isReservationSuppressed: noReservationSuppression,
   getDeliveredEnergyKWh: noDeliveredEnergy,
   getPrioritiesForDevices: createFixturePriorityQuery([device]),
-  sustainableRateKw: TEST_SUSTAINABLE_RATE_KW,
+  powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
   nowMs,
   timeZone: 'UTC',
   devices: [device],

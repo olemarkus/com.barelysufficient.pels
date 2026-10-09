@@ -21,6 +21,11 @@ export type BudgetAdviceDecision = {
   beyondObservedCold: boolean;
   beyondObservedWarm: boolean;
   budgetMayBeLimiting: boolean;
+  /**
+   * The planning ceiling over the target local day (hard cap minus safety margin,
+   * or grid import target, whichever enabled limit is lower). `null` only when no
+   * power limit was enabled. The persisted name predates the grid import limit.
+   */
   sustainableDailyCeilingKwh: number | null;
   pressureThroughDateKey: string | null;
   pressureAccumulatorKwh: number;

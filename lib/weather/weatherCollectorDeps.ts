@@ -1,3 +1,4 @@
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { BudgetAdviceDecision } from '../../packages/contracts/src/budgetDiagnostics';
 import type { Logger as PinoLogger } from 'pino';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
@@ -46,8 +47,12 @@ export type WeatherCollectorDeps = {
    * and unused allowance on the axis the budget actually paced.
    */
   getBudgetCountedKwh: (dateKey: string) => number | undefined;
-  /** Sustainable capacity rate: hard cap minus its configured safety margin. */
-  getSustainableCapacityKw: () => number;
+  /**
+   * The live power-limit settings. The planning ceiling the budget-pressure loop
+   * carries under is resolved from them in this domain
+   * (`planningPowerCeiling`), not in the wiring.
+   */
+  getPowerLimitSettings: () => PowerLimitSettings;
   getSettings: () => WeatherAdvisorSettings;
   /**
    * Resolved fingerprint of the whole-home metering arrangement, composed by

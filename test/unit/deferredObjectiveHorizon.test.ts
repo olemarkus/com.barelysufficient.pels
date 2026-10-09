@@ -1,4 +1,6 @@
 import { planDeferredObjectiveHorizon } from '../../lib/objectives/deferredObjectives';
+import { resolveDeferredObjectivePowerLimit } from '../../lib/objectives/deferredObjectives/policyHorizon';
+import { CAPACITY_ONLY_HORIZON_LIMIT, powerLimits } from '../helpers/powerLimitSettings';
 import type {
   DeferredObjective,
   DeferredObjectiveHorizonBucket,
@@ -67,6 +69,7 @@ describe('planDeferredObjectiveHorizon', () => {
     'keeps the heater claimed in the final second of an equally priced hour (%s allocation)',
     (allocationKind) => {
       const plan = planDeferredObjectiveHorizon({
+        powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
         aheadOfHourMilestone: false,
         commitment: { kind: 'uncommitted' },
         nowMs: NOW_MS + HOUR_MS - 1000,
@@ -94,6 +97,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('waits through the current bucket when future preferred windows cover the objective', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -119,6 +123,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // 2 kWh need across two preferred hours and a 1 kW low step, the plan must
     // schedule both hours instead of stuffing 2 kWh into one hour via 'high'.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -148,6 +153,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('requests the lowest current step that keeps the selected windows on track', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -166,6 +172,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('keeps committed hours even when a fresh optimization would prefer another bucket', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -215,6 +222,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // a single snapshot looks short) and from the filled current hour
     // self-committing for subsequent cycles.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -247,6 +255,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // the floor step (delivering what it can) rather than idling — `cannot_meet`
     // drives the device, see `admission.PLANNABLE_STATUSES`.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -280,6 +289,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // h2. Need exceeds the committed allocation, so expansion books the residual
     // into h0.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -315,6 +325,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // h1 is an uncommitted future hour. The residual beyond h0's floor capacity
     // spills into h1, never re-claiming h0 beyond its phase-1 fill.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -358,6 +369,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // sort (preferred + earliest among ties), so it gets the expansion. Hour 2
     // stays unallocated because the need is already met.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -393,6 +405,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // step capacity (1 kWh) and phase-2 spills the remaining 1 kWh into
     // h1 — h0 is never visited twice.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -432,6 +445,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // the hour set is unchanged, so the recorder's `sameHourSchedule` gate
     // suppresses revision writes for the drift entirely.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -468,6 +482,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('bounds an hour by its headroom ENERGY when nothing else is contending for it', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -497,11 +512,12 @@ describe('planDeferredObjectiveHorizon', () => {
   });
 
   it('treats missing reservedHeadroomKw as no headroom cap (back-compat)', () => {
-    // Buckets without a `reservedHeadroomKw` forecast (e.g. sustainableRateKw or
+    // Buckets without a `reservedHeadroomKw` forecast (e.g. no planning ceiling or
     // backgroundKWh unavailable) must not collapse the per-hour cap to
     // zero. The allocator falls back to step capacity ∧ daily-budget,
     // identical to pre-headroom-cap behavior.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -526,6 +542,7 @@ describe('planDeferredObjectiveHorizon', () => {
   it('subtracts higher-priority energy after prorating a partial current hour', () => {
     const halfwayMs = NOW_MS + (HOUR_MS / 2);
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: halfwayMs,
@@ -548,6 +565,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('runs the fresh optimizer for an explicitly uncommitted horizon', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -575,6 +593,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // fit the full 2 kWh. That is reachable-by-climbing, not impossible, so the
     // verdict is at_risk rather than a flat cannot_meet false negative.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -600,6 +619,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // delivers only 3 kWh, so the target is physically unreachable — climbing
     // cannot rescue it and the verdict stays cannot_meet.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -621,6 +641,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // A device with one usable step (e.g. an EV charger) has no higher step to
     // climb to, so a floor shortfall is a genuine miss, not feasible_above_floor.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -649,6 +670,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // (feasible_above_floor). Committed kWh is the floor (preserved by the
     // recorder's merge), not a per-hour ceiling on phase-1/climb fills.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -682,6 +704,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // stays cannot_meet. The single-bucket horizon isolates this from the
     // committed-plan-expansion path.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({
@@ -715,6 +738,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // The per-bucket cap of 0.5 kWh holds it to 2 kWh, so lifting the cap would
     // plan 10 kWh more: the budget is implicated without being the whole story.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -740,6 +764,7 @@ describe('planDeferredObjectiveHorizon', () => {
   it('leaves the budget unimplicated when uncapping would change nothing', () => {
     // No per-bucket cap at all: the shortfall is purely the ladder against time.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -757,6 +782,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it.each([2, 3])('keeps a reservation-only shortfall out of the budget verdict (%s kWh need)', (needKWh) => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -778,6 +804,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('records budget contribution on a single-rung charger while retaining reservation claims', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -802,6 +829,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // equally. But with the cap lifted the device physically fits the full 3 kWh,
     // so the shortfall is budget-bound: at_risk, not a physical cannot_meet.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -853,6 +881,7 @@ describe('planDeferredObjectiveHorizon', () => {
       reservedHeadroomKw: 2.5,
     });
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -876,6 +905,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // genuinely physical/time-bound, not budget-bound — so a budget cap must not
     // mask it as recoverable.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -905,6 +935,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // only the conservative buffer pads us short. Soften to at_risk/
     // estimate_uncertain rather than declaring physical cannot_meet.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -932,6 +963,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // producer's `k·SE` margin (0.5 kWh) — the mean wouldn't fit either, so
     // this is a genuine cannot_meet; the variance buffer doesn't excuse it.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -957,6 +989,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // `energyNeededKWh`) must produce the pre-Step-3 verdict. With no margin,
     // any unplanned > epsilon is `cannot_meet`.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -990,6 +1023,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // on_track. (Without promotion, this is exactly the false `cannot_meet`
     // that motivates Slice 2.)
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1011,6 +1045,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // headroom = 2.5 → fits medium step (2 kW) but not max (3 kW). Floor goes
     // to medium. Need 16 kWh in 8h → 8h × 2 kW = 16 kWh → fits.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1029,6 +1064,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('still books a tight hour for its headroom energy when the floor rung exceeds the rate', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1063,6 +1099,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // that pessimism.)
     const headrooms = [4, 4, 0.5, 4, 4, 4, 4, 4];
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1091,6 +1128,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // floor capacity against 8 kWh need → 1 kWh shortfall. Climb probe
     // (uniform max=3) gets 3 × 3 = 9 kWh, fits → at_risk/feasible_above_floor.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1115,11 +1153,110 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
   });
 
+  // No power limit enabled is not "no forecast": there is no ceiling to verify a
+  // rung against, and live control admits the top rung, so a fully reserved task
+  // commits it instead of degrading to its lowest rung.
+  describe('with no power limit enabled', () => {
+    const evSteps: DeferredObjectiveStep[] = [
+      { id: 'off', usefulPowerKw: 0, admissionPowerKw: 0 },
+      { id: '6a', usefulPowerKw: 1.4, admissionPowerKw: 1.4 },
+      { id: '16a', usefulPowerKw: 3.7, admissionPowerKw: 3.7 },
+      { id: '3p-10a', usefulPowerKw: 7.4, admissionPowerKw: 7.4 },
+      { id: '3p-16a', usefulPowerKw: 11, admissionPowerKw: 11 },
+    ];
+    const rescuePlan = (powerLimit: Parameters<typeof planDeferredObjectiveHorizon>[0]['powerLimit']) => (
+      planDeferredObjectiveHorizon({
+        powerLimit,
+        aheadOfHourMilestone: false,
+        commitment: { kind: 'uncommitted' },
+        nowMs: NOW_MS,
+        objective: objective({ energyNeededKWh: 30, deadlineAtMs: NOW_MS + (6 * HOUR_MS), fullyReserved: true }),
+        steps: evSteps,
+        // No bucket carries a reserved-headroom forecast.
+        buckets: Array.from({ length: 6 }, (_, i) => bucket(i, 'neutral')),
+      })
+    );
+
+    it('commits a fully reserved task at its top rung', () => {
+      const plan = rescuePlan({ kind: 'unlimited' });
+      expect(plan.status).toBe('on_track');
+      expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(30);
+      expect(Math.max(...plan.plannedBuckets.map((b) => b.plannedAdmissionPowerKw ?? 0))).toBe(11);
+    });
+
+    it('still holds the floor at the lowest rung when a limit exists but the forecast is missing', () => {
+      const plan = rescuePlan(CAPACITY_ONLY_HORIZON_LIMIT);
+      expect(plan.status).not.toBe('on_track');
+      expect(plan.statusDetail).toBe('feasible_above_floor');
+    });
+  });
+
+  // The grid import limit is instantaneous: in a home with nothing exporting, a
+  // rung above its target is never let run, so the plan must not book one. A PV
+  // home's export can make room for it, so its plan keeps the rung and live
+  // admission decides. Capacity alone is an hourly average and keeps its existing
+  // "rate test only against concurrent contention" rule.
+  describe('under a grid import limit', () => {
+    const gridLimit1500W = powerLimits({ enabled: false, limitKw: 10, marginKw: 0 }, 1.5);
+    const twoKwSteps: DeferredObjectiveStep[] = [
+      { id: 'off', usefulPowerKw: 0, admissionPowerKw: 0 },
+      { id: 'on', usefulPowerKw: 2, admissionPowerKw: 2 },
+    ];
+    const plan1KWh = (powerLimit: Parameters<typeof planDeferredObjectiveHorizon>[0]['powerLimit']) => (
+      planDeferredObjectiveHorizon({
+        powerLimit,
+        aheadOfHourMilestone: false,
+        commitment: { kind: 'uncommitted' },
+        nowMs: NOW_MS,
+        objective: objective({ energyNeededKWh: 1, deadlineAtMs: NOW_MS + (4 * HOUR_MS) }),
+        steps: twoKwSteps,
+        // 1.5 kW grid limit: target 1.425 kW, the whole room in every hour.
+        buckets: Array.from({ length: 4 }, (_, i) => bucket(i, 'neutral', { reservedHeadroomKw: 1.425 })),
+      })
+    );
+
+    it('books no rung above the grid import target in a home with no solar production', () => {
+      const plan = plan1KWh(resolveDeferredObjectivePowerLimit(gridLimit1500W, false));
+      expect(plan.status).toBe('cannot_meet');
+      expect(plan.statusDetail).toBe('no_bucket_capacity');
+      expect(plan.plannedUsefulEnergyKWh).toBe(0);
+    });
+
+    it('keeps the 2 kW rung in a PV home, where export can lift headroom past the target', () => {
+      // 1.5 kW limit at -1 kW net export leaves 2.425 kW of live room: the rung runs.
+      const plan = plan1KWh(resolveDeferredObjectivePowerLimit(gridLimit1500W, true));
+      expect(plan.status).toBe('on_track');
+      expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(1);
+      expect(Math.max(...plan.plannedBuckets.map((b) => b.plannedAdmissionPowerKw ?? 0))).toBe(2);
+    });
+
+    it('keeps the capacity-only allocation, which caps energy and not the rung', () => {
+      const plan = plan1KWh(CAPACITY_ONLY_HORIZON_LIMIT);
+      expect(plan.status).toBe('on_track');
+      expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(1);
+    });
+
+    it('keeps the rungs that fit under the target', () => {
+      const plan = planDeferredObjectiveHorizon({
+        powerLimit: { kind: 'limited', admissionCeilingKw: 2.5 },
+        aheadOfHourMilestone: false,
+        commitment: { kind: 'uncommitted' },
+        nowMs: NOW_MS,
+        objective: objective({ energyNeededKWh: 2, fullyReserved: true }),
+        steps: defaultSteps,
+        buckets: Array.from({ length: 4 }, (_, i) => bucket(i, 'neutral', { reservedHeadroomKw: 4 })),
+      });
+      // `max` (3 kW) is above the 2.5 kW target; the promoted rung is `medium`.
+      expect(Math.max(...plan.plannedBuckets.map((b) => b.plannedAdmissionPowerKw ?? 0))).toBe(2);
+    });
+  });
+
   it('does not promote the floor when the objective is not fully reserved (even with ample headroom)', () => {
     // Same scenario as the smoking-gun test (need 18 in 8h, headroom 4), but
     // `fullyReserved: false` — the partial-rescue / no-rescue case. Floor must
     // stay at min step; we have no physical guarantee for the higher step.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1149,6 +1286,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // smallest step that fits the planned kWh — not the promoted ceiling.
     // Otherwise the executor would over-climb and trip the hard cap.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1176,6 +1314,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // Single-step EV-style device: the promotion path short-circuits — there is
     // no higher step to promote to. Behavior is identical to pre-Slice-2.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1194,6 +1333,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('preserves deadline margin before using a preferred bucket inside the reserve window', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1221,6 +1361,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('marks the plan at risk when it must use the deadline reserve', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1261,6 +1402,7 @@ describe('planDeferredObjectiveHorizon', () => {
     };
 
     const softPlan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       ...common,
@@ -1269,6 +1411,7 @@ describe('planDeferredObjectiveHorizon', () => {
   deadlineMarginMs: 0, energyNeededKWh: 2, enforcement: 'soft' }),
     });
     const hardPlan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       ...common,
@@ -1285,6 +1428,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('uses current dearer capacity when the cheaper future hour cannot hold the whole need', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1308,6 +1452,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('scales capped capacity against the original bucket when now clips the current bucket', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS + (HOUR_MS / 2),
@@ -1337,6 +1482,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('scales split reserve segment capacity against the original bucket when now clips the bucket', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS + (HOUR_MS / 4),
@@ -1367,6 +1513,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('reports cannot_meet when all windows at the highest step still miss the target', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1388,6 +1535,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('does not request charging when the objective is already satisfied', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1405,6 +1553,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('does not report remaining useful energy for sub-epsilon satisfied objectives', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
@@ -1431,6 +1580,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('price-defers the hour when ahead of milestone and a later booked hour is >5% cheaper', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }), // deadline NOW + 4h
       steps: defaultSteps,
@@ -1449,6 +1599,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // `cannot_meet`. Coasting this hour cannot move the load into the cheaper
     // hours, which are already booked; it only widens the miss.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 20 }),
       steps: defaultSteps,
@@ -1464,6 +1615,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('keeps an ahead EV price-released when its booked hour has only a sub-Wh remainder', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS + HOUR_MS - 1000,
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
@@ -1481,6 +1633,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('keeps the hour when not ahead of the milestone', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
@@ -1497,6 +1650,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // Later hours are cheaper, but only by <5% (current 100, threshold 95;
     // later hours 96/98) — keep the safer earlier slot.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
@@ -1513,6 +1667,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // deadlineMarginMs = 1h ⇒ h3 (NOW+3h..NOW+4h) is the reserve segment. The
     // only sub-threshold hour is that reserve hour, so eligibility is false.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2, deadlineMarginMs: HOUR_MS }),
       steps: defaultSteps,
@@ -1528,6 +1683,7 @@ describe('planDeferredObjectiveHorizon', () => {
   it('keeps the hour when the current hour price is free or negative', () => {
     // current ≤ 0 ⇒ heat now while it is free; never defer away from it.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
@@ -1542,6 +1698,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('price-defers the hour when a later hour has a negative price', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
@@ -1560,6 +1717,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // releasing toward it would just push the load into the pricier committed
     // hours. No other hour beats the margin.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
@@ -1582,6 +1740,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // the preferred future hour and leaves the current hour at 0 kWh — it is
     // already idle, so there is nothing to defer.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       commitment: { kind: 'uncommitted' },
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 1 }),
@@ -1605,6 +1764,7 @@ describe('planDeferredObjectiveHorizon', () => {
   // defaultSteps = off/low(1)/medium(2)/max(3); PRICE_BY_TIER avoid=100, preferred=10.
   it('cold-start releases: expensive current hour, need fits the cheaper future at the climbed step', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5 }), // > floor capacity (4h × 1 kW), ≤ climb in 3 cheap hours (3 × 3)
@@ -1622,6 +1782,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('is not cold-start feasible when no future hour is meaningfully cheaper than now', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5 }),
@@ -1638,6 +1799,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // Only one cheaper future hour (h1) at max 3 kW = 3 kWh < 5 kWh need → the
     // expensive current hour is genuinely needed, so do not release it.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5, deadlineAtMs: NOW_MS + (2 * HOUR_MS) }),
@@ -1651,6 +1813,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('is not cold-start feasible for a single-step device (no climb capacity)', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5 }),
@@ -1664,6 +1827,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
   it('is not cold-start feasible when the current hour is free or negative', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs: NOW_MS,
       objective: objective({ kind: 'temperature', energyNeededKWh: 5 }),
@@ -1686,6 +1850,7 @@ describe('booking hours by price', () => {
     // h0 is the cheapest but has no room, so the 2 kWh go to h1 and h2. h0 is
     // cheaper than the dearest of those, so it is booked with nothing promised.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
@@ -1707,6 +1872,7 @@ describe('booking hours by price', () => {
   it('does not book a same-price hour the plan does not need', () => {
     // A flat curve would otherwise claim every hour of the horizon.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 1 }),
       steps: defaultSteps,
@@ -1721,6 +1887,7 @@ describe('booking hours by price', () => {
 
   it('books every hour, the empty ones at 0 kWh, when the task cannot finish', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 20 }),
       steps: defaultSteps,
@@ -1741,6 +1908,7 @@ describe('booking hours by price', () => {
 
   it('keeps the deadline reserve a fallback rather than booking it at 0 kWh', () => {
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 1, deadlineMarginMs: HOUR_MS }),
       steps: defaultSteps,
@@ -1758,6 +1926,7 @@ describe('booking hours by price', () => {
     // energy floor, so the committed phase does not fill it first just because it
     // is earlier; h2 is cheaper and carries the need.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 1 }),
       steps: defaultSteps,
@@ -1781,6 +1950,7 @@ describe('booking hours for a task that finishes by climbing', () => {
     // (3 kW) can, so the task finishes by climbing: `step_power`, not "needs every
     // hour". The expensive current hour stays unbooked and released.
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 5, deadlineAtMs: NOW_MS + 3 * HOUR_MS }),
       steps: defaultSteps,

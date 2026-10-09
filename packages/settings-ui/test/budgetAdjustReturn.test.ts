@@ -45,8 +45,10 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
     comparisonShowPrice: false,
     status: 'clean',
     busy: false,
-    hardCapKw: 12,
-    safetyMarginKw: 1,
+    powerLimitForm: {
+      capacityEnabled: true, gridImportEnabled: false, limitKw: 12, marginKw: 1, gridImportLimitKw: null,
+    },
+    planningCeiling: { limit: 'capacity', kw: 11 },
   },
   allocationWarning: null,
   priceLevelChip: null,
@@ -279,5 +281,120 @@ describe.each(['dirty', 'pending'] as const)('Done with unsaved changes (%s)', (
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+type PowerLimitForm = NonNullable<BudgetOverviewProps['adjust']['powerLimitForm']>;
+type PlanningCeiling = BudgetOverviewProps['adjust']['planningCeiling'];
+const capacityOnly: PowerLimitForm = {
+  capacityEnabled: true, gridImportEnabled: false, limitKw: 12, marginKw: 1, gridImportLimitKw: null,
+};
+const renderWithLimits = (powerLimitForm: PowerLimitForm | null, planningCeiling: PlanningCeiling = null) => {
+  const base = buildProps();
+  renderBudgetOverview(mount, { ...base, adjust: { ...base.adjust, powerLimitForm, planningCeiling } });
+};
+
+// The recommended maximum is sized from, and names, the planning ceiling: never a
+// hard cap that is switched off or that a lower grid import limit undercuts.
+describe('recommended daily budget hint', () => {
+  const hintText = (): string => [...mount.querySelectorAll('.field__hint-range')]
+    .map((node) => node.textContent ?? '').join(' ');
+
+  it('keeps the safe-pace recommendation with only Capacity limit on', () => {
+    renderWithLimits(capacityOnly, { limit: 'capacity', kw: 11 });
+    expect(hintText()).toContain('Recommended up to 264.0 kWh (safe pace × 24h).');
+  });
+
+  it('names the grid import limit when its target sets the ceiling', () => {
+    renderWithLimits({ ...capacityOnly, capacityEnabled: false, gridImportEnabled: true, gridImportLimitKw: 7.4 }, {
+      limit: 'grid', kw: 7.03,
+    });
+    expect(hintText()).toContain('Recommended up to 168.7 kWh, what your grid import limit allows in a day.');
+    expect(hintText()).not.toMatch(/safe pace|hard cap/i);
+  });
+
+  it('recommends no maximum without a planning ceiling', () => {
+    renderWithLimits({ ...capacityOnly, capacityEnabled: false }, null);
+    expect(hintText()).not.toContain('Recommended up to');
+  });
+});
+
+// "Current limits" shows only the limits that are switched on: never a hard cap,
+// safety margin or safe pace while Capacity limit is off.
+const limitsCard = (): HTMLElement => {
+  const title = [...mount.querySelectorAll('h3')].find((node) => node.textContent === 'Current limits');
+  const section = title?.closest('section');
+  expect(section).toBeTruthy();
+  return section as HTMLElement;
+};
+const limitsCardRows = (): string[] => [...limitsCard().querySelectorAll('.budget-setting-row')]
+  .map((row) => (row.textContent ?? '').trim());
+
+describe('current limits card', () => {
+  it('renders the capacity rows and safe pace with only Capacity limit on', () => {
+    renderWithLimits(capacityOnly);
+    expect(limitsCard().querySelector('.settings-result__value')?.textContent).toBe('11.0 kW');
+    expect(limitsCardRows()).toEqual(['Hard cap12.0 kW', 'Safety margin1.0 kW']);
+    expect(limitsCard().textContent).not.toContain('Power limits off');
+  });
+
+  it('shows only the grid import limit with Capacity limit off', () => {
+    renderWithLimits({ ...capacityOnly, capacityEnabled: false, gridImportEnabled: true, gridImportLimitKw: 7.4 });
+    expect(limitsCardRows()).toEqual(['Grid import limit7.4 kW']);
+    expect(limitsCard().textContent).not.toMatch(/hard cap|safety margin|safe pace/i);
+  });
+
+  it('adds the grid import limit row beside the capacity rows when both are on', () => {
+    renderWithLimits({ ...capacityOnly, gridImportEnabled: true, gridImportLimitKw: 17 });
+    expect(limitsCardRows()).toEqual(['Hard cap12.0 kW', 'Safety margin1.0 kW', 'Grid import limit17.0 kW']);
+  });
+
+  it('states that power limits are off when neither is on', () => {
+    renderWithLimits({ ...capacityOnly, capacityEnabled: false });
+    expect(limitsCardRows()).toEqual([]);
+    expect(limitsCard().querySelector('.pels-card-supporting')?.textContent).toBe('Power limits off');
+    expect(limitsCard().textContent).not.toMatch(/hard cap|safety margin|safe pace/i);
+  });
+
+  it('keeps the capacity rows with unknown values while the Limits form is not rendered', () => {
+    renderWithLimits(null);
+    expect(limitsCardRows()).toEqual(['Hard cap-- kW', 'Safety margin-- kW']);
+  });
+});
+
+// From the Limits form to the card: which rows show comes from the switches, so an
+// unreadable value is shown as unknown rather than hiding the limit it belongs to.
+describe('current limits card read from the Limits form', () => {
+  const LIMITS_FORM = [
+    '<md-switch id="settings-capacity-enabled"></md-switch>',
+    '<md-switch id="settings-grid-import-enabled"></md-switch>',
+    '<md-filled-text-field id="settings-grid-import-limit"></md-filled-text-field>',
+    '<md-filled-text-field id="settings-capacity-limit"></md-filled-text-field>',
+    '<md-filled-text-field id="settings-capacity-margin"></md-filled-text-field>',
+    '<md-filled-select id="settings-capacity-period"></md-filled-select>',
+  ].join('');
+  type FormField = HTMLElement & { value: string; selected: boolean };
+  const field = (id: string): FormField => document.getElementById(id) as FormField;
+
+  it('shows the grid import limit as unknown, and no capacity rows, with Capacity off and Grid on but empty', async () => {
+    const form = document.createElement('div');
+    // Static template constructed from a literal — no untrusted content.
+    form.innerHTML = LIMITS_FORM;
+    document.body.appendChild(form);
+    field('settings-capacity-enabled').selected = false;
+    field('settings-capacity-limit').value = '5';
+    field('settings-capacity-margin').value = '0.2';
+    field('settings-capacity-period').value = '60';
+    // The switch handler leaves this edit pending while the value is empty.
+    field('settings-grid-import-enabled').selected = true;
+    field('settings-grid-import-limit').value = '';
+    vi.resetModules();
+    const { readPowerLimitFormSettings, readPowerLimitFormView } = await import('../src/ui/powerLimitControls.ts');
+
+    expect(readPowerLimitFormSettings()).toBeNull();
+    renderWithLimits(readPowerLimitFormView(), null);
+
+    expect(limitsCardRows()).toEqual(['Grid import limit-- kW']);
+    expect(limitsCard().textContent).not.toMatch(/hard cap|safety margin|safe pace/i);
   });
 });

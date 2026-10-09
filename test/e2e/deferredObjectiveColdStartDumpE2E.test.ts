@@ -28,6 +28,7 @@ import type {
 } from '../../lib/objectives/deferredObjectives';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
+import { CAPACITY_ONLY_HORIZON_LIMIT } from '../helpers/powerLimitSettings';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY = Date.UTC(2026, 0, 1, 0);
@@ -156,6 +157,7 @@ const runScenario = (): { outcomes: HourOutcome[]; finalTempC: number } => {
     const energyNeededKWh = remainingC * RATE_KWH_PER_C;
 
     const plan = planDeferredObjectiveHorizon({
+      powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
       nowMs,
       objective: objective(energyNeededKWh),

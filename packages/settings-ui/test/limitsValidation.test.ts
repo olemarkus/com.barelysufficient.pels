@@ -586,3 +586,52 @@ describe('Limits & safety inline validation', () => {
   });
 
 });
+
+// The Budget page reads the Limits form through this reader: it never throws and
+// never fills in a value the form does not hold.
+describe('readPowerLimitFormSettings', () => {
+  const loadReader = async () => {
+    const dom = buildLimitsDom();
+    vi.resetModules();
+    const { readPowerLimitFormSettings, readPowerLimitFormView } = await import('../src/ui/powerLimitControls.ts');
+    const gridSwitch = document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean };
+    const gridLimit = document.querySelector('#settings-grid-import-limit') as HTMLElement & { value: string };
+    const capacitySwitch = document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean };
+    return { ...dom, readPowerLimitFormSettings, readPowerLimitFormView, gridSwitch, gridLimit, capacitySwitch };
+  };
+
+  it('reads the form as power-limit settings', async () => {
+    const form = await loadReader();
+    form.limit.value = '10';
+    form.margin.value = '0.2';
+    expect(form.readPowerLimitFormSettings()).toEqual({
+      capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60,
+    });
+    form.capacitySwitch.selected = false;
+    form.gridSwitch.selected = true;
+    form.gridLimit.value = '7.4';
+    expect(form.readPowerLimitFormSettings()).toMatchObject({ capacityEnabled: false, gridImportLimitKw: 7.4 });
+  });
+
+  it('answers null, never throws, while a value the settings carry is unreadable', async () => {
+    const form = await loadReader();
+    expect(form.readPowerLimitFormSettings()).toBeNull();
+    form.limit.value = '10';
+    form.margin.value = '0.2';
+    form.gridSwitch.selected = true;
+    form.gridLimit.value = '';
+    expect(form.readPowerLimitFormSettings()).toBeNull();
+  });
+
+  it('keeps the switch states when a value is unreadable, so a display hides no limit that is on', async () => {
+    const form = await loadReader();
+    form.limit.value = '10';
+    form.margin.value = '0.2';
+    form.capacitySwitch.selected = false;
+    form.gridSwitch.selected = true;
+    form.gridLimit.value = '';
+    expect(form.readPowerLimitFormView()).toEqual({
+      capacityEnabled: false, gridImportEnabled: true, limitKw: 10, marginKw: 0.2, gridImportLimitKw: null,
+    });
+  });
+});

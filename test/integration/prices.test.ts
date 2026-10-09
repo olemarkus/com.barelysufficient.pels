@@ -34,6 +34,7 @@ import {
 import { getHourStartInTimeZone } from '../../lib/utils/hourBuckets';
 import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
 import { DEFAULT_SURPLUS_LIFT_C } from '../../packages/shared-domain/src/settings/priceOptimization';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 // Mock the https module
 vi.mock('https', () => ({
@@ -1659,7 +1660,7 @@ describe('Price optimization', () => {
     await withMockedNow(now, async () => {
       const coordinator = createPriceCoordinatorForTest();
       coordinator.setBudgetPriceInputs({
-        expectedManagedDrawKwh: 5,
+        getPowerLimitSettings: () => capacityOnlyPowerLimits(5),
         getSurplusKwh: (startsAtMs) => (startsAtMs === surplusHourMs ? 5 : undefined),
       });
       coordinator.updateCombinedPrices();

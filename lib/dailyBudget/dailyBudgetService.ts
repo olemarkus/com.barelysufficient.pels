@@ -40,7 +40,8 @@ import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
-import { resolveUsableCapacityKw } from '../power/capacityModel';
+import { resolvePlanningPowerCeiling } from '../power/capacityModel';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 const moduleLogger = getLogger('dailyBudget/service');
 
@@ -51,7 +52,7 @@ type DailyBudgetServiceDeps = {
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getCapacitySettings: () => PowerLimitSettings;
   combinedPricesReader: CombinedPricesReader;
   dailyBudgetSettingsStore: DailyBudgetSettingsStore;
   structuredLog?: PinoLogger;
@@ -182,8 +183,9 @@ export class DailyBudgetService {
     const forced = params.forcePlanRebuild === true;
     const timeZone = this.resolveTimeZone();
     const combinedPrices = readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone);
-    const capacity = this.deps.getCapacitySettings();
-    const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
+    // `null` when no power limit is enabled: the day's hours are then capped by
+    // observed peaks alone.
+    const planningCeiling = resolvePlanningPowerCeiling(this.deps.getCapacitySettings());
     try {
       const computeStart = Date.now();
       const computeRssBefore = safeRss();
@@ -195,7 +197,7 @@ export class DailyBudgetService {
         combinedPrices,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         forcePlanRebuild: params.forcePlanRebuild,
-        capacityBudgetKWh,
+        planningCeiling,
         refreshObservedStats: params.refreshObservedStats,
         refreshConfidence: forced,
         includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
@@ -389,8 +391,7 @@ export class DailyBudgetService {
     const manager = this.createManagerClone();
     const timeZone = this.resolveTimeZone();
     const combinedPrices = readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone);
-    const capacity = this.deps.getCapacitySettings();
-    const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
+    const planningCeiling = resolvePlanningPowerCeiling(this.deps.getCapacitySettings());
     const update = manager.update({
       nowMs,
       timeZone,
@@ -400,7 +401,7 @@ export class DailyBudgetService {
       priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
       forcePlanRebuild: true,
       recomputeFrozenPlan: true,
-      capacityBudgetKWh,
+      planningCeiling,
       refreshObservedStats: false,
       refreshConfidence: true,
       includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),

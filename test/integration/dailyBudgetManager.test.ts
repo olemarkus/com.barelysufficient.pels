@@ -100,6 +100,7 @@ describe('daily budget profile blending', () => {
     });
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 30 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -131,6 +132,7 @@ describe('daily budget profile blending', () => {
     }
 
     const refreshed = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 30 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -141,6 +143,7 @@ describe('daily budget profile blending', () => {
     expect(refreshed.snapshot.state.confidence).toBeGreaterThan(0);
 
     const background = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 31 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -172,6 +175,7 @@ describe('daily budget profile blending', () => {
     }
 
     const routine = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 30 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -199,7 +203,7 @@ describe('daily budget profile blending', () => {
       for (const ts of bucketStartUtcMs) buckets[new Date(ts).toISOString()] = 1;
     }
     const powerTracker = { buckets, uncontrolledBuckets: buckets, lastTimestamp: dayStart + 60_000 };
-    const base = { timeZone: TZ, settings, powerTracker, priceOptimizationEnabled: false };
+    const base = { timeZone: TZ, settings, powerTracker, priceOptimizationEnabled: false, planningCeiling: null };
 
     manager.update({ ...base, nowMs: dayStart + 60_000, refreshObservedStats: false });
     const bootMark = manager.getAdjacentDaysInputsMark();
@@ -224,6 +228,7 @@ describe('daily budget planning', () => {
 
     try {
       manager.update({
+        planningCeiling: null,
         nowMs: dayStart + 30 * 60 * 1000,
         timeZone: TZ,
         settings,
@@ -256,6 +261,7 @@ describe('daily budget planning', () => {
       profileObservedP90UncontrolledKWh: Array.from({ length: 24 }, (_, index) => index),
     });
     manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 30 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -309,6 +315,7 @@ describe('daily budget planning', () => {
       plannedKWh: [],
     });
     const update = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -338,12 +345,44 @@ describe('daily budget planning', () => {
       settings,
       powerTracker: { buckets: { [bucketKey]: 0.5 } },
       priceOptimizationEnabled: false,
-      capacityBudgetKWh: 2,
+      planningCeiling: { limit: 'capacity', kw: 2 },
     });
     const planned = update.snapshot.buckets.plannedKWh;
     const maxPlanned = Math.max(...planned);
     expect(maxPlanned).toBeLessThanOrEqual(2 + 1e-6);
     expect(planned[update.snapshot.currentBucketIndex]).toBeGreaterThanOrEqual(0.5);
+  });
+
+  // A power-limit toggle's forced replan can read settings that have not caught
+  // up; the manager replans on whichever update first carries the new ceiling.
+  it('replans today on a routine update when the accepted planning ceiling moves', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 30 * 60 * 1000;
+    const bucketKey = new Date(dayStart).toISOString();
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights([0.5, 0.5, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+    });
+    const base = {
+      timeZone: TZ, settings, powerTracker: { buckets: { [bucketKey]: 0.5 } }, priceOptimizationEnabled: false,
+    };
+    const capped = manager.update({ ...base, nowMs: now, planningCeiling: { limit: 'capacity', kw: 2 } });
+    expect(Math.max(...capped.snapshot.buckets.plannedKWh)).toBeLessThanOrEqual(2 + 1e-6);
+    const cappedMark = manager.getAdjacentDaysInputsMark();
+
+    // Same bucket, same usage, no forced rebuild: only the ceiling moved.
+    const uncapped = manager.update({ ...base, nowMs: now + 1_000, planningCeiling: null });
+    expect(Math.max(...uncapped.snapshot.buckets.plannedKWh)).toBeGreaterThan(2 + 1e-6);
+    expect(manager.getAdjacentDaysInputsMark()).not.toBe(cappedMark);
+
+    // An unchanged ceiling is no reason to replan.
+    const steady = manager.update({ ...base, nowMs: now + 2_000, planningCeiling: null });
+    expect(steady.snapshot.buckets.plannedKWh).toEqual(uncapped.snapshot.buckets.plannedKWh);
   });
 
   it('keeps the current bucket plan stable when usage changes within the hour', () => {
@@ -361,6 +400,7 @@ describe('daily budget planning', () => {
     });
 
     const first = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -370,6 +410,7 @@ describe('daily budget planning', () => {
     const firstPlanned = first.snapshot.buckets.plannedKWh[first.snapshot.currentBucketIndex];
 
     const second = manager.update({
+      planningCeiling: null,
       nowMs: now + 2 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -407,6 +448,7 @@ describe('daily budget planning', () => {
     });
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -448,6 +490,7 @@ describe('daily budget planning', () => {
     });
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 10 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -490,6 +533,7 @@ describe('daily budget planning', () => {
     });
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 10 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -538,6 +582,7 @@ describe('daily budget planning', () => {
     manager.loadState(legacyState);
 
     const first = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 10 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -563,6 +608,7 @@ describe('daily budget planning', () => {
     });
 
     const second = reloaded.update({
+      planningCeiling: null,
       nowMs: dayStart + 70 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -596,6 +642,7 @@ describe('daily budget planning', () => {
     });
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -624,6 +671,7 @@ describe('daily budget planning', () => {
     });
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -664,6 +712,7 @@ describe('daily budget planning', () => {
       profileSampleCount: 0,
     });
     manager.update({
+      planningCeiling: null,
       nowMs: Date.UTC(2024, 0, 15, 1, 0),
       timeZone: TZ,
       settings,
@@ -699,6 +748,7 @@ describe('daily budget planning', () => {
     });
 
     manager.update({
+      planningCeiling: null,
       nowMs: Date.UTC(2024, 0, 15, 1, 0),
       timeZone: TZ,
       settings,
@@ -739,6 +789,7 @@ describe('daily budget planning', () => {
 
     manager.loadState(splitState);
     manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings: buildSettings({ dailyBudgetKWh: 8, controlledUsageWeight: 0 }),
@@ -750,6 +801,7 @@ describe('daily budget planning', () => {
     const conservativeManager = buildManager();
     conservativeManager.loadState(splitState);
     conservativeManager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings: buildSettings({ dailyBudgetKWh: 8, controlledUsageWeight: 1 }),
@@ -785,6 +837,7 @@ describe('daily budget planning', () => {
     });
 
     manager.update({
+      planningCeiling: null,
       nowMs: Date.UTC(2024, 0, 15, 1, 0),
       timeZone: TZ,
       settings,
@@ -821,6 +874,7 @@ describe('daily budget planning', () => {
     });
 
     manager.update({
+      planningCeiling: null,
       nowMs: Date.UTC(2024, 0, 15, 1, 0),
       timeZone: TZ,
       settings,
@@ -885,6 +939,7 @@ describe('daily budget price shaping', () => {
     };
 
     const { snapshot } = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -923,6 +978,7 @@ describe('daily budget price shaping', () => {
     };
 
     manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -986,6 +1042,7 @@ describe('daily budget advanced weighting integration', () => {
     manager.loadState(buildSplitState());
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -1009,6 +1066,7 @@ describe('daily budget advanced weighting integration', () => {
     manager.loadState(buildSplitState());
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -1050,6 +1108,7 @@ describe('daily budget advanced weighting integration', () => {
     const highSpreadPrices = Array.from({ length: 24 }, (_, hour) => 20 + hour * 10);
 
     const lowSpreadUpdate = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -1062,6 +1121,7 @@ describe('daily budget advanced weighting integration', () => {
     const lowSpreadDelta = lowSpreadPlanned[0] - lowSpreadPlanned[23];
 
     const highSpreadUpdate = manager.update({
+      planningCeiling: null,
       nowMs: now + 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1085,6 +1145,7 @@ describe('daily budget advanced weighting integration', () => {
     const rising = buildHourlyPrices(dayStart, Array.from({ length: 24 }, (_, hour) => 20 + hour * 10));
     const falling = buildHourlyPrices(dayStart, Array.from({ length: 24 }, (_, hour) => 250 - hour * 10));
     const updateAt = (minute: number, prices: ReturnType<typeof buildHourlyPrices>) => manager.update({
+      planningCeiling: null,
       nowMs: dayStart + minute * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1131,6 +1192,7 @@ describe('daily budget migration and defaults', () => {
     });
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -1220,6 +1282,7 @@ describe('daily budget stale-plan and split persistence', () => {
     });
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -1258,6 +1321,7 @@ describe('daily budget stale-plan and split persistence', () => {
     });
 
     const first = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -1268,6 +1332,7 @@ describe('daily budget stale-plan and split persistence', () => {
     const firstUncontrolled = first.snapshot.buckets.plannedUncontrolledKWh ?? [];
 
     const second = manager.update({
+      planningCeiling: null,
       nowMs: now + 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1287,6 +1352,7 @@ describe('daily budget stale-plan and split persistence', () => {
     manager.loadState(scenario.initialState);
 
     const first = manager.update({
+      planningCeiling: null,
       nowMs: scenario.firstNow,
       timeZone: TZ,
       settings: scenario.settings,
@@ -1298,6 +1364,7 @@ describe('daily budget stale-plan and split persistence', () => {
     const firstUncontrolled = first.snapshot.buckets.plannedUncontrolledKWh ?? [];
 
     const second = manager.update({
+      planningCeiling: null,
       nowMs: scenario.secondNow,
       timeZone: TZ,
       settings: scenario.settings,
@@ -1319,6 +1386,7 @@ describe('daily budget stale-plan and split persistence', () => {
     firstManager.loadState(scenario.initialState);
 
     const first = firstManager.update({
+      planningCeiling: null,
       nowMs: scenario.firstNow,
       timeZone: TZ,
       settings: scenario.settings,
@@ -1336,6 +1404,7 @@ describe('daily budget stale-plan and split persistence', () => {
     const reloadedManager = buildManager();
     reloadedManager.loadState(exported);
     const second = reloadedManager.update({
+      planningCeiling: null,
       nowMs: scenario.secondNow,
       timeZone: TZ,
       settings: scenario.settings,
@@ -1358,6 +1427,7 @@ describe('daily budget preview', () => {
     const settings = buildSettings({ dailyBudgetKWh: 24 });
     const dayStart = getDateKeyStartMs('2024-01-15', TZ);
     const preview = manager.buildPreview({
+      planningCeiling: null,
       dayStartUtcMs: dayStart,
       timeZone: TZ,
       settings,
@@ -1396,6 +1466,7 @@ describe('daily budget preview', () => {
     });
 
     const preview = manager.buildPreview({
+      planningCeiling: null,
       dayStartUtcMs: dayStart,
       timeZone: TZ,
       settings,
@@ -1415,6 +1486,7 @@ describe('daily budget exceeded state', () => {
     const dayStart = getDateKeyStartMs('2024-01-15', TZ);
     const bucketKey = new Date(dayStart).toISOString();
     const update = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 10 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1440,6 +1512,7 @@ describe('daily budget exceeded state', () => {
     });
 
     manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 5 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1448,6 +1521,7 @@ describe('daily budget exceeded state', () => {
     });
 
     const overUpdate = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 30 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1457,6 +1531,7 @@ describe('daily budget exceeded state', () => {
     expect(overUpdate.snapshot.state.frozen).toBe(true);
 
     const underUpdate = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 60 * 60 * 1000 + 12 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1488,6 +1563,7 @@ describe('daily budget exceeded state', () => {
 
     // 00:05 — plan builds: h0=4, h1=4, h2=2; lock = hour 0.
     manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 5 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1497,6 +1573,7 @@ describe('daily budget exceeded state', () => {
 
     // 00:30 — usage runs ahead of the allowance: freeze (no rebuilds from here).
     const frozenUpdate = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 30 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1510,6 +1587,7 @@ describe('daily budget exceeded state', () => {
     // 01:30 — hour transition happened WHILE frozen (lock stale at hour 0);
     // the allowance ramp has caught up, so this update unfreezes.
     const unfreezeUpdate = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 90 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1521,6 +1599,7 @@ describe('daily budget exceeded state', () => {
     // 01:36 — first rebuild after the unfreeze: the hour in progress keeps its
     // planned allocation; only future hours re-spread the remaining budget.
     const rebuildUpdate = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 96 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1555,6 +1634,7 @@ describe('daily budget exceeded state', () => {
 
     // 00:55 — plan builds (h0=4, h1=4, h2=2); the rebuild clock is FRESH.
     manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 55 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1564,6 +1644,7 @@ describe('daily budget exceeded state', () => {
 
     // 01:05 — overshoot: freeze before any hour-1 rebuild ran.
     const frozenUpdate = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 65 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1574,6 +1655,7 @@ describe('daily budget exceeded state', () => {
 
     // 01:40 — the allowance ramp caught up: unfreeze (no rebuild this update).
     const unfreezeUpdate = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 100 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1586,6 +1668,7 @@ describe('daily budget exceeded state', () => {
     // and usage triggers are both silent, so only the unfreeze's rebuild-clock
     // reset makes this update rebuild. Current hour locked, future re-spread.
     const rebuildUpdate = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 104 * 60 * 1000,
       timeZone: TZ,
       settings,
@@ -1625,6 +1708,7 @@ describe('daily budget exceeded state', () => {
     });
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: now,
       timeZone: TZ,
       settings,
@@ -1674,6 +1758,7 @@ describe('daily budget profile learning math', () => {
 
     // Simulate rollover with usage spike at hour 18, small usage at hour 3
     manager.update({
+      planningCeiling: null,
       nowMs: Date.UTC(2024, 0, 15, 1, 0),
       timeZone: TZ,
       settings,
@@ -1708,6 +1793,7 @@ describe('daily budget profile learning math', () => {
     const bucket20 = new Date(previousStart + 20 * 60 * 60 * 1000).toISOString();
 
     manager.update({
+      planningCeiling: null,
       nowMs: Date.UTC(2024, 0, 15, 1, 0),
       timeZone: TZ,
       settings,
@@ -1745,6 +1831,7 @@ describe('daily budget profile learning math', () => {
     const bucket18 = new Date(previousStart + 18 * 60 * 60 * 1000).toISOString();
 
     manager.update({
+      planningCeiling: null,
       nowMs: Date.UTC(2024, 0, 15, 1, 0),
       timeZone: TZ,
       settings,
@@ -1791,6 +1878,7 @@ describe('daily budget plan allocation math', () => {
     const bucketKey = new Date(dayStart).toISOString();
 
     const update = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 5 * 60 * 1000, // 5 minutes into first bucket
       timeZone: TZ,
       settings,
@@ -1824,7 +1912,7 @@ describe('daily budget plan allocation math', () => {
       settings,
       powerTracker: { buckets: { [bucketKey]: 0 } },
       priceOptimizationEnabled: false,
-      capacityBudgetKWh: 2,
+      planningCeiling: { limit: 'capacity', kw: 2 },
     });
 
     const planned = update.snapshot.buckets.plannedKWh;
@@ -1863,6 +1951,7 @@ describe('daily budget plan allocation math', () => {
 
     const bucketKey = new Date(dayStart).toISOString();
     const update = manager.update({
+      planningCeiling: null,
       nowMs: dayStart + 5 * 60 * 1000,
       timeZone: TZ,
       settings,

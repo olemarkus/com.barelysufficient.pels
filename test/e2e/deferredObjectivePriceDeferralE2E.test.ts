@@ -36,6 +36,7 @@ import type {
 import type { DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
+import { CAPACITY_ONLY_HORIZON_LIMIT } from '../helpers/powerLimitSettings';
 
 const HOUR_MS = 60 * 60 * 1000;
 // Midnight UTC so absolute-ms hour edges line up with `hourIndex * HOUR_MS`.
@@ -178,6 +179,7 @@ const runCycle = (params: {
   });
 
   const plan = planDeferredObjectiveHorizon({
+    powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
     nowMs,
     objective: objective(params.deadlineHourIndex, params.energyNeededKWh),
     steps: [STEP],

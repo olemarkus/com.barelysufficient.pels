@@ -1,3 +1,4 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
@@ -24,7 +25,7 @@ type BuildDailyBudgetPreviewParams = {
   combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
   priceShapingEnabled: boolean;
-  capacityBudgetKWh?: number;
+  planningCeiling: PowerLimitCeiling | null;
   enabled: boolean;
   profileWeights: number[];
   profileSampleCount: number;
@@ -76,7 +77,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     combinedPrices,
     priceOptimizationEnabled,
     priceShapingEnabled,
-    capacityBudgetKWh,
+    planningCeiling,
     enabled,
     profileWeights,
     profileSampleCount,
@@ -133,7 +134,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
       priceOptimizationEnabled,
       priceShapingEnabled,
       priceShapingFlexShare: settings.priceShapingFlexShare,
-      capacityBudgetKWh,
+      planningCeiling,
       controlledUsageWeight: settings.controlledUsageWeight,
       observedStats,
     });
@@ -177,6 +178,6 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     priceData,
     budget,
     frozen: false,
-    usableCapacityKw: capacityBudgetKWh,
+    planningCeiling,
   });
 };

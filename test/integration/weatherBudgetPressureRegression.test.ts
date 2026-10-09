@@ -8,6 +8,7 @@ import { normalizeWeatherHistoryState } from '../../lib/weather/weatherHistory';
 import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
 import { performBudgetAutoApply } from '../../lib/weather/weatherAutoApply';
 import { foldBudgetPressureDay } from '../../packages/shared-domain/src/energySignature/budgetPressure';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 /**
  * The real failure, replayed.
@@ -63,7 +64,7 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
     const logger = getLogger('weather/upgrade-test');
     const deps = {
       getNowMs: () => NOW_MS, getTimeZone: () => 'Europe/Oslo',
-      getCapacityLimitKw: () => 10, logger,
+      getPowerLimitSettings: () => capacityOnlyPowerLimits(10), logger,
     };
     const original = computeEnergySignatureUpdate({ records }, deps);
     const suggestion = original.latestSuggestion;
@@ -79,7 +80,8 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
     const applySuggestedDailyBudget = vi.fn(() => true);
     const applyDeps = {
       getSettings: () => ({ enabled: true, autoApplyDailyBudget: true }),
-      getNowMs: deps.getNowMs, applySuggestedDailyBudget, logger,
+      getNowMs: deps.getNowMs, getTimeZone: deps.getTimeZone,
+      getPowerLimitSettings: deps.getPowerLimitSettings, applySuggestedDailyBudget, logger,
     };
     performBudgetAutoApply(migrated, applyDeps);
     expect(applySuggestedDailyBudget).not.toHaveBeenCalled();

@@ -33,6 +33,7 @@ import { buildPlanDevice, fixtureControlPosture, withFixtureResidualKw } from '.
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { createMemoryEnergyDeliveryStore, inertPlanHistoryDeps, noDeviceExclusion, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
+import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 const HOUR_MS = 3_600_000;
 const MIN_MS = 60_000;
@@ -179,13 +180,14 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
       },
     });
     lifecycle = new DeferredObjectiveLifecycleEmitter({
+      hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getDeferredObjectiveSettings: () => settings,
       getTimeZone: () => 'UTC', getDevices: () => devices,
       getPowerTracker: () => powerTracker, getDailyBudgetSnapshot: () => null,
       buildPriceHorizon: priceHorizon, getPriceOptimizationEnabled: () => true,
       getDeferredObjectiveActivePlans: () => active.getActivePlansSnapshot(),
-      getCapacitySettings: () => ({ limitKw: 2, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => capacityOnlyPowerLimits(2),
       getPrioritiesForDevices: priorities,
       resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
       energyDelivery: energy, isReservationSuppressed: history.isReservationSuppressed,
@@ -207,9 +209,10 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
     return reported;
   };
   const build = (nowMs: number) => buildFixtureDiagnostics({
+    hasSolarProduction: false,
     nowMs, timeZone: 'UTC', devices, settings, powerTracker,
     dailyBudgetSnapshot: null, buildPriceHorizon: priceHorizon,
-    priceOptimizationEnabled: true, sustainableRateKw: 2,
+    priceOptimizationEnabled: true, powerLimits: capacityOnlyPowerLimits(2),
     activePlans: active.getActivePlansSnapshot(), getPrioritiesForDevices: priorities,
     resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
     getDeliveredEnergyKWh: energy.getDeliveredKWh, isReservationSuppressed: history.isReservationSuppressed,

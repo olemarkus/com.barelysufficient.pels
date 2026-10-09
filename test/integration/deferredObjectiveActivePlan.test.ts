@@ -29,6 +29,8 @@ import { buildReservationSegmentsFromHorizonPlan } from '../../lib/objectives/de
 import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import { partialDouble } from '../helpers/partialDouble';
+import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 // A device's committed plan as the recorder's own readers see it: the snapshot
 // the settings UI, the Flow tokens, and persistence are served from.
@@ -476,7 +478,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         },
         device: undefined,
         activePlans,
-        sustainableRateKw: 10,
+        powerLimits: capacityOnlyPowerLimits(10),
         nowMs: 0,
       });
       expect(reservations[0]).toMatchObject({ plannedKWh: bookedKWh, admissionPowerKw: 1.25 });
@@ -571,7 +573,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       objective,
       device: undefined,
       activePlans: null,
-      sustainableRateKw: 10,
+      powerLimits: capacityOnlyPowerLimits(10),
       nowMs: 0,
     });
     expect(freshReservations.map((reservation) => reservation.admissionPowerKw)).toEqual([1, 2]);
@@ -580,7 +582,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       objective,
       device: undefined,
       activePlans: normalized,
-      sustainableRateKw: 10,
+      powerLimits: capacityOnlyPowerLimits(10),
       nowMs: 0,
     });
     expect(reservations.flatMap((reservation) => reservation.energySegments)).toEqual([
@@ -604,7 +606,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       planning: { kind: 'allocated' as const, plan: makeHorizon([makeBucket(2 * HOUR_MS, 1)]) },
       permissions: { budgetExempt: true, limitLowerPriority: false, pauseLowerPriority: false },
     };
-    const input = { evaluation, objective, device: undefined, activePlans: null, sustainableRateKw: 10, nowMs: 0 };
+    const input = { evaluation, objective, device: undefined, activePlans: null, powerLimits: capacityOnlyPowerLimits(10), nowMs: 0 };
     expect(buildPriorityReservations(input)).toMatchObject([{ plannedKWh: 1, exemptFromBudget: true }]);
     for (const kind of ['target_reached', 'accepted_near_target'] as const) {
       expect(buildPriorityReservations({
@@ -678,10 +680,52 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       objective,
       device: undefined,
       activePlans: normalized,
-      sustainableRateKw: 10,
+      powerLimits: capacityOnlyPowerLimits(10),
       nowMs: 0,
     });
     expect(restartReservations).toMatchObject([{ admissionPowerKw: 2 }]);
+  });
+
+  it('reserves a legacy hour with no rung at the planning ceiling, or at its own rate with no ceiling', () => {
+    const persist = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(persist.deps);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      displayConfidence: 'high',
+      kwhPerUnitAcceptedSamples: 4,
+      kwhPerUnitLastAcceptedAtMs: 0,
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5, { plannedAdmissionPowerKw: 1.8 })]),
+    })], 0);
+    recorder.flushIfDirty();
+    const normalized = normalizeDeferredObjectiveActivePlans(persist.saved());
+    const plan = normalized.plansByDeviceId.dev!;
+    // A revision written before admission power and exact segments were persisted,
+    // for a device no longer in the roster: there is no rung to read.
+    const legacy = {
+      ...normalized,
+      plansByDeviceId: { dev: { ...plan, latest: {
+        ...plan.latest!,
+        reservationSegments: undefined,
+        hours: plan.latest!.hours.map(({ plannedAdmissionPowerKw: _power, ...hour }) => hour),
+      } } },
+    };
+    const reserve = (limits: PowerLimitSettings) => buildPriorityReservations({
+      evaluation: inactiveTaskEvaluation('dev', 6 * HOUR_MS, 65),
+      objective: {
+        enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 65, deadlineAtMs: 6 * HOUR_MS,
+      },
+      device: undefined,
+      activePlans: legacy,
+      powerLimits: limits,
+      nowMs: 0,
+    });
+
+    // Any enabled limit (capacity-only included): the whole planning ceiling, as before.
+    expect(reserve(capacityOnlyPowerLimits(10, 0.2))).toMatchObject([{ plannedKWh: 1.5, admissionPowerKw: 9.8 }]);
+    // No power limit: no ceiling to take, so the booking's own rate, 1.5 kWh over its hour.
+    expect(reserve(powerLimits({ enabled: false, limitKw: 10, marginKw: 0.2 }, null)))
+      .toMatchObject([{ plannedKWh: 1.5, admissionPowerKw: 1.5 }]);
   });
 
   it('gives a legacy full-hour floor a full-hour reservation shape on a late settle', () => {

@@ -1,3 +1,4 @@
+import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils';
 import { clamp } from '../../packages/shared-domain/src/utils/math';
 import {
@@ -41,7 +42,7 @@ export function resolveRemainingCaps(params: {
   controlledUsageWeight: number;
   observedStats: ObservedHourlyStats;
   observedPeakMarginRatio?: number;
-  capacityBudgetKWh?: number;
+  planningCeiling: PowerLimitCeiling | null;
   usedInCurrent: number;
   remainingStartIndex: number;
   currentBucketIndex: number;
@@ -51,7 +52,7 @@ export function resolveRemainingCaps(params: {
     timeZone,
     observedStats,
     observedPeakMarginRatio,
-    capacityBudgetKWh,
+    planningCeiling,
     usedInCurrent,
     remainingStartIndex,
     currentBucketIndex,
@@ -59,9 +60,11 @@ export function resolveRemainingCaps(params: {
   const marginRatio = Number.isFinite(observedPeakMarginRatio)
     ? Math.max(0, observedPeakMarginRatio ?? 0)
     : OBSERVED_HOURLY_PEAK_MARGIN_RATIO;
-  const capacityCap = Number.isFinite(capacityBudgetKWh)
-    ? Math.max(0, capacityBudgetKWh ?? 0)
-    : Number.POSITIVE_INFINITY;
+  // Each bucket is one hour, so the ceiling's rate is also the hour's kWh. No
+  // ceiling (no power limit enabled) leaves the observed-peak cap alone.
+  const ceilingCap = planningCeiling === null
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, planningCeiling.kw);
 
   return bucketStartUtcMs
     .slice(remainingStartIndex)
@@ -74,7 +77,7 @@ export function resolveRemainingCaps(params: {
         uncontrolledCap,
         controlledCap,
       });
-      const effectiveTotalCap = Math.min(capacityCap, observedTotalCap);
+      const effectiveTotalCap = Math.min(ceilingCap, observedTotalCap);
       if (bucketIndex === currentBucketIndex) {
         return Math.max(0, effectiveTotalCap - usedInCurrent);
       }
