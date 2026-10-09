@@ -1,9 +1,11 @@
-import {
-  __resetRssSupportProbeForTests,
-  drainOpRssWindow,
-  recordOpRssDelta,
-  safeRss,
-} from '../../lib/utils/opRssTracker';
+type OpRssTrackerModule = typeof import('../../lib/utils/opRssTracker.ts');
+
+// `safeRss` caches an unsupported probe for the module's lifetime, so each test
+// imports a fresh copy to exercise both the success and the failure branches.
+const importFreshTracker = async (): Promise<OpRssTrackerModule> => {
+  vi.resetModules();
+  return import('../../lib/utils/opRssTracker.ts');
+};
 
 const enoent = (): never => {
   const err: NodeJS.ErrnoException = new Error(
@@ -25,14 +27,14 @@ const memoryUsageWith = (rss: () => number): typeof process.memoryUsage => Objec
 describe('opRssTracker.safeRss', () => {
   const originalMemoryUsage = process.memoryUsage;
 
-  beforeEach(() => {
-    __resetRssSupportProbeForTests();
-    drainOpRssWindow();
+  let safeRss: OpRssTrackerModule['safeRss'];
+
+  beforeEach(async () => {
+    ({ safeRss } = await importFreshTracker());
   });
 
   afterEach(() => {
     process.memoryUsage = originalMemoryUsage;
-    __resetRssSupportProbeForTests();
   });
 
   it('returns null when process.memoryUsage throws ENOENT (Homey libuv quirk)', () => {
@@ -58,14 +60,16 @@ describe('opRssTracker.safeRss', () => {
 describe('opRssTracker delta recording under failure', () => {
   const originalMemoryUsage = process.memoryUsage;
 
-  beforeEach(() => {
-    __resetRssSupportProbeForTests();
-    drainOpRssWindow();
+  let safeRss: OpRssTrackerModule['safeRss'];
+  let recordOpRssDelta: OpRssTrackerModule['recordOpRssDelta'];
+  let drainOpRssWindow: OpRssTrackerModule['drainOpRssWindow'];
+
+  beforeEach(async () => {
+    ({ safeRss, recordOpRssDelta, drainOpRssWindow } = await importFreshTracker());
   });
 
   afterEach(() => {
     process.memoryUsage = originalMemoryUsage;
-    __resetRssSupportProbeForTests();
   });
 
   it('recordOpRssDelta is a no-op when either sample is null', () => {

@@ -12,7 +12,6 @@ import {
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
 } from '../../lib/device/nativeSteppedLoadWiring';
-import { __resetNativeEvWiringLogStateForTests } from '../../lib/device/managerNativeEv';
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../../lib/executor/steppedLoadExecutor';
 import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClaim';
@@ -184,10 +183,6 @@ beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
 
 describe('native stepped-load wiring', () => {
-  beforeEach(() => {
-    __resetNativeEvWiringLogStateForTests();
-  });
-
   it('maps Høiax max_power values to the configured stepped-load profile', () => {
     expect(resolveNativeSteppedLoadReportedStepId({
       profile: steppedProfile,

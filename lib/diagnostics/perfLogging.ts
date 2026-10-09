@@ -27,14 +27,6 @@ export const resolveFdCount = (): number | null => {
   }
 };
 
-/**
- * Test-only hook. Resets the probe cache so a test can exercise both the
- * transient-error retry path and the unsupported-platform short-circuit.
- */
-export const __resetFdCountProbeForTests = (): void => {
-  fdCountSupported = undefined;
-};
-
 type PerfDurationEntry = {
   totalMs: number;
   maxMs: number;

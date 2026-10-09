@@ -232,8 +232,7 @@ const fetchPlanHistoryOrNull = async (): Promise<
 
 // In-memory mirror of the persisted filter. Persistent state lives in
 // localStorage; this cache keeps the chip-click round-trip fast (no read on
-// every render) and lets the test suite reset state per-case without driving
-// the storage surface directly.
+// every render). It is read from storage once per page load.
 let activeDeviceFilter: string | null = null;
 let activeDeviceFilterInitialized = false;
 
@@ -397,18 +396,3 @@ subscribeToHomeScope(() => {
     void logSettingsError('Failed to refresh deadlines list', error, 'homeScope');
   });
 });
-
-export const testExports = {
-  resolveDeadlinesListCards,
-  resolveDeadlinesHistoryEntries,
-  // Past-tasks device-filter persistence — surfaced for tests so they can
-  // exercise the round-trip without coupling to the localStorage key name.
-  HISTORY_DEVICE_FILTER_STORAGE_KEY,
-  // In-memory cache reset; lets each test land on a deterministic "no filter
-  // active" baseline before the renderer reads the persisted value.
-  resetDeviceFilterCacheForTests: (): void => {
-    activeDeviceFilter = null;
-    activeDeviceFilterInitialized = false;
-  },
-  renderHistorySurface,
-};

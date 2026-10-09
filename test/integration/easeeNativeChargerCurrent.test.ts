@@ -5,7 +5,6 @@ import {
   resolveNativeSteppedLoadCommand,
   resolveNativeSteppedLoadReportedStepId,
 } from '../../lib/device/nativeSteppedLoadWiring';
-import { __resetNativeEvWiringLogStateForTests } from '../../lib/device/managerNativeEv';
 import {
   buildEvTargetPowerCandidateProfile,
   buildTargetPowerReachabilityState,
@@ -115,10 +114,7 @@ const restoreMockRestClient = (): void => {
 };
 
 let logCapture: LoggerCapture;
-beforeEach(() => {
-  logCapture = captureLogger();
-  __resetNativeEvWiringLogStateForTests();
-});
+beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
 
 describe('Easee native charger current', () => {

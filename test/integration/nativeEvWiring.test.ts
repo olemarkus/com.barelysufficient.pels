@@ -2,7 +2,7 @@ import Homey from 'homey';
 import {
   createTestDeviceTransport,
 } from '../helpers/deviceTransportHarness';
-import { setRestClient, resetRestClient } from '../../lib/device/transport/managerHomeyApi';
+import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import {
   applyNativeEvWiringOverlay,
   buildNativeEvObservationCapabilityObj,
@@ -53,7 +53,6 @@ const buildZaptecDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDevic
 
 describe('native EV wiring shim', () => {
   afterEach(() => {
-    resetRestClient();
     vi.restoreAllMocks();
   });
 

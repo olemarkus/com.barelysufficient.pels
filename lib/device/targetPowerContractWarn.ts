@@ -7,10 +7,6 @@ import { assessTargetPowerLadderOptions } from '../../packages/shared-domain/src
 const targetPowerContractLogState = new Map<string, { signature: string; emittedAt: number }>();
 const TARGET_POWER_CONTRACT_LOG_REPEAT_AFTER_MS = 60 * 60 * 1000;
 
-export function resetTargetPowerContractLogStateForTests(): void {
-  targetPowerContractLogState.clear();
-}
-
 /**
  * Emits a deduplicated structured warning when a device exposes target_power
  * capability options that violate Homey's contract (e.g., a range that

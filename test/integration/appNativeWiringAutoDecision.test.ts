@@ -1,7 +1,7 @@
 import type MyApp from '../../app.ts';
 import { partialDouble } from '../helpers/partialDouble';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { setRestClient, resetRestClient } from '../../lib/device/transport/managerHomeyApi';
+import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 // Drives PelsApp.applyNativeWiringAutoDecisions end-to-end: real flow read
@@ -16,7 +16,6 @@ const hoiaxCandidate = (id: string): TargetDeviceSnapshot => ({
 
 describe('applyNativeWiringAutoDecisions', () => {
   afterEach(async () => {
-    resetRestClient();
     await cleanupApps();
     vi.restoreAllMocks();
   });

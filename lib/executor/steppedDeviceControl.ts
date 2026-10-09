@@ -90,8 +90,6 @@ export class SteppedDeviceControl {
     return changed;
   }
 
-  getRuntimeStateForTests() { return this.store.getStateForTests(); }
-
   private ignoreReport(
     deviceId: string, stepId: string, admission: Exclude<FlowSteppedLoadAdmission, { kind: 'accepted' }>,
   ): ReportSteppedLoadActualStepResult {

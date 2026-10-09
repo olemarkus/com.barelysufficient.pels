@@ -742,11 +742,6 @@ export class DeferredObjectiveActivePlanRecorder {
     };
   }
 
-  // Test seam: expose internals for assertions without going through save().
-  getPlanForTests(deviceId: string): DeferredObjectiveActivePlanV1 | undefined {
-    return this.plans[deviceId];
-  }
-
   private emit(payload: Record<string, unknown>): void {
     if (this.deps.debugStructured) {
       this.deps.debugStructured(payload);

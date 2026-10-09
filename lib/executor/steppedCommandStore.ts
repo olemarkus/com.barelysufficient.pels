@@ -199,15 +199,6 @@ export class SteppedCommandStore {
   deleteDesired(deviceId: string): void {
     this.state.steppedLoadDesiredByDeviceId.delete(deviceId);
   }
-
-  /**
-   * Test-only view of the backing bag, mirroring the accessor this state had
-   * when the wiring layer held it. Production consumers go through the methods
-   * above — there is deliberately no accessor that hands out the raw maps.
-   */
-  getStateForTests(): DeviceControlRuntimeState {
-    return this.state;
-  }
 }
 
 export const createSteppedCommandStore = (

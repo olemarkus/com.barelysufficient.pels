@@ -6,12 +6,15 @@ vi.mock('node:fs', () => ({
   },
 }));
 
-import {
-  resolveSmapsSummary,
-  resolveSmapsDetail,
-  _resetSmapsCacheForTests,
-  __resetSmapsDetailCacheForTests,
-} from '../../lib/diagnostics/smapsRollup.ts';
+type SmapsRollupModule = typeof import('../../lib/diagnostics/smapsRollup.ts');
+
+// The probes, the first-read cache, and the detail throttle all live for the
+// module's lifetime, so each test imports a fresh copy. The hoisted `node:fs`
+// mock above survives `vi.resetModules()`, so the fresh copy reads through it.
+const importFreshSmapsRollup = async (): Promise<SmapsRollupModule> => {
+  vi.resetModules();
+  return import('../../lib/diagnostics/smapsRollup.ts');
+};
 
 const sampleSmaps = [
   // anon mapping (private, no path)
@@ -43,9 +46,11 @@ const respondWith = (perPath: Record<string, string | (() => string)>): void => 
 };
 
 describe('smaps_rollup detection', () => {
-  beforeEach(() => {
-    _resetSmapsCacheForTests();
+  let resolveSmapsSummary: SmapsRollupModule['resolveSmapsSummary'];
+
+  beforeEach(async () => {
     readFileSyncMock.mockReset();
+    ({ resolveSmapsSummary } = await importFreshSmapsRollup());
   });
 
   it('caches unsupported detection and does not retry failed reads', () => {
@@ -117,9 +122,11 @@ describe('smaps_rollup detection', () => {
 });
 
 describe('resolveSmapsDetail', () => {
-  beforeEach(() => {
-    __resetSmapsDetailCacheForTests();
+  let resolveSmapsDetail: SmapsRollupModule['resolveSmapsDetail'];
+
+  beforeEach(async () => {
     readFileSyncMock.mockReset();
+    ({ resolveSmapsDetail } = await importFreshSmapsRollup());
   });
 
   it('classifies mappings into anon/heap/stack/file and sorts top anon descending', () => {

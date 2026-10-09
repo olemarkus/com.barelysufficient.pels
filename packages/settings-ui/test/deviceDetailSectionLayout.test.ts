@@ -59,7 +59,6 @@ const loadLayout = async () => {
   state.deviceTargetPowerConfigs = {};
   state.deviceControlProfiles = {};
   const module = await import('../src/ui/deviceDetail/sectionLayout.ts');
-  module.resetDeviceDetailSectionLayoutForTest();
   return { module, state };
 };
 
