@@ -15,15 +15,10 @@
  * asserts: nothing at all on the event, convergence within one Homey Energy poll
  * (10 s) plus the rebuild floor.
  *
- * Integration tier (not e2e) for the same reason `steppedDriftDownReplanRealtime`
- * and `externalOffHoldRealtime` are: realtime observations cannot enter through
- * the e2e SDK boundary, because the live feed is stubbed off in `test/setup.ts`.
- * `injectDeviceUpdateForTest` is the transport's documented inbound seam and the
- * closest available equivalent — but it IS an internal call, so this is not an
- * SDK-boundary test and must not claim to be one.
- *
- * Nothing else is mocked: the home total arrives through the real Homey API seam,
- * and the only assertion is the capability command PELS writes back.
+ * SDK-boundary e2e: the device's `device.update` arrives on the live feed's
+ * socket (`test/helpers/liveFeedSocketHarness.ts`), the home total through the
+ * real Homey API seam, and the only assertion is the capability command PELS
+ * writes back.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -37,6 +32,7 @@ import {
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
+import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 
 const HEATER_ID = 'heater-1';
 const HEATER_ONOFF_PATH = `manager/devices/device/${HEATER_ID}/capability/onoff`;
@@ -52,9 +48,6 @@ const ONE_READING_MS = 30_000;
 
 type AppLike = {
   onInit: () => Promise<void>;
-  deviceManager?: {
-    injectDeviceUpdateForTest: (payload: unknown) => void;
-  };
 };
 
 function reportHomePower(getTotalW: () => number): void {
@@ -72,10 +65,10 @@ function reportHomePower(getTotalW: () => number): void {
  * of an outside actor (a wall switch, a vendor app, a schedule) putting a shed
  * load back.
  */
-const announceTurnedItselfOn = (app: AppLike, measuredW: number): void => {
+const announceTurnedItselfOn = (measuredW: number): void => {
   // Observed now: after PELS's own off write.
   const lastUpdated = new Date().toISOString();
-  app.deviceManager?.injectDeviceUpdateForTest({
+  emitDeviceUpdate({
     id: HEATER_ID,
     name: 'Heater',
     class: 'heater',
@@ -145,6 +138,7 @@ describe('a device that turns itself back on', () => {
     reportHomePower(() => totalW);
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    connectLiveFeed();
     const app = createApp() as unknown as AppLike;
     await app.onInit();
     await vi.advanceTimersByTimeAsync(ONE_READING_MS);
@@ -156,7 +150,7 @@ describe('a device that turns itself back on', () => {
     const offWritesAfterShed = offWrites();
 
     // The heater comes back on by itself, and the house is over the cap again.
-    announceTurnedItselfOn(app, 2000);
+    announceTurnedItselfOn(2000);
     totalW = 4000;
     // Deliberately longer than the observation lane's old 250 ms debounce and
     // shorter than the 10 s poll: this window is where the removed trigger used

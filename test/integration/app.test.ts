@@ -1,4 +1,3 @@
-import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { Logger } from '../../lib/logging/logger';
@@ -14,31 +13,10 @@ import {
   MockDriver,
 } from '../mocks/homey';
 import { sampleThrottle } from '../helpers/powerRebuildScheduler';
-import type { LiveFeedHealth } from '../../lib/device/liveFeed';
+import { connectLiveFeed, emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import type { StateOfChargeObservedProbe } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 
-// Prevent real socket.io connections in app tests.
-vi.mock('../../lib/device/liveFeed', () => {
-  const mockHealth: LiveFeedHealth = {
-    subscriptionState: 'subscribed',
-    lastLiveEventMs: null,
-    liveEventCount: 0,
-    ignoredLiveEventCount: 0,
-    reconnectCount: 0,
-    lastReconnectMs: null,
-    lastSuccessfulSubscriptionMs: null,
-  };
-  return {
-    createDeviceLiveFeed: vi.fn(() => ({
-      start: vi.fn().mockResolvedValue(undefined),
-      stop: vi.fn().mockResolvedValue(undefined),
-      isHealthy: vi.fn().mockReturnValue(true),
-      getHealth: vi.fn().mockReturnValue(mockHealth),
-      updateTrackedDevices: vi.fn(),
-    })),
-  };
-});
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { deviceTransportDouble } from '../utils/deviceObservationMock';
 import { captureLogger } from '../utils/loggerCapture';
@@ -1425,13 +1403,14 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
 
+    connectLiveFeed();
     const app = createApp();
     await initApp(app);
     clearRecentLocalCapabilityWrites(app);
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
 
     const lastUpdated = new Date().toISOString();
-    app.deviceManager.injectDeviceUpdateForTest({
+    emitDeviceUpdate({
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
@@ -1465,6 +1444,7 @@ describe('MyApp initialization', () => {
     });
     mockHomeyInstance.settings.set('managed_devices', { 'ev-1': true });
 
+    connectLiveFeed();
     const app = createApp();
     await initApp(app);
     app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
@@ -1482,7 +1462,7 @@ describe('MyApp initialization', () => {
     const requestSpy = vi.spyOn(app['planRebuildScheduler'], 'request');
 
     const lastUpdated = new Date().toISOString();
-    app.deviceManager.injectDeviceUpdateForTest({
+    emitDeviceUpdate({
       id: 'ev-1',
       name: 'Garage Charger',
       class: 'evcharger',
@@ -1540,6 +1520,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Away: { 'dev-1': 23 } });
     mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'turn_off' } });
 
+    connectLiveFeed();
     const app = createApp();
     await initApp(app);
     await waitForSnapshot();
@@ -1548,8 +1529,10 @@ describe('MyApp initialization', () => {
     const logSpy = vi.spyOn(app, 'log');
 
     let fightBackTimer: ReturnType<typeof setTimeout> | null = null;
-    const onoffFlow = heater.makeCapabilityInstance('onoff', (value: unknown) => {
-      if (value !== false) return;
+    const writeCapability = heater.setCapabilityValue.bind(heater);
+    const onoffFlow = vi.spyOn(heater, 'setCapabilityValue').mockImplementation(async (capabilityId, value) => {
+      await writeCapability(capabilityId, value);
+      if (capabilityId !== 'onoff' || value !== false) return;
       // Async fight-back: device resists being turned off, but the response
       // arrives after the DeviceTransport's setCapability returns so the
       // device.update realtime event can overwrite the local snapshot.
@@ -1576,6 +1559,11 @@ describe('MyApp initialization', () => {
         emitDeviceUpdate: false,
       });
       await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+      // The drift reached PELS: without this, "nothing written back" would also
+      // hold for a frame that went nowhere.
+      expect(app.latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+        targets: [expect.objectContaining({ id: 'target_temperature', value: 25 })],
+      });
 
       const targetWritesBeforeShedding = setCapabilitySpy.mock.calls.filter(([path, body]) => (
         path === 'manager/devices/device/dev-1/capability/target_temperature'
@@ -1606,7 +1594,7 @@ describe('MyApp initialization', () => {
       setCapabilitySpy.mockRestore();
       logSpy.mockRestore();
       if (fightBackTimer) clearTimeout(fightBackTimer);
-      onoffFlow.destroy();
+      onoffFlow.mockRestore();
     }
   });
 
@@ -1623,12 +1611,13 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
+    connectLiveFeed();
     const app = createApp();
     await initApp(app);
     const observation = vi.spyOn(app.planRebuildThrottle, 'onObservation');
 
     const lastUpdated = new Date().toISOString();
-    app.deviceManager.injectDeviceUpdateForTest({
+    emitDeviceUpdate({
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
@@ -2076,12 +2065,13 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 23 } });
 
+    connectLiveFeed();
     const app = createApp();
     await initApp(app);
     await waitForSnapshot();
 
     heater.setApiCapabilityValue('target_temperature', 26.5);
-    app.deviceManager.injectDeviceUpdateForTest(heater.toHomeyApiDevice() as HomeyDeviceLike);
+    emitDeviceUpdate(heater.toHomeyApiDevice());
     await waitFor(() => (
       app.latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')
         ?.targets?.[0]?.value === 26.5
@@ -2116,6 +2106,7 @@ describe('MyApp initialization', () => {
     // The pending command below is PELS applying this mode target.
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 18 } });
 
+    connectLiveFeed();
     const app = createApp();
     await initApp(app);
     await waitForSnapshot();
@@ -2135,11 +2126,11 @@ describe('MyApp initialization', () => {
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
-      app.deviceManager.injectCapabilityUpdateForTest('dev-1', 'target_temperature', 18);
+      await emitCapability('dev-1', 'target_temperature', 18);
       expect(app.planEngine.state.pendingTargetCommands['dev-1']).toBeDefined();
 
       heater.setApiCapabilityValue('target_temperature', 18);
-      app.deviceManager.injectDeviceUpdateForTest(heater.toHomeyApiDevice() as HomeyDeviceLike);
+      emitDeviceUpdate(heater.toHomeyApiDevice());
       await waitFor(() => app.planEngine.state.pendingTargetCommands['dev-1'] === undefined);
     } finally {
       nowSpy.mockRestore();

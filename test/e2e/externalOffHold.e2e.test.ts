@@ -9,10 +9,9 @@
 // through the real Homey Energy poll, and the only thing asserted is what PELS
 // writes back through the SDK (`api.put` of `onoff`).
 //
-// Scope note: the DETECTION half of the feature is push-driven and cannot be
-// exercised here — the live feed is stubbed off in `test/setup.ts`, so no
-// realtime observation can enter through the SDK boundary. It is covered
-// end-to-end through the app in test/integration/externalOffHoldRealtime.test.ts.
+// Scope note: the DETECTION half of the feature is push-driven. It is covered
+// end-to-end through the app in test/integration/externalOffHoldRealtime.test.ts,
+// which delivers the device.update on the live feed's socket.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';

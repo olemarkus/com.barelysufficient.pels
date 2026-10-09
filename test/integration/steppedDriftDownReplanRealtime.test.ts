@@ -25,17 +25,17 @@
  * whole-home capacity question from a reading taken before the device moved.
  * The reading that sees the drift is the one that re-plans.
  *
- * Integration tier (not e2e) because realtime observations cannot enter through
- * the e2e SDK boundary: the live feed is stubbed off in `test/setup.ts`, so
- * `injectDeviceUpdateForTest` — the transport's documented inbound seam, the
- * exact call the live feed makes — is the closest available equivalent. Same
- * reasoning as `externalOffHoldRealtime.test.ts`. Nothing internal is mocked:
- * the real transport, planner, admission and executor all run.
+ * The step report arrives as a `capability` frame on the live feed's socket
+ * (`test/helpers/liveFeedSocketHarness.ts`). Integration tier (not e2e) because
+ * it spies on the plan service to show the event schedules nothing. Nothing
+ * internal is mocked: the real transport, planner, admission and executor all
+ * run.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
+import { connectLiveFeed, emitCapability } from '../helpers/liveFeedSocketHarness';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -55,9 +55,6 @@ const STEP_MAX = '3';
 
 type AppLike = {
   onInit: () => Promise<void>;
-  deviceManager?: {
-    injectCapabilityUpdateForTest: (deviceId: string, capabilityId: string, value: unknown) => void;
-  };
   planService?: { rebuildPlanFromCache: (...args: never[]) => Promise<unknown> };
 };
 
@@ -72,8 +69,8 @@ type AppLike = {
  * `realtime_capability_drift` on `pels_measure_step` (now
  * `native_stepped_load_report_changed`), which is this path.
  */
-const announceStep = (app: AppLike, stepId: string): void => {
-  app.deviceManager?.injectCapabilityUpdateForTest(HEATER_ID, 'max_power_3000', stepId);
+const announceStep = async (stepId: string): Promise<void> => {
+  await emitCapability(HEATER_ID, 'max_power_3000', stepId);
 };
 
 function reportHomePower(getTotalW: () => number): void {
@@ -114,6 +111,7 @@ const startApp = async (): Promise<AppLike> => {
   mockHomeyInstance.settings.set(MANAGED_DEVICES, enabled);
   mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, enabled);
 
+  connectLiveFeed();
   const app = createApp() as unknown as AppLike;
   await app.onInit();
   await vi.advanceTimersByTimeAsync(30_000);
@@ -161,7 +159,7 @@ describe('stepped device drifting down from the planned step', () => {
     const rebuildSpy = vi.spyOn(app.planService!, 'rebuildPlanFromCache');
 
     // The device drifts DOWN on its own — the production 20:01:29 event.
-    announceStep(app, STEP_LOW);
+    await announceStep(STEP_LOW);
     // 5 s, deliberately: longer than the deleted lane's 250 ms debounce and 2 s
     // rebuild floor, shorter than the 10 s poll. `drainPending` alone advances no
     // clock, so it would let the removed trigger pass unnoticed.
@@ -196,7 +194,7 @@ describe('stepped device drifting down from the planned step', () => {
     vi.spyOn(app.planService!, 'rebuildPlanFromCache')
       .mockResolvedValue({ failed: false, appliedActions: false } as never);
 
-    announceStep(app, STEP_LOW);
+    await announceStep(STEP_LOW);
     await settleThroughNextReading();
 
     expect(putSpy.mock.calls.filter(([path]) => path === HEATER_STEP_PATH)).toEqual([]);

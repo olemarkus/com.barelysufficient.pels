@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -276,6 +277,7 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     });
     const setHomePower = reportHomePower(5000);
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    connectLiveFeed();
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
@@ -283,14 +285,14 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), { value: false });
     putSpy.mockClear();
 
-    // The owner nudges the limited heater up. The live feed is off in tests, so
-    // the change arrives the way it does in production: as a `device.update`
-    // carrying the new target. Not saved; written back on the next cycle the
-    // limit cooldown allows (60 s between limit operations). Homey dates every
-    // value in the update; the nudge happens now.
+    // The owner nudges the limited heater up. The change arrives the way it does
+    // in production: as a `device.update` on the live feed, carrying the new
+    // target. Not saved; written back on the next cycle the limit cooldown
+    // allows (60 s between limit operations). Homey dates every value in the
+    // update; the nudge happens now.
     await device.setCapabilityValue('target_temperature', 20);
     const lastUpdated = new Date().toISOString();
-    app.deviceManager!.injectDeviceUpdateForTest({
+    emitDeviceUpdate({
       id: 'heatpump-a', name: 'Hallway Heatpump', class: 'heatpump',
       capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power', 'meter_power', 'thermostat_mode'],
       capabilitiesObj: {

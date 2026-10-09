@@ -12,7 +12,13 @@ import type { PlanService } from '../../lib/plan/planService';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { subscribePlanObservedState } from '../../setup/appInit/planObservedStateSubscription';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
-import { createTestDeviceTransport, onObservedState, seedTransportDevices } from '../helpers/deviceTransportHarness';
+import {
+  createTestDeviceTransport,
+  initWithLiveFeed,
+  onObservedState,
+  seedTransportDevices,
+} from '../helpers/deviceTransportHarness';
+import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 
 /**
@@ -159,6 +165,7 @@ describe('a discharging home battery on the observation lane', () => {
         measure_power: { id: 'measure_power', value: 1200, lastUpdated },
       },
     };
+    await initWithLiveFeed(transport);
     await seedTransportDevices(transport, [battery]);
 
     const syncLivePlanState = vi.fn().mockResolvedValue(false);
@@ -183,7 +190,7 @@ describe('a discharging home battery on the observation lane', () => {
     onObservedState(transport, (event) => laneEmitter.emitObservedStateChanged(event));
 
     for (const watts of [-1500, -1500, -300, 0, -2500]) {
-      transport.injectCapabilityUpdateForTest('battery-1', 'measure_power', watts);
+      await emitCapability('battery-1', 'measure_power', watts);
     }
 
     expect(syncLivePlanState).toHaveBeenCalledTimes(5);
@@ -192,7 +199,7 @@ describe('a discharging home battery on the observation lane', () => {
 
     // The wiring is live: a battery that starts drawing hard does clear the
     // suppression, as any device would. Still no rebuild.
-    transport.injectCapabilityUpdateForTest('battery-1', 'measure_power', 2500);
+    await emitCapability('battery-1', 'measure_power', 2500);
     expect(invalidateRebuildSuppression).toHaveBeenCalledWith('battery-1');
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });

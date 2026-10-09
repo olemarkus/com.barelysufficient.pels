@@ -11,11 +11,17 @@
  * subscribes per device as each committed refresh asks it to, exactly as it
  * would against a Homey. Frames then enter where Homey's would:
  *
+ * - {@link emitDeviceUpdate}: a `device.update` frame on `homey:manager:devices`.
+ *   Homey sends these for every device, so it needs no per-device subscription.
  * - {@link emitCapability}: a `capability` frame on `homey:device:<id>`. Homey
  *   sends it only to a client subscribed to that device, which PELS is only for
  *   the devices of its last committed refresh plus the cars the EV link probe
  *   tracks. It throws when nothing is subscribed, so a test cannot inject into a
  *   device production would never hear from.
+ *
+ * `MockDevice` publishes through {@link publishDeviceUpdate} /
+ * {@link publishCapability}, which deliver the same frames but, like Homey,
+ * reach nobody when nobody listens.
  *
  * `setup.ts` resets the mode after every test. `createLiveFeedSocketHarness`
  * is the lower-level socket pair for a spec that drives the feed itself and
@@ -120,7 +126,10 @@ class LiveFeedSocket {
   /** Deliver a frame on `uri`; whether any listener heard it. */
   deliver(uri: string, eventName: string, data: unknown): boolean {
     if (!this.socket.connected) return false;
-    return this.events.emit(uri, eventName, data);
+    // A frame crosses the wire as JSON: NaN and Infinity arrive as null, a Date
+    // as a string, and nothing is shared with the sender's object.
+    const onTheWire: unknown = data === undefined ? undefined : JSON.parse(JSON.stringify(data));
+    return this.events.emit(uri, eventName, onTheWire);
   }
 
   capability(deviceId: string, capabilityId = 'measure_power', value: unknown = 500): void {
@@ -204,6 +213,16 @@ const deliver = (uri: string, eventName: string, data: unknown): boolean => {
   return delivered;
 };
 
+/** Homey pushing a `device.update` frame; reaches nobody when no feed is connected. */
+export function publishDeviceUpdate(device: unknown): void {
+  deliver(DEVICES_URI, 'device.update', device);
+}
+
+/** Homey pushing a `capability` frame; reaches only a feed subscribed to the device. */
+export function publishCapability(deviceId: string, capabilityId: string, value: unknown): void {
+  deliver(deviceUri(deviceId), 'capability', { capabilityId, value });
+}
+
 /**
  * Drain the feed's subscription passes: the per-device subscriptions a
  * committed refresh asked for are acknowledged and their listeners attached.
@@ -215,6 +234,13 @@ export async function settleLiveFeed(): Promise<void> {
     const before = subscriptionActivity;
     await Promise.resolve();
     quietTurns = subscriptionActivity === before ? quietTurns + 1 : 0;
+  }
+}
+
+/** A `device.update` frame for `device`; throws unless a connected feed is listening. */
+export function emitDeviceUpdate(device: unknown): void {
+  if (!deliver(DEVICES_URI, 'device.update', device)) {
+    throw new Error('No device live feed is subscribed to homey:manager:devices; call connectLiveFeed() before init');
   }
 }
 

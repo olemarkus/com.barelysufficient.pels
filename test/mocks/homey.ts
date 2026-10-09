@@ -2,6 +2,7 @@ import { createMockImagesManager } from './homeyImages';
 import { EventEmitter } from 'events';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
+import { publishCapability, publishDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 
 type MockCapabilityMutationBehavior = {
   updateActual?: boolean;
@@ -89,7 +90,6 @@ export class MockDevice {
   private settings: Record<string, unknown> = {};
   private behaviorByCapability = new Map<string, MockCapabilityBehaviorConfig>();
   private capabilityMetadata = new Map<string, MockCapabilityMetadata>();
-  private capabilityListeners = new Map<string, Set<(value: unknown) => void>>();
   // Mirrors the real SDK's `device.available` (offline = false). Defaults online.
   private available = true;
   // Raw `device.zone` payload (either SDK shape: zone-id string, or
@@ -250,39 +250,6 @@ export class MockDevice {
     this.behaviorByCapability.delete(capabilityId);
   }
 
-  makeCapabilityInstance(
-    capabilityId: string,
-    listener: (value: unknown) => void,
-  ): { destroy: () => void } {
-    let listeners = this.capabilityListeners.get(capabilityId);
-    if (!listeners) {
-      listeners = new Set<(value: unknown) => void>();
-      this.capabilityListeners.set(capabilityId, listeners);
-    }
-    listeners.add(listener);
-    return {
-      destroy: () => {
-        listeners?.delete(listener);
-        if (listeners && listeners.size === 0) {
-          this.capabilityListeners.delete(capabilityId);
-        }
-      },
-    };
-  }
-
-  emitCapabilityValue(capabilityId: string, value?: unknown): void {
-    const listeners = this.capabilityListeners.get(capabilityId);
-    if (!listeners || listeners.size === 0) return;
-    const nextValue = arguments.length >= 2 ? value : this.capabilityValues.get(capabilityId);
-    for (const listener of Array.from(listeners)) {
-      listener(nextValue);
-    }
-  }
-
-  emitDeviceUpdate(): void {
-    emitMockHomeyApiDeviceUpdate(this.toHomeyApiDevice());
-  }
-
   /**
    * Configure the driver identity the device API payload carries. Real Homey
    * devices expose these; PELS reads them to recognise vendor wiring (e.g. the
@@ -331,7 +298,6 @@ export class MockDevice {
       capabilities: caps,
       capabilitiesObj,
       settings: this.settings,
-      makeCapabilityInstance: this.makeCapabilityInstance.bind(this),
       available: this.available,
       ready: true,
       ...(this.zone !== undefined ? { zone: this.zone } : {}),
@@ -371,11 +337,13 @@ export class MockDevice {
       this.capabilityValues.set(capabilityId, value);
       this.capabilityUpdatedAt.set(capabilityId, nowIso);
     }
+    // Homey pushes both frames over its Web API socket; they reach PELS only
+    // through a connected live feed (`test/helpers/liveFeedSocketHarness.ts`).
     if (behavior.emitCapabilityEvent) {
-      this.emitCapabilityValue(capabilityId, value);
+      publishCapability(this.id, capabilityId, value);
     }
     if (behavior.emitDeviceUpdate) {
-      this.emitDeviceUpdate();
+      publishDeviceUpdate(this.toHomeyApiDevice());
     }
   }
 }
@@ -397,20 +365,10 @@ export class MockDriver {
 
 let autoEnableMockDevices = false;
 const mockHomeyEmitter = new EventEmitter();
-const mockSdkDevicesApiEmitter = new EventEmitter();
-mockSdkDevicesApiEmitter.setMaxListeners(0);
 
 export const setAutoEnableMockDevices = (enabled: boolean): void => {
   autoEnableMockDevices = enabled;
 };
-
-export const emitMockSdkDeviceUpdate = (device: Record<string, unknown>): void => {
-  mockSdkDevicesApiEmitter.emit('realtime', 'device.update', device);
-};
-
-
-// Legacy aliases
-export const emitMockHomeyApiDeviceUpdate = emitMockSdkDeviceUpdate;
 
 const buildControllableDevices = (drivers: Record<string, MockDriver>): Record<string, boolean> => {
   const controllable: Record<string, boolean> = {};
@@ -655,12 +613,6 @@ export const mockHomeyInstance = {
         };
       }
       throw new Error(`Mock API POST not implemented for: ${path}`);
-    },
-    getApi: (uri: string) => {
-      if (uri === 'homey:manager:devices') {
-        return mockSdkDevicesApiEmitter;
-      }
-      throw new Error(`Mock getApi not implemented for: ${uri}`);
     },
   },
   flow: {

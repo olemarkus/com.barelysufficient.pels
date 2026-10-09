@@ -148,8 +148,8 @@ const startHome = async (solarW: number, surplusWilling = true, charge: BatteryC
       pump.setActualCapabilityValue('measure_power', pumpW);
       changed = true;
     }
-    // The live feed is off in tests; publish the changed readings through the
-    // same refresh seam the settings UI uses.
+    // This spec leaves the live feed unconnected; publish the changed readings
+    // through the same refresh seam the settings UI uses.
     if (changed) mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
   };
   return {

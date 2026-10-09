@@ -1,9 +1,13 @@
+import Homey from 'homey';
 import {
   MockDevice,
   MockDriver,
   mockHomeyInstance,
   setMockDrivers,
 } from '../mocks/homey';
+import { createDeviceLiveFeed } from '../../lib/device/liveFeed';
+import { getLogger } from '../../lib/logging/logger';
+import { connectLiveFeed, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
 
 describe('mock Homey backend', () => {
   beforeEach(() => {
@@ -38,7 +42,7 @@ describe('mock Homey backend', () => {
     await expect(device.getCapabilityValue('onoff')).resolves.toBe(true);
   });
 
-  it('can simulate an external tile toggle with realtime capability and device.update', async () => {
+  it('pushes an external tile toggle to a connected live feed as a capability frame and a device.update', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['onoff', 'measure_power']);
     device.setActualCapabilityValue('onoff', true, {
       updateApi: true,
@@ -48,29 +52,32 @@ describe('mock Homey backend', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [device]),
     });
+    connectLiveFeed();
+    const onDeviceUpdate = vi.fn();
+    const onCapabilityUpdate = vi.fn();
+    const feed = createDeviceLiveFeed({
+      homey: new Homey.App(),
+      logger: { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('mock-backend-test') },
+      callbacks: { onDeviceUpdate, onCapabilityUpdate },
+    });
+    await feed.start();
+    feed.updateTrackedDevices(['dev-1']);
+    await settleLiveFeed();
 
-    const devices = await mockHomeyInstance.api.get('manager/devices') as Record<string, { makeCapabilityInstance: (capabilityId: string, listener: (value: unknown) => void) => { destroy: () => void } }>;
-    const payload = devices['dev-1'];
-    const capabilityListener = vi.fn();
-    const capabilityInstance = payload.makeCapabilityInstance('onoff', capabilityListener);
+    try {
+      device.tapTile();
 
-    const sdkDevicesApi = mockHomeyInstance.api.getApi('homey:manager:devices');
-    const realtimeListener = vi.fn();
-    sdkDevicesApi.on('realtime', realtimeListener);
-
-    device.tapTile();
-
-    expect(capabilityListener).toHaveBeenCalledWith(false);
-    expect(realtimeListener).toHaveBeenCalledWith('device.update', expect.objectContaining({
-      id: 'dev-1',
-      capabilitiesObj: expect.objectContaining({
-        onoff: expect.objectContaining({ value: false }),
-      }),
-    }));
-    expect(device.getActualCapabilityValue('onoff')).toBe(false);
-    await expect(device.getCapabilityValue('onoff')).resolves.toBe(false);
-
-    capabilityInstance.destroy();
-    sdkDevicesApi.off('realtime', realtimeListener);
+      expect(onCapabilityUpdate).toHaveBeenCalledWith('dev-1', 'onoff', false);
+      expect(onDeviceUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'dev-1',
+        capabilitiesObj: expect.objectContaining({
+          onoff: expect.objectContaining({ value: false }),
+        }),
+      }));
+      expect(device.getActualCapabilityValue('onoff')).toBe(false);
+      await expect(device.getCapabilityValue('onoff')).resolves.toBe(false);
+    } finally {
+      await feed.stop();
+    }
   });
 });

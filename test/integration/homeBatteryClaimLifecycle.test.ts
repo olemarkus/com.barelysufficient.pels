@@ -11,7 +11,8 @@ import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
+import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers } from '../mocks/homey';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
@@ -41,6 +42,7 @@ const setup = async () => {
     getManaged: (deviceId: string) => managed.isManaged(deviceId),
     isManagedFilterActive: () => true,
   });
+  await initWithLiveFeed(transport);
   await seedTransportDevices(transport, [device.toHomeyApiDevice() as HomeyDeviceLike]);
   const actuator = createDeviceActuator({
     canTurnOnDevice: () => false,
@@ -162,22 +164,22 @@ describe('home battery claim and hand-back through the real transport', () => {
 
     // The owner changes the mode in the battery's own app: the snapshot must
     // see it, or the pending hand-back would act on a claim long gone.
-    transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'manual');
+    await emitCapability(BATTERY, 'target_power_mode', 'manual');
     expect(transport.getSnapshotByDeviceId(BATTERY)?.batteryClaim?.value).toBe('manual');
   });
 
   it('reads the battery app\'s stale echo of its own mode after the claim as no takeover', async () => {
-    const { owner, writes, command, transport } = await setup();
+    const { owner, writes, command } = await setup();
     await command(1500);
 
     // The battery's app read its mode early in a poll, before PELS's claim
     // landed, and writes it back at the end; its next poll reports the claim.
     vi.setSystemTime(Date.now() + 2_000);
-    transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'anti_feed');
+    await emitCapability(BATTERY, 'target_power_mode', 'anti_feed');
     owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'claim_contested' });
     vi.setSystemTime(Date.now() + 5_000);
-    transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'homey');
+    await emitCapability(BATTERY, 'target_power_mode', 'homey');
     vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
     owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
 
@@ -188,7 +190,7 @@ describe('home battery claim and hand-back through the real transport', () => {
   });
 
   it('reads a hand-back that landed but reported failure as handed back, not as a takeover', async () => {
-    const { owner, settings, command, transport, put, sdkPut } = await setup();
+    const { owner, settings, command, put, sdkPut } = await setup();
     await command(-800);
     vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
 
@@ -203,7 +205,7 @@ describe('home battery claim and hand-back through the real transport', () => {
 
     const logs = captureLogger('info');
     vi.setSystemTime(Date.now() + 1_000);
-    transport.injectCapabilityUpdateForTest(BATTERY, 'target_power_mode', 'anti_feed');
+    await emitCapability(BATTERY, 'target_power_mode', 'anti_feed');
     owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
 
     expect(owner.isManaged(BATTERY)).toBe(true);

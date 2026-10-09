@@ -425,10 +425,6 @@ export class DeviceTransport {
     setSnapshot(s: TransportDeviceSnapshot[]): void {
         this.snapshotCommit.commit(s);
     }
-    injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
-    injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {
-        this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value);
-    }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> {
         return (await this.deviceSdk.fetchDevices()).devices;
     }
