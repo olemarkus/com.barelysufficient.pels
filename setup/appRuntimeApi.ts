@@ -32,7 +32,11 @@ import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudg
 import {
   updateDailyBudgetAndRecordCapForApp,
 } from '../lib/power/sampleIngest';
-import { scheduleCapacitySettingsReadRetry } from '../lib/power/capacitySettingsStore';
+import {
+  resolveInstalledCapacityScalars,
+  type CapacityScalarSettingsRead,
+  type CapacitySettingsReloader,
+} from '../lib/power/capacitySettingsStore';
 import type {
   FlowReportedCapabilityId,
   FlowReportedCapabilitiesByDevice,
@@ -68,7 +72,6 @@ import type { ObservedDeviceStateProjection } from '../lib/observer/observedDevi
 import type { PowerSamplePipeline } from './powerSamplePipeline';
 import { withAppHostApi } from './appHostApi';
 
-const CAPACITY_SETTINGS_LOAD_RETRY_TIMER = 'capacitySettingsLoadRetry';
 
 /** Lifecycle and runtime adapter façade above the stable host/UI surface. */
 // The callback body is one class declaration; class/file line caps still apply.
@@ -88,6 +91,7 @@ abstract class AppRuntimeApi extends Base {
   protected abstract structuredLogger?: PinoLogger;
   protected abstract overheadToken?: Homey.FlowToken;
   protected abstract nativeEvWiringDevices: Record<string, boolean>;
+  protected abstract readonly capacitySettingsReloader: CapacitySettingsReloader;
 
   public setExpectedOverride(deviceId: string, kw: number): boolean {
     return this.flowBacked.setExpectedOverride(deviceId, kw);
@@ -354,20 +358,24 @@ abstract class AppRuntimeApi extends Base {
     unsetRetiredSettingsKeys(this.homey.settings);
   }
   public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
-  public loadCapacitySettings = (): void => { this.loadCapacitySettingsFromStore(false); };
+  public loadCapacitySettings = (): void => { this.capacitySettingsReloader.reload(); };
+  public noteCapacitySettingWritten = (key: string): void => { this.capacitySettingsReloader.noteWritten(key); };
+  public recoverCapacitySettingsAfterSkippedWrite = (key: string): void => {
+    this.capacitySettingsReloader.recoverAfterSkippedWrite(key);
+  };
 
-  private loadCapacitySettingsFromStore(rebuildAfterRecovery: boolean): void {
-    const capacityRead = this.context.capacitySettingsStore.read();
-    scheduleCapacitySettingsReadRetry(
+  /**
+   * Install a capacity read (`createCapacitySettingsReloader` decides when to
+   * read and whether to rebuild). An unavailable read carries the running
+   * scalars forward; a retained one applies like a resolved one, the store
+   * having carried the malformed field's last accepted value. The rest of the
+   * persisted settings reload with it either way.
+   */
+  protected installCapacitySettingsRead(capacityRead: CapacityScalarSettingsRead): void {
+    const { dryRun: capacityDryRun, ...capacitySettings } = resolveInstalledCapacityScalars(
       capacityRead,
-      this.timers,
-      CAPACITY_SETTINGS_LOAD_RETRY_TIMER,
-      () => this.loadCapacitySettingsFromStore(true),
+      { ...this.context.capacitySettings, dryRun: this.context.capacityDryRun },
     );
-    // An unavailable read is a no-op: the running scalars carry forward.
-    const { dryRun: capacityDryRun, ...capacitySettings } = capacityRead.state === 'resolved'
-      ? capacityRead.value
-      : { ...this.context.capacitySettings, dryRun: this.context.capacityDryRun };
     const next = loadCapacitySettingsFromHomey({
       settings: this.homey.settings,
       current: {
@@ -395,11 +403,13 @@ abstract class AppRuntimeApi extends Base {
     this.reloadHomeModeCatalog();
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.context.capacitySettings.marginKw);
-    if (rebuildAfterRecovery && capacityRead.state === 'resolved' && this.context.planService) {
-      void this.context.planService.rebuildPlanFromCache('settings', {
-        detail: 'capacity_settings_read_recovered',
-      });
-    }
+  }
+
+  /** The rebuild after a capacity read that recovered on its retry lane. */
+  protected rebuildAfterCapacitySettingsRecovered(): void {
+    void this.context.planService?.rebuildPlanFromCache('settings', {
+      detail: 'capacity_settings_read_recovered',
+    });
   }
   public loadTemperatureControlPolicySettings = (): void => (
     loadTemperatureControlPolicySettingsForApp(this.context)

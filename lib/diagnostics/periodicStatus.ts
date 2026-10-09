@@ -3,7 +3,7 @@ import type CapacityGuard from '../power/capacityGuard';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
-import { computeShortfallThreshold } from '../plan/planBudget';
+import { resolveShortfallThresholdKw } from '../plan/planBudget';
 import type { PowerTrackerState } from '../power/tracker';
 import { getCurrentHourContext } from '../plan/planHourContext';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
@@ -82,7 +82,12 @@ export function buildPeriodicStatusLogFields(params: {
   const metrics = resolveCapacityStatusMetrics(capacitySettings, powerTracker, capacityPaceKw, nowMs);
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
 
-  const inShortfall = capacitySettings.capacityEnabled && capacityGuard.isInShortfall();
+  // An incident counts only while the threshold it is judged against exists
+  // (`resolveShortfallThresholdKw`: none with Capacity limit off). The guard
+  // still holds a latched incident between a settings write that turns
+  // Capacity limit off and the build that clears it, and this log runs outside
+  // any build.
+  const inShortfall = metrics.shortfallBudgetThreshold !== null && capacityGuard.isInShortfall();
   // These published field names are an existing hourly diagnostics contract,
   // independent of the period selected for capacity control.
   const usage = getCurrentHourContext(powerTracker, nowMs);
@@ -117,8 +122,7 @@ function resolveCapacityStatusMetrics(
 ): CapacityStatusMetrics {
   const total = resolveLastTotalPowerKw(powerTracker);
   const capacityPaceHeadroom = total !== null && capacityPaceKw !== null ? capacityPaceKw - total : null;
-  const shortfallBudgetThreshold = capacitySettings.capacityEnabled
-    ? computeShortfallThreshold(capacitySettings, powerTracker, nowMs) : null;
+  const shortfallBudgetThreshold = resolveShortfallThresholdKw(capacitySettings, powerTracker, nowMs);
   const shortfallBudgetHeadroom = total !== null && shortfallBudgetThreshold !== null
     ? shortfallBudgetThreshold - total : null;
   const hardCapHeadroom = total !== null && capacitySettings.capacityEnabled ? capacitySettings.limitKw - total : null;

@@ -72,6 +72,8 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     homey,
     onPvForecastSourceObserved: vi.fn(),
     loadCapacitySettings: vi.fn(),
+    noteCapacitySettingWritten: vi.fn(),
+    recoverCapacitySettingsAfterSkippedWrite: vi.fn(),
     reloadExpectedPowerOverrides: vi.fn(),
     applyBatteryControlSettings: vi.fn(),
     rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
@@ -115,6 +117,23 @@ describe('createSettingsHandler', () => {
 
     expect(deps.loadCapacitySettings).not.toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
+  it('re-reads a carried capacity key only when the write dedupe skipped its handler', async () => {
+    const deps = buildDeps();
+    vi.mocked(deps.homey.settings.get).mockImplementation((key: string) => (key === 'grid_import_limit_kw' ? 3.3 : undefined));
+    const handler = createSettingsHandler(deps);
+
+    await handler('grid_import_limit_kw');
+    expect(deps.noteCapacitySettingWritten).toHaveBeenCalledWith('grid_import_limit_kw');
+    expect(deps.loadCapacitySettings).toHaveBeenCalledTimes(1);
+    expect(deps.recoverCapacitySettingsAfterSkippedWrite).not.toHaveBeenCalled();
+
+    // The same value again: the dedupe skips the handler, so its reload never runs.
+    await handler('grid_import_limit_kw');
+    expect(deps.noteCapacitySettingWritten).toHaveBeenCalledTimes(2);
+    expect(deps.loadCapacitySettings).toHaveBeenCalledTimes(1);
+    expect(deps.recoverCapacitySettingsAfterSkippedWrite).toHaveBeenCalledWith('grid_import_limit_kw');
   });
 
   it('fetches prices when the owner changes price source', async () => {

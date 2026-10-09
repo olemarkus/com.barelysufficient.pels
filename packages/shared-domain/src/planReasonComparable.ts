@@ -104,6 +104,7 @@ const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.startupStabilization,
   PLAN_REASON_CODES.capacityControlOff,
   PLAN_REASON_CODES.hourlyBudget,
+  PLAN_REASON_CODES.meterSilent,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
@@ -125,6 +126,7 @@ type CodeOnlyReason = Extract<
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }
   | { code: typeof PLAN_REASON_CODES.hourlyBudget }
+  | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }

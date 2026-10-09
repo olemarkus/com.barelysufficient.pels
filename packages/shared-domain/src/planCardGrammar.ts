@@ -85,6 +85,9 @@ const HOLD_REASON_CODES: ReadonlySet<string> = new Set([
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.hourlyBudget,
   PLAN_REASON_CODES.dailyBudget,
+  // The silent-meter fail-closed pass: PELS limited the device and holds it
+  // until a new reading arrives — held, not idle.
+  PLAN_REASON_CODES.meterSilent,
   PLAN_REASON_CODES.shedInvariant,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.awaitingSolarSurplus,

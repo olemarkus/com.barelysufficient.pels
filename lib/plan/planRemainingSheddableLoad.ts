@@ -53,7 +53,15 @@ export type RemainingSheddableLoadParams = {
   device: RemainingSheddableDevice;
   alreadyShed: boolean;
   limitSource: 'capacity' | 'daily' | 'grid' | null;
-  capacityBreached: boolean;
+  /**
+   * A breach a budget release cannot help — so under a daily source it still
+   * makes a budget-exempt device's load reducible, as shedding treats it
+   * (`allowedByLimitPolicy`, `lib/plan/shedding/candidates.ts`). The caller
+   * names which breach: the capacity-only hard-cap verdict
+   * (`reportShortfallToGuard`) or the published physical-limit breach
+   * (`resolvePlanRemainingSheddableContext`, `lib/plan/planLogging.ts`).
+   */
+  breachOverridesExemption: boolean;
 };
 
 type RemainingSheddableSourceDevice = RemainingSheddableResidualFields & {
@@ -144,13 +152,13 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
     device,
     alreadyShed,
     limitSource,
-    capacityBreached,
+    breachOverridesExemption,
   } = params;
 
   if (device.control.commandAuthority === false) return 0;
   if (isBinaryPlanDevice(device) && !device.currentOn) return 0;
   if (alreadyShed) return 0;
-  if (limitSource === 'daily' && !capacityBreached && device.budgetExempt) return 0;
+  if (limitSource === 'daily' && !breachOverridesExemption && device.budgetExempt) return 0;
 
   // The kind-switch decision happened at the producer seam
   // (`lib/device/deviceResidualKw.ts`); the consumer just reads the number.
@@ -161,13 +169,13 @@ export function sumRemainingSheddableLoadKw(params: {
   devices: RemainingSheddableDevice[];
   isAlreadyShed: (device: RemainingSheddableDevice) => boolean;
   limitSource: 'capacity' | 'daily' | 'grid' | null;
-  capacityBreached: boolean;
+  breachOverridesExemption: boolean;
 }): number {
   const {
     devices,
     isAlreadyShed,
     limitSource,
-    capacityBreached,
+    breachOverridesExemption,
   } = params;
   let totalKw = 0;
   for (const device of devices) {
@@ -175,7 +183,7 @@ export function sumRemainingSheddableLoadKw(params: {
       device,
       alreadyShed: isAlreadyShed(device),
       limitSource,
-      capacityBreached,
+      breachOverridesExemption,
     });
   }
   return totalKw;

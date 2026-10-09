@@ -9,6 +9,7 @@ vi.mock('../../lib/utils/perfCounters', async (importOriginal) => {
 });
 
 import { createTestCapacityGuard, planVerdictSummaryFixture } from '../helpers/createTestCapacityGuard';
+import { gridImportTargetKw } from '../../packages/shared-domain/src/settings/powerLimits';
 import { isPlanActivelyConverging } from '../../lib/plan/planStateHelpers';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
@@ -20,6 +21,7 @@ import {
   createTestPlanRebuildThrottle,
   sampleThrottle,
   unchangedRebuildOutcome,
+  type ThrottleSampleForTest,
 } from '../helpers/powerRebuildScheduler';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 
@@ -30,6 +32,19 @@ import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 // on what the throttle rebuilds. The limit is 10 kW unless a sample says otherwise.
 
 const SHORTFALL_THRESHOLD_KW = 4.961;
+
+// Grid-only, as `powerSamplePipeline` hands it over: the scheduler's
+// `capacityPaceKw` is `computeDynamicSoftLimit`, the physical limit — with
+// Capacity limit off, the 3.135 kW grid target of a 3.3 kW limit — and there is
+// no shortfall threshold (`resolveShortfallThresholdKw`).
+const GRID_LIMIT_KW = 3.3;
+const gridSample = (currentPowerW: number, posture: Partial<ThrottleSampleForTest> = {}): ThrottleSampleForTest => ({
+  currentPowerW,
+  gridImportLimitKw: GRID_LIMIT_KW,
+  capacityPaceKw: gridImportTargetKw(GRID_LIMIT_KW),
+  shortfallThresholdKw: null,
+  ...posture,
+});
 
 describe('PlanRebuildThrottle — rebuild gates', () => {
   beforeEach(() => {
@@ -46,9 +61,9 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({
       rebuildPlanFromCache,
-      lastRebuild: { msAgo: 20_000, reading: { currentPowerW: 2600, capacityPaceKw: null, shortfallThresholdKw: null, gridImportLimitKw: 3.3 } },
+      lastRebuild: { msAgo: 20_000, reading: gridSample(2600) },
     });
-    await sampleThrottle(throttle, { currentPowerW: 4600, capacityPaceKw: null, shortfallThresholdKw: null, gridImportLimitKw: 3.3, unactionable: true });
+    await sampleThrottle(throttle, gridSample(4600, { unactionable: true }));
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('grid_import_pressure');
   });
 
@@ -1282,5 +1297,129 @@ describe('PlanRebuildThrottle — the unrecoverable-shortfall gate', () => {
     const recoverable = await throttleAfterRebuild(await createGuardInShortfall());
     await sampleThrottle(recoverable.throttle, { ...heldSample, shortfallUnrecoverable: false });
     expect(recoverable.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+});
+
+// A grid breach rebuilds when it is new or worse than the one the last rebuild
+// answered (by more than the hard cap's 1 W tolerance); held steady, it is an
+// ordinary tight boundary and waits out the tight backoff like a hard-cap
+// breach does. It used to rebuild on every reading while it lasted.
+describe('PlanRebuildThrottle — a grid import breach', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2024-01-01T00:05:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('holds a steady breach to the no-op backoff once a rebuild has answered it', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 20_000, reading: gridSample(2600) },
+    });
+    await sampleThrottle(throttle, gridSample(4600));
+    expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('grid_import_pressure');
+
+    // The no-op armed a 15 s backoff. The same breach, and one worse by less than
+    // the 1 W tolerance, wait it out.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sampleThrottle(throttle, gridSample(4600));
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sampleThrottle(throttle, gridSample(4600.9));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    // Once it expires the steady breach is a tight boundary like any other.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sampleThrottle(throttle, gridSample(4600));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+    expect(rebuildPlanFromCache).toHaveBeenLastCalledWith('grid_import_pressure');
+  });
+
+  it('rebuilds at once on a breach that worsens past the tolerance, inside the backoff', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 20_000, reading: gridSample(2600) },
+    });
+    await sampleThrottle(throttle, gridSample(4600));
+
+    // 50 W more is no meaningful power delta (100 W), but 50 W more deficit.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sampleThrottle(throttle, gridSample(4650));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+  });
+
+  // A steady breach after a rebuild that acted waits out the post-mitigation
+  // holdoff, while nothing new is known about the devices.
+  it('waits out the mitigation holdoff on a steady breach without new device evidence', async () => {
+    const rebuildPlanFromCache = vi.fn()
+      .mockResolvedValueOnce(actedRebuildOutcome())
+      .mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 20_000, reading: gridSample(2600) },
+    });
+    await sampleThrottle(throttle, gridSample(4600));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sampleThrottle(throttle, gridSample(4600));
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sampleThrottle(throttle, gridSample(4600));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sampleThrottle(throttle, gridSample(4600));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+  });
+
+  // One rule for both physical breaches: a device observation clears the no-op
+  // verdict but leaves the post-mitigation holdoff alone, which waits for the
+  // reduction to land before PELS decides again — as it does for a hard-cap breach.
+  it('leaves the post-mitigation holdoff alone on a steady breach after an observation', async () => {
+    const rebuildPlanFromCache = vi.fn()
+      .mockResolvedValueOnce(actedRebuildOutcome())
+      .mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 20_000, reading: gridSample(2600) },
+    });
+    await sampleThrottle(throttle, gridSample(4600));
+
+    throttle.onObservation();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sampleThrottle(throttle, gridSample(4600));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await sampleThrottle(throttle, gridSample(4600));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a breach after a calm reading as new again, past an unactionable verdict', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 20_000, reading: gridSample(2600) },
+    });
+    await sampleThrottle(throttle, gridSample(4600, { unactionable: true }));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    // A calm reading the throttle skips forgets the breach, as it does a hard-cap one.
+    await vi.advanceTimersByTimeAsync(2_000);
+    await sampleThrottle(throttle, gridSample(2600, { unactionable: true }));
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    // The same breach again is new, so it is not held to the max interval; the
+    // unactionable execution floor still spaces it 15 s from the last rebuild.
+    await vi.advanceTimersByTimeAsync(2_000);
+    const pending = sampleThrottle(throttle, gridSample(4600, { unactionable: true }));
+    await vi.advanceTimersByTimeAsync(11_000);
+    await pending;
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+    expect(rebuildPlanFromCache).toHaveBeenLastCalledWith('grid_import_pressure');
   });
 });

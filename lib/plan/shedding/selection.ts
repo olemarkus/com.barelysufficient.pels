@@ -185,7 +185,7 @@ function logSelectedCandidate(
 
 export function resolveShedReason(
   limitSource: PlanContext['softLimitSource'],
-  capacityBreached: boolean,
+  physicalLimitBreached: boolean,
   hourlyBudgetExhausted = false,
 ): DeviceReason {
   // The exhausted hour outranks both soft-limit sources: the hour's kWh is
@@ -196,15 +196,16 @@ export function resolveShedReason(
   if (hourlyBudgetExhausted) {
     return { code: PLAN_REASON_CODES.hourlyBudget };
   }
-  // `daily` is only the BINDING soft limit — when capacity is breached too, total
-  // is over both and capacity is the constraint actually doing the work. Naming
+  // `daily` is only the BINDING soft limit — when a physical limit (capacity or
+  // grid, `MeasuredPower.physicalLimitBreached`) is breached too, total is over
+  // both and that limit is the constraint actually doing the work. Naming
   // the daily budget there is wrong for every device in the cycle, and doubly so
   // for a budget-exempt one, which reaches this point ONLY because the breach
   // overrode its exemption (`shedding/candidates.ts`). It also mis-buckets the
   // overview into the releasable side and offers a "Let it run now" rescue that
   // cannot help: releasing a budget exemption does not create capacity headroom
   // (the same reasoning `planDiagnostics.ts` applies to capacity-bound holds).
-  if (limitSource === 'daily' && !capacityBreached) {
+  if (limitSource === 'daily' && !physicalLimitBreached) {
     return { code: PLAN_REASON_CODES.dailyBudget };
   }
   return { code: PLAN_REASON_CODES.capacity };

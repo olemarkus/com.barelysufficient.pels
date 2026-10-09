@@ -208,7 +208,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
-      capacityBreached: true,
+      physicalLimitBreached: true,
     }));
 
     expect(reasonText(device?.reason)).toBe('shed due to capacity');
@@ -220,7 +220,7 @@ describe('normalizeShedReasons', () => {
   // capacity fixture above never reaches it (`normalizeDeviceReason` returns from
   // the sibling guard first). Without this the production hot path is untested.
   it('applies the capacity-breach carve-out on the keep-reason carry-forward path too', () => {
-    const build = (capacityBreached: boolean) => normalizeShedReasons([buildPlanDevice({
+    const build = (physicalLimitBreached: boolean) => normalizeShedReasons([buildPlanDevice({
         id: 'dev-carry-forward',
         plannedState: 'shed',
         reason: fixtureDeviceReason('keep')!,
@@ -232,7 +232,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
-      capacityBreached,
+      physicalLimitBreached,
     }))[0];
 
     expect(reasonText(build(true)?.reason)).toBe('shed due to capacity');
@@ -334,7 +334,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
-      capacityBreached: true,
+      physicalLimitBreached: true,
       budgetReleasableHeadroomHold: true,
     }));
 
@@ -543,7 +543,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     headroomReserves?: readonly { deviceId: string; deviceName: string; priority: number; kw: number }[];
     hourlyBudgetExhausted?: boolean;
     softLimitSource?: 'capacity' | 'daily' | null;
-    capacityBreached?: boolean;
+    physicalLimitBreached?: boolean;
     lastDeviceShedMsById?: Readonly<Record<string, number>>;
   }) => normalizeShedReasons(params.devices, reasonContext({
       shedReasons: new Map(),
@@ -553,7 +553,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       softLimitSource: params.softLimitSource ?? null,
-      capacityBreached: params.capacityBreached ?? false,
+      physicalLimitBreached: params.physicalLimitBreached ?? false,
       admissionInputs: buildCeilingShortfallInputs({
       ledgerAxes: {
         gridAvailableKw: null,
@@ -786,7 +786,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     it('re-attributes a stale hourlyBudget hold once the hour rolls over', () => {
       const roll = (params: {
         softLimitSource: 'capacity' | 'daily';
-        capacityBreached?: boolean;
+        physicalLimitBreached?: boolean;
         budgetExempt?: boolean;
       }) => normalize({
         devices: [heldDevice({
@@ -795,12 +795,12 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
         })],
         capacityAvailableKw: 0.5,
         softLimitSource: params.softLimitSource,
-        capacityBreached: params.capacityBreached ?? false,
+        physicalLimitBreached: params.physicalLimitBreached ?? false,
       })[0];
 
       expect(roll({ softLimitSource: 'daily' })?.reason)
         .toEqual({ code: 'daily_budget', shortfallKw: 0.7 });
-      expect(roll({ softLimitSource: 'daily', capacityBreached: true })?.reason)
+      expect(roll({ softLimitSource: 'daily', physicalLimitBreached: true })?.reason)
         .toEqual({ code: 'capacity', shortfallKw: 0.7 });
       // Per-axis admission evaluates an exempt candidate on capacity, so its
       // hold is a capacity hold — never a budget label next to a "Budget exempt" chip.

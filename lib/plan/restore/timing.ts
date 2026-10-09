@@ -137,7 +137,7 @@ export const shouldPlanBudgetExemptRestores = (
   && context.softLimitSource === 'daily'
   && (power.capacityHeadroomKw === null || power.capacityHeadroomKw > 0)
   && (power.gridHeadroomKw === null || power.gridHeadroomKw >= resolveSheddingClearThresholdKw(context))
-  && !state.hourlyBudgetExhausted
+  && !state.capacityPeriodSpentFor(context)
   && !timing.inCooldown
   && !timing.inRestoreCooldown
   && !timing.inStartupStabilization

@@ -309,6 +309,42 @@ describe('plan logging helpers', () => {
     }));
   });
 
+  // The budget-exempt rule reads the producer's resolved breach off the meta.
+  // Over the grid target under a daily source, shedding spends an exempt device
+  // (`allowedByLimitPolicy`), so the summary must count its load as reducible;
+  // re-deriving a capacity-only breach from the figures said it was not.
+  it('counts an exempt load as reducible under a daily source while a physical limit is breached', () => {
+    const summaryFor = (physicalLimitBreached: boolean) => buildPlanCapacityStateSummary({
+      meta: {
+        powerIsMeasured: true,
+        physicalLimitBreached,
+        headroomKw: -0.7,
+        totalKw: 4,
+        softLimitKw: 2,
+        capacitySoftLimitKw: null,
+        softLimitSource: 'daily',
+      },
+      devices: [{
+        id: 'charger',
+        name: 'Charger',
+        plannedState: 'keep',
+        binaryControl: { on: true },
+        currentOn: true,
+        currentState: 'on',
+        control: fixtureControlPosture({ controllable: true }),
+        budgetExempt: true,
+        binaryCapabilityId: 'onoff',
+        currentDrawKw: 1.4,
+        expectedPowerKw: 1.4,
+        shedAction: 'turn_off',
+        reason: KEEP_REASON,
+      }],
+    } as unknown as DevicePlan, SNAPSHOT_SOURCE);
+
+    expect(summaryFor(true)).toEqual(expect.objectContaining({ remainingReducibleControlledLoadW: 1400 }));
+    expect(summaryFor(false)).toEqual(expect.objectContaining({ remainingReducibleControlledLoadW: 0 }));
+  });
+
   it('does not count a target device already at its shed temperature as remaining reducible', () => {
     const plan = {
       meta: {

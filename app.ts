@@ -18,21 +18,19 @@ import type { DeviceTargetPowerConfigsWithReachability } from './lib/device/targ
 import type { PriceCoordinator } from './lib/price/priceCoordinator';
 import type { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import type { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
-import type {
-  DeferredObjectiveActivePlanRecorder,
-  DeferredObjectivePlanHistoryRecorder,
-  DeferredObjectiveEndedBus,
-  DeferredObjectiveHoursRemainingBus,
-  DeferredObjectiveHoursRemainingTracker,
-  DeferredObjectivePlanRevisionBus,
-  DeferredObjectiveStatusBus,
-} from './lib/objectives/deferredObjectives';
 import {
   createDeferredObjectiveEndedBus,
   createDeferredObjectiveHoursRemainingBus,
   createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
+  type DeferredObjectiveActivePlanRecorder,
+  type DeferredObjectivePlanHistoryRecorder,
+  type DeferredObjectiveEndedBus,
+  type DeferredObjectiveHoursRemainingBus,
+  type DeferredObjectiveHoursRemainingTracker,
+  type DeferredObjectivePlanRevisionBus,
+  type DeferredObjectiveStatusBus,
 } from './lib/objectives/deferredObjectives';
 import { createPlanStatusRegistry, type PlanStatusRegistry } from './lib/plan/planStatusRegistry';
 import { createDeviceControlHelpers } from './setup/appDeviceControlHelpers';
@@ -48,7 +46,7 @@ import { SettingsRepository } from './setup/settingsRepository';
 import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
 import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
-import { createCapacitySettingsStore } from './lib/power/capacitySettingsStore';
+import { createCapacitySettingsReloader, createCapacitySettingsStore } from './lib/power/capacitySettingsStore';
 import { BatteryManagedSettings } from './lib/battery/batteryControlSettings';
 import type {
   HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPriceSourcePayloads,
@@ -276,6 +274,18 @@ class PelsApp extends PelsAppBase implements AppContext {
   // a field initializer that reaches it must run after this line — TypeScript
   // rejects the forward read rather than handing over an `undefined` registry.
   public readonly timers = new TimerRegistry();
+  /** When the main home re-reads its capacity block and whether the read rebuilds (`lib/power`). */
+  protected readonly capacitySettingsReloader = createCapacitySettingsReloader({
+    store: this.capacitySettingsStore,
+    timers: this.timers,
+    timerKey: 'capacitySettingsLoadRetry',
+    isStopped: () => false,
+    install: (read) => this.installCapacitySettingsRead(read),
+    // The main home's settings handlers rebuild after their own reload; only a
+    // read that recovers on the retry lane rebuilds here.
+    rebuildOnChange: false,
+    rebuild: () => this.rebuildAfterCapacitySettingsRecovered(),
+  });
   /**
    * The main home's rebuild loop, built by the factory every meter area builds
    * its own with. Its four components — throttle, scheduler, due-time policy

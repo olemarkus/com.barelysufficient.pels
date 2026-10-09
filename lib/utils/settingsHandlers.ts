@@ -75,6 +75,21 @@ export type SettingsHandlerDeps = {
   homey: HomeyRuntime;
   loadCapacitySettings: () => void;
   /**
+   * Every Main-home settings write, by key, before the write dedupe and the
+   * key's handler: the capacity owner opens a fresh retry window for a carried
+   * key (`CapacitySettingsReloader.noteWritten`), so the handler's own reload,
+   * and a correction whose first read misses, are asked again. Ignores every
+   * other key.
+   */
+  noteCapacitySettingWritten: (key: string) => void;
+  /**
+   * The write dedupe skipped this Main-home key's handler: its value was
+   * already processed, so no reload follows. The capacity owner re-reads a
+   * carried key that is not reading back well-formed
+   * (`CapacitySettingsReloader.recoverAfterSkippedWrite`).
+   */
+  recoverCapacitySettingsAfterSkippedWrite: (key: string) => void;
+  /**
    * Names the SETTINGS SOURCE that moved, not a rebuild trigger. The wiring that
    * supplies this (`setup/appSettingsHelpers.ts`) is what turns it into the
    * `settings` trigger — this module keeps its own vocabulary and stays off the
@@ -294,9 +309,12 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     logMalformedHomeSuffix(key);
     // `scoped.homeId === MAIN_HOME_ID` implies `scoped.baseKey === key`, so
     // main-home dispatch below stays exact-key and byte-identical to before.
+    deps.noteCapacitySettingWritten(key);
     const keyHandler = handlers[key];
     if (!keyHandler) return;
-    queue = queue.then(() => runIfChanged(key, keyHandler)).catch((error) => {
+    queue = queue.then(() => runIfChanged(
+      key, keyHandler, () => deps.recoverCapacitySettingsAfterSkippedWrite(key),
+    )).catch((error) => {
       settingsLogger.error({
         event: 'settings_handler_failed',
         settingKey: key,

@@ -390,6 +390,8 @@ export function initSettingsHandlerForApp(
       options.onHomeOwnershipConfigurationRecomputed?.();
     },
     loadCapacitySettings: ctx.loadCapacitySettings,
+    noteCapacitySettingWritten: ctx.noteCapacitySettingWritten,
+    recoverCapacitySettingsAfterSkippedWrite: ctx.recoverCapacitySettingsAfterSkippedWrite,
     // The handlers name the settings SOURCE that moved; naming the trigger is
     // this seam's job, not theirs.
     rebuildPlanFromCache: async (settingsSource) => {

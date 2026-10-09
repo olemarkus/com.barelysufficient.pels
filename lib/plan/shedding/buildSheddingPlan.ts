@@ -72,7 +72,11 @@ export async function buildSheddingPlan(
   await reportShortfallToGuard(context, power, state, selection, deps, storage);
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
   state.sheddingActive = sheddingActive;
-  const guardInShortfall = context.capacitySoftLimit !== null && deps.capacityGuard.isInShortfall();
+  // Read as it stands: with Capacity limit off the build already cleared the
+  // incident (`recordCapacityDisabled`, at the top of the build) and nothing in
+  // this build can open one — `reportShortfallToGuard` above asks the guard
+  // nothing without a shortfall threshold — so no capacity check belongs here.
+  const guardInShortfall = deps.capacityGuard.isInShortfall();
   const recoveredFromShedding = wasSheddingActive && !sheddingActive;
   return {
     shedSet,
@@ -158,7 +162,7 @@ function planShedding(
     // pre-2026-08 reason mapping.
     resolveShedReason(
       candidateParams.limitSource,
-      candidateSummary.capacityBreached,
+      candidateSummary.physicalLimitBreached,
       hourlyBudgetExhausted,
     ),
     shedsEverything,
@@ -204,7 +208,7 @@ function resolveShedEntry(
 ): { kind: 'none' } | {
   kind: 'select'; hourlyBudgetExhausted: boolean; shedsEverything: boolean; leadingStorageOnly: boolean;
 } {
-  const hour = resolveExhaustedHourAnswer(context.devices, state, power, storage);
+  const hour = resolveExhaustedHourAnswer(context, state, power, storage);
   if (hour.kind !== 'not_exhausted') {
     const shedsEverything = hour.kind === 'shed_everything';
     return { kind: 'select', hourlyBudgetExhausted: true, shedsEverything, leadingStorageOnly: false };
@@ -267,7 +271,7 @@ function skipSheddingAwaitingMeasurement(
   const decision = holdPendingShedDecision(
     candidateSummary.candidates,
     held,
-    resolveShedReason(limitSource, candidateSummary.capacityBreached, hourlyBudgetExhausted),
+    resolveShedReason(limitSource, candidateSummary.physicalLimitBreached, hourlyBudgetExhausted),
   );
   deps.debugStructured?.({
     event: 'plan_shed_skipped_awaiting_measurement',
@@ -311,7 +315,7 @@ function shedBeyondPendingRelief(
 ): PlanSheddingResult {
   const { deps, deficitKw: needed, limitSource } = candidateParams;
   const { candidates } = candidateSummary;
-  const reason = resolveShedReason(limitSource, candidateSummary.capacityBreached, hourlyBudgetExhausted);
+  const reason = resolveShedReason(limitSource, candidateSummary.physicalLimitBreached, hourlyBudgetExhausted);
   const overshootStats = buildCandidateOvershootStats(needed, candidateSummary);
   const held = holdPendingShedDecision(candidates, pending, reason);
   const residualKw = needed - pending.totalKw;

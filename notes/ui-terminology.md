@@ -426,6 +426,18 @@ card, from the shared formatter: `Waiting after limiting a device (30s)`,
 `Delaying restart after recent failed attempt (12s)`, `Left off after startup`,
 `Waiting after startup`.
 
+The meter-outage hold reads `Waiting for a new power reading` on the card, in
+device detail and in the activity log alike (`PLAN_STATE_METER_SILENT_STATUS`,
+reason code `meterSilent`). The whole-home meter stopped reporting past the
+10-minute shed timeout and the fail-closed pass limited every managed device.
+The line is the same in every mode, Capacity limit on or off and grid import
+limit on or off: without a measurement no ceiling is known to bind, so it names
+none. Like the spent-hour line it carries no kW, because freeing power would not
+resume the device; unlike it, it states what the device needs. It pairs with the
+no-readings banner's `Managed devices stay limited until a new reading arrives.`
+Do not substitute `Limited by the hard cap`: with Capacity limit off that named
+a limit that was not even on.
+
 A device held while PELS is out of levers (`shortfall`) also reads
 `Waiting to resume — 1.5 kW more needed` on its card. `Manual action needed`
 is the house-level recourse, carried by the Overview hero and the shortfall

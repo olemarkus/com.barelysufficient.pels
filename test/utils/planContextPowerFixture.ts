@@ -6,19 +6,25 @@ import { resolveFixtureTemperatureSetpoints } from '../helpers/temperatureSetpoi
  * A measurement a spec pins directly — for the many cases that are about a
  * particular headroom rather than a particular reading. Defaults describe an
  * on-track cycle: 3 kW drawn, 1 kW of headroom on the binding and capacity
- * axes, no daily axis, capacity not breached.
+ * axes, no daily axis, capacity not breached. `physicalLimitBreached` is
+ * derived from the two breach flags exactly as `resolveMeasuredPower` derives
+ * it, unless the spec pins it.
  */
-export const buildMeasuredPower = (overrides: Partial<MeasuredPower> = {}): MeasuredPower => ({
-  gridHeadroomKw: null,
-  gridBreached: false,
-  drawKw: 3,
-  headroomKw: 1,
-  capacityHeadroomKw: 1,
-  budgetHeadroomKw: null,
-  capacityBreached: false,
-  budgetReleasableHeadroomHold: false,
-  ...overrides,
-});
+export const buildMeasuredPower = (overrides: Partial<MeasuredPower> = {}): MeasuredPower => {
+  const { physicalLimitBreached, ...rest } = overrides;
+  const power = {
+    gridHeadroomKw: null,
+    gridBreached: false,
+    drawKw: 3,
+    headroomKw: 1,
+    capacityHeadroomKw: 1,
+    budgetHeadroomKw: null,
+    capacityBreached: false,
+    budgetReleasableHeadroomHold: false,
+    ...rest,
+  };
+  return { ...power, physicalLimitBreached: physicalLimitBreached ?? (power.capacityBreached || power.gridBreached) };
+};
 
 /**
  * What a spec may add to a frame override: the reads the fixture resolves the
@@ -69,7 +75,8 @@ export type PlanCycleSpec = PlanContextFixtureOverrides & Partial<MeasuredPower>
 export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext; power: MeasuredPower } => {
   const {
     total, headroom, headroomRaw, drawKw, headroomKw, capacityHeadroomKw, budgetHeadroomKw,
-    capacityBreached, budgetReleasableHeadroomHold, gridHeadroomKw, gridBreached, ...contextOverrides
+    capacityBreached, physicalLimitBreached, budgetReleasableHeadroomHold, gridHeadroomKw, gridBreached,
+    ...contextOverrides
   } = spec;
   const context = buildPlanContextFixture(contextOverrides);
   const draw = drawKw ?? total ?? 3;
@@ -85,6 +92,7 @@ export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext
       capacityHeadroomKw: capacityHeadroomKw === undefined ? binding : capacityHeadroomKw,
       budgetHeadroomKw: budgetHeadroomKw ?? null,
       capacityBreached: capacityBreached ?? (context.capacitySoftLimit !== null && draw > context.capacitySoftLimit),
+      ...(physicalLimitBreached === undefined ? {} : { physicalLimitBreached }),
       budgetReleasableHeadroomHold: budgetReleasableHeadroomHold ?? false,
     }),
   };

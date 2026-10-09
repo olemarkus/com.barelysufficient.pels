@@ -72,7 +72,7 @@ describe('resolveRemainingSheddableLoadKw — stale observation handling', () =>
       device: unknown,
       alreadyShed: false,
       limitSource: 'capacity',
-      capacityBreached: true,
+      breachOverridesExemption: true,
     });
     expect(kw).toBeCloseTo(1.4, 6);
   });
@@ -89,7 +89,7 @@ describe('resolveRemainingSheddableLoadKw — stale observation handling', () =>
       device: fresh,
       alreadyShed: false,
       limitSource: 'capacity',
-      capacityBreached: true,
+      breachOverridesExemption: true,
     });
     expect(kw).toBe(0);
   });
@@ -145,7 +145,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
       devices: producerDevices,
       isAlreadyShed: () => false,
       limitSource: 'capacity',
-      capacityBreached: true,
+      breachOverridesExemption: true,
     });
 
     expect(producerTotal).toBeCloseTo(1.4 + 2.9 + 1.2, 6);
@@ -264,7 +264,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
       devices: producerDevices,
       isAlreadyShed: () => false,
       limitSource: 'capacity',
-      capacityBreached: true,
+      breachOverridesExemption: true,
     });
 
     // Baseline 2.9 + (a) 1.2 + (d) 0. Case (d) contributing 0 is the point:
@@ -299,7 +299,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
       })),
       alreadyShed: false,
       limitSource: 'capacity',
-      capacityBreached: true,
+      breachOverridesExemption: true,
     })).toBeCloseTo(1.2, 6);
 
     // The former cases (b)/(c) — a stepped device with `selectedStepId`
@@ -328,7 +328,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
       })),
       alreadyShed: false,
       limitSource: 'capacity',
-      capacityBreached: true,
+      breachOverridesExemption: true,
     })).toBe(0);
   });
 });
@@ -356,7 +356,7 @@ describe('resolveResidualShedBehavior — a configured set_temperature shed with
     device: toInputRemainingSheddableDevice(device),
     alreadyShed: false,
     limitSource: 'capacity',
-    capacityBreached: true,
+    breachOverridesExemption: true,
   });
 
   it('frees the whole draw when the device reports no temperature at all', () => {

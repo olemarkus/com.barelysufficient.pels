@@ -140,6 +140,14 @@ export type AppContext = {
   /** SDK-bound Main-home capacity reader, constructed once at the composition root. */
   capacitySettingsStore: CapacitySettingsStore;
   loadCapacitySettings: () => void;
+  /**
+   * An explicit write of a settings key landed, ahead of the settings handler's
+   * write dedupe: the capacity owner opens a fresh retry window for a carried
+   * key (`CapacitySettingsReloader.noteWritten`).
+   */
+  noteCapacitySettingWritten: (key: string) => void;
+  /** The settings handler's dedupe skipped this key (`CapacitySettingsReloader.recoverAfterSkippedWrite`). */
+  recoverCapacitySettingsAfterSkippedWrite: (key: string) => void;
   /** Re-read only the validated live temperature-command authorization map. */
   loadTemperatureControlPolicySettings: () => void;
   loadPriceOptimizationSettings: () => void;

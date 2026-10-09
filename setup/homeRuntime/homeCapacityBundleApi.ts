@@ -16,7 +16,8 @@ import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { createPlanEngine } from '../appInit/createPlanEngine';
 import {
-  scheduleCapacitySettingsReadRetry,
+  createCapacitySettingsReloader,
+  resolveInstalledCapacityScalars,
   type createCapacitySettingsStore,
 } from '../../lib/power/capacitySettingsStore';
 import type { createHomePowerPipeline } from './createHomePowerPipeline';
@@ -356,45 +357,51 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
   const {
     ctx, homeId, logger, timerKey, planEngine, planService, scope, tracker,
     pipeline, planRebuildScheduler, capacityStore, applyMembershipReadyEdge,
-    getHome, setHome, setScalars, flushDeferredShortfallSideEffect,
+    getHome, setHome, getScalars, setScalars, flushDeferredShortfallSideEffect,
     isTornDown, markTornDown, reloadModeCatalog, isModeCatalogInitialized,
   } = params;
   const ownershipGenerationOperations = buildOwnershipGenerationOperations(params);
   const readOperations = buildHomeCapacityBundleReads({ ...params, getOperatingMode: scope.getOperatingMode });
+  // When this home re-reads its capacity block, and whether the read rebuilds,
+  // is the capacity owner's (`createCapacitySettingsReloader`); the wiring only
+  // installs a read and runs the rebuild it is told to.
   const capacitySettingsRetryTimer = timerKey('capacitySettingsLoadRetry');
-  const reloadCapacityScalars = (): void => {
-    if (isTornDown()) return;
-    const next = capacityStore.read();
-    scheduleCapacitySettingsReadRetry(next, ctx.timers, capacitySettingsRetryTimer, reloadCapacityScalars);
-    // Unavailable keeps the scalars this home already runs on.
-    if (next.state === 'unavailable') return;
+  const capacitySettingsReloader = createCapacitySettingsReloader({
+    store: capacityStore,
+    timers: ctx.timers,
+    timerKey: capacitySettingsRetryTimer,
+    isStopped: isTornDown,
     // The capacity scalars live in their own store; nothing mirrors them now.
-    setScalars(next.value);
-    // Sub-homes DEFAULT dry_run=true, so flipping it false is the normal
-    // ACTIVATION path (P2#2). The rebuild after that transition can produce the
-    // SAME action signature as the never-applied dry-run shed plan, which used
-    // to skip the apply entirely (stable actuation does not cover shed actions)
-    // and leave the home over cap with its command never issued — so this path
-    // chased the rebuild with a reconcile to force the write. It no longer needs
-    // to for a `turn_off` shed: the plan wants the device off, it is observed on,
-    // and that IS execution work outstanding, so the rebuild applies it itself.
-    //
-    // CAVEAT, because the coverage is not total: a `set_step` shed to a non-off
-    // step is NOT caught. `hasSteppedStepDrift` compares the observed step
-    // against `planDevice.selectedStepId`, which on a rebuild is the observed
-    // step (same read) — structurally equal, so step drift is always false
-    // there, and the binary axis reads `on` as expected. Such a plan still
-    // depends on `changes.actionChanged`. That hole predates this change (the
-    // deleted reconcile lane used the same predicate), and closing it means
-    // comparing against `desiredStepId` for an unexecuted shed.
-    //
-    // Direct rebuild, mirroring the main home's settings path
-    // (`handleCapacityLimitChange` also bypasses the sample scheduler).
-    void planService.rebuildPlanFromCache('settings', { detail: 'home_capacity_scalars' })
-      .catch((error: unknown) => {
-        logger()?.error({ event: 'home_capacity_reload_rebuild_failed', homeId, err: normalizeError(error) });
-      });
-  };
+    install: (read) => setScalars(resolveInstalledCapacityScalars(read, getScalars())),
+    rebuildOnChange: true,
+    rebuild: () => {
+      // Sub-homes DEFAULT dry_run=true, so flipping it false is the normal
+      // ACTIVATION path (P2#2). The rebuild after that transition can produce the
+      // SAME action signature as the never-applied dry-run shed plan, which used
+      // to skip the apply entirely (stable actuation does not cover shed actions)
+      // and leave the home over cap with its command never issued — so this path
+      // chased the rebuild with a reconcile to force the write. It no longer needs
+      // to for a `turn_off` shed: the plan wants the device off, it is observed on,
+      // and that IS execution work outstanding, so the rebuild applies it itself.
+      //
+      // CAVEAT, because the coverage is not total: a `set_step` shed to a non-off
+      // step is NOT caught. `hasSteppedStepDrift` compares the observed step
+      // against `planDevice.selectedStepId`, which on a rebuild is the observed
+      // step (same read) — structurally equal, so step drift is always false
+      // there, and the binary axis reads `on` as expected. Such a plan still
+      // depends on `changes.actionChanged`. That hole predates this change (the
+      // deleted reconcile lane used the same predicate), and closing it means
+      // comparing against `desiredStepId` for an unexecuted shed.
+      //
+      // Direct rebuild, mirroring the main home's settings path
+      // (`handleCapacityLimitChange` also bypasses the sample scheduler).
+      void planService.rebuildPlanFromCache('settings', { detail: 'home_capacity_scalars' })
+        .catch((error: unknown) => {
+          logger()?.error({ event: 'home_capacity_reload_rebuild_failed', homeId, err: normalizeError(error) });
+        });
+    },
+  });
+  const reloadCapacityScalars = (): void => capacitySettingsReloader.reload();
   return {
     homeId,
     isTornDown,
@@ -448,6 +455,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
         });
     },
     reloadCapacityScalars,
+    onCapacityScalarWritten: (baseKey) => capacitySettingsReloader.reloadAfterWrite(baseKey),
     teardown: (options) => {
       // A failed durable reset leaves this runtime fenced but retained by the
       // registry as a tombstone. Repeated teardown(reset) calls are therefore

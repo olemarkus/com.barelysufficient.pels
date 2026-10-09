@@ -91,8 +91,8 @@ export type ReasonContext = {
   readonly postureHoldReasonById: ReadonlyMap<string, DeviceReason>;
   /** Plan-level binding constraint; `'daily'` re-attributes carried `capacity` reasons. */
   readonly softLimitSource: 'capacity' | 'daily' | 'grid' | null;
-  /** Over an enabled capacity or grid threshold, whichever limit binds. Producer-resolved. */
-  readonly capacityBreached: boolean;
+  /** Over an enabled capacity or grid threshold (`MeasuredPower.physicalLimitBreached`). Producer-resolved. */
+  readonly physicalLimitBreached: boolean;
   /** Daily pace binding with neither capacity nor grid also breached. Producer-resolved. */
   readonly budgetReleasableHeadroomHold: boolean;
   /** The hour's energy budget is spent; folds every ceiling hold to `hourlyBudget`. */
@@ -283,7 +283,7 @@ function stripCycleAnnotations(reason: DeviceReason): DeviceReason {
 // overshoot), so without this the "next hour" line would outlive the hour it
 // described. The re-attribution mirrors `resolveShedReason`/
 // `resolveDailyBindingReattribution` semantics: daily only when it binds
-// without a capacity breach, and never for a budget-exempt device (its holds
+// without a physical-limit (capacity or grid) breach, and never for a budget-exempt device (its holds
 // are capacity holds by per-axis admission). A fresh-this-cycle `shedReasons`
 // entry is left alone, same as the daily re-attribution: the selector set it
 // with the current cycle's facts.
@@ -292,7 +292,7 @@ function resolveHourlyFold(
   dev: DevicePlanDevice,
   shedReasonFresh: boolean,
 ): DeviceReason {
-  const { hourlyBudgetExhausted, softLimitSource, capacityBreached } = ctx;
+  const { hourlyBudgetExhausted, softLimitSource, physicalLimitBreached } = ctx;
   if (hourlyBudgetExhausted) {
     if (dev.reason.code === PLAN_REASON_CODES.hourlyBudget) return dev.reason;
     if (HOURLY_FOLD_REASON_CODES.has(dev.reason.code)) {
@@ -303,7 +303,7 @@ function resolveHourlyFold(
   if (dev.reason.code !== PLAN_REASON_CODES.hourlyBudget) return dev.reason;
   if (shedReasonFresh) return dev.reason;
   if (softLimitSource === 'grid') return { code: PLAN_REASON_CODES.gridImport };
-  const daily = softLimitSource === 'daily' && !capacityBreached && dev.budgetExempt !== true;
+  const daily = softLimitSource === 'daily' && !physicalLimitBreached && dev.budgetExempt !== true;
   return daily
     ? { code: PLAN_REASON_CODES.dailyBudget }
     : { code: PLAN_REASON_CODES.capacity };
@@ -410,10 +410,10 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
 //   without this the card reads "Limited by the hard cap" while the hero safe-pace
 //   number is the daily-budget pacing. A fresh-this-cycle `shedReasons` entry is
 //   left alone — the shedding selector set it with the already-correct source.
-//   Guarded by `!capacityBreached`: `softLimitSource` names the BINDING (lower)
-//   limit, not the one the draw has crossed; when total is over the capacity limit
-//   too, capacity is the constraint doing the work and the daily budget is not a
-//   lever that can help. Prod 2026-07-25: a budget-exempt EV charger — shed only
+//   Guarded by `!physicalLimitBreached`: `softLimitSource` names the BINDING (lower)
+//   limit, not the one the draw has crossed; when total is over the capacity or
+//   grid limit too, that limit is the constraint doing the work and the daily
+//   budget is not a lever that can help. Prod 2026-07-25: a budget-exempt EV charger — shed only
 //   because a real breach overrode its exemption — read "Limited by today's daily
 //   budget" next to its own "Budget exempt" chip, with a "Let it run now" release that
 //   could not create capacity headroom. Budget-exempt devices are excluded
@@ -458,8 +458,8 @@ function resolveDailyBindingReattribution(
   shedReasonFresh: boolean,
   budgetExempt: boolean,
 ): DeviceReason | null {
-  const { softLimitSource, capacityBreached, budgetReleasableHeadroomHold } = ctx;
-  if (softLimitSource !== 'daily' || capacityBreached) return null;
+  const { softLimitSource, physicalLimitBreached, budgetReleasableHeadroomHold } = ctx;
+  if (softLimitSource !== 'daily' || physicalLimitBreached) return null;
   // Never fold a budget-exempt device's hold to `dailyBudget`: per-axis restore
   // admission evaluates exempt candidates on the CAPACITY axis, so their holds
   // are capacity holds, and the budget rescue ("Let it run now") is a no-op for

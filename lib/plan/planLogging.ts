@@ -28,7 +28,6 @@ import {
   isShedInvariantBlockedReason,
 } from '../planContract/planDecisionSemantics';
 import {
-  isCapacityBreached,
   resolveRemainingSheddableLoadKw,
   toPlanRemainingSheddableDevice,
 } from './planRemainingSheddableLoad';
@@ -219,7 +218,7 @@ function sumPlanRemainingSheddableLoadKw(
       device: toPlanRemainingSheddableDevice(sourceDevice),
       alreadyShed: sourceDevice.plannedState === 'shed',
       limitSource: context.limitSource,
-      capacityBreached: context.capacityBreached,
+      breachOverridesExemption: context.physicalLimitBreached,
     });
     if (power > 0) {
       totalKw += power;
@@ -239,7 +238,7 @@ function sumActionableControlledLoadKw(
       device: toPlanRemainingSheddableDevice(sourceDevice),
       alreadyShed: sourceDevice.plannedState === 'shed',
       limitSource: context.limitSource,
-      capacityBreached: context.capacityBreached,
+      breachOverridesExemption: context.physicalLimitBreached,
     });
     if (power > 0) {
       totalKw += power;
@@ -254,7 +253,7 @@ function roundPowerW(powerKw: number): number {
 
 type RemainingSheddableContext = {
   limitSource: 'capacity' | 'daily' | 'grid' | null;
-  capacityBreached: boolean;
+  physicalLimitBreached: boolean;
 };
 
 function resolvePlanRemainingSheddableContext(
@@ -266,11 +265,13 @@ function resolvePlanRemainingSheddableContext(
   // budget-bound cycle if it ever had fired.
   return {
     limitSource: plan.meta.softLimitSource,
-    // From the MEASURED total, matching what the plan's own device-level
-    // `capacityBreached` now reports. Reading the raw `totalKw` here made the two
-    // disagree on exactly the cycles where the meter could not be trusted.
-    capacityBreached: plan.meta.powerIsMeasured
-      && isCapacityBreached(plan.meta.totalKw, plan.meta.capacitySoftLimitKw),
+    // The producer's own answer (`MeasuredPower.physicalLimitBreached`, published
+    // on the measured meta): over the capacity pace or the grid import target,
+    // the same breach that let shedding spend a budget-exempt device. Re-deriving
+    // it here from the meta's figures was capacity-only, so with a grid breach
+    // under a daily source this summary counted an exempt device's load as not
+    // reducible while shedding would limit it. An unmeasured plan has no breach.
+    physicalLimitBreached: plan.meta.powerIsMeasured && plan.meta.physicalLimitBreached,
   };
 }
 

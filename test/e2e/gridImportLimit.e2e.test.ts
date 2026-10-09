@@ -123,8 +123,54 @@ describe('grid import control through Homey', () => {
     await poll();
     expect(await home.ev.getCapabilityValue('onoff')).toBe(false);
     expect(await home.heater.getCapabilityValue('onoff')).toBe(true);
+    // The breach holds steady, so the reading 10 s later waits out the 15 s
+    // post-reduction holdoff; the next one, still high, reduces further.
+    await poll();
+    expect(await home.heater.getCapabilityValue('onoff')).toBe(true);
     await poll();
     expect(await home.heater.getCapabilityValue('onoff')).toBe(false);
+  });
+
+  // At boot the store has accepted nothing, and the app's built-in capacity
+  // settings are a posture the owner never set. A grid switch that reads back on
+  // without its threshold must keep the safe boot posture (simulation) until the
+  // read heals, rather than control devices on invented limits with the
+  // persisted `dry_run=false`.
+  it('controls nothing at boot until a grid threshold that reads back missing heals', async () => {
+    let missLimit = true;
+    const readSetting = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation(
+      (key: string) => (key === GRID_IMPORT_LIMIT_KW && missLimit ? undefined : readSetting(key)),
+    );
+    const home = await boot(true);
+    // Over the 3.135 kW grid target, and over a quarter that has no history yet.
+    home.setBackground(2400);
+    for (let i = 0; i < 3; i += 1) await poll();
+    expect(home.put.mock.calls.filter(([path]) => path.endsWith('/onoff'))).toHaveLength(0);
+
+    missLimit = false;
+    for (let i = 0; i < 2; i += 1) await poll();
+    expect(home.shedCalls().length).toBeGreaterThan(0);
+    expect(home.app.getLatestPlanSnapshotForUi()?.meta?.gridImportLimitKw).toBe(3.3);
+  });
+
+  // After a well-formed read, a malformed external write keeps the accepted
+  // grid posture; the bounded re-reads end without claiming a recovery.
+  it('keeps the accepted grid limit through a malformed write, without a recovery rebuild when the retries end', async () => {
+    const home = await boot();
+    mockHomeyInstance.settings.set(GRID_IMPORT_LIMIT_KW, 'junk');
+    await drainPending();
+    for (let i = 0; i < 5; i += 1) await poll();
+    expect(home.app.getLatestPlanSnapshotForUi()?.meta?.gridImportLimitKw).toBe(3.3);
+    const recovered = home.records.filter((record) => (
+      (record as { reasonCode?: string }).reasonCode === 'settings:capacity_settings_read_recovered'
+    ));
+    expect(recovered).toHaveLength(0);
+
+    mockHomeyInstance.settings.set(GRID_IMPORT_LIMIT_KW, 4);
+    await drainPending();
+    await poll();
+    expect(home.app.getLatestPlanSnapshotForUi()?.meta?.gridImportLimitKw).toBe(4);
   });
 
   it('keeps grid pressure independent of an under-used 15-minute capacity budget', async () => {

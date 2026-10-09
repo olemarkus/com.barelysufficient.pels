@@ -198,7 +198,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       needed: 5, // ask for a large reduction so any eligible device is offered
       deficitKw: 5,
       limitSource: 'capacity',
-      capacityBreached: context.capacityBreached,
+      physicalLimitBreached: context.physicalLimitBreached,
       storageLimit: { kind: 'measured' as const, drawKw: 5, levers: {} },
       state: createPlanEngineState(),
       deps: {

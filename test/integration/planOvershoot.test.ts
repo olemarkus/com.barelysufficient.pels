@@ -3,7 +3,7 @@ import {
   SHED_GRACE_MAX_MS,
   SOFT_OVERSHOOT_PERSIST_MS,
 } from '../../lib/plan/planConstants';
-import { resolveShedGraceMs } from '../../lib/plan/planOvershoot';
+import { resolveShedGraceMs, unpricedShedGrace } from '../../lib/plan/planOvershoot';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 
 describe('resolveSoftOvershootDecision', () => {
@@ -123,6 +123,40 @@ describe('resolveSoftOvershootDecision', () => {
     it('caps the wait even when the deficit is trivial and the hour wide open', () => {
       expect(resolveShedGraceMs({ deficitKw: 0.06, hourRemainingKWh: 4.7 })).toBe(SHED_GRACE_MAX_MS);
     });
+
+  });
+
+  // Capacity limit off: no period prices the wait, so a restore transient gets
+  // the bounded maximum whatever the deficit — even when the tracked period is
+  // spent, which with Capacity limit on buys none.
+  it('grants the unpriced grace the bounded maximum, a spent period notwithstanding', () => {
+    const state = createPlanEngineState();
+    expect(unpricedShedGrace(20)).toBe(SHED_GRACE_MAX_MS);
+    expect(unpricedShedGrace(0)).toBe(0);
+    expect(state.overshoot.decideSoft(-1.611, 0, true, Date.now()).shedActionable).toBe(true);
+
+    const unpriced = createPlanEngineState();
+    expect(unpriced.overshoot.decideSoftUnpriced(-1.611, true, Date.now()).shedActionable).toBe(false);
+    vi.advanceTimersByTime(SHED_GRACE_MAX_MS);
+    expect(unpriced.overshoot.decideSoftUnpriced(-1.611, true, Date.now()).shedActionable).toBe(true);
+    // No restore of its own in flight: a real deficit is acted on at once.
+    expect(createPlanEngineState().overshoot.decideSoftUnpriced(-1.611, false, Date.now()).shedActionable).toBe(true);
+  });
+
+  it('ends the soft-deficit clock on a grid breach and when no limit is enabled', () => {
+    const state = createPlanEngineState();
+    state.overshoot['softPendingSinceMs'] = Date.now() - SHED_GRACE_MAX_MS;
+
+    expect(state.overshoot.decideGridBreach()).toEqual({ actionable: true, shedActionable: true, pendingSinceMs: null });
+    // The soft deficit after the breach is timed from its own first build, so a
+    // restore transient gets its grace.
+    expect(state.overshoot.decideSoft(-1.611, 4.45, true, Date.now())).toMatchObject({
+      shedActionable: false, pendingSinceMs: Date.now(),
+    });
+
+    vi.advanceTimersByTime(30_000);
+    expect(state.overshoot.decideWithoutLimit()).toEqual({ actionable: false, shedActionable: false, pendingSinceMs: null });
+    expect(state.overshoot.decideSoft(-1.611, 4.45, true, Date.now()).pendingSinceMs).toBe(Date.now());
   });
 
   it('keeps a persisted tiny deficit latched across later cycles', () => {

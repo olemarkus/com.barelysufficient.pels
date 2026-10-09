@@ -108,11 +108,16 @@ export const createSettingsWriteDedupe = (
 ) => {
   const lastProcessedFingerprints = new Map<string, string>();
 
-  return async (key: string, handle: () => Promise<void>): Promise<void> => {
+  // `onSkipped` runs, synchronously, for a write whose value was already
+  // processed, so the queue's timing is the same whichever way it goes.
+  return async (key: string, handle: () => Promise<void>, onSkipped: () => void): Promise<void> => {
     const fingerprint = DEDUPED_WRITE_KEYS.has(key)
       ? toStableFingerprint(readSetting(key))
       : null;
-    if (fingerprint !== null && lastProcessedFingerprints.get(key) === fingerprint) return;
+    if (fingerprint !== null && lastProcessedFingerprints.get(key) === fingerprint) {
+      onSkipped();
+      return;
+    }
     await handle();
     // A later write may have arrived while the handler awaited refresh/replan.
     // Only acknowledge the value this operation started processing.

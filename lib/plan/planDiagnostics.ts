@@ -52,7 +52,7 @@ export const buildDeviceDiagnosticsObservations = (
     budgetPressureEligible: params.budgetPressureEligible,
     smartTaskDriving: params.smartTaskDrivingDeviceIds.has(device.id),
     // Producer-resolved on `MeasuredPower` (see the field doc there): daily pace binding
-    // AND capacity not also breached. Hourly-cap exhaustion forces
+    // AND no physical limit (capacity or grid) also breached. Hourly-cap exhaustion forces
     // `softLimitSource` to 'capacity' (capacitySoftLimit → 0), so exhausted hours stay
     // in the capacity bucket too. Reading the shared field keeps this fold and the
     // device-reason re-attribution in `normalizeShedReasons` in lockstep — the breach

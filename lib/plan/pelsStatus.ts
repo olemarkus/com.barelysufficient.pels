@@ -267,7 +267,15 @@ function resolveReasonFlags(reason: DeviceReason): {
     };
   }
   return {
-    hasHourlyReason: reason.code === PLAN_REASON_CODES.hourlyBudget || reason.code === PLAN_REASON_CODES.capacity,
+    // A meter-outage hold (`meterSilent`) reports the status it reported while it
+    // still carried the `capacity` code: the fail-closed pass is that control's
+    // protection while Capacity limit is on, and `resolveHourlyLimited` answers
+    // false with it off whatever the reasons say. The status's `limitReason`
+    // has no meter-outage member; the Overview banner is the surface that names
+    // the outage (`powerReadingsBanner.ts`).
+    hasHourlyReason: reason.code === PLAN_REASON_CODES.hourlyBudget
+      || reason.code === PLAN_REASON_CODES.capacity
+      || reason.code === PLAN_REASON_CODES.meterSilent,
     hasDailyReason: reason.code === PLAN_REASON_CODES.dailyBudget,
   };
 }

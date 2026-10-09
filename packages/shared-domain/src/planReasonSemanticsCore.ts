@@ -18,6 +18,15 @@ export const PLAN_REASON_CODES = {
   inactive: 'inactive',
   capacity: 'capacity',
   gridImport: 'grid_import',
+  // The whole-home meter has stopped reporting past the 10-minute shed timeout,
+  // and the silent-meter fail-closed pass limited the device
+  // (`lib/plan/planBuilderSilentMeter.ts`). Its cause in every mode — Capacity
+  // limit on or off, grid import limit on or off — because no ceiling is known
+  // to bind: the device needs a new reading, not freed power, to resume. Never a
+  // carrier (no kW is honest without a measurement) and, like
+  // `awaitingSolarSurplus`, carries NO detail, so it is byte-stable across plan
+  // cycles. Distinct from `meterSettling`, a countdown on a reporting meter.
+  meterSilent: 'meter_silent',
   deferredObjectiveAvoid: 'deferred_objective_avoid',
   // Standing "Run on solar surplus" hold for a binary dump load: the device's
   // baseline is OFF and PELS lifts the hold only while the surplus allocator
@@ -211,6 +220,7 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.inactive; detail: string }
   | ({ code: typeof PLAN_REASON_CODES.gridImport } & AdmissionShortfall & ReserveHolder)
   | ({ code: typeof PLAN_REASON_CODES.capacity } & AdmissionShortfall & ReserveHolder)
+  | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }

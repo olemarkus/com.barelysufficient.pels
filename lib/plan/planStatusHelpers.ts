@@ -75,6 +75,7 @@ const normalizeMeasuredMetaFields = (
   meta.powerIsMeasured
     ? {
       powerIsMeasured: true,
+      physicalLimitBreached: meta.physicalLimitBreached,
       headroomKw: roundTo(meta.headroomKw, PLAN_META_KW_STEP),
       shortfallBudgetHeadroomKw: roundTo(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
       hardCapHeadroomKw: roundTo(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),

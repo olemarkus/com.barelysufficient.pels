@@ -54,7 +54,7 @@ export const PLAN_REBUILD_TRIGGERS = [
   // it is allowed to say. Fires once, at `POWER_SAMPLE_STALE_SHED_TIMEOUT_MS`
   // (10 minutes) with no evidence the meter is alive (no sample, or one frozen
   // against the metered load) and for BOTH sources, so the planner runs one
-  // fail-closed pass and sheds instead of holding an "under cap" decision taken
+  // fail-closed pass and sheds instead of holding an "under the limits" decision taken
   // before the meter died; the composed plan-build gate then blocks every
   // further rebuild until a new reading returns
   // (`setup/powerSampleFreshnessEscalation.ts`, `lib/power/meterSilence.ts`).

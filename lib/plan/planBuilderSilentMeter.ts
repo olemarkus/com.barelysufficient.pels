@@ -3,7 +3,7 @@
  *
  * When a home's meter has been silent past `POWER_SAMPLE_STALE_SHED_TIMEOUT_MS`
  * the escalation clock (`setup/powerSampleFreshnessEscalation.ts`) runs one
- * rebuild so the house sheds rather than holding an "under cap" decision taken
+ * rebuild so the house sheds rather than holding an "under the limits" decision taken
  * before the meter died, and the composed plan-build gate then blocks every
  * further rebuild until an admitted sample returns (`lib/power/meterSilence.ts`).
  *
@@ -31,7 +31,7 @@
  */
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { SilentMeterReading } from '../power/powerCycleReading';
-import { computeShortfallThreshold } from './planBudget';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PlanBuilderDeps } from './planBuilderDeps';
 import { attachDeferredReleaseIntents } from './planBuilderDecoration';
 import type { PlanMaterializationStages } from './planBuilderMaterialization';
@@ -42,14 +42,13 @@ import type { DevicePlan, DevicePlanDevice, TemperatureKind } from './planTypes'
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { temperatureSetpointsFor } from './planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { runSilentMeterSurplusHold } from './planBuilderSurplus';
 import {
   NO_STORAGE_RELIEF, attachStorageDecisions, collectAbsentStorageReleases, releaseStorageOnSilentMeter,
 } from './battery/storageRelief';
 import {
   buildSheddingCandidates,
-  resolveShedReason,
   selectShedDevices,
   type SheddingDeps,
   type SheddingPlan,
@@ -104,16 +103,20 @@ export class SilentMeterPlanBuilder {
     private readonly stages: PlanMaterializationStages,
   ) { }
 
+  /**
+   * `settings` and `shortfallBudgetThresholdKw` are the build's own — read and
+   * resolved once by `PlanBuilder` for the whole cycle — never a second read
+   * here that a settings write could have moved.
+   */
   build(
     context: PlanContext,
     reading: SilentMeterReading,
     decoration: DeferredDecorationBundle,
+    settings: PowerLimitSettings,
+    shortfallBudgetThresholdKw: number | null,
     nowTs: number,
   ): DevicePlan {
-    const capacitySettings = this.deps.getCapacitySettings();
     const powerTracker = this.deps.getPowerTracker();
-    const shortfallBudgetThresholdKw = capacitySettings.capacityEnabled
-      ? computeShortfallThreshold(capacitySettings, powerTracker, nowTs) : null;
     const sheddingPlan = this.shedEverything(context, shortfallBudgetThresholdKw, nowTs);
     // No measurement means no surplus: every surplus-only load is held, with
     // its own reason, exactly as a collapsed surplus would hold it.
@@ -171,9 +174,9 @@ export class SilentMeterPlanBuilder {
         dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
         powerTracker,
         capacityGuard: this.deps.capacityGuard,
-        capacityLimitKw: capacitySettings.limitKw,
+        capacityLimitKw: settings.limitKw,
         shortfallBudgetThresholdKw,
-        hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
+        hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
       }),
       devices: decidedDevices,
       storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
@@ -193,14 +196,26 @@ export class SilentMeterPlanBuilder {
    * there is none.
    */
   /**
-   * The pass is a CAPACITY fail-closed: with no measurement the house may be
-   * over its cap, so the reason and the candidate policy are capacity's — a
-   * daily-pace home's budget-exempt devices are not spared (under a daily
-   * source they would be), because the exemption is from the budget, not
-   * from a meter that has gone silent.
+   * The pass is a METER fail-closed, in every mode. With no measurement the
+   * house may be over whichever limits are on — the hard cap, the grid import
+   * limit — and with both off it still sheds: a meter that dies mid-run sheds
+   * rather than holds (owner ruling 2026-08-31, header above), and the released
+   * Grid import limit changelog keeps that protection whatever is enabled. So
+   * the honest cause is the same in every mode, Capacity limit on included: the
+   * meter stopped reporting, and the device needs a new reading, not freed
+   * power, to resume (`meterSilent`). Naming a ceiling here would be a guess:
+   * under `capacity` the device detail and the activity log read "Limited by
+   * the hard cap" even with Capacity limit off. An exhausted hour no longer
+   * renames it `hourlyBudget` either: the pass sheds on the meter, not on the
+   * hour's energy.
+   *
+   * It is also why the candidate policy below names no limit source: no pace
+   * binds this pass, so a daily-pace home's budget-exempt devices are not
+   * spared (under a daily source they would be) — the exemption is from the
+   * budget, not from a meter that has gone silent.
    */
   private directiveReason(): DeviceReason {
-    return resolveShedReason('capacity', false, this.state.hourlyBudgetExhausted);
+    return { code: PLAN_REASON_CODES.meterSilent };
   }
 
   private shedEverything(context: PlanContext, shortfallThresholdKw: number | null, nowTs: number): SheddingPlan {
@@ -210,8 +225,9 @@ export class SilentMeterPlanBuilder {
       devices: context.devices,
       needed: Number.POSITIVE_INFINITY,
       deficitKw: Number.POSITIVE_INFINITY,
-      limitSource: 'capacity',
-      capacityBreached: false,
+      // The directive, not a pace (`directiveReason`): every device is a candidate.
+      limitSource: null,
+      physicalLimitBreached: false,
       temperatureSetpoints: context.temperatureSetpoints,
       // No measurement to bound a battery's discharge by: every battery is handed back instead.
       storageLimit: { kind: 'unmeasured' },

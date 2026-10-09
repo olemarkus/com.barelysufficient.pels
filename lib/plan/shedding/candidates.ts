@@ -76,12 +76,15 @@ export function resolveStorageDrawMarginKw(devices: readonly PlanInputDevice[], 
 }
 
 export function resolveExhaustedHourAnswer(
-  devices: readonly PlanInputDevice[],
+  context: PlanContext,
   state: PlanEngineState,
   power: MeasuredPower,
   storage: StorageShedTerm,
 ): ExhaustedHourAnswer {
-  if (!state.hourlyBudgetExhausted) return { kind: 'not_exhausted' };
+  // The spent period acts only while Capacity limit is on: with it off the
+  // period is still tracked, and still spent, but no limit spends it.
+  if (!state.capacityPeriodSpentFor(context)) return { kind: 'not_exhausted' };
+  const { devices } = context;
   if (!storage.relieving && !devices.some(isDrivableLimitScope)) return { kind: 'shed_everything' };
   const toleranceKw = SOFT_OVERSHOOT_DEADBAND_KW + resolveStorageDrawMarginKw(devices, storage);
   const importKw = power.drawKw - storage.netCreditKw - toleranceKw;
@@ -96,7 +99,7 @@ export function buildShedCandidateParams(
   /** This cycle's storage stage: the term it counts against the deficit, and the holds a battery is priced from. */
   storage: StorageRelief,
 ): ShedCandidateParams {
-  const hour = resolveExhaustedHourAnswer(context.devices, state, power, storage.shed);
+  const hour = resolveExhaustedHourAnswer(context, state, power, storage.shed);
   const hourlyBudgetExhausted = hour.kind !== 'not_exhausted';
   const needed = hour.kind === 'import_target' ? hour.importKw : resolveStorageAdjustedDeficitKw(power, storage.shed);
   return {
@@ -108,7 +111,7 @@ export function buildShedCandidateParams(
     deficitKw: needed,
     limitSource: power.gridBreached ? 'grid' : resolveShedLimitSource(context, hourlyBudgetExhausted),
     // Resolved once on the measurement; no candidate walk re-derives it from a total.
-    capacityBreached: power.capacityBreached || power.gridBreached,
+    physicalLimitBreached: power.physicalLimitBreached,
     temperatureSetpoints: context.temperatureSetpoints,
     storageLimit: { kind: 'measured', drawKw: power.drawKw, levers: storage.levers },
     state,
@@ -121,7 +124,7 @@ export function buildSheddingCandidates(params: ShedCandidateParams): {
   reducibleControlledKw: number;
   blockedCandidateCount: number;
   blockedReducibleControlledKw: number;
-  capacityBreached: boolean;
+  physicalLimitBreached: boolean;
 } & ShedCandidateSkipSummary {
   const result = collectSheddingCandidates(params, { includeCandidates: true });
   return { ...result, candidates: rankCandidates(result.candidates) };
@@ -137,9 +140,9 @@ function collectSheddingCandidates(
   reducibleControlledKw: number;
   blockedCandidateCount: number;
   blockedReducibleControlledKw: number;
-  capacityBreached: boolean;
+  physicalLimitBreached: boolean;
 } & ShedCandidateSkipSummary {
-  const { capacityBreached, deps } = params;
+  const { physicalLimitBreached, deps } = params;
   const nowTs = Date.now();
   const candidates: ShedCandidate[] = [];
   // Every exit below either produces a candidate or records why it did not, so a
@@ -177,7 +180,7 @@ function collectSheddingCandidates(
     // Surfaced so the shed reason is attributed from the SAME breach decision that
     // gated budget-exempt candidates above, rather than a recomputation that could
     // drift from it.
-    capacityBreached,
+    physicalLimitBreached,
     ...recorder.summary(),
   };
 }
@@ -204,10 +207,10 @@ function walkDevice(
   }
   const candidate = addLoadCandidate(device, params, recorder, nowTs);
   if (candidate === null) return null;
-  const { limitSource, capacityBreached } = params;
+  const { limitSource, physicalLimitBreached } = params;
   return {
     candidate,
-    allowedByLimitPolicy: limitSource !== 'daily' || capacityBreached || device.budgetExempt !== true,
+    allowedByLimitPolicy: limitSource !== 'daily' || physicalLimitBreached || device.budgetExempt !== true,
   };
 }
 
