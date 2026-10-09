@@ -705,11 +705,11 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'device-main': true, 'device-sub-heat': true });
     // The mode target the heater must be resumed TO (the restore anchor), and the
     // shed setpoint PELS drops it to while the area is over its cap. The anchor
-    // write IS load-bearing: `persistFilledModeTargets` returns early on an absent
-    // or empty `mode_device_targets` blob (`setup/appDeviceSupport.ts`), so
-    // nothing would auto-seed it here. That unanchored case is a separate open
-    // defect (a setpoint-shed device with no mode target stays stranded);
-    // what this test pins is the RELEASE write for an ANCHORED device.
+    // is written before boot so the test does not depend on the fill pass
+    // (`ModeDeviceTargetFill`, `lib/home/modeDeviceTargetFill.ts`) to seed it.
+    // That unanchored case is a separate open defect (a setpoint-shed device
+    // with no mode target stays stranded); what this test pins is the RELEASE
+    // write for an ANCHORED device.
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'device-sub-heat': 22 } });
     mockHomeyInstance.settings.set('overshoot_behaviors', {
@@ -771,8 +771,8 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     mockHomeyInstance.settings.set('managed_devices', { 'device-main': true, 'device-sub-heat': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'device-main': true, 'device-sub-heat': true });
     // Configured 22, device sitting at 18: a raise is pending from the first
-    // plan onward. Written before boot so `persistFilledModeTargets` cannot
-    // auto-seed 18 and make the assertion vacuous.
+    // plan onward. Written before boot so the fill pass (`ModeDeviceTargetFill`)
+    // cannot auto-seed 18 and make the assertion vacuous.
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'device-sub-heat': 22 } });
     configureSubHomeCapacity(6);

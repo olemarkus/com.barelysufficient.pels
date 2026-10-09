@@ -86,12 +86,13 @@ a normal convergence.
 
 The per-mode target — one per (home, mode, device). **"This device has no target
 for this mode" is not a state the planner can be in.**
-`persistFilledModeTargets` (`setup/appDeviceSupport.ts`) runs on the settings
-refresh, before the first plan of that cycle, and writes an entry for every
-device the planner will plan — seeded from the device's own current setpoint, so
-adopting it moves nothing the owner can see. Candidacy is the PLANNED set
-(`managed !== false`), because that is what the planner plans; capacity control
-being off is about shedding and does not hand the setpoint back.
+The fill pass (`ModeDeviceTargetFill`, `lib/home/modeDeviceTargetFill.ts`) runs
+on the settings refresh, before the first plan of that cycle, and writes an entry
+for every device the planner will plan — seeded from the device's own current
+setpoint, so adopting it moves nothing the owner can see. Candidacy is the
+PLANNED set (`managed !== false`, `listModeTargetFillDevices` in
+`setup/appDeviceSupport.ts`), because that is what the planner plans; capacity
+control being off is about shedding and does not hand the setpoint back.
 
 Writing it down is what makes ownership durable rather than nominal: a setpoint
 re-derived from the device on every boot is followed, not owned.
