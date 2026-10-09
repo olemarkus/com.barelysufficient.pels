@@ -2,7 +2,6 @@
 import https from 'https';
 import { EventEmitter } from 'events';
 import type { MockInstance } from 'vitest';
-import { clearPlanRebuildTracesForTests } from '../lib/utils/planRebuildTrace.ts';
 import { installCanvasContextStub } from './utils/canvasContextStub.ts';
 
 // Deterministic in-memory socket.io so the device live feed (lib/device/liveFeed.ts)
@@ -181,7 +180,6 @@ beforeEach(() => {
   if (!vi.isMockFunction(https.get)) {
     installHttpsGetSpy();
   }
-  clearPlanRebuildTracesForTests();
 });
 
 afterAll(() => {

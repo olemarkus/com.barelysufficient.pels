@@ -4,7 +4,6 @@ import { steppedStoresForTest } from '../helpers/steppedStores';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import { decorateSnapshotWithDeviceControl } from '../../lib/planInput/deviceControlProjection';
-import { markSteppedLoadDesiredStepIssued, reportSteppedLoadActualStep } from '../../lib/executor/steppedCommandState';
 import { createTemperatureControlFencedActuator } from '../../setup/appInit/buildDeviceActuator';
 import { readTemperatureControlDisabledDevicesSetting } from '../../setup/appSettingsHelpers';
 
@@ -128,17 +127,20 @@ describe('disabled temperature control', () => {
       ],
     };
     const { store, reportedStore } = steppedStoresForTest();
-    const runtimeState = store.getStateForTests();
-    markSteppedLoadDesiredStepIssued({
-      runtimeState,
+    store.markDesiredStepIssued({
       deviceId: raw.id,
       desiredStepId: 'high',
       issuedAtMs: 100,
     });
-    // The ladder's lowest ACTIVE rung, so the decorator's ordinary
-    // re-initialization check leaves the latch alone.
-    runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.set(raw.id, 'high');
-    expect(reportSteppedLoadActualStep(runtimeState, reportedStore, {
+    // Latch the lowest-step initialization at the ladder's lowest ACTIVE rung,
+    // so the decorator's ordinary re-initialization check leaves it alone. An
+    // assumed-applied command is the one that sets the latch.
+    store.markDesiredStepIssued({
+      deviceId: raw.id,
+      desiredStepId: 'high',
+      confirmationPolicy: 'assume_applied',
+    });
+    expect(store.reportActualStep({
       deviceId: raw.id, stepId: 'high', planningPowerW: 2000, observedAtMs: 90,
     })).toBe('changed');
     const decorated = decorateSnapshotWithDeviceControl({ ...raw, steppedLoadProfile: profile,
@@ -155,8 +157,8 @@ describe('disabled temperature control', () => {
     // sample, so tearing the command axis down here would wipe it every few
     // seconds — no command would ever confirm, retry back-off would die, and
     // the lowest-step initialization latch would never latch.
-    expect(runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.get(raw.id)).toBe('high');
-    expect(runtimeState.steppedLoadStepCommandIssuedByDeviceId.has(raw.id)).toBe(true);
+    expect(store.peekInitializationLatch(raw.id, 'high')).toBe('high');
+    expect(store.hasPriorStepCommand(raw.id)).toBe(true);
     expect(reportedStore.get(raw.id)?.stepId).toBe('high');
   });
 

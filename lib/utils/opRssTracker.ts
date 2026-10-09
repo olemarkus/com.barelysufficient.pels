@@ -94,11 +94,3 @@ export const drainOpRssWindow = (): Record<string, OpRssWindowEntry> => {
   window = {};
   return out;
 };
-
-/**
- * Test-only hook. Resets the `rssSupported` probe cache so a test that stubs
- * `process.memoryUsage` can exercise both success and failure branches.
- */
-export const __resetRssSupportProbeForTests = (): void => {
-  rssSupported = undefined;
-};

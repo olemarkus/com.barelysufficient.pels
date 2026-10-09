@@ -55,20 +55,6 @@ const HTTP_TIMEOUT_MS = 15_000;
  */
 const LATE_RESPONSE_ABANDON_MS = 120_000;
 
-// Test seam, same precedent as `setRestClient`: the real deadline is far too
-// long to drive a socket test against.
-let httpTimeoutMs: number = HTTP_TIMEOUT_MS;
-
-/** Shorten the request deadline for tests. */
-export function setHttpTimeoutForTests(ms: number): void {
-  httpTimeoutMs = ms;
-}
-
-/** Restore the production request deadline. */
-export function resetHttpTimeoutForTests(): void {
-  httpTimeoutMs = HTTP_TIMEOUT_MS;
-}
-
 const lateResponseLogger = getLogger('device/transport');
 
 /**
@@ -168,11 +154,6 @@ export async function initHomeyHttpClient(homey: Homey.App): Promise<void> {
 /** Set the REST client directly (used by test mocks). */
 export function setRestClient(client: RestClient): void {
   restClient = client;
-}
-
-/** Reset the REST client (for test cleanup). */
-export function resetRestClient(): void {
-  restClient = null;
 }
 
 export async function getRawDevices(
@@ -294,7 +275,7 @@ function homeyHttpRequest(
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      timeout: httpTimeoutMs,
+      timeout: HTTP_TIMEOUT_MS,
     };
 
     const startedAtMs = Date.now();

@@ -1,6 +1,7 @@
 import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { startResourceWarningListeners } from '../../lib/diagnostics/resourceWarnings';
+import { summarizeRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
 import { captureLogger } from '../utils/loggerCapture';
 
 const resolveSmapsSummaryMock = vi.fn();
@@ -209,6 +210,10 @@ describe('Homey resource warning perf logging', () => {
     const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
     try {
       await app.onInit();
+      // The trace log is process-wide and outlives a test, so an earlier test's
+      // rebuild may already be in the window. Count this test's own rebuild as
+      // the change across it.
+      const probeRebuildsBefore = summarizeRecentPlanRebuildTraces().reasons.target_power_probe_due ?? 0;
       await app.planService.rebuildPlanFromCache('target_power_probe_due');
       logSpy.mockClear();
       errorSpy.mockClear();
@@ -269,9 +274,7 @@ describe('Homey resource warning perf logging', () => {
         dailyBudgetUpdate: expect.any(Object),
       }));
       expect(payload.rebuilds?.window?.count).toBeGreaterThanOrEqual(1);
-      expect(payload.rebuilds?.window?.reasons).toEqual(expect.objectContaining({
-        target_power_probe_due: expect.any(Number),
-      }));
+      expect(payload.rebuilds?.window?.reasons?.target_power_probe_due).toBe(probeRebuildsBefore + 1);
       expect(payload.rebuilds?.recent?.[0]).toEqual(expect.objectContaining({
         reason: 'target_power_probe_due',
         totalMs: expect.any(Number),

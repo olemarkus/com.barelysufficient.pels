@@ -10,12 +10,18 @@ vi.mock('node:fs', () => ({
   },
 }));
 
-import { resolveFdCount, __resetFdCountProbeForTests } from '../../lib/diagnostics/perfLogging';
+type PerfLoggingModule = typeof import('../../lib/diagnostics/perfLogging.ts');
 
 describe('resolveFdCount probe', () => {
-  beforeEach(() => {
-    __resetFdCountProbeForTests();
+  let resolveFdCount: PerfLoggingModule['resolveFdCount'];
+
+  // The probe caches an unsupported platform for the module's lifetime, so
+  // each test imports a fresh copy. The hoisted `node:fs` mock above survives
+  // `vi.resetModules()`, so the fresh copy still reads through it.
+  beforeEach(async () => {
     readdirSyncMock.mockReset();
+    vi.resetModules();
+    ({ resolveFdCount } = await import('../../lib/diagnostics/perfLogging.ts'));
   });
 
   it('returns the fd count when readdirSync succeeds', () => {

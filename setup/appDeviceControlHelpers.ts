@@ -37,7 +37,6 @@ export const createDeviceControlHelpers = (
     hasPendingTargetPowerProbe: control.hasPendingTargetPowerProbe.bind(control),
     reconcileTargetPowerReachability: control.reconcileTargetPowerReachability.bind(control),
     reportSteppedLoadActualStep: control.reportSteppedLoadActualStep.bind(control),
-    getRuntimeStateForTests: control.getRuntimeStateForTests.bind(control),
     decorateTargetSnapshotList: projection.decorateTargetSnapshotList.bind(projection),
     getLifecycleFallbackDevice: projection.getLifecycleFallbackDevice.bind(projection),
   };

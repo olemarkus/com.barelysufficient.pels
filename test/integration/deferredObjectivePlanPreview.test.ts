@@ -942,7 +942,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
 
       const { recorder } = buildRecorder();
       recorder.observe(diagnostics, NOW_MS);
-      const persisted = recorder.getPlanForTests(deviceId);
+      const persisted = recorder.getActivePlansSnapshot().plansByDeviceId[deviceId];
       const recorderHours = persisted?.latest?.hours ?? [];
       // The recorder stamps `plannedUnitMilestone` and `cheaperHourAhead`
       // (control-gate fields); the preview/schedule fidelity is about which hours

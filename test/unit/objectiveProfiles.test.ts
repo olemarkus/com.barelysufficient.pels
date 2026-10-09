@@ -8,10 +8,7 @@ import {
   updateDeviceObjectiveProfile,
   updateObjectiveProfilesFromSnapshot,
 } from '../../lib/objectives/profiles';
-import {
-  OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,
-  resetNoPowerSourceDiagnosticForTests,
-} from '../../lib/objectives/noPowerSourceDiagnostic';
+import { OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD } from '../../lib/objectives/noPowerSourceDiagnostic';
 import { resolveProfileConfidence } from '../../lib/objectives/stats';
 import type { DeviceObjectiveProfile } from '../../lib/objectives/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -325,11 +322,9 @@ describe('objective profiles', () => {
     expect(profile?.lastSample.crediblePowerW).toBeUndefined();
   });
 
+  // The diagnostic's one-shot state is per device and lives for the process, so
+  // each test here uses device ids no other test in this file feeds.
   describe('no-power-source diagnostic', () => {
-    beforeEach(() => {
-      resetNoPowerSourceDiagnosticForTests();
-    });
-
     const feedAcceptedSampleWithoutPower = (
       previous: DeviceObjectiveProfile | undefined,
       index: number,
@@ -354,7 +349,7 @@ describe('objective profiles', () => {
       // does not go through buildAcceptedProfileSample, so only the subsequent
       // calls count toward "consecutive accepted samples".
       for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; index += 1) {
-        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'no-power-emit-once', debugStructured);
       }
 
       const diagnosticCalls = debugStructured.mock.calls
@@ -363,7 +358,7 @@ describe('objective profiles', () => {
       expect(diagnosticCalls).toHaveLength(1);
       expect(diagnosticCalls[0]).toMatchObject({
         event: 'objective_profile_no_power_source',
-        deviceId: 'heater-1',
+        deviceId: 'no-power-emit-once',
         deviceName: 'Termostat Synne',
         consecutiveSamplesWithoutPower: OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,
         threshold: OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,
@@ -379,7 +374,7 @@ describe('objective profiles', () => {
       let profile: DeviceObjectiveProfile | undefined;
       // Cross the threshold first.
       for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; index += 1) {
-        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'no-power-no-reemit', debugStructured);
       }
       const callsAfterFirstEmit = debugStructured.mock.calls
         .filter(([payload]) => (payload as Record<string, unknown>).event === 'objective_profile_no_power_source')
@@ -389,7 +384,7 @@ describe('objective profiles', () => {
       // Five more silent samples should not produce a second diagnostic.
       for (let extra = 0; extra < 5; extra += 1) {
         const index = OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1 + extra;
-        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'no-power-no-reemit', debugStructured);
       }
 
       const diagnosticCalls = debugStructured.mock.calls
@@ -402,7 +397,7 @@ describe('objective profiles', () => {
       const debugStructured = vi.fn();
       let profile: DeviceObjectiveProfile | undefined;
       for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; index += 1) {
-        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'no-power-recovers', debugStructured);
       }
       expect(debugStructured.mock.calls
         .filter(([payload]) => (payload as Record<string, unknown>).event === 'objective_profile_no_power_source')
@@ -417,7 +412,7 @@ describe('objective profiles', () => {
       // the silent baseline and therefore yields `kwhPerUnit = undefined`.
       profile = updateDeviceObjectiveProfile({
         previous: profile,
-        deviceId: 'heater-1',
+        deviceId: 'no-power-recovers',
         deviceName: 'Termostat Synne',
         sample: {
           observedAtMs: startMs + (OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1) * hourMs,
@@ -430,7 +425,7 @@ describe('objective profiles', () => {
 
       for (let extra = 0; extra < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; extra += 1) {
         const index = OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 2 + extra;
-        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'no-power-recovers', debugStructured);
       }
       expect(debugStructured.mock.calls
         .filter(([payload]) => (payload as Record<string, unknown>).event === 'objective_profile_no_power_source')
@@ -443,7 +438,7 @@ describe('objective profiles', () => {
       for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 5; index += 1) {
         profile = updateDeviceObjectiveProfile({
           previous: profile,
-          deviceId: 'heater-1',
+          deviceId: 'no-power-always-resolved',
           sample: {
             observedAtMs: startMs + index * hourMs,
             value: 30 + index,
@@ -464,14 +459,14 @@ describe('objective profiles', () => {
       let profileA: DeviceObjectiveProfile | undefined;
       let profileB: DeviceObjectiveProfile | undefined;
       for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; index += 1) {
-        profileA = feedAcceptedSampleWithoutPower(profileA, index, 'heater-A', debugStructured);
-        profileB = feedAcceptedSampleWithoutPower(profileB, index, 'heater-B', debugStructured);
+        profileA = feedAcceptedSampleWithoutPower(profileA, index, 'no-power-A', debugStructured);
+        profileB = feedAcceptedSampleWithoutPower(profileB, index, 'no-power-B', debugStructured);
       }
       const diagnosticDeviceIds = debugStructured.mock.calls
         .map(([payload]) => payload as Record<string, unknown>)
         .filter((payload) => payload.event === 'objective_profile_no_power_source')
         .map((payload) => payload.deviceId);
-      expect(diagnosticDeviceIds.sort()).toEqual(['heater-A', 'heater-B']);
+      expect(diagnosticDeviceIds.sort()).toEqual(['no-power-A', 'no-power-B']);
     });
   });
 

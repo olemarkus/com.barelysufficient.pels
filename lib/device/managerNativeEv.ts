@@ -37,10 +37,7 @@ import {
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
 import { isEaseeUnderBuiltInControl, withEaseeObservedCharging } from './easeeChargingSwitch';
-import {
-  resetTargetPowerContractLogStateForTests,
-  warnIfTargetPowerCapabilityViolatesContract,
-} from './targetPowerContractWarn';
+import { warnIfTargetPowerCapabilityViolatesContract } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 import { withoutTargetPowerReachability } from './targetPowerReachability';
 import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
@@ -54,10 +51,6 @@ export type FlowEffectiveRequiredCapabilityId =
   | 'alarm_generic.car_connected'
   | 'pels_evcharger_resumable'
   | 'evcharger_charging_state';
-
-export function __resetNativeEvWiringLogStateForTests(): void {
-  resetTargetPowerContractLogStateForTests();
-}
 
 export function resolveFlowCapabilityOverlay(params: {
   device: HomeyDeviceLike;

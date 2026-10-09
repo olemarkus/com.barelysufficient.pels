@@ -191,7 +191,3 @@ export const summarizeRecentPlanRebuildTraces = (
     reasons: totals.reasons,
   };
 };
-
-export const clearPlanRebuildTracesForTests = (): void => {
-  traces = [];
-};

@@ -2,31 +2,20 @@
  * @vitest-environment node
  *
  * Isolated test file for the {@link MAX_LOGGER_CACHE_SIZE} warn-once guard.
- * The module-level `moduleLoggerCache` persists for the lifetime of the
- * worker, so this suite needs to own the cache from a clean start — keeping
- * it in its own file means the forked vitest worker boots a fresh module
- * graph and we are not racing the assertions in `logger.test.ts` (which
- * registers other distinct module strings).
- *
- * Because the cache is module-scoped and not resettable, the tests in this
- * file are ordered: the "no warning under threshold" assertion runs first,
- * the threshold-crossing assertion runs second (and pushes the cache well
- * past the cap for the rest of the worker), and the warn-once assertion
- * runs last and only relies on the once-flag being re-armed and then
- * staying false.
+ * The module-level `moduleLoggerCache` and the warn-once flags persist for the
+ * lifetime of a module instance, so every test imports a fresh copy of the
+ * logger: each one starts from an empty cache with both flags un-armed, and the
+ * tests do not depend on running in any particular order.
  */
 import { PassThrough } from 'node:stream';
-import {
-  MAX_LOGGER_CACHE_SIZE,
-  __resetLoggerCacheGuardForTest,
-  createRootLogger,
-  getDebugEmitter,
-  getLogger,
-  setDebugTopics,
-  setRootLogger,
-} from '../../lib/logging/logger';
 
+type LoggerModule = typeof import('../../lib/logging/logger.ts');
 type ParsedLine = Record<string, unknown>;
+
+const importFreshLogger = async (): Promise<LoggerModule> => {
+  vi.resetModules();
+  return import('../../lib/logging/logger.ts');
+};
 
 function drain(dest: PassThrough): ParsedLine[] {
   const raw = (dest.read() as Buffer | null)?.toString() ?? '';
@@ -43,32 +32,28 @@ const cacheGrowthWarnings = (dest: PassThrough): ParsedLine[] => (
 
 describe('getLogger cache guard', () => {
   let dest: PassThrough;
+  let logger: LoggerModule;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    logger = await importFreshLogger();
     dest = new PassThrough();
-    setRootLogger(createRootLogger(dest, 'warn'));
-    __resetLoggerCacheGuardForTest();
-  });
-
-  afterEach(() => {
-    setRootLogger(createRootLogger(new PassThrough(), 'silent'));
+    logger.setRootLogger(logger.createRootLogger(dest, 'warn'));
   });
 
   it('does not grow the cache when the same module string is requested repeatedly', () => {
-    const first = getLogger('cache-guard/stable');
+    const first = logger.getLogger('cache-guard/stable');
     for (let index = 0; index < 5000; index += 1) {
-      expect(getLogger('cache-guard/stable')).toBe(first);
+      expect(logger.getLogger('cache-guard/stable')).toBe(first);
     }
     expect(cacheGrowthWarnings(dest)).toHaveLength(0);
   });
 
   it('does not emit a warning while the cache is below the threshold', () => {
     // A handful of new distinct modules — far short of MAX_LOGGER_CACHE_SIZE
-    // even when added on top of every other module the worker has already
-    // resolved (this test file plus any imports). Asserts the gate is keyed
-    // on the cap, not on every new module.
+    // even when added on top of every module the logger's own import graph
+    // resolves. Asserts the gate is keyed on the cap, not on every new module.
     for (let index = 0; index < 3; index += 1) {
-      getLogger(`cache-guard/under-${index}`);
+      logger.getLogger(`cache-guard/under-${index}`);
     }
     expect(cacheGrowthWarnings(dest)).toHaveLength(0);
   });
@@ -76,15 +61,15 @@ describe('getLogger cache guard', () => {
   it('emits the warning exactly once when distinct module strings cross the threshold', () => {
     // Walk well past the threshold to ensure both the crossing and the
     // post-crossing calls are observed.
-    for (let index = 0; index < MAX_LOGGER_CACHE_SIZE + 25; index += 1) {
-      getLogger(`cache-guard/cross-${index}`);
+    for (let index = 0; index < logger.MAX_LOGGER_CACHE_SIZE + 25; index += 1) {
+      logger.getLogger(`cache-guard/cross-${index}`);
     }
     const warnings = cacheGrowthWarnings(dest);
     expect(warnings).toHaveLength(1);
     const [warning] = warnings;
-    expect(warning.threshold).toBe(MAX_LOGGER_CACHE_SIZE);
+    expect(warning.threshold).toBe(logger.MAX_LOGGER_CACHE_SIZE);
     expect(typeof warning.cacheSize).toBe('number');
-    expect(warning.cacheSize as number).toBeGreaterThan(MAX_LOGGER_CACHE_SIZE);
+    expect(warning.cacheSize as number).toBeGreaterThan(logger.MAX_LOGGER_CACHE_SIZE);
     expect(typeof warning.latestModule).toBe('string');
     expect((warning.latestModule as string).startsWith('cache-guard/cross-')).toBe(true);
     expect(warning.module).toBe('logging/cache');
@@ -92,24 +77,16 @@ describe('getLogger cache guard', () => {
   });
 
   it('does not re-emit the warning after the threshold has been crossed even when more distinct modules are added', () => {
-    // The previous test already pushed the cache past the threshold, so the
-    // guard flag should now be set. The beforeEach reset it back to false —
-    // we exercise the gate again with more growth and assert it still does
-    // not re-fire because the cache continues to be over the cap and the
-    // once-flag is re-set by the very first new addition. We then drain and
-    // ensure further growth produces no additional warnings.
+    // Step 1: cross the threshold and drain the one warning that produces.
+    for (let index = 0; index <= logger.MAX_LOGGER_CACHE_SIZE; index += 1) {
+      logger.getLogger(`cache-guard/aftermath-trigger-${index}`);
+    }
+    expect(cacheGrowthWarnings(dest)).toHaveLength(1);
 
-    // Step 1: at least one new module to re-trip the gate so the flag flips
-    // back to true.
-    getLogger('cache-guard/aftermath-trigger');
-    const triggerWarnings = cacheGrowthWarnings(dest);
-    // The flag was reset in beforeEach, so this single new module above the
-    // cap re-fires once.
-    expect(triggerWarnings).toHaveLength(1);
-
-    // Step 2: many more distinct modules; none should produce additional warnings.
+    // Step 2: many more distinct modules while the cache stays over the cap;
+    // none should produce additional warnings.
     for (let index = 0; index < 50; index += 1) {
-      getLogger(`cache-guard/aftermath-${index}`);
+      logger.getLogger(`cache-guard/aftermath-${index}`);
     }
     expect(cacheGrowthWarnings(dest)).toHaveLength(0);
   });
@@ -117,19 +94,13 @@ describe('getLogger cache guard', () => {
 
 describe('getDebugEmitter component cache guard', () => {
   let dest: PassThrough;
+  let logger: LoggerModule;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    logger = await importFreshLogger();
     dest = new PassThrough();
-    // A fresh root also gives a fresh per-root component map, so unlike the
-    // module cache above this suite starts from an empty cache every time.
-    setRootLogger(createRootLogger(dest, 'warn'));
-    setDebugTopics(new Set(['plan']));
-    __resetLoggerCacheGuardForTest();
-  });
-
-  afterEach(() => {
-    setRootLogger(createRootLogger(new PassThrough(), 'silent'));
-    setDebugTopics(new Set());
+    logger.setRootLogger(logger.createRootLogger(dest, 'warn'));
+    logger.setDebugTopics(new Set(['plan']));
   });
 
   const componentWarnings = (stream: PassThrough): ParsedLine[] => (
@@ -138,25 +109,25 @@ describe('getDebugEmitter component cache guard', () => {
 
   it('does not warn while distinct components stay under the threshold', () => {
     for (let index = 0; index < 3; index += 1) {
-      getDebugEmitter(`debug-guard/under-${index}`, 'plan')({ event: 'probe' });
+      logger.getDebugEmitter(`debug-guard/under-${index}`, 'plan')({ event: 'probe' });
     }
     expect(componentWarnings(dest)).toHaveLength(0);
   });
 
   it('warns exactly once when distinct components cross the threshold', () => {
-    for (let index = 0; index < MAX_LOGGER_CACHE_SIZE + 25; index += 1) {
-      getDebugEmitter(`debug-guard/cross-${index}`, 'plan')({ event: 'probe' });
+    for (let index = 0; index < logger.MAX_LOGGER_CACHE_SIZE + 25; index += 1) {
+      logger.getDebugEmitter(`debug-guard/cross-${index}`, 'plan')({ event: 'probe' });
     }
     const warnings = componentWarnings(dest);
     expect(warnings).toHaveLength(1);
     const [warning] = warnings;
-    expect(warning.threshold).toBe(MAX_LOGGER_CACHE_SIZE);
+    expect(warning.threshold).toBe(logger.MAX_LOGGER_CACHE_SIZE);
     expect(warning.module).toBe('logging/cache');
     expect((warning.latestComponent as string).startsWith('debug-guard/cross-')).toBe(true);
   });
 
   it('reuses one child per component rather than growing on every emit', () => {
-    const emit = getDebugEmitter('debug-guard/stable', 'plan');
+    const emit = logger.getDebugEmitter('debug-guard/stable', 'plan');
     for (let index = 0; index < 500; index += 1) emit({ event: 'probe' });
     expect(componentWarnings(dest)).toHaveLength(0);
   });

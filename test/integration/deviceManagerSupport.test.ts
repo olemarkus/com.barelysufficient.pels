@@ -35,7 +35,6 @@ import {
   getRawDevices,
   hasRestClient,
   logDeviceTransportRuntimeError,
-  resetRestClient,
   setRawCapabilityValue,
   setRestClient,
   writeErrorToStderr,
@@ -64,6 +63,15 @@ const createLogger = () => ({
 
 const mockRestClient = { get: vi.fn(), put: vi.fn() };
 
+// A transport module that has never been handed a REST client: what every
+// caller sees before `initHomeyHttpClient` has run.
+const importUninitializedHomeyApi = async (): Promise<
+  typeof import('../../lib/device/transport/managerHomeyApi.ts')
+> => {
+  vi.resetModules();
+  return import('../../lib/device/transport/managerHomeyApi.ts');
+};
+
 describe('device manager support helpers', () => {
   // The device-lane debug events go through `getDebugEmitter('devices', 'devices')`,
   // not the injected logger, so they are read back from the structured capture.
@@ -78,7 +86,6 @@ describe('device manager support helpers', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    resetRestClient();
     logCapture.restore();
   });
 
@@ -283,8 +290,8 @@ describe('device manager support helpers', () => {
     mockGet.mockResolvedValue({ wrapped: { id: 'wrapped' } });
     await expect(getRawDevices('devices')).resolves.toEqual({ wrapped: { id: 'wrapped' } });
 
-    resetRestClient();
-    await expect(getRawDevices('devices')).rejects.toThrow('REST client not initialized');
+    const uninitialized = await importUninitializedHomeyApi();
+    await expect(uninitialized.getRawDevices('devices')).rejects.toThrow('REST client not initialized');
 
     const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     writeErrorToStderr('device manager failed', new Error('boom'));
@@ -460,13 +467,12 @@ describe('device manager support helpers', () => {
     });
   });
 
-  it('hasRestClient reflects current state', () => {
-    resetRestClient();
-    expect(hasRestClient()).toBe(false);
-    setRestClient({ get: vi.fn(), put: vi.fn() });
+  it('hasRestClient reflects current state', async () => {
     expect(hasRestClient()).toBe(true);
-    resetRestClient();
-    expect(hasRestClient()).toBe(false);
+    const uninitialized = await importUninitializedHomeyApi();
+    expect(uninitialized.hasRestClient()).toBe(false);
+    uninitialized.setRestClient({ get: vi.fn(), put: vi.fn() });
+    expect(uninitialized.hasRestClient()).toBe(true);
   });
 
   it('setRawCapabilityValue calls PUT with correct path and payload', async () => {
@@ -493,8 +499,8 @@ describe('device manager support helpers', () => {
   });
 
   it('setRawCapabilityValue throws when REST client is not initialized', async () => {
-    resetRestClient();
-    await expect(setRawCapabilityValue('dev-1', 'onoff', true))
+    const uninitialized = await importUninitializedHomeyApi();
+    await expect(uninitialized.setRawCapabilityValue('dev-1', 'onoff', true))
       .rejects.toThrow('REST client not initialized');
   });
 
@@ -516,8 +522,8 @@ describe('device manager support helpers', () => {
   });
 
   it('getRawDevice throws when REST client is not initialized', async () => {
-    resetRestClient();
-    await expect(getRawDevice('dev-1'))
+    const uninitialized = await importUninitializedHomeyApi();
+    await expect(uninitialized.getRawDevice('dev-1'))
       .rejects.toThrow('REST client not initialized');
   });
 

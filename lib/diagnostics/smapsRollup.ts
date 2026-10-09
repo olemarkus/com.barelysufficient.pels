@@ -51,12 +51,6 @@ const readSmapsRollup = (): string | null => {
   }
 };
 
-/** Reset module-level probe state. For tests only. */
-export const _resetSmapsCacheForTests = (): void => {
-  smapsRollupSupported = undefined;
-  cachedInitialRollup = undefined;
-};
-
 export const resolveSmapsSummary = (): Record<string, number> | null => {
   const rollup = readSmapsRollup();
   if (!rollup) return null;
@@ -165,14 +159,4 @@ export const resolveSmapsDetail = (): SmapsDetail | null => {
   const parsed = parseSmapsDetail(data);
   if (parsed) cachedSmapsDetail = parsed;
   return cachedSmapsDetail;
-};
-
-/**
- * Test-only hook. Resets the cached smaps probe + throttle counter so a test
- * can exercise both first-call sampling and the cached path.
- */
-export const __resetSmapsDetailCacheForTests = (): void => {
-  smapsDetailSupported = undefined;
-  smapsDetailCallIndex = 0;
-  cachedSmapsDetail = null;
 };

@@ -1,4 +1,3 @@
-import { markSteppedLoadDesiredStepIssued, pruneStaleSteppedLoadCommandStates, reportSteppedLoadActualStep } from '../../lib/executor/steppedCommandState';
 import { normalizeDeviceControlProfiles as normalizeStoredDeviceControlProfiles } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { createDeviceControlHelpersForTest } from '../helpers/deviceControlHelpers';
 import {
@@ -156,7 +155,7 @@ describe('resolved device control composition and command lifecycle', () => {
       probeFailureCount: 1,
       nextProbeAtMs: 992_000,
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+    expect(stores.store.getDesired('dev-1')).toBeUndefined();
     expect(decorated.steppedLoadProfile?.steps.at(-1)?.id).toBe('25a');
     expect(decorated.targetPowerConfig).toEqual(baseConfig);
     dateNow.mockRestore();
@@ -262,14 +261,14 @@ describe('resolved device control composition and command lifecycle', () => {
       store: stores.store,
       devices: buildSteppedSettleSnapshot(helpers.decorateTargetSnapshotList([snapshot])),
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')?.status).toBe('stale');
+    expect(stores.store.getDesired('dev-1')?.status).toBe('stale');
     expect(helpers.reportSteppedLoadActualStep('dev-1', '25a')).toBe('changed');
     expect(config.reachability).toMatchObject({
       maxReachedPowerW: 5750,
       probeFailureCount: 1,
       nextProbeAtMs: 992_000,
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+    expect(stores.store.getDesired('dev-1')).toBeUndefined();
     dateNow.mockRestore();
   });
 
@@ -354,11 +353,11 @@ describe('resolved device control composition and command lifecycle', () => {
     helpers.reconcileTargetPowerReachability([snapshot], 2_000);
 
     expect(updateTargetPowerReachability).not.toHaveBeenCalled();
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: '16a',
       pending: true,
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1'))
+    expect(stores.store.getDesired('dev-1'))
       .not.toHaveProperty('targetPowerProbeConfirmedMaxPowerW');
   });
 
@@ -404,7 +403,7 @@ describe('resolved device control composition and command lifecycle', () => {
       probeFailureCount: 1,
       nextProbeAtMs: 992_000,
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+    expect(stores.store.getDesired('dev-1')).toBeUndefined();
   });
 
   it('ends a refused foreground probe even when its reachability update reports no change', () => {
@@ -444,7 +443,7 @@ describe('resolved device control composition and command lifecycle', () => {
     });
     helpers.reconcileTargetPowerReachability([snapshot], 92_000);
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+    expect(stores.store.getDesired('dev-1')).toBeUndefined();
   });
 
   it('arms no reachability probe for a write the hub never acknowledged', () => {
@@ -487,7 +486,7 @@ describe('resolved device control composition and command lifecycle', () => {
 
     // No probe armed, and no settlement scheduled to fail later.
     expect(scheduleTargetPowerProbeSettlement).not.toHaveBeenCalled();
-    const desired = helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1');
+    const desired = stores.store.getDesired('dev-1');
     expect(desired?.targetPowerProbeStartedAtMs).toBeUndefined();
     // The pending record itself is still written — the device stays unsettled.
     expect(desired).toMatchObject({ lastIssuedAtMs: 1_000, stepId: '28a' });
@@ -498,10 +497,10 @@ describe('resolved device control composition and command lifecycle', () => {
     expect(config.reachability).toMatchObject({ probeFailureCount: 0 });
     // The rung sits above the confirmed ladder by design, so reconciling the
     // configuration must not retire it as a removed rung and drop its pacing.
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: '28a', pending: true, lastIssuedAtMs: 1_000,
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadStepCommandIssuedByDeviceId.has('dev-1')).toBe(true);
+    expect(stores.store.hasPriorStepCommand('dev-1')).toBe(true);
   });
 
   it('retires an unacknowledged EV command whose rung a phase change removed', () => {
@@ -571,7 +570,7 @@ describe('resolved device control composition and command lifecycle', () => {
 
     expect(scheduleTargetPowerProbeSettlement).toHaveBeenNthCalledWith(1, 91_000);
     expect(scheduleTargetPowerProbeSettlement).toHaveBeenNthCalledWith(2, 91_000);
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       lastIssuedAtMs: 1_050,
       targetPowerProbeStartedAtMs: 1_000,
       retryCount: 1,
@@ -582,7 +581,7 @@ describe('resolved device control composition and command lifecycle', () => {
       maxReachedPowerW: 5_750,
       probeFailureCount: 1,
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.has('dev-1')).toBe(false);
+    expect(stores.store.getDesired('dev-1')).toBeUndefined();
   });
 
   it('prefers newer Flow exact feedback when native control is not authoritative', () => {
@@ -696,13 +695,12 @@ describe('resolved device control composition and command lifecycle', () => {
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
-    const runtimeState = helpers.getRuntimeStateForTests();
     expect(stores.reportedStore.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'max',
     });
-    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'low',
       previousStepId: 'max',
@@ -806,7 +804,7 @@ describe('resolved device control composition and command lifecycle', () => {
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'low',
       previousStepId: 'max',
@@ -847,13 +845,12 @@ describe('resolved device control composition and command lifecycle', () => {
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 
-    const runtimeState = helpers.getRuntimeStateForTests();
     expect(stores.reportedStore.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'low',
     });
-    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'low',
       previousStepId: 'low',
@@ -903,7 +900,7 @@ describe('resolved device control composition and command lifecycle', () => {
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('unchanged');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'low',
       retryCount: 0,
@@ -941,7 +938,7 @@ describe('resolved device control composition and command lifecycle', () => {
       stepId: 'max',
     });
     // Commanded axis: confirmed.
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'max',
       pending: false,
@@ -1029,7 +1026,7 @@ describe('resolved device control composition and command lifecycle', () => {
     // An off-step report while off is admitted; plan-target preservation seeds
     // the tracked desired entry at status 'idle'.
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'off')).toBe('changed');
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'max',
       status: 'idle',
     });
@@ -1037,7 +1034,7 @@ describe('resolved device control composition and command lifecycle', () => {
     // The matching non-off report is admitted as observed evidence and confirms
     // the tracked step.
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'max',
       status: 'success',
     });
@@ -1064,7 +1061,7 @@ describe('resolved device control composition and command lifecycle', () => {
       issuedAtMs: 1_000,
     });
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       status: 'success',
     });
 
@@ -1073,7 +1070,7 @@ describe('resolved device control composition and command lifecycle', () => {
     expect(stores.reportedStore.get('dev-1')).toMatchObject({
       stepId: 'max',
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'low',
       pending: false,
       status: 'idle',
@@ -1102,13 +1099,13 @@ describe('resolved device control composition and command lifecycle', () => {
       issuedAtMs: 1_000,
     });
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       status: 'success',
     });
 
     // The off-step report while off is admitted and is newer than the confirmation.
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'off')).toBe('changed');
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'max',
       pending: false,
       status: 'idle',
@@ -1131,8 +1128,8 @@ describe('resolved device control composition and command lifecycle', () => {
       issuedAtMs: 1_000,
     });
     // Expire the pending window so the command goes stale before the report.
-    pruneStaleSteppedLoadCommandStates(helpers.getRuntimeStateForTests(), 91_001);
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    stores.store.pruneStale(91_001);
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       status: 'stale',
     });
 
@@ -1141,7 +1138,7 @@ describe('resolved device control composition and command lifecycle', () => {
     expect(stores.reportedStore.get('dev-1')).toMatchObject({
       stepId: 'max',
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'max',
       pending: false,
       status: 'success',
@@ -1171,14 +1168,14 @@ describe('resolved device control composition and command lifecycle', () => {
       previousStepId: 'off',
       issuedAtMs: 1_000,
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'max',
       status: 'pending',
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'low',
       pending: false,
       status: 'idle',
@@ -1213,7 +1210,7 @@ describe('resolved device control composition and command lifecycle', () => {
     expect(stores.reportedStore.get('dev-1')).toMatchObject({
       stepId: 'low',
     });
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(stores.store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'max',
       pending: true,
@@ -1237,19 +1234,17 @@ describe('resolved device control composition and command lifecycle', () => {
 
   it('increments stepped-load retry metadata when the same desired step is re-issued', () => {
     const { store } = steppedStoresForTest();
-    const runtimeState = store.getStateForTests();
 
-    markSteppedLoadDesiredStepIssued({
-      runtimeState,
+    store.markDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: 1_000,
     });
 
-    expect(pruneStaleSteppedLoadCommandStates(runtimeState, 61_000)).toBe(false);
-    expect(pruneStaleSteppedLoadCommandStates(runtimeState, 91_001)).toBe(true);
-    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(store.pruneStale(61_000)).toBe(false);
+    expect(store.pruneStale(91_001)).toBe(true);
+    expect(store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       retryCount: 0,
       nextRetryAtMs: 121_000,
@@ -1257,15 +1252,14 @@ describe('resolved device control composition and command lifecycle', () => {
       status: 'stale',
     });
 
-    markSteppedLoadDesiredStepIssued({
-      runtimeState,
+    store.markDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: 122_000,
     });
 
-    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       retryCount: 1,
       nextRetryAtMs: undefined,
@@ -1275,29 +1269,26 @@ describe('resolved device control composition and command lifecycle', () => {
   });
 
   it('resets retry escalation after a same-step command has already been confirmed', () => {
-    const { store, reportedStore } = steppedStoresForTest();
-    const runtimeState = store.getStateForTests();
+    const { store } = steppedStoresForTest();
 
-    markSteppedLoadDesiredStepIssued({
-      runtimeState,
+    store.markDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: 1_000,
     });
-    expect(reportSteppedLoadActualStep(runtimeState, reportedStore, {
+    expect(store.reportActualStep({
       deviceId: 'dev-1', stepId: 'max', planningPowerW: 3000, observedAtMs: 2_000,
     })).toBe('changed');
 
-    markSteppedLoadDesiredStepIssued({
-      runtimeState,
+    store.markDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: 3_000,
     });
 
-    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+    expect(store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       retryCount: 0,
       nextRetryAtMs: undefined,

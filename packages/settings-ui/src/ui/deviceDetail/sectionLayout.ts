@@ -187,9 +187,3 @@ export const autoExpandSetupWhenBare = (params: {
   const disclosure = document.getElementById('device-detail-setup-disclosure') as HTMLDetailsElement | null;
   if (disclosure && !disclosure.open) disclosure.open = true;
 };
-
-// Test seam: clears the applied-layout memo so specs can assert re-application.
-export const resetDeviceDetailSectionLayoutForTest = (): void => {
-  appliedKind = null;
-  setupAutoExpandedDeviceIds.clear();
-};

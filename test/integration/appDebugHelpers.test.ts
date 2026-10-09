@@ -7,7 +7,7 @@ import {
   logHomeyDeviceForDebug,
   logHomeyDeviceForDebugFromApp,
 } from '../../setup/appDebugHelpers';
-import { resetRestClient, setRestClient } from '../../lib/device/transport/managerHomeyApi';
+import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -76,7 +76,6 @@ describe('appDebugHelpers', () => {
 
   afterEach(() => {
     capture.restore();
-    resetRestClient();
   });
 
   it('routes debug device fetch failures to app error', async () => {

@@ -112,16 +112,6 @@ export const MAX_LOGGER_CACHE_SIZE = 64;
 let cacheGrowthWarningEmitted = false;
 
 /**
- * Test-only: reset the warn-once flag so a single test process can exercise
- * the threshold-crossing path more than once. Not part of the public runtime
- * surface — production never re-arms.
- */
-export const __resetLoggerCacheGuardForTest = (): void => {
-  cacheGrowthWarningEmitted = false;
-  debugComponentWarningEmitted = false;
-};
-
-/**
  * Resolves the live child logger for `module` against the current root.
  * Cached per `(root, module)` pair: pino's `.child()` is non-trivial to
  * re-invoke per log call, and caching also lets accessor writes (e.g.

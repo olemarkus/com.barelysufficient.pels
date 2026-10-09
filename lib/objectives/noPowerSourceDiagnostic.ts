@@ -93,7 +93,3 @@ function trackObjectiveProfileEnergyResolution(params: {
   });
   return { shouldEmit, unresolvedCount };
 }
-
-export function resetNoPowerSourceDiagnosticForTests(): void {
-  deviceStates.clear();
-}

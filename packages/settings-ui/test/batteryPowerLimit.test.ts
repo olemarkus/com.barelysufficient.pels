@@ -145,7 +145,6 @@ describe('battery device page', () => {
     `;
     await loadState({}, {});
     const layout = await import('../src/ui/deviceDetail/sectionLayout.ts');
-    layout.resetDeviceDetailSectionLayoutForTest();
     const ids = (listId: string) => Array.from(document.getElementById(listId)!.children).map((el) => el.id);
 
     layout.applyDeviceDetailSectionLayout(battery);

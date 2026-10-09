@@ -64,6 +64,7 @@ import {
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../lib/dailyBudget/dailyBudgetConstants';
 import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
+import { STEPPED_LOAD_COMMAND_STALE_MS } from '../../lib/executor/steppedCommandState';
 import { getCurrentContext, runWithContext } from '../../lib/logging/alsContext';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
@@ -576,17 +577,16 @@ describe('MyApp initialization', () => {
 
     const capture = captureLogger();
     try {
+      // Issued longer ago than the confirmation window, so the executor's prune
+      // retires it as stale before the device's delayed answer arrives.
       app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
         deviceId: 'dev-1',
         desiredStepId: 'max',
         previousStepId: 'low',
+        issuedAtMs: Date.now() - STEPPED_LOAD_COMMAND_STALE_MS - 1,
       });
-      const runtimeState = app.deviceControlHelpers.getRuntimeStateForTests();
-      runtimeState.steppedLoadDesiredByDeviceId.set('dev-1', {
-        ...runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')!,
-        pending: false,
-        status: 'stale',
-      });
+      expect(app.steppedCommandStore.pruneStale()).toBe(true);
+      expect(app.steppedCommandStore.getDesired('dev-1')).toMatchObject({ pending: false, status: 'stale' });
       // The prior report is the observer's to record — it builds the capability
       // and source itself, so the test states only what the device said and when.
       app.steppedReportedStore.record({
