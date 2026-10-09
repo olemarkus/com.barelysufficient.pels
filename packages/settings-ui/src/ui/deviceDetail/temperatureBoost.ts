@@ -1,5 +1,5 @@
 import type { TemperatureBoostSettings } from '../../../../contracts/src/types.ts';
-import { TEMPERATURE_BOOST_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
+import { TEMPERATURE_BOOST_SETTINGS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   hasTemperatureBoostTarget,
   normalizeTemperatureBoostSettings,

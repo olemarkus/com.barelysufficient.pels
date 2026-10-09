@@ -1,7 +1,7 @@
 import type {
   PlanStatusPublishedPayload,
   PowerTrackerPersistedPayload,
-} from '../packages/contracts/src/settingsKeys';
+} from '../packages/contracts/src/realtimeEventPayloads';
 import {
   MAIN_HOME_ID,
   PLAN_STATUS_PUBLISHED_EVENT,

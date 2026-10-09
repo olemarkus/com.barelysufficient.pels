@@ -17,7 +17,7 @@ import {
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_CONTROL_MODES,
   homeScopedSettingsKey,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { getHomeScope } from './homeScope.ts';
 import { normalizeEvCarAssociations } from '../../../shared-domain/src/settings/evCarAssociations.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';

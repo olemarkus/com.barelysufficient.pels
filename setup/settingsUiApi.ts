@@ -9,7 +9,7 @@ import type {
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
-import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../packages/shared-domain/src/settings/settingsUiBootstrapKeys';
 import { DEFERRED_OBJECTIVES_SETTINGS, MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
   SettingsUiHomeScopeAdapter,

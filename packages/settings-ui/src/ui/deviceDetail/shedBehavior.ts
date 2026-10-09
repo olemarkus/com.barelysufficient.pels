@@ -41,7 +41,7 @@ import {
 } from '../../../../shared-domain/src/utils/airtreatmentConstants.ts';
 import {
   OVERSHOOT_BEHAVIORS,
-} from '../../../../contracts/src/settingsKeys.ts';
+} from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,

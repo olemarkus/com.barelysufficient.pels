@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   homeScopedSettingsKey,
   MAIN_HOME_ID,
-} from '../../contracts/src/settingsKeys.ts';
+} from '../../shared-domain/src/settings/settingsKeys.ts';
 import {
   composeHomeLimitsStateLine,
   formatHomeLimitsKw,

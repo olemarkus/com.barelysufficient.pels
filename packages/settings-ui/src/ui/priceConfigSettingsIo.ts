@@ -14,7 +14,7 @@ import {
   POWERHOUR_DEVICE_ID,
   PRICE_SCHEME,
   PV_FORECAST_SOURCE,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { normalizePvForecastSourceSetting } from '../../../shared-domain/src/settings/pvForecastSource.ts';
 import { readPowerhourDeviceIdSetting } from '../../../shared-domain/src/settings/priceScheme.ts';
 import type { PriceConfigSettingsPatch, PriceSettingsSaveInput } from './priceConfigTypes.ts';

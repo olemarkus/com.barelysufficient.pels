@@ -2,7 +2,6 @@ import {
   afterEach, describe, expect, it, vi,
 } from 'vitest';
 import {
-  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   clearObjectiveForDevice,
   createTrustedDeferredObjectiveSettingsReader,
   migrateBlobToPerKeyIfNeeded,
@@ -13,6 +12,7 @@ import {
   type ObjectiveSettingsStore,
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import {
+  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
   DEFERRED_OBJECTIVES_SETTINGS,
 } from '../../lib/utils/settingsKeys';

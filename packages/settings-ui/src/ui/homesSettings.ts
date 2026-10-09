@@ -1,4 +1,4 @@
-import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../../../contracts/src/settingsKeys.ts';
+import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   HOMEY_ENERGY_METERS_PATH,
   SETTINGS_UI_DEVICES_PATH,

@@ -1,4 +1,7 @@
-import { PLAN_STATUS_PUBLISHED_EVENT, POWER_TRACKER_PERSISTED_EVENT } from '../../../contracts/src/settingsKeys.ts';
+import {
+  PLAN_STATUS_PUBLISHED_EVENT,
+  POWER_TRACKER_PERSISTED_EVENT,
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import { classifyPowerReadingsFact } from '../../../shared-domain/src/powerReadingsBanner.ts';
 import {

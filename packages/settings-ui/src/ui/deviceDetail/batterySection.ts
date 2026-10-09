@@ -1,4 +1,4 @@
-import { MAIN_HOME_ID } from '../../../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { isHomeBatteryClassKey } from '../../../../shared-domain/src/batteryOrSolarRole.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';

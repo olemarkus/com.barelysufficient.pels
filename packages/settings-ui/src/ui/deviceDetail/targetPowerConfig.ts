@@ -4,7 +4,7 @@ import type {
   TargetPowerSteppedLoadConfig,
 } from '../../../../contracts/src/types.ts';
 import { type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
-import { DEVICE_TARGET_POWER_CONFIGS } from '../../../../contracts/src/settingsKeys.ts';
+import { DEVICE_TARGET_POWER_CONFIGS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { createEvTargetPowerConfig } from '../../../../shared-domain/src/evTargetPowerConfig.ts';
 import {
   resolveTargetPowerLadderIssue,

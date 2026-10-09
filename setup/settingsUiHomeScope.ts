@@ -43,8 +43,7 @@ import type { SettingsUiPowerStatus } from '../packages/contracts/src/settingsUi
  * Mirror of `SETTINGS_UI_HOME_ID_QUERY_PARAM` in
  * `packages/contracts/src/settingsUiApi.ts`. Declared here as a literal because
  * `packages/contracts` is types-only at runtime (the sanitize step deletes it
- * from the shipped bundle, so a value import crashes boot) — the same mirroring
- * `packages/contracts/src/settingsKeys.ts` already does for settings keys.
+ * from the shipped bundle, so a value import crashes boot).
  */
 const HOME_ID_QUERY_PARAM = 'homeId';
 

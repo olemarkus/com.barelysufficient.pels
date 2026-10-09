@@ -21,7 +21,7 @@ import {
   HOMES_CONFIG_INITIALIZED,
   homeScopedSettingsKey,
   MAIN_HOME_ID,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { logSettingsError } from './logging.ts';
 
 export type HomesConfigScopeRead = {

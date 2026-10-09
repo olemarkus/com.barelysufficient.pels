@@ -1,10 +1,81 @@
-export const CAPACITY_ENABLED = 'capacity_enabled';
-export const GRID_IMPORT_ENABLED = 'grid_import_enabled';
-export const GRID_IMPORT_LIMIT_KW = 'grid_import_limit_kw';
-export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
-export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
-export const CAPACITY_DRY_RUN = 'capacity_dry_run';
-export const CAPACITY_PERIOD_MINUTES = 'capacity_period_minutes';
+// Runtime settings keys. Keys the settings UI also reads have their one copy in
+// `packages/shared-domain/src/settings/settingsKeys.ts` and are re-exported here,
+// so runtime code imports every key from this module.
+import {
+  CAPACITY_DRY_RUN,
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  CAPACITY_PERIOD_MINUTES,
+  CAPACITY_PRIORITIES,
+  MAIN_HOME_ID,
+  MODE_ALIASES,
+  MODE_CATALOG_INITIALIZED,
+  MODE_DEVICE_TARGETS,
+  OPERATING_MODE_SETTING,
+} from '../../packages/shared-domain/src/settings/settingsKeys';
+
+export {
+  CAPACITY_ENABLED,
+  GRID_IMPORT_ENABLED,
+  GRID_IMPORT_LIMIT_KW,
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  CAPACITY_DRY_RUN,
+  CAPACITY_PERIOD_MINUTES,
+  POWER_SOURCE,
+  HOMEY_ENERGY_METER_DEVICE_ID,
+  OPERATING_MODE_SETTING,
+  MODE_ALIASES,
+  CAPACITY_PRIORITIES,
+  MODE_DEVICE_TARGETS,
+  MODE_CATALOG_INITIALIZED,
+  MANAGED_DEVICES,
+  CONTROLLABLE_DEVICES,
+  BUDGET_EXEMPT_DEVICES,
+  BATTERY_CONTROL_DEVICES,
+  RESPECT_EXTERNAL_OFF_DEVICES,
+  DEVICE_START_POLICIES,
+  TEMPERATURE_CONTROL_DISABLED_DEVICES,
+  TEMPERATURE_BOOST_SETTINGS,
+  EV_BOOST_SETTINGS,
+  EV_CAR_ASSOCIATIONS,
+  NATIVE_EV_WIRING_DEVICES,
+  DEVICE_DRIVER_OVERRIDES,
+  DEVICE_CONTROL_PROFILES,
+  DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_EXPECTED_POWER_OVERRIDES,
+  DEFERRED_OBJECTIVES_SETTINGS,
+  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
+  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
+  OVERSHOOT_BEHAVIORS,
+  PRICE_OPTIMIZATION_SETTINGS,
+  PRICE_OPTIMIZATION_ENABLED,
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
+  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  DAILY_BUDGET_CONTROLLED_WEIGHT,
+  DAILY_BUDGET_PRICE_FLEX_SHARE,
+  DAILY_BUDGET_RESET,
+  DEBUG_LOGGING_TOPICS,
+  PRICE_SCHEME,
+  PV_FORECAST_SOURCE,
+  NORWAY_PRICE_MODEL,
+  POWERHOUR_DEVICE_ID,
+  EXPORT_PRICE_SOURCE,
+  EXPORT_PRICE_ENABLED,
+  EXPORT_SPOT_FACTOR,
+  EXPORT_FIXED,
+  WEATHER_ADVISOR_SETTINGS,
+  POWER_TRACKER_PERSISTED_EVENT,
+  PLAN_STATUS_PUBLISHED_EVENT,
+  HOMES_CONFIG,
+  DEVICE_HOME_ASSIGNMENTS,
+  HOMES_CONFIG_INITIALIZED,
+  MAIN_HOME_ID,
+  homeScopedSettingsKey,
+  TEMPERATURE_CONTROL_MODES,
+} from '../../packages/shared-domain/src/settings/settingsKeys';
+
 /**
  * The LEGACY tracker key: the settings blob the tracker persisted as before it
  * moved to the userdata store. Read once, at boot, by the import that carries
@@ -13,45 +84,12 @@ export const CAPACITY_PERIOD_MINUTES = 'capacity_period_minutes';
  */
 export const POWER_TRACKER_STATE = 'power_tracker_state';
 /**
- * Realtime push emitted after every tracker persist, for every home
- * (`{ homeId }`): the settings UI's freshness signal for a tracker that lives
- * under no settings key. Mirrored in `packages/contracts/src/settingsKeys.ts`.
- */
-export const POWER_TRACKER_PERSISTED_EVENT = 'power_tracker_persisted';
-/**
- * Realtime invalidation after a status publish or device presentation refresh, for every home
- * (`{ homeId }`): the settings UI's freshness signal for a status that lives
- * in memory (`lib/plan/planStatusRegistry.ts`), under no settings key. Areas
- * also refetch their live `ui_plan` presentation without a capacity-status write.
- * Mirrored in `packages/contracts/src/settingsKeys.ts`.
- */
-export const PLAN_STATUS_PUBLISHED_EVENT = 'plan_status_published';
-// Canonical id of the primary home. The main home keeps the historical
-// unsuffixed settings keys; additional homes (multi-home train) scope their
-// keys via `homeScopedSettingsKey`. The home domain proper lands in a sibling
-// PR — its main-home id is this same value by design.
-export const MAIN_HOME_ID = 'main';
-/**
  * Identifier of a home: `'main'` or a generated sub-home id (see `lib/home`).
  * Lives here — the shared-utils layer — so the capacity store (`lib/power`)
  * and the home domain (`lib/home`) share ONE identity type without a peer
  * import between them; both re-export it for their consumers.
  */
 export type HomeId = string;
-/**
- * Scope a base settings key to a home: the main home reads the historical
- * unsuffixed key unchanged; any other home reads `<baseKey>:<homeId>`.
- */
-export const homeScopedSettingsKey = (baseKey: string, homeId: string): string => (
-  homeId === MAIN_HOME_ID ? baseKey : `${baseKey}:${homeId}`
-);
-// Declared above the scopable set below; the historical position further down
-// kept a re-export comment breadcrumb instead.
-export const OPERATING_MODE_SETTING = 'operating_mode';
-export const MODE_ALIASES = 'mode_aliases';
-export const CAPACITY_PRIORITIES = 'capacity_priorities';
-export const MODE_DEVICE_TARGETS = 'mode_device_targets';
-export const MODE_CATALOG_INITIALIZED = 'mode_catalog_initialized';
 // Base keys whose values may be scoped per home via `homeScopedSettingsKey`
 // (multi-home train). Kept private: the parse helper below is the boundary,
 // and consumers route on its output (or the predicate) rather than probing
@@ -94,40 +132,11 @@ export const parseHomeScopedSettingsKey = (key: string): { baseKey: string; home
   }
   return { baseKey: key, homeId: MAIN_HOME_ID };
 };
-export const POWER_SOURCE = 'power_source';
-// Explicit whole-home meter for the homey_energy power source. Device id
-// string; any non-string (never written, a legacy stored-null Automatic,
-// junk) reads as `unavailable`. The boot-time sole-meter adoption names the
-// meter when Homey Energy lists exactly one; otherwise the owner picks it
-// under Limits & safety. Nothing falls back at read time. Mirror of
-// HOMEY_ENERGY_METER_DEVICE_ID in packages/contracts/src/settingsKeys.ts —
-// keep both in sync (the settings UI can't import lib).
-export const HOMEY_ENERGY_METER_DEVICE_ID = 'homey_energy_meter_device_id';
 // RETIRED, never read again: `main_meter_authority_migration_v1_done`, the
 // marker of the deleted boot-time meter-authority migration. Installs that ran
 // it still hold it as `true`; do not reuse the name for a new marker.
 // Other retired names are listed, and unset at boot, in
 // lib/store/retiredSettingsKeys.ts; do not reuse those either.
-// OPERATING_MODE_SETTING is declared above HOME_SCOPABLE_BASE_KEYS (it is a
-// member of that set).
-export const MANAGED_DEVICES = 'managed_devices';
-export const CONTROLLABLE_DEVICES = 'controllable_devices';
-export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
-// Opt-in config for "Leave off until turned on again": `Record<deviceId, true>`
-// (absent = off). Mirror of RESPECT_EXTERNAL_OFF_DEVICES in
-// packages/contracts/src/settingsKeys.ts — keep both in sync (the settings UI
-// can't import lib).
-export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
-// Per-device start authority: `Record<deviceId, 'unrestricted' | 'pels_only'>`
-// (absent entry = 'unrestricted'). Read and write policy live with the key's
-// owner, `packages/shared-domain/src/settings/deviceStartPolicy.ts`. Mirror of
-// DEVICE_START_POLICIES in packages/contracts/src/settingsKeys.ts — keep both
-// in sync (the settings UI can't import lib).
-export const DEVICE_START_POLICIES = 'device_start_policies';
-// Per-device opt-out from every non-binary PELS command. The raw device
-// snapshot remains temperature-capable for observation/UI; setup projects an
-// enabled entry as binary-only for planning and actuation.
-export const TEMPERATURE_CONTROL_DISABLED_DEVICES = 'temperature_control_disabled_devices';
 // Runtime state for the above — which devices PELS is currently leaving off
 // because they were turned off outside PELS. Deliberately a separate key from
 // the config: clearing the opt-in must not lose the config, and vice versa.
@@ -144,62 +153,33 @@ export const EXTERNAL_OFF_HOLDS_INITIALIZED = 'external_off_holds_initialized';
 export const PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX = 'external_off_hold.';
 // Set once the blob above has been copied into per-device keys and consumed.
 export const EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED = 'external_off_holds_perkey_migrated';
-// A home battery's Managed toggle: `Record<deviceId, boolean>` (absent entry or
-// key = on; `false` = off). Read policy lives with the key's owner,
-// `lib/battery/batteryControlSettings.ts`; the settings UI writes it. Mirror of
-// BATTERY_CONTROL_DEVICES in packages/contracts/src/settingsKeys.ts.
-export const BATTERY_CONTROL_DEVICES = 'battery_control_devices';
 // Runtime state PELS owes a battery: one key per battery PELS has claimed,
 // `battery_control_claim.<deviceId>`, holding the claim value to hand it back
 // to. Owned by `lib/battery/batteryClaimStore.ts`, which says why it is a
 // settings key and not a `/userdata` row.
 export const PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX = 'battery_control_claim.';
-export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 /** Learned measured peaks, `{ kw, observedAtMs }` per device (`lib/device/devicePowerPeak.ts`). */
 export const DEVICE_POWER_PEAKS = 'device_power_peaks';
-/** The owner's manual expected-power figures, `{ kw, ts }` per device. */
-export const DEVICE_EXPECTED_POWER_OVERRIDES = 'device_expected_power_overrides';
-export const EV_BOOST_SETTINGS = 'ev_boost_settings';
-// The cars each charger MAY associate: `Record<chargerId, { carIds }>` (absent or
-// empty = off for that charger). An eligibility set, never an association — the
-// association is session-scoped and in-memory. Mirror of EV_CAR_ASSOCIATIONS in
-// packages/contracts/src/settingsKeys.ts — keep both in sync.
-export const EV_CAR_ASSOCIATIONS = 'ev_car_associations';
-export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';
 // Marker set once the blob → per-device-key migration has run. Per-device
 // objectives live under `deferred_objective.<deviceId>` keys (see
-// `lib/objectives/deferredObjectives/objectiveStore.ts`); the plural blob above is a
-// frozen fallback read only by that migration.
+// `lib/objectives/deferredObjectives/objectiveStore.ts`); the plural
+// DEFERRED_OBJECTIVES_SETTINGS blob is a frozen fallback read only by that migration.
 export const DEFERRED_OBJECTIVES_PERKEY_MIGRATED = 'deferred_objectives_perkey_migrated';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING = 'deferred_objective_plan_history';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING = 'deferred_objective_plan_history_v5';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_INITIALIZED = 'deferred_objective_plan_history_v5_initialized';
 export const DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK = 'deferred_objective_observation_watermark';
-export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING = 'deferred_objective_active_plans';
 export const DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH = 'deferred_objective_hours_remaining_latch';
-export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
-export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
-export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
-export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
 /** Runtime-owned per-device EV target-power reachability; never written by the settings UI. */
 export const DEVICE_TARGET_POWER_REACHABILITY = 'device_target_power_reachability';
 export const DEVICE_LAST_CONTROLLED_MS = 'device_last_controlled_ms';
-export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';
 export const CAPACITY_IN_SHORTFALL = 'capacity_in_shortfall';
-export const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';
-export const PRICE_OPTIMIZATION_ENABLED = 'price_optimization_enabled';
 export const PRICE_THRESHOLD_PERCENT = 'price_threshold_percent';
 export const PRICE_MIN_DIFF_ORE = 'price_min_diff_ore';
-export const DAILY_BUDGET_ENABLED = 'daily_budget_enabled';
-export const DAILY_BUDGET_KWH = 'daily_budget_kwh';
-export const DAILY_BUDGET_PRICE_SHAPING_ENABLED = 'daily_budget_price_shaping_enabled';
-export const DAILY_BUDGET_CONTROLLED_WEIGHT = 'daily_budget_controlled_weight';
-export const DAILY_BUDGET_PRICE_FLEX_SHARE = 'daily_budget_price_flex_share';
 // Legacy: the daily budget's plan and learned profiles live in the userdata
 // store (lib/dailyBudget/dailyBudgetStateStore.ts). As a settings key it is only
 // read by the legacy import.
 export const DAILY_BUDGET_STATE = 'daily_budget_state';
-export const DAILY_BUDGET_RESET = 'daily_budget_reset';
 // Legacy: the combined prices live in the userdata price cache
 // (lib/price/priceCacheStore.ts), in a row of this name. As a settings key it is
 // only read by the legacy import.
@@ -211,9 +191,6 @@ export const ELECTRICITY_PRICES_AREA = 'electricity_prices_area';
 // Legacy: the grid tariff cache lives in the userdata store
 // (lib/price/priceCacheStore.ts). The key is only read by the one-shot boot import.
 export const NETTLEIE_DATA = 'nettleie_data';
-export const DEBUG_LOGGING_TOPICS = 'debug_logging_topics';
-export const PRICE_SCHEME = 'price_scheme';
-export const NORWAY_PRICE_MODEL = 'norway_price_model';
 // The payload-fed price sources' day payloads, currencies and device marker
 // (Flow, Homey Energy, Power by the Hour) live in the userdata price cache
 // (lib/price/priceCacheStore.ts), whose rows are named after these keys, so
@@ -237,10 +214,6 @@ export const POWERHOUR_PRICES_CURRENCY = 'powerhour_prices_currency';
 // so today's payload is merged into rather than replaced — and a merge is only
 // sound while both sides came from the same device.
 export const POWERHOUR_PRICES_DEVICE = 'powerhour_prices_device';
-// Which of the app's price devices this home is priced from. The owner picks
-// it in the settings UI, so both sides read it — the shared read policy lives
-// in packages/shared-domain/src/settings/priceScheme.ts.
-export const POWERHOUR_DEVICE_ID = 'powerhour_device_id';
 // The owner's Homey Energy price formula, mirrored from
 // `manager/energy/price/electricity/dynamic/user-costs` so the raw spot series
 // Homey hands us can be resolved into the price they actually pay. Runtime-only
@@ -250,27 +223,12 @@ export const HOMEY_PRICE_FORMULA = 'homey_price_formula';
 // period can be priced without a live read. Runtime-only (the settings UI reads
 // the resolved price, never the terms); owned by lib/price/homeyExportPrice.ts.
 export const HOMEY_EXPORT_PRICE_TERMS = 'homey_export_price_terms';
-// Which source the feed-in price comes from: the owner's own amounts, or
-// Homey's export pricing. Read by both sides; owned by
-// packages/shared-domain/src/settings/exportPriceSource.ts. Mirrored in
-// packages/contracts/src/settingsKeys.ts — keep both in sync.
-export const EXPORT_PRICE_SOURCE = 'export_price_source';
-// Export (feed-in) price model — pure-math markups on the same wholesale spot the
-// import price uses. Off by default; written by the settings UI's "Export price"
-// section. Mirrored in packages/contracts/src/settingsKeys.ts — keep both in sync
-// (the settings UI can't import lib).
-export const EXPORT_PRICE_ENABLED = 'export_price_enabled';
-export const EXPORT_SPOT_FACTOR = 'export_spot_factor';
-export const EXPORT_FIXED = 'export_fixed';
-// Multi-home support (dormant until the R4 wiring PR): the sub-home
-// configuration blob and the explicit device→home pin overrides. Read/written
-// only through lib/home/homeRegistryStore.ts (ports in lib/home/homeConfig.ts).
-// Each blob has its own written-before marker (the power_calibration_initialized
-// precedent) so a transient SDK read miss is distinguishable from a fresh
-// install; per-store because the two blobs have independent write lifecycles.
-export const HOMES_CONFIG = 'homes_config';
-export const HOMES_CONFIG_INITIALIZED = 'homes_config_initialized';
-export const DEVICE_HOME_ASSIGNMENTS = 'device_home_assignments';
+// Written-before marker for DEVICE_HOME_ASSIGNMENTS, the explicit device→home
+// pin overrides. Read/written only through lib/home/homeRegistryStore.ts (ports
+// in lib/home/homeConfig.ts). Each multi-home blob has its own marker (the
+// HOMES_CONFIG one is shared with the settings UI) so a transient SDK read miss
+// is distinguishable from a fresh install; per-store because the two blobs have
+// independent write lifecycles.
 export const DEVICE_HOME_ASSIGNMENTS_INITIALIZED = 'device_home_assignments_initialized';
 // Last owner whose persisted mode target was fully transferred for each
 // thermostat, plus its marker-first staged copy. Internal runtime recovery
@@ -279,9 +237,6 @@ export const MODE_TARGET_OWNERSHIP_STATE = 'mode_target_ownership_state';
 export const MODE_TARGET_OWNERSHIP_STATE_INITIALIZED = 'mode_target_ownership_state_initialized';
 export const POWER_CALIBRATION = 'power_calibration';
 export const POWER_CALIBRATION_INITIALIZED = 'power_calibration_initialized';
-// Weather-insight feature: config blob (enable flag + device ids, written by the
-// Settings UI master switch/pickers or via `homey api`).
-export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
 /**
  * The LEGACY weather-history key: the usage/temperature history persisted as
  * one settings blob before it moved to the userdata store. Read once, at
@@ -297,11 +252,6 @@ export const PV_FORECAST_STATE = 'pv_forecast_state';
 // the abandon-grace window instead of overwriting up to 90 days of learned
 // generation history). Read/written only by `setup/pvForecastStateAdapter.ts`.
 export const PV_FORECAST_STATE_INITIALIZED = 'pv_forecast_state_initialized';
-// Which PV-generation forecast feeds planning: 'auto' (prefer Homey Energy's
-// solar forecast when it has useful data, else the learned model) |
-// 'homey_energy' | 'learned'. Absence/junk reads as 'auto'
-// (setup/pvForecastSourceSetting.ts).
-export const PV_FORECAST_SOURCE = 'pv_forecast_source';
 // Curtailment-surplus refute ladder: {holdLevel, holdUntilMs, importLatchUntilMs},
 // written on verification transitions only (crash-loop resilience).
 export const CURTAILMENT_HOLD_STATE = 'curtailment_hold_state';
@@ -315,6 +265,3 @@ export const SIGNED_EXPORT_OBSERVED = 'signed_export_observed';
 // install from a transient settings-read miss (see `evCarLinkStore.ts`).
 export const EV_CAR_LINK_STATE = 'ev_car_link_state';
 export const EV_CAR_LINK_STATE_INITIALIZED = 'ev_car_link_state_initialized';
-
-// Runtime duplicate: contracts sources are removed from the packaged app.
-export const TEMPERATURE_CONTROL_MODES = 'temperature_control_modes';

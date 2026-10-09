@@ -1,6 +1,6 @@
 import { manualTemperaturePowerHint } from './temperaturePolicy.ts';
 import { confirmTemperatureControlChange } from './temperatureControlConfirmation.ts';
-import { TEMPERATURE_CONTROL_MODES } from '../../../../contracts/src/settingsKeys.ts';
+import { TEMPERATURE_CONTROL_MODES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   readTemperatureControlModes,
   resolveTemperatureControlMode,

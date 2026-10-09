@@ -5,7 +5,7 @@ import {
   DEVICE_HOME_ASSIGNMENTS,
   HOMES_CONFIG,
   MAIN_HOME_ID,
-} from '../../contracts/src/settingsKeys.ts';
+} from '../../shared-domain/src/settings/settingsKeys.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes.ts';
 import { HOME_SCOPE_BAR_LABEL } from '../../shared-domain/src/homeScopeCopy.ts';
 import {

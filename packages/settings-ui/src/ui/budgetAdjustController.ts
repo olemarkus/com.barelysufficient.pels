@@ -10,7 +10,7 @@ import {
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
@@ -26,7 +26,7 @@ import {
   UNMANAGED_RESERVE_BALANCED_MODE,
   UNMANAGED_RESERVE_CONSERVATIVE_MODE,
   UNMANAGED_RESERVE_MODE,
-} from '../../../contracts/src/dailyBudgetConstants.ts';
+} from '../../../shared-domain/src/settings/dailyBudgetConstants.ts';
 import { callApi, getSetting, getSettingFresh } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';

@@ -3,12 +3,10 @@ import {
   predictDailyKwh, resolveResidualHeadroom,
 } from '../../packages/shared-domain/src/energySignature/energySignature';
 import { resolveBudgetPressureKwh } from '../../packages/shared-domain/src/energySignature/budgetPressure';
-
-// Mirrors lib/dailyBudget/dailyBudgetConstants.ts and packages/contracts/src/
-// dailyBudgetConstants.ts (all copies must stay in sync). The contracts package
-// is types-only at runtime, so this backend weather owner keeps the values.
-const MIN_DAILY_BUDGET_KWH = 20;
-const MAX_DAILY_BUDGET_KWH = 360;
+import {
+  MAX_DAILY_BUDGET_KWH,
+  MIN_DAILY_BUDGET_KWH,
+} from '../../packages/shared-domain/src/settings/dailyBudgetConstants';
 
 /**
  * Turns tomorrow's expected mean temperature into an advisory daily budget.

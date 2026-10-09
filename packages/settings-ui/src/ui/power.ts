@@ -19,7 +19,7 @@ import {
 } from './dom.ts';
 import { renderUsageHero } from './usageHero.ts';
 import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
-import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   disposePowerWeekChart,
   renderPowerWeekChart,
