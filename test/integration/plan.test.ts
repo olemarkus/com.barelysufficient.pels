@@ -1,4 +1,3 @@
-import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import type MyApp from '../../app.ts';
 import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
@@ -24,7 +23,6 @@ import {
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { buildPlanInputDevice, buildPlanMeta, buildPlanDevice } from '../utils/planTestUtils';
-import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import { capturePlanBuilderStructuredLog } from '../helpers/planBuilderLogCapture';
 import { captureLogger } from '../utils/loggerCapture';
 import { seedTransportDevices } from '../helpers/deviceTransportHarness';
@@ -64,6 +62,20 @@ function seedPreviouslyShedDevice(app: MyApp, deviceId: string): void {
 async function advanceTimeAndRecordPower(app: MyApp, advanceMs: number, powerW: number): Promise<void> {
   vi.advanceTimersByTime(advanceMs);
   await app['powerSamplePipeline'].recordPowerSample(powerW);
+}
+
+// An on/off load as Homey reports it, drawing `powerW`.
+async function buildOnOffLoad(id: string, name: string, powerW: number, on = true): Promise<MockDevice> {
+  const device = new MockDevice(id, name, ['onoff']);
+  await device.setCapabilityValue('onoff', on);
+  await device.setCapabilityValue('measure_power', powerW);
+  return device;
+}
+
+// The devices report new power readings, which the app's next refresh reads.
+async function reportDevicePower(app: MyApp, readings: ReadonlyArray<readonly [MockDevice, number]>): Promise<void> {
+  for (const [device, powerW] of readings) await device.setCapabilityValue('measure_power', powerW);
+  await app.refreshTargetDevicesSnapshot();
 }
 
 // Factory for creating a Hoiax Connected 300 water heater mock
@@ -325,7 +337,11 @@ describe('Device plan snapshot', () => {
   });
 
   it('logs bounded overshoot-entry contributors with controlled and uncontrolled deltas', async () => {
-    setMockDrivers({});
+    const ctrl = await buildOnOffLoad('dev-ctrl', 'Controlled Heater', 1000);
+    const pending = await buildOnOffLoad('dev-pending', 'Pending Heater', 200);
+    const cooldown = await buildOnOffLoad('dev-cooldown', 'Cooldown Heater', 400);
+    const sauna = await buildOnOffLoad('dev-uncontrolled', 'Sauna', 500);
+    setMockDrivers({ driverA: new MockDriver('driverA', [ctrl, pending, cooldown, sauna]) });
     setManagedAndControllableDevices({
       managed: {
         'dev-ctrl': true,
@@ -349,53 +365,6 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-ctrl',
-        name: 'Controlled Heater',
-        targets: [],
-        binaryControl: { on: true },
-        measuredPowerKw: 1.0,
-        expectedPowerKw: 0.8,
-        controllable: true,
-      },
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-pending',
-        name: 'Pending Heater',
-        targets: [],
-        binaryControl: { on: true },
-        measuredPowerKw: 0.2,
-        expectedPowerKw: 0.2,
-        controllable: true,
-      },
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-cooldown',
-        name: 'Cooldown Heater',
-        targets: [],
-        binaryControl: { on: true },
-        measuredPowerKw: 0.4,
-        expectedPowerKw: 0.4,
-        controllable: true,
-      },
-      {
-        available: true,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-uncontrolled',
-        name: 'Sauna',
-        targets: [],
-        binaryControl: { on: true },
-        measuredPowerKw: 0.5,
-        controllable: false,
-      },
-    ]));
-
     const pendingStartedMs = Date.now();
     app.planEngine.state.pendingBinaryCommands['dev-pending'] = {
       dispatchState: 'dispatching',
@@ -408,61 +377,7 @@ describe('Device plan snapshot', () => {
     await app['powerSamplePipeline'].recordPowerSample(3000);
     structuredEvents.length = 0;
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-ctrl',
-        name: 'Controlled Heater',
-        targets: [],
-        binaryControl: { on: true },
-        measuredPowerKw: 2.6,
-        expectedPowerKw: 1.1,
-        controllable: true,
-      },
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-pending',
-        name: 'Pending Heater',
-        targets: [],
-        binaryControl: { on: true },
-        binaryCapabilityId: 'onoff',
-        binaryControlObservation: {
-          valid: true,
-          capabilityId: 'onoff',
-          observedValue: true,
-          observedCapabilityIds: ['onoff'],
-          observedAtMs: pendingStartedMs + 1,
-          source: 'realtime_capability',
-        },
-        measuredPowerKw: 0.7,
-        expectedPowerKw: 0.2,
-        controllable: true,
-      },
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-cooldown',
-        name: 'Cooldown Heater',
-        targets: [],
-        binaryControl: { on: true },
-        measuredPowerKw: 0.8,
-        expectedPowerKw: 0.4,
-        controllable: true,
-      },
-      {
-        available: true,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-uncontrolled',
-        name: 'Sauna',
-        targets: [],
-        binaryControl: { on: true },
-        measuredPowerKw: 1.8,
-        controllable: false,
-      },
-    ]));
+    await reportDevicePower(app, [[ctrl, 2600], [pending, 700], [cooldown, 800], [sauna, 1800]]);
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -507,7 +422,13 @@ describe('Device plan snapshot', () => {
   });
 
   it('limits overshoot-entry contributors to the largest positive deltas', async () => {
-    setMockDrivers({});
+    const devices = await Promise.all([
+      buildOnOffLoad('dev-1', 'One', 500),
+      buildOnOffLoad('dev-2', 'Two', 500),
+      buildOnOffLoad('dev-3', 'Three', 500),
+      buildOnOffLoad('dev-4', 'Four', 500),
+    ]);
+    setMockDrivers({ driverA: new MockDriver('driverA', devices) });
     setManagedAndControllableDevices({
       managed: {
         'dev-1': true,
@@ -531,22 +452,11 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'One', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
-      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-2', name: 'Two', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
-      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-3', name: 'Three', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
-      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-4', name: 'Four', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.5, controllable: true },
-    ]));
-
     await app['powerSamplePipeline'].recordPowerSample(2000);
     structuredEvents.length = 0;
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'One', targets: [], binaryControl: { on: true }, measuredPowerKw: 1.5, controllable: true },
-      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-2', name: 'Two', targets: [], binaryControl: { on: true }, measuredPowerKw: 1.2, controllable: true },
-      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-3', name: 'Three', targets: [], binaryControl: { on: true }, measuredPowerKw: 1.0, controllable: true },
-      { available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-4', name: 'Four', targets: [], binaryControl: { on: true }, measuredPowerKw: 0.8, controllable: true },
-    ]));
+    const [one, two, three, four] = devices;
+    await reportDevicePower(app, [[one, 1500], [two, 1200], [three, 1000], [four, 800]]);
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -563,7 +473,8 @@ describe('Device plan snapshot', () => {
   });
 
   it('marks overshoot contributors inside a pending binary off window', async () => {
-    setMockDrivers({});
+    const heater = await buildOnOffLoad('dev-off-pending', 'Heater Awaiting Off', 700);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     setManagedAndControllableDevices({
       managed: { 'dev-off-pending': true },
       controllable: { 'dev-off-pending': true },
@@ -577,20 +488,6 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-off-pending',
-        name: 'Heater Awaiting Off',
-        targets: [],
-        binaryControl: { on: true },
-        measuredPowerKw: 0.7,
-        controllable: true,
-      },
-    ]));
-
     await app['powerSamplePipeline'].recordPowerSample(700);
     structuredEvents.length = 0;
 
@@ -599,19 +496,7 @@ describe('Device plan snapshot', () => {
       desired: false,
       startedMs: Date.now(),
     };
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-off-pending',
-        name: 'Heater Awaiting Off',
-        targets: [],
-        binaryControl: { on: true },
-        measuredPowerKw: 1.3,
-        controllable: true,
-      },
-    ]));
+    await reportDevicePower(app, [[heater, 1300]]);
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -628,7 +513,9 @@ describe('Device plan snapshot', () => {
   });
 
   it('marks overshoot contributors inside a pending binary on window', async () => {
-    setMockDrivers({});
+    // Off and idle: the turn-on PELS asked for has not been reported yet.
+    const heater = await buildOnOffLoad('dev-on-pending', 'Pending Restore Heater', 0, false);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     setManagedAndControllableDevices({
       managed: { 'dev-on-pending': true },
       controllable: { 'dev-on-pending': true },
@@ -642,20 +529,6 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-on-pending',
-        name: 'Pending Restore Heater',
-        targets: [],
-        binaryControl: { on: false },
-        measuredPowerKw: 0,
-        expectedPowerKw: 1.4,
-        controllable: true,
-      },
-    ]));
-
     await app['powerSamplePipeline'].recordPowerSample(2500);
     structuredEvents.length = 0;
 
@@ -665,19 +538,8 @@ describe('Device plan snapshot', () => {
       startedMs: Date.now(),
     };
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-on-pending',
-        name: 'Pending Restore Heater',
-        targets: [],
-        binaryControl: { on: false },
-        measuredPowerKw: 1.6,
-        expectedPowerKw: 1.4,
-        controllable: true,
-      },
-    ]));
+    // The meter sees the heater draw before its on/off state is reported.
+    await reportDevicePower(app, [[heater, 1600]]);
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -694,7 +556,12 @@ describe('Device plan snapshot', () => {
   });
 
   it('marks overshoot contributors inside a pending target command window', async () => {
-    setMockDrivers({});
+    const heater = new MockDevice('dev-target-pending', 'Target Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('target_temperature', 21);
+    await heater.setCapabilityValue('measure_temperature', 21);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 700);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     setManagedAndControllableDevices({
       managed: { 'dev-target-pending': true },
       controllable: { 'dev-target-pending': true },
@@ -709,22 +576,6 @@ describe('Device plan snapshot', () => {
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-target-pending',
-        name: 'Target Heater',
-        deviceType: 'temperature',
-        temperature: { currentTemperature: 21, target: { id: 'target_temperature', value: 21, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-        binaryControl: { on: true },
-        measuredPowerKw: 0.7,
-        controllable: true,
-      },
-    ]));
-
     await app['powerSamplePipeline'].recordPowerSample(700);
     structuredEvents.length = 0;
 
@@ -737,21 +588,7 @@ describe('Device plan snapshot', () => {
       nextRetryAtMs: Date.now() + 60_000,
       status: 'waiting_confirmation',
     };
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-target-pending',
-        name: 'Target Heater',
-        deviceType: 'temperature',
-        temperature: { currentTemperature: 21, target: { id: 'target_temperature', value: 21, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-        binaryControl: { on: true },
-        measuredPowerKw: 1.2,
-        controllable: true,
-      },
-    ]));
+    await reportDevicePower(app, [[heater, 1200]]);
 
     // Crossing the limit is a boundary reading: it rebuilds once the min interval has passed.
     vi.advanceTimersByTime(2_000);
@@ -1015,6 +852,7 @@ describe('Device plan snapshot', () => {
   it('does not hold minimum-temperature shedding when capacity control is disabled', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 16);
+    await dev1.setCapabilityValue('measure_temperature', 16);
     await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
     await dev1.setCapabilityValue('onoff', true);
 
@@ -1031,20 +869,6 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater',
-        temperature: { currentTemperature: 16, target: { id: 'target_temperature', value: 16, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
-        measuredPowerKw: 1.2,
-        expectedPowerKw: 1.2,
-        binaryControl: { on: true },
-      },
-    ]));
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
     app.planEngine.state.shedDecisions.lastPlannedShedIds = new Set(['dev-1']);
@@ -1075,22 +899,6 @@ describe('Device plan snapshot', () => {
     await app.onInit();
     app.planEngine.state.shedDecisions.standingShedIds = new Set(['dev-1']);
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        measuredPowerKw: 0,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Lamp',
-        targets: [],
-        binaryControl: { on: false },
-        binaryCapabilityId: 'onoff',
-        capabilities: ['onoff'],
-        lastFreshDataMs: Date.now(),
-      },
-    ]));
-
     await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
@@ -1114,21 +922,6 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        measuredPowerKw: 0,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Lamp',
-        targets: [],
-        binaryControl: { on: false },
-        binaryCapabilityId: 'onoff',
-        capabilities: ['onoff'],
-      },
-    ]));
 
     await app.planService.rebuildPlanFromCache('unknown');
 
@@ -1155,40 +948,16 @@ describe('Device plan snapshot', () => {
     await app.onInit();
     app.planEngine.state.shedDecisions.standingShedIds = new Set(['dev-1']);
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        measuredPowerKw: 0,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Lamp',
-        targets: [],
-        binaryControl: { on: false },
-        binaryCapabilityId: 'onoff',
-        capabilities: ['onoff'],
-        lastFreshDataMs: Date.now(),
-      },
-    ]));
-
     await app.planService.rebuildPlanFromCache('unknown');
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
+    // The marker drops once the restore is observed: without that, the second
+    // restore below would be skipped as already pending, not as unmarked.
+    await app.refreshTargetDevicesSnapshot();
+    await app.planService.rebuildPlanFromCache('unknown');
+    expect(app.planEngine.state.shedDecisions.standingShedIds.has('dev-1')).toBe(false);
 
     await dev1.setCapabilityValue('onoff', false);
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        measuredPowerKw: 0,
-        expectedPowerKw: 0,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Lamp',
-        targets: [],
-        binaryControl: { on: false },
-        binaryCapabilityId: 'onoff',
-        capabilities: ['onoff'],
-      },
-    ]));
+    await app.refreshTargetDevicesSnapshot();
 
     await app.planService.rebuildPlanFromCache('unknown');
     expect(await dev1.getCapabilityValue('onoff')).toBe(false);
@@ -1727,6 +1496,9 @@ describe('Device plan snapshot', () => {
   });
 
   it('does not shed additional devices without a new power sample after an initial shed', async () => {
+    const heaterA = await buildOnOffLoad('dev-1', 'Heater A', 1000);
+    const heaterB = await buildOnOffLoad('dev-2', 'Heater B', 1000);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heaterA, heaterB]) });
     mockHomeyInstance.settings.set('capacity_dry_run', true);
     setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
@@ -1736,35 +1508,6 @@ describe('Device plan snapshot', () => {
 
     app.computeDynamicSoftLimit = () => 1;
     app.computeDynamicSoftLimit = () => 1;
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        measuredPowerKw: 1,
-        expectedPowerKw: 1,
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        controllable: true,
-        priority: 1,
-      },
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-2',
-        name: 'Heater B',
-        targets: [],
-        measuredPowerKw: 1,
-        expectedPowerKw: 1,
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        controllable: true,
-        priority: 10,
-      },
-    ]));
 
     // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
     // stale, and these cases would then be exercising the fail-closed shed
@@ -1776,34 +1519,8 @@ describe('Device plan snapshot', () => {
     expect(initialShed).toEqual(['dev-2']);
 
     // Simulate the shed device turning off, but no new measurement arrives.
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        measuredPowerKw: 1,
-        expectedPowerKw: 1,
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        controllable: true,
-        priority: 1,
-      },
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-2',
-        name: 'Heater B',
-        targets: [],
-        measuredPowerKw: 0,
-        expectedPowerKw: 1,
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        controllable: true,
-        priority: 10,
-      },
-    ]));
+    await heaterB.setCapabilityValue('onoff', false);
+    await reportDevicePower(app, [[heaterB, 0]]);
 
     app.planEngine.state.actuation.lastRestoreMs = Date.now() - 60000;
     await app.planService.rebuildPlanFromCache('unknown');
@@ -1827,57 +1544,40 @@ describe('Device plan snapshot', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    // Keep an onoff-capable snapshot entry so turn_off is attempted, then force a second attempt.
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-      available: true,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-      id: 'dev-1',
-      name: 'Heater A',
-      targets: [],
-      binaryCapabilityId: 'onoff',
-      capabilities: ['onoff'],
-      controllable: true,
-    }]));
+    // Homey accepts the turn-off, but its device data keeps reporting the
+    // heater on, so the next refresh still reads it on and a second attempt follows.
+    dev1.configureCapabilityBehavior('onoff', {
+      onApiWrite: { accept: true, updateActual: true, updateApi: false },
+    });
 
     await executorOf(app).applySheddingToDevice('dev-1', 'Heater A');
-    // Simulate plan still thinks it is on to force a second attempt.
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-      available: true,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-      id: 'dev-1',
-      name: 'Heater A',
-      targets: [],
-      binaryCapabilityId: 'onoff',
-      capabilities: ['onoff'],
-      binaryControl: { on: true },
-      controllable: true,
-    }]));
+    await app.refreshTargetDevicesSnapshot();
+    expect(app.deviceManager.getSnapshotByDeviceId('dev-1')?.binaryControl).toEqual({ on: true });
     await executorOf(app).applySheddingToDevice('dev-1', 'Heater A');
 
     expect(putSpy).toHaveBeenCalledTimes(1);
   });
 
   it('records shed timestamp and skips turn_off for devices without onoff and temperature target', async () => {
-    setMockDrivers({});
+    // A load the owner steps through Flow: a meter and a saved power ladder,
+    // but no on/off and no temperature target for a turn-off to write.
+    const meterOnly = new MockDevice('dev-1', 'No On/Off Device', ['measure_power']);
+    await meterOnly.setCapabilityValue('measure_power', 500);
+    setMockDrivers({ driverA: new MockDriver('driverA', [meterOnly]) });
+    mockHomeyInstance.settings.set('device_control_profiles', {
+      'dev-1': { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 500 }] },
+    });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
     await app.onInit();
+    expect(app.deviceManager.getSnapshotByDeviceId('dev-1')).toMatchObject({
+      binaryControllable: false,
+      controlModel: 'stepped_load',
+      targets: [],
+    });
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-      available: true,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-      id: 'dev-1',
-      name: 'No On/Off Device',
-      targets: [],
-      capabilities: ['measure_power'],
-      controllable: true,
-    }]));
 
     await executorOf(app).applySheddingToDevice('dev-1', 'No On/Off Device');
 
@@ -2019,9 +1719,11 @@ describe('Device plan snapshot', () => {
     // The shortfall threshold is based on remaining hourly budget / remaining time.
     // At any point in the hour with no usage, threshold = hard_cap / remainingHours.
     // To ensure shortfall triggers regardless of when the test runs, use a low limit.
+    // A heater on a relay with no power meter: PELS cannot price a shed of it,
+    // so no controllable load is left to relieve the breach.
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    dev1.removeCapability('measure_power');
     await dev1.setCapabilityValue('onoff', true);
-    await dev1.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
@@ -2041,22 +1743,6 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Only 1 kW available to shed
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        expectedPowerKw: 1,
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
-    // Sync the snapshot to the guard so it knows about controllable devices
-    // Guard no longer needs explicit sync - Plan calls Guard methods directly
 
     // Use very high power to ensure it exceeds any threshold.
     // Threshold is clamped with a minimum remaining time of 0.01h, so max threshold is 500kW.
@@ -2108,9 +1794,10 @@ describe('Device plan snapshot', () => {
   it('does not trigger capacity_shortfall repeatedly while already in shortfall state', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
+    // No power meter, so no shed can relieve the breach (as above).
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    dev1.removeCapability('measure_power');
     await dev1.setCapabilityValue('onoff', true);
-    await dev1.setCapabilityValue('measure_power', 1000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
@@ -2130,20 +1817,6 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        expectedPowerKw: 1,
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
-
     await app['powerSamplePipeline'].recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
@@ -2161,8 +1834,10 @@ describe('Device plan snapshot', () => {
   it('triggers capacity_shortfall again after shortfall is resolved and re-enters', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date', 'performance'] });
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
-    await dev1.setCapabilityValue('measure_power', 500);
+    // No power meter, so no shed can relieve the breach; it declares a 500 W load.
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    dev1.removeCapability('measure_power');
+    dev1.setSettings({ load: 500 });
     await dev1.setCapabilityValue('onoff', true);
 
     setMockDrivers({
@@ -2184,20 +1859,6 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
     app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        expectedPowerKw: 0.5,
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
 
     await app['powerSamplePipeline'].recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
@@ -2403,6 +2064,7 @@ describe('Device plan snapshot', () => {
   it('applies mode target temperature to Hoiax water heater', async () => {
     const hoiax = createHoiaxWaterHeater('hoiax-1');
     await hoiax.setCapabilityValue('target_temperature', 65);
+    await hoiax.setCapabilityValue('measure_temperature', 65);
 
     setMockDrivers({
       hoiaxDriver: new MockDriver('hoiaxDriver', [hoiax]),
@@ -2423,21 +2085,6 @@ describe('Device plan snapshot', () => {
     // Trigger mode change via flow card
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'hoiax-1',
-        name: 'Connected 300',
-        deviceType: 'temperature',
-        temperature: { currentTemperature: 65, target: { id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 } },
-        targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
-        measuredPowerKw: 0,
-        expectedPowerKw: 3,
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
     await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
@@ -3178,19 +2825,6 @@ describe('Dry run mode', () => {
     const applyPlanSpy = vi.spyOn(app.planEngine, 'applyPlanActions');
 
     // Rebuild plan with shedding needed
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        expectedPowerKw: 2,
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
-    // Guard no longer needs explicit sync
     await app['powerSamplePipeline'].recordPowerSample(6000);
 
     // applyPlanActions should NOT be called in dry run mode
@@ -3220,23 +2854,6 @@ describe('Dry run mode', () => {
     vi.spyOn(app, 'log').mockImplementation((...args: unknown[]) => {
       logCalls.push(String(args[0]));
     });
-
-    // Setup snapshot with a device that will be shed
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        measuredPowerKw: 2,
-        expectedPowerKw: 2,
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
-    // Guard no longer needs explicit sync
 
     // Set a low soft limit to trigger shedding
     app.computeDynamicSoftLimit = () => 2;
@@ -3403,6 +3020,7 @@ describe('Dry run mode', () => {
   it('price optimization respects dry run mode', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 55);
+    await dev1.setCapabilityValue('measure_temperature', 55);
     await dev1.setCapabilityValue('measure_power', 3000);
     await dev1.setCapabilityValue('onoff', true);
 
@@ -3434,21 +3052,6 @@ describe('Dry run mode', () => {
     // Mock the cheap/expensive detection to return cheap
     app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
-    // Ensure the device is in snapshot with correct structure
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        temperature: { currentTemperature: 55, target: { id: 'target_temperature', value: 55, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 55, unit: '°C' }],
-        expectedPowerKw: 1,
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
-
     // A reading rebuilds the plan with the cheap price in force.
     await app['powerSamplePipeline'].recordPowerSample(1000);
 
@@ -3460,6 +3063,7 @@ describe('Dry run mode', () => {
   it('price optimization uses current operating mode targets in plan', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 40);
+    await dev1.setCapabilityValue('measure_temperature', 40);
     await dev1.setCapabilityValue('onoff', true);
     await dev1.setCapabilityValue('measure_power', 1000);
 
@@ -3501,20 +3105,6 @@ describe('Dry run mode', () => {
     app.planEngine.state.actuation.lastDeviceShedMs = {};
     app.planEngine.state.shedDecisions.lastPlannedShedIds = new Set();
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        temperature: { currentTemperature: 40, target: { id: 'target_temperature', value: 40, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 40, unit: '°C' }],
-        measuredPowerKw: 1,
-        expectedPowerKw: 1,
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
     await app.planService.rebuildPlanFromCache('unknown');
 
     const plan = getLatestPlanSnapshotForTests();
@@ -3525,6 +3115,7 @@ describe('Dry run mode', () => {
   it('applies price optimization when capacity control is disabled', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 50);
+    await dev1.setCapabilityValue('measure_temperature', 50);
     await dev1.setCapabilityValue('onoff', true);
     await dev1.setCapabilityValue('measure_power', 1000);
 
@@ -3552,21 +3143,6 @@ describe('Dry run mode', () => {
     await app.onInit();
     app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        deviceType: 'temperature',
-        temperature: { currentTemperature: 50, target: { id: 'target_temperature', value: 50, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 50, unit: '°C' }],
-        measuredPowerKw: 1,
-        expectedPowerKw: 1,
-        binaryControl: { on: true },
-      },
-    ]));
-
     await app.planService.rebuildPlanFromCache('unknown');
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(55);
@@ -3575,7 +3151,8 @@ describe('Dry run mode', () => {
   it('price optimization is overridden by temperature-based shedding', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 55);
-    await dev1.setCapabilityValue('measure_power', 3000);
+    await dev1.setCapabilityValue('measure_temperature', 55);
+    await dev1.setCapabilityValue('measure_power', 2000);
     await dev1.setCapabilityValue('onoff', true);
 
     setMockDrivers({
@@ -3613,21 +3190,6 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
     app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        temperature: { currentTemperature: 55, target: { id: 'target_temperature', value: 55, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 55, unit: '°C' }],
-        measuredPowerKw: 2,
-        expectedPowerKw: 2,
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
 
     // createApp seeds a fresh 0 kW sample; the 4 kW limit leaves room for the
     // first-seen load and isolates the price-versus-temperature behavior.
@@ -3841,40 +3403,9 @@ describe('Dry run mode', () => {
       await dev2.setCapabilityValue('target_temperature', 15);
     }
     // Refresh snapshot so the plan sees the new shed temperature.
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater A',
-        deviceType: 'temperature',
-        temperature: {
-          currentTemperature: 19,
-          target: { id: 'target_temperature', value: shedDevice.id === 'dev-1' ? 15 : 20, unit: '°C' },
-        },
-        targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-1' ? 15 : 20, unit: '°C' }],
-        measuredPowerKw: 1,
-        expectedPowerKw: 1,
-        binaryControl: { on: true },
-        controllable: true,
-      },
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-2',
-        name: 'Heater B',
-        deviceType: 'temperature',
-        temperature: {
-          currentTemperature: 19,
-          target: { id: 'target_temperature', value: shedDevice.id === 'dev-2' ? 15 : 20, unit: '°C' },
-        },
-        targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-2' ? 15 : 20, unit: '°C' }],
-        measuredPowerKw: 1,
-        expectedPowerKw: 1,
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
+    await dev1.setCapabilityValue('measure_temperature', 19);
+    await dev2.setCapabilityValue('measure_temperature', 19);
+    await app.refreshTargetDevicesSnapshot();
 
     // 3. Trigger another overshoot.
     // Total power still 2kW (heater might still run at lower temp).
@@ -4047,34 +3578,21 @@ describe('Dry run mode', () => {
     }
   });
 
-  it('does not attempt onoff restore when power state is unknown and onoff is not setable', async () => {
-    setMockDrivers({});
+  it('does not attempt onoff restore when onoff is not setable', async () => {
+    // A relay whose driver reports onoff but does not let Homey set it. It is
+    // off, so a restore would turn it on, and only the setable gate stops it.
+    const readOnlyRelay = new MockDevice('dev-1', 'Read-only relay', ['onoff'], 'socket');
+    readOnlyRelay.setCapabilityMetadata('onoff', { setable: false });
+    await readOnlyRelay.setCapabilityValue('onoff', false);
+    await readOnlyRelay.setCapabilityValue('measure_power', 0);
+    setMockDrivers({ driverA: new MockDriver('driverA', [readOnlyRelay]) });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
     await app.onInit();
+    expect(app.deviceManager.getSnapshotByDeviceId('dev-1')?.canSetControl).toBe(false);
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    const readOnlyRelay: TransportDeviceSnapshot = {
-      id: 'dev-1',
-      name: 'Read-only relay',
-      deviceClass: 'socket',
-      deviceType: 'onoff',
-      isEvCharger: false,
-      isBatteryOrSolar: false,
-      binaryControllable: true,
-      targets: [],
-      available: true,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-      binaryCapabilityId: 'onoff',
-      capabilities: ['onoff'],
-      canSetControl: false,
-      binaryControl: { on: true },
-      controllable: true,
-    };
-    app.deviceManager.setSnapshotForTests([readOnlyRelay]);
 
     const plan: DevicePlan = {
       meta: buildPlanMeta(),
@@ -4097,39 +3615,23 @@ describe('Dry run mode', () => {
   });
 
   it('skips target updates for unavailable devices and continues with available devices', async () => {
-    setMockDrivers({});
+    const unavailableHeater = new MockDevice('dev-unavailable', 'Unavailable Heater', ['target_temperature', 'onoff']);
+    const availableHeater = new MockDevice('dev-available', 'Available Heater', ['target_temperature', 'onoff']);
+    for (const heater of [unavailableHeater, availableHeater]) {
+      await heater.setCapabilityValue('target_temperature', 18);
+      await heater.setCapabilityValue('measure_temperature', 18);
+      await heater.setCapabilityValue('onoff', true);
+      await heater.setCapabilityValue('measure_power', 1000);
+    }
+    unavailableHeater.setAvailable(false);
+    setMockDrivers({ driverA: new MockDriver('driverA', [unavailableHeater, availableHeater]) });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
     await app.onInit();
+    expect(app.deviceManager.getSnapshotByDeviceId('dev-unavailable')?.available).toBe(false);
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-      id: 'dev-unavailable',
-      name: 'Unavailable Heater',
-      deviceType: 'temperature',
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', value: 18, unit: '°C' } },
-      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
-      capabilities: ['target_temperature', 'onoff'],
-      binaryControl: { on: true },
-      controllable: true,
-      available: false,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-    }, {
-      id: 'dev-available',
-      name: 'Available Heater',
-      deviceType: 'temperature',
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', value: 18, unit: '°C' } },
-      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
-      capabilities: ['target_temperature', 'onoff'],
-      binaryControl: { on: true },
-      controllable: true,
-      available: true,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-    }]));
 
     const plan: DevicePlan = {
       meta: buildPlanMeta(),
@@ -4170,39 +3672,23 @@ describe('Dry run mode', () => {
   });
 
   it('skips shed-temperature actions for unavailable devices and continues with available devices', async () => {
-    setMockDrivers({});
+    const unavailableHeater = new MockDevice('dev-unavailable', 'Unavailable Heater', ['target_temperature', 'onoff']);
+    const availableHeater = new MockDevice('dev-available', 'Available Heater', ['target_temperature', 'onoff']);
+    for (const heater of [unavailableHeater, availableHeater]) {
+      await heater.setCapabilityValue('target_temperature', 20);
+      await heater.setCapabilityValue('measure_temperature', 20);
+      await heater.setCapabilityValue('onoff', true);
+      await heater.setCapabilityValue('measure_power', 1000);
+    }
+    unavailableHeater.setAvailable(false);
+    setMockDrivers({ driverA: new MockDriver('driverA', [unavailableHeater, availableHeater]) });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
     await app.onInit();
+    expect(app.deviceManager.getSnapshotByDeviceId('dev-unavailable')?.available).toBe(false);
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-      id: 'dev-unavailable',
-      name: 'Unavailable Heater',
-      deviceType: 'temperature',
-      temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
-      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-      capabilities: ['target_temperature', 'onoff'],
-      binaryControl: { on: true },
-      controllable: true,
-      available: false,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-    }, {
-      id: 'dev-available',
-      name: 'Available Heater',
-      deviceType: 'temperature',
-      temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
-      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-      capabilities: ['target_temperature', 'onoff'],
-      binaryControl: { on: true },
-      controllable: true,
-      available: true,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-    }]));
 
     const plan: DevicePlan = {
       meta: buildPlanMeta(),
@@ -4246,35 +3732,13 @@ describe('Dry run mode', () => {
   });
 
   it('continues applying actions after a shed callback throws a 500 error', async () => {
-    setMockDrivers({});
+    const failing = await buildOnOffLoad('dev-1', 'Failing device', 1000);
+    const healthy = await buildOnOffLoad('dev-2', 'Healthy device', 1000);
+    setMockDrivers({ driverA: new MockDriver('driverA', [failing, healthy]) });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
     await app.onInit();
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-      id: 'dev-1',
-      name: 'Failing device',
-      targets: [],
-      binaryCapabilityId: 'onoff',
-      capabilities: ['onoff'],
-      binaryControl: { on: true },
-      controllable: true,
-      available: true,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-    }, {
-      id: 'dev-2',
-      name: 'Healthy device',
-      targets: [],
-      binaryCapabilityId: 'onoff',
-      capabilities: ['onoff'],
-      binaryControl: { on: true },
-      controllable: true,
-      available: true,
-      expectedPowerKw: 0,
-      expectedPowerSource: 'default',
-    }]));
 
     const callback = vi.fn().mockImplementation(async (deviceId: string) => {
       if (deviceId === 'dev-1') {
@@ -4326,7 +3790,15 @@ describe('Dry run mode', () => {
   });
 
   it('restores a higher-priority onoff device by swapping out a lower-priority set-temperature device', async () => {
-    setMockDrivers({});
+    // The spotlights declare a 50 W load; the thermostat is metered at 0.6 kW.
+    const spotter = await buildOnOffLoad('spotter', 'Spotter kjøkkenbenk', 0, false);
+    spotter.setSettings({ load: 50 });
+    const lowTemp = new MockDevice('low-temp', 'Lower-priority thermostat', ['target_temperature', 'onoff']);
+    await lowTemp.setCapabilityValue('target_temperature', 20);
+    await lowTemp.setCapabilityValue('measure_temperature', 20);
+    await lowTemp.setCapabilityValue('onoff', true);
+    await lowTemp.setCapabilityValue('measure_power', 600);
+    setMockDrivers({ driverA: new MockDriver('driverA', [spotter, lowTemp]) });
     mockHomeyInstance.settings.set('capacity_dry_run', true);
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('capacity_priorities', {
@@ -4349,8 +3821,14 @@ describe('Dry run mode', () => {
       'low-temp': true,
     });
 
-    const app = createApp();
+    // The meter has not reported since boot, so the first plan is built from
+    // the reading below, against the limit set for it.
+    const app = createApp({ withoutPowerMeasurement: true });
     await app.onInit();
+    expect(app.deviceManager.getSnapshotByDeviceId('spotter')).toMatchObject({
+      expectedPowerKw: 0.05,
+      expectedPowerSource: 'load-setting',
+    });
 
     app.computeDynamicSoftLimit = () => 0.4; // 0.4kW limit
     app.computeDynamicSoftLimit = () => 0.4;
@@ -4358,39 +3836,8 @@ describe('Dry run mode', () => {
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'spotter',
-        name: 'Spotter kjøkkenbenk',
-        targets: [],
-        binaryCapabilityId: 'onoff',
-        capabilities: ['onoff'],
-        binaryControl: { on: false }, // currently shed/off
-        controllable: true,
-        measuredPowerKw: 0,
-        expectedPowerKw: 0.05,
-        lastFreshDataMs: Date.now(),
-      },
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'low-temp',
-        name: 'Lower-priority thermostat',
-        temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        capabilities: ['target_temperature', 'onoff'],
-        binaryControl: { on: true },
-        controllable: true,
-        measuredPowerKw: 0.6,
-        expectedPowerKw: 0.6,
-        lastFreshDataMs: Date.now(),
-      },
-    ]));
-
-    // Headroom = 0.7 - 0.2 = 0.5kW. Direct restore still requires swapping out the lower-priority
-    // thermostat (spotter needs ~0.25kW but the combined reserve+floor of 0.50kW makes direct fail).
+    // Headroom = 0.4 - 0.2 = 0.2 kW. The spotlights need their 0.05 kW plus the 0.2 kW restore
+    // buffer, so a direct restore does not fit and the lower-priority thermostat is swapped out.
     await app['powerSamplePipeline'].recordPowerSample(200);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -4404,7 +3851,14 @@ describe('Dry run mode', () => {
   });
 
   it('restores a higher-priority onoff device by swapping out a lower-priority temperature-only active device', async () => {
-    setMockDrivers({});
+    // The spotlights declare a 50 W load; the thermostat is metered at 0.6 kW.
+    const spotter = await buildOnOffLoad('spotter', 'Spotter kjøkkenbenk', 0, false);
+    spotter.setSettings({ load: 50 });
+    const lowTemp = new MockDevice('low-temp-no-onoff', 'Lower-priority thermostat without onoff', ['target_temperature']);
+    await lowTemp.setCapabilityValue('target_temperature', 20);
+    await lowTemp.setCapabilityValue('measure_temperature', 20);
+    await lowTemp.setCapabilityValue('measure_power', 600);
+    setMockDrivers({ driverA: new MockDriver('driverA', [spotter, lowTemp]) });
     mockHomeyInstance.settings.set('capacity_dry_run', true);
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('capacity_priorities', {
@@ -4427,45 +3881,20 @@ describe('Dry run mode', () => {
       'low-temp-no-onoff': true,
     });
 
-    const app = createApp();
+    // The meter has not reported since boot, so the first plan is built from
+    // the reading below, against the limit set for it.
+    const app = createApp({ withoutPowerMeasurement: true });
     await app.onInit();
+    expect(app.deviceManager.getSnapshotByDeviceId('spotter')).toMatchObject({
+      expectedPowerKw: 0.05,
+      expectedPowerSource: 'load-setting',
+    });
 
     app.computeDynamicSoftLimit = () => 0.4;
     app.computeDynamicSoftLimit = () => 0.4;
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'spotter',
-        name: 'Spotter kjøkkenbenk',
-        targets: [],
-        binaryCapabilityId: 'onoff',
-        capabilities: ['onoff'],
-        binaryControl: { on: false },
-        controllable: true,
-        measuredPowerKw: 0,
-        expectedPowerKw: 0.05,
-        lastFreshDataMs: Date.now(),
-      },
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'low-temp-no-onoff',
-        name: 'Lower-priority thermostat without onoff',
-        temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        capabilities: ['target_temperature'],
-        binaryControl: { on: true },
-        controllable: true,
-        measuredPowerKw: 0.6,
-        expectedPowerKw: 0.6,
-        lastFreshDataMs: Date.now(),
-      },
-    ]));
 
     await app['powerSamplePipeline'].recordPowerSample(200);
 
