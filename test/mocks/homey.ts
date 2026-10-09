@@ -98,6 +98,8 @@ export class MockDevice {
   // Driver identity (`ownerUri` / `driverUri` / `driverId`) as the real device
   // API payload carries it; omitted entirely when unset.
   private driverIdentity: { ownerUri?: string; driverUri?: string; driverId?: string } = {};
+  // Capabilities the device does not declare, even one the mock adds by default.
+  private removedCapabilities = new Set<string>();
 
   constructor(
     private id: string,
@@ -126,7 +128,18 @@ export class MockDevice {
     if (normalized.has('onoff')) {
       normalized.add('measure_power');
     }
+    for (const capabilityId of this.removedCapabilities) normalized.delete(capabilityId);
     return Array.from(normalized);
+  }
+
+  /**
+   * Stop declaring `capabilityId`, including one the mock adds by default: a
+   * thermostat or plug without a power meter declares no `measure_power`.
+   * Call it before the app first reads the device: it publishes no
+   * `device.update`, so a device PELS already read would not learn of it.
+   */
+  removeCapability(capabilityId: string): void {
+    this.removedCapabilities.add(capabilityId);
   }
 
   get idValue() {

@@ -1,6 +1,5 @@
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 
 describe('Capacity control device condition', () => {
@@ -80,7 +79,10 @@ describe('Capacity control device condition', () => {
     await app.onUninit?.();
   });
 
-  it('returns false when controllable is undefined in the snapshot', async () => {
+  it('returns false for a device the owner never opted in', async () => {
+    // No `managed_devices` or `controllable_devices` entry: the app reads the
+    // device as not capacity controlled. (A managed device with no
+    // capacity-control entry is migrated to controlled at startup.)
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
     await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 1000);
@@ -89,7 +91,11 @@ describe('Capacity control device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{ available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [] }]));
+    // The card knows the device: `false` here is an answer about it, not the
+    // unknown-device fallback.
+    const autocomplete = mockHomeyInstance.flow._conditionCardAutocompleteListeners.is_device_capacity_controlled.device;
+    const offered = ((await autocomplete('')) as Array<{ id: string }>).map((option) => option.id);
+    expect(offered).toContain('dev-1');
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.is_device_capacity_controlled;
     expect(runCondition).toBeDefined();
