@@ -1,7 +1,9 @@
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import {
   createTestDeviceTransport,
+  initWithLiveFeed,
 } from '../helpers/deviceTransportHarness';
+import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
@@ -10,7 +12,6 @@ import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/state
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import type { Logger } from '../../lib/utils/types';
-import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type {
     ObservedStateChangedEvent,
     ObservedStateRefreshEvent,
@@ -30,31 +31,6 @@ import type {
 } from '../../packages/contracts/src/types';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import { resolveThermalDirection } from '../../lib/observer/thermalDirection';
-
-// Stub the live feed so the transport never opens a real socket.io connection.
-// This is an OUTWARD Homey SDK seam, not a PELS internal — the merge, the
-// emitter, and the projection all run for real per the deferred-objective e2e
-// rule (AGENTS.md: drive the SDK boundary, never mock PELS internals).
-vi.mock('../../lib/device/liveFeed', () => {
-    const mockHealth: LiveFeedHealth = {
-        subscriptionState: 'subscribed',
-        lastLiveEventMs: null,
-        liveEventCount: 0,
-        ignoredLiveEventCount: 0,
-        reconnectCount: 0,
-        lastReconnectMs: null,
-        lastSuccessfulSubscriptionMs: null,
-    };
-    return {
-        createDeviceLiveFeed: vi.fn(() => ({
-            start: vi.fn().mockResolvedValue(undefined),
-            stop: vi.fn().mockResolvedValue(undefined),
-            isHealthy: vi.fn().mockReturnValue(true),
-            getHealth: vi.fn().mockReturnValue(mockHealth),
-            updateTrackedDevices: vi.fn(),
-        })),
-    };
-});
 
 const mockApiGet = vi.fn();
 const mockApiPut = vi.fn().mockResolvedValue(undefined);
@@ -87,7 +63,7 @@ async function buildHarness(): Promise<Harness> {
             observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
         },
     );
-    await transport.init();
+    await initWithLiveFeed(transport);
     return { transport, projection };
 }
 
@@ -212,7 +188,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             // the direction every mode-less device has.
         });
 
-        h.transport.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
+        await emitCapability('dev1', 'measure_temperature', Number.NaN);
 
         const demoted = h.projection.getObservedState('dev1');
         expect(demoted).toBeDefined();
@@ -239,7 +215,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         })).toBe('cooling');
 
         // Only the mode moves. Every other capability reports its held value.
-        h.transport.injectDeviceUpdateForTest(heatPumpDevice('dev1', 'heat', '2026-03-20T06:05:00.000Z'));
+        emitDeviceUpdate(heatPumpDevice('dev1', 'heat', '2026-03-20T06:05:00.000Z'));
 
         expect(h.projection.getObservedState('dev1')?.thermostatMode).toBe('heat');
         expect(resolveThermalDirection({
@@ -258,9 +234,9 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
         // Realtime deltas through the real merge.
-        h.transport.injectCapabilityUpdateForTest('dev1', 'onoff', true);
-        h.transport.injectCapabilityUpdateForTest('dev2', 'measure_power', 2500);
-        h.transport.injectDeviceUpdateForTest({
+        await emitCapability('dev1', 'onoff', true);
+        await emitCapability('dev2', 'measure_power', 2500);
+        emitDeviceUpdate({
             id: 'dev1',
             name: 'dev1',
             class: 'heater',
@@ -290,7 +266,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
 
-        h.transport.injectDeviceUpdateForTest(onoffDevice('dev1', true, '2026-03-20T06:05:00.000Z'));
+        emitDeviceUpdate(onoffDevice('dev1', true, '2026-03-20T06:05:00.000Z'));
 
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
         assertShadowEquality(h);
@@ -371,13 +347,13 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });
             await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
-            h.transport.injectCapabilityUpdateForTest('dev1', 'measure_power', 0);
+            await emitCapability('dev1', 'measure_power', 0);
             const afterFirst = h.projection.getObservedState('dev1')?.measuredPowerObservedAtMs;
             expect(afterFirst).toBe(Date.UTC(2026, 2, 20, 6, 0, 0));
 
             vi.setSystemTime(Date.UTC(2026, 2, 20, 6, 1, 30));
             // Same value again: `changed` is false, and the stamp must still travel.
-            h.transport.injectCapabilityUpdateForTest('dev1', 'measure_power', 0);
+            await emitCapability('dev1', 'measure_power', 0);
             expect(h.projection.getObservedState('dev1')?.measuredPowerObservedAtMs)
                 .toBe(Date.UTC(2026, 2, 20, 6, 1, 30));
             assertShadowEquality(h);
@@ -400,8 +376,8 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         const revisionBefore = h.projection.getRevision();
 
-        h.transport.injectCapabilityUpdateForTest('dev1', 'measure_power', Number.NaN);
-        h.transport.injectCapabilityUpdateForTest('dev1', 'measure_power', -5);
+        await emitCapability('dev1', 'measure_power', Number.NaN);
+        await emitCapability('dev1', 'measure_power', -5);
 
         expect(h.projection.getRevision()).toBe(revisionBefore);
         assertShadowEquality(h);
@@ -422,14 +398,14 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         expect(h.projection.getObservedState('dev1')?.available).toBe(true);
 
         // Same onoff value and stamp: nothing but availability moves.
-        h.transport.injectDeviceUpdateForTest({
+        emitDeviceUpdate({
             ...onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
             available: false,
         });
         expect(h.transport.getSnapshotByDeviceId('dev1')?.available).toBe(false);
         expect(h.projection.getObservedState('dev1')?.available).toBe(false);
 
-        h.transport.injectDeviceUpdateForTest({
+        emitDeviceUpdate({
             ...onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
             available: true,
         });
@@ -444,7 +420,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
 
-        h.transport.injectCapabilityUpdateForTest('dev1', 'onoff', true);
+        await emitCapability('dev1', 'onoff', true);
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
         assertShadowEquality(h);
         h.transport.destroy();
@@ -458,7 +434,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
 
         // Realtime turns it on.
-        h.transport.injectCapabilityUpdateForTest('dev1', 'onoff', true);
+        await emitCapability('dev1', 'onoff', true);
         expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
 
         // A refresh whose SDK read is OLDER than the realtime event. Transport's

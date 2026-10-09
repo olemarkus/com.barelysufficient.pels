@@ -1,9 +1,10 @@
 import { buildDeviceActuator } from '../../setup/appInit/buildDeviceActuator';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
-/** Live-feed injection is the same integration seam as externalOffHoldRealtime. */
+/** Realtime `device.update` frames arrive on the live feed's socket, as in externalOffHoldRealtime. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 
 const deviceId = 'heater-1';
 const capabilities = ['onoff', 'measure_power', 'measure_temperature', 'target_temperature'];
@@ -39,6 +40,7 @@ async function start(policy: string, hasBinary = true, seedOperatingMode = true)
     mode_device_targets: { Home: { [deviceId]: 23.5 }, Away: { [deviceId]: 16 } },
     temperature_control_modes: { [deviceId]: policy },
   })) mockHomeyInstance.settings.set(key, value);
+  connectLiveFeed();
   const app = createApp({ preserveStartupRestoreStabilization: true });
   await app.onInit();
   await vi.advanceTimersByTimeAsync(30_000);
@@ -58,7 +60,7 @@ describe('external temperature changes reach the mode through observation', () =
     const app = await start('update_mode');
     const rebuild = vi.spyOn(app.planService!, 'rebuildPlanFromCache');
     const put = vi.spyOn(mockHomeyInstance.api, 'put');
-    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    emitDeviceUpdate(update(22));
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({
       Home: { [deviceId]: 22 }, Away: { [deviceId]: 16 },
     });
@@ -75,7 +77,7 @@ describe('external temperature changes reach the mode through observation', () =
     const app = await start('update_mode');
     mockHomeyInstance.settings.set('overshoot_behaviors', { [deviceId]: { action: 'set_temperature', temperature: 16 } });
     await drainPending();
-    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    emitDeviceUpdate(update(22));
     const report = mockHomeyInstance.flow._actionCardListeners.report_power_usage;
     await report({ power: 1000 });
     await vi.advanceTimersByTimeAsync(2000);
@@ -100,7 +102,7 @@ describe('external temperature changes reach the mode through observation', () =
     const app = await start('update_mode');
     mockHomeyInstance.settings.set('overshoot_behaviors', { [deviceId]: { action: 'set_temperature', temperature: 16 } });
     await drainPending();
-    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    emitDeviceUpdate(update(22));
     const report = mockHomeyInstance.flow._actionCardListeners.report_power_usage;
     await report({ power: 15_000 });
     await vi.advanceTimersByTimeAsync(2000);
@@ -108,7 +110,7 @@ describe('external temperature changes reach the mode through observation', () =
       (device) => device.id === deviceId && device.plannedState === 'shed',
     ) === true);
 
-    app.deviceManager!.injectDeviceUpdateForTest(update(23));
+    emitDeviceUpdate(update(23));
     await drainPending();
 
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 22 } });
@@ -129,7 +131,7 @@ describe('external temperature changes reach the mode through observation', () =
 
   it('blocks old adjusted commands but applies the saved target when the mode changes', async () => {
     const app = await start('update_mode');
-    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    emitDeviceUpdate(update(22));
     const actuator = buildDeviceActuator(app)!;
     expect(await actuator.apply({ kind: 'target', target: 'temperature', deviceId, value: 16 }))
       .toEqual({ requested: false });
@@ -164,18 +166,18 @@ describe('external temperature changes reach the mode through observation', () =
   });
 
   it('resolves a retained Main mode alias before saving an external adjustment', async () => {
-    const app = await start('update_mode');
+    await start('update_mode');
     mockHomeyInstance.settings.set('mode_device_targets', { Comfort: { [deviceId]: 23.5 }, Away: { [deviceId]: 16 } });
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Comfort' });
     await drainPending();
-    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    emitDeviceUpdate(update(22));
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Comfort: { [deviceId]: 22 } });
     expect(mockHomeyInstance.settings.get('mode_device_targets')).not.toHaveProperty('Home');
   });
 
   it.each(['mode', 'external'])('does not edit mode targets under %s authority', async (policy) => {
-    const app = await start(policy);
-    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    await start(policy);
+    emitDeviceUpdate(update(22));
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 23.5 } });
   });
 
@@ -193,7 +195,7 @@ describe('external temperature changes reach the mode through observation', () =
     expect(mockHomeyInstance.settings.getKeys()).not.toContain('operating_mode');
     expect(app.homeModeCatalog.getSnapshot().operatingMode).toBe('Home');
 
-    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    emitDeviceUpdate(update(22));
 
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({
       Home: { [deviceId]: 22 }, Away: { [deviceId]: 16 },
@@ -205,7 +207,7 @@ describe('external temperature changes reach the mode through observation', () =
     // and it also read the mode. With no mode it refused every setpoint command,
     // so the target the owner had just saved could never be applied either.
     const app = await start('update_mode', true, false);
-    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    emitDeviceUpdate(update(22));
     const actuator = buildDeviceActuator(app)!;
 
     expect(await actuator.apply({ kind: 'target', target: 'temperature', deviceId, value: 22 }))
@@ -216,9 +218,9 @@ describe('external temperature changes reach the mode through observation', () =
     const app = await start('update_mode');
     await app.deviceManager!.requestTemperatureTarget(deviceId, 18);
     await vi.advanceTimersByTimeAsync(6000);
-    app.deviceManager!.injectDeviceUpdateForTest(update(18));
+    emitDeviceUpdate(update(18));
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 23.5 } });
-    app.deviceManager!.injectDeviceUpdateForTest(update(22));
+    emitDeviceUpdate(update(22));
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toMatchObject({ Home: { [deviceId]: 22 } });
   });
 });

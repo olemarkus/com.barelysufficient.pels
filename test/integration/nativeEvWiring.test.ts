@@ -1,8 +1,6 @@
 import Homey from 'homey';
-import {
-  createTestDeviceTransport,
-  seedTransportDevices,
-} from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
+import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import {
   applyNativeEvWiringOverlay,
@@ -194,12 +192,13 @@ describe('native EV wiring shim', () => {
       },
     );
 
+    await initWithLiveFeed(deviceManager);
     await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
     expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
       reportedStepId: '16a',
     }));
 
-    deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'available_installation_current', 10);
+    await emitCapability('zaptec-go-1', 'available_installation_current', 10);
 
     expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
       reportedStepId: '10a',
@@ -226,14 +225,15 @@ describe('native EV wiring shim', () => {
       },
     );
 
+    await initWithLiveFeed(deviceManager);
     await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
-    deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'available_installation_current', 10);
+    await emitCapability('zaptec-go-1', 'available_installation_current', 10);
     expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ reportedStepId: '10a' }));
 
     // A vendor-app change or a reboot back to 32 A sits above the 16 A preset.
     // It is still the device's state now; leaving 10 A in place until the next
     // poll would have the planner model the wrong rung for minutes.
-    deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'available_installation_current', 32);
+    await emitCapability('zaptec-go-1', 'available_installation_current', 32);
     expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
       reportedStepId: '16a',
       steppedLoadProfile: expect.objectContaining({
@@ -262,11 +262,12 @@ describe('native EV wiring shim', () => {
       },
     );
 
+    await initWithLiveFeed(deviceManager);
     await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
-    deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'available_installation_current', 10);
+    await emitCapability('zaptec-go-1', 'available_installation_current', 10);
 
     // A negative watt reading would otherwise reach probe settlement as evidence.
-    deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'available_installation_current', -4);
+    await emitCapability('zaptec-go-1', 'available_installation_current', -4);
     expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
       reportedStepId: '10a',
       reportedStepPowerW: 6_900,

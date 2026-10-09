@@ -1,18 +1,18 @@
 /**
  * The realtime lifecycle of "Leave off until turned on again", driven end to end
- * through the app: a `device.update` arrives at the transport's inbound edge, and
- * the real detector → hold store → persistence → producer path runs unmocked.
+ * through the app: a `device.update` frame arrives on the live feed's socket
+ * (`test/helpers/liveFeedSocketHarness.ts`), and the real detector → hold store →
+ * persistence → producer path runs unmocked.
  *
- * Integration tier (not e2e) because realtime observations cannot enter through
- * the e2e SDK boundary: the live feed is stubbed off in `test/setup.ts`, so
- * `injectDeviceUpdateForTest` — the transport's documented inbound seam, the
- * exact call the live feed makes — is the closest available equivalent. The
- * SDK-boundary consequences of an ALREADY-held device (no resume, restart
- * survival) are covered in `test/e2e/externalOffHold.e2e.test.ts`.
+ * Integration tier (not e2e) because it reads the hold policy itself
+ * (`app.externalOffHold`) beside the persisted keys. The SDK-boundary
+ * consequences of an ALREADY-held device (no resume, restart survival) are
+ * covered in `test/e2e/externalOffHold.e2e.test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import {
   PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
   RESPECT_EXTERNAL_OFF_DEVICES,
@@ -22,7 +22,6 @@ const DEVICE = 'heater-1';
 
 type AppLike = {
   onInit: () => Promise<void>;
-  deviceManager?: { injectDeviceUpdateForTest: (device: Record<string, unknown>) => void };
   externalOffHold?: { isHeld: (deviceId: string) => boolean };
 };
 
@@ -58,6 +57,7 @@ const startApp = async (optedIn: boolean): Promise<AppLike> => {
   await device.setCapabilityValue('measure_power', 2000);
   setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
   seedSettings(optedIn);
+  connectLiveFeed();
   const app = createApp({ preserveStartupRestoreStabilization: true }) as unknown as AppLike;
   await app.onInit();
   await vi.advanceTimersByTimeAsync(30_000);
@@ -97,7 +97,7 @@ describe('external-off hold — realtime lifecycle', () => {
 
   it('starts and persists a hold when an opted-in device reports off outside PELS', async () => {
     const app = await startApp(true);
-    app.deviceManager?.injectDeviceUpdateForTest(deviceUpdate(false));
+    emitDeviceUpdate(deviceUpdate(false));
     await settle();
 
     expect(app.externalOffHold?.isHeld(DEVICE)).toBe(true);
@@ -106,7 +106,7 @@ describe('external-off hold — realtime lifecycle', () => {
 
   it('starts no hold for a device that has not opted in', async () => {
     const app = await startApp(false);
-    app.deviceManager?.injectDeviceUpdateForTest(deviceUpdate(false));
+    emitDeviceUpdate(deviceUpdate(false));
     await settle();
 
     expect(app.externalOffHold?.isHeld(DEVICE)).toBe(false);
@@ -115,11 +115,11 @@ describe('external-off hold — realtime lifecycle', () => {
 
   it('releases the hold when the device reports on again', async () => {
     const app = await startApp(true);
-    app.deviceManager?.injectDeviceUpdateForTest(deviceUpdate(false));
+    emitDeviceUpdate(deviceUpdate(false));
     await settle();
     expect(app.externalOffHold?.isHeld(DEVICE)).toBe(true);
 
-    app.deviceManager?.injectDeviceUpdateForTest(deviceUpdate(true));
+    emitDeviceUpdate(deviceUpdate(true));
     await settle();
 
     expect(app.externalOffHold?.isHeld(DEVICE)).toBe(false);
@@ -128,7 +128,7 @@ describe('external-off hold — realtime lifecycle', () => {
 
   it('releases a held device when its opt-in is switched off', async () => {
     const app = await startApp(true);
-    app.deviceManager?.injectDeviceUpdateForTest(deviceUpdate(false));
+    emitDeviceUpdate(deviceUpdate(false));
     await settle();
     expect(app.externalOffHold?.isHeld(DEVICE)).toBe(true);
 

@@ -1,10 +1,12 @@
 import Homey from 'homey';
 import {
   createTestDeviceTransport,
+  initWithLiveFeed,
   onObservedControlState,
   onObservedState,
   seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
+import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -512,6 +514,7 @@ describe('native stepped-load wiring', () => {
       undefined,
       { onSnapshotMutated },
     );
+    await initWithLiveFeed(deviceManager);
     const [parsed] = await seedTransportDevices(deviceManager, [buildTargetPowerDevice({
       capabilitiesObj: {
         measure_power: { value: 5_520, lastUpdated: TARGET_POWER_READ_AT },
@@ -533,7 +536,7 @@ describe('native stepped-load wiring', () => {
 
     const firstObservedAtMs = Date.now();
     const now = vi.spyOn(Date, 'now').mockReturnValue(firstObservedAtMs);
-    deviceManager.injectCapabilityUpdateForTest('target-power-1', 'target_power', 5_750);
+    await emitCapability('target-power-1', 'target_power', 5_750);
 
     expect(onSnapshotMutated).toHaveBeenCalledWith(expect.objectContaining({
       reportedStepId: '25a',
@@ -542,7 +545,7 @@ describe('native stepped-load wiring', () => {
     now.mockReturnValue(firstObservedAtMs + 1_000);
     onSnapshotMutated.mockClear();
 
-    deviceManager.injectCapabilityUpdateForTest('target-power-1', 'target_power', 5_750);
+    await emitCapability('target-power-1', 'target_power', 5_750);
 
     expect(onSnapshotMutated).toHaveBeenCalledWith(expect.objectContaining({
       reportedStepId: '25a', reportedStepPowerW: 5_750,
@@ -1360,6 +1363,7 @@ describe('native stepped-load wiring', () => {
         },
       );
 
+      await initWithLiveFeed(deviceManager);
       await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
       // The refresh cycle owns its GETs (device list + the piggybacked zone
       // tree); the invariant under test is that the COMMAND path below adds
@@ -1403,7 +1407,7 @@ describe('native stepped-load wiring', () => {
       });
 
       put.mockClear();
-      deviceManager.injectDeviceUpdateForTest({
+      emitDeviceUpdate({
         ...buildHoiaxDevice(),
         capabilitiesObj: {
           ...buildHoiaxDevice().capabilitiesObj,
@@ -1429,7 +1433,7 @@ describe('native stepped-load wiring', () => {
       const realtimeReconcile = vi.fn();
       onObservedState(deviceManager, liveStateObserved);
       onObservedControlState(deviceManager, realtimeReconcile);
-      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
+      await emitCapability('hoiax-1', 'max_power_3000', '3');
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         reportedStepId: 'max',
@@ -1494,6 +1498,7 @@ describe('native stepped-load wiring', () => {
         createLogger(),
         { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }), getNativeEvWiringEnabled: () => true, getDeviceControlProfile: () => steppedProfile },
       );
+      await initWithLiveFeed(deviceManager);
       await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
       const observed = vi.fn();
@@ -1503,7 +1508,7 @@ describe('native stepped-load wiring', () => {
 
       // First power-step changes the reported step (medium -> max): the
       // reported-step-changed branch dispatches both observed + reconcile.
-      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
+      await emitCapability('hoiax-1', 'max_power_3000', '3');
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ reportedStepId: 'max' }));
       expect(observed).toHaveBeenCalledTimes(1);
       expect(reconcile).toHaveBeenCalledTimes(1);
@@ -1514,7 +1519,7 @@ describe('native stepped-load wiring', () => {
       // Same power-step again (max -> max): no reported-step change, but the
       // freshness bump must still surface as an observed-state delta — and NOT a
       // control-state change (nothing control-relevant changed).
-      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
+      await emitCapability('hoiax-1', 'max_power_3000', '3');
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ reportedStepId: 'max' }));
       expect(observed).toHaveBeenCalledTimes(1);
       expect(observed).toHaveBeenCalledWith(expect.objectContaining({
@@ -1759,6 +1764,7 @@ describe('native stepped-load wiring', () => {
         },
       );
 
+      await initWithLiveFeed(deviceManager);
       await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
 
       const liveStateObserved = vi.fn();
@@ -1780,7 +1786,7 @@ describe('native stepped-load wiring', () => {
         { value: '3' },
       );
 
-      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
+      await emitCapability('hoiax-1', 'max_power_3000', '3');
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         reportedStepId: 'medium',
@@ -1869,6 +1875,7 @@ describe('native stepped-load wiring', () => {
         },
       );
 
+      await initWithLiveFeed(deviceManager);
       await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         binaryControl: { on: false },
@@ -1877,7 +1884,7 @@ describe('native stepped-load wiring', () => {
 
       const realtimeReconcile = vi.fn();
       onObservedControlState(deviceManager, realtimeReconcile);
-      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'onoff', true);
+      await emitCapability('hoiax-1', 'onoff', true);
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         binaryControl: { on: true },

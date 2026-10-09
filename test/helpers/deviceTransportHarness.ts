@@ -41,7 +41,7 @@ import type { SnapshotRefreshOptions } from '../../lib/device/transport/transpor
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
-import { settleLiveFeed } from './liveFeedSocketHarness';
+import { connectLiveFeed, settleLiveFeed } from './liveFeedSocketHarness';
 
 type TransportArgs = ConstructorParameters<typeof DeviceTransport>;
 
@@ -142,6 +142,17 @@ export const onObservedControlState = (
   transport: DeviceTransport,
   listener: (event: ObservedControlStateChangedEvent) => void,
 ): void => { emitterFor(transport).onObservedControlStateChanged(listener); };
+
+/**
+ * Start `transport` as the app does, its live feed connected to the test
+ * socket (`liveFeedSocketHarness.ts`), so realtime frames reach it the way
+ * Homey's would. Call it before the first refresh: like production, the feed
+ * subscribes to the devices each committed refresh lists.
+ */
+export async function initWithLiveFeed(transport: DeviceTransport): Promise<void> {
+  connectLiveFeed();
+  await transport.init();
+}
 
 /**
  * Commit `devices` through the transport's real refresh, as if Homey's device

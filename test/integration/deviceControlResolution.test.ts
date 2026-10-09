@@ -1,7 +1,13 @@
 import Homey from 'homey';
 import { describe, expect, it, vi } from 'vitest';
 import { getLogger } from '../../lib/logging/logger';
-import { createTestDeviceTransport, onObservedState, seedTransportDevices } from '../helpers/deviceTransportHarness';
+import {
+  createTestDeviceTransport,
+  initWithLiveFeed,
+  onObservedState,
+  seedTransportDevices,
+} from '../helpers/deviceTransportHarness';
+import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import { readRuntimeDevice } from '../../lib/planInput/runtimeDeviceRead';
 import { readFlowDevices } from '../../lib/device/deviceFlowRead';
@@ -125,8 +131,9 @@ describe('device owner control resolution', () => {
         },
         available: true, ready: true,
       };
+      await initWithLiveFeed(transport);
       await seedTransportDevices(transport, [device]);
-      transport.injectCapabilityUpdateForTest('charger', 'target_power', 1380);
+      await emitCapability('charger', 'target_power', 1380);
       const realtimeStepObservedAtMs = transport.getSnapshotByDeviceId('charger')?.reportedStepObservedAtMs;
       const nextDevice = { ...device, capabilitiesObj: { ...device.capabilitiesObj } };
       if (change === 'new phase count') {
@@ -159,15 +166,16 @@ describe('device owner control resolution', () => {
 
   it('preserves the native step event timestamp across unrelated power updates', async () => {
     const transport = transportForHeater(true);
+    await initWithLiveFeed(transport);
     await seedTransportDevices(transport, [heater()]);
     const observer = new ObservedDeviceStateProjection();
     onObservedState(transport, (event) => observer.applyDelta(event));
     const nowMs = Date.now();
     const clock = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
-      transport.injectCapabilityUpdateForTest('heater', 'max_power_3000', '2');
+      await emitCapability('heater', 'max_power_3000', '2');
       clock.mockReturnValue(nowMs + 2000);
-      transport.injectCapabilityUpdateForTest('heater', 'measure_power', 1600);
+      await emitCapability('heater', 'measure_power', 1600);
 
       expect(observer.getObservedState('heater')).toMatchObject({
         reportedStepId: 'medium', reportedStepObservedAtMs: nowMs,
@@ -185,6 +193,7 @@ describe('device owner control resolution', () => {
 
   it('confirms native feedback through Observer and runtime composition without reviving retries', async () => {
     const transport = transportForHeater(true);
+    await initWithLiveFeed(transport);
     await seedTransportDevices(transport, [heater()]);
     const observer = new ObservedDeviceStateProjection();
     onObservedState(transport, (event) => observer.applyDelta(event));
@@ -192,7 +201,7 @@ describe('device owner control resolution', () => {
     const nowMs = Date.now();
     store.markDesiredStepIssued({ deviceId: 'heater', desiredStepId: 'medium', issuedAtMs: nowMs - 1000 });
 
-    transport.injectCapabilityUpdateForTest('heater', 'max_power_3000', '2');
+    await emitCapability('heater', 'max_power_3000', '2');
     const runtime = readRuntimeDevice(transport.deviceConfigurationStore.get('heater'), observer.getObservedState('heater'));
     expect(runtime).toBeDefined();
     const projected = decorateSnapshotWithDeviceControl(runtime!, store, false, false);
@@ -378,11 +387,12 @@ describe('device owner control resolution', () => {
 
   it('keeps configuration and observations unchanged when a whole-device SDK update is malformed', async () => {
     const transport = transportForHeater(true);
+    await initWithLiveFeed(transport);
     const [snapshot] = await seedTransportDevices(transport, [heater()]);
     const configuration = transport.deviceConfigurationStore.get('heater');
     const previous = projectObservedState(snapshot);
 
-    transport.injectDeviceUpdateForTest({ ...heater(), capabilitiesObj: { onoff: { value: true } } });
+    emitDeviceUpdate({ ...heater(), capabilitiesObj: { onoff: { value: true } } });
 
     expect(transport.deviceConfigurationStore.get('heater')).toBe(configuration);
     expect(projectObservedState(snapshot)).toEqual(previous);
@@ -412,14 +422,15 @@ describe('device owner control resolution', () => {
       },
       available: true, ready: true,
     };
+    await initWithLiveFeed(transport);
     const [snapshot] = await seedTransportDevices(transport, [device]);
     const configuration = transport.deviceConfigurationStore.get('easee');
 
-    transport.injectCapabilityUpdateForTest('easee', 'available_installation_current', 32);
+    await emitCapability('easee', 'available_installation_current', 32);
 
     expect(snapshot.reportedStepId).toBe('16a');
     expect(transport.deviceConfigurationStore.get('easee')).toBe(configuration);
-    transport.injectCapabilityUpdateForTest('easee', 'target_charger_current', 3);
+    await emitCapability('easee', 'target_charger_current', 3);
     expect(snapshot.reportedStepId).toBe('off');
     expect(snapshot.reportedStepPowerW).toBe(0);
   });

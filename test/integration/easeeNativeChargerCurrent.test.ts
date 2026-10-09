@@ -1,7 +1,12 @@
 import Homey from 'homey';
 import {
-  createTestDeviceTransport, onObservedState, onObservedControlState, seedTransportDevices,
+  createTestDeviceTransport,
+  initWithLiveFeed,
+  onObservedControlState,
+  onObservedState,
+  seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
+import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import {
   resolveNativeSteppedLoadCommand,
@@ -286,12 +291,13 @@ describe('Easee native charger current', () => {
       undefined,
       { onSnapshotMutated },
     );
+    await initWithLiveFeed(deviceManager);
     await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
     // The seeding refresh notifies too, with the same snapshot object the
     // update below mutates: only a notification from the update may count.
     onSnapshotMutated.mockClear();
 
-    deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 32);
+    await emitCapability(EASEE_ID, 'target_charger_current', 32);
 
     expect(onSnapshotMutated).toHaveBeenCalledWith(expect.objectContaining({
       reportedStepId: '32a',
@@ -332,9 +338,10 @@ describe('Easee native charger current', () => {
   // and every change, echo or not, is the same info line.
   it('logs each reported current change at info, the echo of its own write included', async () => {
     const transport = createEaseeTransport(true);
+    await initWithLiveFeed(transport);
     setRestClient({
       get: async () => ({ [EASEE_ID]: buildEaseeCharger() }),
-      put: async () => { transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6); },
+      put: async () => { await emitCapability(EASEE_ID, 'target_charger_current', 6); },
     });
     try {
       await transport.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
@@ -345,7 +352,7 @@ describe('Easee native charger current', () => {
       })).resolves.toEqual({ requested: true, transport: 'native_capability' });
       expect(transport.getSnapshotByDeviceId(EASEE_ID)?.reportedStepId).toBe('6a');
 
-      transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 8);
+      await emitCapability(EASEE_ID, 'target_charger_current', 8);
       expect(logCapture.findEvents('native_stepped_load_report_changed')).toEqual([
         expect.objectContaining({ deviceId: EASEE_ID, previousReportedStepId: '16a', reportedStepId: '6a' }),
         expect.objectContaining({ deviceId: EASEE_ID, previousReportedStepId: '6a', reportedStepId: '8a' }),
@@ -357,10 +364,11 @@ describe('Easee native charger current', () => {
 
   it('keeps a report that lands before the write rejects in the observed step', async () => {
     const transport = createEaseeTransport(true);
+    await initWithLiveFeed(transport);
     setRestClient({
       get: async () => ({ [EASEE_ID]: buildEaseeCharger() }),
       put: async () => {
-        transport.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
+        await emitCapability(EASEE_ID, 'target_charger_current', 6);
         throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/easee-1/capability/target_charger_current');
       },
     });
@@ -429,30 +437,32 @@ describe('Easee native charger current', () => {
 
     it('reads a paused charger as on once it holds a charging current, whatever the app switch reports', async () => {
       const deviceManager = createEaseeTransport(true);
+      await initWithLiveFeed(deviceManager);
       const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger({
         ...zeroedInTheApp,
         evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
       })]);
 
       // Homey's echo of a switch write says nothing about the charger.
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging', true);
+      await emitCapability(EASEE_ID, 'evcharger_charging', true);
       expect(parsed.binaryControl).toEqual({ on: false });
 
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
+      await emitCapability(EASEE_ID, 'target_charger_current', 6);
       expect(parsed.binaryControl).toEqual({ on: true });
 
       // Easee offers the car current: the app sends its switch, then the plug state.
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging', true);
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging_state', 'plugged_in_charging');
+      await emitCapability(EASEE_ID, 'evcharger_charging', true);
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'plugged_in_charging');
       expect(parsed.binaryControl).toEqual({ on: true });
     });
 
     it('reads the switch as off when a charging session is stopped', async () => {
       const deviceManager = createEaseeTransport(true);
+      await initWithLiveFeed(deviceManager);
       const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
 
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging', false);
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging_state', 'plugged_in');
+      await emitCapability(EASEE_ID, 'evcharger_charging', false);
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'plugged_in');
 
       expect(parsed.binaryControl).toEqual({ on: false });
     });
@@ -465,11 +475,12 @@ describe('Easee native charger current', () => {
       ['evcharger_charging', 'off'],
     ])('reads no switch change from a malformed %s report: %s', async (capabilityId, value) => {
       const deviceManager = createEaseeTransport(true);
+      await initWithLiveFeed(deviceManager);
       const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
       const controlChanged = vi.fn();
       onObservedControlState(deviceManager, controlChanged);
 
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, capabilityId, value);
+      await emitCapability(EASEE_ID, capabilityId, value);
 
       expect(parsed.binaryControl).toEqual({ on: true });
       expect(controlChanged).not.toHaveBeenCalled();
@@ -483,18 +494,19 @@ describe('Easee native charger current', () => {
 
     it.each([0, 3])('turns the switch off when %d A is set outside PELS and the charger pauses', async (currentA) => {
       const deviceManager = createEaseeTransport(true);
+      await initWithLiveFeed(deviceManager);
       const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
       const controlChanged = vi.fn();
       onObservedControlState(deviceManager, controlChanged);
 
       // The current lands first; 0-5 A reads as the off level at once.
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', currentA);
+      await emitCapability(EASEE_ID, 'target_charger_current', currentA);
       expect(parsed.reportedStepId).toBe('off');
 
       // Seconds later the app reports the pause (4 s in production). Its switch
       // event may still say on, as Homey held it; the paused plug state wins.
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging', true);
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging_state', 'plugged_in_paused');
+      await emitCapability(EASEE_ID, 'evcharger_charging', true);
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'plugged_in_paused');
 
       expect(parsed.binaryControl).toEqual({ on: false });
       expect(controlChanged).toHaveBeenCalledWith(expect.objectContaining({
@@ -509,9 +521,10 @@ describe('Easee native charger current', () => {
 
     it('leaves the switch alone when 0 A is set on a charger under Flow control', async () => {
       const deviceManager = createEaseeTransport(false);
+      await initWithLiveFeed(deviceManager);
       const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
 
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 0);
+      await emitCapability(EASEE_ID, 'target_charger_current', 0);
 
       expect(parsed.binaryControl).toEqual({ on: true });
     });
@@ -683,7 +696,7 @@ describe('Easee native charger current', () => {
 
     // A charger PELS reads over REST and then hears about in realtime. `put` holds
     // what PELS writes, as Homey does, so a later refresh reads it back.
-    const createLiveEasee = (capabilityOverrides: DeviceCapabilityMap = {}) => {
+    const createLiveEasee = async (capabilityOverrides: DeviceCapabilityMap = {}) => {
       let capabilityObj = buildEaseeCapabilityObj(capabilityOverrides);
       const get = vi.fn(async (path: string) => {
         if (path === 'manager/devices/device') return { [EASEE_ID]: { ...buildEaseeCharger(), capabilitiesObj: capabilityObj } };
@@ -696,14 +709,15 @@ describe('Easee native charger current', () => {
       });
       setRestClient({ get, put });
       const deviceManager = createEaseeTransport(true);
+      await initWithLiveFeed(deviceManager);
       const refresh = () => deviceManager.refreshSnapshot({
         includeLivePower: false,
         mainMeterSelection: { state: 'unavailable' },
       });
       // Easee publishes a mode change: Homey dates it, then PELS hears the event.
-      const report = (capabilityId: string, value: unknown): void => {
+      const report = async (capabilityId: string, value: unknown): Promise<void> => {
         capabilityObj = { ...capabilityObj, [capabilityId]: { ...capabilityObj[capabilityId], value, lastUpdated: new Date(Date.now() - 50).toISOString() } };
-        deviceManager.injectCapabilityUpdateForTest(EASEE_ID, capabilityId, value);
+        await emitCapability(EASEE_ID, capabilityId, value);
       };
       const switchOn = () => deviceManager.getSnapshot()[0]?.binaryControl;
       return { deviceManager, put, refresh, report, switchOn };
@@ -715,12 +729,12 @@ describe('Easee native charger current', () => {
       // Production, 2026-09-25 10:29:13: PELS wrote 0 A to a charger charging at
       // 16 A. Homey echoed the current at once, and Easee reported the pause 6 s
       // later, before the refresh that follows every command.
-      const { deviceManager, refresh, report, switchOn } = createLiveEasee();
+      const { deviceManager, refresh, report, switchOn } = await createLiveEasee();
       await refresh();
 
       await deviceManager.requestBinaryControl(EASEE_ID, false, triggerFlow);
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 0);
-      report('evcharger_charging_state', 'plugged_in_paused');
+      await emitCapability(EASEE_ID, 'target_charger_current', 0);
+      await report('evcharger_charging_state', 'plugged_in_paused');
       expect(switchOn()).toEqual({ on: false });
 
       await refresh();
@@ -730,7 +744,7 @@ describe('Easee native charger current', () => {
     it('reads its own resumed charger as on when Easee pauses it again holding the current', async () => {
       // Easee pauses a charger for its own reasons (its load balancer) while it
       // holds 6 A: on, and drawing nothing, not turned off outside PELS.
-      const { deviceManager, refresh, report, switchOn } = createLiveEasee({
+      const { deviceManager, refresh, report, switchOn } = await createLiveEasee({
         target_charger_current: { value: 0, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
         evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
         evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: READ_AT },
@@ -738,9 +752,9 @@ describe('Easee native charger current', () => {
       await refresh();
 
       await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
-      report('evcharger_charging_state', 'plugged_in_charging');
-      report('evcharger_charging_state', 'plugged_in_paused');
+      await emitCapability(EASEE_ID, 'target_charger_current', 6);
+      await report('evcharger_charging_state', 'plugged_in_charging');
+      await report('evcharger_charging_state', 'plugged_in_paused');
 
       expect(switchOn()).toEqual({ on: true });
     });
@@ -749,7 +763,7 @@ describe('Easee native charger current', () => {
       // The executor writes the planned step in the same pass as the switch-on
       // (`post_activation_step`), so PELS's 6 A step write can precede Homey's echo
       // of the 6 A resume. The echo is still the current the charger holds.
-      const { deviceManager, refresh, report, switchOn } = createLiveEasee({
+      const { deviceManager, refresh, report, switchOn } = await createLiveEasee({
         target_charger_current: { value: 0, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
         evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
         evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: READ_AT },
@@ -764,22 +778,22 @@ describe('Easee native charger current', () => {
         planningPowerW: 1_380,
         planningCurrentA: 6,
       });
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 6);
-      report('evcharger_charging_state', 'plugged_in_charging');
-      report('evcharger_charging_state', 'plugged_in_paused');
+      await emitCapability(EASEE_ID, 'target_charger_current', 6);
+      await report('evcharger_charging_state', 'plugged_in_charging');
+      await report('evcharger_charging_state', 'plugged_in_paused');
       expect(switchOn()).toEqual({ on: true });
     });
 
     it('resumes by current when the plug state is not one PELS knows, never by starting a session', async () => {
       // A start on an open session begins a new one at 32 A. Only a session known
       // to be stopped needs a start; a current is harmless on any other.
-      const { deviceManager, put, refresh } = createLiveEasee({
+      const { deviceManager, put, refresh } = await createLiveEasee({
         target_charger_current: { value: 0, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
         evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
         evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: READ_AT },
       });
       await refresh();
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging_state', 'unplugged');
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'unplugged');
 
       await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
 
@@ -794,27 +808,28 @@ describe('Easee native charger current', () => {
     'keeps the last-good current observation on an invalid report: %s',
     async (invalidCurrent) => {
       const deviceManager = createEaseeTransport(true);
+      await initWithLiveFeed(deviceManager);
       const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
       const observed = vi.fn();
       const controlChanged = vi.fn();
       onObservedState(deviceManager, observed);
       onObservedControlState(deviceManager, controlChanged);
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 16);
+      await emitCapability(EASEE_ID, 'target_charger_current', 16);
       const lastGood = structuredClone(parsed);
       observed.mockClear();
       controlChanged.mockClear();
 
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', invalidCurrent);
+      await emitCapability(EASEE_ID, 'target_charger_current', invalidCurrent);
 
       expect(parsed).toEqual(lastGood);
       expect(observed).not.toHaveBeenCalled();
       expect(controlChanged).not.toHaveBeenCalled();
       // A binary observation re-reads the adapter's retained current. Invalid
       // current reports must not poison it even if the snapshot is unchanged.
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging_state', 'plugged_in_paused');
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'plugged_in_paused');
       expect(parsed.reportedStepId).toBe('16a');
 
-      deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 8);
+      await emitCapability(EASEE_ID, 'target_charger_current', 8);
       expect(parsed.reportedStepId).toBe('8a');
       expect(parsed.reportedStepPowerW).toBe(1_840);
     },

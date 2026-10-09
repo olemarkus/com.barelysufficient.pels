@@ -112,8 +112,8 @@ const startHome = async (params: { houseW: number; following: boolean }): Promis
     const target = battery.getActualCapabilityValue('target_power');
     if (typeof target !== 'number' || target === batteryW()) return;
     battery.setActualCapabilityValue('measure_power', target);
-    // The live feed is off in tests; publish the changed reading through the
-    // same refresh seam the settings UI uses.
+    // This spec leaves the live feed unconnected; publish the changed reading
+    // through the same refresh seam the settings UI uses.
     mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
   };
   return {

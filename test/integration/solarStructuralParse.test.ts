@@ -15,8 +15,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   createTestDeviceTransport,
+  initWithLiveFeed,
   seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
+import { emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import Homey from 'homey';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
@@ -86,9 +88,10 @@ describe('structural solar-role resolution at parse', () => {
     expect(transport.isSolarDevice('grid')).toBe(false);
   });
 
-  it('stamps the same structural values on the REALTIME device.update path (before any full refresh)', () => {
+  it('stamps the same structural values on the REALTIME device.update path (before any full refresh)', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    transport.injectDeviceUpdateForTest({
+    await initWithLiveFeed(transport);
+    emitDeviceUpdate({
       id: 'solar1',
       name: 'Solar Panel',
       class: 'solarpanel',

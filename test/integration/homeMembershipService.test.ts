@@ -16,7 +16,9 @@
 import { createTrackerStore, type TrackerStore } from '../../lib/power/trackerStore';
 import {
   createTestDeviceTransport,
+  initWithLiveFeed,
 } from '../helpers/deviceTransportHarness';
+import { emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { createSampledMeterIdentityWithoutRestoredSample } from '../helpers/homeMembership';
 import { captureLogger } from '../utils/loggerCapture';
 import { createDeviceReads, type DeviceReadStore, type DeviceReads } from '../../lib/device/deviceReads';
@@ -78,7 +80,7 @@ import {
   setMockDrivers,
   setMockZones,
 } from '../mocks/homey';
-import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import type { Logger } from '../../lib/utils/types';
 
 const homeyApp = mockHomeyInstance as unknown as Homey.App;
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
@@ -423,6 +425,7 @@ describe('post-refresh recompute through the transport seam', () => {
       subHomes: [SUB_HOME_A],
     });
     const { transport, service } = buildTransportChain();
+    await initWithLiveFeed(transport);
 
     await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     await settleDetachedZoneFetch();
@@ -434,7 +437,7 @@ describe('post-refresh recompute through the transport seam', () => {
     // consumer, wrongly outside main's plan or vice versa) until the next
     // full refresh.
     device.setZone('z3');
-    transport.injectDeviceUpdateForTest(device.toHomeyApiDevice() as HomeyDeviceLike);
+    emitDeviceUpdate(device.toHomeyApiDevice());
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
     expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('zone');
 
@@ -442,7 +445,7 @@ describe('post-refresh recompute through the transport seam', () => {
     // no trigger): move the persisted pin so a recompute WOULD change the
     // map, then inject an update with the same zone — the map must not move.
     createDeviceHomeAssignmentsStore(homeyLike.settings).write({ dev1: 'h_a' });
-    transport.injectDeviceUpdateForTest(device.toHomeyApiDevice() as HomeyDeviceLike);
+    emitDeviceUpdate(device.toHomeyApiDevice());
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
   });
 
@@ -453,6 +456,7 @@ describe('post-refresh recompute through the transport seam', () => {
       subHomes: [SUB_HOME_A],
     });
     const { transport, service, teardown } = buildTransportChain();
+    await initWithLiveFeed(transport);
     await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     await settleDetachedZoneFetch();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
@@ -470,7 +474,7 @@ describe('post-refresh recompute through the transport seam', () => {
     // A realtime zone move after teardown is equally inert (z3 → z1 would
     // recompute dev1 to main on a live subscription).
     device.setZone('z1');
-    transport.injectDeviceUpdateForTest(device.toHomeyApiDevice() as HomeyDeviceLike);
+    emitDeviceUpdate(device.toHomeyApiDevice());
     expect(service.getMembershipMap()).toEqual({ dev1: 'h_a' });
   });
 
