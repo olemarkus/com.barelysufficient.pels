@@ -705,8 +705,11 @@ describe('MyApp initialization', () => {
     const result = await setLimitListener({ limit_kw: 5 });
     expect(result).toBe(true);
     // The settings write is the whole action now: the capacity scalars have one
-    // owner, and the change listener reloads them.
+    // owner, and the change listener reloads them. That listener runs on the
+    // settings handler's queue, behind any boot-time writes still draining, so
+    // wait for the reload rather than assume it already ran.
     expect(mockHomeyInstance.settings.get('capacity_limit_kw')).toBe(5);
+    await waitFor(() => app.capacitySettings.limitKw === 5);
     expect(app.capacitySettings.limitKw).toBe(5);
   });
 
