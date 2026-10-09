@@ -30,10 +30,40 @@ export function resolveLastTotalPowerKw(
   return isFiniteNumber(lastPowerW) ? lastPowerW / 1000 : null;
 }
 
-/** Live Flow headroom: disabled constraints and an unmeasured meter cannot supply a power amount. */
-export function resolveObservedHeadroomKw(powerTracker: PowerTrackerState, limitKw: number | null): number | null {
+/**
+ * Live Flow headroom against the planner's enabled power limit, as the power
+ * owner reads it. The three answers are distinct facts and a consumer switches
+ * on them, never on a null. Each carries the figures it was resolved from, so
+ * a card logs the reading its decision used rather than reading again:
+ * - `unmeasured`: no trustworthy whole-home reading (`resolveLastTotalPowerKw`
+ *   is null). It wins over `unlimited`: with no reading there is nothing to
+ *   say about the home's power, limited or not.
+ * - `unlimited`: a reading (`totalKw`) exists, but no power limit is enabled,
+ *   so there is no ceiling to measure headroom against.
+ * - `measured`: the enabled limit (`limitKw`) minus the reading (`totalKw`).
+ *   Signed, like the reading: negative while the home is over its limit.
+ */
+export type ObservedHeadroom =
+  | { kind: 'unmeasured' }
+  | { kind: 'unlimited'; totalKw: number }
+  | { kind: 'measured'; totalKw: number; limitKw: number; headroomKw: number };
+
+/** A headroom with a whole-home reading behind it: every answer but `unmeasured`. */
+export type HeadroomWithReading = Exclude<ObservedHeadroom, { kind: 'unmeasured' }>;
+
+export function resolveObservedHeadroom(powerTracker: PowerTrackerState, limitKw: number | null): ObservedHeadroom {
   const totalKw = resolveLastTotalPowerKw(powerTracker);
-  return totalKw === null || limitKw === null ? null : limitKw - totalKw;
+  if (totalKw === null) return { kind: 'unmeasured' };
+  if (limitKw === null) return { kind: 'unlimited', totalKw };
+  return { kind: 'measured', totalKw, limitKw, headroomKw: limitKw - totalKw };
+}
+
+/**
+ * Whether `requiredKw` fits in a headroom with a reading behind it. With no
+ * power limit enabled there is no ceiling, so anything fits.
+ */
+export function hasHeadroomFor(headroom: HeadroomWithReading, requiredKw: number): boolean {
+  return headroom.kind === 'unlimited' || headroom.headroomKw >= requiredKw;
 }
 
 /**

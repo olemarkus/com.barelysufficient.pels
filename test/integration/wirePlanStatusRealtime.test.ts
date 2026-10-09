@@ -9,7 +9,7 @@ import { partialDouble } from '../helpers/partialDouble';
 
 const STATUS: PelsStatus = {
   powerLimitKw: 8,
-  gridImportLimited: false,
+  shortfallBudgetThresholdKw: null,
   hourlyUsageKwh: 0, priceLevel: PriceLevel.UNKNOWN, devicesOn: 0, devicesOff: 0, lastPowerUpdate: 1, dryRunEffective: true,
 };
 

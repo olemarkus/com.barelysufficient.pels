@@ -81,7 +81,7 @@ const buildPipeline = (
       getLatestPlanSnapshot: () => null,
       getLatestPublishedPlan: () => null,
       rebuildPlanFromCache: vi.fn(async () => ({ failed: false })),
-      computeDynamicSoftLimit: () => 9.5,
+      computePhysicalPowerLimit: () => 9.5,
     } as unknown as PlanService),
     planRebuildThrottle: throttle,
     getDeviceSurfaces: () => [],

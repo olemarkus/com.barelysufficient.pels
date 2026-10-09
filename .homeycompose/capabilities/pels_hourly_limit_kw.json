@@ -4,7 +4,7 @@
     "en": "Current safe pace"
   },
   "desc": {
-    "en": "Current effective safe pace (minimum of the selected capacity-period pace and daily budget pace when enabled)"
+    "en": "The power level PELS is working to right now: the lowest of the enabled capacity-period pace, daily budget pace, and the level where PELS starts reducing loads under the Grid import limit. Empty while every power limit is off."
   },
   "units": {
     "en": "kW"

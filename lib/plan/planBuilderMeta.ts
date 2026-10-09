@@ -110,6 +110,27 @@ export function buildUnmeasuredPlanMeta(facts: PlanMetaCycleFacts): DevicePlan['
 }
 
 /**
+ * The reading's distance to the capacity period's two lines: the shortfall
+ * threshold and the hard cap. Both exist only while Capacity limit is on, and
+ * the threshold is the one predicate that says so: the build resolves it and
+ * the capacity pace from its one settings read, `null` together with Capacity
+ * limit off (`PlanBuilder.resolveCapacityCycle`). The published meta and the
+ * overshoot log take their figures from here, so they cannot disagree on
+ * whether the cap applies.
+ */
+function resolveCapacityLineDistances(
+  reading: PowerCycleDisplay,
+  hardCapLimitKw: number,
+  shortfallBudgetThresholdKw: number | null,
+): Pick<PlanMeasuredMetaFields, 'shortfallBudgetHeadroomKw' | 'hardCapHeadroomKw'> {
+  if (shortfallBudgetThresholdKw === null) return { shortfallBudgetHeadroomKw: null, hardCapHeadroomKw: null };
+  return {
+    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - reading.totalKw,
+    hardCapHeadroomKw: hardCapLimitKw - reading.totalKw,
+  };
+}
+
+/**
  * The ONE constructor of the measured figures. The overshoot tracker's entry
  * log builds its capacity summary from the same call, so no second site can
  * drift from the published meta.
@@ -125,9 +146,7 @@ export function resolveMeasuredMetaFields(
     powerIsMeasured: true,
     physicalLimitBreached: power.physicalLimitBreached,
     headroomKw: power.headroomKw,
-    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw === null
-      ? null : shortfallBudgetThresholdKw - reading.totalKw,
-    hardCapHeadroomKw: power.capacityHeadroomKw === null ? null : capacityLimitKw - reading.totalKw,
+    ...resolveCapacityLineDistances(reading, capacityLimitKw, shortfallBudgetThresholdKw),
     ...splitControlledUsageKwFor({
       devices: toMeteredUsageDevices(planDevices),
       totalKw: reading.totalKw,
@@ -142,7 +161,9 @@ export function buildPlanContextHeadroomLogFields(
   hardCapLimitKw: number,
   shortfallBudgetThresholdKw: number | null,
 ): Record<string, number | boolean | string | null> {
-  const hardCapHeadroomKw = context.capacitySoftLimit === null ? null : hardCapLimitKw - reading.totalKw;
+  const { shortfallBudgetHeadroomKw, hardCapHeadroomKw } = resolveCapacityLineDistances(
+    reading, hardCapLimitKw, shortfallBudgetThresholdKw,
+  );
   return {
     totalKw: reading.totalKw,
     softLimitKw: context.softLimit,
@@ -150,9 +171,8 @@ export function buildPlanContextHeadroomLogFields(
     // Log continuity: saved queries read `powerNowKw` as "the measured draw".
     // A LOG field, not a seam.
     powerNowKw: reading.totalKw,
-    shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,
-    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw === null
-      ? null : shortfallBudgetThresholdKw - reading.totalKw,
+    shortfallBudgetThresholdKw,
+    shortfallBudgetHeadroomKw,
     hardCapHeadroomKw,
     hardCapBreached: hardCapHeadroomKw !== null && hardCapHeadroomKw < 0,
   };

@@ -25,7 +25,6 @@ const resolvePriceLevel = (value: unknown): HeadroomWidgetPriceLevel => {
 
 export type HeadroomWidgetStatusBlob = {
   headroomKw?: number;
-  hourlyLimitKw?: number;
   powerLimitKw?: number | null;
   projectedOverHardCap?: boolean;
   controlledKw?: number;
@@ -97,8 +96,7 @@ export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): Headroom
   if (status.powerKnown === false) return emptyPayload(HEADROOM_WIDGET_COPY.noReadingsSubtitle);
 
   if (status.powerLimitKw === null) return emptyPayload(HEADROOM_WIDGET_COPY.powerLimitsOffSubtitle);
-  const legacyHourBudgetKw = isFiniteNumber(status.hourlyLimitKw) ? status.hourlyLimitKw : null;
-  const hourBudgetKw = isFiniteNumber(status.powerLimitKw) ? status.powerLimitKw : legacyHourBudgetKw;
+  const hourBudgetKw = isFiniteNumber(status.powerLimitKw) ? status.powerLimitKw : null;
   // Seam validation of a persisted blob: reachable for a blob written before
   // `powerKnown` existed, or one an automation hand-edited — the app's own
   // writer omits `headroomKw` exactly when it sets `powerKnown: false`, which

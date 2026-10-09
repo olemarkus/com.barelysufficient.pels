@@ -153,7 +153,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -447,7 +447,7 @@ describe('PlanService', () => {
           observedTarget = 21;
           return buildPlan(21, 'keep');
         }),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -535,7 +535,7 @@ describe('PlanService', () => {
           { totalKw: 3.2, softLimitKw: 2, headroomKw: -1.24 },
           { currentState: 'off', binaryControl: { on: false }, plannedState: 'shed' },
         )),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -680,7 +680,7 @@ describe('PlanService', () => {
           .fn()
           .mockResolvedValueOnce(summaryPlan)
           .mockResolvedValueOnce(summaryPlan),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -720,7 +720,7 @@ describe('PlanService', () => {
           currentDrawKw: 0,
           expectedPowerKw: 3,
         })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -755,7 +755,7 @@ describe('PlanService', () => {
           currentDrawKw: 0,
           expectedPowerKw: 3,
         })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -807,7 +807,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(plan),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -857,7 +857,7 @@ describe('PlanService', () => {
           reportedStepId: 'max',
           targetStepId: 'max',
         })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -887,7 +887,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValueOnce(samePlan).mockResolvedValueOnce(samePlan),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -925,7 +925,7 @@ describe('PlanService', () => {
             currentDrawKw: 0.25,
             expectedPowerKw: 3,
           })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -975,7 +975,7 @@ describe('PlanService', () => {
           .fn()
           .mockResolvedValueOnce(cooldownPlan)
           .mockResolvedValueOnce(cooldownTickPlan),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1009,7 +1009,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(samePlan),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1067,7 +1067,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1246,7 +1246,7 @@ describe('PlanService', () => {
           boostActive: false,
           plannedTarget: 20,
         })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1290,7 +1290,7 @@ describe('PlanService', () => {
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { priority: 10 }))
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { priority: 1 })),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1352,7 +1352,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(19, 'keep')),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1385,7 +1385,7 @@ describe('PlanService', () => {
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'keep', { totalKw: 1.0 }))
         .mockResolvedValueOnce(buildPlan(20, 'keep', { totalKw: 1.2 })),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1461,7 +1461,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1557,7 +1557,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1650,7 +1650,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1753,7 +1753,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1826,7 +1826,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -1908,7 +1908,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2139,7 +2139,7 @@ describe('PlanService', () => {
           boostActive: false,
           plannedTarget: 20,
         })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2185,7 +2185,7 @@ describe('PlanService', () => {
           resolveBuild = () => resolve(buildPlan(20, 'keep'));
         }),
       ),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2290,7 +2290,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot,
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2388,7 +2388,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2447,7 +2447,7 @@ describe('PlanService', () => {
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValue(buildPlan(20, 'keep')),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2559,7 +2559,7 @@ describe('PlanService', () => {
             currentTemperature: 20,
           });
         }),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2649,7 +2649,7 @@ describe('PlanService', () => {
           plannedTarget: 20,
           currentTemperature: 20,
         })),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2756,7 +2756,7 @@ describe('PlanService', () => {
         vi.advanceTimersByTime(11);
         return buildPlan(20, 'keep');
       }),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2817,7 +2817,7 @@ describe('PlanService', () => {
         vi.advanceTimersByTime(17);
         throw new Error('plan exploded');
       }),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -2931,7 +2931,7 @@ describe('PlanService', () => {
               });
               return buildPlan(20, 'keep');
             }),
-            computeDynamicSoftLimit: vi.fn(() => 0),
+            computePhysicalPowerLimit: vi.fn(() => 0),
             computeShortfallThreshold: vi.fn(() => 0),
             handleShortfall: vi.fn().mockResolvedValue(undefined),
             handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -3050,7 +3050,7 @@ describe('PlanService', () => {
           .fn()
           .mockResolvedValueOnce(buildPlan(20, 'keep'))
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { plannedState: 'shed' })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -3088,7 +3088,7 @@ describe('PlanService', () => {
           .fn()
           .mockResolvedValueOnce(buildPlan(20, 'keep'))
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { plannedState: 'shed' })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -3188,7 +3188,7 @@ describe('PlanService', () => {
           plannedState: 'keep',
           boostActive: false,
         })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -3253,7 +3253,7 @@ describe('PlanService', () => {
           plannedState: 'keep',
           boostActive: false,
         })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -3294,7 +3294,7 @@ describe('PlanService', () => {
     const planEngine = {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockResolvedValue(steppedPlan),
-      computeDynamicSoftLimit: vi.fn(() => 0),
+      computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -3404,7 +3404,7 @@ describe('PlanService', () => {
           boostActive: false,
           plannedTarget: 20,
         })),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
@@ -3448,7 +3448,7 @@ describe('rebuild ordering', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
-        computeDynamicSoftLimit: vi.fn(() => 0),
+        computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),

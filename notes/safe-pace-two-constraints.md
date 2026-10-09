@@ -85,7 +85,7 @@ followable is keyed to something `grep` can still find after the next refactor.
 | Capacity-period allowance remaining | `hourlyRemainingKWh` *(legacy local name)* | `computeDynamicSoftLimit` |
 | `sustainableRateKw` | *(a local inside `computeDynamicSoftLimit`; smart tasks plan against `planningCeiling` instead)* | `resolveUsableCapacityKw` |
 | `planningCeiling` | *(landed; `planningCeilingKw` where only the rate is read, in `lib/objectives/deferredObjectives/**`)* | `resolvePlanningPowerCeiling` |
-| `capacityPaceKw` | `allowedKw`, `capacitySoftLimit`; *(landed at the consumers, in the rebuild scheduler, and in every log field)* | `computeDynamicSoftLimit` |
+| `capacityPaceKw` | `allowedKw`, `capacitySoftLimit`; *(landed at the consumers and in every log field; the rebuild scheduler reads the physical limit instead, as `powerLimitKw`)* | `computeDynamicSoftLimit` |
 | `projectedExemptKw` | *(landed)* | `sumBudgetExemptProjectedUsageKw` |
 | `measuredExemptKw` | *(landed as a sum, not yet as a published scalar)* | `sumBudgetExemptMeasuredUsageKw` |
 | `budgetPaceKw` | *(landed)* | `computeDailyUsageSoftLimit` |
@@ -152,8 +152,9 @@ the settings UI, which should receive it through the contract rather than
 recomputing it in the browser.
 
 **"One owner" means one per scope, not one process-wide.** Every home bundle
-constructs its own `planEngine`, and that engine's `PlanBuilder.computeDynamicSoftLimit`
-is the home's only `capacityPaceKw` producer
+constructs its own `planEngine`, and that engine's `PlanBuilder` (`stampCapacityPace`
+for the build, `computeCapacityPace` for every other reader) is the home's only
+`capacityPaceKw` producer
 (`setup/homeRuntime/createHomeCapacityBundle.ts`), so the per-home rows above
 have one owner *within a home scope* and N instances across a multi-home install.
 The budget rows are different: sub-home bundles are constructed with
@@ -473,7 +474,7 @@ through the rebase.
 
 **1. The displayed number moves for a non-budget reason.** `plan.meta.softLimitKw`
 carries `bindingPaceKw` and is what every display surface reads (settings UI hero
-via `softLimitKw`, widget and insights device via `hourlyLimitKw`). When a 7 kW
+via `softLimitKw`, widget and insights device via the status's `powerLimitKw`). When a 7 kW
 exempt load starts, "Safe pace now" jumps by 7 kW while the budget did not
 get looser. The tooltip now acknowledges that this marker may include power
 allowed beyond today's budget (`packages/settings-ui/src/ui/planHeroTooltips.ts`),
@@ -546,7 +547,7 @@ deficitKw        = max(P_import - capacityPaceKw, P_nonExempt - budgetPaceKw)
 
 **`deficitKw` is not an available name.** It already means the shortfall deficit
 across `lib/executor` and `lib/plan/rebuildScheduler` (`handleShortfall(deficitKw)`,
-`HardCapBreach.deficitKw`), so introducing a second meaning in the same layer would
+`LimitBreach.deficitKw`), so introducing a second meaning in the same layer would
 recreate the exact `softLimit` failure this note exists to remove. Pick a distinct
 name for the two-predicate quantity — or rename the shortfall one first — before
 writing the identifier anywhere. The admission-scoped slice that shipped avoided

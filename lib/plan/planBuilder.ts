@@ -162,7 +162,7 @@ export class PlanBuilder {
    * a capacity-period boundary re-stamped the flag, and the plan explained itself
    * against a period its own decision never saw.
    */
-  public computeDynamicSoftLimit(): number | null {
+  public computePhysicalPowerLimit(): number | null {
     const settings = this.capacitySettings;
     return resolvePhysicalPowerLimit(settings, this.readCapacityPace(settings, Date.now()));
   }

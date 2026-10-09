@@ -260,8 +260,8 @@ export class PlanService {
     });
   }
 
-  computeDynamicSoftLimit(): number | null {
-    return this.deps.planEngine.computeDynamicSoftLimit();
+  computePhysicalPowerLimit(): number | null {
+    return this.deps.planEngine.computePhysicalPowerLimit();
   }
 
   computeShortfallThreshold(): number | null {

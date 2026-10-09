@@ -21,4 +21,4 @@
 
 ## Terminology: the safe-pace family
 
-`notes/safe-pace-two-constraints.md` defines canonical pace, limit, and exempt quantities. Read it when naming or comparing them. Capacity pace and budget pace use different power axes and require an explicit exempt-load rebase. The build alone stamps period fields through `PlanBuilder.stampCapacityPace`; other readers use the side-effect-free `computeDynamicSoftLimit`.
+`notes/safe-pace-two-constraints.md` defines canonical pace, limit, and exempt quantities. Read it when naming or comparing them. Capacity pace and budget pace use different power axes and require an explicit exempt-load rebase. The build alone stamps period fields through `PlanBuilder.stampCapacityPace`; other readers use the side-effect-free `PlanBuilder.computeCapacityPace` (the capacity axis) or `PlanBuilder.computePhysicalPowerLimit` (the lower of the capacity pace and the grid import target).

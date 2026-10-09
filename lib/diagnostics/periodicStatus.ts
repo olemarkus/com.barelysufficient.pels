@@ -1,4 +1,3 @@
-import { gridImportTargetKw } from '../../packages/shared-domain/src/settings/powerLimits';
 import type CapacityGuard from '../power/capacityGuard';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
@@ -6,6 +5,7 @@ import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import { resolveShortfallThresholdKw } from '../plan/planBudget';
 import type { PowerTrackerState } from '../power/tracker';
 import { getCurrentHourContext } from '../plan/planHourContext';
+import { resolveGridImportTargetKw } from '../plan/powerLimitMath';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 type CapacityGuardView = Pick<
@@ -92,14 +92,14 @@ export function buildPeriodicStatusLogFields(params: {
   // independent of the period selected for capacity control.
   const usage = getCurrentHourContext(powerTracker, nowMs);
   const hourRemainingKWh = Math.max(0, hourCapKWh - usage.usedKWh);
+  const gridTargetKw = resolveGridImportTargetKw(capacitySettings.gridImportLimitKw);
   return {
     event: 'periodic_status',
     homeId: MAIN_HOME_ID,
     powerKw: metrics.total,
     capacityPaceKw: metrics.capacityPace,
     gridImportLimitKw: capacitySettings.gridImportLimitKw,
-    gridImportHeadroomKw: capacitySettings.gridImportLimitKw !== null && metrics.total !== null
-      ? gridImportTargetKw(capacitySettings.gridImportLimitKw) - metrics.total : null,
+    gridImportHeadroomKw: gridTargetKw !== null && metrics.total !== null ? gridTargetKw - metrics.total : null,
     capacityPaceHeadroomKw: metrics.capacityPaceHeadroom,
     shortfallBudgetThresholdKw: metrics.shortfallBudgetThreshold,
     shortfallBudgetHeadroomKw: metrics.shortfallBudgetHeadroom,

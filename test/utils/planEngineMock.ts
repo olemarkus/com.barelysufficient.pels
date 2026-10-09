@@ -50,7 +50,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
     devices: [],
     storageReleases: [],
   } satisfies DevicePlan),
-  computeDynamicSoftLimit: vi.fn(() => 0),
+  computePhysicalPowerLimit: vi.fn(() => 0),
   computeShortfallThreshold: vi.fn(() => 0),
   handleShortfall: vi.fn().mockResolvedValue(undefined),
   handleShortfallCleared: vi.fn().mockResolvedValue(undefined),

@@ -13,7 +13,7 @@ import { setRestorePlanDevice as setDevice } from './helpers';
 import { buildOffSteppedRestoreHoldUpdate } from './planDeviceUpdates';
 import type { RestoreNeed } from './support';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
-import { buildRestoreAdmissionLogFields, buildRestoreAdmissionMetrics } from '../admission';
+import { buildRestoreAdmissionMetrics } from '../admission';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import type { RestoreCycle } from './types';
@@ -230,7 +230,7 @@ function rejectSwapRestoreWithCandidates(
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
       effectiveAvailableKw: swap.effectiveHeadroom,
-      ...buildRestoreAdmissionLogFields(swap.admission),
+      marginKw: swap.admission.marginKw,
       swapReserveKw: swap.reserveKw,
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
@@ -258,7 +258,7 @@ function emitSwapApprovedDebug(
     neededKw: restoreNeed.needed,
     potentialHeadroomKw: swap.potentialHeadroom,
     effectiveHeadroomKw: swap.effectiveHeadroom,
-    ...buildRestoreAdmissionLogFields(swap.admission),
+    marginKw: swap.admission.marginKw,
     swapReserveKw: swap.reserveKw,
     estimatedPowerKw: restoreNeed.devPower,
     powerSource: resolveRestorePowerSource(dev),

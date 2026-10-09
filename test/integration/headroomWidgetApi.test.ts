@@ -15,7 +15,7 @@ import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 describe('headroom widget api (app-side classification)', () => {
   const blob = {
     headroomKw: 3.8,
-    hourlyLimitKw: 7,
+    powerLimitKw: 7,
     devicesOff: 2,
     priceLevel: 'cheap',
     lastPowerUpdate: Date.now() - 5_000,

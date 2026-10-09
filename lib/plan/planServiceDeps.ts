@@ -26,7 +26,7 @@ type PlanServicePlanEngine = Pick<
   | 'getDeviceExecutionStates'
   | 'state'
   | 'buildDevicePlanSnapshot'
-  | 'computeDynamicSoftLimit'
+  | 'computePhysicalPowerLimit'
   | 'computeShortfallThreshold'
   | 'handleShortfall'
   | 'handleShortfallCleared'

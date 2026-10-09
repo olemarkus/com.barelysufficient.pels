@@ -11,6 +11,7 @@ import type { ReportSteppedLoadActualStepResult } from '../lib/executor/steppedC
 import { registerExpectedPowerCard } from './expectedPower';
 import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
 import type { HeadroomCardQuery, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
+import type { ObservedHeadroom } from '../lib/power/lastTotalPower';
 import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
@@ -81,14 +82,13 @@ export type FlowCardDeps = {
   getCurrentPriceLevel: () => PriceLevel;
   getPriceLevelChangesWithin: (window: PriceLevelLookahead) => PriceLevelChangesRead;
   recordPowerSample: (powerW: number) => Promise<void>;
-  getHeadroom: () => number | null;
   /**
-   * The tracker's latched whole-home total in kW, resolved by setup
-   * (`resolveLastTotalPowerKw`). `null` = no trustworthy reading.
+   * Live headroom against the enabled capacity/grid ceiling, resolved by the
+   * power owner (`resolveObservedHeadroom`): unmeasured, unlimited, or a
+   * measured amount, each with the reading and limit behind it. The headroom
+   * cards decide on this alone, and log the figures it carries.
    */
-  getLatchedTotalKw: () => number | null;
-  /** The enabled capacity/grid ceiling; null means both constraints are disabled. */
-  getPowerLimitKw: () => number | null;
+  getHeadroom: () => ObservedHeadroom;
   // Decorated: the runtime snapshot carries the app-layer step-command
   // decoration (`desiredStepId` / `targetStepId`) that the clamp-deviation
   // check reads. The runtime already returns decorated objects; the type just

@@ -4,6 +4,7 @@ import {
   DAILY_BUDGET_KWH,
 } from '../lib/utils/settingsKeys';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
+import { hasHeadroomFor } from '../lib/power/lastTotalPower';
 import {
   readFlowNumberArg,
   readFlowStringArg,
@@ -118,8 +119,8 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const requiredKw = readFlowNumberArg(args, 'required_kw');
     if (requiredKw === null) return false;
     const headroom = deps.getHeadroom();
-    if (headroom === null) return deps.getLatchedTotalKw() !== null && deps.getPowerLimitKw() === null;
-    return headroom >= requiredKw;
+    if (headroom.kind === 'unmeasured') return false;
+    return hasHeadroomFor(headroom, requiredKw);
   });
 
   const isOperatingModeCond = deps.homey.flow.getConditionCard('is_capacity_mode');

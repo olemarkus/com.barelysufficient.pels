@@ -4,10 +4,13 @@ import {
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
+  buildReserveAdmittedLogFields,
   buildReservedForStartReason,
   getActivationPenaltyLevel,
   resolveActivationRestoreBlock,
   resolveReserveAdmission,
+  type ReserveAdmitted,
+  type ReserveInsufficient,
 } from './admission';
 import { resolveRestorePowerSource } from './restore/accounting';
 import { getRestoreNeed } from './restore/support';
@@ -15,9 +18,6 @@ import {
   type PlanReasonDecision,
 } from './planReasonStrings';
 import {
-  buildRestoreAdmissionLogFields,
-  isRestoreAdmitted,
-  buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
 } from './admission';
 import {
@@ -128,12 +128,11 @@ export function resolveActivationBackoffHold(
 export function resolveInsufficientHeadroomHold(
   pass: HoldPass,
   dev: DevicePlanDevice,
-  availableHeadroom: number | null,
   restoreNeed: ReturnType<typeof getRestoreNeed>,
-  admission: ReturnType<typeof buildRestoreAdmissionMetrics> | null,
-): HoldDecision | null {
+  reserved: ReserveInsufficient,
+): HoldDecision {
   const restoreDebugKey = `target:${dev.id}`;
-  if (admission === null || availableHeadroom === null || isRestoreAdmitted(admission)) return null;
+  const { admission, availableKw: availableHeadroom } = reserved;
 
   const reason: PlanReasonDecision = {
     code: 'restore_headroom',
@@ -149,7 +148,7 @@ export function resolveInsufficientHeadroomHold(
       powerSource: resolveRestorePowerSource(dev),
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
-      ...buildRestoreAdmissionLogFields(admission),
+      marginKw: admission.marginKw,
       decision: 'rejected',
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
@@ -162,7 +161,7 @@ export function resolveRestoreGateHold(
   dev: DevicePlanDevice,
   loop: HoldLoopState,
   restoreNeed: ReturnType<typeof getRestoreNeed>,
-  admission: ReturnType<typeof buildRestoreAdmissionMetrics> | null,
+  reserved: ReserveAdmitted,
 ): HoldDecision | null {
   const { restoreCooldownSeconds, restoreCooldownRemainingSec } = pass.timing;
   const { availableHeadroom, restoredOneThisCycle } = loop;
@@ -191,7 +190,7 @@ export function resolveRestoreGateHold(
       availableKw: availableHeadroom,
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-      ...buildRestoreAdmissionLogFields(admission),
+      marginKw: buildReserveAdmittedLogFields(reserved).marginKw,
       decision: 'rejected',
     });
   return { type: 'hold', reason };
@@ -250,12 +249,8 @@ export function resolveRestoreDecision(
       });
     return { type: 'hold', reason: { code: 'existing', reason: reservedReason } };
   }
-  const { admission } = reserved;
-  const headroomHold = resolveInsufficientHeadroomHold(
-    pass, dev, availableHeadroom, restoreNeed, admission,
-  );
-  if (headroomHold) return headroomHold;
-  const gateHold = resolveRestoreGateHold(pass, dev, loop, restoreNeed, admission);
+  if (reserved.kind === 'insufficient') return resolveInsufficientHeadroomHold(pass, dev, restoreNeed, reserved);
+  const gateHold = resolveRestoreGateHold(pass, dev, loop, restoreNeed, reserved);
   if (gateHold) return gateHold;
   restoredThisCycle.add(dev.id);
   const powerSource = resolveRestorePowerSource(dev);
@@ -272,7 +267,7 @@ export function resolveRestoreDecision(
       powerSource,
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
-      ...buildRestoreAdmissionLogFields(admission),
+      marginKw: buildReserveAdmittedLogFields(reserved).marginKw,
       decision: 'admitted',
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,

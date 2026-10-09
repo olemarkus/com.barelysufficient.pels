@@ -1,5 +1,4 @@
-import { gridImportTargetKw } from '../../packages/shared-domain/src/settings/powerLimits';
-import { minPowerLimit } from './powerLimitMath';
+import { minPowerLimit, resolveGridImportTargetKw } from './powerLimitMath';
 import type {
   CapacityPeriodMinutes, CapacitySettings, PowerLimitSettings,
 } from '../../packages/contracts/src/capacitySettings';
@@ -12,8 +11,7 @@ import { toMeteredUsageDevices } from './planUsage';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
 import type { PlanInputDevice } from './planTypes';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
-
-export type SoftLimitSource = 'capacity' | 'daily' | 'grid' | null;
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
 
 /**
  * The limits one plan cycle is decided against — resolved ONCE per build by
@@ -45,7 +43,7 @@ const SOFT_LIMIT_EPSILON = 1e-3;
 
 /** The physical ceiling used by live headroom queries and the meter rebuild scheduler. */
 export function resolvePhysicalPowerLimit(settings: PowerLimitSettings, capacityPaceKw: number | null): number | null {
-  const gridTargetKw = settings.gridImportLimitKw === null ? null : gridImportTargetKw(settings.gridImportLimitKw);
+  const gridTargetKw = resolveGridImportTargetKw(settings.gridImportLimitKw);
   return minPowerLimit(capacityPaceKw, gridTargetKw);
 }
 
@@ -55,7 +53,7 @@ export function buildPlanLimits(
   capacitySoftLimit: number | null,
   daily: DailySoftLimitResolution | null,
 ): PlanLimits {
-  const gridTargetKw = settings.gridImportLimitKw === null ? null : gridImportTargetKw(settings.gridImportLimitKw);
+  const gridTargetKw = resolveGridImportTargetKw(settings.gridImportLimitKw);
   const dailySoftLimit = daily?.dailySoftLimitKw ?? null;
   return {
     softLimit: minPowerLimit(capacitySoftLimit, dailySoftLimit, gridTargetKw),
@@ -111,7 +109,10 @@ export type PlanContext = PlanLimits & {
 /**
  * The measurement one plan cycle is decided against. Exists ONLY on a measured
  * cycle — there is no unmeasured variant, no sentinel, no flag: a stage that
- * holds one of these holds real numbers.
+ * holds one of these holds a real measurement. `drawKw` and the breach flags
+ * are always answered; a headroom is `null` only when its limit is off (no
+ * binding limit, Capacity limit off, no grid limit, no daily budget axis),
+ * never because the reading is missing.
  *
  * Resolved once by `resolveMeasuredPower` from `lib/power`'s reading; the
  * planner never fetches a total from the capacity guard itself.

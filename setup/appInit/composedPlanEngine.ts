@@ -92,8 +92,8 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.builder.computeCapacityPace();
   }
 
-  public computeDynamicSoftLimit(): number | null {
-    return this.builder.computeDynamicSoftLimit();
+  public computePhysicalPowerLimit(): number | null {
+    return this.builder.computePhysicalPowerLimit();
   }
 
   public computeShortfallThreshold(): number | null {

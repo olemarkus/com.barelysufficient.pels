@@ -35,7 +35,6 @@ export {
 // in @pels/planner-types.
 
 export {
-  buildRestoreAdmissionLogFields,
   isRestoreAdmitted,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
@@ -43,8 +42,10 @@ export {
 export type { RestoreAdmissionMetrics } from './reserve';
 
 export {
+  buildReserveAdmittedLogFields,
   buildReservedForStartReason,
+  isReserveAdmitted,
   resolveHeadroomReserves,
   resolveReserveAdmission,
 } from './headroomReserve';
-export type { HeadroomReserve } from './headroomReserve';
+export type { HeadroomReserve, ReserveAdmitted, ReserveInsufficient } from './headroomReserve';

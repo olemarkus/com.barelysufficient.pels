@@ -1,4 +1,5 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
 import type { DevicePlanDevice, MeteredDevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';
@@ -52,7 +53,7 @@ export type RemainingSheddableDevice = RemainingSheddableResidualFields & {
 export type RemainingSheddableLoadParams = {
   device: RemainingSheddableDevice;
   alreadyShed: boolean;
-  limitSource: 'capacity' | 'daily' | 'grid' | null;
+  limitSource: SoftLimitSource;
   /**
    * A breach a budget release cannot help — so under a daily source it still
    * makes a budget-exempt device's load reducible, as shedding treats it
@@ -168,7 +169,7 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
 export function sumRemainingSheddableLoadKw(params: {
   devices: RemainingSheddableDevice[];
   isAlreadyShed: (device: RemainingSheddableDevice) => boolean;
-  limitSource: 'capacity' | 'daily' | 'grid' | null;
+  limitSource: SoftLimitSource;
   breachOverridesExemption: boolean;
 }): number {
   const {

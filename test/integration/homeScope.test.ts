@@ -21,7 +21,7 @@ describe('buildMainHomeScope', () => {
   const minimalStatus = {
     headroomKw: 1,
     powerLimitKw: 8,
-    gridImportLimited: false,
+    shortfallBudgetThresholdKw: null,
     hourlyUsageKwh: 0,
     priceLevel: PriceLevel.NORMAL,
     devicesOn: 0,

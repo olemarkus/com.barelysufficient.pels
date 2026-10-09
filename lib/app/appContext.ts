@@ -242,6 +242,20 @@ export type AppContext = {
   getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
   getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
   getShedBehavior: (deviceId: string) => ShedBehavior;
+  /**
+   * One member with two meanings, decided by who assigned it:
+   * - As wired (`setup/appHostApi.ts`), the planner's live physical limit
+   *   (`PlanService.computePhysicalPowerLimit`): the lower of the capacity pace
+   *   and the grid import target, `null` with both off. The Flow headroom cards
+   *   read it as that (`setup/appInit/registerAppFlowCards.ts`).
+   * - Assigned by a spec, a capacity PACE. `getDynamicSoftLimitOverride` sees
+   *   the member differ from the captured `defaultComputeDynamicSoftLimit`, and
+   *   the main home's planner takes the value as its capacity pace while
+   *   Capacity limit is on, still bounding it by the grid import target. The
+   *   Flow headroom cards in that spec read the same value as the physical
+   *   limit, grid target not applied.
+   * The name is the capacity pace's older one.
+   */
   computeDynamicSoftLimit: () => number | null;
   getDynamicSoftLimitOverride: () => number | null;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;

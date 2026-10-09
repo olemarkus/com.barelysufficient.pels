@@ -3,8 +3,9 @@
  * top of a build and stamps `hourlyBudgetExhausted` / `hourlyRemainingKWh` for
  * the rest of that cycle to read; every other caller of the pace — the periodic
  * status log, a Flow `has_headroom` condition, the rebuild scheduler's threshold
- * input, the shortfall log line — goes through `computeDynamicSoftLimit`, which
- * returns the same number and writes nothing.
+ * input, the shortfall log line — goes through a read (`computeCapacityPace`, or
+ * `computePhysicalPowerLimit` with the grid target folded in), which
+ * returns the build's number and writes nothing.
  *
  * It matters because the build's own reads of those two fields are not all in
  * one turn of the event loop: the shed decision reads them before the guard's
@@ -64,7 +65,7 @@ describe('capacity pace: the build stamps, everyone else reads', () => {
     powerTracker = trackerWithHourUsage(0);
 
     // The read is live: it answers from the tracker as it stands.
-    expect(builder.computeDynamicSoftLimit()).toBeGreaterThan(0);
+    expect(builder.computePhysicalPowerLimit()).toBeGreaterThan(0);
     // The stamp is not: it still belongs to the last build.
     expect(state.hourlyBudgetExhausted).toBe(true);
     expect(state.hourlyRemainingKWh).toBe(0);
@@ -82,7 +83,7 @@ describe('capacity pace: the build stamps, everyone else reads', () => {
       getDynamicSoftLimitOverride: () => 2.1,
     });
 
-    expect(builder.computeDynamicSoftLimit()).toBe(2.1);
+    expect(builder.computePhysicalPowerLimit()).toBe(2.1);
     // An override replaces the pace and says nothing about the hour, so the
     // stamp it would have taken is `false` — and the read takes none at all.
     expect(state.hourlyBudgetExhausted).toBe(false);

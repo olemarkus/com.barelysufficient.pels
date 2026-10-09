@@ -22,8 +22,8 @@ The Insights device exposes these readings. The labels below match the capabilit
 | --- | --- |
 | **Operating mode** | Current PELS mode — tap the tile to switch directly, or change it in settings / via Flow |
 | **Manual action needed** | Whether PELS projects a hard-cap breach in the current capacity period and cannot limit any more load |
-| **Available power** | Extra power PELS can fit before the current safe pace |
-| **Current safe pace** | Current effective pace used for power limiting |
+| **Available power** | Extra power PELS can fit before the current safe pace; empty while every power limit is off |
+| **Current safe pace** | Current effective pace used for power limiting; empty while every power limit is off |
 | **Used this hour** | Energy consumed so far in the current hour |
 | **Daily budget remaining** | Remaining daily budget, when daily pacing is enabled |
 | **Daily budget exceeded** | Whether the daily plan is currently over target |

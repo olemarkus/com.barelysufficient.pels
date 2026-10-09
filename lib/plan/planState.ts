@@ -456,8 +456,9 @@ export class PlanEngineState {
    * Whether the selected capacity period's budget is spent, as of the pace stamp taken at
    * the top of the current build. `PlanBuilder.stampCapacityPace` is the only
    * writer, and only the build calls it: a status log, a Flow condition or the
-   * rebuild scheduler asking for the pace is a read
-   * (`PlanBuilder.computeDynamicSoftLimit`) and must leave this alone. One
+   * rebuild scheduler asking for the pace or the physical limit is a read
+   * (`PlanBuilder.computeCapacityPace`, `PlanBuilder.computePhysicalPowerLimit`)
+   * and must leave this alone. One
    * writer per build is what keeps the shed decision and the reason/meta pass
    * that labels it answering to the same period. The `hourly*` spelling is a
    * retained local alias documented in `notes/safe-pace-two-constraints.md`.

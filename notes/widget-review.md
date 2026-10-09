@@ -48,7 +48,7 @@ budget chart) is the hardest to read. None block, but they're more than polish.
 
 ### P1 — Available power: the unlabeled `2.6 / 4.9 kW` pair (and DON'T call 4.9 "Hard cap")
 The two numbers carry no labels, so the user can't tell which is which. **Correction
-to the first pass:** the right number is `hourlyLimitKw` = **Safe pace now**, NOT
+to the first pass:** the right number is the status's `powerLimitKw` = **Safe pace now**, NOT
 **Hard cap** (the fixed user ceiling `hardLimitKw` is a *different* value — see
 `notes/ui-terminology.md`, which keeps Safe pace / Hard cap / Safety margin
 distinct). Labeling 4.9 as "Hard cap" would misrepresent a dynamic pacing limit

@@ -8,11 +8,12 @@ import { isOffSteppedRestoreCandidate } from './devices';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { countShedDevices } from './coordination';
 import {
+  buildReserveAdmittedLogFields,
   buildReservedForStartReason,
-  buildRestoreAdmissionLogFields,
+  isReserveAdmitted,
   resolveReserveAdmission,
   type HeadroomReserve,
-  type RestoreAdmissionMetrics,
+  type ReserveInsufficient,
 } from '../admission';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
 import {
@@ -76,9 +77,8 @@ export function admitSteppedRestore(
   const reserved = resolveReserveAdmission({
     dev, availableHeadroom, neededKw: needed, reserves: headroomReserves,
   });
-  const { admission, effectiveHeadroomKw } = reserved;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id, state.shedDecisions);
-  if (reserved.kind !== 'admitted') {
+  if (!isReserveAdmitted(reserved)) {
     // Only the reservation is in the way — there is enough raw power, it is just promised to a
     // higher-priority device. Stand down with an honest reason instead of swapping into a block
     // that is already spoken for. Mirror the binary twin's posture (`rejectBinaryRestore`) so an
@@ -98,7 +98,7 @@ export function admitSteppedRestore(
         dev,
         needed,
         devPower: nextStep.planningPowerW / 1000,
-        availableHeadroom: reserved.effectiveHeadroomKw,
+        availableHeadroom: reserved.availableKw - reservedHeadroomKw,
         restoreDebugKey,
         admittedDeviceUpdate: {
           desiredStepId: nextStep.id,
@@ -119,9 +119,10 @@ export function admitSteppedRestore(
     }
     return rejectSteppedRestoreForInsufficientHeadroom({
       dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-      admission: reserved.admission, need: params.need, restoreDebugKey,
+      reserved, need: params.need, restoreDebugKey,
     }, loop);
   }
+  const admittedLog = buildReserveAdmittedLogFields(reserved);
   setRestorePlanDevice(deviceMap, dev.id, {
     desiredStepId: nextStep.id,
     expectedPowerKw: nextStep.planningPowerW / 1000,
@@ -142,8 +143,8 @@ export function admitSteppedRestore(
       shedDeviceCount,
       deltaKw,
       neededKw: needed,
-      availableKw: effectiveHeadroomKw,
-      ...buildRestoreAdmissionLogFields(admission),
+      availableKw: admittedLog.effectiveHeadroomKw,
+      marginKw: admittedLog.marginKw,
       decision: 'admitted',
     },
   });
@@ -245,16 +246,14 @@ function rejectSteppedRestoreForInsufficientHeadroom(
     nextStep: { id: string };
     lowestNonZeroStep: { id: string } | null;
     shedDeviceCount: number;
-    admission: RestoreAdmissionMetrics;
+    reserved: ReserveInsufficient;
     need: SteppedRestoreNeed;
     restoreDebugKey: string;
   },
   loop: RestoreLoopState,
 ): RestoreLoopState {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-    admission, need, restoreDebugKey } = params;
-  const { availableHeadroom } = loop;
-  if (availableHeadroom === null) return loop;
+    reserved: { admission, availableKw: availableHeadroom }, need, restoreDebugKey } = params;
   const reason = buildRestoreHeadroomReason({
     neededKw: need.neededKw,
     availableKw: availableHeadroom,
@@ -276,7 +275,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(
       shedDeviceCount,
       neededKw: need.neededKw,
       availableKw: availableHeadroom,
-      ...buildRestoreAdmissionLogFields(admission),
+      marginKw: admission.marginKw,
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
     },

@@ -26,7 +26,7 @@ import {
   unchangedRebuildOutcome,
 } from '../helpers/powerRebuildScheduler';
 
-const SHORTFALL_SAMPLE = { currentPowerW: 9_500, capacityPaceKw: 9 };
+const SHORTFALL_SAMPLE = { currentPowerW: 9_500, powerLimitKw: 9 };
 
 const runRebuild = async (params: {
   onFlight?: (throttle: PlanRebuildThrottle) => void;
@@ -43,7 +43,7 @@ const runRebuild = async (params: {
   const { throttle } = await createTestPlanRebuildThrottle({
     rebuildPlanFromCache,
     capacityGuard: await createGuardInShortfall(),
-    lastRebuild: { msAgo: 0, reading: { currentPowerW: 9_500, capacityPaceKw: 20 } },
+    lastRebuild: { msAgo: 0, reading: { currentPowerW: 9_500, powerLimitKw: 20 } },
   });
   // Queued behind the 2 s min interval, so there is a moment before dispatch.
   const sample = sampleThrottle(throttle, SHORTFALL_SAMPLE);

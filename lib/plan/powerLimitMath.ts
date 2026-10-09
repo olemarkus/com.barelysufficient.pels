@@ -1,3 +1,4 @@
+import { gridImportTargetKw } from '../../packages/shared-domain/src/settings/powerLimits';
 import type { PlanContext } from './planContext';
 import { SHEDDING_CLEAR_THRESHOLD_KW } from './planConstants';
 
@@ -6,6 +7,11 @@ export function minPowerLimit(...limits: readonly (number | null)[]): number | n
   const enabled = limits.filter((limit): limit is number => limit !== null);
   return enabled.length === 0 ? null : Math.min(...enabled);
 }
+
+/** The grid import target of a resolved limit: `null` when the grid limit is off. */
+export const resolveGridImportTargetKw = (limitKw: number | null): number | null => (
+  limitKw === null ? null : gridImportTargetKw(limitKw)
+);
 
 export const spendPowerHeadroom = (availableKw: number | null, neededKw: number): number | null => (
   availableKw === null ? null : availableKw - neededKw
