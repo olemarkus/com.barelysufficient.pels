@@ -177,45 +177,51 @@ describe('bootstrapSnapshotAndPlan warmup gate integration', () => {
   });
 });
 
+// A PlanService over stub deps, so the gate/queue wiring runs without standing
+// up the full engine.
+const createGatedPlanService = async (
+  warmupGate: SnapshotWarmupGate,
+  buildDevicePlanSnapshot: () => Promise<never>,
+) => {
+  const { PlanService } = await import('../../lib/plan/planService.js');
+  return new PlanService({
+    ...planServiceWiring(),
+    hasStandingCommandGrant: () => false,
+    getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+    getHomeBatteryCard: () => ({ kind: 'none' } as const),
+    getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+    getObservedTemperature: () => ({ kind: 'absent' }),
+    planBuildGate: openPlanBuildGate(),
+    homeId: 'main',
+    publishPelsStatus: vi.fn(),
+    homey: { settings: { set: vi.fn() } } as never,
+    planEngine: {
+      buildDevicePlanSnapshot,
+      syncPendingTargetCommands: vi.fn(),
+      syncPendingBinaryCommands: vi.fn(),
+      syncSteppedCommands: () => false,
+      syncStorageCommands: () => undefined,
+      getObservationRevision: vi.fn(() => 0),
+      prunePendingTargetCommands: vi.fn(),
+      state: {},
+    } as never,
+    getPlanDevices: () => [],
+    getSettleDevices: () => [],
+    getSteppedSettleDevices: () => [],
+    getCapacityDryRun: () => false,
+    readSimulationSetting: () => false,
+    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+    getLastPowerUpdate: () => 1_745_000_000_000,
+    snapshotWarmupGate: warmupGate,
+  });
+};
+
 describe('PlanService.rebuildPlanFromCache warmup gate', () => {
   it('waits on an unreleased gate before queuing the rebuild', async () => {
-    // Verify directly against PlanService with a stub deps object so the
-    // queue/perfCounters wiring is exercised without standing up the full
-    // engine.
     const buildDevicePlanSnapshot = vi.fn(async () => ({ meta: {}, devices: [] } as never));
     const warmupGate = new SnapshotWarmupGate({ timeoutMs: 60_000 });
 
-    const { PlanService } = await import('../../lib/plan/planService.js');
-    const planService = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
-      homey: { settings: { set: vi.fn() } } as never,
-      planEngine: {
-        buildDevicePlanSnapshot,
-        syncPendingTargetCommands: vi.fn(),
-        syncPendingBinaryCommands: vi.fn(),
-        syncSteppedCommands: () => false,
-        syncStorageCommands: () => undefined,
-        getObservationRevision: vi.fn(() => 0),
-        prunePendingTargetCommands: vi.fn(),
-        state: {},
-      } as never,
-      getPlanDevices: () => [],
-      getSettleDevices: () => [],
-    getSteppedSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
-      snapshotWarmupGate: warmupGate,
-    });
+    const planService = await createGatedPlanService(warmupGate, buildDevicePlanSnapshot);
 
     let rebuildSettled = false;
     void planService.rebuildPlanFromCache('power_delta', { detail: 'test' }).then(() => {
@@ -243,37 +249,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     const buildDevicePlanSnapshot = vi.fn(async () => ({ meta: {}, devices: [] } as never));
     const warmupGate = new SnapshotWarmupGate({ timeoutMs: 60_000 });
 
-    const { PlanService } = await import('../../lib/plan/planService.js');
-    const planService = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
-      homey: { settings: { set: vi.fn() } } as never,
-      planEngine: {
-        buildDevicePlanSnapshot,
-        syncPendingTargetCommands: vi.fn(),
-        syncPendingBinaryCommands: vi.fn(),
-        syncSteppedCommands: () => false,
-        syncStorageCommands: () => undefined,
-        getObservationRevision: vi.fn(() => 0),
-        prunePendingTargetCommands: vi.fn(),
-        state: {},
-      } as never,
-      getPlanDevices: () => [],
-      getSettleDevices: () => [],
-    getSteppedSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
-      snapshotWarmupGate: warmupGate,
-    });
+    const planService = await createGatedPlanService(warmupGate, buildDevicePlanSnapshot);
 
     // Simulate non-reading rebuilds arriving during the warmup window.
     void planService.rebuildPlanFromCache('settings', { detail: 'capacity_changed' });
@@ -291,40 +267,28 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     const warmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
     expect(warmupGate.isReleased()).toBe(true);
 
-    const { PlanService } = await import('../../lib/plan/planService.js');
-    const planService = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
-      homey: { settings: { set: vi.fn() } } as never,
-      planEngine: {
-        buildDevicePlanSnapshot,
-        syncPendingTargetCommands: vi.fn(),
-        syncPendingBinaryCommands: vi.fn(),
-        syncSteppedCommands: () => false,
-        syncStorageCommands: () => undefined,
-        getObservationRevision: vi.fn(() => 0),
-        prunePendingTargetCommands: vi.fn(),
-        state: {},
-      } as never,
-      getPlanDevices: () => [],
-      getSettleDevices: () => [],
-    getSteppedSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
-      snapshotWarmupGate: warmupGate,
-    });
+    const planService = await createGatedPlanService(warmupGate, buildDevicePlanSnapshot);
 
     void planService.rebuildPlanFromCache('power_delta', { detail: 'test' });
     await flushMicrotasks();
     expect(buildDevicePlanSnapshot).toHaveBeenCalled();
+  });
+
+  it('skips a rebuild waiting on the gate when teardown releases it with shutdown', async () => {
+    const buildDevicePlanSnapshot = vi.fn(async () => ({ meta: {}, devices: [] } as never));
+    const warmupGate = new SnapshotWarmupGate({ timeoutMs: 60_000 });
+    const planService = await createGatedPlanService(warmupGate, buildDevicePlanSnapshot);
+
+    const waiting = planService.rebuildPlanFromCache('power_delta', { detail: 'test' });
+    await flushMicrotasks();
+    expect(buildDevicePlanSnapshot).not.toHaveBeenCalled();
+
+    // The rebuild has already left the scheduler, so only the gate can stop it.
+    warmupGate.release('shutdown');
+    await expect(waiting).resolves.toMatchObject({ gated: true });
+    // A rebuild asked after teardown is skipped the same way.
+    await expect(planService.rebuildPlanFromCache('power_delta', { detail: 'test' }))
+      .resolves.toMatchObject({ gated: true });
+    expect(buildDevicePlanSnapshot).not.toHaveBeenCalled();
   });
 });

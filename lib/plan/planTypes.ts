@@ -936,10 +936,10 @@ export type PlanRebuildOutcome = {
   failed: boolean;
   /**
    * True when no plan was built because the wiring layer's build gate was shut
-   * (in production: this home has no meter measurement yet). Distinct from
-   * `failed` — nothing went wrong, there was simply nothing to plan from — and
-   * distinct from a zeroed no-op, which means a plan WAS built and changed
-   * nothing.
+   * (in production: this home has no meter measurement yet), or because app
+   * teardown released the snapshot warmup gate. Distinct from `failed` —
+   * nothing went wrong, there was simply nothing to plan from — and distinct
+   * from a zeroed no-op, which means a plan WAS built and changed nothing.
    */
   gated: boolean;
 };

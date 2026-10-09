@@ -467,6 +467,12 @@ export class PlanService {
       addPerfDuration('plan_rebuild_warmup_wait_ms', Date.now() - waitStart);
       incPerfCounter('plan_rebuild_warmup_waited_total');
     }
+    // Teardown releases the gate only so nothing awaiting it dangles. A rebuild
+    // that was waiting on it, or asked after, has no snapshot to plan from and
+    // an app being torn down: no plan is built.
+    if (gate.getReleaseReason() === 'shutdown') {
+      return { ...createPlanRebuildOutcome(this.deps.getCapacityDryRun()), gated: true };
+    }
     // A closed build gate is a SKIP, not a wait: the trigger that asked for this
     // rebuild (a price update, a settings write, a device change) has no reason
     // to be held open indefinitely, and the sample that opens the gate schedules

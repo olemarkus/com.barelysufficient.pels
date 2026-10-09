@@ -716,10 +716,11 @@ export class AppServiceWiring {
     const homeySolarForecast = this.deps.getHomeySolarForecast();
     if (homeySolarForecast.kind === 'started') homeySolarForecast.controller.stop();
     // Release the warmup gate so any rebuild awaiting it during a partial
-    // startup unblocks (cancelAll below then drops the intent), instead of
-    // dangling on a promise the gate would otherwise resolve via its
-    // bounded timeout.
-    ctx.snapshotWarmupGate?.release('timeout');
+    // startup unblocks instead of dangling on a promise the gate would
+    // otherwise resolve via its bounded timeout. `shutdown` makes such a
+    // rebuild a skip: it has already left the scheduler, so cancelAll below
+    // cannot drop it.
+    ctx.snapshotWarmupGate?.release('shutdown');
     this.deps.planRebuildScheduler.cancelAll('app_uninit');
     ctx.deviceDiagnosticsService?.destroy();
     // Persist any unflushed deferred-objective plan-history entries before shutting down.

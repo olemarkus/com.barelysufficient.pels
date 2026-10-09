@@ -256,19 +256,21 @@ describe('app boot in production order (PELS_ASYNC_STARTUP=1)', () => {
     // Teardown cancelled the pending bootstrap and released the gate itself,
     // clearing the gate's own 5 s bound with it: not one timer is left.
     expect(vi.getTimerCount()).toBe(0);
-    expect(timeline).toEqual(['warmup_gate_released:timeout']);
+    expect(timeline).toEqual(['warmup_gate_released:shutdown']);
 
     // Run well past the bootstrap delay and the gate's bound.
     await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
 
-    // The bootstrap never ran: no device fetch, no bootstrap plan, no late
-    // failure against the closed stores, and nothing written to a device.
+    // The bootstrap never ran: no device fetch, no late failure against the
+    // closed stores, and nothing written to a device. Nor did the meter
+    // rebuild that was waiting on the gate: the shutdown release skips it
+    // rather than letting it plan an empty device set.
     expect(deviceListReads(getSpy)).toBe(0);
-    expect(timeline).not.toContain('plan_built:startup_snapshot_bootstrap');
+    expect(timeline.filter((entry) => entry.startsWith('plan_built:'))).toEqual([]);
     expect(timeline.filter((entry) => entry.startsWith('background_task_failed:'))).toEqual([]);
     expect(timeline.filter((entry) => entry.startsWith('warmup_gate_released:'))).toEqual([
-      'warmup_gate_released:timeout',
+      'warmup_gate_released:shutdown',
     ]);
     expect(putSpy).not.toHaveBeenCalledWith(ONOFF_CAPABILITY_PATH, expect.anything());
   });
