@@ -27,6 +27,7 @@ import { buildPlanInputDevice, buildPlanMeta, buildPlanDevice } from '../utils/p
 import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import { capturePlanBuilderStructuredLog } from '../helpers/planBuilderLogCapture';
 import { captureLogger } from '../utils/loggerCapture';
+import { seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import {
   hasReservation,
@@ -1972,7 +1973,7 @@ describe('Device plan snapshot', () => {
       settings: { load: 450 },
     };
 
-    const parsed = app.deviceManager.parseDeviceListForTests([sampleDevice]);
+    const parsed = await seedTransportDevices(app.deviceManager, [sampleDevice]);
     expect(parsed[0].expectedPowerKw).toBeCloseTo(0.45, 2);
     expect(parsed[0].targets[0].value).toBe(22);
   });

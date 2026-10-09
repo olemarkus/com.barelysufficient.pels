@@ -8,134 +8,10 @@
 // write PELS emits under capacity pressure after trusted realtime evidence
 // survives the ignored pull.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-type FakeSocketListener = (...args: unknown[]) => void;
-
-const socketHarness = vi.hoisted(() => {
-  class FakeSocket {
-    connected = false;
-    readonly io: { on: () => void; socket: (namespace: string) => FakeSocket };
-    private readonly listeners = new Map<string, Set<FakeSocketListener>>();
-
-    constructor(private readonly onNamespaceSocket: (socket: FakeSocket) => void = () => {}) {
-      this.io = {
-        on: () => {},
-        socket: () => {
-          const socket = new FakeSocket();
-          this.onNamespaceSocket(socket);
-          return socket;
-        },
-      };
-    }
-
-    on(event: string, listener: FakeSocketListener): this {
-      let listeners = this.listeners.get(event);
-      if (!listeners) {
-        listeners = new Set();
-        this.listeners.set(event, listeners);
-      }
-      listeners.add(listener);
-      return this;
-    }
-
-    once(event: string, listener: FakeSocketListener): this {
-      const onceListener: FakeSocketListener = (...args) => {
-        this.off(event, onceListener);
-        listener(...args);
-      };
-      return this.on(event, onceListener);
-    }
-
-    off(event: string, listener?: FakeSocketListener): this {
-      if (!listener) {
-        this.listeners.delete(event);
-        return this;
-      }
-      this.listeners.get(event)?.delete(listener);
-      return this;
-    }
-
-    removeAllListeners(): this {
-      this.listeners.clear();
-      return this;
-    }
-
-    connect(): this {
-      this.connected = true;
-      queueMicrotask(() => this.emitFromServer('connect'));
-      return this;
-    }
-
-    open(): this {
-      return this.connect();
-    }
-
-    disconnect(): this {
-      this.connected = false;
-      return this;
-    }
-
-    emit(event: string, ...args: unknown[]): boolean {
-      if (event === 'handshakeClient') {
-        const callback = args.at(-1);
-        if (typeof callback === 'function') {
-          queueMicrotask(() => callback(null, { namespace: '/api' }));
-        }
-        return true;
-      }
-      if (event === 'subscribe') {
-        const callback = args.at(-1);
-        if (typeof callback === 'function') {
-          queueMicrotask(() => callback(null));
-        }
-        return true;
-      }
-      return this.emitFromServer(event, ...args);
-    }
-
-    emitFromServer(event: string, ...args: unknown[]): boolean {
-      const listeners = this.listeners.get(event);
-      if (!listeners) return false;
-      for (const listener of Array.from(listeners)) listener(...args);
-      return true;
-    }
-  }
-
-  let namespacedSocket: FakeSocket | null = null;
-  const createRootSocket = () => new FakeSocket((socket) => {
-    namespacedSocket = socket;
-  });
-  const io = vi.fn(createRootSocket);
-  return {
-    io,
-    reset: () => {
-      namespacedSocket = null;
-      io.mockImplementation(createRootSocket);
-      io.mockClear();
-    },
-    emitCapability: (deviceId: string, capabilityId: string, value: unknown) => {
-      if (!namespacedSocket) {
-        throw new Error('Live-feed namespace socket is not connected');
-      }
-      const delivered = namespacedSocket.emitFromServer(
-        `homey:device:${deviceId}`,
-        'capability',
-        { capabilityId, value },
-      );
-      if (!delivered) {
-        throw new Error(`No live-feed listener subscribed for device ${deviceId}`);
-      }
-    },
-  };
-});
-
-vi.mock('socket.io-client', () => ({
-  io: socketHarness.io,
-}));
-
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { drainUntil, drainUntilCalledWith } from '../utils/asyncDrain';
+import { connectLiveFeed, emitCapability } from '../helpers/liveFeedSocketHarness';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 
 const DEVICE_ID = 'device-a';
@@ -208,7 +84,7 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
       now: new Date(FRESH_ISO),
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
-    socketHarness.reset();
+    connectLiveFeed();
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.flow._actionCardListeners = {};
@@ -271,7 +147,7 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
     await flushPromises();
 
     pullOnoff = undefined;
-    socketHarness.emitCapability(DEVICE_ID, 'onoff', true);
+    await emitCapability(DEVICE_ID, 'onoff', true);
     await flushPromises();
 
     const pullsBeforeRefresh = countDeviceListPulls(getSpy);

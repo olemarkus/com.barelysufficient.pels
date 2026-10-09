@@ -11,7 +11,7 @@ import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers } from '../mocks/homey';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
@@ -30,7 +30,7 @@ const CLAIM_KEY = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}${BATTERY}`;
 
 const unusedWrite = (): Promise<never> => Promise.reject(new Error('Only storage intents in this spec'));
 
-const setup = () => {
+const setup = async () => {
   const device = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed', targetPowerW: 0 });
   setMockDrivers({ batteries: new MockDriver('batteries', [device]) });
   const settings = mockHomeyInstance.settings;
@@ -41,7 +41,7 @@ const setup = () => {
     getManaged: (deviceId: string) => managed.isManaged(deviceId),
     isManagedFilterActive: () => true,
   });
-  transport.setSnapshotForTests(transport.parseDeviceListForTests([device.toHomeyApiDevice() as HomeyDeviceLike]));
+  await seedTransportDevices(transport, [device.toHomeyApiDevice() as HomeyDeviceLike]);
   const actuator = createDeviceActuator({
     canTurnOnDevice: () => false,
     resolveTemperatureTarget: (_deviceId, desired) => desired,
@@ -92,7 +92,7 @@ describe('home battery claim and hand-back through the real transport', () => {
   });
 
   it('finishes an in-flight claim before handing back an opted-out battery', async () => {
-    const { device, owner, settings, writes, command, put, sdkPut } = setup();
+    const { device, owner, settings, writes, command, put, sdkPut } = await setup();
     let finish!: () => void;
     put.mockImplementationOnce(async (path, body) => {
       await new Promise<void>((resolve) => { finish = resolve; });
@@ -113,7 +113,7 @@ describe('home battery claim and hand-back through the real transport', () => {
   });
 
   it('hands back an opted-out battery whose claim echo never arrived: setpoint 0, then the pre-claim value', async () => {
-    const { device, owner, settings, writes, command } = setup();
+    const { device, owner, settings, writes, command } = await setup();
 
     await command(1500);
     expect(settings.get(CLAIM_KEY)).toMatchObject({ capabilityId: 'target_power_mode', previousValue: 'anti_feed' });
@@ -130,7 +130,7 @@ describe('home battery claim and hand-back through the real transport', () => {
   });
 
   it('hands back a claimed battery the owner opts out, after a failed first attempt is retried', async () => {
-    const { device, owner, settings, writes, command } = setup();
+    const { device, owner, settings, writes, command } = await setup();
     await command(-800);
 
     device.configureCapabilityBehavior('target_power', { onApiWrite: { accept: false } });
@@ -150,7 +150,7 @@ describe('home battery claim and hand-back through the real transport', () => {
   });
 
   it('keeps a battery turned Managed off on the realtime feed while its hand-back is pending', async () => {
-    const { device, owner, settings, command, transport } = setup();
+    const { device, owner, settings, command, transport } = await setup();
     await command(-800);
 
     device.configureCapabilityBehavior('target_power', { onApiWrite: { accept: false } });
@@ -167,7 +167,7 @@ describe('home battery claim and hand-back through the real transport', () => {
   });
 
   it('reads the battery app\'s stale echo of its own mode after the claim as no takeover', async () => {
-    const { owner, writes, command, transport } = setup();
+    const { owner, writes, command, transport } = await setup();
     await command(1500);
 
     // The battery's app read its mode early in a poll, before PELS's claim
@@ -188,7 +188,7 @@ describe('home battery claim and hand-back through the real transport', () => {
   });
 
   it('reads a hand-back that landed but reported failure as handed back, not as a takeover', async () => {
-    const { owner, settings, command, transport, put, sdkPut } = setup();
+    const { owner, settings, command, transport, put, sdkPut } = await setup();
     await command(-800);
     vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
 

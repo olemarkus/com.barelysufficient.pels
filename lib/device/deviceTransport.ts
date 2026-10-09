@@ -429,14 +429,6 @@ export class DeviceTransport {
     injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {
         this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value);
     }
-    // Returns the OWNER-shaped `TransportDeviceSnapshot[]` (the runtime value the
-    // snapshot parse pipeline produces) so test assertions can read the
-    // stepped-descriptor + reported-step probe fields the base type omits.
-    parseDeviceListForTests(list: HomeyDeviceLike[]): TransportDeviceSnapshot[] {
-        return this.reader.parseConformingDeviceListForTests(
-            list.map((device) => this.reader.applyDeviceDriverOverride(device)),
-        );
-    }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> {
         return (await this.deviceSdk.fetchDevices()).devices;
     }

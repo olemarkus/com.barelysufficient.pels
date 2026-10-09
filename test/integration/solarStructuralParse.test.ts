@@ -10,11 +10,12 @@
 // producer designation), so an energy-role-only solar device is detected, stamped, AND
 // survives consistently.
 //
-// Drives the real transport parse (`parseDeviceListForTests` and the realtime
-// `device.update` path), mocking only the SDK seam via the shared homey mock.
+// Drives the real transport refresh (`seedTransportDevices`) and the realtime
+// `device.update` path, mocking only the SDK seam via the shared homey mock.
 import { describe, expect, it } from 'vitest';
 import {
   createTestDeviceTransport,
+  seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
 import Homey from 'homey';
 import { mockHomeyInstance } from '../mocks/homey';
@@ -45,9 +46,9 @@ const solarCaps = {
 } as HomeyDeviceLike['capabilitiesObj'];
 
 describe('structural solar-role resolution at parse', () => {
-  it('stamps a class:solarpanel device managed:true/controllable:false despite settings saying controllable:true', () => {
+  it('stamps a class:solarpanel device managed:true/controllable:false despite settings saying controllable:true', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = transport.parseDeviceListForTests([{
+    const [parsed] = await seedTransportDevices(transport, [{
       id: 'solar1',
       name: 'Solar Panel',
       class: 'solarpanel',
@@ -62,7 +63,7 @@ describe('structural solar-role resolution at parse', () => {
     expect(parsed.controllable).toBe(false);
   });
 
-  it('does NOT stamp a non-solar bidirectional grid meter (export cap, class:sensor) observe-only', () => {
+  it('does NOT stamp a non-solar bidirectional grid meter (export cap, class:sensor) observe-only', async () => {
     // FIX 1 regression: a grid / P1 meter declares `meterPowerExportedCapability` but is
     // class 'sensor', NOT 'solarpanel'. The export property is NOT the solar identity
     // gate, so this meter is never normalized to 'solarpanel' nor stamped observe-only —
@@ -70,7 +71,7 @@ describe('structural solar-role resolution at parse', () => {
     // it certainly never rides as a managed observe-only solar device), and it is NOT in
     // the solar membership set.
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const parsed = transport.parseDeviceListForTests([{
+    const parsed = await seedTransportDevices(transport, [{
       id: 'grid',
       name: 'Grid meter',
       class: 'sensor',

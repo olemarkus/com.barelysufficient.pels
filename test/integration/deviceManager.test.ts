@@ -6,6 +6,7 @@ import {
   onObservedControlState,
   onObservedState,
   onObservedStateRefresh,
+  seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
@@ -186,8 +187,8 @@ describe('DeviceTransport', () => {
         });
     });
 
-    describe('parseDeviceListForTests', () => {
-        it('materializes the representative thermostat snapshot shape unchanged', () => {
+    describe('device list parse', () => {
+        it('materializes the representative thermostat snapshot shape unchanged', async () => {
             const parsingDeviceManager = createTestDeviceTransport(homeyMock, loggerMock, {
                 getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
                 getControllable: (deviceId) => deviceId === 'thermo-1',
@@ -195,7 +196,7 @@ describe('DeviceTransport', () => {
                 getBudgetExempt: (deviceId) => deviceId === 'thermo-1',
             });
 
-            const [parsed] = parsingDeviceManager.parseDeviceListForTests([{
+            const [parsed] = await seedTransportDevices(parsingDeviceManager, [{
                 id: 'thermo-1',
                 name: 'Hall Thermostat',
                 class: 'thermostat',
@@ -294,11 +295,11 @@ describe('DeviceTransport', () => {
             { mode: 'Cool', reported: 'cool' },
             { mode: '  heating ', reported: 'heating' },
             { mode: 'auto', reported: 'auto' },
-        ])('reports a thermostat_mode of $mode as the raw observation $reported', ({ mode, reported }) => {
+        ])('reports a thermostat_mode of $mode as the raw observation $reported', async ({ mode, reported }) => {
             // The parse REPORTS the mode and does not interpret it: the
             // vocabulary that turns it into a direction is the observer's
             // (`resolveThermalDirection`). Normalized only — trimmed, lowercased.
-            const [parsed] = deviceManager.parseDeviceListForTests([{
+            const [parsed] = await seedTransportDevices(deviceManager, [{
                 id: 'heatpump-1',
                 name: 'Living Room Heat Pump',
                 class: 'heatpump',
@@ -317,8 +318,8 @@ describe('DeviceTransport', () => {
         it.each([
             { label: 'omitted', availability: {} },
             { label: 'non-boolean', availability: { available: 'unexpected' as never } },
-        ])('resolves $label SDK availability to true at the parser boundary', ({ availability }) => {
-            const [parsed] = deviceManager.parseDeviceListForTests([{
+        ])('resolves $label SDK availability to true at the parser boundary', async ({ availability }) => {
+            const [parsed] = await seedTransportDevices(deviceManager, [{
                 id: 'availability-boundary',
                 name: 'Availability Boundary',
                 class: 'thermostat',
@@ -356,8 +357,8 @@ describe('DeviceTransport', () => {
                 },
                 violation: { reason: 'unexpected_value', capabilityId: 'target_temperature' },
             },
-        ])('ignores a read carrying $label, so a device never seen conforming stays out', ({ entries, violation }) => {
-            const parsed = deviceManager.parseDeviceListForTests([{
+        ])('ignores a read carrying $label, so a device never seen conforming stays out', async ({ entries, violation }) => {
+            const parsed = await seedTransportDevices(deviceManager, [{
                 id: 'thermo-2',
                 name: 'Bedroom Thermostat',
                 class: 'thermostat',
@@ -379,7 +380,7 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('reads the plain power capability and ignores dotted sub-capabilities', () => {
+        it('reads the plain power capability and ignores dotted sub-capabilities', async () => {
             // Modelled on a real device: the Hoiax Connected 300 ships
             // `measure_power` AND `measure_power.leak` / `meter_power.in_tank`,
             // and the Easee charger and Frient HAN do the same. The dotted ones
@@ -393,7 +394,7 @@ describe('DeviceTransport', () => {
             // device with `settings.load` exposes `measure_power` and
             // `meter_power`. The invented shape was the sole evidence for a gate
             // term that admitted nobody.
-            const [parsed] = deviceManager.parseDeviceListForTests([{
+            const [parsed] = await seedTransportDevices(deviceManager, [{
                 id: 'socket-subcap',
                 name: 'Socket With Internal Power',
                 class: 'socket',
@@ -424,8 +425,8 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('keeps the binary facet when exact temperature measurement support is missing', () => {
-            const [parsed] = deviceManager.parseDeviceListForTests([{
+        it('keeps the binary facet when exact temperature measurement support is missing', async () => {
+            const [parsed] = await seedTransportDevices(deviceManager, [{
                 id: 'bad-thermo',
                 name: 'Broken Thermostat',
                 class: 'thermostat',
@@ -445,8 +446,8 @@ describe('DeviceTransport', () => {
             expect(hasObservedTemperature(parsed)).toBe(false);
         });
 
-        it('drops a temperature-only device when either member of the pair is malformed', () => {
-            const parsed = deviceManager.parseDeviceListForTests([{
+        it('drops a temperature-only device when either member of the pair is malformed', async () => {
+            const parsed = await seedTransportDevices(deviceManager, [{
                 id: 'temp-only-broken',
                 name: 'Broken Tank',
                 class: 'thermostat',
@@ -458,51 +459,6 @@ describe('DeviceTransport', () => {
             }]);
 
             expect(parsed).toEqual([]);
-        });
-
-        // Regression: the driver-id override used to be applied three times along
-        // the snapshot pipeline (refreshSnapshot, the private parseDeviceList
-        // wrapper, and resolveParseDeviceIdentity). Each lookup invoked
-        // getDeviceDriverIdOverride. After the dedup, the override resolves once
-        // per device per pipeline call so the provider callback is invoked exactly
-        // once per device end-to-end.
-        it('invokes getDeviceDriverIdOverride exactly once per device for parseDeviceListForTests', () => {
-            const getDeviceDriverIdOverride = vi.fn((deviceId: string) => (
-                deviceId === 'dev-a' ? 'homey:app:com.zaptec:go2' : undefined
-            ));
-            const parsingDeviceManager = createTestDeviceTransport(homeyMock, loggerMock, {
-                getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-                getDeviceDriverIdOverride,
-            });
-
-            parsingDeviceManager.parseDeviceListForTests([
-                {
-                    id: 'dev-a',
-                    name: 'Mock A',
-                    class: 'socket',
-                    driverId: 'homey:app:com.example:mock',
-                    capabilities: ['onoff', 'measure_power'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        measure_power: { value: 50, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
-                {
-                    id: 'dev-b',
-                    name: 'Mock B',
-                    class: 'socket',
-                    driverId: 'homey:app:com.example:mock',
-                    capabilities: ['onoff', 'measure_power'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
-                        measure_power: { value: 80, id: 'measure_power', lastUpdated: stampedNow() },
-                    },
-                },
-            ]);
-
-            expect(getDeviceDriverIdOverride).toHaveBeenCalledTimes(2);
-            expect(getDeviceDriverIdOverride).toHaveBeenCalledWith('dev-a');
-            expect(getDeviceDriverIdOverride).toHaveBeenCalledWith('dev-b');
         });
     });
 

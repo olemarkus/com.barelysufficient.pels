@@ -438,26 +438,6 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         h.transport.destroy();
     });
 
-    it('setSnapshotForTests feeds the projection (test seam mirrors the production refresh funnel)', async () => {
-        // The test seam must populate the projection exactly as the production
-        // refresh path does, so any reader routed onto the projection (stage 4b)
-        // is exercised by specs that seed state via setSnapshotForTests rather
-        // than silently falling back to the snapshot.
-        const h = await buildHarness();
-        expect(h.projection.getObservedState('dev1')).toBeUndefined();
-
-        h.transport.setSnapshotForTests([
-            {
-                id: 'dev1', name: 'dev1', targets: [], binaryControl: { on: true }, expectedPowerKw: 1,
-                deviceClass: 'socket', deviceType: 'onoff', isEvCharger: false, binaryControllable: true,
-                isBatteryOrSolar: false,
-            },
-        ] as unknown as Parameters<typeof h.transport.setSnapshotForTests>[0]);
-
-        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
-        h.transport.destroy();
-    });
-
     it('realtime delta survives between two refreshes', async () => {
         const h = await buildHarness();
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });

@@ -3,6 +3,7 @@ import {
   createTestDeviceTransport,
   onObservedControlState,
   onObservedState,
+  seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
@@ -358,7 +359,7 @@ describe('native stepped-load wiring', () => {
     })).toEqual({ capabilityId: 'target_power', value: 1380 });
   });
 
-  it('exposes native stepped-load wiring from the device-supported profile', () => {
+  it('exposes native stepped-load wiring from the device-supported profile', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -368,7 +369,7 @@ describe('native stepped-load wiring', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildHoiaxDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildHoiaxDevice()]);
     expect(parsed).toEqual(expect.objectContaining({
       id: 'hoiax-1',
       controlAdapter: {
@@ -383,14 +384,14 @@ describe('native stepped-load wiring', () => {
     expect(parsed.capabilities).not.toContain('max_power_3000');
   });
 
-  it('surfaces nativeWriteCapabilities from pre-strip caps for a native-enabled Hoiax', () => {
+  it('surfaces nativeWriteCapabilities from pre-strip caps for a native-enabled Hoiax', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       { getNativeEvWiringEnabled: () => true, getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildHoiaxDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildHoiaxDevice()]);
 
     // The control caps are stripped from the public capability list, but the
     // conflict-detection field still reports what PELS natively writes.
@@ -398,14 +399,14 @@ describe('native stepped-load wiring', () => {
     expect(parsed.nativeWriteCapabilities).toEqual(['max_power_3000', 'onoff']);
   });
 
-  it('surfaces nativeWriteCapabilities even when native wiring is OFF (PR4 gate population)', () => {
+  it('surfaces nativeWriteCapabilities even when native wiring is OFF (PR4 gate population)', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       { getNativeEvWiringEnabled: () => false, getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildHoiaxDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildHoiaxDevice()]);
 
     // Native wiring disabled → not actively controlled (no stepped controlModel),
     // but it is still a candidate the conflict gate must see.
@@ -413,7 +414,7 @@ describe('native stepped-load wiring', () => {
     expect(parsed.nativeWriteCapabilities).toEqual(['max_power_3000', 'onoff']);
   });
 
-  it('projects target_power controls as stepped-load wiring at the observation boundary', () => {
+  it('projects target_power controls as stepped-load wiring at the observation boundary', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -422,7 +423,7 @@ describe('native stepped-load wiring', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildTargetPowerDevice()]);
     expect(parsed).toEqual(expect.objectContaining({
       id: 'target-power-1',
       controlAdapter: {
@@ -441,7 +442,7 @@ describe('native stepped-load wiring', () => {
     expect(parsed.capabilities).not.toContain('target_power');
   });
 
-  it('applies saved target_power configs to devices that already expose target_power', () => {
+  it('applies saved target_power configs to devices that already expose target_power', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -455,7 +456,7 @@ describe('native stepped-load wiring', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
+    const [parsed] = await seedTransportDevices(deviceManager, [buildTargetPowerDevice({
       capabilitiesObj: {
         measure_power: { value: 4140, lastUpdated: TARGET_POWER_READ_AT },
         target_power: {
@@ -486,7 +487,7 @@ describe('native stepped-load wiring', () => {
     expect(parsed.capabilities).not.toContain('target_power');
   });
 
-  it('publishes exact target-power identity and freshness when a new rung is observed', () => {
+  it('publishes exact target-power identity and freshness when a new rung is observed', async () => {
     const baseConfig = {
       enabled: true,
       preset: 'ev_charger_1_phase' as const,
@@ -511,7 +512,7 @@ describe('native stepped-load wiring', () => {
       undefined,
       { onSnapshotMutated },
     );
-    const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
+    const [parsed] = await seedTransportDevices(deviceManager, [buildTargetPowerDevice({
       capabilitiesObj: {
         measure_power: { value: 5_520, lastUpdated: TARGET_POWER_READ_AT },
         target_power: {
@@ -526,7 +527,9 @@ describe('native stepped-load wiring', () => {
       },
     })]);
     expect(parsed.targetPowerConfig).toEqual(baseConfig);
-    deviceManager.setSnapshotForTests([parsed]);
+    // The seeding refresh notifies too, with the same snapshot object the
+    // update below mutates: only a notification from the update may count.
+    onSnapshotMutated.mockClear();
 
     const firstObservedAtMs = Date.now();
     const now = vi.spyOn(Date, 'now').mockReturnValue(firstObservedAtMs);
@@ -548,7 +551,7 @@ describe('native stepped-load wiring', () => {
     now.mockRestore();
   });
 
-  it('projects configured target_power details as stepped-load without a native command adapter', () => {
+  it('projects configured target_power details as stepped-load without a native command adapter', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -562,7 +565,7 @@ describe('native stepped-load wiring', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
+    const [parsed] = await seedTransportDevices(deviceManager, [buildTargetPowerDevice({
       id: 'synthetic-target-power-1',
       capabilities: ['measure_power', 'evcharger_charging_state'],
       capabilitiesObj: {
@@ -587,7 +590,7 @@ describe('native stepped-load wiring', () => {
     }));
   });
 
-  it('parses test-device target_power compatibility metadata from JSON string settings', () => {
+  it('parses test-device target_power compatibility metadata from JSON string settings', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -596,7 +599,7 @@ describe('native stepped-load wiring', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
+    const [parsed] = await seedTransportDevices(deviceManager, [buildTargetPowerDevice({
       id: 'test-device-target-power-1',
       ownerUri: 'homey:app:com.olemarkus.testdevices',
       driverId: 'homey:app:com.olemarkus.testdevices:mock',
@@ -678,7 +681,7 @@ describe('native stepped-load wiring', () => {
     }
   });
 
-  it('does not treat unrelated max_power capabilities as native stepped-load wiring', () => {
+  it('does not treat unrelated max_power capabilities as native stepped-load wiring', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -688,7 +691,7 @@ describe('native stepped-load wiring', () => {
         getDeviceControlProfile: () => steppedProfile,
       },
     );
-    const [parsed] = deviceManager.parseDeviceListForTests([{
+    const [parsed] = await seedTransportDevices(deviceManager, [{
       ...buildHoiaxDevice(),
       id: 'other-1',
       ownerUri: 'homey:app:com.example',
@@ -700,7 +703,7 @@ describe('native stepped-load wiring', () => {
     expect(parsed.capabilities).toContain('max_power_3000');
   });
 
-  it('detects native stepped-load wiring from real Høiax driver shapes', () => {
+  it('detects native stepped-load wiring from real Høiax driver shapes', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -710,7 +713,7 @@ describe('native stepped-load wiring', () => {
       },
     );
 
-    const [compactDriverId, nestedDriverOwner, myuplinkHoiax, myuplinkOther] = deviceManager.parseDeviceListForTests([
+    const [compactDriverId, nestedDriverOwner, myuplinkHoiax, myuplinkOther] = await seedTransportDevices(deviceManager, [
       {
         ...buildHoiaxDevice(),
         id: 'compact-driver-id',
@@ -763,7 +766,7 @@ describe('native stepped-load wiring', () => {
     expect(myuplinkOther.controlAdapter).toBeUndefined();
   });
 
-  it('detects native stepped-load wiring from MyUplink Høiax Connected 300 shape', () => {
+  it('detects native stepped-load wiring from MyUplink Høiax Connected 300 shape', async () => {
     // The rest of the read predates the step report, so the step is its freshest value.
     const readAt = '2026-04-01T12:00:00.000Z';
     const nativeStepObservedAt = '2026-04-01T12:03:00.000Z';
@@ -797,7 +800,7 @@ describe('native stepped-load wiring', () => {
         getNativeEvWiringEnabled: () => false,
       },
     );
-    const [disabledParsed] = disabledManager.parseDeviceListForTests([device]);
+    const [disabledParsed] = await seedTransportDevices(disabledManager, [device]);
 
     expect(disabledParsed.controlAdapter).toEqual(expect.objectContaining({
       activationAvailable: true,
@@ -813,7 +816,7 @@ describe('native stepped-load wiring', () => {
         getNativeEvWiringEnabled: () => true,
       },
     );
-    const [enabledParsed] = enabledManager.parseDeviceListForTests([device]);
+    const [enabledParsed] = await seedTransportDevices(enabledManager, [device]);
 
     expect(enabledParsed.controlAdapter).toEqual(expect.objectContaining({
       activationEnabled: true,
@@ -1946,7 +1949,7 @@ describe('native stepped-load wiring', () => {
   });
 
   describe('target_power capability contract validation', () => {
-    it('ignores configs whose min raises the range above zero', () => {
+    it('ignores configs whose min raises the range above zero', async () => {
       const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
@@ -1959,7 +1962,7 @@ describe('native stepped-load wiring', () => {
       // Valid capability shape (range includes 0) so the device survives the
       // candidate filter; the malformed config should still not produce a
       // stepped-load profile.
-      const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
+      const [parsed] = await seedTransportDevices(deviceManager, [buildTargetPowerDevice({
         capabilitiesObj: {
           measure_power: { value: 0, lastUpdated: TARGET_POWER_READ_AT },
           target_power: {
@@ -1979,7 +1982,7 @@ describe('native stepped-load wiring', () => {
       expect(parsed.targetPowerConfig).toBeUndefined();
     });
 
-    it('emits a deduplicated warning when target_power capability options violate the contract', () => {
+    it('emits a deduplicated warning when target_power capability options violate the contract', async () => {
       const logger = createLogger();
       const deviceManager = createTestDeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
@@ -2001,7 +2004,7 @@ describe('native stepped-load wiring', () => {
           },
         },
       });
-      deviceManager.parseDeviceListForTests([buildMalformedDevice()]);
+      await seedTransportDevices(deviceManager, [buildMalformedDevice()]);
       const warnings = (logger.structuredLog?.warn as ReturnType<typeof vi.fn>).mock.calls
         .filter(([payload]) => (payload as { event?: string }).event === 'target_power_contract_violation');
       expect(warnings).toHaveLength(1);
@@ -2015,7 +2018,7 @@ describe('native stepped-load wiring', () => {
       }));
 
       // Re-parse the same device with identical options: the warning is deduplicated.
-      deviceManager.parseDeviceListForTests([buildMalformedDevice()]);
+      await seedTransportDevices(deviceManager, [buildMalformedDevice()]);
       const repeatedWarnings = (logger.structuredLog?.warn as ReturnType<typeof vi.fn>).mock.calls
         .filter(([payload]) => (payload as { event?: string }).event === 'target_power_contract_violation');
       expect(repeatedWarnings).toHaveLength(1);

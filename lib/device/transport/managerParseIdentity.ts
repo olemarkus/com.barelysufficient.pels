@@ -21,7 +21,6 @@ export type ParsedDeviceIdentity = {
  * being re-applied at every layer. The single application sites are:
  *   - `DeviceTransport.refreshSnapshot` (snapshot pipeline)
  *   - `DeviceTransport.handleRealtimeDeviceUpdate` (realtime pipeline)
- *   - `DeviceTransport.parseDeviceListForTests` (test entry point)
  */
 export function resolveParseDeviceIdentity(params: {
   device: HomeyDeviceLike;

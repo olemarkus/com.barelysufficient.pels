@@ -118,7 +118,9 @@ describe('device live feed subscriptions', () => {
     await feed.stop();
     sockets.namespace.acknowledge('heater');
     await settle();
-    sockets.namespace.capability('heater');
-    expect(onCapabilityUpdate).not.toHaveBeenCalled();
+    // A stopped socket hears nothing, so a frame proves nothing here. Socket.IO
+    // reuses this namespace socket on the next start, so a listener a late ack
+    // attached now would fire then.
+    expect(sockets.namespace.events.listenerCount('homey:device:heater')).toBe(0);
   });
 });

@@ -36,7 +36,7 @@ import type {
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { resolveFixtureDescriptorIdentity } from '../utils/deviceSnapshotFixture';
 import type Homey from 'homey';
-import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { syncExternalOffHoldForObservation } from '../../setup/appObservedControlStateRuntime';
@@ -604,12 +604,12 @@ describe('external-off hold — real configuration and Observer reads', () => {
     ready: true,
   });
 
-  const buildParsedCtx = (): AppContext => {
-    const parsed = createTestDeviceTransport(
+  const buildParsedCtx = async (): Promise<AppContext> => {
+    const parsed = await seedTransportDevices(createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       loggerMock,
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
-    ).parseDeviceListForTests([rawUnpluggedCharger(), rawSocket()]);
+    ), [rawUnpluggedCharger(), rawSocket()]);
     // `getObservedRecord` and `deviceConfiguration` are backed by this snapshot
     // through the production projections.
     const ctx = createAppContextMock({ latestTargetSnapshot: parsed });
@@ -632,15 +632,15 @@ describe('external-off hold — real configuration and Observer reads', () => {
     return ctx;
   };
 
-  it('resolves the charger identity and plug state from the parsed device, not a fixture', () => {
-    const ctx = buildParsedCtx();
+  it('resolves the charger identity and plug state from the parsed device, not a fixture', async () => {
+    const ctx = await buildParsedCtx();
     expect(ctx.deviceConfiguration.get(CHARGER_ID)?.isEvCharger).toBe(true);
     expect(ctx.deviceConfiguration.get(SOCKET_ID)?.isEvCharger).toBe(false);
     expect(ctx.getObservedRecord(CHARGER_ID)).toMatchObject({ evChargingState: 'plugged_out' });
   });
 
-  it('does not start a hold when an unplugged charger folds its charging switch to OFF', () => {
-    const ctx = buildParsedCtx();
+  it('does not start a hold when an unplugged charger folds its charging switch to OFF', async () => {
+    const ctx = await buildParsedCtx();
     syncExternalOffHoldForObservation({
       ctx,
       event: { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_STATE_OFF_TRANSITION },
@@ -648,10 +648,10 @@ describe('external-off hold — real configuration and Observer reads', () => {
     expect(ctx.externalOffHold?.isHeld(CHARGER_ID)).toBe(false);
   });
 
-  it('starts a hold when the same unplugged charger has its charging switch turned off', () => {
+  it('starts a hold when the same unplugged charger has its charging switch turned off', async () => {
     // The control: same device, same plug state, but an explicit ON->OFF on the
     // switch itself. The only thing the case above relies on is the session gate.
-    const ctx = buildParsedCtx();
+    const ctx = await buildParsedCtx();
     syncExternalOffHoldForObservation({
       ctx,
       event: { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_OFF_TRANSITION },
@@ -659,8 +659,8 @@ describe('external-off hold — real configuration and Observer reads', () => {
     expect(ctx.externalOffHold?.isHeld(CHARGER_ID)).toBe(true);
   });
 
-  it('starts a hold when a plain on/off device is turned off', () => {
-    const ctx = buildParsedCtx();
+  it('starts a hold when a plain on/off device is turned off', async () => {
+    const ctx = await buildParsedCtx();
     syncExternalOffHoldForObservation({
       ctx,
       event: { deviceId: SOCKET_ID, capabilityId: 'onoff', changes: OFF_TRANSITION },

@@ -106,7 +106,7 @@ export type DeviceTransportParseDeps = {
     resolveLatestLocalWriteMs: (deviceId: string) => number | undefined;
 };
 
-export type ParseDevicePurpose = 'runtime' | 'ui_picker' | 'unfiltered';
+export type ParseDevicePurpose = 'runtime' | 'ui_picker';
 
 export function parseDeviceList(params: {
     list: HomeyDeviceLike[];

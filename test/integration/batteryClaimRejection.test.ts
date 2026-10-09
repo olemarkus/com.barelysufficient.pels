@@ -19,7 +19,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { ExecutorDeviceReadDeps, ObserverDeviceRead } from '../../lib/executor/executorDeviceRead';
 import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { buildSessyBatteryDevice, buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
 import { buildPlanDevice } from '../utils/planTestUtils';
@@ -43,7 +43,7 @@ const setpoint = (setpointW: number): StorageDecidedDevice => ({
   storageDecision: { kind: 'setpoint', setpointW, stepW: 1 },
 });
 
-const setup = (device: MockDevice) => {
+const setup = async (device: MockDevice) => {
   setMockDrivers({ batteries: new MockDriver('batteries', [device]) });
   const settings = mockHomeyInstance.settings;
   const managed = new BatteryManagedSettings(settings);
@@ -52,10 +52,10 @@ const setup = (device: MockDevice) => {
     getManaged: (deviceId: string) => managed.isManaged(deviceId),
     isManagedFilterActive: () => true,
   });
-  const parse = (): void => {
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([device.toHomeyApiDevice() as HomeyDeviceLike]));
+  const refresh = async (): Promise<void> => {
+    await seedTransportDevices(transport, [device.toHomeyApiDevice() as HomeyDeviceLike]);
   };
-  parse();
+  await refresh();
   const actuator = createDeviceActuator({
     canTurnOnDevice: () => false,
     resolveTemperatureTarget: (_deviceId, desired) => desired,
@@ -103,7 +103,7 @@ const setup = (device: MockDevice) => {
     lane.sync(Date.now());
     return lane.apply(setpoint(setpointW));
   };
-  return { owner, lane, settings, writes, reading, parse };
+  return { owner, lane, settings, writes, reading, refresh };
 };
 
 describe('a battery whose app rejects PELS\'s claim', () => {
@@ -128,7 +128,7 @@ describe('a battery whose app rejects PELS\'s claim', () => {
     const device = buildSessyBatteryDevice({ id: BATTERY, strategy: 'POWER_STRATEGY_NOM' });
     // nl.sessy `setControlStrategy` throws unless the device uses its local login.
     device.configureCapabilityBehavior('control_strategy', { onApiWrite: { accept: false } });
-    const { owner, lane, settings, writes, reading } = setup(device);
+    const { owner, lane, settings, writes, reading } = await setup(device);
     expect(owner.readControlCapability(BATTERY)).toBe('drivable');
 
     expect(await reading(0, -1500)).toBe(false);
@@ -165,7 +165,7 @@ describe('a battery whose app rejects PELS\'s claim', () => {
   it('lets the next claim decide again 6 h on: a Sessy still rejecting it is watch-only again', async () => {
     const device = buildSessyBatteryDevice({ id: BATTERY, strategy: 'POWER_STRATEGY_NOM' });
     device.configureCapabilityBehavior('control_strategy', { onApiWrite: { accept: false } });
-    const { owner, writes, reading } = setup(device);
+    const { owner, writes, reading } = await setup(device);
     await reading(0, -1500);
     expect(await reading(BATTERY_WATCH_ONLY_MS - MINUTE_MS, -1500)).toBe(false);
     expect(owner.isWatchOnly(BATTERY)).toBe(true);
@@ -185,13 +185,13 @@ describe('a battery whose app rejects PELS\'s claim', () => {
   it('gives a watch-only Sessy another claim once its control surface changes', async () => {
     const device = buildSessyBatteryDevice({ id: BATTERY, strategy: 'POWER_STRATEGY_NOM' });
     device.configureCapabilityBehavior('control_strategy', { onApiWrite: { accept: false } });
-    const { owner, writes, reading, parse } = setup(device);
+    const { owner, writes, reading, refresh } = await setup(device);
     await reading(0, -1500);
     expect(owner.isWatchOnly(BATTERY)).toBe(true);
 
     // An app update that declares the battery's range is another surface.
     device.setCapabilityMetadata('target_power', { setable: true, min: -2200, max: 2200, step: 1, units: 'W' });
-    parse();
+    await refresh();
 
     expect(owner.isWatchOnly(BATTERY)).toBe(false);
     expect(logs.findEvent('battery_control_watch_only_cleared')).toMatchObject({
@@ -209,7 +209,7 @@ describe('a battery whose app rejects PELS\'s claim', () => {
       capabilityId: 'control_strategy', previousValue: 'POWER_STRATEGY_NOM', claimedAtMs: Date.now(),
     });
     device.configureCapabilityBehavior('control_strategy', { onApiWrite: { accept: false } });
-    const { owner, settings, writes, reading } = setup(device);
+    const { owner, settings, writes, reading } = await setup(device);
 
     expect(await reading(0, -1500)).toBe(true);
     expect(writes()).toEqual([['target_power', -1500]]);
@@ -229,7 +229,7 @@ describe('a battery whose app rejects PELS\'s claim', () => {
     const record = { capabilityId: 'control_strategy', previousValue: 'POWER_STRATEGY_ROI', claimedAtMs: Date.now() };
     mockHomeyInstance.settings.set(CLAIM_KEY, record);
     device.configureCapabilityBehavior('control_strategy', { onApiWrite: { accept: false } });
-    const { owner, settings, writes, reading } = setup(device);
+    const { owner, settings, writes, reading } = await setup(device);
 
     await reading(0, -1500);
     expect(owner.isWatchOnly(BATTERY)).toBe(true);
@@ -252,7 +252,7 @@ describe('a battery whose app rejects PELS\'s claim', () => {
   it('judges any other battery whose claim write fails not responding, and re-probes it after the back-off', async () => {
     const device = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed' });
     device.configureCapabilityBehavior('target_power_mode', { onApiWrite: { accept: false } });
-    const { owner, writes, reading } = setup(device);
+    const { owner, writes, reading } = await setup(device);
 
     expect(await reading(0, -1500)).toBe(false);
     expect(writes()).toEqual([['target_power_mode', 'homey']]);
