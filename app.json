@@ -1082,7 +1082,7 @@
           }
         ],
         "hint": {
-          "en": "Use this to check whether PELS may limit or resume the selected device to stay under the hard cap."
+          "en": "Use this to check whether PELS may limit or resume the selected device: to stay under your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus."
         },
         "id": "is_device_capacity_controlled"
       },
@@ -1411,7 +1411,7 @@
           "en": "Enable power-limit control for [[device]]"
         },
         "hint": {
-          "en": "Allow PELS to limit or resume this device to stay under the hard cap."
+          "en": "Allow PELS to limit or resume this device: to stay under your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus."
         },
         "args": [
           {
@@ -1583,7 +1583,7 @@
           "en": "Set capacity limit to [[limit_kw]] kW"
         },
         "hint": {
-          "en": "Use this to dynamically adjust your capacity limit based on time of day, electricity prices, or other conditions."
+          "en": "Changes the hard cap, for example by time of day. It does not turn on Capacity limit."
         },
         "args": [
           {

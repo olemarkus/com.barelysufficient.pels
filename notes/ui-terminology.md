@@ -20,6 +20,17 @@ binding rate across all sources; without a limit it shows **Power limits off**,
 not a missing-data message. Device reason lines still state the device's need rather
 than repeating a house-level ceiling.
 
+When import is above the grid target, the Overview decision sentence leads with
+**Grid import is high.** It then says what PELS is doing (`Easing devices off.`,
+or `N devices would be eased off.` in simulation). Once nothing is left to ease
+off it names control-off devices that are still drawing beside the other
+appliances (a control-off device is one source of the import, not necessarily
+its cause), or tells the owner `Turn off other appliances to stay under your
+limit.`
+Never say the grid has no power available: the grid is still supplying it. Where a
+surface falls back to the shared reason formatter, a grid hold reads `Limited by
+the grid import limit`, never the hard cap.
+
 The settings hint is “Reduce flexible loads when household import approaches this
 level.” Net import is the measurement, including negative export with solar. The
 settings explanation names meter cadence, device response and temporary overshoot,
@@ -166,7 +177,7 @@ Marker grammar for read-only meter tracks:
 | Solid dot | Actual/current value |
 | Hollow dot | Projected/forecast value |
 | Thin tick (neutral) | Threshold/target |
-| Thin tick (warning-toned) | Hard-cap reference on the energy bar, in the selected capacity period's kWh |
+| Thin tick (warning-toned) | Hard-cap reference on the energy bar, in the selected capacity period's kWh; on the Power-now gauge, the grid import limit in kW (an instantaneous limit, so it belongs on that gauge, unlike the hard cap) |
 
 Overview status chips are hidden when everything is normal. Show short exception chips only:
 
@@ -1804,13 +1815,14 @@ returning owner who unmanages their last device.
 
 - **A step appears only when what it configures is in force for this home**
   (owner ruling 2026-09-20: never tell an owner to configure something that is
-  not relevant to them). `Power meter` and `Devices` apply to every home. `Hard
-  cap` does not: it is enforced only on devices PELS may limit, so an owner who
-  manages thermostats for their price response alone never sees it, and their
-  setup is complete without it. Once a managed device has Limit on, the cap IS
-  in force, tariff or no tariff, because every home runs one (10 kW until the
-  owner saves their own), and the step appears then. Hence the order: Devices
-  before Hard cap. Apply the same test before adding any step.
+  not relevant to them). `Power meter` and `Devices` apply to every home.
+  `Limits` does not: the limits are enforced only on devices PELS may limit, so
+  an owner who manages thermostats for their price response alone never sees
+  it, and their setup is complete without it. Once a managed device has Limit
+  on, the step appears, because a home that has never chosen still runs the
+  capacity limit on a built-in 10 kW. A saved grid import limit, a saved hard
+  cap, or an explicit choice to turn both limits off completes it. Hence the
+  order: Devices before Limits. Apply the same test before adding any step.
 - **Priority is automatic, not a setup step** (owner ruling 2026-09-22).
   Every planned device receives a unique rank, including devices with no saved
   preference in the active mode. Adding a device never reopens setup merely
@@ -1835,12 +1847,15 @@ returning owner who unmanages their last device.
   tariff, the Netherlands for solar and dynamic prices. The lede says what
   builds on the steps (`Prices, solar and Smart tasks build on them.`) and never
   frames PELS as a hard-cap product.
-- **The Hard cap detail always names the capacity period**, in the words of the
-  Capacity period options: `8 kW hourly average, 0.4 kW safety margin` /
-  `2.5 kW 15-minute average, …`. A quarter-hour tariff left on the hourly
-  default is the one silent way to get setup wrong, and only the period beside
-  the number shows it. Unsaved: `10 kW hourly average until you set yours` —
-  the running default is named, never silent.
+- **The Limits detail names each limit in force, and the capacity period** in the
+  words of the Capacity period options: `8 kW hard cap (hourly average), 0.4 kW
+  safety margin` / `2.5 kW hard cap (15-minute average), …`, led by the grid
+  import limit when it is on (`3.3 kW grid import limit, 8 kW hard cap (hourly
+  average), 0.4 kW safety margin`, or `3.3 kW grid import limit` alone). A
+  quarter-hour tariff left on the hourly default is the one silent way to get
+  setup wrong, and only the period beside the number shows it. Unsaved: `10 kW
+  hard cap (hourly average) until you set yours`, so the running default is
+  named, never silent. Both limits off: `Power limits off`.
 - **Simulation is not a step.** The card says `Simulation is on, so devices stay
   as-is until you turn it off.` while it is open; a configured home left
   simulating is a finished setup and the simulation banner speaks for it.
@@ -1873,7 +1888,7 @@ language** (owner ruling 2026-09-19).
   cannot tell them apart. So it is a QUESTION, never a verdict, and it names who
   may ignore it: the recommendation `Check your capacity period` (`If you live
   in Flanders … Elsewhere in Belgium this does not apply, and you can dismiss
-  it.`), and on the setup path's Hard cap step `In Flanders, use the 15-minute
+  it.`), and on the setup path's Limits step `In Flanders, use the 15-minute
   average.` It is a recommendation and not a setup step because that step closes
   the moment a cap is saved, which is exactly when the mistake goes quiet.
 
@@ -2045,21 +2060,21 @@ label reads as "not for me" to everyone else on a quarter-hour tariff. Two rules
    available power earlier — see `cannotMeetDailyBudgetExhausted` copy in
    `deadlineLabels.ts`.
 3. **A home with no capacity tariff is told so, once, where the cap is set.**
-   Every home runs a hard cap and it cannot be turned off, so an owner with no
-   tariff (the Netherlands, Wallonia) is held to a number that means nothing to
-   them. The single-home hard cap hint ends `No capacity tariff where you live?
-   Set it well above what your home ever uses, and PELS never limits for it.`
-   (`HOME_LIMITS_MAIN_HARD_CAP_HINT`). This is a setup-time instruction for a
-   home the cap does not apply to, not rule 2's forbidden remedy: for a home
-   WITH a tariff the cap stays a given. "Well above", because limiting starts at
-   the cap minus the safety margin. Do not repeat it in status copy, reason
+   The Main home's **Capacity limit** switch turns the hard cap off, so an owner
+   with no tariff (the Netherlands, Wallonia) is no longer held to a number that
+   means nothing to them. The single-home hard cap hint ends `No capacity tariff
+   where you live? Turn off Capacity limit.` (`HOME_LIMITS_MAIN_HARD_CAP_HINT`).
+   This is a setup-time instruction for a home the cap does not apply to, not
+   rule 2's forbidden remedy: for a home WITH a tariff the cap stays a given.
+   Meter areas still always run a cap. Do not repeat it in status copy, reason
    lines or remedies.
 4. **Limit is not a hard-cap control.** It governs everything PELS commands on a
-   device: staying under the hard cap, keeping to the daily budget, and
-   following solar surplus. Copy that describes the Limit toggle names all
-   three, so an owner who came for solar does not read it as somebody else's
-   feature (owner ruling 2026-09-20: never tell an owner to configure
-   something that is not relevant to them).
+   device: staying under the grid import limit or hard cap, keeping to the daily
+   budget, and following solar surplus. Copy that describes the Limit toggle
+   names all of them, so an owner who came for solar, or for the grid import
+   limit alone, does not read it as somebody else's feature (owner ruling
+   2026-09-20: never tell an owner to configure something that is not relevant
+   to them).
 
 ## EV charger card states
 

@@ -1,10 +1,45 @@
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
 import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
 
-/** Setup names the essentials: a meter, managed devices and a chosen limit posture.
- * Limits only apply once there are devices PELS may limit. A saved grid limit,
- * a saved capacity limit, or an explicit choice to turn both off completes that step.
- * Simulation remains a separate banner, not a setup requirement.
+/**
+ * The first-run setup path: what must be true before PELS manages a home's
+ * devices, in the order a new owner meets it.
+ *
+ * It is state, not a tour. Each step is judged from what the app already holds,
+ * so the path never claims progress the owner did not make and never asks for a
+ * step that is already done. A returning owner who unmanages their last device
+ * gets the Devices step back; nothing is remembered about having "finished".
+ *
+ * **A step appears only when what it configures is in force for this home.**
+ * Asking an owner to configure something that does not apply to them tells them
+ * the app was built for somebody else. A power meter and managed devices apply
+ * to everyone: there is no plan without the first and nothing to plan for
+ * without the second. The limits do not. They are enforced only on devices
+ * PELS may limit, so an owner who manages thermostats for their price response
+ * alone is never held to them, and is never shown the step. Once something may
+ * be limited the step appears, because a home that has never chosen still runs
+ * the capacity limit on a built-in 10 kW, and the step names the number it is
+ * running on. A saved grid import limit, a saved hard cap, or an explicit choice
+ * to turn both limits off completes it. Hence Devices before Limits: what may be
+ * limited, then to what.
+ *
+ * Priority is automatic, so confirming or customising the order is not a setup
+ * requirement. Owners can change it in Modes whenever they want.
+ *
+ * The same rule is why the copy picks no market. Norway and Flanders come for
+ * the capacity tariff, Italy for the grid import limit, the Netherlands for
+ * solar and dynamic prices; the lede says what builds on the steps rather than
+ * selling one limit, and the Limits step names the capacity period it runs on,
+ * because a quarter-hour tariff on the hourly default is the one silent way to
+ * get this setup wrong.
+ *
+ * Simulation is not a step. It is on by default and the path says so while it
+ * is open, but a configured home left simulating is a finished setup: the slim
+ * simulation banner already speaks for it, and a card that stayed until the
+ * owner went live would sit on top of a cautious owner's Overview for weeks.
+ *
+ * Settings-UI-owned on purpose: the runtime has no use for it, so it lives
+ * beside its one consumer rather than in shared-domain.
  */
 
 type SetupStepId = 'power' | 'hardCap' | 'devices';
@@ -28,10 +63,18 @@ export type SetupStep = {
  * a built-in 10 kW until the owner saves their own, and never writes that value
  * back, so an absent key is a true "not chosen yet".
  */
-export type SetupHardCap =
+export type SetupCapacityLimit =
   | { state: 'unset'; runningLimitKw: number; periodMinutes: CapacityPeriodMinutes }
-  | { state: 'saved'; limitKw: number; marginKw: number; periodMinutes: CapacityPeriodMinutes }
-  | { state: 'grid'; limitKw: number; periodMinutes: CapacityPeriodMinutes | null }
+  | { state: 'saved'; limitKw: number; marginKw: number; periodMinutes: CapacityPeriodMinutes };
+
+/**
+ * The limits step's fact. With a grid import limit on, the capacity limit is
+ * either running alongside it or switched `off`; with both off the owner has
+ * explicitly chosen no limit (`disabled`).
+ */
+export type SetupHardCap =
+  | SetupCapacityLimit
+  | { state: 'grid'; limitKw: number; capacity: SetupCapacityLimit | { state: 'off' } }
   | { state: 'disabled' };
 
 /**
@@ -97,22 +140,41 @@ const formatPeriod = (periodMinutes: CapacityPeriodMinutes): string => (
 // that does not apply to them.
 export const isBelgianHourly = (
   market: SettingsUiHubMarketRead,
-  periodMinutes: CapacityPeriodMinutes | null,
+  periodMinutes: CapacityPeriodMinutes,
 ): boolean => market.state === 'resolved' && market.country === 'BE' && periodMinutes === 60;
+
+/** The capacity limit in force, whether alone or beside a grid import limit. */
+const resolveSetupCapacityLimit = (hardCap: SetupHardCap): SetupCapacityLimit | null => {
+  if (hardCap.state === 'disabled') return null;
+  if (hardCap.state !== 'grid') return hardCap;
+  return hardCap.capacity.state === 'off' ? null : hardCap.capacity;
+};
 
 const FLANDERS_PERIOD_NOTE = ' In Flanders, use the 15-minute average.';
 
-const resolveHardCapDetail = (hardCap: SetupHardCap, market: SettingsUiHubMarketRead): string => {
-  if (hardCap.state === 'grid') {
-    const gridDetail = `${formatKw(hardCap.limitKw)} grid import limit`;
-    return isBelgianHourly(market, hardCap.periodMinutes)
-      ? `${gridDetail}. In Flanders, use the 15-minute average for Capacity limit.` : gridDetail;
-  }
+const formatCapacityDetail = (capacity: SetupCapacityLimit): string => {
+  const period = formatPeriod(capacity.periodMinutes);
+  return capacity.state === 'saved'
+    ? `${formatKw(capacity.limitKw)} hard cap (${period}), ${formatKw(capacity.marginKw)} safety margin`
+    : `${formatKw(capacity.runningLimitKw)} hard cap (${period}) until you set yours`;
+};
+
+const formatLimitsSummary = (hardCap: SetupHardCap): string => {
   if (hardCap.state === 'disabled') return 'Power limits off';
-  const base = hardCap.state === 'saved'
-    ? `${formatKw(hardCap.limitKw)} ${formatPeriod(hardCap.periodMinutes)}, ${formatKw(hardCap.marginKw)} safety margin`
-    : `${formatKw(hardCap.runningLimitKw)} ${formatPeriod(hardCap.periodMinutes)} until you set yours`;
-  return isBelgianHourly(market, hardCap.periodMinutes) ? `${base}.${FLANDERS_PERIOD_NOTE}` : base;
+  if (hardCap.state !== 'grid') return formatCapacityDetail(hardCap);
+  const grid = `${formatKw(hardCap.limitKw)} grid import limit`;
+  return hardCap.capacity.state === 'off' ? grid : `${grid}, ${formatCapacityDetail(hardCap.capacity)}`;
+};
+
+/** A Belgian home whose capacity limit, in force, runs on the hourly average. */
+export const isBelgianHourlySetup = (market: SettingsUiHubMarketRead, hardCap: SetupHardCap): boolean => {
+  const capacity = resolveSetupCapacityLimit(hardCap);
+  return capacity !== null && isBelgianHourly(market, capacity.periodMinutes);
+};
+
+const resolveHardCapDetail = (hardCap: SetupHardCap, market: SettingsUiHubMarketRead): string => {
+  const summary = formatLimitsSummary(hardCap);
+  return isBelgianHourlySetup(market, hardCap) ? `${summary}.${FLANDERS_PERIOD_NOTE}` : summary;
 };
 
 // A fact, never an instruction. Devices that cannot be limited (no power

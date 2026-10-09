@@ -9,7 +9,7 @@ The Daily Energy Budget is your daily kWh target. You set, for example, "I want 
 
 ## Why set a daily budget?
 
-The hard cap is a limit you *have* to set: it keeps each selected capacity period's average under the peak or tariff step you want to protect. The daily budget is a limit you *choose* to add on top, when you want one of these:
+The hard cap protects a capacity tariff: it keeps each selected capacity period's average under the peak or tariff step you want to protect. The daily budget is a limit you *choose* to add on top, when you want one of these:
 
 - **Spend less by leaning on cheap hours.** With price optimization enabled, the budget gives cheaper hours more of the day's energy and expensive hours less, so flexible load — water heater, floor heating, EV charger — runs when power is cheapest. This is the main money lever.
 - **Use less, deliberately.** If you want the whole home to stay under a daily energy ceiling — to keep cost down, cut waste, or just stay disciplined — the budget paces every hour toward that total instead of letting the day run flat out.
@@ -178,11 +178,12 @@ The plan is a cumulative curve. The current bucket's planned kWh is turned into 
 
 ## Interaction With Other Features
 
-- **Capacity limit (hard cap)**: Always enforced. Daily budget never bypasses it. Only projected breaches of the capacity period's hard-cap budget trigger urgent manual-action Flows.
+- **Capacity limit (hard cap)**: Enforced whenever **Capacity limit** is on. Daily budget never bypasses it. Only projected breaches of the capacity period's hard-cap budget trigger urgent manual-action Flows.
 - **Daily pace**: Combined with the hourly pace by taking the tighter limit. Never triggers emergency alarms.
-- **Budget-exempt devices**: Skipped by daily-budget control, but still visible in real usage and still managed by capacity protection.
+- **Grid import limit**: Enforced whenever it is on. Daily budget never bypasses it.
+- **Budget-exempt devices**: Skipped by daily-budget control, but still visible in real usage and still count toward the grid import limit and the hard cap.
 - **Price optimization**: Can reshape the daily plan if price shaping is enabled.
-- **Smart tasks**: Still respect the hard cap. Daily budget can make a task more conservative when the day is already over plan.
+- **Smart tasks**: Still respect the grid import limit and the hard cap. Daily budget can make a task more conservative when the day is already over plan.
 
 ## Insights
 

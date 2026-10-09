@@ -2,9 +2,10 @@ import type { CapacityScalarSettings } from '../../../contracts/src/capacitySett
 import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
 import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
 import {
-  isBelgianHourly,
+  isBelgianHourlySetup,
   isSetupStepOpen,
   resolveSetupPath,
+  type SetupCapacityLimit,
   type SetupHardCap,
   type SetupPathState,
   type SetupPowerReadings,
@@ -87,9 +88,7 @@ export const publishSetupMarket = (next: SettingsUiHubMarketRead): void => {
  * until the hard cap has been read: nothing is asked of the owner on a guess.
  */
 export const isBelgianHomeOnHourlyPeriod = (): boolean => (
-  hardCap.state === 'ready'
-  && hardCap.value.state !== 'disabled'
-  && isBelgianHourly(market, hardCap.value.periodMinutes)
+  hardCap.state === 'ready' && isBelgianHourlySetup(market, hardCap.value)
 );
 
 export const readSetupMarket = (): SettingsUiHubMarketRead => market;
@@ -107,17 +106,20 @@ export const publishSetupHardCapRead = (
   notify();
 };
 
-const resolveSetupLimits = (configured: boolean, running: CapacityScalarSettings): SetupHardCap => {
+const resolveSetupCapacity = (configured: boolean, running: CapacityScalarSettings): SetupCapacityLimit => {
   const { limitKw, marginKw, periodMinutes } = running;
-  if (running.gridImportLimitKw !== null) return {
-    state: 'grid',
-    limitKw: running.gridImportLimitKw,
-    periodMinutes: running.capacityEnabled ? periodMinutes : null,
-  };
-  if (!running.capacityEnabled) return { state: 'disabled' };
   return configured
     ? { state: 'saved', limitKw, marginKw, periodMinutes }
     : { state: 'unset', runningLimitKw: limitKw, periodMinutes };
+};
+
+const resolveSetupLimits = (configured: boolean, running: CapacityScalarSettings): SetupHardCap => {
+  if (running.gridImportLimitKw !== null) return {
+    state: 'grid',
+    limitKw: running.gridImportLimitKw,
+    capacity: running.capacityEnabled ? resolveSetupCapacity(configured, running) : { state: 'off' },
+  };
+  return running.capacityEnabled ? resolveSetupCapacity(configured, running) : { state: 'disabled' };
 };
 
 /** A bounded first read failed; preserve a previously trusted value. */

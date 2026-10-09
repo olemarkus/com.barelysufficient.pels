@@ -58,6 +58,12 @@ export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
 // only, for the runtime logs; device detail shows the card's own reason.
 export const PLAN_STATE_CAPACITY_STATUS = 'Limited by the hard cap';
 
+// The same log/device-detail role for a `gridImport` hold: the live grid import
+// limit, not the period hard cap, is what the device is held against. The two
+// must stay apart: the hard cap is a period average and can be switched off
+// while the grid import limit holds devices.
+export const PLAN_STATE_GRID_IMPORT_STATUS = 'Limited by the grid import limit';
+
 // Held card with no known constraint to name. It must NOT claim the hard cap:
 // that is the most alarming limit PELS has and a physical one the owner cannot
 // trade against (feedback_hard_cap_is_physical), and this line fires precisely

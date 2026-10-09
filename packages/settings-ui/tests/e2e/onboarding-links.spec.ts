@@ -148,7 +148,7 @@ test.describe('Onboarding links', () => {
     await expect(card).toContainText('2 of 3 done');
     const hardCap = card.locator('[data-setup-step="hardCap"]');
     await expect(hardCap).toHaveAttribute('data-setup-status', 'next');
-    await expect(hardCap).toContainText('10 kW hourly average until you set yours');
+    await expect(hardCap).toContainText('10 kW hard cap (hourly average) until you set yours');
 
     await hardCap.click();
     await expect(page.locator('#limits-panel')).toBeVisible();

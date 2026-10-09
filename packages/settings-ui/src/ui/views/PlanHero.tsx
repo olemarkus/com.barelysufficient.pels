@@ -109,15 +109,13 @@ const buildDecisionSentence = ({
   dryRun,
   projectedOverHardCap,
   projectionTone,
-  safePaceKw,
-  capacityPeriodMinutes,
+  meta,
 }: {
   devices: PlanDeviceSnapshot[];
   dryRun: boolean;
   projectedOverHardCap: boolean;
   projectionTone: ProjectionTone | null;
-  safePaceKw: number | null;
-  capacityPeriodMinutes: CapacityPeriodMinutes;
+  meta: PlanMetaSnapshot;
 }): { text: string; positive: boolean } => {
   const limited = devices.filter(isLimitedDevice);
   return buildSharedDecisionSentence({
@@ -127,8 +125,9 @@ const buildDecisionSentence = ({
     projectedOverHardCap,
     projectedOverBudget: projectedOverHardCap
       || projectionTone === 'warning' || projectionTone === 'critical',
-    safePaceKw,
-    capacityPeriodMinutes,
+    gridImportHigh: meta.gridImportTargetKw !== null && meta.totalKw > meta.gridImportTargetKw,
+    safePaceKw: meta.softLimitKw,
+    capacityPeriodMinutes: meta.capacityPeriodMinutes,
     deferredObjectiveAvoidCount: limited.filter((d) => d.status.holdCause === 'smart_task').length,
     dailyBudgetLimitedCount: limited.filter((d) => d.status.holdCause === 'daily_budget').length,
     // Counted over ALL devices, not just `limited`: the breaching device has
@@ -152,7 +151,7 @@ type BarScale = {
   safePaceKw: number;
   gridImportLimitKw: number | null;
   scaleKw: number;
-  softLimitSource: PlanMetaSnapshot['softLimitSource'];
+  softLimitSource: Exclude<PlanMetaSnapshot['softLimitSource'], null>;
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
   periodMinutes: CapacityPeriodMinutes;
@@ -181,8 +180,8 @@ const computePowerBarScale = (
   // `?? capacitySoftLimitKw ?? 0` chain this used to carry was two fallbacks
   // deep on a value the planner writes every cycle. The `<= 0` guard stays —
   // a zero safe pace is a real configuration, not an absent one.
-  const safePaceKw = meta.softLimitKw;
-  if (safePaceKw === null || safePaceKw <= 0) return null;
+  const { softLimitKw: safePaceKw, softLimitSource } = meta;
+  if (safePaceKw === null || softLimitSource === null || safePaceKw <= 0) return null;
   const total = Math.max(0, headline.totalKw);
   const controlled = Math.max(0, Math.min(total, headline.controlledKw));
   // Derive background as the residual after the managed segment. `totalKw`,
@@ -195,7 +194,8 @@ const computePowerBarScale = (
   // This is an instantaneous-power gauge: its scale follows current draw and
   // the safe pace PELS reacts to. The capacity-period hard cap belongs on the
   // energy bar in kWh, not on this axis.
-  const scaleKw = Math.max(safePaceKw * 1.2, (meta.gridImportLimitKw ?? 0) * 1.2, total * 1.05);
+  const gridScaleKw = meta.gridImportLimitKw === null ? [] : [meta.gridImportLimitKw * 1.2];
+  const scaleKw = Math.max(safePaceKw * 1.2, ...gridScaleKw, total * 1.05);
   return {
     total,
     controlled,
@@ -203,7 +203,7 @@ const computePowerBarScale = (
     safePaceKw,
     gridImportLimitKw: meta.gridImportLimitKw,
     scaleKw,
-    softLimitSource: meta.softLimitSource,
+    softLimitSource,
     budgetPaceKw: meta.budgetPaceKw,
     projectedExemptKw: meta.projectedExemptKw,
     periodMinutes: meta.capacityPeriodMinutes,
@@ -431,14 +431,15 @@ const MeterLegend = ({ markers }: { markers: MeterMarker[] }) => {
 };
 
 const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolean }) => {
-  const safePaceTooltip = formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource, scale.periodMinutes, {
-    budgetPaceKw: scale.budgetPaceKw,
-    projectedExemptKw: scale.projectedExemptKw,
-  });
+  // A binding grid target is drawn as the grid import limit tick below, never as
+  // a safe pace.
   const markers: MeterMarker[] = scale.softLimitSource === 'grid' ? [] : [{
     kind: 'target',
     positionPct: pctOf(scale.safePaceKw, scale.scaleKw),
-    tooltip: safePaceTooltip,
+    tooltip: formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource, scale.periodMinutes, {
+      budgetPaceKw: scale.budgetPaceKw,
+      projectedExemptKw: scale.projectedExemptKw,
+    }),
     labels: formatSafePaceMeterMarkerLabels(scale.safePaceKw),
   }];
   if (scale.gridImportLimitKw !== null) {
@@ -471,12 +472,19 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
 // Since the cards stopped repeating it, this is where the owner learns it — so
 // it is visible text, not the hover tooltip it used to be (nothing hovers in the
 // Homey WebView).
+// When the grid target binds, the subline names the configured limit and the
+// level where PELS starts acting. "Starts" keeps it conditional: the subline
+// shows the threshold whether or not import has reached it.
+const formatGridImportSubline = (gridImportLimitKw: number | null, targetKw: number): string => {
+  const threshold = `PELS starts reducing loads near ${targetKw.toFixed(2)} kW`;
+  return gridImportLimitKw === null ? threshold : `Grid import limit ${gridImportLimitKw.toFixed(1)} kW · ${threshold}`;
+};
+
 const resolvePowerSubline = (headline: HeroHeadline, meta: PlanMetaSnapshot): string => {
-  if (headline.softLimitKw === null) return 'Power limits off';
-  if (meta.softLimitSource === 'grid' && meta.gridImportLimitKw !== null) {
-    return `Grid import limit ${meta.gridImportLimitKw.toFixed(1)} kW · reducing loads near ${headline.softLimitKw.toFixed(2)} kW`;
-  }
-  const sourceText = resolveSafePaceSourceText(meta.softLimitSource, meta.capacityPeriodMinutes);
+  const source = meta.softLimitSource;
+  if (headline.softLimitKw === null || source === null) return 'Power limits off';
+  if (source === 'grid') return formatGridImportSubline(meta.gridImportLimitKw, headline.softLimitKw);
+  const sourceText = resolveSafePaceSourceText(source, meta.capacityPeriodMinutes);
   return headline.overSoftLimit
     ? formatAboveSafePaceSubline(headline.totalKw, headline.softLimitKw, sourceText)
     : formatSafePaceSubline(headline.softLimitKw, sourceText);
@@ -496,7 +504,7 @@ const PowerSection = ({
   hasControllableDevice: boolean;
 }) => {
   const scale = computePowerBarScale(headline, meta);
-  const safePaceComposition = scale === null ? null : formatSafePaceComposition(
+  const safePaceComposition = scale === null || scale.softLimitSource === 'grid' ? null : formatSafePaceComposition(
     scale.safePaceKw,
     scale.softLimitSource,
     {
@@ -778,24 +786,13 @@ export const PlanHero = ({
     projectionTone,
     projectedOverHardCap,
   );
-  const safePaceKw = meta.softLimitKw;
-  const defaultDecision = buildDecisionSentence({
+  const decision = buildDecisionSentence({
     devices,
     dryRun: context.dryRun,
     projectedOverHardCap,
     projectionTone,
-    safePaceKw,
-    capacityPeriodMinutes: meta.capacityPeriodMinutes,
+    meta,
   });
-  const gridPressure = meta.gridImportTargetKw !== null && meta.totalKw > meta.gridImportTargetKw;
-  const decision = gridPressure ? {
-    text: devices.some(isSheddableManagedRunningDevice)
-      ? context.dryRun ? 'Would reduce flexible loads to free available power.' : 'Reducing flexible loads to free available power.'
-      : devices.some(isLimitedDevice)
-        ? 'Grid import is high. Flexible loads are held back.'
-        : 'No grid power is available. Reduce other household loads.',
-    positive: false,
-  } : defaultDecision;
   // The breathing animation runs only while the hero is actually limiting —
   // gated by an active limiting status (`above-safe-pace` or `over-hard-cap`)
   // *and* the presence of held devices, so a transient over-safe-pace blip

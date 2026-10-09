@@ -11,6 +11,7 @@ import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
+  PLAN_STATE_GRID_IMPORT_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
 } from '../../packages/shared-domain/src/planStateLabels';
 
@@ -59,6 +60,11 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       label: 'capacity shed maps to the hard-cap label',
       reason: { code: PLAN_REASON_CODES.capacity },
       expected: PLAN_STATE_CAPACITY_STATUS,
+    },
+    {
+      label: 'grid import shed names the grid import limit, never the hard cap',
+      reason: { code: PLAN_REASON_CODES.gridImport },
+      expected: PLAN_STATE_GRID_IMPORT_STATUS,
     },
     {
       label: 'daily budget shed maps to the today\'s daily-budget label',

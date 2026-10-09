@@ -142,9 +142,59 @@ describe('buildDecisionSentence', () => {
     dryRun: false,
     projectedOverHardCap: false,
     projectedOverBudget: false,
+    gridImportHigh: false,
+    capacityControlOffCount: 0,
+    sheddableManagedRunningCount: 0,
     capacityPeriodMinutes: 60,
     safePaceKw: 12,
     ...overrides,
+  });
+
+  describe('when grid import is above the grid import limit target', () => {
+    const grid = (overrides: Partial<DecisionSentenceInput> = {}) => buildDecisionSentence(baseline({
+      gridImportHigh: true, ...overrides,
+    }));
+
+    it('says PELS is easing devices off while it still can', () => {
+      expect(grid({ sheddableManagedRunningCount: 2, limitedCount: 1 })).toEqual({
+        text: 'Grid import is high. Easing devices off.', positive: false,
+      });
+    });
+
+    it('stays hypothetical in simulation', () => {
+      expect(grid({ dryRun: true, sheddableManagedRunningCount: 2 }).text)
+        .toBe('Grid import is high. 2 devices would be eased off.');
+      expect(grid({ dryRun: true }).text)
+        .toBe('Grid import is high. Turn off other appliances to stay under your limit.');
+    });
+
+    it('names control-off devices beside the other appliances, never as the whole cause', () => {
+      expect(grid({ capacityControlOffCount: 1, limitedCount: 2 }).text).toBe(
+        'Grid import is high. A device with Power-limit control turned off is still drawing power. '
+          + 'Turn its Power-limit control back on, or turn off other appliances to stay under your limit.',
+      );
+      expect(grid({ capacityControlOffCount: 2 }).text).toContain(
+        '2 devices with Power-limit control turned off are still drawing power. Turn their Power-limit control',
+      );
+    });
+
+    it('tells the owner what is left once every managed device is held back', () => {
+      expect(grid({ limitedCount: 2 }).text)
+        .toBe('Grid import is high. Holding back 2 devices. Turn off other appliances to stay under your limit.');
+    });
+
+    it('never says the grid has no power', () => {
+      const { text } = grid();
+      expect(text).toBe(
+        'Grid import is high and PELS has no more devices to ease off. Turn off other appliances to stay under your limit.',
+      );
+      expect(text).not.toMatch(/no grid power/i);
+    });
+
+    it('leads over the hard-cap trajectory', () => {
+      expect(grid({ projectedOverHardCap: true, sheddableManagedRunningCount: 1 }).text)
+        .toBe('Grid import is high. Easing devices off.');
+    });
   });
 
   describe('the batteries it names as holding the limit', () => {

@@ -242,6 +242,9 @@ export type DecisionSentenceInput = {
   // `notes/ui-terminology.md` § "Hard cap is an hourly ceiling").
   projectedOverHardCap: boolean;
   projectedOverBudget: boolean;
+  // Measured import is above the grid import limit's working target. Unlike the
+  // hard cap this IS an instantaneous limit, so the live reading is the trigger.
+  gridImportHigh: boolean;
   safePaceKw: number | null;
   capacityPeriodMinutes: CapacityPeriodMinutes;
   // Subset of `limitedCount` whose hold is attributed to a smart task waiting
@@ -258,12 +261,12 @@ export type DecisionSentenceInput = {
   // control turned off (reason code `capacityControlOff`, `controllable ===
   // false`). PELS cannot ease these off, so when one is the source of the breach
   // the decision sentence names the user's recourse instead of promising action.
-  capacityControlOffCount?: number;
+  capacityControlOffCount: number;
   // Count of controllable managed devices still running (`stateKind ===
   // 'active'`) that PELS could yet ease off. When this is zero while on pace
   // over the hard cap, the managed shed cascade is exhausted — the only
   // remaining draw is whatever PELS cannot touch.
-  sheddableManagedRunningCount?: number;
+  sheddableManagedRunningCount: number;
   // Home batteries PELS has discharging to hold the limit right now, with the
   // power each supplies. The battery's discharge is the limit holding without
   // a device limited, which the sentence names instead of a quiet hour.
@@ -362,8 +365,7 @@ const resolveOverHardCapDecisionSentence = (
   if (input.dryRun) {
     return { text: `On pace to exceed the hard cap this ${period}.`, positive: false };
   }
-  const capacityControlOffCount = input.capacityControlOffCount ?? 0;
-  const sheddableManagedRunningCount = input.sheddableManagedRunningCount ?? 0;
+  const { capacityControlOffCount, sheddableManagedRunningCount } = input;
   // "Easing devices off" only while a controllable managed device is actually
   // still drawing — the trajectory trigger alone does not imply PELS has load
   // left to act on (the hour may have banked the energy already, with every
@@ -388,9 +390,56 @@ const resolveOverHardCapDecisionSentence = (
   };
 };
 
+const OTHER_APPLIANCES_RECOURSE = 'Turn off other appliances to stay under your limit.';
+
+// Rule 0 of `buildDecisionSentence`: import is above the grid import limit's
+// working target. The grid is still supplying power, close to the limit; the
+// sentence says what PELS is doing about it and, once it has nothing left to
+// ease off, what the owner can do.
+const resolveGridImportDecisionSentence = (input: DecisionSentenceInput): DecisionSentenceResult => {
+  const { capacityControlOffCount, sheddableManagedRunningCount } = input;
+  // Simulation keeps rule 3's voice: the devices are the subject, never PELS.
+  if (input.dryRun) {
+    return {
+      text: sheddableManagedRunningCount > 0
+        ? `Grid import is high. ${formatDevices(sheddableManagedRunningCount)} would be eased off.`
+        : `Grid import is high. ${OTHER_APPLIANCES_RECOURSE}`,
+      positive: false,
+    };
+  }
+  if (sheddableManagedRunningCount > 0) return { text: 'Grid import is high. Easing devices off.', positive: false };
+  // A control-off device drawing anything counts here, so it is one source of
+  // the import, not necessarily the cause: name it beside the other appliances.
+  if (capacityControlOffCount > 0) {
+    const devicesText = capacityControlOffCount === 1
+      ? 'A device with Power-limit control turned off is'
+      : `${capacityControlOffCount} devices with Power-limit control turned off are`;
+    const toggle = capacityControlOffCount === 1 ? 'its' : 'their';
+    return {
+      text: `Grid import is high. ${devicesText} still drawing power. `
+        + `Turn ${toggle} Power-limit control back on, or turn off other appliances to stay under your limit.`,
+      positive: false,
+    };
+  }
+  if (input.limitedCount > 0) {
+    return {
+      text: `Grid import is high. Holding back ${formatDevices(input.limitedCount)}. ${OTHER_APPLIANCES_RECOURSE}`,
+      positive: false,
+    };
+  }
+  return {
+    text: `Grid import is high and PELS has no more devices to ease off. ${OTHER_APPLIANCES_RECOURSE}`,
+    positive: false,
+  };
+};
+
 export const buildDecisionSentence = (
   input: DecisionSentenceInput,
 ): DecisionSentenceResult => {
+  // 0. Grid import is above the grid import limit's working target: the one
+  // instantaneous limit, so it leads.
+  if (input.gridImportHigh) return resolveGridImportDecisionSentence(input);
+
   // 1. On pace to exceed the hard cap this hour (trajectory, never
   // instantaneous kW vs the cap). (The old rule 1 — "Power readings have
   // dropped" — retired with the freshness label: staleness is the global

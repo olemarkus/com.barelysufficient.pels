@@ -46,7 +46,7 @@ test('single-home user sees the Main-home form, no scope bar', async ({ page }) 
   // With no meter areas the limits describe the whole house, and the app-global
   // settings card is just part of the page.
   await expect(page.locator('#settings-capacity-limit-hint')).toHaveText(
-    'The peak or tariff step you want to protect — PELS keeps each selected period’s average power under this. '
+    'The peak or tariff step you want to protect. PELS keeps each selected period’s average power under this. '
       + 'No capacity tariff where you live? Turn off Capacity limit.',
   );
   await expect(page.locator('#settings-limits-global')).toBeVisible();

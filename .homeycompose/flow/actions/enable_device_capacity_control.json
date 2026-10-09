@@ -6,7 +6,7 @@
     "en": "Enable power-limit control for [[device]]"
   },
   "hint": {
-    "en": "Allow PELS to limit or resume this device to stay under the hard cap."
+    "en": "Allow PELS to limit or resume this device: to stay under your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus."
   },
   "args": [
     {

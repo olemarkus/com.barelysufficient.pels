@@ -15,6 +15,6 @@
     }
   ],
   "hint": {
-    "en": "Use this to check whether PELS may limit or resume the selected device to stay under the hard cap."
+    "en": "Use this to check whether PELS may limit or resume the selected device: to stay under your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus."
   }
 }

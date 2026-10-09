@@ -82,6 +82,7 @@ numbers it prints, `totalKw` against `softLimitKw` (see "Power now" below).
 |---|---|---|
 | Power below safe pace, projected hour below budget | `On track` | success |
 | Power above safe pace | `Above safe pace` | warning |
+| Power above the grid import limit's working target while that target binds | `Grid import pressure` | warning |
 | Projected hour above budget (but not past the cap) | `Above budget` | warning |
 | Projected hour above the hard cap's kWh | `Above hard cap` | error |
 | Simulation mode enabled and PELS would act | `Simulation mode` | warning |
@@ -103,7 +104,9 @@ option is the untranslated user-authored mode name; do not append `mode` to it.
 Small Material icon button (`info`) at top-right. Its current copy is supplied
 by `formatHeroInfoTooltip` in `packages/settings-ui/src/ui/planHeroTooltips.ts`:
 it explains power, period energy, safe pace, and the grid-tariff cap using the
-selected capacity period's terminology.
+selected capacity period's terminology, adds the grid import limit's explanation
+when that limit is on, and with Capacity limit off drops the period energy and
+hard cap and says where safe pace comes from instead.
 
 ---
 
@@ -131,9 +134,9 @@ so the sentence can never contradict the figures beside it.
 
 The trailing clause names the binding ceiling (`SAFE_PACE_SOURCE_BY_SOURCE` in
 `planHeroTooltips.ts`; `capacity` → `set by this hour's pace`, `daily` → `set by
-today's budget`). `meta.softLimitSource` is required on the wire and total over
-those two members, so on a measured cycle the clause always renders — there is no
-unknown source to omit it for.
+today's budget`). `meta.softLimitSource` is required on the wire. It also answers
+`grid`, when the grid import limit's working target binds, and `null`, when no
+limit is on; neither renders a safe-pace clause (see below).
 
 This clause is load-bearing as of 2026-08-02: device cards no longer name the
 ceiling (`notes/ui-terminology.md` § "Device cards say what a device needs"), so
@@ -142,10 +145,11 @@ tooltip for the same reason the legend row exists — tooltips are unreachable o
 touch. Above safe pace it rides inside the existing parenthetical rather than
 adding a second separator, which pushed the line to three rows at 320 px.
 
-These are the only two sublines. There is deliberately NO above-hard-cap
-subline: instantaneous kW above the cap is not a breach, so the subline only
-ever compares against the safe pace PELS reacts to. The safe-pace numeric is
-therefore visible in every hero state.
+Two more sublines cover the other sources. When the grid target binds:
+`Grid import limit 11.0 kW · PELS starts reducing loads near 10.45 kW`. With no
+limit on: `Power limits off`. There is deliberately NO above-hard-cap subline:
+instantaneous kW above the cap is not a breach, so the subline only ever compares
+against the safe pace or the grid import limit, the one instantaneous limit.
 
 "Safe pace now" is intentionally dynamic phrasing — it changes as the hour progresses and energy accumulates. Do not say "OK up to X kW for the rest of this hour", which implies stability.
 
@@ -344,6 +348,19 @@ consumer. The runtime-facing projection math lives in its own module
 
 Priority order (first matching condition wins):
 
+0. Grid import is high (live import above the grid import limit's working
+   target, 95% of the limit; the one instantaneous limit, so it leads):
+   `Grid import is high. Easing devices off.` while a controllable managed
+   device is still drawing (in simulation, rule 3's voice: `Grid import is
+   high. 2 devices would be eased off.`, or `Grid import is high. Turn off
+   other appliances to stay under your limit.` with none left to ease off).
+   Once nothing is left to ease off it names control-off devices that are still
+   drawing beside the other-appliances recourse (they are one source of the
+   import, not necessarily its cause), else `Holding back N devices.` when
+   devices are held, and ends `Turn off other appliances to stay under your
+   limit.` With nothing held either: `Grid import is high and PELS has no more
+   devices to ease off. Turn off other appliances to stay under your limit.`
+   Never say the grid has no power: it is still supplying it.
 1. Above hard cap (trajectory — projected hour past the cap's kWh):
    `On pace to exceed the hard cap this hour. Easing devices off.`
    The action clause renders only while a controllable managed device is

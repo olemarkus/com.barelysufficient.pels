@@ -53,7 +53,7 @@ const homesPayload = (runtimeActive = true) => ({
   configDegraded: false,
 });
 
-const MAIN_HINT_AT_INSTALL = 'The peak or tariff step you want to protect — PELS keeps each selected period’s average power under this. '
+const MAIN_HINT_AT_INSTALL = 'The peak or tariff step you want to protect. PELS keeps each selected period’s average power under this. '
   + 'No capacity tariff where you live? Turn off Capacity limit.';
 
 const setupDom = () => {

@@ -102,7 +102,7 @@ editLink: false
       <article class="landing-card landing-card-with-screenshot">
         <figure class="landing-card-media">
           <img class="landing-card-screenshot" src="/screenshots/landing-devices.png" alt="PELS Devices page listing managed heaters, a water heater, and an EV charger with Managed, Limit, and Price toggles" />
-          <figcaption>The device list is where you choose which devices are managed, can be limited to stay under the hard cap, or adjusted by price.</figcaption>
+          <figcaption>The device list is where you choose which devices are managed, can be limited to stay under your limits, or adjusted by price.</figcaption>
         </figure>
         <h3>Device control</h3>
         <p>Pick the devices PELS can control, set your hard cap, and choose how it should behave in different situations — like daytime vs. nighttime.</p>

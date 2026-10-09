@@ -61,7 +61,7 @@ describe('setup path', () => {
 
   it('completes Limits with grid control or an explicit choice to turn both off', () => {
     const configured = { ...freshInstall, power: { state: 'received' as const }, managedDeviceCount: 1, limitableDeviceCount: 1 };
-    expect(resolveSetupPath({ ...configured, hardCap: { state: 'grid', limitKw: 3.3, periodMinutes: null } })).toEqual({ state: 'complete' });
+    expect(resolveSetupPath({ ...configured, hardCap: { state: 'grid', limitKw: 3.3, capacity: { state: 'off' } } })).toEqual({ state: 'complete' });
     expect(resolveSetupPath({ ...configured, hardCap: { state: 'disabled' } })).toEqual({ state: 'complete' });
   });
   it('asks a fresh install for the two things every home needs, and nothing else', () => {
@@ -87,7 +87,7 @@ describe('setup path', () => {
       // this device will be held to 10 kW until the owner says otherwise.
       const facts = { ...priceOnlyOwner, limitableDeviceCount: 1 };
       expect(statuses(facts)).toEqual(['power:done', 'devices:done', 'hardCap:next']);
-      expect(detailOf(facts, 'hardCap')).toBe('10 kW hourly average until you set yours');
+      expect(detailOf(facts, 'hardCap')).toBe('10 kW hard cap (hourly average) until you set yours');
     });
 
     it('puts Devices before Hard cap: what may be limited, then to what', () => {
@@ -114,8 +114,8 @@ describe('setup path', () => {
       limitableDeviceCount: 1,
       hardCap: { state: 'saved', limitKw: 2.5, marginKw: 0.2, periodMinutes },
     });
-    expect(detailOf(saved(15), 'hardCap')).toBe('2.5 kW 15-minute average, 0.2 kW safety margin');
-    expect(detailOf(saved(60), 'hardCap')).toBe('2.5 kW hourly average, 0.2 kW safety margin');
+    expect(detailOf(saved(15), 'hardCap')).toBe('2.5 kW hard cap (15-minute average), 0.2 kW safety margin');
+    expect(detailOf(saved(60), 'hardCap')).toBe('2.5 kW hard cap (hourly average), 0.2 kW safety margin');
   });
 
   describe('tailored by where the hub is, never by its language', () => {
@@ -132,18 +132,18 @@ describe('setup path', () => {
       // tariff and a country code cannot tell them apart, so this names
       // Flanders rather than telling every Belgian owner to change it.
       expect(detailOf(belgian(60), 'hardCap'))
-        .toBe('10 kW hourly average until you set yours. In Flanders, use the 15-minute average.');
+        .toBe('10 kW hard cap (hourly average) until you set yours. In Flanders, use the 15-minute average.');
     });
 
     it('says nothing more once that home is on the 15-minute average', () => {
-      expect(detailOf(belgian(15), 'hardCap')).toBe('10 kW 15-minute average until you set yours');
+      expect(detailOf(belgian(15), 'hardCap')).toBe('10 kW hard cap (15-minute average) until you set yours');
     });
 
     it('gives a Norwegian hub, and an unknown one, exactly the neutral copy', () => {
       const norwegian = { ...belgian(60), market: { state: 'resolved' as const, country: 'NO' } };
       const unknown = { ...belgian(60), market: { state: 'unavailable' as const } };
-      expect(detailOf(norwegian, 'hardCap')).toBe('10 kW hourly average until you set yours');
-      expect(detailOf(unknown, 'hardCap')).toBe('10 kW hourly average until you set yours');
+      expect(detailOf(norwegian, 'hardCap')).toBe('10 kW hard cap (hourly average) until you set yours');
+      expect(detailOf(unknown, 'hardCap')).toBe('10 kW hard cap (hourly average) until you set yours');
     });
   });
 

@@ -28,12 +28,20 @@ is about kW.
 ### Hard cap {#hard-cap}
 The maximum **average power** (in kW) you want the whole home to draw in one
 capacity period. PELS supports an hourly period and a 15-minute period,
-and treats the selected one as the boundary it protects above all else. Set it
+and treats the selected one as the period boundary it protects. Set it
 to match the peak or tariff step you want to protect. It is not a setting you
-raise to get more room. If you have no capacity tariff at all, set it well above what
-your home ever uses, and PELS never limits for it. Your main fuse is a separate, much higher physical
-limit, and not something PELS manages. See
-[Getting Started → Set your capacity limit](/getting-started#step-2-set-your-capacity-limit).
+raise to get more room. If you have no capacity tariff at all, turn off **Capacity limit**.
+Your main fuse is a separate physical limit that PELS does not manage. A
+[grid import limit](#grid-import-limit) can keep import below a level you choose, but it is
+not electrical protection. See
+[Getting Started → Set your limits](/getting-started#step-2-set-your-limits).
+
+### Grid import limit {#grid-import-limit}
+The most power, in kW, you want the home to draw from the grid at any moment, for example
+the contracted power of your meter. Unlike the hard cap, it is not an average: PELS compares
+the latest whole-home net import reading with it and starts reducing loads near 95% of it.
+Solar export counts as available power. A short overshoot is possible while the meter updates
+and devices respond, so it is not a circuit breaker.
 
 ### Capacity tariff (effekttrinn)
 A grid pricing model — common in Norway, Sweden and Finland — where your monthly
@@ -91,8 +99,8 @@ of priorities and target temperatures. Switch modes from Homey Flows. See
 
 ### Device states (Limited, Resuming, Idle, Off, Manual)
 The state words on the Overview that say what each device is doing right now.
-**Limited** = PELS is lowering, pausing, or turning it off to stay under the hard
-cap or daily budget pace, or keeping it waiting for power; **Resuming** = PELS has
+**Limited** = PELS is lowering, pausing, or turning it off to stay under the grid
+import limit, the hard cap or daily budget pace, or keeping it waiting for power; **Resuming** = PELS has
 decided to bring it back and is turning it on or raising its level; **Idle** = on
 or available with nothing to do;
 **Off** = Homey reports the device off and PELS is not limiting it;
@@ -101,9 +109,11 @@ but PELS has no power-limit control of it right now. Full list:
 [Plan States](/plan-states).
 
 ### Power-limit control
-The per-device switch that lets PELS lower or turn the device off to protect the
-hard cap. With it off, the device stays under PELS's planning but is never limited
-for capacity — useful for an EV charger you only want running during booked hours.
+The per-device switch (**Limit** in the device list) that lets PELS lower, pause or
+turn off the device: to stay under your grid import limit or hard cap, to keep to your
+daily budget, or to follow your solar surplus. With it off, PELS still plans around
+the device but never limits it, which suits an EV charger you only want running
+during booked hours.
 
 ## Prices
 

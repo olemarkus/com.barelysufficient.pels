@@ -1,6 +1,6 @@
 ---
 title: "Setup Guide: Connect Your Power Meter & Set a Capacity Limit"
-description: Install PELS on Homey Pro, connect your power meter, set a capacity limit, and get your first useful setup running.
+description: Install PELS on Homey Pro, connect your power meter, choose your limits, and get your first useful setup running.
 ---
 
 # Getting Started
@@ -42,19 +42,21 @@ See [Using Homey Energy](/homey-energy) for the full walkthrough, including how 
 
 Once power data is flowing, the **Overview** page starts showing real data.
 
-## Step 2: Set your capacity limit
+## Step 2: Set your limits
 
-Go to **Settings > Limits & safety** and configure:
+Go to **Settings > Limits & safety** and turn on the limits that apply to your home. You can use either, both, or neither.
 
-- **Capacity period** — choose **Hourly average** for hourly tariffs, or **15-minute average** when your grid tariff measures quarter-hour peaks (Belgium's capacity tariff, and 15-minute peak tariffs in several other markets).
-- **Hard cap (kW)** — the average power level you do not want the selected period to exceed. Set this to match the peak or tariff step you want PELS to protect, for example 5 kW or 8 kW. If you have no capacity tariff (the Netherlands, for example), set it well above what your home ever uses; PELS then never limits for the hard cap, and everything else still works.
-- **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point. On the 15-minute period this margin is the whole buffer, so size it for your slowest device. See [Tips > Capacity tuning](/tips-and-best-practices#capacity-tuning-advice).
+- **Grid import limit**: the most power you want to draw from the grid at any moment, for example the contracted power of your meter. PELS starts reducing loads near 95% of it, using the latest whole-home net import reading, and brings devices back in priority order when power is available again. It is not electrical protection: a short overshoot is possible while the meter updates and devices respond.
+- **Capacity limit**: turn this on when your grid tariff charges for your highest average power over an hour or a quarter-hour. Turn it off if you have no capacity tariff (the Netherlands, for example); everything else still works. With it on, set:
+  - **Capacity period** — choose **Hourly average** for hourly tariffs, or **15-minute average** when your grid tariff measures quarter-hour peaks (Belgium's capacity tariff, and 15-minute peak tariffs in several other markets).
+  - **Hard cap (kW)** — the average power level you do not want the selected period to exceed. Set this to match the peak or tariff step you want PELS to protect, for example 5 kW or 8 kW.
+  - **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point. On the 15-minute period this margin is the whole buffer, so size it for your slowest device. See [Tips > Capacity tuning](/tips-and-best-practices#capacity-tuning-advice).
 
 With the 15-minute period selected, a 5 kW hard cap gives each quarter a 1.25 kWh allowance. The page also reports the highest fully tracked quarter-hour average in the current month. This is a control aid based on the readings PELS received; your grid operator may apply a minimum peak or combine monthly peaks when calculating the bill.
 
 <figure class="docs-figure">
-  <img class="docs-screenshot" src="/screenshots/settings/limits-safety.png" alt="PELS Settings Limits and safety page showing hard cap, safety margin and power source controls." />
-  <figcaption>Limits & safety is where you choose the capacity period, power source, hard cap and safety margin.</figcaption>
+  <img class="docs-screenshot" src="/screenshots/settings/limits-safety.png" alt="PELS Settings Limits and safety page showing the Grid import limit and Capacity limit switches, capacity period, hard cap and safety margin." />
+  <figcaption>Limits & safety is where you turn on the grid import limit and the capacity limit, and choose the capacity period, power source, hard cap and safety margin.</figcaption>
 </figure>
 
 ::: tip
@@ -68,14 +70,14 @@ Go to **Settings > Devices**. For each device you want PELS to manage, configure
 | Control | What it means |
 | --- | --- |
 | **Managed** | PELS includes the device in its planning. Unmanaged devices are treated as background load. For devices with a power reading, turning Managed on also turns on Limit. |
-| **Limit** | PELS is allowed to lower, pause or turn this device off: to stay within your hard cap, to keep to your daily budget, or to follow your solar surplus. |
+| **Limit** | PELS is allowed to lower, pause or turn this device off: to stay within your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus. |
 | **Price** | PELS adjusts this device's temperature targets based on electricity prices (only relevant for temperature devices). |
 
 Good first candidates are water heaters, floor heating, panel heaters, and ventilation — devices that use a lot of power but can tolerate being turned down for a while.
 
 <figure class="docs-figure">
   <img class="docs-screenshot" src="/screenshots/settings/devices.png" alt="PELS Settings Devices page showing EV charger, heater and thermostat devices with Managed, Limit and Price controls." />
-  <figcaption>Devices is where each load is marked as managed, can be limited to stay under the hard cap, adjusted by price, or left as background usage.</figcaption>
+  <figcaption>Devices is where each load is marked as managed, can be limited to stay under your limits, adjusted by price, or left as background usage.</figcaption>
 </figure>
 
 ## Step 4: Set up modes, priorities, and targets
@@ -150,7 +152,7 @@ For dashboard-driven setup, pin the **New smart task** widget. It lets you pick 
 Once you have worked through the steps above, verify:
 
 1. Your power meter Flow is running and the Overview shows current usage.
-2. A hard cap and safety margin are set in **Settings > Limits & safety**.
+2. You have chosen your limits in **Settings > Limits & safety**: Grid import limit, Capacity limit (with a hard cap and safety margin), both, or neither.
 3. At least a few devices are marked as Managed and have Limit enabled.
 4. You have at least one mode with sensible priorities and targets.
 5. You have Flows to switch between modes.
@@ -161,6 +163,7 @@ Once you have worked through the steps above, verify:
 
 - **Power** is instantaneous load, measured in **W** or **kW**.
 - **Energy** is usage over time, measured in **kWh**.
+- **Grid import limit**: the most power you want to draw from the grid at any moment, in **kW**.
 - **Hard cap** — your maximum average power for the selected capacity period, in **kW**.
 - **Safety margin** — a buffer below the hard cap where PELS starts reacting, in **kW**.
 - **Available power** — how much more load PELS can fit right now before it reaches the current safe pace, in **kW**.
