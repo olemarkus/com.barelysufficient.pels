@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestDeviceTransport,
+  seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
 import Homey from 'homey';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
@@ -60,38 +61,38 @@ afterEach(() => {
 });
 
 describe('zoneId on parsed device snapshots', () => {
-  const parseOne = (overrides: Partial<HomeyDeviceLike>) => {
+  const parseOne = async (overrides: Partial<HomeyDeviceLike>) => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock);
-    const [parsed] = transport.parseDeviceListForTests([heaterDevice(overrides)]);
+    const [parsed] = await seedTransportDevices(transport, [heaterDevice(overrides)]);
     expect(parsed).toBeDefined();
     return parsed;
   };
 
-  it('sources zoneId from the zone-id STRING shape (local Web API payload)', () => {
-    const parsed = parseOne({ zone: 'zone-uuid-1' });
+  it('sources zoneId from the zone-id STRING shape (local Web API payload)', async () => {
+    const parsed = await parseOne({ zone: 'zone-uuid-1' });
     expect(parsed.zoneId).toBe('zone-uuid-1');
     // Label behavior identity: a string zone still resolves as the label.
     expect(parsed.zone).toBe('zone-uuid-1');
   });
 
-  it('sources zoneId from the object shape via zone.id, label from zone.name', () => {
-    const parsed = parseOne({ zone: { id: 'zone-uuid-2', name: 'Living room' } });
+  it('sources zoneId from the object shape via zone.id, label from zone.name', async () => {
+    const parsed = await parseOne({ zone: { id: 'zone-uuid-2', name: 'Living room' } });
     expect(parsed.zoneId).toBe('zone-uuid-2');
     expect(parsed.zone).toBe('Living room');
   });
 
-  it('resolves flat undefined when zone is absent (label falls back to zoneName)', () => {
-    const parsed = parseOne({ zoneName: 'Kitchen' });
+  it('resolves flat undefined when zone is absent (label falls back to zoneName)', async () => {
+    const parsed = await parseOne({ zoneName: 'Kitchen' });
     expect(parsed.zoneId).toBeUndefined();
     expect(parsed.zone).toBe('Kitchen');
   });
 
-  it('resolves flat undefined for malformed zone values (boundary validation)', () => {
-    expect(parseOne({ zone: '' }).zoneId).toBeUndefined();
-    expect(parseOne({ zone: {} }).zoneId).toBeUndefined();
-    expect(parseOne({ zone: { name: 'Loft' } }).zoneId).toBeUndefined();
+  it('resolves flat undefined for malformed zone values (boundary validation)', async () => {
+    expect((await parseOne({ zone: '' })).zoneId).toBeUndefined();
+    expect((await parseOne({ zone: {} })).zoneId).toBeUndefined();
+    expect((await parseOne({ zone: { name: 'Loft' } })).zoneId).toBeUndefined();
     // Untrusted payload can carry a non-string id — must not cross the boundary.
-    expect(parseOne({ zone: { id: 42 } as unknown as HomeyDeviceLike['zone'] }).zoneId).toBeUndefined();
+    expect((await parseOne({ zone: { id: 42 } as unknown as HomeyDeviceLike['zone'] })).zoneId).toBeUndefined();
   });
 });
 

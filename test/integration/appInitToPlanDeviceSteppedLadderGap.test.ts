@@ -10,7 +10,7 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  */
 import Homey from 'homey';
 import { describe, expect, it } from 'vitest';
-import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import { getLogger } from '../../lib/logging/logger';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
@@ -62,7 +62,7 @@ const buildSnapshot = (
   available: overrides.available ?? true,
 });
 
-const resolveSavedFlowPlanDevice = (profile: SteppedLoadProfile, observedAtMs: number) => {
+const resolveSavedFlowPlanDevice = async (profile: SteppedLoadProfile, observedAtMs: number) => {
   const logger: Logger = { log: () => {}, error: () => {}, structuredLog: getLogger('devices') };
   const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
     getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
@@ -79,9 +79,8 @@ const resolveSavedFlowPlanDevice = (profile: SteppedLoadProfile, observedAtMs: n
       target_temperature: { value: 70, setable: true, min: 0, max: 95, step: 0.5, lastUpdated },
     },
   };
-  const [snapshot] = transport.parseDeviceListForTests([device]);
+  const [snapshot] = await seedTransportDevices(transport, [device]);
   if (!snapshot) throw new Error('The valid SDK fixture must resolve a device.');
-  transport.setSnapshotForTests([snapshot]);
   const runtime = readRuntimeDevice(transport.deviceConfigurationStore.get('tank'), projectObservedState(snapshot));
   if (!runtime) throw new Error('The accepted fixture must publish runtime configuration and observation.');
   const { store } = steppedStoresForTest();
@@ -90,9 +89,9 @@ const resolveSavedFlowPlanDevice = (profile: SteppedLoadProfile, observedAtMs: n
 };
 
 describe('toPlanDevice resolved ladder and projection contract', () => {
-  it('retains the saved Flow ladder across restart before any actual-step feedback', () => {
-    const beforeRestart = resolveSavedFlowPlanDevice(USABLE_LADDER, Date.UTC(2026, 8, 30, 8));
-    const afterRestart = resolveSavedFlowPlanDevice(USABLE_LADDER, Date.UTC(2026, 8, 30, 8, 5));
+  it('retains the saved Flow ladder across restart before any actual-step feedback', async () => {
+    const beforeRestart = await resolveSavedFlowPlanDevice(USABLE_LADDER, Date.UTC(2026, 8, 30, 8));
+    const afterRestart = await resolveSavedFlowPlanDevice(USABLE_LADDER, Date.UTC(2026, 8, 30, 8, 5));
 
     expect(isSteppedLoadDevice(beforeRestart)).toBe(true);
     expect(isSteppedLoadDevice(afterRestart)).toBe(true);
@@ -108,8 +107,8 @@ describe('toPlanDevice resolved ladder and projection contract', () => {
     expect(resolvePlanningSpeedKw(objectiveDevice)).toBe(1.25);
   });
 
-  it('rejects an unusable saved ladder at its owner before planner projection', () => {
-    const planDevice = resolveSavedFlowPlanDevice({ steps: [{ id: 'off', planningPowerW: 0 }] },
+  it('rejects an unusable saved ladder at its owner before planner projection', async () => {
+    const planDevice = await resolveSavedFlowPlanDevice({ steps: [{ id: 'off', planningPowerW: 0 }] },
       Date.UTC(2026, 8, 30, 8));
 
     expect(isSteppedLoadDevice(planDevice)).toBe(false);

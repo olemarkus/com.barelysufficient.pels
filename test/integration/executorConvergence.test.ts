@@ -8,7 +8,7 @@ import { projectObservedState } from '../../lib/device/observedStateProjection';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { hasPlanDeviceExecutionDrift } from '../../lib/executor/planExecutionDrift';
@@ -955,12 +955,12 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
     ready: true,
   };
 
-  const buildExecutor = (): PlanExecutor => {
-    const parsed = createTestDeviceTransport(
+  const buildExecutor = async (): Promise<PlanExecutor> => {
+    const parsed = await seedTransportDevices(createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       loggerMock,
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
-    ).parseDeviceListForTests([unpluggedCharger, offSocket]);
+    ), [unpluggedCharger, offSocket]);
     const configuration = new DeviceConfigurationStore();
     configuration.replace(parsed);
     const observedById = new Map(parsed.map((snapshot) => [snapshot.id, projectObservedState(snapshot)]));
@@ -1010,22 +1010,22 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
     })])
   );
 
-  it('reads the charger identity from configuration and its plug state from the Observer', () => {
-    const observed = buildExecutor().driftObservationDeps().getObservedState('ev-1');
+  it('reads the charger identity from configuration and its plug state from the Observer', async () => {
+    const observed = (await buildExecutor()).driftObservationDeps().getObservedState('ev-1');
     expect(observed).toMatchObject({ id: 'ev-1', isEvCharger: true, evChargingState: 'plugged_out' });
   });
 
-  it('reports no drift for a planned restore of an unplugged charger', () => {
+  it('reports no drift for a planned restore of an unplugged charger', async () => {
     const plan = restorePlanFor({
       id: 'ev-1', name: 'Driveway charger', binaryCapabilityId: 'evcharger_charging', isEvCharger: true,
     });
-    expect(hasPlanExecutionDriftAgainstIntent(plan, buildExecutor().driftObservationDeps())).toBe(false);
+    expect(hasPlanExecutionDriftAgainstIntent(plan, (await buildExecutor()).driftObservationDeps())).toBe(false);
   });
 
-  it('reports drift for the same planned restore of a plain on/off device observed off', () => {
+  it('reports drift for the same planned restore of a plain on/off device observed off', async () => {
     const plan = restorePlanFor({
       id: 'socket-1', name: 'Garage socket', binaryCapabilityId: 'onoff', isEvCharger: false,
     });
-    expect(hasPlanExecutionDriftAgainstIntent(plan, buildExecutor().driftObservationDeps())).toBe(true);
+    expect(hasPlanExecutionDriftAgainstIntent(plan, (await buildExecutor()).driftObservationDeps())).toBe(true);
   });
 });

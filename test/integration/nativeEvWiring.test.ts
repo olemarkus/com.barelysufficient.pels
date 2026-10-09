@@ -1,6 +1,7 @@
 import Homey from 'homey';
 import {
   createTestDeviceTransport,
+  seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import {
@@ -56,14 +57,14 @@ describe('native EV wiring shim', () => {
     vi.restoreAllMocks();
   });
 
-  it('always wires Zaptec Go through the native EV shim without any opt-in', () => {
+  it('always wires Zaptec Go through the native EV shim without any opt-in', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go-1',
@@ -79,7 +80,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('keeps Zaptec wired even when the legacy native_ev_wiring_devices entry is explicitly false', () => {
+  it('keeps Zaptec wired even when the legacy native_ev_wiring_devices entry is explicitly false', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -89,7 +90,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go-1',
@@ -103,7 +104,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('maps Zaptec native capabilities to EV charger capabilities when native wiring is enabled', () => {
+  it('maps Zaptec native capabilities to EV charger capabilities when native wiring is enabled', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -113,7 +114,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
 
     expect(parsed).toEqual(expect.objectContaining({
       binaryCapabilityId: 'evcharger_charging',
@@ -129,7 +130,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('maps Zaptec available installation current into EV preset stepped-load observations', () => {
+  it('maps Zaptec available installation current into EV preset stepped-load observations', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -144,7 +145,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go-1',
@@ -272,7 +273,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('accepts the real Zaptec app when Homey reports the full driver URI', () => {
+  it('accepts the real Zaptec app when Homey reports the full driver URI', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -282,7 +283,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice({
       driverId: 'homey:app:com.zaptec:go',
     })]);
 
@@ -301,7 +302,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('uses a device driver override to treat a mock device as Zaptec Go 2', () => {
+  it('uses a device driver override to treat a mock device as Zaptec Go 2', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -314,7 +315,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice({
       id: 'zaptec-go2-mock',
       name: 'Zaptec Go 2 Mock',
       driverId: 'homey:app:com.olemarkus.testdevices:go2',
@@ -336,7 +337,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('uses compatibility settings and the resolved override for a test-device mock', () => {
+  it('uses compatibility settings and the resolved override for a test-device mock', async () => {
     const device = buildZaptecDevice({
       id: 'zaptec-go2-compat-mock',
       name: 'Zaptec Go 2 compatibility mock',
@@ -359,7 +360,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([device]);
+    const [parsed] = await seedTransportDevices(deviceManager, [device]);
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go2-compat-mock',
@@ -375,7 +376,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('drops Zaptec-like devices when driverId is missing or not a supported Zaptec driver', () => {
+  it('drops Zaptec-like devices when driverId is missing or not a supported Zaptec driver', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -385,19 +386,19 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    expect(deviceManager.parseDeviceListForTests([
+    expect(await seedTransportDevices(deviceManager, [
       buildZaptecDevice({
         id: 'zaptec-missing-driver',
         driverId: undefined,
       }),
     ])).toEqual([]);
-    expect(deviceManager.parseDeviceListForTests([
+    expect(await seedTransportDevices(deviceManager, [
       buildZaptecDevice({
         id: 'zaptec-clone-go',
         driverId: 'homey:app:com.zaptecclone:go',
       }),
     ])).toEqual([]);
-    expect(deviceManager.parseDeviceListForTests([
+    expect(await seedTransportDevices(deviceManager, [
       buildZaptecDevice({
         id: 'zaptec-testdevices-go2',
         driverId: 'homey:app:com.olemarkus.testdevices:go2',
@@ -406,7 +407,7 @@ describe('native EV wiring shim', () => {
     ])).toEqual([]);
   });
 
-  it('accepts Zaptec Home and Pro through the same native EV wiring path', () => {
+  it('accepts Zaptec Home and Pro through the same native EV wiring path', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -416,7 +417,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [home, pro] = deviceManager.parseDeviceListForTests([
+    const [home, pro] = await seedTransportDevices(deviceManager, [
       buildZaptecDevice({ id: 'zaptec-home', driverId: 'homey:app:com.zaptec:home' }),
       buildZaptecDevice({ id: 'zaptec-pro', driverId: 'homey:app:com.zaptec:pro' }),
     ]);
@@ -464,7 +465,7 @@ describe('native EV wiring shim', () => {
     })).toEqual([{ capabilityId: 'evcharger_charging_state', value: 'plugged_in_discharging' }]);
   });
 
-  it('still synthesizes the plug state for a charger that has only the command axis', () => {
+  it('still synthesizes the plug state for a charger that has only the command axis', async () => {
     // `hasOfficialEvChargerCapabilities` requires BOTH axes. When it accepted
     // either, this device counted as fully wired, the shim was skipped, and it
     // ran with no plug state at all — so nothing could end its charging session,
@@ -478,7 +479,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice({
       capabilities: [
         'measure_power',
         'charging_button',
@@ -498,7 +499,7 @@ describe('native EV wiring shim', () => {
     expect(parsed?.evChargingState).toBe('plugged_out');
   });
 
-  it('keeps native evcharger capabilities ahead of the Zaptec shim', () => {
+  it('keeps native evcharger capabilities ahead of the Zaptec shim', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -508,7 +509,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice({
       capabilities: [
         'measure_power',
         'charging_button',
@@ -542,7 +543,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('ignores flow-backed EV reports when Zaptec already has native evcharger support', () => {
+  it('ignores flow-backed EV reports when Zaptec already has native evcharger support', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -557,7 +558,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice({
       capabilities: [
         'measure_power',
         'charging_button',
@@ -583,7 +584,7 @@ describe('native EV wiring shim', () => {
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
   });
 
-  it('keeps the Zaptec shim ahead of flow-backed charging reports when enabled', () => {
+  it('keeps the Zaptec shim ahead of flow-backed charging reports when enabled', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -598,7 +599,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
 
     expect(parsed).toEqual(expect.objectContaining({
       binaryCapabilityId: 'evcharger_charging',
@@ -609,7 +610,7 @@ describe('native EV wiring shim', () => {
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
   });
 
-  it('ignores flow-backed EV reports when Zaptec shim wiring is active', () => {
+  it('ignores flow-backed EV reports when Zaptec shim wiring is active', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -625,7 +626,7 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
 
     expect(parsed).toEqual(expect.objectContaining({
       controlAdapter: expect.objectContaining({
@@ -638,7 +639,7 @@ describe('native EV wiring shim', () => {
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
   });
 
-  it('ignores flow-backed EV reports for unmanaged Zaptec candidates', () => {
+  it('ignores flow-backed EV reports for unmanaged Zaptec candidates', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -653,7 +654,10 @@ describe('native EV wiring shim', () => {
       },
     );
 
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
+    // An unmanaged device stays out of the runtime snapshot; the settings
+    // picker is where PELS parses it.
+    await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
+    const [parsed] = deviceManager.getUiPickerDevices();
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go-1',
@@ -670,12 +674,6 @@ describe('native EV wiring shim', () => {
   });
 
   it('writes the logical EV command through charging_button for Zaptec', async () => {
-    const restClient = {
-      get: vi.fn(),
-      put: vi.fn().mockResolvedValue(undefined),
-    };
-    setRestClient(restClient);
-
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -684,8 +682,12 @@ describe('native EV wiring shim', () => {
         getNativeEvWiringEnabled: () => true,
       },
     );
-    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
-    deviceManager.setSnapshotForTests([parsed]);
+    const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
+    const restClient = {
+      get: vi.fn(),
+      put: vi.fn().mockResolvedValue(undefined),
+    };
+    setRestClient(restClient);
 
     await deviceManager.setCapability(parsed.id, 'evcharger_charging', true);
 

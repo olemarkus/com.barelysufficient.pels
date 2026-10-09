@@ -9,20 +9,17 @@
 // `homeBattery` energy role), so an energy-role-only battery is detected, stamped,
 // AND survives consistently.
 //
-// Drives the real transport parse (`parseDeviceListForTests` and the realtime
-// `device.update` path), mocking only the SDK seam via the shared homey mock.
+// Drives the real transport refresh (`seedTransportDevices`) and the realtime
+// `device.update` path, mocking only the SDK seam via the shared homey mock.
 import {
   afterEach, describe, expect, it, vi,
 } from 'vitest';
 import {
   createTestDeviceTransport,
   onObservedState,
+  seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
 import type { ProjectedObservedDeviceState } from '../../packages/contracts/src/types';
-import {
-  createObservationState,
-  mergeFresherCapabilityObservations,
-} from '../../lib/device/transport/managerObservation';
 import Homey from 'homey';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
@@ -53,9 +50,9 @@ const batteryCaps = {
 } as HomeyDeviceLike['capabilitiesObj'];
 
 describe('structural battery-role resolution at parse', () => {
-  it('stamps a class:battery device managed:true/controllable:false despite settings saying controllable:true', () => {
+  it('stamps a class:battery device managed:true/controllable:false despite settings saying controllable:true', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = transport.parseDeviceListForTests([{
+    const [parsed] = await seedTransportDevices(transport, [{
       id: 'battery1',
       name: 'Home Battery',
       class: 'battery',
@@ -70,12 +67,12 @@ describe('structural battery-role resolution at parse', () => {
     expect(parsed.controllable).toBe(false);
   });
 
-  it('stamps a battery the owner turned Managed off as unmanaged, still non-controllable', () => {
+  it('stamps a battery the owner turned Managed off as unmanaged, still non-controllable', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, {
       ...adversarialProviders,
       getManaged: (deviceId: string) => deviceId !== 'battery-off',
     });
-    const [parsed] = transport.parseDeviceListForTests([{
+    const [parsed] = await seedTransportDevices(transport, [{
       id: 'battery-off',
       name: 'Home Battery',
       class: 'battery',
@@ -87,9 +84,9 @@ describe('structural battery-role resolution at parse', () => {
     expect(parsed?.controllable).toBe(false);
   });
 
-  it('detects AND survives an energy-role-only battery (class not "battery") via the homeBattery role', () => {
+  it('detects AND survives an energy-role-only battery (class not "battery") via the homeBattery role', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = transport.parseDeviceListForTests([{
+    const [parsed] = await seedTransportDevices(transport, [{
       id: 'battery2',
       name: 'Inverter Battery',
       // Real class is NOT 'battery' and is not otherwise a supported class — only the
@@ -169,9 +166,9 @@ describe('home battery control surface at parse', () => {
 
   // A 100 W step gives the 0..max half of the range a ladder short enough to
   // build, which is what used to make a battery a stepped load.
-  it('does not classify a battery with a signed target_power as a stepped load', () => {
+  it('does not classify a battery with a signed target_power as a stepped load', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = transport.parseDeviceListForTests([signedTargetPowerBattery({ stepW: 100 })]);
+    const [parsed] = await seedTransportDevices(transport, [signedTargetPowerBattery({ stepW: 100 })]);
 
     expect(parsed).toBeDefined();
     expect(parsed.steppedLoadProfile).toBeUndefined();
@@ -182,30 +179,30 @@ describe('home battery control surface at parse', () => {
     expect(parsed.controllable).toBe(false);
   });
 
-  it('does not take an owner target-power config onto a battery', () => {
+  it('does not take an owner target-power config onto a battery', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, {
       ...adversarialProviders,
       getDeviceTargetPowerConfig: () => ({ enabled: true, min: 0, max: 2500, step: 500 }),
     });
-    const [parsed] = transport.parseDeviceListForTests([signedTargetPowerBattery()]);
+    const [parsed] = await seedTransportDevices(transport, [signedTargetPowerBattery()]);
 
     expect(parsed.steppedLoadProfile).toBeUndefined();
     expect(parsed.targetPowerConfig).toBeUndefined();
     expect(parsed.homeBattery?.controlSurface.kind).toBe('setpoint');
   });
 
-  it('reads a battery whose target_power Homey never set', () => {
+  it('reads a battery whose target_power Homey never set', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = transport.parseDeviceListForTests([signedTargetPowerBattery({ targetPowerW: null })]);
+    const [parsed] = await seedTransportDevices(transport, [signedTargetPowerBattery({ targetPowerW: null })]);
 
     expect(parsed).toBeDefined();
     expect(parsed.batteryPower?.signedW).toBe(-2000);
     expect(parsed.homeBattery?.controlSurface.kind).toBe('setpoint');
   });
 
-  it('resolves the control surface, signed power and claim value', () => {
+  it('resolves the control surface, signed power and claim value', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = transport.parseDeviceListForTests([signedTargetPowerBattery()]);
+    const [parsed] = await seedTransportDevices(transport, [signedTargetPowerBattery()]);
     const observedAtMs = Date.parse(lastUpdated);
 
     expect(parsed.homeBattery).toEqual({
@@ -229,9 +226,9 @@ describe('home battery control surface at parse', () => {
     expect(parsed.batteryLevel).toEqual({ percent: 55, observedAtMs });
   });
 
-  it('keeps a battery without a claim capability observe-only, still with its signed power', () => {
+  it('keeps a battery without a claim capability observe-only, still with its signed power', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = transport.parseDeviceListForTests([{
+    const [parsed] = await seedTransportDevices(transport, [{
       id: 'battery1',
       name: 'Home Battery',
       class: 'battery',
@@ -244,9 +241,9 @@ describe('home battery control surface at parse', () => {
     expect(parsed.batteryClaim).toBeUndefined();
   });
 
-  it('gives a non-battery device neither home-battery cluster', () => {
+  it('gives a non-battery device neither home-battery cluster', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = transport.parseDeviceListForTests([{
+    const [parsed] = await seedTransportDevices(transport, [{
       id: 'heater1',
       name: 'Heater',
       class: 'heater',
@@ -263,9 +260,9 @@ describe('home battery control surface at parse', () => {
     expect(parsed.batteryClaim).toBeUndefined();
   });
 
-  it('updates the signed power and claim value from realtime events and projects them to the observer', () => {
+  it('updates the signed power and claim value from realtime events and projects them to the observer', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([signedTargetPowerBattery({ measurePowerW: 900 })]));
+    await seedTransportDevices(transport, [signedTargetPowerBattery({ measurePowerW: 900 })]);
     const observed: ProjectedObservedDeviceState[] = [];
     onObservedState(transport, (event) => {
       if (event.observed) observed.push(event.observed as ProjectedObservedDeviceState);
@@ -288,9 +285,9 @@ describe('home battery control surface at parse', () => {
     expect(observed.at(-1)?.batteryClaim?.value).toBe('homey');
   });
 
-  it('updates the battery level from a realtime event, and keeps it through a report out of range', () => {
+  it('updates the battery level from a realtime event, and keeps it through a report out of range', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([signedTargetPowerBattery()]));
+    await seedTransportDevices(transport, [signedTargetPowerBattery()]);
     const observed: ProjectedObservedDeviceState[] = [];
     onObservedState(transport, (event) => {
       if (event.observed) observed.push(event.observed as ProjectedObservedDeviceState);
@@ -303,9 +300,9 @@ describe('home battery control surface at parse', () => {
     expect(observed.at(-1)?.batteryLevel?.percent).toBe(61);
   });
 
-  it.each([Number.NaN, null])('rejects a %s battery reading without dispatching it', (junk) => {
+  it.each([Number.NaN, null])('rejects a %s battery reading without dispatching it', async (junk) => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([signedTargetPowerBattery({ measurePowerW: 900 })]));
+    await seedTransportDevices(transport, [signedTargetPowerBattery({ measurePowerW: 900 })]);
     const before = transport.getSnapshotByDeviceId('battery-setpoint')?.batteryPower;
     const events: unknown[] = [];
     onObservedState(transport, (event) => events.push(event));
@@ -318,9 +315,9 @@ describe('home battery control surface at parse', () => {
     expect(events).toHaveLength(0);
   });
 
-  it('re-stamps a repeated identical signed reading', () => {
+  it('re-stamps a repeated identical signed reading', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([signedTargetPowerBattery({ measurePowerW: 900 })]));
+    await seedTransportDevices(transport, [signedTargetPowerBattery({ measurePowerW: 900 })]);
     const events: unknown[] = [];
     onObservedState(transport, (event) => events.push(event));
     const nowSpy = vi.spyOn(Date, 'now');
@@ -336,29 +333,23 @@ describe('home battery control surface at parse', () => {
     expect(events).toHaveLength(2);
   });
 
-  /** A realtime claim echo, then a full refresh (the parse, then the fresher-wins merge) pulling `pulledValue` Homey stamped `pulledAgeMs` before now. */
-  const refreshAfterRealtimeClaim = (pulledValue: string, pulledAgeMs: number) => {
+  /** A realtime claim echo, then a full refresh pulling `pulledValue` Homey stamped `pulledAgeMs` before now. */
+  const refreshAfterRealtimeClaim = async (pulledValue: string, pulledAgeMs: number) => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([signedTargetPowerBattery()]));
+    await seedTransportDevices(transport, [signedTargetPowerBattery()]);
     transport.injectCapabilityUpdateForTest('battery-setpoint', 'target_power_mode', 'homey');
-    const held = transport.getSnapshotByDeviceId('battery-setpoint');
+    const held = transport.getSnapshotByDeviceId('battery-setpoint')?.batteryClaim;
     const pulledStamp = new Date(Date.now() - pulledAgeMs).toISOString();
     const pulled = signedTargetPowerBattery({ claim: { value: pulledValue, lastUpdated: pulledStamp } });
-    const [refreshed] = transport.parseDeviceListForTests([pulled]);
-    mergeFresherCapabilityObservations({
-      state: createObservationState(),
-      previousSnapshot: held ? [held] : [],
-      nextSnapshot: [refreshed],
-      devices: [pulled],
-    });
-    return { held: held?.batteryClaim, refreshed: refreshed.batteryClaim, pulledStamp };
+    const [refreshed] = await seedTransportDevices(transport, [pulled]);
+    return { held, refreshed: refreshed.batteryClaim, pulledStamp };
   };
 
   // A pull Homey stamped well before the realtime echo was read before the
   // change the echo reports: taking it would undo PELS's own claim until the
   // next read.
-  it('keeps a realtime claim through a full read of another value Homey stamped well before it', () => {
-    const { held, refreshed } = refreshAfterRealtimeClaim('anti_feed', 60_000);
+  it('keeps a realtime claim through a full read of another value Homey stamped well before it', async () => {
+    const { held, refreshed } = await refreshAfterRealtimeClaim('anti_feed', 60_000);
 
     expect(held?.value).toBe('homey');
     expect(refreshed).toEqual(held);
@@ -366,19 +357,19 @@ describe('home battery control surface at parse', () => {
 
   // A realtime claim is dated on arrival, a moment after Homey stamped the
   // change, so a pull of a later change can carry a slightly earlier stamp.
-  it('lets a full read of another value replace a realtime claim within the clock skew', () => {
-    const { refreshed, pulledStamp } = refreshAfterRealtimeClaim('manual', 1_000);
+  it('lets a full read of another value replace a realtime claim within the clock skew', async () => {
+    const { refreshed, pulledStamp } = await refreshAfterRealtimeClaim('manual', 1_000);
 
     expect(refreshed).toEqual({ value: 'manual', observedAtMs: Date.parse(pulledStamp) });
   });
 
-  it('keeps the last claim through a full read that carries no claim value', () => {
+  it('keeps the last claim through a full read that carries no claim value', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([signedTargetPowerBattery()]));
+    await seedTransportDevices(transport, [signedTargetPowerBattery()]);
     transport.injectCapabilityUpdateForTest('battery-setpoint', 'target_power_mode', 'homey');
     const held = transport.getSnapshotByDeviceId('battery-setpoint')?.batteryClaim;
 
-    const [refreshed] = transport.parseDeviceListForTests([
+    const [refreshed] = await seedTransportDevices(transport, [
       signedTargetPowerBattery({ claim: { value: null, lastUpdated } }),
     ]);
 
@@ -386,7 +377,7 @@ describe('home battery control surface at parse', () => {
     expect(refreshed.batteryClaim).toEqual(held);
   });
 
-  it('drops the claim when the battery comes to claim through another capability', () => {
+  it('drops the claim when the battery comes to claim through another capability', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     const sessy = (withTargetPowerMode: boolean): HomeyDeviceLike => ({
       id: 'sessy-1',
@@ -414,23 +405,23 @@ describe('home battery control surface at parse', () => {
         } : {}),
       } as unknown as HomeyDeviceLike['capabilitiesObj'],
     });
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([sessy(false)]));
+    await seedTransportDevices(transport, [sessy(false)]);
     expect(transport.getSnapshotByDeviceId('sessy-1')?.batteryClaim?.value).toBe('POWER_STRATEGY_API');
 
-    const [refreshed] = transport.parseDeviceListForTests([sessy(true)]);
+    const [refreshed] = await seedTransportDevices(transport, [sessy(true)]);
 
     expect(refreshed.homeBattery?.controlSurface).toMatchObject({ claim: { capabilityId: 'target_power_mode' } });
     expect(refreshed.batteryClaim).toBeUndefined();
   });
 
-  it('drops the claim when the battery no longer claims through that capability', () => {
+  it('drops the claim when the battery no longer claims through that capability', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([signedTargetPowerBattery()]));
+    await seedTransportDevices(transport, [signedTargetPowerBattery()]);
     const withoutHomeyMode = signedTargetPowerBattery({ claim: { value: null, lastUpdated } });
     const capabilitiesObj = withoutHomeyMode.capabilitiesObj as Record<string, Record<string, unknown>>;
     capabilitiesObj.target_power_mode = { ...capabilitiesObj.target_power_mode, values: [{ id: 'manual' }] };
 
-    const [refreshed] = transport.parseDeviceListForTests([withoutHomeyMode]);
+    const [refreshed] = await seedTransportDevices(transport, [withoutHomeyMode]);
 
     expect(refreshed.homeBattery?.controlSurface).toEqual({ kind: 'observe_only', reason: 'claim_value_missing' });
     expect(refreshed.batteryClaim).toBeUndefined();

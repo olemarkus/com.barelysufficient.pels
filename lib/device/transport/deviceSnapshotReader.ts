@@ -17,7 +17,6 @@ import type { ResolvedTransportPowerState } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { ObservationBridge } from './observationBridge';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
-import { partitionConformingDeviceReads } from './ignoredDeviceReads';
 import { getDeviceId } from './managerHelpers';
 import { syncNativeSteppedLoadCommandAdapters } from '../managerNativeSteppedCommand';
 import { isHomeBatteryDevice } from '../managerEnergy';
@@ -69,12 +68,6 @@ export class DeviceSnapshotReader {
       deps: this.parseDependencies(),
       purpose,
     });
-  }
-
-  parseConformingDeviceListForTests(list: readonly HomeyDeviceLike[]): TransportDeviceSnapshot[] {
-    const { devices } = partitionConformingDeviceReads(this.snapshotStore, this.logger, list);
-    this.syncTrackedDevices(devices);
-    return this.parseDeviceList(devices, {}, 'unfiltered');
   }
 
   getUiPickerDevices(): TransportDeviceSnapshot[] {

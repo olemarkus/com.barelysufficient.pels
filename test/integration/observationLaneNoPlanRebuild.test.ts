@@ -12,7 +12,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { subscribePlanObservedState } from '../../setup/appInit/planObservedStateSubscription';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
-import { createTestDeviceTransport, onObservedState } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, onObservedState, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 
 /**
@@ -137,7 +137,7 @@ describe('a discharging home battery on the observation lane', () => {
   // Every accepted battery reading, discharging included, is an observation the
   // lane receives (it advances the observer projection's revision). None of
   // them may pick when the planner runs.
-  it('never rebuilds the plan or clears a rebuild suppression for negative readings', () => {
+  it('never rebuilds the plan or clears a rebuild suppression for negative readings', async () => {
     const noop = (): void => undefined;
     const logger: Logger = {
       log: noop,
@@ -159,7 +159,7 @@ describe('a discharging home battery on the observation lane', () => {
         measure_power: { id: 'measure_power', value: 1200, lastUpdated },
       },
     };
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([battery]));
+    await seedTransportDevices(transport, [battery]);
 
     const syncLivePlanState = vi.fn().mockResolvedValue(false);
     const rebuildPlanFromCache = vi.fn();

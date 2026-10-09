@@ -1,14 +1,13 @@
 import Homey from 'homey';
 import { describe, expect, it, vi } from 'vitest';
 import { getLogger } from '../../lib/logging/logger';
-import { createTestDeviceTransport, onObservedState } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, onObservedState, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import { readRuntimeDevice } from '../../lib/planInput/runtimeDeviceRead';
 import { readFlowDevices } from '../../lib/device/deviceFlowRead';
 import { projectDeviceDescriptor } from '../../lib/device/deviceDescriptorProjection';
 import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
-import { preserveNewerReportedStepObservation } from '../../lib/device/transport/reportedStepObservation';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
@@ -60,13 +59,29 @@ const transportForHeater = (nativeEnabled: boolean) => createTestDeviceTransport
   },
 );
 
+/** The heater's owner configuration, which a spec may change between two refreshes. */
+const configurableHeaterTransport = (initial: { savedProfile?: SteppedLoadProfile; nativeEnabled: boolean }) => {
+  const owner = { ...initial };
+  const transport = createTestDeviceTransport(
+    mockHomeyInstance as unknown as Homey.App,
+    logger,
+    {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+      getDeviceControlProfile: () => owner.savedProfile,
+      getNativeEvWiringEnabled: () => owner.nativeEnabled,
+    },
+  );
+  return { transport, owner };
+};
+
 describe('device owner control resolution', () => {
-  it('uses the current descriptor ladder for Flow reads while an older observed profile remains', () => {
-    const oldTransport = transportForHeater(false);
-    const [previous] = oldTransport.parseDeviceListForTests([heater()]);
-    const transport = transportForHeater(true);
-    const [current] = transport.parseDeviceListForTests([heater()]);
-    const [flow] = readFlowDevices([projectDeviceDescriptor(current)], () => projectObservedState(previous));
+  it('uses the current descriptor ladder for Flow reads while an older observed profile remains', async () => {
+    const { transport, owner } = configurableHeaterTransport({ savedProfile, nativeEnabled: false });
+    const [previous] = await seedTransportDevices(transport, [heater()]);
+    const previousObserved = projectObservedState(previous);
+    owner.nativeEnabled = true;
+    const [current] = await seedTransportDevices(transport, [heater()]);
+    const [flow] = readFlowDevices([projectDeviceDescriptor(current)], () => previousObserved);
     const { store } = steppedStoresForTest();
     const decorated = decorateSnapshotWithDeviceControl(flow, store, false, false);
 
@@ -74,15 +89,14 @@ describe('device owner control resolution', () => {
     expect(decorated.steppedLoadProfile).not.toEqual(savedProfile);
   });
 
-  it('removes an observed Flow ladder after its owner disables stepped control', () => {
-    const transport = transportForHeater(true);
-    const [previous] = transport.parseDeviceListForTests([heater()]);
-    const unconfiguredTransport = createTestDeviceTransport(
-      mockHomeyInstance as unknown as Homey.App, logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }) },
-    );
-    const [current] = unconfiguredTransport.parseDeviceListForTests([heater()]);
-    const [flow] = readFlowDevices([projectDeviceDescriptor(current)], () => projectObservedState(previous));
+  it('removes an observed Flow ladder after its owner disables stepped control', async () => {
+    const { transport, owner } = configurableHeaterTransport({ savedProfile, nativeEnabled: true });
+    const [previous] = await seedTransportDevices(transport, [heater()]);
+    const previousObserved = projectObservedState(previous);
+    owner.savedProfile = undefined;
+    owner.nativeEnabled = false;
+    const [current] = await seedTransportDevices(transport, [heater()]);
+    const [flow] = readFlowDevices([projectDeviceDescriptor(current)], () => previousObserved);
     const { store } = steppedStoresForTest();
     const decorated = decorateSnapshotWithDeviceControl(flow, store, false, false);
 
@@ -91,7 +105,7 @@ describe('device owner control resolution', () => {
   });
 
   it.each(['same preset', 'new phase count'] as const)(
-    'retains confirmed EV capacity when merging newer telemetry under %s', (change) => {
+    'retains confirmed EV capacity when merging newer telemetry under %s', async (change) => {
       const baseConfig = { preset: 'ev_charger_1_phase' as const, max: 7360 };
       let config: TargetPowerConfigWithReachability = { ...baseConfig, reachability: buildTargetPowerReachabilityState({
         config: baseConfig, maxReachedPowerW: 6440,
@@ -111,9 +125,9 @@ describe('device owner control resolution', () => {
         },
         available: true, ready: true,
       };
-      transport.setSnapshotForTests(transport.parseDeviceListForTests([device]));
+      await seedTransportDevices(transport, [device]);
       transport.injectCapabilityUpdateForTest('charger', 'target_power', 1380);
-      const previous = transport.getSnapshotByDeviceId('charger')!;
+      const realtimeStepObservedAtMs = transport.getSnapshotByDeviceId('charger')?.reportedStepObservedAtMs;
       const nextDevice = { ...device, capabilitiesObj: { ...device.capabilitiesObj } };
       if (change === 'new phase count') {
         config = { preset: 'ev_charger_3_phase', max: 22080 };
@@ -124,26 +138,28 @@ describe('device owner control resolution', () => {
           value: 4140, setable: true, lastUpdated: '2026-09-30T08:00:00.000Z',
         };
       }
-      const next = transport.parseDeviceListForTests([nextDevice])[0];
-      const acceptedBeforeMerge = projectObservedState(next);
-
-      preserveNewerReportedStepObservation(previous, next);
+      const [next] = await seedTransportDevices(transport, [nextDevice]);
 
       if (change === 'same preset') {
         expect(next.reportedStepId).toBe('6a');
-        expect(next.reportedStepObservedAtMs).toBe(previous.reportedStepObservedAtMs);
+        expect(next.reportedStepObservedAtMs).toBe(realtimeStepObservedAtMs);
         expect(next.steppedLoadProfile?.steps.at(-1)?.id).toBe('28a');
         expect(next.steppedLoadProfile?.steps.at(-1)?.planningPowerW).toBe(6440);
       } else {
-        expect(projectObservedState(next)).toEqual(acceptedBeforeMerge);
-        expect(next.reportedStepPowerW).toBe(4140);
+        // The old phase count's rung is not carried onto the new ladder: the
+        // read's own report stands, dated when Homey stamped it.
+        expect(next).toMatchObject({
+          reportedStepId: '6a',
+          reportedStepPowerW: 4140,
+          reportedStepObservedAtMs: Date.parse('2026-09-30T08:00:00.000Z'),
+        });
       }
     },
   );
 
-  it('preserves the native step event timestamp across unrelated power updates', () => {
+  it('preserves the native step event timestamp across unrelated power updates', async () => {
     const transport = transportForHeater(true);
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([heater()]));
+    await seedTransportDevices(transport, [heater()]);
     const observer = new ObservedDeviceStateProjection();
     onObservedState(transport, (event) => observer.applyDelta(event));
     const nowMs = Date.now();
@@ -167,9 +183,9 @@ describe('device owner control resolution', () => {
     }
   });
 
-  it('confirms native feedback through Observer and runtime composition without reviving retries', () => {
+  it('confirms native feedback through Observer and runtime composition without reviving retries', async () => {
     const transport = transportForHeater(true);
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([heater()]));
+    await seedTransportDevices(transport, [heater()]);
     const observer = new ObservedDeviceStateProjection();
     onObservedState(transport, (event) => observer.applyDelta(event));
     const { store } = steppedStoresForTest();
@@ -195,9 +211,9 @@ describe('device owner control resolution', () => {
       nowMs: nowMs + 30 * 60 * 1000 })).toBeNull();
   });
 
-  it('publishes the active native ladder with its matching observation through the runtime configuration seam', () => {
+  it('publishes the active native ladder with its matching observation through the runtime configuration seam', async () => {
     const transport = transportForHeater(true);
-    const [snapshot] = transport.parseDeviceListForTests([heater()]);
+    const [snapshot] = await seedTransportDevices(transport, [heater()]);
     const configurations = new DeviceConfigurationStore();
     configurations.set(snapshot);
     const configuration = configurations.get('heater');
@@ -213,10 +229,9 @@ describe('device owner control resolution', () => {
     expect(configuration).not.toHaveProperty('nativeWriteCapabilities');
   });
 
-  it('uses the saved Flow ladder only when native control is disabled', () => {
+  it('uses the saved Flow ladder only when native control is disabled', async () => {
     const transport = transportForHeater(false);
-    const parsed = transport.parseDeviceListForTests([heater()]);
-    transport.setSnapshotForTests(parsed);
+    const parsed = await seedTransportDevices(transport, [heater()]);
 
     expect(transport.deviceConfigurationStore.get('heater')).toMatchObject({
       controlModel: 'stepped_load', steppedLoadProfile: savedProfile,
@@ -230,20 +245,18 @@ describe('device owner control resolution', () => {
     expect(parsed[0].reportedStepId).toBe('Medium');
   });
 
-  it('rejects Flow reports while native authority is active without changing accepted evidence', () => {
+  it('rejects Flow reports while native authority is active without changing accepted evidence', async () => {
     const transport = transportForHeater(true);
-    const parsed = transport.parseDeviceListForTests([heater()]);
-    transport.setSnapshotForTests(parsed);
+    const parsed = await seedTransportDevices(transport, [heater()]);
     const previous = projectObservedState(parsed[0]);
 
     expect(transport.reportSteppedLoadActualStep('heater', 'Medium', 1750)).toEqual({ kind: 'native_control' });
     expect(projectObservedState(parsed[0])).toEqual(previous);
   });
 
-  it('leaves accepted Flow evidence and configuration untouched for malformed and stale reports', () => {
+  it('leaves accepted Flow evidence and configuration untouched for malformed and stale reports', async () => {
     const transport = transportForHeater(false);
-    const parsed = transport.parseDeviceListForTests([heater()]);
-    transport.setSnapshotForTests(parsed);
+    const parsed = await seedTransportDevices(transport, [heater()]);
     expect(transport.reportSteppedLoadActualStep('heater', 'Medium')).toMatchObject({ kind: 'accepted' });
     const previous = projectObservedState(parsed[0]);
     const previousConfiguration = transport.deviceConfigurationStore.get('heater');
@@ -259,15 +272,12 @@ describe('device owner control resolution', () => {
     expect(transport.deviceConfigurationStore.get('heater')).toBe(previousConfiguration);
   });
 
-  it('does not carry a Flow observation into a newly enabled native configuration', () => {
-    const flowTransport = transportForHeater(false);
-    const [previous] = flowTransport.parseDeviceListForTests([heater()]);
-    flowTransport.setSnapshotForTests([previous]);
-    flowTransport.reportSteppedLoadActualStep('heater', 'Low');
-    const nativeTransport = transportForHeater(true);
-    const [next] = nativeTransport.parseDeviceListForTests([heater()]);
-
-    preserveNewerReportedStepObservation(previous, next);
+  it('does not carry a Flow observation into a newly enabled native configuration', async () => {
+    const { transport, owner } = configurableHeaterTransport({ savedProfile, nativeEnabled: false });
+    await seedTransportDevices(transport, [heater()]);
+    expect(transport.reportSteppedLoadActualStep('heater', 'Low')).toMatchObject({ kind: 'accepted' });
+    owner.nativeEnabled = true;
+    const [next] = await seedTransportDevices(transport, [heater()]);
 
     expect(next.reportedStepId).toBe('medium');
     expect(next.steppedLoadProfile?.steps.map((step) => step.id)).toEqual(['off', 'low', 'medium', 'max']);
@@ -276,7 +286,7 @@ describe('device owner control resolution', () => {
   it.each([
     ['inside the ladder', '16a', 3_600],
     ['just below the lowest rung', '6a', 1_320],
-  ])('keeps a Flow EV report %s as its rung across a refresh', (_case, stepId, reportedW) => {
+  ])('keeps a Flow EV report %s as its rung across a refresh', async (_case, stepId, reportedW) => {
     // Cars draw a little under nominal, so the report card resolves such a
     // reading to the rung above it. A refresh re-parses the charger without
     // that report and must carry the admitted rung forward, not drop it.
@@ -298,19 +308,16 @@ describe('device owner control resolution', () => {
       },
       available: true, ready: true,
     };
-    const [previous] = transport.parseDeviceListForTests([charger]);
-    transport.setSnapshotForTests([previous]);
+    const [previous] = await seedTransportDevices(transport, [charger]);
     const ladder = previous.steppedLoadProfile;
     expect(transport.reportSteppedLoadActualStep('charger', stepId, reportedW)).toMatchObject({ kind: 'accepted' });
-    const [next] = transport.parseDeviceListForTests([charger]);
-
-    preserveNewerReportedStepObservation(previous, next);
+    const [next] = await seedTransportDevices(transport, [charger]);
 
     expect(next).toMatchObject({ reportedStepId: stepId, reportedStepPowerW: reportedW });
     expect(next.steppedLoadProfile).toEqual(ladder);
   });
 
-  it('keeps a Flow EV report admitted just under an earlier off-grid step across a refresh', () => {
+  it('keeps a Flow EV report admitted just under an earlier off-grid step across a refresh', async () => {
     // An exact off-grid reading puts its own step on the ladder; the next
     // reading a little under it is admitted as that step, and a refresh, whose
     // fresh ladder lacks the off-grid step, must still carry it forward.
@@ -332,59 +339,46 @@ describe('device owner control resolution', () => {
       },
       available: true, ready: true,
     };
-    const [first] = transport.parseDeviceListForTests([charger]);
-    transport.setSnapshotForTests([first]);
+    await seedTransportDevices(transport, [charger]);
     expect(transport.reportSteppedLoadActualStep('charger', '15.304a', 3_520)).toMatchObject({ kind: 'accepted' });
-    const [second] = transport.parseDeviceListForTests([charger]);
-    preserveNewerReportedStepObservation(first, second);
+    const [second] = await seedTransportDevices(transport, [charger]);
     expect(second.reportedStepId).toBe('15.304a');
-    transport.setSnapshotForTests([second]);
     expect(transport.reportSteppedLoadActualStep('charger', '15.304a', 3_515)).toMatchObject({ kind: 'accepted' });
-    const [third] = transport.parseDeviceListForTests([charger]);
-
-    preserveNewerReportedStepObservation(second, third);
+    const [third] = await seedTransportDevices(transport, [charger]);
 
     expect(third).toMatchObject({ reportedStepId: '15.304a', reportedStepPowerW: 3_515 });
     expect(third.steppedLoadProfile?.steps.map((step) => step.id)).toContain('15.304a');
   });
 
-  it('does not retain a step removed by a Flow profile edit', () => {
-    const transport = transportForHeater(false);
-    const [previous] = transport.parseDeviceListForTests([heater()]);
-    transport.setSnapshotForTests([previous]);
-    transport.reportSteppedLoadActualStep('heater', 'Medium');
-    const next = {
-      ...transport.parseDeviceListForTests([heater()])[0],
-      steppedLoadProfile: { steps: [{ id: 'Low', planningPowerW: 1250 }] },
-    };
+  it('does not retain a step removed by a Flow profile edit', async () => {
+    const { transport, owner } = configurableHeaterTransport({ savedProfile, nativeEnabled: false });
+    await seedTransportDevices(transport, [heater()]);
+    expect(transport.reportSteppedLoadActualStep('heater', 'Medium')).toMatchObject({ kind: 'accepted' });
+    owner.savedProfile = { steps: [{ id: 'Low', planningPowerW: 1250 }, { id: 'Max', planningPowerW: 3000 }] };
+    const [next] = await seedTransportDevices(transport, [heater()]);
 
-    preserveNewerReportedStepObservation(previous, next);
-
+    expect(next.steppedLoadProfile).toEqual(owner.savedProfile);
     expect(next.reportedStepId).toBeUndefined();
     expect(next.reportedStepPowerW).toBeUndefined();
   });
 
-  it('removes an observed ladder when the accepted configuration no longer has stepped control', () => {
-    const transport = createTestDeviceTransport(
-      mockHomeyInstance as unknown as Homey.App,
-      logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }) },
-    );
-    const [snapshot] = transport.parseDeviceListForTests([heater()]);
-    transport.setSnapshotForTests([snapshot]);
-    const oldTransport = transportForHeater(true);
-    const [oldNative] = oldTransport.parseDeviceListForTests([heater()]);
+  it('removes an observed ladder when the accepted configuration no longer has stepped control', async () => {
+    const { transport, owner } = configurableHeaterTransport({ savedProfile, nativeEnabled: true });
+    const [oldNative] = await seedTransportDevices(transport, [heater()]);
+    const oldObserved = projectObservedState(oldNative);
+    owner.savedProfile = undefined;
+    owner.nativeEnabled = false;
+    await seedTransportDevices(transport, [heater()]);
 
-    const runtime = readRuntimeDevice(transport.deviceConfigurationStore.get('heater'), projectObservedState(oldNative));
+    const runtime = readRuntimeDevice(transport.deviceConfigurationStore.get('heater'), oldObserved);
 
     expect(runtime?.controlModel).toBe('binary_power');
     expect(runtime).not.toHaveProperty('steppedLoadProfile');
   });
 
-  it('keeps configuration and observations unchanged when a whole-device SDK update is malformed', () => {
+  it('keeps configuration and observations unchanged when a whole-device SDK update is malformed', async () => {
     const transport = transportForHeater(true);
-    const [snapshot] = transport.parseDeviceListForTests([heater()]);
-    transport.setSnapshotForTests([snapshot]);
+    const [snapshot] = await seedTransportDevices(transport, [heater()]);
     const configuration = transport.deviceConfigurationStore.get('heater');
     const previous = projectObservedState(snapshot);
 
@@ -394,7 +388,7 @@ describe('device owner control resolution', () => {
     expect(projectObservedState(snapshot)).toEqual(previous);
   });
 
-  it('keeps Easee native feedback authoritative over an alternate installation-current source', () => {
+  it('keeps Easee native feedback authoritative over an alternate installation-current source', async () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
@@ -418,8 +412,7 @@ describe('device owner control resolution', () => {
       },
       available: true, ready: true,
     };
-    const [snapshot] = transport.parseDeviceListForTests([device]);
-    transport.setSnapshotForTests([snapshot]);
+    const [snapshot] = await seedTransportDevices(transport, [device]);
     const configuration = transport.deviceConfigurationStore.get('easee');
 
     transport.injectCapabilityUpdateForTest('easee', 'available_installation_current', 32);
@@ -431,7 +424,7 @@ describe('device owner control resolution', () => {
     expect(snapshot.reportedStepPowerW).toBe(0);
   });
 
-  it('admits exact EV feedback through the owner and publishes the extended confirmed ladder before notifications', () => {
+  it('admits exact EV feedback through the owner and publishes the extended confirmed ladder before notifications', async () => {
     const notifiedProfiles: SteppedLoadProfile[] = [];
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
@@ -456,7 +449,7 @@ describe('device owner control resolution', () => {
       },
       available: true, ready: true,
     };
-    transport.setSnapshotForTests(transport.parseDeviceListForTests([device]));
+    await seedTransportDevices(transport, [device]);
 
     const result = transport.reportSteppedLoadActualStep('charger', '25a', 5750);
 

@@ -2,6 +2,7 @@ import { resolveEvTargetPowerConfirmedProfile } from '../../lib/device/targetPow
 import type { Mock } from 'vitest';
 import {
   createTestDeviceTransport,
+  seedTransportDevices,
 } from '../helpers/deviceTransportHarness';
 import type { EvObservedProbe } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -341,7 +342,7 @@ describe('device manager support helpers', () => {
     expect(onPeakChanged).toHaveBeenCalledTimes(1);
   });
 
-  it('forwards the learned-peak announcement from the transport parse path', () => {
+  it('forwards the learned-peak announcement from the transport parse path', async () => {
     // Covers the wiring the persistence depends on end to end: the callback is
     // handed to `DeviceTransport` on its power bag and has to reach
     // `updateLastKnownPower` through the parse pipeline.
@@ -355,7 +356,7 @@ describe('device manager support helpers', () => {
     );
 
     const lastUpdated = new Date().toISOString();
-    deviceManager.parseDeviceListForTests([{
+    await seedTransportDevices(deviceManager, [{
       id: 'heater-1',
       name: 'Heater',
       class: 'heater',

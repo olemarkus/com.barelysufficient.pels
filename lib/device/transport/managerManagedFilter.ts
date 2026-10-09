@@ -40,7 +40,6 @@ export function shouldDropEarly(
   decision: ManagedFilterDecision,
   isHomeBattery: boolean,
 ): boolean {
-  if (purpose === 'unfiltered') return false;
   if (purpose === 'runtime') {
     if (!decision.filterActive) return false;
     return !isRuntimeTrackedDevice(decision, isHomeBattery);

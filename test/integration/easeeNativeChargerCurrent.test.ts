@@ -1,5 +1,7 @@
 import Homey from 'homey';
-import { createTestDeviceTransport, onObservedState, onObservedControlState } from '../helpers/deviceTransportHarness';
+import {
+  createTestDeviceTransport, onObservedState, onObservedControlState, seedTransportDevices,
+} from '../helpers/deviceTransportHarness';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import {
   resolveNativeSteppedLoadCommand,
@@ -168,8 +170,8 @@ describe('Easee native charger current', () => {
     })).toBe('16a');
   });
 
-  it('offers built-in control on an EV preset and reads the step back when it is on', () => {
-    const [parsed] = createEaseeTransport(true).parseDeviceListForTests([buildEaseeCharger()]);
+  it('offers built-in control on an EV preset and reads the step back when it is on', async () => {
+    const [parsed] = await seedTransportDevices(createEaseeTransport(true), [buildEaseeCharger()]);
 
     expect(parsed).toEqual(expect.objectContaining({
       id: EASEE_ID,
@@ -185,8 +187,8 @@ describe('Easee native charger current', () => {
     }));
   });
 
-  it('leaves the charger on the Flow while built-in control is off, still visible to the conflict gate', () => {
-    const [parsed] = createEaseeTransport(false).parseDeviceListForTests([buildEaseeCharger()]);
+  it('leaves the charger on the Flow while built-in control is off, still visible to the conflict gate', async () => {
+    const [parsed] = await seedTransportDevices(createEaseeTransport(false), [buildEaseeCharger()]);
 
     expect(parsed.controlAdapter).toEqual({
       kind: 'capability_adapter',
@@ -201,12 +203,6 @@ describe('Easee native charger current', () => {
   });
 
   it('keeps a continuous power model on Flow control even when built-in control is saved on', async () => {
-    const get = vi.fn(async (path: string) => {
-      if (path === 'manager/devices/device') return { [EASEE_ID]: buildEaseeCharger() };
-      throw new Error(`unexpected device fetch: ${path}`);
-    });
-    const put = vi.fn().mockResolvedValue(undefined);
-    setRestClient({ get, put });
     mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed = [];
     try {
       const deviceManager = createTestDeviceTransport(
@@ -220,8 +216,9 @@ describe('Easee native charger current', () => {
         undefined,
         { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
       );
-      const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger()]);
-      deviceManager.setSnapshotForTests([parsed!]);
+      const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
+      const put = vi.fn().mockResolvedValue(undefined);
+      setRestClient({ get: vi.fn(), put });
 
       expect(parsed).toEqual(expect.objectContaining({
         controlModel: 'stepped_load',
@@ -261,8 +258,8 @@ describe('Easee native charger current', () => {
     }
   });
 
-  it('is not a built-in control candidate without a setable charger current', () => {
-    const [parsed] = createEaseeTransport(true).parseDeviceListForTests([
+  it('is not a built-in control candidate without a setable charger current', async () => {
+    const [parsed] = await seedTransportDevices(createEaseeTransport(true), [
       buildEaseeCharger({ target_charger_current: { value: 16, setable: false, lastUpdated: READ_AT } }),
     ]);
 
@@ -270,7 +267,7 @@ describe('Easee native charger current', () => {
     expect(parsed.nativeWriteCapabilities).toBeUndefined();
   });
 
-  it('reports the charger current a live update carries, with its exact watts', () => {
+  it('reports the charger current a live update carries, with its exact watts', async () => {
     // As on production: the charger has already shown it reaches 32 A, so the
     // confirmed ladder carries the rung the start-of-session reset lands on.
     const config = {
@@ -289,8 +286,10 @@ describe('Easee native charger current', () => {
       undefined,
       { onSnapshotMutated },
     );
-    const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger()]);
-    deviceManager.setSnapshotForTests([parsed]);
+    await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
+    // The seeding refresh notifies too, with the same snapshot object the
+    // update below mutates: only a notification from the update may count.
+    onSnapshotMutated.mockClear();
 
     deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 32);
 
@@ -392,32 +391,33 @@ describe('Easee native charger current', () => {
       measure_power: { value: 0, lastUpdated: READ_AT },
     };
 
-    it('reads a paused charger at 0 A as off, whatever Homey holds for the switch', () => {
-      const [parsed] = createEaseeTransport(true).parseDeviceListForTests([buildEaseeCharger(zeroedInTheApp)]);
+    it('reads a paused charger at 0 A as off, whatever Homey holds for the switch', async () => {
+      const [parsed] = await seedTransportDevices(createEaseeTransport(true), [buildEaseeCharger(zeroedInTheApp)]);
 
       expect(parsed.binaryControl).toEqual({ on: false });
       expect(parsed.reportedStepId).toBe('off');
     });
 
-    it('reads the switch from the plug state, whatever switch Homey holds', () => {
+    it('reads the switch from the plug state, whatever switch Homey holds', async () => {
       const withPlugState = (state: string, switchOn: boolean): DeviceCapabilityMap => ({
         target_charger_current: { value: 16, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
         evcharger_charging: { value: switchOn, setable: true, lastUpdated: READ_AT },
         evcharger_charging_state: { value: state, lastUpdated: READ_AT },
       });
       const transport = createEaseeTransport(true);
-      const read = (state: string, switchOn: boolean) => transport
-        .parseDeviceListForTests([buildEaseeCharger(withPlugState(state, switchOn))])[0].binaryControl;
+      const read = async (state: string, switchOn: boolean) => (
+        await seedTransportDevices(transport, [buildEaseeCharger(withPlugState(state, switchOn))])
+      )[0].binaryControl;
 
-      expect(read('plugged_in_charging', false)).toEqual({ on: true });
+      expect(await read('plugged_in_charging', false)).toEqual({ on: true });
       // A stopped session holds a PELS start on the switch until the app publishes again.
-      expect(read('plugged_in', true)).toEqual({ on: false });
+      expect(await read('plugged_in', true)).toEqual({ on: false });
     });
 
-    it('reads a charger paused at a charging current as on: Easee holds a resumed charger before it charges', () => {
+    it('reads a charger paused at a charging current as on: Easee holds a resumed charger before it charges', async () => {
       // Production, 2026-09-25 09:56:08: PELS resumed at 6 A, and the charger stayed
       // `Paused` until 10:01:16 before it offered the car current.
-      const [parsed] = createEaseeTransport(true).parseDeviceListForTests([buildEaseeCharger({
+      const [parsed] = await seedTransportDevices(createEaseeTransport(true), [buildEaseeCharger({
         ...zeroedInTheApp,
         target_charger_current: { value: 6, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
         evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
@@ -427,13 +427,12 @@ describe('Easee native charger current', () => {
       expect(parsed.reportedStepId).toBe('6a');
     });
 
-    it('reads a paused charger as on once it holds a charging current, whatever the app switch reports', () => {
+    it('reads a paused charger as on once it holds a charging current, whatever the app switch reports', async () => {
       const deviceManager = createEaseeTransport(true);
-      const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger({
+      const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger({
         ...zeroedInTheApp,
         evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
       })]);
-      deviceManager.setSnapshotForTests([parsed]);
 
       // Homey's echo of a switch write says nothing about the charger.
       deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging', true);
@@ -448,10 +447,9 @@ describe('Easee native charger current', () => {
       expect(parsed.binaryControl).toEqual({ on: true });
     });
 
-    it('reads the switch as off when a charging session is stopped', () => {
+    it('reads the switch as off when a charging session is stopped', async () => {
       const deviceManager = createEaseeTransport(true);
-      const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger()]);
-      deviceManager.setSnapshotForTests([parsed]);
+      const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
 
       deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging', false);
       deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'evcharger_charging_state', 'plugged_in');
@@ -465,10 +463,9 @@ describe('Easee native charger current', () => {
       ['target_charger_current', Number.NaN],
       ['target_charger_current', '0'],
       ['evcharger_charging', 'off'],
-    ])('reads no switch change from a malformed %s report: %s', (capabilityId, value) => {
+    ])('reads no switch change from a malformed %s report: %s', async (capabilityId, value) => {
       const deviceManager = createEaseeTransport(true);
-      const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger()]);
-      deviceManager.setSnapshotForTests([parsed]);
+      const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
       const controlChanged = vi.fn();
       onObservedControlState(deviceManager, controlChanged);
 
@@ -478,16 +475,15 @@ describe('Easee native charger current', () => {
       expect(controlChanged).not.toHaveBeenCalled();
     });
 
-    it('reads the switch as the charger reports it while built-in control is off', () => {
-      const [parsed] = createEaseeTransport(false).parseDeviceListForTests([buildEaseeCharger(zeroedInTheApp)]);
+    it('reads the switch as the charger reports it while built-in control is off', async () => {
+      const [parsed] = await seedTransportDevices(createEaseeTransport(false), [buildEaseeCharger(zeroedInTheApp)]);
 
       expect(parsed.binaryControl).toEqual({ on: true });
     });
 
-    it.each([0, 3])('turns the switch off when %d A is set outside PELS and the charger pauses', (currentA) => {
+    it.each([0, 3])('turns the switch off when %d A is set outside PELS and the charger pauses', async (currentA) => {
       const deviceManager = createEaseeTransport(true);
-      const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger()]);
-      deviceManager.setSnapshotForTests([parsed]);
+      const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
       const controlChanged = vi.fn();
       onObservedControlState(deviceManager, controlChanged);
 
@@ -511,10 +507,9 @@ describe('Easee native charger current', () => {
       }));
     });
 
-    it('leaves the switch alone when 0 A is set on a charger under Flow control', () => {
+    it('leaves the switch alone when 0 A is set on a charger under Flow control', async () => {
       const deviceManager = createEaseeTransport(false);
-      const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger()]);
-      deviceManager.setSnapshotForTests([parsed]);
+      const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
 
       deviceManager.injectCapabilityUpdateForTest(EASEE_ID, 'target_charger_current', 0);
 
@@ -797,10 +792,9 @@ describe('Easee native charger current', () => {
 
   it.each([null, undefined, '16', Number.NaN, Infinity, -Infinity, -1])(
     'keeps the last-good current observation on an invalid report: %s',
-    (invalidCurrent) => {
+    async (invalidCurrent) => {
       const deviceManager = createEaseeTransport(true);
-      const [parsed] = deviceManager.parseDeviceListForTests([buildEaseeCharger()]);
-      deviceManager.setSnapshotForTests([parsed]);
+      const [parsed] = await seedTransportDevices(deviceManager, [buildEaseeCharger()]);
       const observed = vi.fn();
       const controlChanged = vi.fn();
       onObservedState(deviceManager, observed);

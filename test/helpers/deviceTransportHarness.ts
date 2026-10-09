@@ -36,6 +36,12 @@ import type {
   ObservedStateChangedEvent,
   ObservedStateRefreshEvent,
 } from '../../lib/observer/observedStateEvents';
+import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
+import type { SnapshotRefreshOptions } from '../../lib/device/transport/transportTypes';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { mockHomeyInstance } from '../mocks/homey';
+import { settleLiveFeed } from './liveFeedSocketHarness';
 
 type TransportArgs = ConstructorParameters<typeof DeviceTransport>;
 
@@ -136,3 +142,48 @@ export const onObservedControlState = (
   transport: DeviceTransport,
   listener: (event: ObservedControlStateChangedEvent) => void,
 ): void => { emitterFor(transport).onObservedControlStateChanged(listener); };
+
+/**
+ * Commit `devices` through the transport's real refresh, as if Homey's device
+ * list (and its by-id route) answered with them, and return the committed
+ * snapshot in the transport's own shape, so a spec can read the probe fields
+ * the consumer type omits.
+ *
+ * It installs the REST client itself, because a spec may have replaced the
+ * default, and serves `devices` only for this one refresh: afterwards every
+ * route, the device list included, answers from `mockHomeyInstance.api` again,
+ * as the default client does. The live feed's subscriptions for the committed
+ * devices are settled before it returns.
+ */
+export async function seedTransportDevices(
+  transport: DeviceTransport,
+  devices: readonly HomeyDeviceLike[],
+  options: Partial<SnapshotRefreshOptions> = {},
+): Promise<TransportDeviceSnapshot[]> {
+  const served = new Map(devices.map((device) => [device.id, device]));
+  let serving = true;
+  setRestClient({
+    get: async (path) => {
+      if (serving && path === DEVICES_API_PATH) return Object.fromEntries(served);
+      const byId = serving && path.startsWith(`${DEVICES_API_PATH}/`) ? path.slice(DEVICES_API_PATH.length + 1) : null;
+      if (byId !== null && !byId.includes('/')) {
+        const device = served.get(byId);
+        if (!device) throw new Error(`Mock API GET 404 for device: ${byId}`);
+        return device;
+      }
+      return mockHomeyInstance.api.get(path);
+    },
+    put: (path, body) => mockHomeyInstance.api.put(path, body),
+  });
+  try {
+    await transport.refreshSnapshot({
+      mainMeterSelection: { state: 'unavailable' },
+      includeLivePower: false,
+      ...options,
+    });
+  } finally {
+    serving = false;
+  }
+  await settleLiveFeed();
+  return transport.getSnapshot().flatMap((device) => transport.getSnapshotByDeviceId(device.id) ?? []);
+}

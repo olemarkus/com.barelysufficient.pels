@@ -7,7 +7,7 @@
  * `starvationSupported`. Everything downstream reads those flags and never the
  * class, so a fixture that hands the planner a pre-set flag proves nothing about
  * whether a real device ever gets one. Here nothing is hand-set: each device
- * goes through the real parse (`parseDeviceListForTests`), the real
+ * goes through the real refresh (`seedTransportDevices`), the real
  * configuration store, the real Observer projection and planner-input producer
  * (`createAppContextMock` + `toPlanDevice`), and the real plan stages.
  *
@@ -16,7 +16,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
-import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance } from '../mocks/homey';
 import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
@@ -92,15 +92,18 @@ const RAW_DEVICES: Record<string, HomeyDeviceLike> = {
   socket: rawDevice('socket-1', 'socket', onoffCaps()),
 };
 
-const parse = (devices: HomeyDeviceLike[]): TransportDeviceSnapshot[] => createTestDeviceTransport(
-  mockHomeyInstance as unknown as Homey.App,
-  loggerMock,
-  {
-    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    getManaged: () => true,
-    getControllable: () => true,
-  },
-).parseDeviceListForTests(devices);
+const parse = (devices: HomeyDeviceLike[]): Promise<TransportDeviceSnapshot[]> => seedTransportDevices(
+  createTestDeviceTransport(
+    mockHomeyInstance as unknown as Homey.App,
+    loggerMock,
+    {
+      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+      getManaged: () => true,
+      getControllable: () => true,
+    },
+  ),
+  devices,
+);
 
 describe('identity resolved from the class at parse and in device configuration', () => {
   it.each([
@@ -113,9 +116,9 @@ describe('identity resolved from the class at parse and in device configuration'
     ['solarpanel', { isEvCharger: false, isBatteryOrSolar: true, starvationSupported: false }],
     ['evcharger', { isEvCharger: true, isBatteryOrSolar: false, starvationSupported: false }],
     ['socket', { isEvCharger: false, isBatteryOrSolar: false, starvationSupported: false }],
-  ] as const)('a raw %s device parses and configures to its identity facts', (deviceClass, expected) => {
+  ] as const)('a raw %s device parses and configures to its identity facts', async (deviceClass, expected) => {
     const raw = RAW_DEVICES[deviceClass]!;
-    const [parsed] = parse([raw]);
+    const [parsed] = await parse([raw]);
 
     // The parse producer stamps the two facts it owns from the class.
     expect(parsed).toMatchObject({
@@ -166,9 +169,9 @@ const planDevicesDeps: PlanDevicesDeps = {
  * snapshot passes call it. The thermostat is managed and power-limited; the
  * battery is the managed observe-only device the parse stamps it as.
  */
-const planFromRawDevices = (): { context: PlanCycle; planDevices: DevicePlanDevice[] } => {
+const planFromRawDevices = async (): Promise<{ context: PlanCycle; planDevices: DevicePlanDevice[] }> => {
   const ctx = createAppContextMock({
-    latestTargetSnapshot: parse([RAW_DEVICES.thermostat!, RAW_DEVICES.battery!]),
+    latestTargetSnapshot: await parse([RAW_DEVICES.thermostat!, RAW_DEVICES.battery!]),
   });
   ctx.resolveManagedState = vi.fn(() => true);
   ctx.isCapacityControlEnabled = vi.fn((deviceId: string) => deviceId === THERMOSTAT_ID);
@@ -215,8 +218,8 @@ const planFromRawDevices = (): { context: PlanCycle; planDevices: DevicePlanDevi
 };
 
 describe('class-resolved identity through the plan build', () => {
-  it('leaves a battery-class device out of the settings overview and keeps a thermostat', () => {
-    const { planDevices } = planFromRawDevices();
+  it('leaves a battery-class device out of the settings overview and keeps a thermostat', async () => {
+    const { planDevices } = await planFromRawDevices();
     // The planner still observes the battery; hiding it is the overview's job.
     expect(planDevices.map((device) => device.id).sort()).toEqual([BATTERY_ID, THERMOSTAT_ID].sort());
 
@@ -242,8 +245,8 @@ describe('class-resolved identity through the plan build', () => {
     expect((overview?.devices ?? []).map((device) => device.id)).toEqual([THERMOSTAT_ID]);
   });
 
-  it('makes a thermostat-class device starvation-eligible and leaves the battery ineligible', () => {
-    const { context, planDevices } = planFromRawDevices();
+  it('makes a thermostat-class device starvation-eligible and leaves the battery ineligible', async () => {
+    const { context, planDevices } = await planFromRawDevices();
 
     const observations = buildDeviceDiagnosticsObservations({
       context,
