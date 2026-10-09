@@ -95,6 +95,7 @@ const seedSettings = (params: { surplusWilling: boolean }) => {
       cheapDelta: 0,
       expensiveDelta: 0,
       surplusWilling: params.surplusWilling,
+      surplusDelta: 0,
     },
   });
   // A home that has exported before — the persisted evidence that makes the

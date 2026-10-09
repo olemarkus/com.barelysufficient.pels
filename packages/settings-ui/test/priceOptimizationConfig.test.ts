@@ -1,7 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { classifyPriceOptimizationConfigMap } from '../src/ui/priceOptimizationConfig.ts';
+import { DEFAULT_SURPLUS_LIFT_C } from '../../shared-domain/src/settings/priceOptimization.ts';
 
 describe('classifyPriceOptimizationConfigMap', () => {
+  it('reads an entry that stores no solar lift with the lift the runtime applies', () => {
+    expect(classifyPriceOptimizationConfigMap({
+      heater: { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
+    })).toEqual({
+      state: 'resolved',
+      settings: {
+        heater: {
+          enabled: false,
+          cheapDelta: 5,
+          expensiveDelta: -5,
+          priceConfigured: true,
+          surplusWilling: false,
+          surplusDelta: DEFAULT_SURPLUS_LIFT_C,
+        },
+      },
+    });
+  });
+
   it('preserves explicit Price provenance independently of solar participation', () => {
     expect(classifyPriceOptimizationConfigMap({
       explicitOff: {

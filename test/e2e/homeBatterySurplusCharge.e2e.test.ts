@@ -70,7 +70,7 @@ const seedSettings = (surplusWilling: boolean): void => {
   mockHomeyInstance.settings.set(MANAGED_DEVICES, { [PUMP]: true });
   // "Run on solar surplus" on the pump, as the settings UI writes it.
   mockHomeyInstance.settings.set('price_optimization_settings', {
-    [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling },
+    [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling, surplusDelta: 0 },
   });
   // A home that has exported before, which is what makes the pool reachable.
   seedStoredPowerTrackerForTests({ exportBuckets: { '2026-10-04T11:00:00.000Z': 4 } });
