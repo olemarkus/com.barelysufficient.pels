@@ -154,12 +154,15 @@ describe('Limits & safety inline validation', () => {
     expect(document.querySelector('#settings-capacity-fields')?.hasAttribute('hidden')).toBe(true);
     expect(document.querySelector('#settings-grid-import-hint')?.textContent).toContain('3.13 kW');
     await capacity.saveSettingsLimitsSettings();
-    expect(setSetting.mock.calls.slice(0, 2)).toEqual([['grid_import_limit_kw', 3.3], ['grid_import_enabled', true]]);
+    const keys = setSetting.mock.calls.map(([key]) => key);
+    expect(keys.indexOf('grid_import_limit_kw')).toBeGreaterThanOrEqual(0);
+    expect(keys.indexOf('grid_import_limit_kw')).toBeLessThan(keys.indexOf('grid_import_enabled'));
+    expect(keys.indexOf('grid_import_enabled')).toBeLessThan(keys.indexOf('capacity_enabled'));
     expect(settingsStore.capacity_enabled).toBe(false);
     expect(dom.limit.value).toBe('8');
   });
 
-  it('reconciles a partially saved grid switch after every started write settles', async () => {
+  it('moves no switch when a threshold write fails, and reconciles after every started write settles', async () => {
     const dom = buildLimitsDom();
     let releaseMargin!: () => void;
     let markMarginStarted!: () => void;
@@ -191,13 +194,155 @@ describe('Limits & safety inline validation', () => {
     await marginStarted;
     await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
     expect(settled).toBe(false);
-    expect(settingsStore.grid_import_enabled).toBe(true);
+    expect(settingsStore.grid_import_limit_kw).toBe(3.3);
+    expect(settingsStore.grid_import_enabled).toBeUndefined();
     releaseMargin();
     expect(await save).toEqual(new Error('capacity write failed'));
-    expect(grid.selected).toBe(true);
     expect(settingsStore.capacity_margin_kw).toBe(0.8);
+    expect(settingsStore.grid_import_enabled).toBeUndefined();
+    expect(grid.selected).toBe(false);
+    expect(input.value).toBe('3.3');
     await capacity.loadCapacitySettings();
+    expect(grid.selected).toBe(false);
+  });
+
+  it('shows the saved control posture while the running app cannot be read', async () => {
+    buildLimitsDom();
+    const { capacity, setSetting } = await loadCapacityModule(
+      {
+        capacity_enabled: false, grid_import_enabled: true, grid_import_limit_kw: 3.3, capacity_period_minutes: 60,
+      },
+      new Error('power read failed'),
+    );
+    await capacity.loadCapacitySettings();
+    const cap = document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean };
+    const grid = document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean };
+    const input = document.querySelector('#settings-grid-import-limit') as HTMLElement & { value: string };
+    expect(cap.selected).toBe(false);
     expect(grid.selected).toBe(true);
+    input.value = '4';
+    await capacity.saveSettingsLimitsSettings();
+    expect(setSetting.mock.calls).toEqual([['grid_import_limit_kw', 4]]);
+  });
+
+  it('takes the running posture for a switch that reads back null', async () => {
+    buildLimitsDom();
+    const { capacity, setSetting } = await loadCapacityModule({
+      capacity_enabled: null, grid_import_enabled: true, grid_import_limit_kw: 3.3, capacity_period_minutes: 60,
+    });
+    const power = await import('../src/ui/power.ts');
+    vi.mocked(power.getPowerReadModel).mockResolvedValue({
+      tracker: {}, readings: { state: 'never' },
+      status: { state: 'unavailable', reason: 'no_measurement' },
+      capacityPeak: { state: 'recorded', peakKw: 4.75 },
+      capacityScalars: {
+        state: 'resolved',
+        scalars: { limitKw: 8, marginKw: 0.5, periodMinutes: 60, dryRun: true,
+          capacityEnabled: false, gridImportLimitKw: 3.3 },
+      },
+      hardCapConfiguration: { state: 'resolved', configured: true },
+    });
+    await capacity.loadCapacitySettings();
+    const cap = document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean };
+    expect(cap.selected).toBe(false);
+    (document.querySelector('#settings-grid-import-limit') as HTMLElement & { value: string }).value = '4';
+    await capacity.saveSettingsLimitsSettings();
+    expect(setSetting.mock.calls).toEqual([['grid_import_limit_kw', 4]]);
+  });
+
+  it('turns capacity control on before turning grid control off', async () => {
+    buildLimitsDom();
+    const { capacity, setSetting } = await loadCapacityModule({
+      capacity_enabled: false, grid_import_enabled: true, grid_import_limit_kw: 3.3, capacity_period_minutes: 60,
+    });
+    await capacity.loadCapacitySettings();
+    (document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean }).selected = true;
+    (document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean }).selected = false;
+    await capacity.saveSettingsLimitsSettings();
+    expect(setSetting.mock.calls).toEqual([['capacity_enabled', true], ['grid_import_enabled', false]]);
+  });
+
+  it('does not let a load that started mid-save repaint the switches it replaced', async () => {
+    buildLimitsDom();
+    let releaseEnable!: () => void;
+    let markEnableStarted!: () => void;
+    const enableStarted = new Promise<void>((resolve) => { markEnableStarted = resolve; });
+    const enableWrite = new Promise<void>((resolve) => { releaseEnable = resolve; });
+    const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
+      { capacity_enabled: false, grid_import_enabled: true, grid_import_limit_kw: 3.3, capacity_period_minutes: 60 },
+      undefined,
+      { state: 'recorded', peakKw: 4.75 },
+      async (key, value, store) => {
+        if (key === 'capacity_enabled') {
+          markEnableStarted();
+          await enableWrite;
+        }
+        store[key] = value;
+      },
+    );
+    await capacity.loadCapacitySettings();
+    const cap = document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean };
+    const grid = document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean };
+    cap.selected = true;
+    grid.selected = false;
+    const save = capacity.saveSettingsLimitsSettings();
+    await enableStarted;
+
+    // A realtime refresh reads the store mid-save, then waits on the power read.
+    const power = await import('../src/ui/power.ts');
+    let releasePowerRead!: () => void;
+    let markPowerReadStarted!: () => void;
+    const powerReadStarted = new Promise<void>((resolve) => { markPowerReadStarted = resolve; });
+    const powerReadGate = new Promise<void>((resolve) => { releasePowerRead = resolve; });
+    const settledRead = await power.getPowerReadModel();
+    vi.mocked(power.getPowerReadModel).mockImplementationOnce(async () => {
+      markPowerReadStarted();
+      await powerReadGate;
+      return settledRead;
+    });
+    const staleLoad = capacity.loadCapacitySettings();
+    await powerReadStarted;
+
+    releaseEnable();
+    await save;
+    expect(settingsStore.capacity_enabled).toBe(true);
+    expect(settingsStore.grid_import_enabled).toBe(false);
+    releasePowerRead();
+    await staleLoad;
+    expect(cap.selected).toBe(true);
+    expect(grid.selected).toBe(false);
+  });
+
+  it('shows a half-landed switch move when the running app cannot be read', async () => {
+    buildLimitsDom();
+    const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
+      { capacity_enabled: false, grid_import_enabled: true, grid_import_limit_kw: 3.3, capacity_period_minutes: 60 },
+      new Error('power read failed'),
+      { state: 'recorded', peakKw: 4.75 },
+      async (key, value, store) => {
+        if (key === 'grid_import_enabled') throw new Error('grid switch write failed');
+        store[key] = value;
+      },
+    );
+    await capacity.loadCapacitySettings();
+    const cap = document.querySelector('#settings-capacity-enabled') as HTMLElement & { selected: boolean };
+    const grid = document.querySelector('#settings-grid-import-enabled') as HTMLElement & { selected: boolean };
+    cap.selected = true;
+    grid.selected = false;
+    await expect(capacity.saveSettingsLimitsSettings()).rejects.toThrow('grid switch write failed');
+    expect(settingsStore.capacity_enabled).toBe(true);
+    expect(settingsStore.grid_import_enabled).toBe(true);
+    expect(cap.selected).toBe(true);
+    expect(grid.selected).toBe(true);
+  });
+
+  it('does not write switch defaults the owner never set', async () => {
+    const dom = buildLimitsDom();
+    const { capacity, setSetting } = await loadCapacityModule({ capacity_period_minutes: 60 });
+    await capacity.loadCapacitySettings();
+    dom.margin.value = '0.6';
+    await capacity.saveSettingsLimitsSettings();
+    expect(setSetting.mock.calls).toEqual([['capacity_margin_kw', 0.6]]);
   });
 
   it('keeps the runtime control posture when one persisted control field is unreadable', async () => {

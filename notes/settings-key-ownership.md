@@ -233,8 +233,14 @@ never through a settings key.
 `packages/shared-domain/src/settings/powerLimits.ts`. The runtime settings store
 uses SDK key presence to supply legacy defaults (capacity on, grid off); a listed
 malformed flag or an enabled grid limit without a finite positive threshold is
-unavailable and preserves the last accepted runtime posture. The browser receives
-the running effective posture through `capacityScalars`, and uses the shared
-threshold validator for edits and for the retained disabled input value. It writes
-a valid grid threshold before enabling the grid switch. These keys are Main-only,
-not home-scopable. Disabled control axes are `null`, never large stand-in limits.
+unavailable and preserves the last accepted runtime posture. The browser resolves
+the saved switches first, as one posture, and takes the running effective posture
+(`capacityScalars`, or its last good copy when that read is unavailable) for a
+switch that reads back `null` or a malformed trio: it cannot see the key list, so
+a `null` may be a never-written key or a transient miss
+(`packages/settings-ui/src/ui/capacitySettingsPersistence.ts`). It uses the shared
+threshold validator for edits and for the retained disabled input value. A save
+writes thresholds first, then the switch being turned on, then the one being
+turned off, and never writes a switch the owner did not change. These keys are
+Main-only, not home-scopable. Disabled control axes are `null`, never large
+stand-in limits.

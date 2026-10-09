@@ -24,8 +24,7 @@ import {
   staleDataBannerAction,
 } from './dom.ts';
 import { isValidGridImportLimitKw } from '../../../shared-domain/src/settings/powerLimits.ts';
-import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
-import { getSetting, setSetting, invalidateApiCache } from './homey.ts';
+import { getSetting } from './homey.ts';
 import { state } from './state.ts';
 import { getPowerReadModel } from './power.ts';
 import {
@@ -37,13 +36,7 @@ import {
   resolveRetainedScopeClaim,
 } from './meterAreaPosture.ts';
 import {
-  CAPACITY_ENABLED,
-  GRID_IMPORT_ENABLED,
-  GRID_IMPORT_LIMIT_KW,
   CAPACITY_DRY_RUN,
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
-  CAPACITY_PERIOD_MINUTES,
   DEBUG_LOGGING_TOPICS,
   HOMEY_ENERGY_METER_DEVICE_ID,
   HOMES_CONFIG,
@@ -63,13 +56,10 @@ import {
   topicsToScenarioIds,
 } from '../../../shared-domain/src/utils/debugLogging.ts';
 import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
-import {
-  DEFAULT_CAPACITY_PERIOD_MINUTES,
-  resolveCapacityPeriodMinutes,
-} from '../../../shared-domain/src/settings/capacityPeriod.ts';
+import { DEFAULT_CAPACITY_PERIOD_MINUTES } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import type {
-  CapacityPeriodMinutes,
   CapacityScalarSettings,
+  PowerLimitSettings,
 } from '../../../contracts/src/capacitySettings.ts';
 import {
   resolveSimulationBannerContent,
@@ -87,7 +77,12 @@ import {
 } from '../../../shared-domain/src/powerReadingsBanner.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';
-import { pushSettingWriteIfChanged } from './settingWrites.ts';
+import {
+  readCurrentCapacitySettings,
+  resolveCapacityScalars,
+  writeLimitsSettings,
+  writeSimulationSetting,
+} from './capacitySettingsPersistence.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 import { isPlanUnmeasured, onPlanMeasurementChange } from './planMeasurementSignal.ts';
 import {
@@ -100,31 +95,12 @@ import {
   publishSetupPowerUnavailable,
 } from './setupPathFacts.ts';
 import { formatCapacityPeak } from './capacityPeakRead.ts';
-import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 
 export type PowerSource = 'flow' | 'homey_energy';
 
 type CapacitySettingsCommand =
-  | {
-    kind: 'limits';
-    capacityEnabled: boolean;
-    gridImportLimitKw: number | null;
-    limitKw: number;
-    marginKw: number;
-    periodMinutes: CapacityPeriodMinutes;
-  }
+  | ({ kind: 'limits' } & PowerLimitSettings)
   | { kind: 'simulation'; dryRun: boolean };
-
-type CurrentCapacitySettings = {
-  limit: unknown;
-  margin: unknown;
-  dryRun: unknown;
-  periodMinutes: unknown;
-  capacityEnabled: unknown;
-  gridImportEnabled: unknown;
-  gridImportLimitKw: unknown;
-};
-
 
 // Mirrors the runtime snapshot's lifecycle: simulation is the boot default,
 // then only a resolved read or successful save replaces it.
@@ -149,23 +125,6 @@ const commitCapacityScalars = (scalars: CapacityScalarSettings): void => {
   lastGoodCapacityScalars = scalars;
   state.dryRun = scalars.dryRun;
 };
-
-/**
- * A persisted scalar wins; a missing or malformed one takes `fallback`'s. The
- * runtime retains its validated in-memory posture when a persisted key is
- * absent, so an unset key must never make the WebView claim a boot default
- * (simulation included) while the running app holds a live value.
- */
-const resolveCapacityScalars = (
-  current: CurrentCapacitySettings,
-  fallback: CapacityScalarSettings,
-): CapacityScalarSettings => ({
-  ...fallback,
-  limitKw: isFiniteNumber(current.limit) ? current.limit : fallback.limitKw,
-  marginKw: isFiniteNumber(current.margin) ? current.margin : fallback.marginKw,
-  dryRun: typeof current.dryRun === 'boolean' ? current.dryRun : fallback.dryRun,
-  periodMinutes: resolveCapacityPeriodMinutes(current.periodMinutes, fallback.periodMinutes),
-});
 
 export const normalizePowerSource = (raw: unknown): PowerSource => (
   raw === 'homey_energy' ? 'homey_energy' : 'flow'
@@ -305,38 +264,21 @@ const syncCapacityOwnedControls = (scalars: CapacityScalarSettings): void => {
   syncSimulationModeControl(scalars.dryRun);
 };
 
-const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> => {
-  const [
-    limit, margin, dryRun, periodMinutes, capacityEnabled, gridImportEnabled, gridImportLimitKw,
-  ] = await Promise.all([
-    getSetting(CAPACITY_LIMIT_KW),
-    getSetting(CAPACITY_MARGIN_KW),
-    getSetting(CAPACITY_DRY_RUN),
-    getSetting(CAPACITY_PERIOD_MINUTES),
-    getSetting(CAPACITY_ENABLED),
-    getSetting(GRID_IMPORT_ENABLED),
-    getSetting(GRID_IMPORT_LIMIT_KW),
-  ]);
-  return { limit, margin, dryRun, periodMinutes, capacityEnabled, gridImportEnabled, gridImportLimitKw };
-};
-
 const resolveCapacitySettingsCommand = (
-  current: CurrentCapacitySettings,
+  stored: CapacityScalarSettings,
   command: CapacitySettingsCommand,
-): CapacityScalarSettings => {
-  const persisted = resolveCapacityScalars(current, lastGoodCapacityScalars);
-  return command.kind === 'limits'
+): CapacityScalarSettings => (
+  command.kind === 'limits'
     ? {
-      ...persisted,
+      ...stored,
       capacityEnabled: command.capacityEnabled,
       gridImportLimitKw: command.gridImportLimitKw,
       limitKw: command.limitKw,
       marginKw: command.marginKw,
-      dryRun: persisted.dryRun,
       periodMinutes: command.periodMinutes,
     }
-    : { ...persisted, dryRun: command.dryRun };
-};
+    : { ...stored, dryRun: command.dryRun }
+);
 
 type CapacityPowerRead =
   | { state: 'resolved'; payload: SettingsUiPowerPayload }
@@ -527,60 +469,40 @@ export const loadCapacitySettings = async () => {
   if (dryRunChanged) refreshPlanSurface();
 };
 
-const writeCapacitySettingsCommand = async (
-  current: CurrentCapacitySettings,
-  resolved: CapacityScalarSettings,
-  command: CapacitySettingsCommand,
-): Promise<void> => {
-  const writes: Array<Promise<void>> = [];
-  if (command.kind === 'limits') {
-    // Persist the threshold before enabling it; keep a configured grid limit in place
-    // before disabling capacity control during a switch between the two constraints.
-    if (resolved.gridImportLimitKw !== null && current.gridImportLimitKw !== resolved.gridImportLimitKw) {
-      await setSetting(GRID_IMPORT_LIMIT_KW, resolved.gridImportLimitKw);
-    }
-    if (current.gridImportEnabled !== (resolved.gridImportLimitKw !== null)) {
-      await setSetting(GRID_IMPORT_ENABLED, resolved.gridImportLimitKw !== null);
-    }
-    pushSettingWriteIfChanged(writes, CAPACITY_ENABLED, current.capacityEnabled, resolved.capacityEnabled);
-    pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, resolved.limitKw);
-    pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, resolved.marginKw);
-    pushSettingWriteIfChanged(writes, CAPACITY_PERIOD_MINUTES, current.periodMinutes, resolved.periodMinutes);
-  } else {
-    pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, current.dryRun, resolved.dryRun);
-  }
-  // Never power_source: a hard-cap/margin/simulation save must not materialize
-  // the 'flow' default for a user who never chose a source, and the select's
-  // own change goes through the guarded seam (`savePowerSourceSetting`).
-  const results = await Promise.allSettled(writes);
-  const failed = results.find((result) => result.status === 'rejected');
-  if (failed?.status === 'rejected') throw failed.reason;
-};
-
 const saveCapacitySettingsCommand = async (
   command: CapacitySettingsCommand,
   successMessage = 'Capacity settings saved.',
 ) => {
   capacitySettingsMutationRevision += 1;
   const current = await readCurrentCapacitySettings();
-  const resolved = resolveCapacitySettingsCommand(current, command);
+  const stored = resolveCapacityScalars(current, lastGoodCapacityScalars);
+  const resolved = resolveCapacitySettingsCommand(stored, command);
   validatePowerLimitSettings(resolved);
 
   try {
-    await writeCapacitySettingsCommand(current, resolved, command);
+    // Never power_source: a hard-cap/margin/simulation save must not materialize
+    // the 'flow' default for a user who never chose a source, and the select's
+    // own change goes through the guarded seam (`savePowerSourceSetting`).
+    if (command.kind === 'limits') await writeLimitsSettings(current, stored, resolved);
+    else await writeSimulationSetting(current, resolved.dryRun);
   } catch (caught) {
-    // Started writes have settled. Reconcile partial successes before the next
-    // queued save can start; keep the typed fields available for correction.
-    invalidateApiCache(SETTINGS_UI_POWER_PATH);
-    const powerRead = await readCapacityPowerModel();
-    if (powerRead.state === 'resolved' && powerRead.payload.capacityScalars.state === 'resolved') {
-      const effective = powerRead.payload.capacityScalars.scalars;
+    // Started writes have settled, and each one that landed is already in the
+    // settings cache. Reconcile the switches from it, as a load would, before the
+    // next queued save can start; keep the typed fields available for correction.
+    const after = await readCurrentCapacitySettings().catch(() => null);
+    if (after !== null) {
+      const effective = resolveCapacityScalars(after, lastGoodCapacityScalars);
       commitCapacityScalars(effective);
       syncPowerLimitSwitches(effective);
       syncDryRunBannerVisibility();
       syncSettingsHubChips();
     }
     throw caught;
+  } finally {
+    // A load that started while these writes were landing read a store this save
+    // was still changing; settling the save retires it. The writes' own change
+    // events start fresh loads, which read the settled store.
+    capacitySettingsMutationRevision += 1;
   }
   // A save commits only the fields named by its command. Another save or a
   // realtime settings refresh may have established newer values for the other
