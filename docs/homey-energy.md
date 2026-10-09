@@ -158,7 +158,7 @@ You can use Homey Energy for both power metering and electricity prices at the s
 - **Power source** is in **Settings > Limits & safety**.
 - **Price source** is in **Settings > Electricity prices**.
 
-A typical setup for someone outside Norway: set both to Homey Energy and you are done — no Flows needed for basic operation. From there, configure your [hard cap](/getting-started#step-2-set-your-capacity-limit), [pick which devices to control](/getting-started#step-3-choose-which-devices-pels-controls), and set up [price response](/configuration#settings-price-aware-devices).
+A typical setup for someone outside Norway: set both to Homey Energy and you are done — no Flows needed for basic operation. From there, configure your [limits](/getting-started#step-2-set-your-limits), [pick which devices to control](/getting-started#step-3-choose-which-devices-pels-controls), and set up [price response](/configuration#settings-price-aware-devices).
 
 ## Next steps
 

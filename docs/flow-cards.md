@@ -34,7 +34,7 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
 | **Current price is one of the lowest before a time** | Fires when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
 | **Stepped device target changed** | Fires when PELS wants a stepped-load device, including EV charger control modes, to move to another configured step. |
-| **Smart task status changed** | Fires when PELS saves a new Smart task status for a device, such as **On track** to **At risk**. Short mid-hour recalculations do not fire it, and PELS limiting the device for the hard cap, the daily budget or a higher-priority device does not change the status on its own. Once PELS has confirmed that a device stopped taking power, it stays **At risk** through such limiting and fires again only when the device draws power. |
+| **Smart task status changed** | Fires when PELS saves a new Smart task status for a device, such as **On track** to **At risk**. Short mid-hour recalculations do not fire it, and PELS limiting the device for the grid import limit, the hard cap, the daily budget or a higher-priority device does not change the status on its own. Once PELS has confirmed that a device stopped taking power, it stays **At risk** through such limiting and fires again only when the device draws power. |
 | **Smart task plan changed** | Fires when the scheduled hours for a Smart task are revised, for example after new prices arrive. |
 | **Smart task ended** | Fires once when a task run concludes. The **Outcome** tag is `succeeded`, `missed`, or `abandoned`. Filter on the tag downstream — for example, send a notification only when `Outcome = missed`. |
 | **Smart task time is running low** | Fires once when the time left before a task's ready-by drops to or below a chosen number of hours, re-arming if the ready-by is rescheduled. Exposes an `hours_remaining` tag. Use it to act a fixed lead-time before a deadline, such as 2 hours left. |
@@ -75,10 +75,10 @@ The device-aware available-power condition includes built-in hysteresis after re
 | Card | What it does |
 | --- | --- |
 | **Report power usage** | Feeds live meter data into PELS. Required unless the power source is Power meter. |
-| **Set capacity limit** | Changes the configured hard cap dynamically. |
+| **Set capacity limit** | Changes the configured hard cap dynamically. It does not turn on **Capacity limit**. |
 | **Set operating mode** | Switches between stored modes such as Home or Night. |
 | **Set daily budget** | Sets the daily budget from a Flow. Use `0` to disable daily budget. |
-| **Add budget exemption for device** | Makes a device skip daily-budget control. Real usage still counts in charts and hard-cap protection. |
+| **Add budget exemption for device** | Makes a device skip daily-budget control. Real usage still counts in charts, the grid import limit and hard-cap protection. |
 | **Remove budget exemption for device** | Makes a device follow daily-budget control again. |
 | **Enable power-limit control for device** | Turns on power-limit control for one device. Only devices PELS can limit are offered; for a device with no power reading (no power meter and no *Energy used when on* in its Homey settings) the card does nothing and PELS logs why. |
 | **Disable power-limit control for device** | Turns off power-limit control for one device. |
@@ -118,7 +118,7 @@ Let your Flows change PELS's settings for a thermostat instead of writing to the
 
 Use **Set daily budget** when the daily target should vary by season, tariff, occupancy, or manual Homey controls.
 
-Use **Add budget exemption for device** for a device that should not cause other devices to be limited just to compensate for its daily energy use. Exempt devices still count in real usage and hard-cap protection.
+Use **Add budget exemption for device** for a device that should not cause other devices to be limited just to compensate for its daily energy use. Exempt devices still count in real usage, the grid import limit and hard-cap protection.
 
 ### Device state checks
 
@@ -177,7 +177,7 @@ Example:
 
 This matches the 5 cheapest hours in the 12 hours before 07:00. The window can cross midnight.
 
-Pair that condition or trigger with **Enable power-limit control for device** and **Disable power-limit control for device** so your Flow chooses the booked hours while PELS still protects the hard cap.
+Pair that condition or trigger with **Enable power-limit control for device** and **Disable power-limit control for device** so your Flow chooses the booked hours while PELS still protects your grid import limit and hard cap.
 
 See [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows).
 

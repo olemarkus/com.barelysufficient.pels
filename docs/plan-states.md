@@ -18,7 +18,7 @@ The redesigned Overview uses a compact state word on each device card:
 | **Running** | The device is on, charging, heating, or otherwise active. |
 | **Idle** | The device is available and on (or has no binary switch), but currently has nothing to do. |
 | **Off** | Homey explicitly reports the device off, and PELS is not currently limiting or resuming it. |
-| **Limited** | PELS is currently lowering, pausing, turning off, or making the device wait for power — to stay within the hard cap or daily budget pace, or because a scheduled smart task has power reserved. A limited device also names what Homey reports: **Limited · Off** when it is off, or **Limited · Low** (its reported level) when a stepped device still runs lower. |
+| **Limited** | PELS is currently lowering, pausing, turning off, or making the device wait for power — to stay within the grid import limit, the hard cap or daily budget pace, or because a scheduled smart task has power reserved. A limited device also names what Homey reports: **Limited · Off** when it is off, or **Limited · Low** (its reported level) when a stepped device still runs lower. |
 | **Resuming** | PELS has decided to bring the device back and is turning it on, raising its level, or counting down a short restart wait. A device still waiting for power reads **Limited**. |
 | **Manual** | The device is managed, but PELS cannot use power-limit control for it right now. |
 | **Unavailable** | PELS has no usable device observation, or Homey reports the device as unavailable. |
@@ -68,6 +68,7 @@ The raw plan still uses older internal identifiers. These are implementation ter
 | `shedAction: "set_temperature"` | The limit this device may go down to: its minimum target temperature. |
 | `reason: "staying off until turned on again"` | Off — the device was turned off elsewhere and PELS was asked to leave it off. |
 | `reason: "shed due to capacity"` | Limited; the card shows the power the device still needs. |
+| `reason: "shed due to grid import limit"` | Limited to keep import under the grid import limit; the card shows the power the device still needs. |
 | `reason: "shed due to daily budget"` | Limited by today's budget pacing; the card shows the power the device still needs, or offers **Let it run now**. |
 | `reason: "restore (...)"` | Waiting to resume, with the required and available power shown internally. |
 | `reason: "shortfall (...)"` | Manual action needed — hard cap may be exceeded. |

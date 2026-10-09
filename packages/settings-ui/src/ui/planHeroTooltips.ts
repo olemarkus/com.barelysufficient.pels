@@ -7,17 +7,14 @@
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
 import { capacityPeriodNoun } from './capacityPeriodCopy.ts';
 
-// Mirrors `softLimitSource` in `packages/contracts/src/settingsUiApi.ts` and
-// `lib/plan/planTypes.ts`. Declared locally so shared-domain stays free of
-// cross-package type pulls — the union is short and stable.
-//
-// There is no `'both'`. The producer is `resolveSoftLimitSource`
-// (`lib/plan/planBuilder.ts`), which is total over exactly these two: when the
-// two paces coincide within `SOFT_LIMIT_EPSILON` it answers `'capacity'`, not a
-// third "they meet here" state. The member and its copy existed on the wire
-// with nothing able to emit them. (Not to be confused with `limitReason` in
-// `homeLimitsStatus.ts`, which has a real four-member union including `'both'`.)
-export type HeroSoftLimitSource = 'capacity' | 'daily' | 'grid' | null;
+// The pacing sources that put a safe-pace marker and source clause on the hero.
+// `softLimitSource` (`lib/plan/planContext.ts`) can also answer `'grid'`, when
+// the grid import limit's working target binds, and `null`, when no limit is on;
+// the hero shows neither as a safe pace (`notes/ui-terminology.md` § "Grid import
+// limit and optional capacity control"), so callers narrow before asking here.
+// (Not to be confused with `limitReason` in `homeLimitsStatus.ts`, which has a
+// real four-member union including `'both'`.)
+export type SafePaceSource = 'capacity' | 'daily';
 
 export const HERO_INFO_TOOLTIP_TEXT = [
   'Power now is measured in kW — how fast electricity is being used right now.',
@@ -31,8 +28,8 @@ export const HERO_INFO_TOOLTIP_TEXT = [
 
 export const formatHeroInfoTooltip = (
   periodMinutes: CapacityPeriodMinutes,
-  capacityEnabled = true,
-  gridEnabled = false,
+  capacityEnabled: boolean,
+  gridEnabled: boolean,
 ): string => {
   const gridText = gridEnabled
     ? 'Grid import limit applies to the latest observed net power from the grid. '
@@ -40,9 +37,10 @@ export const formatHeroInfoTooltip = (
       + 'Temporary overshoot is possible while meter readings and devices catch up.'
     : '';
   if (!capacityEnabled) return [
-    'Power now is measured in kW — the latest observed net import from the grid.',
+    'Power now is how fast the home draws from the grid right now, in kW.',
     gridText,
-    'Price settings and Smart tasks still follow your device priorities.',
+    'With Capacity limit off, Safe pace comes from your daily budget when you set one: '
+      + 'the whole-home rate where PELS starts reacting.',
   ].filter(Boolean).join(' ');
   const capacityText = formatCapacityHeroInfoTooltip(periodMinutes);
   return [capacityText, gridText].filter(Boolean).join(' ');
@@ -84,11 +82,9 @@ export const SAFE_PACE_SOURCE_BY_SOURCE: Record<'capacity' | 'daily', string> = 
 };
 
 export const resolveSafePaceSourceText = (
-  source: HeroSoftLimitSource,
+  source: SafePaceSource,
   periodMinutes: CapacityPeriodMinutes,
 ): string => {
-  if (source === null) return '';
-  if (source === 'grid') return 'set by grid import';
   if (source === 'capacity' && periodMinutes === 15) return 'set by this quarter\'s pace';
   return SAFE_PACE_SOURCE_BY_SOURCE[source];
 };
@@ -97,14 +93,10 @@ const formatKw = (kw: number): string => `${kw.toFixed(1)} kW`;
 const roundKw = (kw: number): number => Math.round(kw * 10) / 10;
 
 const resolveSafePaceTooltipBySource = (
-  source: HeroSoftLimitSource,
+  source: SafePaceSource,
   periodMinutes: CapacityPeriodMinutes,
 ): string => {
   switch (source) {
-    case null:
-      return 'no power limit enabled.';
-    case 'grid':
-      return 'PELS leaves an automatic margin below the grid import limit.';
     case 'daily':
       return SAFE_PACE_TOOLTIP_BY_SOURCE.daily;
     case 'capacity':
@@ -112,7 +104,7 @@ const resolveSafePaceTooltipBySource = (
         ? 'the quarter-hour pace sets this marker; PELS starts reacting here.'
         : SAFE_PACE_TOOLTIP_BY_SOURCE.capacity;
     default: {
-      // Exhaustiveness guard: a new HeroSoftLimitSource member must pick its
+      // Exhaustiveness guard: a new SafePaceSource member must pick its
       // own tooltip above rather than silently borrowing the capacity copy.
       const exhaustive: never = source;
       void exhaustive;
@@ -123,7 +115,7 @@ const resolveSafePaceTooltipBySource = (
 
 export const formatSafePaceTooltip = (
   safePaceKw: number,
-  source: HeroSoftLimitSource,
+  source: SafePaceSource,
   periodMinutes: CapacityPeriodMinutes,
   composition?: SafePaceComposition,
 ): string => {
@@ -169,7 +161,7 @@ const resolveSafePaceComposition = (
 
 export const formatSafePaceComposition = (
   safePaceKw: number,
-  source: HeroSoftLimitSource,
+  source: SafePaceSource,
   composition: SafePaceComposition,
 ): string | null => {
   if (source !== 'daily') return null;

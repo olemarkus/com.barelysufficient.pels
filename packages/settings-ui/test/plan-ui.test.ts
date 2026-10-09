@@ -329,6 +329,48 @@ describe('Redesign plan UI', () => {
       expect(segments[1]?.className).toContain('pels-meter-segments__seg--background');
     });
 
+    it('names the grid import limit when its target binds and import is above it', async () => {
+      await renderPlanSnapshot({
+        meta: buildPlanMeta({
+          totalKw: 3.9,
+          softLimitKw: 3.8,
+          softLimitSource: 'grid',
+          gridImportLimitKw: 4,
+          gridImportTargetKw: 3.8,
+          controlledKw: 0,
+          uncontrolledKw: 3.9,
+          minutesRemaining: 20,
+        }),
+        devices: [
+          { id: 'dev-1', name: 'Heater', priority: 1, currentState: 'off', plannedState: 'shed' },
+        ],
+      });
+      expect((document.querySelector('.plan-hero .plan-hero__subline:not(.plan-hero__subline--muted)') as HTMLElement | null)
+        ?.textContent?.trim()).toBe('Grid import limit 4.0 kW · PELS starts reducing loads near 3.80 kW');
+      const decision = (document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim();
+      expect(decision?.startsWith('Grid import is high.')).toBe(true);
+      expect(decision).toContain('Turn off other appliances to stay under your limit.');
+      expect(document.body.textContent).not.toMatch(/no grid power/i);
+    });
+
+    it('keeps the default decision when import sits exactly at the grid target', async () => {
+      await renderPlanSnapshot({
+        meta: buildPlanMeta({
+          totalKw: 3.8,
+          softLimitKw: 3.8,
+          softLimitSource: 'grid',
+          gridImportLimitKw: 4,
+          gridImportTargetKw: 3.8,
+          controlledKw: 0,
+          uncontrolledKw: 3.8,
+          minutesRemaining: 20,
+        }),
+        devices: [],
+      });
+      const decision = (document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim();
+      expect(decision?.startsWith('Grid import is high.')).toBe(false);
+    });
+
     it('writes the spec decision sentence when nothing is being limited', async () => {
       await renderPlanSnapshot({
         meta: buildPlanMeta({

@@ -24,7 +24,7 @@ import { resolveHomeAreaDisplayName } from './homeNames';
 // ── Cap + margin fields (units in the label per the style rules) ─────────────
 
 export const HOME_LIMITS_HARD_CAP_LABEL = 'Hard cap (kW)';
-export const HOME_LIMITS_HARD_CAP_HINT = 'The peak or tariff step this meter area should protect — '
+export const HOME_LIMITS_HARD_CAP_HINT = 'The peak or tariff step this meter area should protect. '
   + 'PELS keeps each selected period’s average power under this.';
 
 // The Main-home form's own hard-cap hint, which the static markup ships and
@@ -36,10 +36,10 @@ export const HOME_LIMITS_HARD_CAP_HINT = 'The peak or tariff step this meter are
 //
 // Homes without a capacity tariff can now turn this axis off independently
 // of grid import control. The setting does not need an artificially high cap.
-export const HOME_LIMITS_MAIN_HARD_CAP_HINT = 'The peak or tariff step you want to protect — '
+export const HOME_LIMITS_MAIN_HARD_CAP_HINT = 'The peak or tariff step you want to protect. '
   + 'PELS keeps each selected period’s average power under this. '
   + 'No capacity tariff where you live? Turn off Capacity limit.';
-export const HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS = 'The Main home’s peak or tariff step — '
+export const HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS = 'The Main home’s peak or tariff step. '
   + 'PELS keeps each selected period’s average power under this.';
 
 /**

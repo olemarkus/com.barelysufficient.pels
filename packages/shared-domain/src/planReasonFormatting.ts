@@ -8,6 +8,7 @@ import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
+  PLAN_STATE_GRID_IMPORT_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
   formatReservedForStartStatus,
 } from './planStateLabels';
@@ -511,6 +512,7 @@ function formatStaticReasonUserFacing(reason: StaticReason): string {
     case PLAN_REASON_CODES.dailyBudget:
       return PLAN_STATE_DAILY_BUDGET_STATUS;
     case PLAN_REASON_CODES.gridImport:
+      return PLAN_STATE_GRID_IMPORT_STATUS;
     case PLAN_REASON_CODES.capacity:
       return PLAN_STATE_CAPACITY_STATUS;
     case PLAN_REASON_CODES.deferredObjectiveAvoid:

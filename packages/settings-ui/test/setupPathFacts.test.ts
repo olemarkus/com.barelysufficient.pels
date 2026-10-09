@@ -39,6 +39,24 @@ describe('setup path facts', () => {
     expect(facts.isBelgianHomeOnHourlyPeriod()).toBe(false);
   });
 
+  it('names both limits in the Limits row when both are on, and only the grid limit otherwise', async () => {
+    const { facts, state } = await load();
+    state.devicesLoaded = true;
+    state.latestDevices = [{ id: 'heater' }] as typeof state.latestDevices;
+    state.managedMap = { heater: true };
+    state.controllableMap = { heater: true };
+    facts.publishSetupPower(NEVER);
+    facts.publishSetupHardCapRead(true, { ...running, gridImportLimitKw: 3.3, limitKw: 5, marginKw: 0.3 });
+    expect(hardCapDetail(facts)).toBe('3.3 kW grid import limit, 5 kW hard cap (hourly average), 0.3 kW safety margin');
+    facts.publishSetupHardCapRead(true, { ...running, gridImportLimitKw: 3.3, capacityEnabled: false });
+    expect(hardCapDetail(facts)).toBe('3.3 kW grid import limit');
+    facts.publishSetupMarket({ state: 'resolved', country: 'BE' });
+    facts.publishSetupHardCapRead(true, { ...running, gridImportLimitKw: 3.3, limitKw: 5, marginKw: 0.3 });
+    expect(hardCapDetail(facts)).toBe(
+      '3.3 kW grid import limit, 5 kW hard cap (hourly average), 0.3 kW safety margin. In Flanders, use the 15-minute average.',
+    );
+  });
+
   it('judges nothing until the readings, the hard cap and the device list have all arrived', async () => {
     const { facts, state } = await load();
     expect(facts.readSetupPath()).toEqual({ state: 'loading' });
@@ -80,7 +98,7 @@ describe('setup path facts', () => {
     facts.publishSetupPower(NEVER);
     facts.publishSetupHardCapRead(true, { ...running, limitKw: 8, marginKw: 0.4 });
     facts.publishSetupHardCapRead(true, { ...running, limitKw: 8, marginKw: 0.5 });
-    expect(hardCapDetail(facts)).toBe('8 kW hourly average, 0.5 kW safety margin');
+    expect(hardCapDetail(facts)).toBe('8 kW hard cap (hourly average), 0.5 kW safety margin');
   });
 
   it('counts only managed devices that still exist', async () => {

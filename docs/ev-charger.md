@@ -47,7 +47,7 @@ Then configure the charger as a normal managed device:
 2. Enable **Power-limit control**.
 3. Set a priority that matches how important EV charging is compared with heaters, water tanks, and other managed devices.
 
-Lower priority numbers are more important. Devices with higher numbers are limited first when PELS needs to stay under the hard cap.
+Lower priority numbers are more important. Devices with higher numbers are limited first when PELS needs to stay under your grid import limit or hard cap.
 
 ## Step 3: Create the Charger Current Flow
 
@@ -90,7 +90,7 @@ If you have solar and PELS can see your export, you can have the charger follow 
 
 PELS then picks the charging current your export covers and adjusts it as the sun changes. A charger cannot go below **6 A** — about 1.4 kW on one phase, 4.1 kW on three — so when your surplus cannot cover even that, PELS falls back to the same **Power limiting** choice it uses for your hard cap: charging is turned off, or lowered to the step you picked and topped up from the grid.
 
-Your hard cap and daily budget still come first, and a smart task with a deadline overrides this while it is running. See [Solar and Self-Consumption](/solar) for the full picture.
+Your grid import limit, hard cap and daily budget still come first, and a smart task with a deadline overrides this while it is running. See [Solar and Self-Consumption](/solar) for the full picture.
 
 ## Step 5: Configure Boost Mode Battery Reporting
 
@@ -140,7 +140,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 | The Flow does not trigger | For a Flow-controlled charger, including an Easee setup you chose to keep, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. A new Easee setup can use built-in device control instead. |
 | The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
 | Battery level does not update in PELS | If a car is selected, check whether PELS has matched it to the charger and whether that car is available in Homey. Otherwise, check the charger's own reading or that your battery-reporting Flow selects the correct charger. |
-| PELS never limits the charger | Check the charger priority, hard cap, safety margin, and whether Simulation mode is still enabled. |
+| PELS never limits the charger | Check the charger priority, your limits in **Limits & safety**, and whether Simulation mode is still enabled. |
 
 For problems beyond the charger — budget, capacity, or a missed task — see the full [Troubleshooting guide](/troubleshooting).
 

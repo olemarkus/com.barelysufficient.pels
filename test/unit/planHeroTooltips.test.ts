@@ -1,6 +1,7 @@
 import {
   HERO_INFO_TOOLTIP_TEXT,
   SAFE_PACE_TOOLTIP_BY_SOURCE,
+  formatHeroInfoTooltip,
   formatSafePaceComposition,
   formatSafePaceTooltip,
 } from '../../packages/settings-ui/src/ui/planHeroTooltips';
@@ -11,6 +12,24 @@ describe('planHeroTooltips', () => {
       expect(HERO_INFO_TOOLTIP_TEXT).toContain('kW');
       expect(HERO_INFO_TOOLTIP_TEXT).toContain('kWh');
       expect(HERO_INFO_TOOLTIP_TEXT).toContain('Safe pace');
+    });
+  });
+
+  describe('formatHeroInfoTooltip', () => {
+    it('explains power and the daily budget, without the hard cap, when Capacity limit is off', () => {
+      const text = formatHeroInfoTooltip(60, false, true);
+      expect(text).toContain('Power now is how fast the home draws from the grid right now, in kW.');
+      expect(text).toContain('Grid import limit applies to the latest observed net power');
+      expect(text).toContain('Safe pace comes from your daily budget when you set one');
+      expect(text).not.toMatch(/hard cap/i);
+      expect(text).not.toContain('—');
+    });
+
+    it('keeps the capacity explanation and adds the grid one when both limits are on', () => {
+      const text = formatHeroInfoTooltip(60, true, true);
+      expect(text.startsWith(HERO_INFO_TOOLTIP_TEXT)).toBe(true);
+      expect(text).toContain('Grid import limit applies');
+      expect(formatHeroInfoTooltip(60, true, false)).toBe(HERO_INFO_TOOLTIP_TEXT);
     });
   });
 
