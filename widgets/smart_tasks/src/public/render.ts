@@ -13,6 +13,7 @@ import type {
   SmartTasksWidgetRow,
 } from '../smartTasksWidgetTypes';
 import { renderTrajectoryChart } from './trajectoryChart';
+import { clearChildren, setLine } from '../../../_shared/widgetDom';
 
 // `section` disambiguates the two lists; `key` is the row identity WITHIN its
 // section — `deviceId` for an active task (one active plan per device), the
@@ -138,10 +139,6 @@ const renderEndedRow = (
   return li;
 };
 
-const clearChildren = (el: HTMLElement): void => {
-  while (el.firstChild) el.removeChild(el.firstChild);
-};
-
 const renderEndedSection = (
   targets: RenderTargets,
   endedRows: SmartTasksWidgetEndedRow[],
@@ -209,18 +206,6 @@ const renderListEmpty = (
   overflowEl.hidden = true;
 };
 
-// DOM setter for the optional detail lines: writes text + visibility, or
-// blanks + hides when the producer left the field null. The element is a
-// write sink, so the property mutation on the parameter is intentional.
-const setOptionalLine = (el: HTMLElement, text: string | null): void => {
-  const visible = Boolean(text && text.trim());
-  /* eslint-disable no-param-reassign --
-     `el` is a DOM write sink; mutating its text/visibility is the helper's job. */
-  el.textContent = visible ? text : '';
-  el.hidden = !visible;
-  /* eslint-enable no-param-reassign */
-};
-
 // Draws the trajectory chart, or hides the container when there's nothing
 // chartable so the text lines carry the panel.
 const renderChart = (el: HTMLElement, chart: SmartTasksWidgetRow['chart']): void => {
@@ -238,15 +223,15 @@ const renderActiveDetail = (targets: RenderTargets, row: SmartTasksWidgetRow): v
   detailChipEl.textContent = row.statusLabel;
   detailChipEl.dataset.tone = row.tone;
   const deadlineLabel = row.deadlineLongLabel ?? row.finishLabel;
-  setOptionalLine(detailDeadlineEl, deadlineLabel ? `${row.etaVerb} ${deadlineLabel}` : null);
+  setLine(detailDeadlineEl, deadlineLabel ? `${row.etaVerb} ${deadlineLabel}` : null);
   // Detail target line repeats the action verb so it stands on its own.
   detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
   detailTargetEl.hidden = false;
   renderChart(detailChartEl, row.chart);
-  setOptionalLine(detailWhyEl, row.whyLabel);
-  setOptionalLine(detailRecourseEl, row.recourseHint);
-  setOptionalLine(detailMetaEl, row.planMetaLabel);
-  setOptionalLine(detailConfidenceEl, row.confidenceLabel);
+  setLine(detailWhyEl, row.whyLabel);
+  setLine(detailRecourseEl, row.recourseHint);
+  setLine(detailMetaEl, row.planMetaLabel);
+  setLine(detailConfidenceEl, row.confidenceLabel);
 };
 
 const renderEndedDetail = (targets: RenderTargets, row: SmartTasksWidgetEndedRow): void => {
@@ -257,7 +242,7 @@ const renderEndedDetail = (targets: RenderTargets, row: SmartTasksWidgetEndedRow
   detailHeaderEl.textContent = row.deviceName;
   detailChipEl.textContent = row.outcomeLabel;
   detailChipEl.dataset.tone = row.outcomeTone;
-  setOptionalLine(detailDeadlineEl, row.finishedLabel);
+  setLine(detailDeadlineEl, row.finishedLabel);
   // Headline = the progress recap ("38 → 55 · target 55 °C") — the postmortem
   // story — falling back to the plain goal when start/final couldn't be resolved.
   detailTargetEl.textContent = row.progressLabel
@@ -266,10 +251,10 @@ const renderEndedDetail = (targets: RenderTargets, row: SmartTasksWidgetEndedRow
   renderChart(detailChartEl, row.chart);
   // Succeeded → "reached at HH:MM"; Missed → the blameless why sentence + the
   // budget/device recourse hint. Abandoned carries neither.
-  setOptionalLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
-  setOptionalLine(detailRecourseEl, row.recourseHint);
-  setOptionalLine(detailMetaEl, null);
-  setOptionalLine(detailConfidenceEl, null);
+  setLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
+  setLine(detailRecourseEl, row.recourseHint);
+  setLine(detailMetaEl, null);
+  setLine(detailConfidenceEl, null);
 };
 
 // Falls the detail view back to the list (used when the selected row dropped

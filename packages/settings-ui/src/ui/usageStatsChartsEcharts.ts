@@ -1,4 +1,5 @@
-import { initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import type { EChartsOption, EChartsType } from './echartsRegistry.ts';
+import { mountChart, resolveChartSize, type MountedChart } from './echartsMount.ts';
 import {
   formatAxisTick,
   readChartPalette,
@@ -21,7 +22,6 @@ import {
 } from './chartTooltipFormat.ts';
 import { attachChartReadout, prefersCoarsePointer, type ChartReadoutHandle } from './chartReadout.ts';
 import { logSettingsWarn } from './logging.ts';
-import { attachTabShownResize } from './chartVisibilityResize.ts';
 
 export type UsageStatsPalette = {
   bar: string;
@@ -53,22 +53,17 @@ export type DailyHistoryPoint = {
 };
 
 type PlotState = {
-  plot: EChartsType | null;
+  plot: MountedChart | null;
   container: HTMLElement | null;
-  resizeObserver: ResizeObserver | null;
-  detachTabShown: (() => void) | null;
   readout: ChartReadoutHandle | null;
   readoutHost: HTMLElement | null;
   className: string;
 };
 
 const DEFAULT_CHART_HEIGHT = 196;
-const DEFAULT_CHART_WIDTH = 480;
 const hourlyPatternState: PlotState = {
   plot: null,
   container: null,
-  resizeObserver: null,
-  detachTabShown: null,
   readout: null,
   readoutHost: null,
   className: 'hourly-pattern--echarts',
@@ -76,8 +71,6 @@ const hourlyPatternState: PlotState = {
 const dailyHistoryState: PlotState = {
   plot: null,
   container: null,
-  resizeObserver: null,
-  detachTabShown: null,
   readout: null,
   readoutHost: null,
   className: 'daily-history--echarts',
@@ -100,17 +93,7 @@ const resolvePalette = (container: HTMLElement): UsageStatsPalette => (
   readChartPalette<UsageStatsPalette>(container, USAGE_STATS_PALETTE_VARS)
 );
 
-const resolveChartSize = (element: HTMLElement) => {
-  const width = element.clientWidth > 0
-    ? element.clientWidth
-    : (element.parentElement?.clientWidth ?? 0);
-  const viewportWidth = document.documentElement?.clientWidth ?? 0;
-  const fallbackWidth = viewportWidth > 0
-    ? Math.min(DEFAULT_CHART_WIDTH, viewportWidth)
-    : DEFAULT_CHART_WIDTH;
-  const height = element.clientHeight > 0 ? element.clientHeight : DEFAULT_CHART_HEIGHT;
-  return { width: width > 0 ? width : fallbackWidth, height };
-};
+const resolvePlotSize = (element: HTMLElement) => resolveChartSize(element, DEFAULT_CHART_HEIGHT);
 
 const getPlotState = (kind: PlotKind): PlotState => (
   kind === 'hourly' ? hourlyPatternState : dailyHistoryState
@@ -118,14 +101,6 @@ const getPlotState = (kind: PlotKind): PlotState => (
 
 const disposePlot = (kind: PlotKind) => {
   const state = getPlotState(kind);
-  if (state.resizeObserver) {
-    state.resizeObserver.disconnect();
-    state.resizeObserver = null;
-  }
-  if (state.detachTabShown) {
-    state.detachTabShown();
-    state.detachTabShown = null;
-  }
   if (state.readout) {
     state.readout.detach();
     state.readout = null;
@@ -151,37 +126,22 @@ const ensurePlot = (
 ): EChartsType => {
   const state = getPlotState(kind);
   if (state.plot && state.container === container) {
-    return state.plot;
+    return state.plot.chart;
   }
 
   disposePlot(kind);
   container.classList.add(state.className);
   container.replaceChildren();
 
-  state.plot = initEcharts(container, undefined, {
-    renderer: 'svg',
-    ...resolveChartSize(container),
-  });
+  const plot = mountChart(container, resolvePlotSize);
+  state.plot = plot;
   state.container = container;
   if (readoutHost) {
-    state.readout = attachChartReadout({ chart: state.plot, host: readoutHost });
+    state.readout = attachChartReadout({ chart: plot.chart, host: readoutHost });
     state.readoutHost = readoutHost;
   }
 
-  if (typeof ResizeObserver === 'function') {
-    state.resizeObserver = new ResizeObserver(() => {
-      if (!state.plot || state.container !== container) return;
-      state.plot.resize(resolveChartSize(container));
-    });
-    state.resizeObserver.observe(container);
-  }
-  state.detachTabShown = attachTabShownResize({
-    container,
-    chart: state.plot,
-    resolveSize: resolveChartSize,
-  });
-
-  return state.plot;
+  return plot.chart;
 };
 
 // Sync the pinned readout row after a `setOption` refresh: re-apply the

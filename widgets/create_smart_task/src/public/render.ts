@@ -4,8 +4,6 @@ import {
   SMART_TASK_EDIT_COPY,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
-  formatEnergyEstimateKWh,
-  formatDeadlineCostMetaLine,
   formatSmartTaskGoalValue,
   formatSmartTaskGoalContextLine,
   formatSmartTaskNowValueLine,
@@ -21,6 +19,8 @@ import {
   resolveSmartTaskDeviceGroupIconLabel,
 } from '../../../../packages/shared-domain/src/smartTaskDevicePickerOrder';
 import { renderPreviewChart } from './previewChart';
+import { clearChildren, hide, setLine, setVisible } from '../../../_shared/widgetDom';
+import { formatPreviewCostLine, formatPreviewEnergyLine } from '../../../_shared/smartTaskPreviewLines';
 import type {
   CreateSmartTaskDevice,
   CreateSmartTaskDevicesPayload,
@@ -123,27 +123,6 @@ export type RenderTargets = {
   createdView: HTMLElement;
   createdMsgEl: HTMLElement;
 };
-
-const clearChildren = (el: HTMLElement): void => {
-  while (el.firstChild) el.removeChild(el.firstChild);
-};
-
-/* eslint-disable no-param-reassign --
-   The DOM-write helpers below take an element as a write sink; mutating its
-   text/visibility is the helper's whole job (mirrors smart_tasks/render.ts). */
-
-// Show `el` with `text`, or hide it when `text` is null/blank.
-const setLine = (el: HTMLElement, text: string | null): void => {
-  const visible = Boolean(text && text.trim());
-  el.textContent = visible ? text : '';
-  el.hidden = !visible;
-};
-
-const hide = (el: HTMLElement): void => { el.hidden = true; };
-
-const setVisible = (el: HTMLElement, visible: boolean): void => { el.hidden = !visible; };
-
-/* eslint-enable no-param-reassign */
 
 // ─── Picker ──────────────────────────────────────────────────────────────────
 
@@ -353,28 +332,6 @@ export const canCreateFromPreview = (response: CreateSmartTaskPreviewResponse): 
   && response.estimate.status !== 'invalid'
 );
 
-// Energy is the demoted secondary line — kept (it answers "how much will it
-// pull") but muted below the cost headline + when-window.
-const formatEnergyLine = (estimate: OkPreview['estimate']): string | null => {
-  if (estimate.energyEstimateKWh === null) return null;
-  return `${C.energyLabel}: ${formatEnergyEstimateKWh({
-    energyPlannedKWh: estimate.energyEstimateKWh,
-    energyExpectedKWh: estimate.energyExpectedKWh,
-  })}`;
-};
-
-// Cost is the headline ("Cost ≈ 4.20 kr"). Null when no price was available for
-// the scheduled buckets — the caller then suppresses both the cost line and its
-// "cheapest hours" subtext.
-const formatCostLine = (estimate: OkPreview['estimate']): string | null => {
-  if (estimate.costEstimate === null || !estimate.costUnit) return null;
-  return formatDeadlineCostMetaLine({
-    plannedTotalCost: estimate.costEstimate,
-    deliveredCost: null,
-    costUnit: estimate.costUnit,
-  });
-};
-
 // Render a successfully-projected (or zero-hour) preview. Scheduled hours and
 // estimates follow the task summary. The
 // "cheapest hours before HH:MM" subtext rides under the cost only when there is
@@ -384,7 +341,10 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   const { previewChartPriceEl, previewChartScheduledEl } = targets;
   const scheduled = hasScheduledHours(response);
   const estimated = response.estimate.status !== 'unavailable';
-  const costLine = scheduled ? formatCostLine(response.estimate) : null;
+  // Cost is the headline ("Cost ≈ 4.20 kr"). Null when no price was available
+  // for the scheduled buckets, which suppresses both the cost line and its
+  // "cheapest hours" subtext.
+  const costLine = scheduled ? formatPreviewCostLine(response.estimate) : null;
   const verdictLine = resolveSmartTaskPreviewStatusCopy(
       response.estimate.status,
       response.estimate.unavailableReason,
@@ -410,11 +370,15 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   previewChartScheduledEl.textContent = C.chartScheduled;
   setLine(targets.previewWhenEl, response.scheduledWindowLabel
     ? `${C.scheduledLabel} ${response.scheduledWindowLabel}` : null);
-  // When the chart is shown, drop the muted energy line: the chart + cost are
-  // the stars and the tile's vertical budget is better spent keeping the honest
-  // estimate caveat un-clipped. Energy stays as the text fallback when there's
-  // no chart.
-  setLine(targets.previewEnergyEl, estimated && !charted ? formatEnergyLine(response.estimate) : null);
+  // Energy is the demoted secondary line — kept (it answers "how much will it
+  // pull") but muted below the cost headline + when-window. When the chart is
+  // shown, drop it: the chart + cost are the stars and the tile's vertical
+  // budget is better spent keeping the honest estimate caveat un-clipped.
+  // Energy stays as the text fallback when there's no chart.
+  setLine(
+    targets.previewEnergyEl,
+    estimated && !charted ? formatPreviewEnergyLine(response.estimate, C.energyLabel) : null,
+  );
   // Show a verdict line for unavailable / at-risk / cannot-finish / satisfied
   // previews. This keeps cannot-finish from looking like a normal estimate, and
   // avoids blaming every unavailable preview on missing prices.

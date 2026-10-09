@@ -8,8 +8,6 @@ import {
   starvationRowIsRescuable,
 } from '../../../../packages/shared-domain/src/planStarvation';
 import {
-  formatEnergyEstimateKWh,
-  formatDeadlineCostMetaLine,
   resolveGrantedRescuePermissionLabels,
   resolveSmartTaskPreviewStatusCopy,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
@@ -23,6 +21,8 @@ import {
 // it into this widget's `public/index.js` — so the confirm sheet renders the
 // identical chart with no duplicated render logic.
 import { renderPreviewChart } from '../../../create_smart_task/src/public/previewChart';
+import { clearChildren, hide, setLine, setVisible } from '../../../_shared/widgetDom';
+import { formatPreviewCostLine, formatPreviewEnergyLine } from '../../../_shared/smartTaskPreviewLines';
 import type {
   StarvationRescueDevice,
   StarvationRescueDevicesPayload,
@@ -78,24 +78,9 @@ export type RenderTargets = {
   doneMsgEl: HTMLElement;
 };
 
-const clearChildren = (el: HTMLElement): void => {
-  while (el.firstChild) el.removeChild(el.firstChild);
-};
-
 /* eslint-disable no-param-reassign --
-   The DOM-write helpers below take an element as a write sink; mutating its
-   text/visibility is the helper's whole job (mirrors create_smart_task/render.ts). */
-
-const setLine = (el: HTMLElement, text: string | null): void => {
-  const visible = Boolean(text && text.trim());
-  el.textContent = visible ? text : '';
-  el.hidden = !visible;
-};
-
-const hide = (el: HTMLElement): void => { el.hidden = true; };
-
-const setVisible = (el: HTMLElement, visible: boolean): void => { el.hidden = !visible; };
-
+   `button` is a write sink: setting its visibility, device id and label is the
+   helper's whole job. */
 const configureRescueButton = (
   button: HTMLButtonElement,
   device: StarvationRescueDevice,
@@ -107,6 +92,7 @@ const configureRescueButton = (
   button.textContent = C.rescueButton;
   button.setAttribute('aria-label', `${C.rescueButton}: ${device.deviceName}`);
 };
+/* eslint-enable no-param-reassign */
 
 const resolveDeviceRowNote = (
   device: StarvationRescueDevice,
@@ -114,8 +100,6 @@ const resolveDeviceRowNote = (
   if (device.smartTaskHomeScope === 'unavailable') return C.temporaryUnavailableNote;
   return resolveStarvationRowNote(device.hasSmartTask, device.intendedNormalTargetC);
 };
-
-/* eslint-enable no-param-reassign */
 
 // ─── List ────────────────────────────────────────────────────────────────────
 
@@ -218,23 +202,6 @@ const formatWhenLine = (response: OkPreview): string => composeSmartTaskSchedule
   readyByLabel: C.byLabel,
 });
 
-const formatEnergyLine = (estimate: OkPreview['estimate']): string | null => {
-  if (estimate.energyEstimateKWh === null) return null;
-  return `${C.energyLabel}: ${formatEnergyEstimateKWh({
-    energyPlannedKWh: estimate.energyEstimateKWh,
-    energyExpectedKWh: estimate.energyExpectedKWh,
-  })}`;
-};
-
-const formatCostLine = (estimate: OkPreview['estimate']): string | null => {
-  if (estimate.costEstimate === null || !estimate.costUnit) return null;
-  return formatDeadlineCostMetaLine({
-    plannedTotalCost: estimate.costEstimate,
-    deliveredCost: null,
-    costUnit: estimate.costUnit,
-  });
-};
-
 // Read-only "Extra permissions" summary: the standing permissions the rescue
 // grants, shown so the user sees exactly what confirming will allow. The rescue
 // requests all three, but the backend GATES `limitLowerPriorityDevices`
@@ -262,7 +229,7 @@ const renderExtraPermissionsSummary = (targets: RenderTargets, labels: string[])
 const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   const projectable = isProjectable(response);
   const estimated = response.estimate.status !== 'unavailable';
-  setLine(targets.confirmCostEl, projectable ? formatCostLine(response.estimate) : null);
+  setLine(targets.confirmCostEl, projectable ? formatPreviewCostLine(response.estimate) : null);
   // Factual at-cap honesty signal: the coordinated preview can show the device
   // running now, but the backend flags `atCapNow` when the measured whole-home
   // draw is already at the physical limit, so power may have to wait for room.
@@ -278,7 +245,7 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
     });
   setVisible(targets.confirmChartEl, charted);
   setLine(targets.confirmWhenEl, formatWhenLine(response));
-  setLine(targets.confirmEnergyEl, estimated ? formatEnergyLine(response.estimate) : null);
+  setLine(targets.confirmEnergyEl, estimated ? formatPreviewEnergyLine(response.estimate, C.energyLabel) : null);
   setLine(
     targets.confirmUnavailableEl,
     resolveSmartTaskPreviewStatusCopy(

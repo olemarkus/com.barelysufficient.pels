@@ -29,6 +29,11 @@ import {
   type DeferredPlanHistoryChartData,
   resolveHistoryDetailChartData,
 } from '../../../packages/shared-domain/src/deferredPlanHistoryChartData';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
+import {
+  formatLocalHHMM,
+  formatSmartTaskDeadlineLong,
+} from '../../../packages/shared-domain/src/smartTaskDeadlineFormat';
 import {
   deadlineLabels,
   formatSmartTaskListConfidenceChipLabel,
@@ -104,10 +109,6 @@ const scheduleNoLongerGoverns = (statusId: SmartTaskListStatusId): boolean => (
   statusId === 'unavailable' || statusId === 'paused_unmanaged'
 );
 
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
-
 // The widget only ever draws the `trajectory` shape; the producers' `legacy_kwh`
 // fallback (a kWh bar chart for old history entries) has no widget renderer. Map
 // it to null at the boundary so `row.chart` is non-null EXACTLY when there's a
@@ -145,90 +146,6 @@ const resolvePlannerEtaMs = (plan: ResolvedDeferredObjectiveActivePlanV1): numbe
   const last = hours[hours.length - 1];
   if (!last) return null;
   return isFiniteNumber(last.startsAtMs) ? last.startsAtMs + 60 * 60 * 1000 : null;
-};
-
-const formatLocalHHMMFallback = (date: Date): string => (
-  `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-);
-
-const formatLocalHHMM = (ms: number, timeZone: string | null): string => {
-  const date = new Date(ms);
-  if (!Number.isFinite(date.getTime())) return '';
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: timeZone ?? undefined,
-    }).format(date);
-  } catch {
-    return formatLocalHHMMFallback(date);
-  }
-};
-
-// Calendar-day index (days since the Unix epoch) for `ms` in the given
-// timeZone. Resolving Y/M/D through Intl in the *same* zone the time half is
-// formatted in keeps the day word ("Today"/"Tomorrow") consistent with the
-// "HH:MM" — otherwise a host in one zone and a widget timeZone in another can
-// disagree (e.g. 23:30Z shown as 01:30 Oslo but still labelled "Today").
-// Using en-CA gives an ISO-like `YYYY-MM-DD`, and comparing calendar dates
-// (not durations) is inherently DST-safe.
-const calendarDayIndex = (ms: number, timeZone: string | null): number => {
-  try {
-    const ymd = new Intl.DateTimeFormat('en-CA', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      timeZone: timeZone ?? undefined,
-    }).format(new Date(ms));
-    const parts = ymd.split('-');
-    const y = Number(parts[0]);
-    const m = Number(parts[1]);
-    const d = Number(parts[2]);
-    return Math.round(Date.UTC(y, m - 1, d) / (24 * 60 * 60 * 1000));
-  } catch {
-    const date = new Date(ms);
-    return Math.round(
-      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / (24 * 60 * 60 * 1000),
-    );
-  }
-};
-
-// Calendar-day difference in the widget timeZone. Returns days(deadline) - days(now).
-const localDayDiff = (deadlineMs: number, nowMs: number, timeZone: string | null): number => (
-  calendarDayIndex(deadlineMs, timeZone) - calendarDayIndex(nowMs, timeZone)
-);
-
-// Long deadline label for the detail panel: "Today 16:00", "Tomorrow 07:00",
-// "Sat 16:00" for the rest of this week, "16 May 16:00" past that.
-const formatDeadlineLong = (
-  ms: number,
-  nowMs: number,
-  timeZone: string | null,
-): string => {
-  const date = new Date(ms);
-  if (!Number.isFinite(date.getTime())) return '';
-  const timePart = formatLocalHHMM(ms, timeZone);
-  const dayDiff = localDayDiff(ms, nowMs, timeZone);
-  if (dayDiff === 0) return `Today ${timePart}`;
-  if (dayDiff === 1) return `Tomorrow ${timePart}`;
-  try {
-    if (dayDiff >= -6 && dayDiff <= 6) {
-      const weekday = new Intl.DateTimeFormat('en-GB', {
-        weekday: 'short',
-        timeZone: timeZone ?? undefined,
-      }).format(date);
-      return `${weekday} ${timePart}`;
-    }
-    const dayMonth = new Intl.DateTimeFormat('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      timeZone: timeZone ?? undefined,
-    }).format(date);
-    return `${dayMonth} ${timePart}`;
-  } catch {
-    return formatLocalHHMMFallback(date);
-  }
 };
 
 const formatDurationFromHours = (hours: number): string => {
@@ -434,7 +351,7 @@ const buildRow = (params: {
     etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === 'cannot_meet' || scheduleNoLongerGoverns(statusId)),
     targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(plan.objectiveKind),
     targetNoun: SMART_TASK_WIDGET_TARGET_NOUN,
-    deadlineLongLabel: finiteFinish !== null ? formatDeadlineLong(finiteFinish, nowMs, timeZone) : null,
+    deadlineLongLabel: finiteFinish !== null ? formatSmartTaskDeadlineLong(finiteFinish, nowMs, timeZone) : null,
     planMetaLabel: copy.planMetaLabel,
     confidenceLabel: copy.confidenceLabel,
     whyLabel: copy.whyLabel,
@@ -507,7 +424,7 @@ const buildEndedRow = (
     // The history tone vocabulary ('ok' | 'warn' | 'muted') is a subset of the
     // widget tone union, so it maps straight through with no 'danger' case.
     outcomeTone: getPlanHistoryOutcomeTone(entry.outcome),
-    finishedLabel: formatDeadlineLong(entry.finalizedAtMs, nowMs, timeZone),
+    finishedLabel: formatSmartTaskDeadlineLong(entry.finalizedAtMs, nowMs, timeZone),
     // Canonical history copy — same helpers the settings-UI history list/detail
     // use, so wording stays single-sourced.
     progressLabel: formatPlanHistoryProgressLine(entry),

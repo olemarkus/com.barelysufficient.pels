@@ -18,6 +18,7 @@ import type {
   PlanPriceWidgetPayload,
   WidgetTarget,
 } from './planPriceWidgetTypes';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
 const WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
 
@@ -28,10 +29,6 @@ const EMPTY_STATE_SUBTITLES = {
 } as const;
 
 type EmptyStateReason = keyof typeof EMPTY_STATE_SUBTITLES;
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
@@ -79,7 +76,7 @@ const buildBudgetPriceByStart = (combinedPrices: CombinedPriceData | null): Map<
   // `combinedPrices` is the stored combined prices as the app hands them over: a
   // malformed persisted value could carry a non-array `prices`, so array-guard
   // before iterating rather than letting `for...of` throw. `Array.isArray` /
-  // the local `isFiniteNumber` — no `lib/**` import (widget can't reach it).
+  // the shared-domain `isFiniteNumber` — no `lib/**` import (widget can't reach it).
   if (!combinedPrices || !Array.isArray(combinedPrices.prices)) return byStart;
   for (const entry of combinedPrices.prices) {
     if (!entry || typeof entry !== 'object') continue;

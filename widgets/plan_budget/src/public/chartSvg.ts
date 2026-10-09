@@ -1,36 +1,10 @@
-// Low-level SVG primitives for the plan_budget chart renderer: element creation,
-// node clearing, and the two path-string builders (price polyline, rounded bar).
-// Split out of chart.ts purely to keep that file under the max-lines budget; pure
-// DOM/string helpers with no chart-specific layout knowledge.
+// The two path-string builders of the plan_budget chart renderer (price
+// polyline, rounded bar). Split out of chart.ts purely to keep that file under
+// the max-lines budget; pure string helpers with no chart-specific layout
+// knowledge. Element creation and clearing are the widgets' shared
+// `createSvg` (`_shared/widgetSvg.ts`) and `clearChildren` (`_shared/widgetDom.ts`).
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-export type SvgAttributeValue = number | string | null | undefined;
-export type SvgAttributes = Record<string, SvgAttributeValue>;
 export type Point = { x: number; y: number };
-
-export const createSvg = <TagName extends keyof SVGElementTagNameMap>(
-  chartDocument: Document,
-  tagName: TagName,
-  attributes: SvgAttributes = {},
-  textContent = '',
-): SVGElementTagNameMap[TagName] => {
-  const node = chartDocument.createElementNS(SVG_NS, tagName);
-  for (const [key, value] of Object.entries(attributes)) {
-    if (value === undefined || value === null) continue;
-    node.setAttribute(key, String(value));
-  }
-  if (textContent) {
-    node.textContent = textContent;
-  }
-  return node;
-};
-
-export const clearNode = (node: Node): void => {
-  while (node.firstChild) {
-    node.removeChild(node.firstChild);
-  }
-};
 
 export const buildPathData = (points: ReadonlyArray<Point | null>): string => {
   const commands: string[] = [];

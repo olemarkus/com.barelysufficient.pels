@@ -11,6 +11,7 @@ import {
   type WidgetWindowBase,
 } from '../../../_shared/widgetRuntime';
 import { widgetErrorReporter, type WidgetErrorReporter } from '../../../_shared/widgetClientLog';
+import { closestDataValue } from '../../../_shared/widgetDom';
 import { resolveCreateSmartTaskPreviewPayload } from './previewPayloads';
 import { canCreateFromPreview, renderWidget, type RenderTargets, type ViewState } from './render';
 import type {
@@ -325,11 +326,6 @@ type ClickAction =
   | { kind: 'create' }
   | { kind: 'back' }
   | { kind: 'retry-load' };
-
-const closestDataValue = (target: Element, selector: string, key: string): string | null => {
-  const el = target.closest(selector);
-  return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
-};
 
 // ─── API calls (module-level so the controller closure stays small) ──────────
 // Each helper swallows transport failures into the contract's `{ ok: false }`

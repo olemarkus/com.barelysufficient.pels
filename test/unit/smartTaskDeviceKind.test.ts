@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   resolveSmartTaskCurrentValue,
   resolveSmartTaskDefaultGoal,
@@ -183,5 +183,46 @@ describe('formatSmartTaskDeadlineLong', () => {
   it('labels a next-day deadline as Tomorrow HH:MM', () => {
     const ms = Date.UTC(2026, 0, 2, 6, 0, 0); // 07:00 Oslo next day
     expect(formatSmartTaskDeadlineLong(ms, now, TZ)).toBe('Tomorrow 07:00');
+  });
+
+  describe('when the en-CA date formatter is not ISO', () => {
+    const RealDateTimeFormat = Intl.DateTimeFormat;
+    // Swap in an en-CA formatter that misbehaves the way `override` says; every
+    // other locale formats for real.
+    const stubEnCaFormatter = (override: 'format' | 'formatToParts'): void => {
+      class StubbedDateTimeFormat extends RealDateTimeFormat {
+        constructor(locales?: string | string[], options?: Intl.DateTimeFormatOptions) {
+          super(locales, options);
+          if (locales !== 'en-CA') return;
+          if (override === 'format') {
+            // A runtime whose en-CA output is not `YYYY-MM-DD`.
+            Object.defineProperty(this, 'format', { value: () => '02/01/2026' });
+          } else {
+            Object.defineProperty(this, 'formatToParts', {
+              value: () => [{ type: 'literal', value: '?' }],
+            });
+          }
+        }
+      }
+      Intl.DateTimeFormat = StubbedDateTimeFormat as typeof Intl.DateTimeFormat;
+    };
+
+    afterEach(() => {
+      Intl.DateTimeFormat = RealDateTimeFormat;
+    });
+
+    // 07:00 Jan 2 in Tokyo, while every zone west of UTC+2 is still on Jan 1.
+    const tokyoNow = Date.UTC(2026, 0, 1, 22, 0, 0);
+    const tokyoDeadline = Date.UTC(2026, 0, 2, 1, 0, 0); // 10:00 Jan 2 in Tokyo
+
+    it('still names the day in the configured zone, not the host one', () => {
+      stubEnCaFormatter('format');
+      expect(formatSmartTaskDeadlineLong(tokyoDeadline, tokyoNow, 'Asia/Tokyo')).toBe('Today 10:00');
+    });
+
+    it('falls back to the absolute day, never another zone\'s Today/Tomorrow, when the day cannot be read', () => {
+      stubEnCaFormatter('formatToParts');
+      expect(formatSmartTaskDeadlineLong(tokyoDeadline, tokyoNow, 'Asia/Tokyo')).toBe('2 Jan 10:00');
+    });
   });
 });

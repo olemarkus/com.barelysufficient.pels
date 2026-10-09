@@ -3,9 +3,9 @@
 // Option assembly lives in `budgetRedesignChartOptions.ts`; the pure data
 // derivations and readout content bundles in `budgetRedesignChartData.ts`.
 import type { DailyBudgetDayPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
-import { initEcharts, type EChartsType } from './echartsRegistry.ts';
+import type { EChartsType } from './echartsRegistry.ts';
+import { mountChart, resolveChartSize, type MountedChart } from './echartsMount.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
-import { attachTabShownResize } from './chartVisibilityResize.ts';
 import { attachChartReadout, type ChartReadoutHandle } from './chartReadout.ts';
 import {
   buildBudgetHourlyReadoutBundle,
@@ -41,10 +41,7 @@ type BudgetRedesignChartParams = {
   readoutHost?: HTMLElement | null;
 };
 
-type ChartHandle = {
-  chart: EChartsType;
-  resizeObserver?: ResizeObserver;
-  detachTabShown?: () => void;
+type ChartHandle = MountedChart & {
   readout?: ChartReadoutHandle;
   readoutHost?: HTMLElement;
   // Progress-mode marker y-values (cumulative kWh at each index) consumed by
@@ -55,29 +52,16 @@ type ChartHandle = {
 const chartHandles = new WeakMap<HTMLElement, ChartHandle>();
 
 const DEFAULT_CHART_HEIGHT = 210;
-const DEFAULT_CHART_WIDTH = 480;
 
-const resolveChartSize = (element: HTMLElement) => {
-  const width = element.clientWidth > 0
-    ? element.clientWidth
-    : (element.parentElement?.clientWidth ?? 0);
-  const viewportWidth = document.documentElement?.clientWidth ?? 0;
-  const fallbackWidth = viewportWidth > 0 ? Math.min(DEFAULT_CHART_WIDTH, viewportWidth) : DEFAULT_CHART_WIDTH;
-  return {
-    width: width > 0 ? width : fallbackWidth,
-    height: element.clientHeight > 0 ? element.clientHeight : DEFAULT_CHART_HEIGHT,
-  };
-};
+const resolvePlotSize = (element: HTMLElement) => resolveChartSize(element, DEFAULT_CHART_HEIGHT);
 
 export const clearBudgetRedesignChart = (container?: HTMLElement) => {
   if (!container) return;
   const handle = chartHandles.get(container);
   if (!handle) return;
-  handle.resizeObserver?.disconnect();
-  handle.detachTabShown?.();
   handle.readout?.detach();
   if (handle.readoutHost) handle.readoutHost.hidden = true;
-  handle.chart.dispose();
+  handle.dispose();
   chartHandles.delete(container);
 };
 
@@ -85,22 +69,9 @@ const ensureChart = (container: HTMLElement): EChartsType => {
   const existing = chartHandles.get(container);
   if (existing) return existing.chart;
   container.replaceChildren();
-  const chart = initEcharts(container, undefined, {
-    renderer: 'svg',
-    ...resolveChartSize(container),
-  });
-  let resizeObserver: ResizeObserver | undefined;
-  if (typeof ResizeObserver === 'function') {
-    resizeObserver = new ResizeObserver(() => {
-      const handle = chartHandles.get(container);
-      if (!handle) return;
-      handle.chart.resize(resolveChartSize(container));
-    });
-    resizeObserver.observe(container);
-  }
-  const detachTabShown = attachTabShownResize({ container, chart, resolveSize: resolveChartSize });
-  chartHandles.set(container, { chart, resizeObserver, detachTabShown });
-  return chart;
+  const handle: ChartHandle = mountChart(container, resolvePlotSize);
+  chartHandles.set(container, handle);
+  return handle.chart;
 };
 
 // Attach the pinned-readout interaction once per chart lifetime. The

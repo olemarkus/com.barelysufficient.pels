@@ -1,6 +1,7 @@
 import type { HeadroomWidgetLimitState } from '../../../packages/shared-domain/src/headroomWidgetCopy';
 import type { SettingsUiPowerStatusUnavailableReason } from '../../../packages/contracts/src/settingsUiApi';
 import { HEADROOM_WIDGET_COPY } from '../../../packages/shared-domain/src/headroomWidgetCopy';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 import { EMPTY_SUBTITLE_DEFAULT } from './headroomWidgetConstants';
 import type {
   HeadroomWidgetEmptyPayload,
@@ -14,10 +15,6 @@ const NEAR_PACE_RATIO = 0.85;
 // Re-exported from the browser-safe constants module so existing consumers
 // and tests keep a stable import surface off the builder.
 export { EMPTY_SUBTITLE_DEFAULT };
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 const resolvePriceLevel = (value: unknown): HeadroomWidgetPriceLevel => {
   if (value === 'cheap') return 'cheap';

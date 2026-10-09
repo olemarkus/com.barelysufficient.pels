@@ -11,21 +11,17 @@ export type ChartLike = {
   isDisposed?(): boolean;
 };
 
-type AttachParams<TChart extends ChartLike> = {
-  container: HTMLElement;
-  chart: TChart;
-  resolveSize: (element: HTMLElement) => { width: number; height: number };
-};
+export type ChartSize = { width: number; height: number };
 
-/**
- * Listens for `pels:tab-shown` and calls `chart.resize` once the container is
- * visible. Returns a teardown function that detaches the listener — callers
- * should invoke it in their `dispose` path so old chart handles do not leak.
- */
-export const attachTabShownResize = <TChart extends ChartLike>(
-  params: AttachParams<TChart>,
+type ResolveChartSize = (element: HTMLElement) => ChartSize;
+
+// Resizes `chart` on `pels:tab-shown` once `container` is visible; returns the
+// teardown that detaches the listener.
+const attachTabShownResize = (
+  container: HTMLElement,
+  chart: ChartLike,
+  resolveSize: ResolveChartSize,
 ): (() => void) => {
-  const { container, chart, resolveSize } = params;
   // rAF so flex/grid layout has settled after the panel's `display` flip —
   // without it, `clientWidth` can still read the stale 0 on some browsers.
   const handler = () => requestAnimationFrame(() => {
@@ -35,4 +31,27 @@ export const attachTabShownResize = <TChart extends ChartLike>(
   });
   document.addEventListener(TAB_SHOWN_EVENT, handler);
   return () => document.removeEventListener(TAB_SHOWN_EVENT, handler);
+};
+
+/**
+ * Keeps a chart sized to its container: a `ResizeObserver` (where the browser
+ * has one) plus the `pels:tab-shown` resize above. Returns the teardown, which
+ * callers run before disposing the chart so old chart handles do not leak.
+ */
+export const attachChartResize = (
+  container: HTMLElement,
+  chart: ChartLike,
+  resolveSize: ResolveChartSize,
+): (() => void) => {
+  const resizeObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(() => {
+      chart.resize(resolveSize(container));
+    })
+    : null;
+  resizeObserver?.observe(container);
+  const detachTabShown = attachTabShownResize(container, chart, resolveSize);
+  return () => {
+    resizeObserver?.disconnect();
+    detachTabShown();
+  };
 };

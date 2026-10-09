@@ -2,6 +2,8 @@ import type {
   DeferredObjectivePlanPreviewHour,
   DeferredObjectivePlanPreviewPricePoint,
 } from '../../../../packages/contracts/src/deferredObjectivePlanPreview';
+import { clearChildren } from '../../../_shared/widgetDom';
+import { createSvg } from '../../../_shared/widgetSvg';
 
 // Compact price-curve for the create-task preview: the price line across the
 // now→deadline window with the SCHEDULED hours shaded behind it, so the user
@@ -13,27 +15,11 @@ import type {
 // Colour/stroke come from CSS classes (tokenised in index.css), never inline,
 // so the chart tracks the dashboard dark/light theme like the rest of the UI.
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
 // viewBox units; the SVG scales to the container width via CSS (width:100%).
 const VIEW = { width: 480, height: 108 };
 const PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
 const PLOT_WIDTH = PLOT.right - PLOT.left;
 const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
-
-type SvgAttrs = Record<string, string | number>;
-
-const createSvg = <K extends keyof SVGElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  attrs: SvgAttrs,
-  text?: string,
-): SVGElementTagNameMap[K] => {
-  const el = doc.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
-  if (text !== undefined) el.textContent = text;
-  return el;
-};
 
 // Hourly spot prices are piecewise-constant: each hour is a flat price BLOCK,
 // not a point on a smooth curve. So the x-axis is divided into `count` equal
@@ -106,7 +92,7 @@ export const renderPreviewChart = (
   { priceSeries, scheduledHours }: PreviewChartInput,
 ): boolean => {
   const doc = container.ownerDocument;
-  while (container.firstChild) container.removeChild(container.firstChild);
+  clearChildren(container);
 
   const count = priceSeries.length;
   const prices = priceSeries.map((point) => point.price).filter((p): p is number => Number.isFinite(p));

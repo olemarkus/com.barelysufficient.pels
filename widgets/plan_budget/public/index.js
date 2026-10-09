@@ -106,23 +106,6 @@
   };
 
   // widgets/plan_budget/src/public/chartSvg.ts
-  var SVG_NS = "http://www.w3.org/2000/svg";
-  var createSvg = (chartDocument, tagName, attributes = {}, textContent = "") => {
-    const node = chartDocument.createElementNS(SVG_NS, tagName);
-    for (const [key, value] of Object.entries(attributes)) {
-      if (value === void 0 || value === null) continue;
-      node.setAttribute(key, String(value));
-    }
-    if (textContent) {
-      node.textContent = textContent;
-    }
-    return node;
-  };
-  var clearNode = (node) => {
-    while (node.firstChild) {
-      node.removeChild(node.firstChild);
-    }
-  };
   var buildPathData = (points) => {
     const commands = [];
     let pendingMove = true;
@@ -153,6 +136,25 @@
       `L ${right} ${bottom}`,
       "Z"
     ].join(" ");
+  };
+
+  // widgets/_shared/widgetDom.ts
+  var clearChildren = (node) => {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  };
+
+  // widgets/_shared/widgetSvg.ts
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var createSvg = (chartDocument, tagName, attributes = {}, textContent = "") => {
+    const node = chartDocument.createElementNS(SVG_NS, tagName);
+    for (const [key, value] of Object.entries(attributes)) {
+      if (value === void 0 || value === null) continue;
+      node.setAttribute(key, String(value));
+    }
+    if (textContent) {
+      node.textContent = textContent;
+    }
+    return node;
   };
 
   // widgets/plan_budget/src/public/chartTicks.ts
@@ -499,7 +501,7 @@
   var renderEmptyState = (chartEl, payload, height = VIEWPORT_MIN_HEIGHT) => {
     const chartDocument = chartEl.ownerDocument;
     const { panel, viewport } = resolveGeometry(resolveViewportHeight(height));
-    clearNode(chartEl);
+    clearChildren(chartEl);
     applyViewBox(chartEl, viewport);
     chartEl.setAttribute("aria-label", payload.subtitle || PLAN_PRICE_WIDGET_ARIA.unavailable);
     chartEl.appendChild(createSvg(chartDocument, "rect", {
@@ -529,7 +531,7 @@
     const geometry = resolveGeometry(resolveViewportHeight(height));
     const groups = createChartGroups(chartDocument);
     const metrics = resolvePlotMetrics(payload, half, geometry, pxPerUnit);
-    clearNode(chartEl);
+    clearChildren(chartEl);
     applyViewBox(chartEl, geometry.viewport);
     chartEl.setAttribute(
       "aria-label",
