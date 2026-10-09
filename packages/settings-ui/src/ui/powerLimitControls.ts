@@ -47,13 +47,15 @@ export const renderMarginAlert = (message: string | null) => {
   settingsCapacityMarginAlert.hidden = message === null;
 };
 
+const GRID_IMPORT_LIMIT_PROMPT = 'Enter a limit in kW to turn this on. PELS leaves a small automatic margin.';
+
 export const refreshPowerLimitControls = (): void => {
   if (settingsCapacityFields) settingsCapacityFields.hidden = settingsCapacityEnabledInput?.selected === false;
   if (settingsGridImportField) settingsGridImportField.hidden = settingsGridImportEnabledInput?.selected !== true;
   const limit = Number.parseFloat(settingsGridImportLimitInput?.value ?? '');
   if (settingsGridImportHint) settingsGridImportHint.textContent = isValidGridImportLimitKw(limit)
     ? `PELS starts reducing loads near ${gridImportTargetKw(limit).toFixed(2)} kW.`
-    : 'Choose a positive limit to turn this on. PELS leaves a small automatic margin.';
+    : GRID_IMPORT_LIMIT_PROMPT;
 };
 
 export const syncPowerLimitSwitches = (scalars: CapacityScalarSettings): void => {
@@ -64,11 +66,11 @@ export const syncPowerLimitSwitches = (scalars: CapacityScalarSettings): void =>
 
 export const syncCapacityLimitControls = (scalars: CapacityScalarSettings): void => {
   const { limitKw, marginKw, periodMinutes } = scalars;
-  syncPowerLimitSwitches(scalars);
+  // The threshold first: the switch sync refreshes the hint from it.
   if (settingsGridImportLimitInput && scalars.gridImportLimitKw !== null) {
     settingsGridImportLimitInput.value = String(scalars.gridImportLimitKw);
   }
-  refreshPowerLimitControls();
+  syncPowerLimitSwitches(scalars);
   if (settingsCapacityLimitInput) settingsCapacityLimitInput.value = String(limitKw);
   if (settingsCapacityMarginInput) settingsCapacityMarginInput.value = String(marginKw);
   if (settingsCapacityPeriodSelect) settingsCapacityPeriodSelect.value = String(periodMinutes);
