@@ -1,4 +1,5 @@
 import { BUDGET_EXEMPT_DEVICES, CONTROLLABLE_DEVICES } from '../lib/utils/settingsKeys';
+import { writeDeviceFlagSetting, type DeviceFlagSettingKey } from '../lib/device/deviceSettingMaps';
 import { formatDeviceMustBeProvidedMessage } from '../packages/shared-domain/src/smartTaskRescueStrings';
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from './registerFlowCards';
@@ -87,7 +88,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     cardId: 'enable_device_capacity_control',
     enabled: true,
     settingKey: CONTROLLABLE_DEVICES,
-    label: 'capacity control',
+    label: 'power-limit control',
     settingKind: 'capacity_control',
     deviceFilter: buildMayGrantCapacityControl(deps),
     deps,
@@ -96,7 +97,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     cardId: 'disable_device_capacity_control',
     enabled: false,
     settingKey: CONTROLLABLE_DEVICES,
-    label: 'capacity control',
+    label: 'power-limit control',
     settingKind: 'capacity_control',
     deviceFilter: mayRevokeCapacityControl,
     deps,
@@ -162,7 +163,7 @@ export function registerBudgetExemptionCondition(deps: FlowCardDeps): void {
 function registerDeviceBooleanActionCard(params: {
   cardId: string;
   enabled: boolean;
-  settingKey: string;
+  settingKey: DeviceFlagSettingKey;
   label: string;
   settingKind: string;
   // Optional eligibility gate. When present, the autocomplete only offers — and the
@@ -238,7 +239,7 @@ async function getDeviceOptions(
 async function setDeviceBooleanSetting(params: {
   deviceId: string;
   enabled: boolean;
-  settingKey: string;
+  settingKey: DeviceFlagSettingKey;
   label: string;
   settingKind: string;
   deviceFilter?: DeviceWriteGate;
@@ -271,12 +272,20 @@ async function setDeviceBooleanSetting(params: {
     });
     return;
   }
-  const existing = deps.homey.settings.get(settingKey);
-  const next = {
-    ...getBooleanSettingsRecord(existing),
-    [deviceId]: enabled,
-  };
-  deps.homey.settings.set(settingKey, next);
+  // A map that could not be read is never saved over: it would hold only this
+  // device, and every other device's entry would be gone. Fail the card so the
+  // Flow shows the refusal instead of a success that did nothing.
+  if (writeDeviceFlagSetting(deps.homey.settings, settingKey, deviceId, enabled) === 'unavailable') {
+    deps.getStructuredLogger('devices')?.warn({
+      event: 'device_setting_toggle_failed',
+      setting: settingKind,
+      reasonCode: 'setting_unreadable',
+      enabled,
+      deviceId,
+      deviceName,
+    });
+    throw new Error(`PELS could not save the ${label}. Try again shortly.`);
+  }
   deps.getStructuredLogger('devices')?.info({
     event: 'device_setting_toggled',
     setting: settingKind,
@@ -284,14 +293,4 @@ async function setDeviceBooleanSetting(params: {
     deviceId,
     deviceName,
   });
-}
-
-function getBooleanSettingsRecord(value: unknown): Record<string, boolean> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const record = value as Record<string, unknown>;
-  const prototype = Object.getPrototypeOf(record) as object | null;
-  if (prototype !== Object.prototype && prototype !== null) return {};
-  const entries = Object.entries(record);
-  if (!entries.every(([key, entry]) => typeof key === 'string' && typeof entry === 'boolean')) return {};
-  return record as Record<string, boolean>;
 }

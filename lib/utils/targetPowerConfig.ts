@@ -113,8 +113,20 @@ function isAcceptableTargetPowerSteppedLoadConfig(config: TargetPowerSteppedLoad
 export function normalizeDeviceTargetPowerConfigs(
   value: unknown,
 ): Record<string, TargetPowerSteppedLoadConfig> {
+  return readDeviceTargetPowerConfigsRecord(value) ?? {};
+}
+
+/**
+ * The stored per-device configs, as {@link normalizeDeviceTargetPowerConfigs}
+ * reads them, or `undefined` when the value is not a record at all. A writer
+ * needs the difference: a value that is not a map is not an empty map, and
+ * saving one device's entry over it would erase the rest.
+ */
+export function readDeviceTargetPowerConfigsRecord(
+  value: unknown,
+): Record<string, TargetPowerSteppedLoadConfig> | undefined {
   const record = parseJsonObject(value);
-  if (!record) return {};
+  if (!record) return undefined;
   return Object.fromEntries(
     Object.entries(record).flatMap(([deviceId, entry]) => {
       const normalizedId = deviceId.trim();
