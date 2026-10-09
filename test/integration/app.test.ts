@@ -1095,25 +1095,11 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
+    // Overshoot convergence bypasses the anti-storm guards only while the plan
+    // still has something to act on: the heater is on, drawing, and managed
+    // with capacity control.
     const app = createApp();
     await initApp(app);
-
-    // Overshoot convergence bypasses the anti-storm guards only while the plan
-    // still has something to act on — give the snapshot an on, drawing device.
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater',
-        targets: [],
-        measuredPowerKw: 1.2,
-        expectedPowerKw: 1.2,
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        controllable: true,
-      },
-    ]));
     await app.planService.rebuildPlanFromCache('unknown');
 
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
@@ -1443,22 +1429,23 @@ describe('MyApp initialization', () => {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     });
     mockHomeyInstance.settings.set('managed_devices', { 'ev-1': true });
+    const charger = new MockDevice(
+      'ev-1',
+      'Garage Charger',
+      ['measure_battery', 'measure_power', 'evcharger_charging', 'evcharger_charging_state'],
+      'evcharger',
+    );
+    await charger.setCapabilityValue('measure_battery', 42);
+    await charger.setCapabilityValue('measure_power', 0);
+    await charger.setCapabilityValue('evcharger_charging', true);
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_charging');
+    setMockDrivers({ ev: new MockDriver('ev', [charger]) });
 
     connectLiveFeed();
     const app = createApp();
     await initApp(app);
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'ev-1',
-        expectedPowerKw: 1,
-        name: 'Garage Charger',
-        deviceClass: 'evcharger',
-        targets: [],
-        stateOfCharge: stateOfChargeFixture({ percent: 42, observedAtMs: Date.now(), capabilityId: 'measure_battery' }),
-      },
-    ]));
+    expect(app.deviceManager.getSnapshotByDeviceId('ev-1')?.stateOfCharge)
+      .toMatchObject({ report: { percent: 42 } });
     const requestSpy = vi.spyOn(app['planRebuildScheduler'], 'request');
 
     const lastUpdated = new Date().toISOString();
@@ -1916,12 +1903,15 @@ describe('MyApp initialization', () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', 1000);
-    await heater.setCapabilityValue('target_temperature', 20);
+    await heater.setCapabilityValue('measure_temperature', 19);
+    await heater.setCapabilityValue('target_temperature', 19);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
 
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
 
     const app = createApp();
@@ -1929,20 +1919,6 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([
-      {
-        available: true,
-        expectedPowerSource: 'default',
-        id: 'dev-1',
-        name: 'Heater',
-        temperature: { currentTemperature: 19, target: { id: 'target_temperature', value: 19, unit: '°C' } },
-        targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
-        binaryControl: { on: true },
-        controllable: true,
-        expectedPowerKw: 1,
-      },
-    ]));
 
     app.planService.rebuildPlanFromCache('unknown');
     await flushPromises();
@@ -2958,22 +2934,19 @@ describe('periodic snapshot refresh scheduling', () => {
     // served). The poll is now unconditional: a home whose devices have all just
     // reported polls exactly as often as one whose devices have gone quiet.
     const pollCountFor = async (lastDataAt: string): Promise<number> => {
-      vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
+      // Homey dates each value when the device reports it.
+      vi.setSystemTime(new Date(lastDataAt));
       const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
       await heater.setCapabilityValue('onoff', true);
       await heater.setCapabilityValue('measure_power', 1000);
       setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+      mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
+      vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
       const app = createApp();
       await initApp(app);
-      app.managedDevices = { 'dev-1': true };
-      app.deviceManager.setSnapshotForTests(
-        app.deviceManager.getSnapshot().map((device) => ({
-          ...device,
-          lastFreshDataMs: new Date(lastDataAt).getTime(),
-          lastUpdated: new Date(lastDataAt).getTime(),
-        })),
-      );
+      expect(app.deviceManager.getSnapshot().find((device) => device.id === 'dev-1')?.lastFreshDataMs)
+        .toBe(new Date(lastDataAt).getTime());
 
       const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
       app.snapshotHelpers.startPeriodicSnapshotRefresh();

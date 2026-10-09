@@ -1,17 +1,16 @@
 import type { AppContext } from '../../lib/app/appContext';
 // Shared harness for the multi-home smart-task scope-gate specs (integration
 // app-lane battery + SDK-boundary flow-card e2e): boots the real app against
-// two mock heaters and configures a sub-home + a device pin purely through the
-// Homey SDK seams (`homes_config` / `device_home_assignments` settings writes,
-// zones via the mock zone route) — the app's own serialized settings handler
-// recomputes membership from them.
+// two managed mock heaters and configures a sub-home + a device pin purely
+// through the Homey SDK seams (`managed_devices` / `homes_config` /
+// `device_home_assignments` settings writes, zones via the mock zone route) —
+// the app's own serialized settings handler recomputes membership from them.
 import { expect } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp } from './appTestUtils';
-import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../lib/utils/settingsKeys';
+import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG, MANAGED_DEVICES } from '../../lib/utils/settingsKeys';
 import { HOME_CONFIG_ACTIVATION_VERSION } from '../../lib/home/homeConfig';
 import type { DeferredObjectivePlanPreviewCandidate } from '../../lib/objectives/deferredObjectives';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 export const SUB_HOME_ZONES = {
   z1: { id: 'z1', name: 'Home', parent: null },
@@ -19,24 +18,16 @@ export const SUB_HOME_ZONES = {
 };
 export const SUB_HOME = { homeId: 'h_cabin', name: 'Cabin', rootZoneId: 'z2', meterDeviceId: null };
 
-// Managed temperature devices in the runtime-planned snapshot with an explicit
-// 30..75 °C settable range (same fixture family as createDeferredObjectiveApp).
-export const buildPlannedHeater = (id: string, name: string, zoneId: string): TargetDeviceSnapshot => {
-  const target = { id: 'target_temperature' as const, value: 50, min: 30, max: 75, step: 0.5 };
-  return {
-    id,
-    name,
-    zoneId,
-    deviceClass: 'thermostat',
-    deviceType: 'temperature',
-    isEvCharger: false,
-    binaryControllable: false,
-    isBatteryOrSolar: false,
-    capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
-    measuredPowerKw: 0,
-    targets: [target],
-    temperature: { currentTemperature: 45, target },
-  } as unknown as TargetDeviceSnapshot;
+// A thermostat as Homey reports it, in `zoneId`, with an explicit 30..75 °C
+// settable range and a metered idle draw (same family as createDeferredObjectiveApp).
+const buildHomeyHeater = async (id: string, name: string, zoneId: string): Promise<MockDevice> => {
+  const heater = new MockDevice(id, name, ['measure_power', 'target_temperature'], 'thermostat');
+  heater.setCapabilityMetadata('target_temperature', { min: 30, max: 75, step: 0.5 });
+  await heater.setCapabilityValue('target_temperature', 50);
+  await heater.setCapabilityValue('measure_temperature', 45);
+  await heater.setCapabilityValue('measure_power', 0);
+  heater.setZone(zoneId);
+  return heater;
 };
 
 export const tempCandidate = (targetTemperatureC: number): DeferredObjectivePlanPreviewCandidate => ({
@@ -60,8 +51,8 @@ export const settleAsyncSeams = async (): Promise<void> => {
   }
 };
 
-// Boot the real app, pin the runtime-planned snapshot (with zone ids), then
-// configure the sub-home + the `heater-sub` pin through settings writes.
+// Boot the real app on both managed heaters, then configure the sub-home + the
+// `heater-sub` pin through settings writes.
 // `assertMembership` additionally sanity-asserts the resolved membership before
 // the lanes run. It reads `app.homeMembership` — an internal service — so it is
 // for INTEGRATION-tier callers only; e2e callers must omit it and observe
@@ -70,20 +61,15 @@ export const settleAsyncSeams = async (): Promise<void> => {
 export const initAppWithSubHome = async (
   options: { assertMembership?: boolean } = {},
 ): Promise<ReturnType<typeof createApp>> => {
-  const sub = new MockDevice('heater-sub', 'Cabin heater', ['measure_power', 'target_temperature']);
-  sub.setZone('z2');
-  const main = new MockDevice('heater-main', 'Hall heater', ['measure_power', 'target_temperature']);
-  main.setZone('z1');
+  const sub = await buildHomeyHeater('heater-sub', 'Cabin heater', 'z2');
+  const main = await buildHomeyHeater('heater-main', 'Hall heater', 'z1');
   setMockDrivers({ driverA: new MockDriver('driverA', [sub, main]) });
+  mockHomeyInstance.settings.set(MANAGED_DEVICES, { 'heater-sub': true, 'heater-main': true });
   // Passive power: these lanes assert WRITE gating and membership, and the
   // default seeded reading (fresh 0 kW, full headroom) would let boot-time
   // rebuilds actuate the fixture heaters and race the membership settle.
   const app = createApp({ withoutPowerMeasurement: true });
   await app.onInit();
-  app.setSnapshotForTests([
-    buildPlannedHeater('heater-sub', 'Cabin heater', 'z2'),
-    buildPlannedHeater('heater-main', 'Hall heater', 'z1'),
-  ]);
   mockHomeyInstance.settings.set(HOMES_CONFIG, {
     activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
     subHomes: [SUB_HOME],

@@ -1,6 +1,5 @@
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 
 describe('Managed device condition', () => {
   beforeEach(() => {
@@ -79,7 +78,9 @@ describe('Managed device condition', () => {
     await app.onUninit?.();
   });
 
-  it('returns false when managed is undefined in the snapshot', async () => {
+  it('returns false for a device the owner never set Managed for', async () => {
+    // No `managed_devices` entry at all: the app reads the device as not managed
+    // and, with no device opted in, still carries it in the runtime snapshot.
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
     await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 1000);
@@ -88,7 +89,11 @@ describe('Managed device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    app.deviceManager.setSnapshotForTests(transportSnapshotFixtures([{ available: true, expectedPowerKw: 0, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [] }]));
+    // The card knows the device: `false` here is an answer about it, not the
+    // unknown-device fallback.
+    const autocomplete = mockHomeyInstance.flow._conditionCardAutocompleteListeners.is_device_managed.device;
+    const offered = ((await autocomplete('')) as Array<{ id: string }>).map((option) => option.id);
+    expect(offered).toContain('dev-1');
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.is_device_managed;
     expect(runCondition).toBeDefined();

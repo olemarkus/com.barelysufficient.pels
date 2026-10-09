@@ -7,34 +7,28 @@ import {
   type DeferredObjectiveSettingsV1,
 } from '../../lib/objectives/deferredObjectives';
 import {
+  CAPACITY_PRIORITIES,
   DEFERRED_OBJECTIVES_SETTINGS,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
+  DEVICE_CONTROL_PROFILES,
   MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
-import type {
-  MeasuredPowerObservedFields,
-  TargetDeviceSnapshot,
-  TemperatureObservedProbe,
-} from '../../packages/contracts/src/types';
 import { buildCreateSmartTaskDevicesPayload } from '../../widgets/create_smart_task/src/createSmartTaskWidgetPayload';
 
-// A managed temperature device in the runtime-planned snapshot, with a 30..75 °C
-// settable target so device-specific bounds validation has a real range.
-const buildPlannedHeater = (): TargetDeviceSnapshot & MeasuredPowerObservedFields & TemperatureObservedProbe => {
-  const target = { id: 'target_temperature' as const, value: 50, min: 30, max: 75, step: 0.5 };
-  return {
-    id: 'heater-1',
-    name: 'Boiler',
-    deviceClass: 'heater',
-    deviceType: 'temperature',
-    isEvCharger: false,
-    binaryControllable: false,
-    isBatteryOrSolar: false,
-    capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
-    targets: [target],
-    temperature: { currentTemperature: 45, target },
-    measuredPowerKw: 2,
-  } as TargetDeviceSnapshot & MeasuredPowerObservedFields & TemperatureObservedProbe;
+// A heater as Homey reports it: a 30..75 °C settable target, so device-specific
+// bounds validation has a real range, and a real power reading.
+const buildHomeyHeater = async (id = 'heater-1', name = 'Boiler'): Promise<MockDevice> => {
+  const heater = new MockDevice(id, name, ['measure_power', 'target_temperature']);
+  heater.setCapabilityMetadata('target_temperature', { min: 30, max: 75, step: 0.5 });
+  await heater.setCapabilityValue('target_temperature', 50);
+  await heater.setCapabilityValue('measure_temperature', 45);
+  await heater.setCapabilityValue('measure_power', 2000);
+  return heater;
+};
+
+// The ladder an owner saves to run the heater as a stepped load.
+const STEPPED_HEATER_PROFILE = {
+  steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 2000 }],
 };
 
 // A metered EV charger as Homey reports it. Its class is the only thing that
@@ -93,13 +87,48 @@ describe('createDeferredObjective (app)', () => {
     vi.clearAllTimers();
   });
 
-  const initApp = async () => {
-    const device = new MockDevice('heater-1', 'Boiler', ['measure_power', 'target_temperature']);
-    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+  type InitAppOptions = {
+    heater?: MockDevice;
+    /** `false` leaves the managed filter inactive, with the heater opted out. */
+    managed?: boolean;
+    /** The owner saved a stepped-load ladder for the heater. */
+    stepped?: boolean;
+    /** Another managed device outranks the heater. */
+    belowTopPriority?: boolean;
+  };
+
+  // Boot the app on a heater the owner manages, as the refresh parses it.
+  const initApp = async (options: InitAppOptions = {}) => {
+    const heater = options.heater ?? await buildHomeyHeater();
+    const devices = [heater];
+    const managed: Record<string, boolean> = { 'heater-1': options.managed ?? true };
+    if (options.belowTopPriority) {
+      const socket = new MockDevice('socket-1', 'Socket', ['onoff'], 'socket');
+      await socket.setCapabilityValue('onoff', true);
+      await socket.setCapabilityValue('measure_power', 500);
+      devices.push(socket);
+      managed['socket-1'] = true;
+      mockHomeyInstance.settings.set(CAPACITY_PRIORITIES, { Home: { 'socket-1': 1, 'heater-1': 2 } });
+    }
+    setMockDrivers({ driverA: new MockDriver('driverA', devices) });
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, managed);
+    if (options.stepped) {
+      mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, { 'heater-1': STEPPED_HEATER_PROFILE });
+    }
     const app = createApp();
     await app.onInit();
-    // Pin the runtime-planned snapshot to a known heater with explicit bounds.
-    app.setSnapshotForTests([buildPlannedHeater()]);
+    return app;
+  };
+
+  // A heater the owner has not opted in while the managed filter is active:
+  // the settings picker lists it, the runtime snapshot does not.
+  const initAppWithPickerOnlyHeater = async () => {
+    const pickerOnly = await buildHomeyHeater('picker-only', 'Spare heater');
+    setMockDrivers({ driverA: new MockDriver('driverA', [await buildHomeyHeater(), pickerOnly]) });
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, { 'heater-1': true });
+    const app = createApp();
+    await app.onInit();
+    expect(app.getUiPickerDevices().map((device: { id: string }) => device.id)).toContain('picker-only');
     return app;
   };
 
@@ -133,23 +162,24 @@ describe('createDeferredObjective (app)', () => {
   });
 
   it('rejects a picker-only device that is not in the runtime-planned snapshot', async () => {
-    const app = await initApp();
     // The device exists in the picker set but NOT in the runtime snapshot
     // (unmanaged while the managed filter is active) — creating a task on it
     // would never plan. Honest rejection rather than a silent dead task.
-    app.getUiPickerDevices = () => [
-      { ...buildPlannedHeater(), id: 'picker-only', name: 'Spare heater' },
-    ];
+    const app = await initAppWithPickerOnlyHeater();
     const result = app.createDeferredObjective('picker-only', tempCandidate(60));
     expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
     expect(readStored().objectivesByDeviceId['picker-only']).toBeUndefined();
     await app.onUninit?.();
   });
 
-  it('rejects a device whose real power meter has not produced a reading', async () => {
-    const app = await initApp();
-    const { measuredPowerKw: _missingReading, ...unmetered } = buildPlannedHeater();
-    app.setSnapshotForTests([unmetered as TargetDeviceSnapshot]);
+  it('rejects a device with no per-device power reading', async () => {
+    // A heater with no power meter: planned for its mode target, never metered.
+    // (A meter that is declared but has not reported cannot reach the plan: the
+    // read contract ignores a device read that declares a capability with no
+    // value.)
+    const unmetered = await buildHomeyHeater();
+    unmetered.removeCapability('measure_power');
+    const app = await initApp({ heater: unmetered });
 
     const result = app.createDeferredObjective('heater-1', tempCandidate(60));
 
@@ -163,8 +193,7 @@ describe('createDeferredObjective (app)', () => {
     // (`managed !== false`) filter drops. Offering/persisting it would create a
     // task that never plans or controls anything — reject `device_not_planned`,
     // sharing the exact predicate the candidate listing and planner use.
-    const app = await initApp();
-    app.setSnapshotForTests([{ ...buildPlannedHeater(), managed: false } as TargetDeviceSnapshot]);
+    const app = await initApp({ managed: false });
     const result = app.createDeferredObjective('heater-1', tempCandidate(60));
     expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
     expect(readStored().objectivesByDeviceId['heater-1']).toBeUndefined();
@@ -177,7 +206,6 @@ describe('createDeferredObjective (app)', () => {
 
   it('reports device_not_found when the device is in neither set', async () => {
     const app = await initApp();
-    app.getUiPickerDevices = () => [];
     const result = app.createDeferredObjective('ghost', tempCandidate(60));
     expect(result).toEqual({ ok: false, reason: 'device_not_found' });
     await app.onUninit?.();
@@ -229,21 +257,12 @@ describe('createDeferredObjective (app)', () => {
   // the app re-gates them against the device (defence-in-depth) so a tampered or
   // stale client can never persist a permission the device can't honour.
   describe('extra-permissions gate (create)', () => {
-    const steppedHeater = (priority = 1): TargetDeviceSnapshot => ({
-      ...buildPlannedHeater(),
-      priority,
-      controlModel: 'stepped_load',
-      steppedLoadProfile: {
-        steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 2000 }],
-      },
-    } as unknown as TargetDeviceSnapshot);
     const withRescue = (
       rescue: DeferredObjectivePlanPreviewCandidate['rescue'],
     ): DeferredObjectivePlanPreviewCandidate => ({ ...tempCandidate(60), rescue });
 
     it('persists both permissions for a stepped device with budget exemption', async () => {
-      const app = await initApp();
-      app.setSnapshotForTests([steppedHeater()]);
+      const app = await initApp({ stepped: true });
       const result = app.createDeferredObjective(
         'heater-1', withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
       );
@@ -270,17 +289,19 @@ describe('createDeferredObjective (app)', () => {
       // `replace` — stripping there would turn an unrelated goal edit into a
       // PERMANENT revocation of an effective permission. A caller that passes the
       // standing set gets the grant preserved through the degraded read.
-      const app = await initApp(); // default heater snapshot reads as non-stepped
       // Seed the grant while the device still reads as a stepper, then let the
-      // snapshot go back to non-stepped — the shape of a post-restart window
-      // where `controlModel` has not been re-derived yet.
-      app.setSnapshotForTests([steppedHeater()]);
+      // next refresh read it as non-stepped (its saved ladder is gone): the gate
+      // takes the same path as in that post-restart window.
+      const app = await initApp({ stepped: true });
       app.createDeferredObjective(
         'heater-1',
         withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
         'replace',
       );
-      app.setSnapshotForTests([buildPlannedHeater() as unknown as TargetDeviceSnapshot]);
+      mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, {});
+      await app.refreshTargetDevicesSnapshot();
+      expect(app.getPlanInputSnapshot().find((device: { id: string }) => device.id === 'heater-1'))
+        .toMatchObject({ controlModel: 'temperature_target' });
       const result = app.createDeferredObjective(
         'heater-1',
         withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
@@ -295,8 +316,7 @@ describe('createDeferredObjective (app)', () => {
     it('KEEPS a limit grant when its budget exemption is revoked', async () => {
       // The two permissions are independent: the runtime honours the limit
       // grant alone, so revoking the exemption must not take it along.
-      const app = await initApp();
-      app.setSnapshotForTests([steppedHeater()]);
+      const app = await initApp({ stepped: true });
       app.createDeferredObjective(
         'heater-1',
         withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
@@ -321,8 +341,7 @@ describe('createDeferredObjective (app)', () => {
       // verbatim; the runtime honours them (`limitLowerPriorityApplied` keys on
       // the grant alone). The editor names all three permissions on every save,
       // so a goal-only edit must carry the grant through.
-      const app = await initApp();
-      app.setSnapshotForTests([steppedHeater()]);
+      const app = await initApp({ stepped: true });
       app.createDeferredObjective('heater-1', tempCandidate(60));
       const grantViaFlow = mockHomeyInstance.flow._actionCardListeners['allow_smart_task_rescue'];
       await grantViaFlow({
@@ -361,8 +380,7 @@ describe('createDeferredObjective (app)', () => {
     });
 
     it('persists a new limit-only grant on a stepped device, without the budget exemption', async () => {
-      const app = await initApp();
-      app.setSnapshotForTests([steppedHeater()]);
+      const app = await initApp({ stepped: true });
       const result = app.createDeferredObjective('heater-1', withRescue({ limitLowerPriorityDevices: 'always' }));
       expect(result).toEqual({ ok: true });
       expect(readStored().objectivesByDeviceId['heater-1'].rescue)
@@ -377,8 +395,7 @@ describe('createDeferredObjective (app)', () => {
       // priority-100 device can only displace something below it. Withholding the
       // grant here silently left every non-top device without the one permission
       // that clears capacity for it.
-      const app = await initApp();
-      app.setSnapshotForTests([steppedHeater(100)]);
+      const app = await initApp({ stepped: true, belowTopPriority: true });
       const result = app.createDeferredObjective(
         'heater-1', withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
       );
@@ -392,8 +409,7 @@ describe('createDeferredObjective (app)', () => {
       // `pauseLowerPriorityDevices` is priority-relative by construction and is
       // never touched by the gate — the rescue relies on that to reserve startup
       // power for a device the budget exemption alone cannot unblock.
-      const app = await initApp();
-      app.setSnapshotForTests([steppedHeater(100)]);
+      const app = await initApp({ stepped: true, belowTopPriority: true });
       const result = app.createDeferredObjective('heater-1', withRescue({
         exemptFromBudget: 'always',
         limitLowerPriorityDevices: 'always',
@@ -496,10 +512,7 @@ describe('createDeferredObjective (app)', () => {
     });
 
     it('rejects a picker-only device that is not in the runtime-planned snapshot', async () => {
-      const app = await initApp();
-      app.getUiPickerDevices = () => [
-        { ...buildPlannedHeater(), id: 'picker-only', name: 'Spare heater' },
-      ];
+      const app = await initAppWithPickerOnlyHeater();
       const result = app.rescueDeviceWithBudgetExemption('picker-only', rescueCandidate(65));
       expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
       await app.onUninit?.();
