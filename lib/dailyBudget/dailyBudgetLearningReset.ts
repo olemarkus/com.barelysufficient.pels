@@ -1,6 +1,5 @@
 import type { DailyBudgetState } from './dailyBudgetTypes';
-
-const emptyHourly = (): number[] => Array.from({ length: 24 }, () => 0);
+import { emptyObservedHourlyStats } from './observedHourlyStats';
 
 export const resetDailyBudgetLearningState = (
   state: DailyBudgetState,
@@ -12,18 +11,7 @@ export const resetDailyBudgetLearningState = (
   profileControlledShare: 0,
   profileSampleCount: 0,
   profileSplitSampleCount: 0,
-  profileObservedMaxUncontrolledKWh: emptyHourly(),
-  profileObservedMaxControlledKWh: emptyHourly(),
-  profileObservedMinUncontrolledKWh: emptyHourly(),
-  profileObservedMinControlledKWh: emptyHourly(),
-  profileObservedP50UncontrolledKWh: emptyHourly(),
-  profileObservedP75UncontrolledKWh: emptyHourly(),
-  profileObservedP90UncontrolledKWh: emptyHourly(),
-  profileObservedUncontrolledSampleCounts: emptyHourly(),
-  profileObservedP50GrossUncontrolledKWh: emptyHourly(),
-  profileObservedP75GrossUncontrolledKWh: emptyHourly(),
-  profileObservedP90GrossUncontrolledKWh: emptyHourly(),
-  profileObservedGrossUncontrolledSampleCounts: emptyHourly(),
+  ...emptyObservedHourlyStats(),
   profile: undefined,
   frozen: false,
 });

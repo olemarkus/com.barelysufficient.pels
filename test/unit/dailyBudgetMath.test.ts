@@ -13,6 +13,7 @@ import {
 } from '../../lib/dailyBudget/dailyBudgetMath';
 import { buildPriceFactors as buildPriceFactorsFromPrices, buildPriceSeriesPair } from '../../lib/dailyBudget/dailyBudgetPrices';
 import { buildPlanBreakdown } from '../../lib/dailyBudget/dailyBudgetBreakdown';
+import { observedHourlyStatsFixture } from '../helpers/observedHourlyStatsFixture';
 
 describe('allocateBudgetWithCaps', () => {
   it('caps all buckets when every bucket hits its cap', () => {
@@ -382,6 +383,7 @@ describe('daily budget math helpers', () => {
       previousPlannedKWh: [1, Number.NaN, 3, 4],
       capacityBudgetKWh: 2,
       lockCurrentBucket: true,
+      observedStats: observedHourlyStatsFixture(),
     });
 
     expect(result.priceShapingActive).toBe(true);
@@ -402,6 +404,7 @@ describe('daily budget math helpers', () => {
       combinedPrices: null,
       priceOptimizationEnabled: false,
       priceShapingEnabled: false,
+      observedStats: observedHourlyStatsFixture(),
     });
 
     expect(result.priceShapingActive).toBe(false);
@@ -425,10 +428,12 @@ describe('daily budget math helpers', () => {
       priceShapingEnabled: false,
       observedPeakMarginRatio: 0,
       controlledUsageWeight,
-      profileObservedMinControlledKWh: [
-        2, 0, 0, 0,
-        ...Array.from({ length: 20 }, () => 0),
-      ],
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMinControlledKWh: [
+          2, 0, 0, 0,
+          ...Array.from({ length: 20 }, () => 0),
+        ],
+      }),
     });
 
     const balanced = buildReserveModePlan(0);
@@ -454,10 +459,12 @@ describe('daily budget math helpers', () => {
       priceShapingEnabled: false,
       observedPeakMarginRatio: 0,
       controlledUsageWeight: 1,
-      profileObservedP50UncontrolledKWh: [1, 0, 0, 0, ...Array.from({ length: 20 }, () => 0)],
-      profileObservedP75UncontrolledKWh: [2, 0, 0, 0, ...Array.from({ length: 20 }, () => 0)],
-      profileObservedP90UncontrolledKWh: [4, 0, 0, 0, ...Array.from({ length: 20 }, () => 0)],
-      profileObservedUncontrolledSampleCounts: [30, 0, 0, 0, ...Array.from({ length: 20 }, () => 0)],
+      observedStats: observedHourlyStatsFixture({
+        profileObservedP50UncontrolledKWh: [1, 0, 0, 0, ...Array.from({ length: 20 }, () => 0)],
+        profileObservedP75UncontrolledKWh: [2, 0, 0, 0, ...Array.from({ length: 20 }, () => 0)],
+        profileObservedP90UncontrolledKWh: [4, 0, 0, 0, ...Array.from({ length: 20 }, () => 0)],
+        profileObservedUncontrolledSampleCounts: [30, 0, 0, 0, ...Array.from({ length: 20 }, () => 0)],
+      }),
     });
 
     expect(result.uncontrolledReserveDiagnostics?.hours[0]?.quantileUsed).toBeGreaterThan(0.75);
@@ -480,10 +487,12 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: false,
       priceShapingEnabled: false,
       observedPeakMarginRatio: 0,
-      profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
-      profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
-      profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
-      profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+      observedStats: observedHourlyStatsFixture({
+        profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
+        profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
+        profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
+        profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+      }),
     });
 
     expect(result.plannedUncontrolledKWh[0]).toBeLessThan(2);
@@ -506,10 +515,12 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: false,
       priceShapingEnabled: false,
       observedPeakMarginRatio: 0,
-      profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
-      profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
-      profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
-      profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+      observedStats: observedHourlyStatsFixture({
+        profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
+        profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
+        profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
+        profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+      }),
     });
 
     expect(result.plannedUncontrolledKWh[0]).toBeGreaterThan(1);
@@ -531,6 +542,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: false,
       priceShapingEnabled: false,
       observedPeakMarginRatio: 0,
+      observedStats: observedHourlyStatsFixture(),
     });
 
     expect(result.plannedGrossUncontrolledKWh[0]).toBeCloseTo(result.plannedUncontrolledKWh[0], 6);
@@ -557,6 +569,7 @@ describe('daily budget math helpers', () => {
       previousPlannedGrossUncontrolledKWh: [3, 4, 0.25, 0.25],
       previousPlannedControlledKWh: [0.75, 0.75, 0.75, 0.75],
       lockCurrentBucket: true,
+      observedStats: observedHourlyStatsFixture(),
     });
 
     expect(result.plannedGrossUncontrolledKWh[0]).toBeCloseTo(3, 6);
@@ -576,11 +589,13 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: false,
       priceShapingEnabled: false,
       observedPeakMarginRatio: 0,
-      profileObservedMinUncontrolledKWh: [
-        4, 4, 4, 4,
-        ...Array.from({ length: 20 }, () => 0),
-      ],
-      profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0),
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMinUncontrolledKWh: [
+          4, 4, 4, 4,
+          ...Array.from({ length: 20 }, () => 0),
+        ],
+        profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0),
+      }),
     });
 
     const total = result.plannedKWh.reduce((sum, value) => sum + value, 0);
@@ -624,6 +639,7 @@ describe('daily budget math helpers', () => {
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
       capacityBudgetKWh: 4,
+      observedStats: observedHourlyStatsFixture(),
     });
 
     expect(result.effectivePriceShapingFlexShare).toBe(1);
@@ -668,8 +684,10 @@ describe('daily budget math helpers', () => {
       capacityBudgetKWh: 10,
       controlledUsageWeight,
       observedPeakMarginRatio: 0,
-      profileObservedMinUncontrolledKWh: observedUncontrolledMin,
-      profileObservedMinControlledKWh: observedControlledMin,
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMinUncontrolledKWh: observedUncontrolledMin,
+        profileObservedMinControlledKWh: observedControlledMin,
+      }),
     });
 
     const balanced = buildWeightedPlan(0);
@@ -704,10 +722,12 @@ describe('daily budget math helpers', () => {
       priceShapingEnabled: false,
       controlledUsageWeight: 1,
       observedPeakMarginRatio: 0.2,
-      profileObservedP50UncontrolledKWh: p50,
-      profileObservedP75UncontrolledKWh: p75,
-      profileObservedP90UncontrolledKWh: p90,
-      profileObservedUncontrolledSampleCounts: [30, 0, ...Array.from({ length: 22 }, () => 0)],
+      observedStats: observedHourlyStatsFixture({
+        profileObservedP50UncontrolledKWh: p50,
+        profileObservedP75UncontrolledKWh: p75,
+        profileObservedP90UncontrolledKWh: p90,
+        profileObservedUncontrolledSampleCounts: [30, 0, ...Array.from({ length: 22 }, () => 0)],
+      }),
     });
 
     expect(result.plannedUncontrolledKWh[0]).toBeGreaterThan(2);
@@ -738,8 +758,10 @@ describe('daily budget math helpers', () => {
       priceShapingEnabled: false,
       controlledUsageWeight: 0,
       observedPeakMarginRatio: 0,
-      profileObservedMaxUncontrolledKWh: observedUncontrolledMax,
-      profileObservedMaxControlledKWh: observedControlledMax,
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMaxUncontrolledKWh: observedUncontrolledMax,
+        profileObservedMaxControlledKWh: observedControlledMax,
+      }),
     });
 
     expect(result.plannedKWh[0]).toBeCloseTo(4, 6);
@@ -777,9 +799,11 @@ describe('daily budget math helpers', () => {
       priceShapingFlexShare: 1,
       controlledUsageWeight: 0,
       observedPeakMarginRatio: 0,
-      profileObservedMaxUncontrolledKWh: observedUncontrolledMax,
-      profileObservedMaxControlledKWh: observedControlledMax,
-      profileObservedMinUncontrolledKWh: observedUncontrolledMin,
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMaxUncontrolledKWh: observedUncontrolledMax,
+        profileObservedMaxControlledKWh: observedControlledMax,
+        profileObservedMinUncontrolledKWh: observedUncontrolledMin,
+      }),
     });
 
     expect(result.plannedKWh[0]).toBeCloseTo(4, 6);
@@ -819,6 +843,7 @@ describe('daily budget math helpers', () => {
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
       capacityBudgetKWh: 10,
+      observedStats: observedHourlyStatsFixture(),
     });
 
     expect(priceShape.priceShapingActive).toBe(true);
@@ -863,6 +888,7 @@ describe('daily budget math helpers', () => {
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
       capacityBudgetKWh: 10,
+      observedStats: observedHourlyStatsFixture(),
     });
 
     expect(priceShape.priceShapingActive).toBe(true);
@@ -904,7 +930,9 @@ describe('daily budget math helpers', () => {
       controlledUsageWeight: 1,
       capacityBudgetKWh: 2,
       observedPeakMarginRatio: 0,
-      profileObservedMaxControlledKWh: [1, 1, ...Array.from({ length: 22 }, () => 0)],
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMaxControlledKWh: [1, 1, ...Array.from({ length: 22 }, () => 0)],
+      }),
     });
     expect(Math.max(...observedLimited.plannedKWh)).toBeLessThanOrEqual(1 + 1e-6);
 
@@ -924,7 +952,9 @@ describe('daily budget math helpers', () => {
       controlledUsageWeight: 1,
       capacityBudgetKWh: 2,
       observedPeakMarginRatio: 0,
-      profileObservedMaxControlledKWh: [10, 10, ...Array.from({ length: 22 }, () => 0)],
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMaxControlledKWh: [10, 10, ...Array.from({ length: 22 }, () => 0)],
+      }),
     });
     expect(Math.max(...capacityLimited.plannedKWh)).toBeLessThanOrEqual(2 + 1e-6);
   });
@@ -951,7 +981,9 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: false,
       priceShapingEnabled: false,
       controlledUsageWeight: 1,
-      profileObservedMaxControlledKWh: [1, 1, 1, ...Array.from({ length: 21 }, () => 0)],
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMaxControlledKWh: [1, 1, 1, ...Array.from({ length: 21 }, () => 0)],
+      }),
     });
 
     expect(result.plannedKWh.every((value) => Number.isFinite(value) && value >= 0)).toBe(true);
@@ -998,6 +1030,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
+      observedStats: observedHourlyStatsFixture(),
     });
     expect(flatPlan.effectivePriceShapingFlexShare).toBe(0);
     expect(flatPlan.plannedKWh[0]).toBeCloseTo(3, 6);
@@ -1020,6 +1053,7 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
+      observedStats: observedHourlyStatsFixture(),
     });
     expect(nearFlatPlan.priceSpreadFactor).toBe(0);
     expect(nearFlatPlan.effectivePriceShapingFlexShare).toBe(0);

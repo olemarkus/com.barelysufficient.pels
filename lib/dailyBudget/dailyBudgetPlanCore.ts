@@ -18,6 +18,7 @@ import { buildPlanWeights, resolveSplitShares } from './dailyBudgetPlanWeights';
 import { buildPlannedSplit } from './dailyBudgetPlanSplit';
 import type { CombinedPriceData } from './dailyBudgetPrices';
 import { buildPriceFactors } from './dailyBudgetPrices';
+import type { ObservedHourlyStats } from './observedHourlyStats';
 
 // A previously planned bucket value only counts when the slot exists and holds
 // a finite number; every caller below supplies its own fallback for the rest.
@@ -53,18 +54,7 @@ type BuildPlanParams = {
   capacityBudgetKWh?: number;
   lockCurrentBucket?: boolean;
   controlledUsageWeight?: number;
-  profileObservedMaxUncontrolledKWh?: number[];
-  profileObservedMaxControlledKWh?: number[];
-  profileObservedMinUncontrolledKWh?: number[];
-  profileObservedMinControlledKWh?: number[];
-  profileObservedP50UncontrolledKWh?: number[];
-  profileObservedP75UncontrolledKWh?: number[];
-  profileObservedP90UncontrolledKWh?: number[];
-  profileObservedUncontrolledSampleCounts?: number[];
-  profileObservedP50GrossUncontrolledKWh?: number[];
-  profileObservedP75GrossUncontrolledKWh?: number[];
-  profileObservedP90GrossUncontrolledKWh?: number[];
-  profileObservedGrossUncontrolledSampleCounts?: number[];
+  observedStats: ObservedHourlyStats;
   observedPeakMarginRatio?: number;
 };
 
@@ -116,7 +106,7 @@ export function buildPlan(params: BuildPlanParams): BuildPlanResult {
   const controlledMinFloors = buildControlledMinFloors({
     bucketStartUtcMs: params.bucketStartUtcMs,
     timeZone: params.timeZone,
-    profileObservedMinControlledKWh: params.profileObservedMinControlledKWh,
+    profileObservedMinControlledKWh: params.observedStats.profileObservedMinControlledKWh,
     observedPeakMarginRatio: params.observedPeakMarginRatio,
     applyFromIndex: setup.bounds.remainingStartIndex,
     controlledUsageWeight: params.controlledUsageWeight,
@@ -270,18 +260,7 @@ const resolvePlannedTotals = (params: {
       capacityBudgetKWh,
       timeZone,
       controlledUsageWeight,
-      profileObservedMaxUncontrolledKWh,
-      profileObservedMaxControlledKWh,
-      profileObservedMinUncontrolledKWh,
-      profileObservedMinControlledKWh,
-      profileObservedP50UncontrolledKWh,
-      profileObservedP75UncontrolledKWh,
-      profileObservedP90UncontrolledKWh,
-      profileObservedUncontrolledSampleCounts,
-      profileObservedP50GrossUncontrolledKWh,
-      profileObservedP75GrossUncontrolledKWh,
-      profileObservedP90GrossUncontrolledKWh,
-      profileObservedGrossUncontrolledSampleCounts,
+      observedStats,
       observedPeakMarginRatio,
     },
     bounds,
@@ -311,8 +290,7 @@ const resolvePlannedTotals = (params: {
     splitSharesUncontrolled: splitShares.uncontrolled,
     splitSharesControlled: splitShares.controlled,
     controlledUsageWeight: typeof controlledUsageWeight === 'number' ? controlledUsageWeight : 0,
-    profileObservedMaxUncontrolledKWh,
-    profileObservedMaxControlledKWh,
+    observedStats,
     observedPeakMarginRatio,
     capacityBudgetKWh,
     usedInCurrent,
@@ -325,16 +303,7 @@ const resolvePlannedTotals = (params: {
     splitSharesUncontrolled: splitShares.uncontrolled,
     splitSharesControlled: splitShares.controlled,
     controlledUsageWeight: typeof controlledUsageWeight === 'number' ? controlledUsageWeight : 0,
-    profileObservedMinUncontrolledKWh,
-    profileObservedMinControlledKWh,
-    profileObservedP50UncontrolledKWh,
-    profileObservedP75UncontrolledKWh,
-    profileObservedP90UncontrolledKWh,
-    profileObservedUncontrolledSampleCounts,
-    profileObservedP50GrossUncontrolledKWh,
-    profileObservedP75GrossUncontrolledKWh,
-    profileObservedP90GrossUncontrolledKWh,
-    profileObservedGrossUncontrolledSampleCounts,
+    observedStats,
     observedPeakMarginRatio,
     usedInCurrent,
     remainingStartIndex: bounds.remainingStartIndex,

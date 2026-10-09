@@ -1,3 +1,5 @@
+import type { ObservedHourlyStats } from './observedHourlyStats';
+
 export type DailyBudgetSettings = {
   enabled: boolean;
   dailyBudgetKWh: number;
@@ -13,7 +15,7 @@ export type DailyBudgetProfile = {
   sampleCount: number;
 };
 
-export type DailyBudgetState = {
+export type DailyBudgetState = Partial<ObservedHourlyStats> & {
   dateKey?: string | null;
   dayStartUtcMs?: number | null;
   plannedKWh?: number[];
@@ -29,18 +31,6 @@ export type DailyBudgetState = {
   profileControlledShare?: number;
   profileSampleCount?: number;
   profileSplitSampleCount?: number;
-  profileObservedMaxUncontrolledKWh?: number[];
-  profileObservedMaxControlledKWh?: number[];
-  profileObservedMinUncontrolledKWh?: number[];
-  profileObservedMinControlledKWh?: number[];
-  profileObservedP50UncontrolledKWh?: number[];
-  profileObservedP75UncontrolledKWh?: number[];
-  profileObservedP90UncontrolledKWh?: number[];
-  profileObservedUncontrolledSampleCounts?: number[];
-  profileObservedP50GrossUncontrolledKWh?: number[];
-  profileObservedP75GrossUncontrolledKWh?: number[];
-  profileObservedP90GrossUncontrolledKWh?: number[];
-  profileObservedGrossUncontrolledSampleCounts?: number[];
   profileObservedStatsConfigKey?: string;
 };
 

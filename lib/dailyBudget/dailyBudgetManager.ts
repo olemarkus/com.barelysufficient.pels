@@ -30,6 +30,7 @@ import { CONTROLLED_USAGE_WEIGHT } from './dailyBudgetConstants';
 import { finalizePreviousDayLearning } from './dailyBudgetLearning';
 import { resetDailyBudgetLearningState } from './dailyBudgetLearningReset';
 import { ensureObservedHourlyStats, resolveObservedGrossBackgroundKwh } from './dailyBudgetObservedStats';
+import { resolveObservedHourlyStats } from './observedHourlyStats';
 import {
   ensureDailyBudgetProfile,
   getEffectiveProfileData,
@@ -367,18 +368,7 @@ export class DailyBudgetManager {
       capacityBudgetKWh,
       lockCurrentBucket: lockState.lockCurrentBucket,
       controlledUsageWeight: settings.controlledUsageWeight,
-      profileObservedMaxUncontrolledKWh: this.state.profileObservedMaxUncontrolledKWh,
-      profileObservedMaxControlledKWh: this.state.profileObservedMaxControlledKWh,
-      profileObservedMinUncontrolledKWh: this.state.profileObservedMinUncontrolledKWh,
-      profileObservedMinControlledKWh: this.state.profileObservedMinControlledKWh,
-      profileObservedP50UncontrolledKWh: this.state.profileObservedP50UncontrolledKWh,
-      profileObservedP75UncontrolledKWh: this.state.profileObservedP75UncontrolledKWh,
-      profileObservedP90UncontrolledKWh: this.state.profileObservedP90UncontrolledKWh,
-      profileObservedUncontrolledSampleCounts: this.state.profileObservedUncontrolledSampleCounts,
-      profileObservedP50GrossUncontrolledKWh: this.state.profileObservedP50GrossUncontrolledKWh,
-      profileObservedP75GrossUncontrolledKWh: this.state.profileObservedP75GrossUncontrolledKWh,
-      profileObservedP90GrossUncontrolledKWh: this.state.profileObservedP90GrossUncontrolledKWh,
-      profileObservedGrossUncontrolledSampleCounts: this.state.profileObservedGrossUncontrolledSampleCounts,
+      observedStats: resolveObservedHourlyStats(this.state),
     });
     this.state.plannedKWh = buildResult.plannedKWh;
     this.state.plannedUncontrolledKWh = buildResult.plannedUncontrolledKWh.slice();
@@ -534,18 +524,7 @@ export class DailyBudgetManager {
       profileSampleCount: profileData.sampleCount,
       profileSplitSampleCount: getProfileSplitSampleCount(this.state),
       profileBreakdown: profileData.breakdown,
-      profileObservedMaxUncontrolledKWh: this.state.profileObservedMaxUncontrolledKWh,
-      profileObservedMaxControlledKWh: this.state.profileObservedMaxControlledKWh,
-      profileObservedMinUncontrolledKWh: this.state.profileObservedMinUncontrolledKWh,
-      profileObservedMinControlledKWh: this.state.profileObservedMinControlledKWh,
-      profileObservedP50UncontrolledKWh: this.state.profileObservedP50UncontrolledKWh,
-      profileObservedP75UncontrolledKWh: this.state.profileObservedP75UncontrolledKWh,
-      profileObservedP90UncontrolledKWh: this.state.profileObservedP90UncontrolledKWh,
-      profileObservedUncontrolledSampleCounts: this.state.profileObservedUncontrolledSampleCounts,
-      profileObservedP50GrossUncontrolledKWh: this.state.profileObservedP50GrossUncontrolledKWh,
-      profileObservedP75GrossUncontrolledKWh: this.state.profileObservedP75GrossUncontrolledKWh,
-      profileObservedP90GrossUncontrolledKWh: this.state.profileObservedP90GrossUncontrolledKWh,
-      profileObservedGrossUncontrolledSampleCounts: this.state.profileObservedGrossUncontrolledSampleCounts,
+      observedStats: resolveObservedHourlyStats(this.state),
     });
   }
 

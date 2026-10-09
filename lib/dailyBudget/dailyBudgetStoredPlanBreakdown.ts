@@ -2,6 +2,7 @@ import { getZonedParts } from '../../packages/shared-domain/src/utils/dateUtils'
 import { buildUncontrolledReserveFloors } from './dailyBudgetPlanCaps';
 import type { DayContext } from './dailyBudgetState';
 import type { DailyBudgetState } from './dailyBudgetTypes';
+import { resolveObservedHourlyStats } from './observedHourlyStats';
 
 export type StoredPlanBreakdown = {
   plannedUncontrolledKWh?: number[];
@@ -46,8 +47,8 @@ const buildStoredGrossUncontrolledKWh = (params: {
   controlledUsageWeight: number;
 }): { values: number[]; complete: boolean } | undefined => {
   const { state, context, plannedUncontrolledKWh, controlledUsageWeight } = params;
-  const sampleCounts = state.profileObservedGrossUncontrolledSampleCounts;
-  if (!Array.isArray(sampleCounts) || sampleCounts.length !== 24) return undefined;
+  const observed = resolveObservedHourlyStats(state);
+  const sampleCounts = observed.profileObservedGrossUncontrolledSampleCounts;
   const grossSamplePresence = context.bucketStartUtcMs.map((bucketStartMs) => (
     hasObservedGrossSample(sampleCounts, bucketStartMs, context.timeZone)
   ));
@@ -56,10 +57,10 @@ const buildStoredGrossUncontrolledKWh = (params: {
   const grossReserveFloors = buildUncontrolledReserveFloors({
     bucketStartUtcMs: context.bucketStartUtcMs,
     timeZone: context.timeZone,
-    profileObservedMinUncontrolledKWh: state.profileObservedMinUncontrolledKWh,
-    profileObservedP50UncontrolledKWh: state.profileObservedP50GrossUncontrolledKWh,
-    profileObservedP75UncontrolledKWh: state.profileObservedP75GrossUncontrolledKWh,
-    profileObservedP90UncontrolledKWh: state.profileObservedP90GrossUncontrolledKWh,
+    profileObservedMinUncontrolledKWh: observed.profileObservedMinUncontrolledKWh,
+    profileObservedP50UncontrolledKWh: observed.profileObservedP50GrossUncontrolledKWh,
+    profileObservedP75UncontrolledKWh: observed.profileObservedP75GrossUncontrolledKWh,
+    profileObservedP90UncontrolledKWh: observed.profileObservedP90GrossUncontrolledKWh,
     profileObservedUncontrolledSampleCounts: sampleCounts,
     applyFromIndex: 0,
     reserveAggressiveness: controlledUsageWeight,

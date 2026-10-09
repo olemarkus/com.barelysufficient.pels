@@ -3,6 +3,7 @@ import {
   resolveRemainingCaps,
   resolveRemainingFloors,
 } from '../../lib/dailyBudget/dailyBudgetPlanCaps';
+import { observedHourlyStatsFixture } from '../helpers/observedHourlyStatsFixture';
 
 describe('daily budget plan caps/floors', () => {
   const timeZone = 'UTC';
@@ -15,8 +16,10 @@ describe('daily budget plan caps/floors', () => {
       splitSharesUncontrolled: [1],
       splitSharesControlled: [0],
       controlledUsageWeight: 0.3,
-      profileObservedMaxUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
-      profileObservedMaxControlledKWh: Array.from({ length: 24 }, () => 0),
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMaxUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
+        profileObservedMaxControlledKWh: Array.from({ length: 24 }, () => 0),
+      }),
       observedPeakMarginRatio: 0.2,
       usedInCurrent: 0,
       remainingStartIndex: 0,
@@ -34,8 +37,10 @@ describe('daily budget plan caps/floors', () => {
       splitSharesUncontrolled: [1],
       splitSharesControlled: [0],
       controlledUsageWeight: 0.3,
-      profileObservedMinUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
-      profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0),
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMinUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
+        profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0),
+      }),
       observedPeakMarginRatio: 0.2,
       usedInCurrent: 0,
       remainingStartIndex: 0,
@@ -53,12 +58,14 @@ describe('daily budget plan caps/floors', () => {
       splitSharesUncontrolled: [1],
       splitSharesControlled: [0],
       controlledUsageWeight: 0,
-      profileObservedMinUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
-      profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0),
-      profileObservedP50UncontrolledKWh: [2, ...Array.from({ length: 23 }, () => 0)],
-      profileObservedP75UncontrolledKWh: [3, ...Array.from({ length: 23 }, () => 0)],
-      profileObservedP90UncontrolledKWh: [5, ...Array.from({ length: 23 }, () => 0)],
-      profileObservedUncontrolledSampleCounts: [30, ...Array.from({ length: 23 }, () => 0)],
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMinUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
+        profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0),
+        profileObservedP50UncontrolledKWh: [2, ...Array.from({ length: 23 }, () => 0)],
+        profileObservedP75UncontrolledKWh: [3, ...Array.from({ length: 23 }, () => 0)],
+        profileObservedP90UncontrolledKWh: [5, ...Array.from({ length: 23 }, () => 0)],
+        profileObservedUncontrolledSampleCounts: [30, ...Array.from({ length: 23 }, () => 0)],
+      }),
       observedPeakMarginRatio: 0.2,
       usedInCurrent: 0,
       remainingStartIndex: 0,
@@ -133,8 +140,10 @@ describe('daily budget plan caps/floors', () => {
       splitSharesUncontrolled: [0.8],
       splitSharesControlled: [0.2],
       controlledUsageWeight: 1,
-      profileObservedMaxUncontrolledKWh: [2, ...Array.from({ length: 23 }, () => 0)],
-      profileObservedMaxControlledKWh: Array.from({ length: 24 }, () => 0),
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMaxUncontrolledKWh: [2, ...Array.from({ length: 23 }, () => 0)],
+        profileObservedMaxControlledKWh: Array.from({ length: 24 }, () => 0),
+      }),
       observedPeakMarginRatio: 0.2,
       usedInCurrent: 0,
       remainingStartIndex: 0,
@@ -152,8 +161,10 @@ describe('daily budget plan caps/floors', () => {
       splitSharesUncontrolled: [0.8],
       splitSharesControlled: [0.2],
       controlledUsageWeight: 1,
-      profileObservedMinUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
-      profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0),
+      observedStats: observedHourlyStatsFixture({
+        profileObservedMinUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
+        profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0),
+      }),
       observedPeakMarginRatio: 0.2,
       usedInCurrent: 0,
       remainingStartIndex: 0,

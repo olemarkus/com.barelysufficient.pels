@@ -32,7 +32,7 @@ lib/dailyBudget/dailyBudgetManagerPlan.ts 5
 lib/dailyBudget/dailyBudgetManagerSnapshot.ts 4
 lib/dailyBudget/dailyBudgetNextDayDebug.ts 1
 lib/dailyBudget/dailyBudgetObservedBucketUsage.ts 2
-lib/dailyBudget/dailyBudgetObservedStats.ts 4
+lib/dailyBudget/dailyBudgetObservedStats.ts 3
 lib/dailyBudget/dailyBudgetPlanCaps.ts 7
 lib/dailyBudget/dailyBudgetPlanCore.ts 7
 lib/dailyBudget/dailyBudgetPlanSplit.ts 3

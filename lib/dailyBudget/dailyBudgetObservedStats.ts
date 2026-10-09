@@ -9,6 +9,11 @@ import {
   UNCONTROLLED_RESERVE_MAX_QUANTILE,
 } from './dailyBudgetConstants';
 import type { DailyBudgetState } from './dailyBudgetTypes';
+import {
+  OBSERVED_HOURLY_STATS_GROUPS,
+  type ObservedHourlyStats,
+  type ObservedSeriesField,
+} from './observedHourlyStats';
 import { resolveWindowBucketUsage } from './dailyBudgetObservedBucketUsage';
 
 export const getObservedStatsConfigKey = (): string => (
@@ -126,21 +131,7 @@ export const buildObservedHourlyStatsFromWindow = (params: {
   timeZone: string;
   windowStartUtcMs: number;
   windowEndUtcMs: number;
-}): {
-  observedMaxUncontrolled: number[];
-  observedMaxControlled: number[];
-  observedMinUncontrolled: number[];
-  observedMinControlled: number[];
-  observedP50Uncontrolled: number[];
-  observedP75Uncontrolled: number[];
-  observedP90Uncontrolled: number[];
-  observedUncontrolledSampleCounts: number[];
-  observedP50GrossUncontrolled: number[];
-  observedP75GrossUncontrolled: number[];
-  observedP90GrossUncontrolled: number[];
-  observedGrossUncontrolledSampleCounts: number[];
-  windowBucketCount: number;
-} => {
+}): { stats: ObservedHourlyStats; windowBucketCount: number } => {
   const {
     powerTracker,
     timeZone,
@@ -193,18 +184,20 @@ export const buildObservedHourlyStatsFromWindow = (params: {
   const grossReserveStats = resolveHourlyReserveStats(hourlyGrossUncontrolled);
 
   return {
-    observedMaxUncontrolled,
-    observedMaxControlled,
-    observedMinUncontrolled,
-    observedMinControlled,
-    observedP50Uncontrolled: netReserveStats.observedP50,
-    observedP75Uncontrolled: netReserveStats.observedP75,
-    observedP90Uncontrolled: netReserveStats.observedP90,
-    observedUncontrolledSampleCounts: netReserveStats.observedSampleCounts,
-    observedP50GrossUncontrolled: grossReserveStats.observedP50,
-    observedP75GrossUncontrolled: grossReserveStats.observedP75,
-    observedP90GrossUncontrolled: grossReserveStats.observedP90,
-    observedGrossUncontrolledSampleCounts: grossReserveStats.observedSampleCounts,
+    stats: {
+      profileObservedMaxUncontrolledKWh: observedMaxUncontrolled,
+      profileObservedMaxControlledKWh: observedMaxControlled,
+      profileObservedMinUncontrolledKWh: observedMinUncontrolled,
+      profileObservedMinControlledKWh: observedMinControlled,
+      profileObservedP50UncontrolledKWh: netReserveStats.observedP50,
+      profileObservedP75UncontrolledKWh: netReserveStats.observedP75,
+      profileObservedP90UncontrolledKWh: netReserveStats.observedP90,
+      profileObservedUncontrolledSampleCounts: netReserveStats.observedSampleCounts,
+      profileObservedP50GrossUncontrolledKWh: grossReserveStats.observedP50,
+      profileObservedP75GrossUncontrolledKWh: grossReserveStats.observedP75,
+      profileObservedP90GrossUncontrolledKWh: grossReserveStats.observedP90,
+      profileObservedGrossUncontrolledSampleCounts: grossReserveStats.observedSampleCounts,
+    },
     windowBucketCount,
   };
 };
@@ -220,125 +213,53 @@ const areEqualNumberArrays = (left?: number[], right?: number[]): boolean => {
   return left.every((value, index) => value === right[index]);
 };
 
-const selectObservedSeries = (
-  shouldUseNext: boolean,
-  next: number[],
-  current: number[] | undefined,
-): number[] | undefined => (shouldUseNext ? next : current);
-
-const applyObservedUpdate = (params: {
-  state: DailyBudgetState;
+type ObservedUpdateNeeds = {
   needsMax: boolean;
   needsMin: boolean;
   needsNetReserve: boolean;
   needsGrossReserve: boolean;
   needsConfig: boolean;
-  observedMaxUncontrolled: number[];
-  observedMaxControlled: number[];
-  observedMinUncontrolled: number[];
-  observedMinControlled: number[];
-  observedP50Uncontrolled: number[];
-  observedP75Uncontrolled: number[];
-  observedP90Uncontrolled: number[];
-  observedUncontrolledSampleCounts: number[];
-  observedP50GrossUncontrolled: number[];
-  observedP75GrossUncontrolled: number[];
-  observedP90GrossUncontrolled: number[];
-  observedGrossUncontrolledSampleCounts: number[];
-  observedConfigKey: string;
-}): { nextState: DailyBudgetState; changed: boolean } => {
-  const {
-    state,
-    needsMax,
-    needsMin,
-    needsNetReserve,
-    needsGrossReserve,
-    needsConfig,
-    observedMaxUncontrolled,
-    observedMaxControlled,
-    observedMinUncontrolled,
-    observedMinControlled,
-    observedP50Uncontrolled,
-    observedP75Uncontrolled,
-    observedP90Uncontrolled,
-    observedUncontrolledSampleCounts,
-    observedP50GrossUncontrolled,
-    observedP75GrossUncontrolled,
-    observedP90GrossUncontrolled,
-    observedGrossUncontrolledSampleCounts,
-    observedConfigKey,
-  } = params;
+  needsRefresh: boolean;
+};
+
+/** `fields` of `next` where the group is needed, else of `state`. */
+const selectObservedSeries = (
+  needed: boolean,
+  fields: readonly ObservedSeriesField[],
+  next: ObservedHourlyStats,
+  state: DailyBudgetState,
+): Partial<ObservedHourlyStats> => Object.fromEntries(
+  fields.map((field) => [field, needed ? next[field] : state[field]]),
+);
+
+const hasObservedSeriesChanged = (
+  previous: DailyBudgetState,
+  next: DailyBudgetState,
+  fields: readonly ObservedSeriesField[],
+): boolean => fields.some((field) => !areEqualNumberArrays(previous[field], next[field]));
+
+const applyObservedUpdate = (
+  state: DailyBudgetState,
+  needs: ObservedUpdateNeeds,
+  stats: ObservedHourlyStats,
+  observedConfigKey: string,
+): { nextState: DailyBudgetState; changed: boolean } => {
+  const { max, min, netReserve, grossReserve } = OBSERVED_HOURLY_STATS_GROUPS;
   const nextState: DailyBudgetState = {
     ...state,
-    profileObservedMaxUncontrolledKWh: selectObservedSeries(
-      needsMax,
-      observedMaxUncontrolled,
-      state.profileObservedMaxUncontrolledKWh,
-    ),
-    profileObservedMaxControlledKWh: selectObservedSeries(
-      needsMax,
-      observedMaxControlled,
-      state.profileObservedMaxControlledKWh,
-    ),
-    profileObservedMinUncontrolledKWh: selectObservedSeries(
-      needsMin,
-      observedMinUncontrolled,
-      state.profileObservedMinUncontrolledKWh,
-    ),
-    profileObservedMinControlledKWh: selectObservedSeries(
-      needsMin,
-      observedMinControlled,
-      state.profileObservedMinControlledKWh,
-    ),
-    profileObservedP50UncontrolledKWh: selectObservedSeries(
-      needsNetReserve,
-      observedP50Uncontrolled,
-      state.profileObservedP50UncontrolledKWh,
-    ),
-    profileObservedP75UncontrolledKWh: selectObservedSeries(
-      needsNetReserve,
-      observedP75Uncontrolled,
-      state.profileObservedP75UncontrolledKWh,
-    ),
-    profileObservedP90UncontrolledKWh: selectObservedSeries(
-      needsNetReserve,
-      observedP90Uncontrolled,
-      state.profileObservedP90UncontrolledKWh,
-    ),
-    profileObservedUncontrolledSampleCounts: selectObservedSeries(
-      needsNetReserve,
-      observedUncontrolledSampleCounts,
-      state.profileObservedUncontrolledSampleCounts,
-    ),
-    profileObservedP50GrossUncontrolledKWh: selectObservedSeries(
-      needsGrossReserve,
-      observedP50GrossUncontrolled,
-      state.profileObservedP50GrossUncontrolledKWh,
-    ),
-    profileObservedP75GrossUncontrolledKWh: selectObservedSeries(
-      needsGrossReserve,
-      observedP75GrossUncontrolled,
-      state.profileObservedP75GrossUncontrolledKWh,
-    ),
-    profileObservedP90GrossUncontrolledKWh: selectObservedSeries(
-      needsGrossReserve,
-      observedP90GrossUncontrolled,
-      state.profileObservedP90GrossUncontrolledKWh,
-    ),
-    profileObservedGrossUncontrolledSampleCounts: selectObservedSeries(
-      needsGrossReserve,
-      observedGrossUncontrolledSampleCounts,
-      state.profileObservedGrossUncontrolledSampleCounts,
-    ),
-    profileObservedStatsConfigKey: needsConfig
+    ...selectObservedSeries(needs.needsMax, max, stats, state),
+    ...selectObservedSeries(needs.needsMin, min, stats, state),
+    ...selectObservedSeries(needs.needsNetReserve, netReserve, stats, state),
+    ...selectObservedSeries(needs.needsGrossReserve, grossReserve, stats, state),
+    profileObservedStatsConfigKey: needs.needsConfig
       ? observedConfigKey
       : state.profileObservedStatsConfigKey,
   };
-  const maxChanged = needsMax && hasObservedMaxChanged(state, nextState);
-  const minChanged = needsMin && hasObservedMinChanged(state, nextState);
-  const reserveChanged = (needsNetReserve || needsGrossReserve)
-    && hasObservedReserveChanged(state, nextState);
-  const configChanged = needsConfig
+  const maxChanged = needs.needsMax && hasObservedSeriesChanged(state, nextState, max);
+  const minChanged = needs.needsMin && hasObservedSeriesChanged(state, nextState, min);
+  const reserveChanged = (needs.needsNetReserve || needs.needsGrossReserve)
+    && hasObservedSeriesChanged(state, nextState, [...netReserve, ...grossReserve]);
+  const configChanged = needs.needsConfig
     && state.profileObservedStatsConfigKey !== nextState.profileObservedStatsConfigKey;
   return { nextState, changed: maxChanged || minChanged || reserveChanged || configChanged };
 };
@@ -350,14 +271,7 @@ const resolveObservedUpdateNeeds = (params: {
   hasGrossReserve: boolean;
   needsRefreshRequested: boolean;
   windowBucketCount: number;
-}): {
-  needsMax: boolean;
-  needsMin: boolean;
-  needsNetReserve: boolean;
-  needsGrossReserve: boolean;
-  needsConfig: boolean;
-  needsRefresh: boolean;
-} => {
+}): ObservedUpdateNeeds => {
   const {
     hasMax,
     hasMin,
@@ -377,33 +291,6 @@ const resolveObservedUpdateNeeds = (params: {
     needsRefresh,
   };
 };
-
-function hasObservedMaxChanged(previous: DailyBudgetState, next: DailyBudgetState): boolean {
-  return [
-    [previous.profileObservedMaxUncontrolledKWh, next.profileObservedMaxUncontrolledKWh],
-    [previous.profileObservedMaxControlledKWh, next.profileObservedMaxControlledKWh],
-  ].some(([left, right]) => !areEqualNumberArrays(left, right));
-}
-
-function hasObservedReserveChanged(previous: DailyBudgetState, next: DailyBudgetState): boolean {
-  return [
-    [previous.profileObservedP50UncontrolledKWh, next.profileObservedP50UncontrolledKWh],
-    [previous.profileObservedP75UncontrolledKWh, next.profileObservedP75UncontrolledKWh],
-    [previous.profileObservedP90UncontrolledKWh, next.profileObservedP90UncontrolledKWh],
-    [previous.profileObservedUncontrolledSampleCounts, next.profileObservedUncontrolledSampleCounts],
-    [previous.profileObservedP50GrossUncontrolledKWh, next.profileObservedP50GrossUncontrolledKWh],
-    [previous.profileObservedP75GrossUncontrolledKWh, next.profileObservedP75GrossUncontrolledKWh],
-    [previous.profileObservedP90GrossUncontrolledKWh, next.profileObservedP90GrossUncontrolledKWh],
-    [previous.profileObservedGrossUncontrolledSampleCounts, next.profileObservedGrossUncontrolledSampleCounts],
-  ].some(([left, right]) => !areEqualNumberArrays(left, right));
-}
-
-function hasObservedMinChanged(previous: DailyBudgetState, next: DailyBudgetState): boolean {
-  return [
-    [previous.profileObservedMinUncontrolledKWh, next.profileObservedMinUncontrolledKWh],
-    [previous.profileObservedMinControlledKWh, next.profileObservedMinControlledKWh],
-  ].some(([left, right]) => !areEqualNumberArrays(left, right));
-}
 
 /**
  * Learned p50 GROSS uncontrolled (always-on background) reserve for a local
@@ -451,35 +338,13 @@ export function ensureObservedHourlyStats(params: {
   const hourMs = 60 * 60 * 1000;
   const windowEndUtcMs = Math.floor(nowMs / hourMs) * hourMs;
   const windowStartUtcMs = windowEndUtcMs - OBSERVED_HOURLY_PEAK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-  const {
-    observedMaxUncontrolled,
-    observedMaxControlled,
-    observedMinUncontrolled,
-    observedMinControlled,
-    observedP50Uncontrolled,
-    observedP75Uncontrolled,
-    observedP90Uncontrolled,
-    observedUncontrolledSampleCounts,
-    observedP50GrossUncontrolled,
-    observedP75GrossUncontrolled,
-    observedP90GrossUncontrolled,
-    observedGrossUncontrolledSampleCounts,
-    windowBucketCount,
-  } = buildObservedHourlyStatsFromWindow({
+  const { stats, windowBucketCount } = buildObservedHourlyStatsFromWindow({
     powerTracker,
     timeZone,
     windowStartUtcMs,
     windowEndUtcMs,
   });
-
-  const {
-    needsMax,
-    needsMin,
-    needsNetReserve,
-    needsGrossReserve,
-    needsConfig,
-    needsRefresh,
-  } = resolveObservedUpdateNeeds({
+  const needs = resolveObservedUpdateNeeds({
     hasMax,
     hasMin,
     hasNetReserve,
@@ -488,30 +353,10 @@ export function ensureObservedHourlyStats(params: {
     windowBucketCount,
   });
 
-  const update = applyObservedUpdate({
-    state,
-    needsMax,
-    needsMin,
-    needsNetReserve,
-    needsGrossReserve,
-    needsConfig,
-    observedMaxUncontrolled,
-    observedMaxControlled,
-    observedMinUncontrolled,
-    observedMinControlled,
-    observedP50Uncontrolled,
-    observedP75Uncontrolled,
-    observedP90Uncontrolled,
-    observedUncontrolledSampleCounts,
-    observedP50GrossUncontrolled,
-    observedP75GrossUncontrolled,
-    observedP90GrossUncontrolled,
-    observedGrossUncontrolledSampleCounts,
-    observedConfigKey,
-  });
+  const update = applyObservedUpdate(state, needs, stats, observedConfigKey);
   if (!update.changed) return { nextState: state, changed: false };
 
-  const actionLabel = needsRefresh ? 'refreshed' : 'backfilled';
+  const actionLabel = needs.needsRefresh ? 'refreshed' : 'backfilled';
   return {
     nextState: update.nextState,
     changed: update.changed,
