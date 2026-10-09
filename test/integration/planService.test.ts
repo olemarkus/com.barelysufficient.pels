@@ -491,6 +491,30 @@ describe('PlanService', () => {
     expect(planUpdatedCalls[1][1].devices[0].status.factText).toContain('target 21 °C');
   });
 
+  it('projects the plan input once per build, however many smart tasks read stall evidence', async () => {
+    // The build's smart-task decoration asks for stall evidence once per active
+    // temperature task. Each ask reads the devices that build decides on; none
+    // projects the whole home again.
+    const getPlanDevices = vi.fn((): PlanInputDevice[] => []);
+    const { service, deps } = createPlanService({ getPlanDevices });
+    let projectionsInsideBuild: number | null = null;
+    vi.mocked(deps.planEngine.buildDevicePlanSnapshot).mockImplementation(async () => {
+      const before = getPlanDevices.mock.calls.length;
+      for (const deviceId of ['heater-1', 'heater-2', 'heater-3']) service.getStallEvidence(deviceId);
+      projectionsInsideBuild = getPlanDevices.mock.calls.length - before;
+      return buildPlan(20, 'keep');
+    });
+
+    await service.rebuildPlanFromCache('power_delta');
+
+    expect(projectionsInsideBuild).toBe(0);
+    expect(getPlanDevices).toHaveBeenCalledTimes(1);
+
+    // Between builds there is no held input, so the read projects the current one.
+    service.getStallEvidence('heater-1');
+    expect(getPlanDevices).toHaveBeenCalledTimes(2);
+  });
+
   it('ignores shortfall reason jitter when computing comparable detail changes', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
