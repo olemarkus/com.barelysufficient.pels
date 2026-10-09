@@ -16,6 +16,7 @@ import {
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
 import { isEvDevice } from '../../../../shared-domain/src/commandableNow.ts';
+import { DEFAULT_SURPLUS_LIFT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
 import { logSettingsError } from '../logging.ts';
 import { savePriceOptimizationSettings } from '../priceOptimization.ts';
 import { resolveSurplusControlAvailable,
@@ -43,13 +44,13 @@ const parseSurplusDeltaInput = (value: string | undefined, fallback: number): nu
 
 const readSurplusInputs = (): { surplusWilling: boolean; surplusDelta: number } => ({
   surplusWilling: deviceDetailSurplusOpt?.selected || false,
-  surplusDelta: parseSurplusDeltaInput(deviceDetailSurplusDelta?.value, 2),
+  surplusDelta: parseSurplusDeltaInput(deviceDetailSurplusDelta?.value, DEFAULT_SURPLUS_LIFT_C),
 });
 
 export const setDeviceDetailSurplusValues = (deviceId: string) => {
   const config = state.priceOptimizationSettings[deviceId];
   if (deviceDetailSurplusDelta) {
-    deviceDetailSurplusDelta.value = (config?.surplusDelta ?? 2).toString();
+    deviceDetailSurplusDelta.value = (config?.surplusDelta ?? DEFAULT_SURPLUS_LIFT_C).toString();
   }
 };
 

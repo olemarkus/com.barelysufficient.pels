@@ -1,4 +1,7 @@
-import { resolvePriceConfigured } from '../../../shared-domain/src/settings/priceOptimization.ts';
+import {
+  DEFAULT_SURPLUS_LIFT_C,
+  resolvePriceConfigured,
+} from '../../../shared-domain/src/settings/priceOptimization.ts';
 
 /**
  * Fully resolved settings-UI state for one device's Price and solar choices.
@@ -21,7 +24,7 @@ export const DEFAULT_PRICE_OPTIMIZATION_CONFIG: PriceOptimizationConfig = {
   expensiveDelta: -5,
   priceConfigured: false,
   surplusWilling: false,
-  surplusDelta: 2,
+  surplusDelta: DEFAULT_SURPLUS_LIFT_C,
 };
 
 export type PriceOptimizationConfigMapRead =
@@ -65,7 +68,7 @@ const classifyEntry = (value: unknown): PriceOptimizationConfigRead => {
       expensiveDelta: value.expensiveDelta,
       priceConfigured: resolvePriceConfigured(value.enabled, storedPriceConfigured),
       surplusWilling: value.surplusWilling === true,
-      surplusDelta: typeof value.surplusDelta === 'number' ? value.surplusDelta : 2,
+      surplusDelta: typeof value.surplusDelta === 'number' ? value.surplusDelta : DEFAULT_SURPLUS_LIFT_C,
     },
   };
 };
