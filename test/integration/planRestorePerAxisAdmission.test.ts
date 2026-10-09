@@ -1,7 +1,6 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
@@ -9,12 +8,8 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // Per-axis restore admission through the full plan build
 // (notes/safe-pace-two-constraints.md § "Proposed model", admission-scoped).
@@ -147,21 +142,9 @@ const buildBuilder = (params: {
   capacityGuard: CapacityGuard;
   tracker: { lastTimestamp: number; lastPowerW?: number };
 }): PlanBuilder => new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+  ...planBuilderWiring(),
   capacityGuard: params.capacityGuard,
-  setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
-  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getPriceOptimizationSettings: () => ({}),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-  }),
-  getPriceOptimizationSettings: () => ({}),
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
   // Thermostat outranks the heater so the restore pass evaluates it FIRST:
@@ -169,10 +152,6 @@ const buildBuilder = (params: {
   // axis before the exempt candidate admits (mirrors prod, where the
   // non-exempt device was admitted out of the reservation first).
   getShedBehavior: () => ({ action: 'turn_off' }),
-  log: vi.fn(),
-  pendingBinaryCommandStore: emptyPendingStore,
-  getDynamicSoftLimitOverride: () => null,
-  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
 }, createPlanEngineState());
 
 describe('per-axis restore admission through the full plan build', () => {

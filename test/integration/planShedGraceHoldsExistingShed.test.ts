@@ -1,7 +1,6 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type {
   BinaryControlDiscriminantProbe, DevicePlan, MeteredDiscriminantProbe, MeteredPlanInputDevice, PlanInputDevice,
@@ -10,11 +9,7 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import {
   fixtureControlPosture, fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn,
 } from '../utils/planTestUtils';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { PriceLevel } from '../../lib/price/priceLevels';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredDiscriminantProbe = {},
@@ -84,30 +79,13 @@ describe('shed grace', () => {
   function buildBuilder(state: ReturnType<typeof createPlanEngineState>): PlanBuilder {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     return new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-      setCapacityInShortfall: vi.fn(),
+      ...planBuilderWiring(),
       capacityGuard,
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 5.4 * 1000 }),
-      getDailyBudgetSnapshot: () => null,
       // The binding pace, well under the 6 kW hard cap — the deficit is real and
       // far above the soft-overshoot deadband.
       getDynamicSoftLimitOverride: () => 1.84,
-      getShedBehavior: () => ({ action: 'turn_off' }),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
   }
 

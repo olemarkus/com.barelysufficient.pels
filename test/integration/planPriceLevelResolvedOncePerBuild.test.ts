@@ -1,8 +1,6 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import type {
@@ -12,6 +10,7 @@ import type {
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 let lastPowerW = 0;
@@ -95,14 +94,10 @@ const buildBuilder = (params: {
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   lastPowerW = (3) * 1000;
   return new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+    ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-      getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({
         Home: Object.fromEntries(params.deviceIds.map((id) => [id, 20])),
       }),
@@ -113,7 +108,6 @@ const buildBuilder = (params: {
           enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0,
         }]),
       ),
-      getShedBehavior: () => ({ action: 'turn_off' }),
       getThermalDirection: (deviceId) => (params.coolingDeviceIds?.includes(deviceId) ? 'cooling' : 'heating'),
     }),
     getPriceOptimizationSettings: () => params.priceOptimizationSettings ?? Object.fromEntries(
@@ -122,13 +116,8 @@ const buildBuilder = (params: {
       }]),
     ),
     getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-    getDailyBudgetSnapshot: () => null,
-    getShedBehavior: () => ({ action: 'turn_off' }),
     getDynamicSoftLimitOverride: () => 10,
     deviceDiagnostics: params.deviceDiagnostics,
-    log: vi.fn(),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
-    decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, createPlanEngineState());
 };
 

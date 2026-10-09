@@ -20,7 +20,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
@@ -37,8 +36,8 @@ import {
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_UTC = Date.UTC(2026, 4, 10, 0, 0, 0);
@@ -289,29 +288,14 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   state.shedDecisions.lastPlannedShedIds = new Set([LOWER_PRIORITY_ID]);
 
   const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+    ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: LIMIT_KW, marginKw: 0, periodMinutes: 60 }),
-    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => true,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getPriceOptimizationSettings: () => ({}),
-      getShedBehavior: () => ({ action: 'turn_off' }),
-    }),
-    getPriceOptimizationSettings: () => ({}),
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationEnabled: () => true }),
     getPowerTracker: () => powerTracker,
     // Daily budget ON: the per-hour budget slice is the binding soft limit.
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(nowMs),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-    log: vi.fn(),
-    pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
-    getDynamicSoftLimitOverride: () => null,
   }, state);
 
   const snapshot = await builder.buildDevicePlanSnapshot([

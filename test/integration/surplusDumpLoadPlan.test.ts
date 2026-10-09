@@ -48,15 +48,13 @@ import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import type { StoragePlanInputKind } from '../../packages/planner-types/src/planInputDevice';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 const PUMP = 'pool-pump';
 const PUMP_DRAW_KW = 1;
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildInputDevice = (
   loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredKind & {
@@ -118,24 +116,15 @@ const makeHarness = (params: {
   const state = createPlanEngineState();
   const decorate = params.decorate;
   const builder = new PlanBuilder({
+      ...planBuilderWiring(),
       leaveOffOnRelease: params.leaveOffOnRelease ?? ((): ReleaseHoldOutcome => 'released'),
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
     capacityGuard: guard,
-    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw, marginKw: 0.2, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
       getPriceOptimizationSettings: () => params.priceOptSettings ?? {},
-      getShedBehavior: () => ({ action: 'turn_off' }),
     }),
     getPriceOptimizationSettings: () => params.priceOptSettings ?? {},
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() - (params.powerSampleAgeMs ?? 0), lastPowerW }),
-    getDailyBudgetSnapshot: () => null,
-    getShedBehavior: () => ({ action: 'turn_off' }),
     // An explicit `null` is this harness asking for no override; `undefined` takes the 10 kW default.
     getDynamicSoftLimitOverride: () => (
       params.softLimitOverride === null ? null : params.softLimitOverride ?? 10
@@ -143,8 +132,6 @@ const makeHarness = (params: {
     decorateDeferredObjectives: decorate
       ? (input) => decorate(input.devices)
       : decorateWithoutDeferredObjectives,
-    log: vi.fn(),
-    pendingBinaryCommandStore: emptyPendingStore,
   }, state);
   return { builder, guard, state, setTotalKw: (kw: number) => { lastPowerW = kw * 1000; } };
 };

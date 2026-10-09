@@ -11,15 +11,13 @@ import {
 import { buildExecutableDeviceIntent } from '../../lib/executor/executablePlanProjection';
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type {
   BinaryControlDiscriminantProbe, MeteredDiscriminantProbe, PlanInputDevice, TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { inputDevice, steppedProfile } from '../utils/planConvergenceFixtures';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 /**
  * The "Only PELS starts this device" policy, driven through a WHOLE plan build.
@@ -78,29 +76,13 @@ const inactiveDecision: DeferredAdmissionDecision = { kind: 'inactive', budgetEx
 const buildBuilder = (
   overrides: Partial<ConstructorParameters<typeof PlanBuilder>[0]> = {},
 ): PlanBuilder => new PlanBuilder({
-  leaveOffOnRelease: () => 'released',
-  getInferredSurplusKw: () => 0,
-  getCapacityDryRun: () => false,
+  ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-  setCapacityInShortfall: vi.fn(),
   // Deliberately roomy: no capacity pressure anywhere, so the only thing that can
   // put a device in the shed set is the posture under test.
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
-  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getPriceOptimizationSettings: () => ({}),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-  }),
-  getPriceOptimizationSettings: () => ({}),
   getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
-  getDailyBudgetSnapshot: () => null,
-  getShedBehavior: () => ({ action: 'turn_off' }),
   getDynamicSoftLimitOverride: () => 50,
-  log: vi.fn(),
-  pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
   // Default: no smart tasks, so the policy acts on its own. The cases that need
   // one override this with `decorateWithDecision`, which drives real admission.
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,

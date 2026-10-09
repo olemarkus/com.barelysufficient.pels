@@ -1,6 +1,5 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HEADROOM_RESERVE_MAX_MS } from '../../lib/plan/planConstants';
 import {
@@ -13,17 +12,14 @@ import {
   type ShedBehavior,
 } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // Drives the REAL PlanBuilder to prove the startup reservation: a device flagged
 // `reservesStartupPower` holds its lowest-active-step power back from LOWER-PRIORITY devices'
 // admission, without shedding anyone. The headline case is the 2026-07-31 production incident,
 // where the lane this replaced turned off ten devices that were already drawing nothing.
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildInputDevice = (
   loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe
@@ -68,31 +64,18 @@ const makeBuilder = (params: {
   // capacity guard's own hour-average projection is not steerable from a single power report.
   let softLimitKw = params.softLimitKw ?? null;
   const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+    ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: params.limitKw, marginKw: 0.2, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getPriceOptimizationSettings: () => ({}),
       getShedBehavior: (deviceId: string) => params.shedBehaviors?.[deviceId]
         ?? { action: 'turn_off' },
     }),
-    getPriceOptimizationSettings: () => ({}),
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW }),
-    getDailyBudgetSnapshot: () => null,
     // heater is priority 1 (top); everything else lower (higher number sheds first).
     getShedBehavior: (deviceId: string) => params.shedBehaviors?.[deviceId]
       ?? { action: 'turn_off' },
     getDynamicSoftLimitOverride: () => softLimitKw,
-    log: vi.fn(),
-    pendingBinaryCommandStore: emptyPendingStore,
-    decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, createPlanEngineState());
   return {
     builder,

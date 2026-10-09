@@ -1,6 +1,5 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import {
@@ -10,12 +9,8 @@ import {
   type PlanInputDevice,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, resolveFixtureCurrentOn, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // `binaryControl` moved off the `PlanInputDevice` base onto the binary cluster.
 // Route a loose fixture (with `binaryCapabilityId` so the device stays binary)
@@ -131,21 +126,9 @@ describe('PlanBuilder budget exemption handling', () => {
     ];
 
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+      ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => ({
         buckets: {
           [currentHourIso]: 3,
@@ -157,11 +140,7 @@ describe('PlanBuilder budget exemption handling', () => {
         lastPowerW,
       }),
       getDailyBudgetSnapshot: () => dailyBudgetSnapshot,
-      getShedBehavior: () => ({ action: 'turn_off' }),
       getDynamicSoftLimitOverride: () => dynamicSoftLimitKw,
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());
 
     let plan = await builder.buildDevicePlanSnapshot(devices);
@@ -206,21 +185,9 @@ describe('PlanBuilder budget exemption handling', () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+      ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => ({
         buckets: {
           [currentHourIso]: 1.8,
@@ -234,12 +201,7 @@ describe('PlanBuilder budget exemption handling', () => {
         lastTimestamp: Date.now(),
         lastPowerW,
       }),
-      getDailyBudgetSnapshot: () => null,
-      getShedBehavior: () => ({ action: 'turn_off' }),
       getDynamicSoftLimitOverride: () => 10,
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([]);
@@ -260,21 +222,9 @@ describe('PlanBuilder budget exemption handling', () => {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+      ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => ({
         buckets: {
           [lastSampleHourIso]: 9,
@@ -287,12 +237,7 @@ describe('PlanBuilder budget exemption handling', () => {
         lastTimestamp: new Date(lastSampleHourIso).getTime(),
         lastPowerW,
       }),
-      getDailyBudgetSnapshot: () => null,
-      getShedBehavior: () => ({ action: 'turn_off' }),
       getDynamicSoftLimitOverride: () => 10,
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([]);

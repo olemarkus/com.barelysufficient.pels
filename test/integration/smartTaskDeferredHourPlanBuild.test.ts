@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
@@ -17,13 +17,13 @@ import {
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { PriceLevel } from '../../lib/price/priceLevels';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type {
   MeteredDiscriminantProbe, PlanInputDevice, TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { inputDevice, steppedProfile } from '../utils/planConvergenceFixtures';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 /**
  * During an active smart task the task decides whether the device runs, also with
@@ -69,29 +69,15 @@ const plannedDecision: DeferredAdmissionDecision = {
 const buildBuilderDeps = (
   decision: DeferredAdmissionDecision,
 ): ConstructorParameters<typeof PlanBuilder>[0] => ({
-  leaveOffOnRelease: () => 'released',
-  getInferredSurplusKw: () => 0,
-  getCapacityDryRun: () => false,
+  ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-  setCapacityInShortfall: vi.fn(),
   // Roomy: nothing presses on capacity, so only the task can hold the device off.
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
-  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getPriceOptimizationSettings: () => ({}),
-    getShedBehavior: () => ({ action: 'set_step' }),
-  }),
-  getPriceOptimizationSettings: () => ({}),
+  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getShedBehavior: () => ({ action: 'set_step' }) }),
   getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
-  getDailyBudgetSnapshot: () => null,
   // The owner's limiting floor is a rung, which is what the hold must NOT stop at.
   getShedBehavior: () => ({ action: 'set_step' }),
   getDynamicSoftLimitOverride: () => 50,
-  log: vi.fn(),
-  pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
   decorateDeferredObjectives: decorateWithDecision('charger', decision),
 });
 

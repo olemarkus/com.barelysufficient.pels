@@ -1,7 +1,6 @@
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { resolvePowerCycleReading } from '../../lib/power/powerCycleReading';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { resolveMeasuredPower, type MeasuredPower, type PlanLimits } from '../../lib/plan/planContext';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
@@ -12,12 +11,9 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe, MeteredDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // The producer resolves the reading. Tests state the two real inputs — what
 // the meter read and when it last sampled — and receive either a measured
@@ -205,29 +201,11 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     state?: ReturnType<typeof createPlanEngineState>;
   }): PlanBuilder {
     return new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-      setCapacityInShortfall: vi.fn(),
+      ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => params.tracker,
-      getDailyBudgetSnapshot: () => null,
-      getShedBehavior: () => ({ action: 'turn_off' }),
       structuredLog: params.structuredLog as never,
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      getDynamicSoftLimitOverride: () => null,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, params.state ?? createPlanEngineState());
   }
 
@@ -335,21 +313,9 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const state = createPlanEngineState();
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-      setCapacityInShortfall: vi.fn(),
+      ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => tracker,
       // A daily budget that binds: 0.3 kWh planned for this hour under a 6 kW cap.
       getDailyBudgetSnapshot: () => ({
@@ -381,11 +347,6 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
           },
         },
       }) as never,
-      getShedBehavior: () => ({ action: 'turn_off' }),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      getDynamicSoftLimitOverride: () => null,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     const plan = await builder.buildDevicePlanSnapshot([
@@ -407,28 +368,15 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const state = createPlanEngineState();
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-      setCapacityInShortfall: vi.fn(),
+      ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
         getModeDeviceTargets: () => ({ Home: { thermo: 21 } }),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
       }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => tracker,
-      getDailyBudgetSnapshot: () => null,
       getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      getDynamicSoftLimitOverride: () => null,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     const plan = await builder.buildDevicePlanSnapshot([
@@ -459,10 +407,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
   }) => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-      setCapacityInShortfall: vi.fn(),
+      ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
@@ -470,14 +415,8 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
         getThermalDirection: () => direction,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: limitC }),
       }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => tracker,
-      getDailyBudgetSnapshot: () => null,
       getShedBehavior: () => ({ action: 'set_temperature', temperature: limitC }),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      getDynamicSoftLimitOverride: () => null,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([
@@ -505,24 +444,10 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const structuredLog = { info: vi.fn(), warn: vi.fn() };
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-      setCapacityInShortfall: vi.fn(),
+      ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => tracker,
-      getDailyBudgetSnapshot: () => null,
-      getShedBehavior: () => ({ action: 'turn_off' }),
       decorateDeferredObjectives: (input) => ({
         admittedDevices: input.devices,
         forceShedSet: new Set<string>(['idle-task']),
@@ -534,9 +459,6 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
         externalOffHoldLiftedDeviceIds: new Set<string>(),
       }),
       structuredLog: structuredLog as never,
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([
@@ -555,24 +477,10 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const state = createPlanEngineState();
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-      setCapacityInShortfall: vi.fn(),
+      ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => tracker,
-      getDailyBudgetSnapshot: () => null,
-      getShedBehavior: () => ({ action: 'turn_off' }),
       decorateDeferredObjectives: (input) => ({
         admittedDevices: input.devices,
         forceShedSet: new Set<string>(),
@@ -585,9 +493,6 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
         lentAuthorityDeviceIds: new Set<string>(),
         externalOffHoldLiftedDeviceIds: new Set<string>(),
       }),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      getDynamicSoftLimitOverride: () => null,
     }, state);
 
     const plan = await builder.buildDevicePlanSnapshot([

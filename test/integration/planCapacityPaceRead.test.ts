@@ -13,15 +13,12 @@
  * window and hand the labels a different hour than the decision saw.
  */
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { type PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { getHourBucketKey } from '../../lib/utils/hourBuckets';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { PriceLevel } from '../../lib/price/priceLevels';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 /** 5 kWh of hourly allowance, so a 6 kWh bucket is a spent hour and 1 kWh is not. */
 const buildPaceBuilder = (params: {
@@ -29,29 +26,12 @@ const buildPaceBuilder = (params: {
   getPowerTracker: () => PowerTrackerState;
   getDynamicSoftLimitOverride?: () => number | null;
 }): PlanBuilder => new PlanBuilder({
-  leaveOffOnRelease: () => 'released',
-  getInferredSurplusKw: () => 0,
+  ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-  setCapacityInShortfall: vi.fn(),
-  getCapacityDryRun: () => false,
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
-  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getPriceOptimizationSettings: () => ({}),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-  }),
-  getPriceOptimizationSettings: () => ({}),
   getPowerTracker: params.getPowerTracker,
-  getDailyBudgetSnapshot: () => null,
   // No override is a value the seam carries, not a member left off.
   getDynamicSoftLimitOverride: params.getDynamicSoftLimitOverride ?? (() => null),
-  getShedBehavior: () => ({ action: 'turn_off' }),
-  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
-  log: vi.fn(),
-  pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
 }, params.state);
 
 const trackerWithHourUsage = (usedKWh: number): PowerTrackerState => ({

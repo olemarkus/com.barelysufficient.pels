@@ -1,7 +1,6 @@
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   PLAN_REASON_CODES,
@@ -12,12 +11,8 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // Full-builder wiring regression for the `insufficientHeadroom` → `dailyBudget`
 // re-attribution (prod 2026-08-01). The isolated `normalizeShedReasons` tests in
@@ -126,28 +121,11 @@ const buildBuilder = (params: {
   tracker: { lastTimestamp: number; lastPowerW?: number };
   dailyBudget: boolean;
 }): PlanBuilder => new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+  ...planBuilderWiring(),
   capacityGuard: params.capacityGuard,
-  setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: params.limitKw, marginKw: 0, periodMinutes: 60 }),
-  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getPriceOptimizationSettings: () => ({}),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-  }),
-  getPriceOptimizationSettings: () => ({}),
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => (params.dailyBudget ? buildDailyBudgetSnapshot() : null),
-  getShedBehavior: () => ({ action: 'turn_off' }),
-  log: vi.fn(),
-  pendingBinaryCommandStore: emptyPendingStore,
-  getDynamicSoftLimitOverride: () => null,
-  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
 }, createPlanEngineState());
 
 // Shed in cycle 1 (device on, draw over the binding pace), then advance past the

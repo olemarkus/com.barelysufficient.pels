@@ -6,7 +6,6 @@
 // fixtures.
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import type {
@@ -22,14 +21,13 @@ import {
 import { STORAGE_RELIEF_SETTLE_WINDOW_MS } from '../../lib/plan/battery/storageLadder';
 import { DELIVERY_CEILING_TTL_MS } from '../../lib/battery/batteryVerification';
 import { SURPLUS_ABSORB_SETTLE_MS } from '../../lib/plan/admission/surplusAbsorb';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { Logger } from '../../lib/logging/logger';
 import type { StorageLeverState } from '../../lib/plan/planState';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 9, 5, 12, 10, 0);
@@ -218,32 +216,18 @@ const buildHarness = (scenario: Scenario) => {
     ...(scenario.hourUsedKWh !== undefined ? { buckets: { [HOUR_KEY]: scenario.hourUsedKWh } } : {}),
   };
   const builder = new PlanBuilder({
-    leaveOffOnRelease: () => 'released',
-    getInferredSurplusKw: () => 0,
-    getCapacityDryRun: () => false,
-    setCapacityInShortfall: vi.fn(),
+    ...planBuilderWiring(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => ({
       capacityEnabled: scenario.capacityEnabled ?? true, gridImportLimitKw: scenario.gridImportLimitKw ?? null,
       limitKw: scenario.limitKw ?? 10, marginKw: 0, periodMinutes: 60,
     }),
-    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getPriceOptimizationSettings: () => SURPLUS_SETTINGS,
-      getShedBehavior: () => ({ action: 'turn_off' }),
-    }),
+    resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationSettings: () => SURPLUS_SETTINGS }),
     getPriceOptimizationSettings: () => SURPLUS_SETTINGS,
     getPowerTracker: () => tracker,
     getDailyBudgetSnapshot: () => (scenario.dailyBudget === true ? dailyBudgetSnapshot() : null),
     getDynamicSoftLimitOverride: () => scenario.paceKw,
-    getShedBehavior: () => ({ action: 'turn_off' }),
-    log: vi.fn(),
     structuredLog: { info } as unknown as Logger,
-    pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
-    decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, state);
   /** One build on a new whole-home reading, `afterMs` after the start. */
   const build = async (houseW: number, devices: PlanInputDevice[], afterMs = 0): Promise<DevicePlan> => {

@@ -18,8 +18,8 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { steppedInputDevice, steppedPlanDevice, sheddingPlanFixture } from '../utils/planTestUtils';
-import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import { capacityGuardSpy } from '../helpers/sheddingWiring';
 
 const chargerProfile = {
   steps: [
@@ -89,12 +89,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       headroomRaw: -3.77,
       headroom: -3.77,
     });
-    const capacityGuard = {
-      recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
-      recordReading: vi.fn().mockResolvedValue(undefined),
-      recordCompletePeriodReading: vi.fn().mockResolvedValue(undefined),
-      isInShortfall: vi.fn().mockReturnValue(false),
-    } as unknown as CapacityGuard;
+    const capacityGuard = capacityGuardSpy();
     const getShedBehavior = () => ({ action: 'turn_off' as const });
 
     const sheddingPlan = await buildSheddingPlanForSpec(context, context, state, {

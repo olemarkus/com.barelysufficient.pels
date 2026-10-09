@@ -1,14 +1,11 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
-import { PriceLevel } from '../../lib/price/priceLevels';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PlanEngineState } from '../../lib/plan/planState';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 const chargerProfile = { steps: [
   { id: 'off', planningPowerW: 0 },
@@ -24,28 +21,10 @@ const buildPlanner = (
     capacityEnabled: false, gridImportLimitKw: 3.3, limitKw: 10, marginKw: 0.2, periodMinutes: 60,
   },
 ): PlanBuilder => new PlanBuilder({
-  leaveOffOnRelease: () => 'released',
-  getInferredSurplusKw: () => 0,
-  getCapacityDryRun: () => false,
+  ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-  setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => limits,
-  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getPriceOptimizationSettings: () => ({}),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-  }),
-  getPriceOptimizationSettings: () => ({}),
   getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW: totalKw * 1000 }),
-  getDailyBudgetSnapshot: () => null,
-  getShedBehavior: () => ({ action: 'turn_off' }),
-  getDynamicSoftLimitOverride: () => null,
-  log: vi.fn(),
-  pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
-  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
 }, state);
 
 const binaryLoad = (id: string, powerKw: number) => buildPlanInputDevice({

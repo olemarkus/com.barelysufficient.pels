@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { computeRestoreBufferKw } from '../../lib/plan/restore/accounting';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { steppedInputDevice } from '../utils/planTestUtils';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // Drives the REAL PlanBuilder from the plan INPUT, which is where a learned step
 // power arrives (`PlanInputDevice.stepPowerCalibration`).
@@ -37,32 +34,15 @@ const SOFT_LIMIT_KW = 4;
 
 // A builder whose whole-home reading leaves exactly `availableKw` under the pace.
 const buildPlanner = (availableKw: number): PlanBuilder => new PlanBuilder({
-  leaveOffOnRelease: () => 'released',
-  getInferredSurplusKw: () => 0,
-  getCapacityDryRun: () => false,
+  ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-  setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
-  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getPriceOptimizationSettings: () => ({}),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-  }),
-  getPriceOptimizationSettings: () => ({}),
   getPowerTracker: () => ({
     buckets: {},
     lastTimestamp: Date.now(),
     lastPowerW: (SOFT_LIMIT_KW - availableKw) * 1000,
   }),
-  getDailyBudgetSnapshot: () => null,
-  getShedBehavior: () => ({ action: 'turn_off' }),
   getDynamicSoftLimitOverride: () => SOFT_LIMIT_KW,
-  log: vi.fn(),
-  pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
-  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
 }, createPlanEngineState());
 
 // Off, drawing nothing, and carrying the learned figure the store had for `6a`.

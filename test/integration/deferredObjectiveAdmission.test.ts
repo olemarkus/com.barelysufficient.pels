@@ -16,13 +16,10 @@ import {
   DeferredObjectiveDecorationController,
   type DeferredObjectiveSettingsV1,
 } from '../../lib/objectives/deferredObjectives';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEVICE_ID = 'dev_water_heater';
@@ -225,28 +222,16 @@ const buildBuilder = (
     getDeliveredEnergyKWh: noDeliveredEnergy,
   });
   return new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+    ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    setCapacityInShortfall: vi.fn(),
     getCapacitySettings: () => capacitySettings,
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getOperatingMode: () => overrides.modeRef?.current ?? 'Home',
-      getModeDeviceTargets: () => ({}),
       getPriceOptimizationEnabled: () => true,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getPriceOptimizationSettings: () => ({}),
-      getShedBehavior: () => ({ action: 'turn_off' }),
     }),
-    getPriceOptimizationSettings: () => ({}),
     getPowerTracker: () => powerTrackerRef.current,
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-    log: vi.fn(),
-    pendingBinaryCommandStore: emptyPendingStore,
-    getDynamicSoftLimitOverride: () => null,
   }, createPlanEngineState());
 };
 
@@ -380,29 +365,19 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDeliveredEnergyKWh: noDeliveredEnergy,
     });
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
-      setCapacityInShortfall: vi.fn(),
+      ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => modeRef.current,
         getModeDeviceTargets: () => ({ [modeRef.current]: { [DEVICE_ID]: TARGET_C - 3 } }),
         getPriceOptimizationEnabled: () => true,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
       }),
       // Mode target sits 3 °C below the deadline target — exactly the bug this test pins.
       getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => powerTrackerRef.current,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
-      getShedBehavior: () => ({ action: 'turn_off' }),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());
 
     vi.setSystemTime(new Date(DAY_START_UTC));
@@ -649,28 +624,13 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDeliveredEnergyKWh: noDeliveredEnergy,
     });
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+      ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => true,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationEnabled: () => true }),
       getPowerTracker: () => powerTracker,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
       decorateDeferredObjectives: (input) => deferredController.decorate(input),
-      getShedBehavior: () => ({ action: 'turn_off' }),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      getDynamicSoftLimitOverride: () => null,
     }, createPlanEngineState());
 
     const snapshot = await builder.buildDevicePlanSnapshot([

@@ -22,12 +22,9 @@ import { fixtureControlPosture, buildPlanDevice, steppedPlanDevice, withFixtureR
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { PriceLevel } from '../../lib/price/priceLevels';
-import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -257,8 +254,6 @@ const SECOND_BUILD_AT_MS = DAY_START_UTC + 10 * 60 * 1000;
 const THIRD_BUILD_AT_MS = SECOND_BUILD_AT_MS + 3 * 60 * 1000;
 const BACKGROUND_KW = 3.0;
 
-const emptyPendingStore = createPendingBinaryCommandStore({});
-
 const buildDay = (): DailyBudgetDayPayload => {
   const hours = 24;
   const startUtc: string[] = [];
@@ -369,28 +364,11 @@ const buildBuilder = (params: {
   tracker: { lastTimestamp: number; lastPowerW?: number };
   state: ReturnType<typeof createPlanEngineState>;
 }): PlanBuilder => new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+  ...planBuilderWiring(),
   capacityGuard: params.capacityGuard,
-  setCapacityInShortfall: vi.fn(),
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
-  resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-    getOperatingMode: () => 'Home',
-    getModeDeviceTargets: () => ({}),
-    getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getPriceOptimizationSettings: () => ({}),
-    getShedBehavior: () => ({ action: 'turn_off' }),
-  }),
-  getPriceOptimizationSettings: () => ({}),
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
-  getShedBehavior: () => ({ action: 'turn_off' }),
-  log: vi.fn(),
-  pendingBinaryCommandStore: emptyPendingStore,
-  getDynamicSoftLimitOverride: () => null,
-  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
 }, params.state);
 
 describe('exempt restore lane through the full plan build with the latch held', () => {

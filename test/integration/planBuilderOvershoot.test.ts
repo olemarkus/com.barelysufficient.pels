@@ -3,7 +3,6 @@ import { partialDouble } from '../helpers/partialDouble';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import type {
   BinaryControlDiscriminantProbe,
@@ -14,11 +13,8 @@ import type {
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
-
-const emptyPendingStore = createPendingBinaryCommandStore({});
+import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe
@@ -72,27 +68,17 @@ describe('PlanBuilder overshoot diagnostics', () => {
     const lastPowerW = 2.5 * 1000;
 
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+      ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'at-temp'
             ? { action: 'set_temperature', temperature: 15 }
             : { action: 'turn_off' }
         ),
       }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-      getDailyBudgetSnapshot: () => null,
       getDynamicSoftLimitOverride: () => 2.1,
       getShedBehavior: (deviceId: string) => (
         deviceId === 'at-temp'
@@ -100,9 +86,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
           : { action: 'turn_off' }
       ),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     await builder.buildDevicePlanSnapshot([
@@ -155,29 +138,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: now , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 0.81,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // First sample sits just over the soft limit but within the deadband, so the
@@ -235,29 +201,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 0.7,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // First build: only the anchor device is known. This records a prior plan
@@ -313,29 +262,15 @@ describe('PlanBuilder overshoot diagnostics', () => {
     lastPowerW = (4.8) * 1000;
 
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+      ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
       }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-      getDailyBudgetSnapshot: () => null,
       getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      getDynamicSoftLimitOverride: () => null,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     await builder.buildDevicePlanSnapshot([
@@ -382,29 +317,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
     lastPowerW = (3.5) * 1000;
 
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+      ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => ({ lastTimestamp: sampleTs, lastPowerW }),
-      getDailyBudgetSnapshot: () => null,
       getDynamicSoftLimitOverride: () => 2.1,
-      getShedBehavior: () => ({ action: 'turn_off' }),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     const devices = [
@@ -447,29 +365,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
     lastPowerW = (0.5) * 1000;
 
     const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+      ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      setCapacityInShortfall: vi.fn(),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
-      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-        getOperatingMode: () => 'Home',
-        getModeDeviceTargets: () => ({}),
-        getPriceOptimizationEnabled: () => false,
-        getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-        getPriceOptimizationSettings: () => ({}),
-        getShedBehavior: () => ({ action: 'turn_off' }),
-      }),
-      getPriceOptimizationSettings: () => ({}),
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-      getDailyBudgetSnapshot: () => null,
       getDynamicSoftLimitOverride: () => 2.1,
-      getShedBehavior: () => ({ action: 'turn_off' }),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
-      log: vi.fn(),
-      pendingBinaryCommandStore: emptyPendingStore,
-      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     }, state);
 
     await builder.buildDevicePlanSnapshot([
@@ -501,31 +402,14 @@ describe('PlanBuilder overshoot diagnostics', () => {
       lastPowerW = (4.8) * 1000;
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: vi.fn()
           .mockReturnValueOnce(1.3)
           .mockReturnValueOnce(0.9),
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       const devices = [
@@ -569,29 +453,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 0.7,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       const devices = [
@@ -640,29 +507,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 0.7,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // First build records a baseline with only the steady anchor; the newcomer below
@@ -717,29 +567,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 0.7,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // First build records a baseline with only the steady anchor.
@@ -792,29 +625,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 1.0,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.6) * 1000;
@@ -875,29 +691,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 1.0,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       const buildDevices = (managedKw: number, backgroundKw: number): PlanInputDevice[] => [
@@ -956,29 +755,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 1.0,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.4) * 1000;
@@ -1060,29 +842,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 1.0,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.4) * 1000;
@@ -1169,29 +934,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 1.0,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.4) * 1000;
@@ -1277,29 +1025,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 1.0,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       lastPowerW = (0.4) * 1000;
@@ -1364,29 +1095,12 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const powerTracker = { lastTimestamp: start, lastPowerW: 4_351 };
 
       const builder = new PlanBuilder({
-      leaveOffOnRelease: () => 'released',
-      getInferredSurplusKw: () => 0,
-      getCapacityDryRun: () => false,
+        ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        setCapacityInShortfall: vi.fn(),
         getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 3, marginKw: 0, periodMinutes: 60 }),
-        resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
-          getOperatingMode: () => 'Home',
-          getModeDeviceTargets: () => ({}),
-          getPriceOptimizationEnabled: () => false,
-          getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-          getPriceOptimizationSettings: () => ({}),
-          getShedBehavior: () => ({ action: 'turn_off' }),
-        }),
-        getPriceOptimizationSettings: () => ({}),
         getPowerTracker: () => powerTracker,
-        getDailyBudgetSnapshot: () => null,
         getDynamicSoftLimitOverride: () => 2.538,
-        getShedBehavior: () => ({ action: 'turn_off' }),
         structuredLog: partialDouble<PinoLogger>({ info: vi.fn() }),
-        log: vi.fn(),
-        pendingBinaryCommandStore: emptyPendingStore,
-        decorateDeferredObjectives: decorateWithoutDeferredObjectives,
       }, state);
 
       // The rank rides on the device: the producer ranks the whole planned set
