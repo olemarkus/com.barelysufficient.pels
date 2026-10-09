@@ -73,10 +73,22 @@ type HomeMembershipService = HomeMembershipWiring['service'];
 // Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
 // startup: if `refreshSnapshot()` does not resolve in this window the gate
 // releases with reason `timeout` and the planner proceeds (next snapshot will
-// arrive on the periodic refresh and rebuild correctly). Tests use a 0 bound
-// to skip the wait entirely. Per `feedback_homey_sdk_unreliable`, a slow SDK
-// fetch is treated as a transient gap, not a persisted-state corruption.
-const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
+// arrive on the periodic refresh and rebuild correctly). Per
+// `feedback_homey_sdk_unreliable`, a slow SDK fetch is treated as a transient
+// gap, not a persisted-state corruption.
+const SNAPSHOT_WARMUP_TIMEOUT_MS = 5_000;
+
+/**
+ * Production boot order: the snapshot/plan bootstrap deferred and the price
+ * bootstrap in the background, with the warmup gate holding planning until the
+ * first snapshot lands. The test suite boots synchronously with an open gate,
+ * because specs that run the boot steps by hand never reach the bootstrap that
+ * would release it; a spec opts into the production order with
+ * `PELS_ASYNC_STARTUP=1`. Read per boot, not at import, so a spec can set it.
+ */
+const usesProductionStartupOrder = (): boolean => (
+  process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1'
+);
 
 /**
  * Service handles stay on PelsApp and are reached through `ctx` or the typed
@@ -225,7 +237,7 @@ export class AppServiceWiring {
 
   async runInit(): Promise<void> {
     const { ctx } = this.deps;
-    const deferStartupBootstrap = process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1';
+    const deferStartupBootstrap = usesProductionStartupOrder();
     const logStartupStepFailure = (label: string, error: Error): void => {
       this.deps.getStructuredLogger()?.child({ component: 'startup' }).error({
         event: 'startup_step_failed',
@@ -475,18 +487,15 @@ export class AppServiceWiring {
   private initSnapshotWarmupGate(): void {
     const { ctx } = this.deps;
     const warmupLogger = ctx.getStructuredLogger('startup');
+    const timeoutMs = usesProductionStartupOrder() ? SNAPSHOT_WARMUP_TIMEOUT_MS : 0;
     ctx.snapshotWarmupGate = new SnapshotWarmupGate({
-      timeoutMs: SNAPSHOT_WARMUP_TIMEOUT_MS,
+      timeoutMs,
       onRelease: (reason) => {
         // Emit at warn for timeout (operationally interesting; means the
         // first device snapshot did not land within the bound) and info for
         // the normal snapshot-ready release. Both go through the structured
         // logger so log audits can attribute spurious-event suppression.
-        const payload = {
-          event: 'snapshot_warmup_gate_released',
-          reason,
-          timeoutMs: SNAPSHOT_WARMUP_TIMEOUT_MS,
-        };
+        const payload = { event: 'snapshot_warmup_gate_released', reason, timeoutMs };
         if (reason === 'timeout') {
           warmupLogger?.warn(payload);
         } else {
