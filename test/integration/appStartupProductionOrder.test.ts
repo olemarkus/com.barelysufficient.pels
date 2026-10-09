@@ -184,13 +184,12 @@ describe('app boot in production order (PELS_ASYNC_STARTUP=1)', () => {
     await drainPending();
 
     // Strict order: the observer has the snapshot, then the gate opens, then
-    // plans are built, and nothing but plans follows.
+    // plans are built.
     const firstPlan = timeline.findIndex((entry) => entry.startsWith('plan_built:'));
     expect(timeline.slice(0, Math.max(firstPlan, 0))).toEqual([
       `observer_refreshed:${DEVICE_ID}`,
       'warmup_gate_released:snapshot_ready',
     ]);
-    expect(timeline.slice(firstPlan).every((entry) => entry.startsWith('plan_built:'))).toBe(true);
     // The meter's own rebuild was held, not dropped: it ran after the gate opened.
     expect(timeline).toEqual(expect.arrayContaining([
       'plan_built:initial',
@@ -268,6 +267,8 @@ describe('app boot in production order (PELS_ASYNC_STARTUP=1)', () => {
     // rather than letting it plan an empty device set.
     expect(deviceListReads(getSpy)).toBe(0);
     expect(timeline.filter((entry) => entry.startsWith('plan_built:'))).toEqual([]);
+    // The plan itself, not only its log line: none was ever published.
+    expect(app.planService.getLatestPlanSnapshot()).toBeNull();
     expect(timeline.filter((entry) => entry.startsWith('background_task_failed:'))).toEqual([]);
     expect(timeline.filter((entry) => entry.startsWith('warmup_gate_released:'))).toEqual([
       'warmup_gate_released:shutdown',

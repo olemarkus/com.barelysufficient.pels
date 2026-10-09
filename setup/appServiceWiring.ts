@@ -493,8 +493,10 @@ export class AppServiceWiring {
       onRelease: (reason) => {
         // Emit at warn for timeout (operationally interesting; means the
         // first device snapshot did not land within the bound) and info for
-        // the normal snapshot-ready release. Both go through the structured
-        // logger so log audits can attribute spurious-event suppression.
+        // the normal snapshot-ready release and for a teardown inside the
+        // startup window (`shutdown`, not a startup problem). All go through
+        // the structured logger so log audits can attribute spurious-event
+        // suppression.
         const payload = { event: 'snapshot_warmup_gate_released', reason, timeoutMs };
         if (reason === 'timeout') {
           warmupLogger?.warn(payload);

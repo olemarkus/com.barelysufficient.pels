@@ -11,7 +11,7 @@
  * (empty snapshot still produces a valid horizon plan on the next cycle once
  * the snapshot lands). Per `feedback_homey_sdk_unreliable`, transient SDK
  * failures must not corrupt persisted state; the gate only delays the
- * first rebuild, never abandons it.
+ * first rebuild, never abandons it, except at app teardown (below).
  *
  * App teardown releases it with `shutdown`, only so nothing awaiting it
  * dangles: a rebuild that finds the gate released that way is skipped, never
