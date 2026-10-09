@@ -595,5 +595,8 @@
   },
   "3.11.2": {
     "en": "The settings page now uses less memory and processing while it’s open, especially in homes with many devices. The Usage view refreshes when you open it.\n\nSmart task details now show the energy rate and confidence recorded for the current plan, keeping them consistent with the chart, task list and widget."
+  },
+  "3.11.3": {
+    "en": "The Flow cards for power-limit control, budget exemptions and the EV charging phase no longer reset that setting on your other devices when PELS cannot read its saved settings. The Flow now fails with an error you can retry instead."
   }
 }
