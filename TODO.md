@@ -1389,6 +1389,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       they stay created by the transport rather than moving to the caller. **Done when:** no
       parse-provider call site defaults a missing provider. [P2]
 
+- [ ] **`DeviceDescriptor.managed` is optional though the runtime always resolves it.**
+      `managed?: boolean` (`packages/contracts/src/types.ts`) lets a fixture leave it unset, so
+      `isRuntimePlannedDevice` (`setup/appDeviceSupport.ts`) and the Overview's
+      `isOverviewMember` (`packages/settings-ui/src/ui/overviewDeviceRows.ts`) both key on
+      `managed !== false` to treat an unset flag as planned, a case production never produces
+      (`resolveManagedState` reads a device with no `managed_devices` entry as not managed).
+      **What changes:** make `managed` required on the descriptor, give the fixtures an explicit
+      value, and key both predicates on `managed`. Pairs with the parse-provider entry above
+      (`getManaged?.(id) ?? true`). **Done when:** no type carrying the device's managed state
+      declares it optional. [P2]
+
 - [ ] **The component loggers are optional because the getter that makes them can return
       `undefined`.** `getStructuredLogger` (`setup/appRuntimeApi.ts`) returns
       `this.structuredLogger?.child(...)`, so every dep it feeds declares `structuredLog?:` and its
