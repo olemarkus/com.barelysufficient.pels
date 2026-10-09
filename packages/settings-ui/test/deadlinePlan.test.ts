@@ -24,6 +24,30 @@ const atLocalHour = (base: Date, hourOffset: number): Date => {
   return date;
 };
 
+// Combined prices an hour apart from `start`, one entry per total.
+const hourlyPrices = (start: Date, totals: readonly number[]) => ({
+  prices: totals.map((total, offset) => ({ startsAt: atLocalHour(start, offset).toISOString(), total })),
+});
+
+// A prices payload whose only data is `combinedPrices`: every other price
+// source is empty and no source status or setup has been read.
+const pricesPayload = (combinedPrices: unknown): SettingsUiPricesPayload => ({
+  combinedPrices,
+  priceArea: null,
+  flowToday: null,
+  flowTomorrow: null,
+  homeyCurrency: null,
+  homeyToday: null,
+  homeyTomorrow: null,
+  pvForecastSource: { kind: 'unknown' },
+  homeyPriceFormula: { kind: 'unknown' },
+  powerhourCurrency: null,
+  powerhourToday: null,
+  powerhourTomorrow: null,
+  powerhourSource: { kind: 'unknown' },
+  priceOptimizationSetup: { state: 'unavailable' },
+});
+
 const expectReady = (result: ReturnType<typeof resolveRenderInput>) => {
   if (result.status !== 'ready') {
     throw new Error(`expected ready smart-task plan, got ${result.status}`);
@@ -151,22 +175,7 @@ const buildBootstrap = (
     hardCapConfiguration: { state: 'unavailable' },
     readings: { state: 'received', lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0) },
   },
-  prices: {
-    combinedPrices: null,
-    priceArea: null,
-    flowToday: null,
-    flowTomorrow: null,
-    homeyCurrency: null,
-    homeyToday: null,
-    homeyTomorrow: null,
-    pvForecastSource: { kind: 'unknown' },
-    homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-  },
+  prices: pricesPayload(null),
 });
 
 describe('deadline plan page payload', () => {
@@ -184,27 +193,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-      powerhourCurrency: null,
-      powerhourToday: null,
-      powerhourTomorrow: null,
-      powerhourSource: { kind: 'unknown' },
-      priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -257,28 +246,13 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 10 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: offset === 5 ? 10 : 100 + offset,
-          isCheap: offset === 5,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({
+      prices: Array.from({ length: 10 }, (_, offset) => ({
+        startsAt: atLocalHour(now, offset).toISOString(),
+        total: offset === 5 ? 10 : 100 + offset,
+        isCheap: offset === 5,
+      })),
+    });
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -340,25 +314,10 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: Array.from({ length: 6 }, (_, offset) => ({
-        startsAt: atLocalHour(now, offset).toISOString(),
-        totalPrice: 100 + offset,
-      })),
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(Array.from({ length: 6 }, (_, offset) => ({
+      startsAt: atLocalHour(now, offset).toISOString(),
+      totalPrice: 100 + offset,
+    })));
 
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
@@ -402,22 +361,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
       pending: true,
@@ -470,22 +414,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -522,27 +451,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -591,27 +500,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 4 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -666,27 +555,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -736,27 +605,7 @@ describe('deadline plan page payload', () => {
       },
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -797,27 +646,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 1.3,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -859,27 +688,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -931,27 +740,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -999,27 +788,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 2 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101]));
     const activePlan = buildHeaterActivePlan({
       now,
       deadline,
@@ -1110,27 +879,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 3 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 50 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1197,27 +946,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 3 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 50 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1282,27 +1011,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 3 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 50 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1359,27 +1068,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 3 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 50 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1447,27 +1136,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 4 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 50 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [50, 51, 52, 53]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1532,22 +1201,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -1589,22 +1243,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1655,22 +1294,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const evRevision = {
       revision: 1,
       revisedAtMs: now.getTime(),
@@ -1735,27 +1359,7 @@ describe('deadline plan page payload', () => {
       temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1798,22 +1402,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1858,22 +1447,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
       pending: true,
@@ -1921,27 +1495,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -1986,22 +1540,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
       pending: true,
@@ -2045,22 +1584,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
@@ -2112,22 +1636,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const activePlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
@@ -2194,27 +1703,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrapRevision = {
       revision: 1,
       revisedAtMs: now.getTime(),
@@ -2289,27 +1778,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrapRevision = {
       revision: 1,
       revisedAtMs: now.getTime(),
@@ -2482,27 +1951,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const learnedRevision = {
       revision: 2,
       revisedAtMs: now.getTime(),
@@ -2577,27 +2026,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const revision = {
       revision: 2,
       revisedAtMs: now.getTime(),
@@ -2676,27 +2105,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const revision = {
       revision: 1,
       revisedAtMs: now.getTime(),
@@ -2764,27 +2173,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const learnedRevision = {
       revision: 2,
       revisedAtMs: now.getTime(),
@@ -2862,27 +2251,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrapRevision = {
       revision: 1,
       revisedAtMs: now.getTime(),
@@ -2953,27 +2322,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const learnedRevision = {
       revision: 2,
       revisedAtMs: now.getTime(),
@@ -3039,27 +2388,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const allocatedRevision = {
       revision: 1,
       revisedAtMs: planStart.getTime(),
@@ -3123,22 +2452,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [], priceScheme: 'flow', lastFetched: now.toISOString() },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [], priceScheme: 'flow', lastFetched: now.toISOString() });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -3185,22 +2499,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [], priceScheme: 'norway', lastFetched: now.toISOString() },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [], priceScheme: 'norway', lastFetched: now.toISOString() });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -3247,22 +2546,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [], priceScheme: 'norway' },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [], priceScheme: 'norway' });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -3313,27 +2597,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -3380,27 +2644,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -3450,27 +2694,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 2 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 100]));
 
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
@@ -3517,27 +2741,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     // Recorder-style revision with a learned rate + energy need. The hero's
     // "Needs" stat pair carries the energy figure as a bold payoff value (the
     // former grey `Needs … · kW · duration · mode` metadata wall was retired
@@ -3603,22 +2807,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
@@ -3672,22 +2861,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
       pending: true,
@@ -3736,27 +2910,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 4 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -3800,27 +2954,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -3870,27 +3004,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -3969,27 +3083,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 4 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -4049,27 +3143,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 4 }, (_, offset) => ({
-          startsAt: atLocalHour(hourStart, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(hourStart, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -4411,27 +3485,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 4 }, (_, offset) => ({
-          startsAt: atLocalHour(hourStart, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(hourStart, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -4481,27 +3535,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const plan = buildHeaterActivePlan({
       now,
       deadline,
@@ -4558,27 +3592,7 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
@@ -4626,26 +3640,11 @@ describe('deadline plan page payload', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const buildPrices = (totalsByOffset: (offset: number) => number): SettingsUiPricesPayload => ({
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: totalsByOffset(offset),
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
+    const buildPrices = (totalsByOffset: (offset: number) => number): SettingsUiPricesPayload => pricesPayload({
+      prices: Array.from({ length: 6 }, (_, offset) => ({
+        startsAt: atLocalHour(now, offset).toISOString(),
+        total: totalsByOffset(offset),
+      })),
     });
     const settings = {
       capacity_limit_kw: 8,
@@ -4842,27 +3841,7 @@ describe('energy estimate range (expected…planned, end-to-end through resolveR
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 10 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105, 106, 107, 108, 109]));
     const activePlan = buildHeaterActivePlan({
       now,
       deadline,
@@ -5598,28 +4577,13 @@ describe('schedule + trajectory chart option builders', () => {
 describe('cost + delivered-so-far hero lines', () => {
   // Stub combined prices keep the cost-display divisor at 100 (`kr` scheme),
   // so raw `total` values in øre/kWh divide to kr/kWh for the cost sums.
-  const buildStubPrices = (now: Date, hourCount: number, totalOre: number): SettingsUiPricesPayload => ({
-    combinedPrices: {
-      priceScheme: 'norway',
-      priceUnit: 'kr',
-      prices: Array.from({ length: hourCount }, (_, offset) => ({
-        startsAt: atLocalHour(now, offset).toISOString(),
-        total: totalOre,
-      })),
-    },
-    priceArea: null,
-    flowToday: null,
-    flowTomorrow: null,
-    homeyCurrency: null,
-    homeyToday: null,
-    homeyTomorrow: null,
-    pvForecastSource: { kind: 'unknown' },
-    homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
+  const buildStubPrices = (now: Date, hourCount: number, totalOre: number): SettingsUiPricesPayload => pricesPayload({
+    priceScheme: 'norway',
+    priceUnit: 'kr',
+    prices: Array.from({ length: hourCount }, (_, offset) => ({
+      startsAt: atLocalHour(now, offset).toISOString(),
+      total: totalOre,
+    })),
   });
 
   const buildStubBootstrap = (
@@ -5913,29 +4877,14 @@ describe('cost + delivered-so-far hero lines', () => {
   it('suppresses the cost line when the cost unit is empty (Flow / Homey scheme without priceUnit)', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 4);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        priceScheme: 'flow',
-        priceUnit: 'price units',
-        prices: Array.from({ length: 4 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 1,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({
+      priceScheme: 'flow',
+      priceUnit: 'price units',
+      prices: Array.from({ length: 4 }, (_, offset) => ({
+        startsAt: atLocalHour(now, offset).toISOString(),
+        total: 1,
+      })),
+    });
     const plan = buildHeaterActivePlan({
       now,
       deadline,
@@ -6319,27 +5268,7 @@ describe('pending hero producer wiring', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const relocatedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
         now,
@@ -6395,27 +5324,7 @@ describe('pending hero producer wiring', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const unmanagedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
         now,
@@ -6467,22 +5376,7 @@ describe('pending hero producer wiring', () => {
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
       pending: true,
@@ -6529,22 +5423,7 @@ describe('pending hero producer wiring', () => {
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }]);
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
-      priceArea: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-    powerhourCurrency: null,
-    powerhourToday: null,
-    powerhourTomorrow: null,
-    powerhourSource: { kind: 'unknown' },
-    priceOptimizationSetup: { state: 'unavailable' },
-    };
+    const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
       deviceId: 'ev',
