@@ -1,6 +1,5 @@
 import { createEvTargetPowerConfig, isEvTargetPowerPreset } from '../packages/shared-domain/src/evTargetPowerConfig';
-import { DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
-import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
+import { writeDeviceTargetPowerConfig } from '../lib/device/deviceSettingMaps';
 import type {
   DeviceDescriptorRead,
   TargetPowerSteppedLoadPreset,
@@ -29,12 +28,20 @@ export function registerEvChargingPhaseCard(deps: FlowCardDeps): void {
       throw new Error(ELIGIBILITY_ERROR);
     }
 
-    const existing = normalizeDeviceTargetPowerConfigs(deps.homey.settings.get(DEVICE_TARGET_POWER_CONFIGS));
-    const replacement = createEvTargetPowerConfig(preset);
-    deps.homey.settings.set(DEVICE_TARGET_POWER_CONFIGS, {
-      ...existing,
-      [deviceId]: replacement,
-    });
+    // Every device's config lives in one map. A map that could not be read is
+    // never saved over: the save would erase every other device's config.
+    const outcome = writeDeviceTargetPowerConfig(deps.homey.settings, deviceId, createEvTargetPowerConfig(preset));
+    if (outcome === 'unavailable') {
+      moduleLogger.warn({
+        event: 'ev_charging_phase_set_failed',
+        reasonCode: 'setting_unreadable',
+        sourceCardId: CARD_ID,
+        deviceId,
+        deviceName: device.name,
+        preset,
+      });
+      throw new Error('PELS could not save the EV charging phase. Try again shortly.');
+    }
     (deps.structuredLog ?? moduleLogger).info({
       event: 'ev_charging_phase_set_from_flow',
       sourceCardId: CARD_ID,
