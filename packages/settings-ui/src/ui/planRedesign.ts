@@ -55,6 +55,23 @@ let cachedMissStreaks: ReturnType<typeof resolveMissStreakBadges> = [];
 let currentPlan: PlanSnapshot | null = null;
 let liveTickInterval: ReturnType<typeof setInterval> | null = null;
 let planSurface: HTMLElement | null = null;
+// Painting a hidden Overview is pure cost: every `power_updated` push and the
+// 1 s live tick would rebuild DOM nobody sees (`plan_updated` already skips a
+// hidden Overview). While hidden, what the paint reads still updates; the
+// paint it owes waits for the tab to open (`paintOverviewIfOwed`).
+let paintOwedWhileHidden = false;
+
+// No panel at all (a bare surface, as some specs mount it) counts as shown.
+const isOverviewShown = (): boolean => {
+  const panel = document.getElementById('overview-panel');
+  return panel === null || !panel.classList.contains('hidden');
+};
+
+const stopLiveTick = (): void => {
+  if (liveTickInterval === null) return;
+  clearInterval(liveTickInterval);
+  liveTickInterval = null;
+};
 
 const getPlanSurface = (): HTMLElement | null => (
   planSurface ??= document.getElementById('plan-redesign-surface')
@@ -180,6 +197,12 @@ const resolveOverviewSetupPath = (): SetupPathRead => (
 const doRender = () => {
   const surface = getPlanSurface();
   if (!surface) return;
+  if (!isOverviewShown()) {
+    paintOwedWhileHidden = true;
+    stopLiveTick();
+    return;
+  }
+  paintOwedWhileHidden = false;
   if (!surfaceSkeletonCleared) {
     surface.replaceChildren();
     surfaceSkeletonCleared = true;
@@ -211,10 +234,17 @@ const doRender = () => {
   const needsLive = planNeedsLiveUpdates(currentPlan, now);
   if (needsLive && liveTickInterval === null) {
     liveTickInterval = setInterval(doRender, 1000);
-  } else if (!needsLive && liveTickInterval !== null) {
-    clearInterval(liveTickInterval);
-    liveTickInterval = null;
+  } else if (!needsLive) {
+    stopLiveTick();
   }
+};
+
+/**
+ * Opening the tab pays the paint a hidden Overview deferred, before the
+ * activation refresh lands with anything newer. Called by tab navigation.
+ */
+export const paintOverviewIfOwed = (): void => {
+  if (paintOwedWhileHidden) doRender();
 };
 
 const commitPlan = (plan: PlanSnapshot | null, scope: OverviewScope) => {

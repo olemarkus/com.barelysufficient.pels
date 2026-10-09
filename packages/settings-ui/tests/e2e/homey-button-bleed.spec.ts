@@ -41,6 +41,9 @@ const seed = (data: { history: unknown }) => {
 
 const openSmartTasks = async (page: Page) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
+  // Let the Overview paint first: a hidden Overview does not paint, and its
+  // buttons are part of what the scan below must cover.
+  await expect(page.locator('#plan-cards')).toBeAttached();
   await page.getByRole('tab', { name: 'Smart tasks' }).click();
   await expect(page.locator('.deadlines-history__heading')).toBeVisible();
 };
