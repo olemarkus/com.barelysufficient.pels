@@ -16,7 +16,7 @@ import {
     mergeFresherCapabilityObservations,
 } from '../../lib/device/transport/managerObservation';
 import type { ObservedStateRefreshEvent } from '../../lib/observer/observedStateEvents';
-import type { EvObservedProbe, MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe, ThermostatModeObservedProbe } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe, ThermostatModeObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
@@ -51,6 +51,12 @@ const findSnapshotDevice = <T extends { id: string }>(
 // follow each other within the same millisecond orders them by offset:
 // a baseline read a minute back, a later push a second ahead.
 const stampedNow = (offsetMs = 0): string => new Date(Date.now() + offsetMs).toISOString();
+// A stamp `offsetMs` before the evidence a push produced: older than the push
+// however long the test takes to get there.
+const stampedBefore = (evidence: { observedAtMs: number } | undefined, offsetMs: number): string => {
+    if (!evidence) throw new Error('expected binary settle evidence');
+    return new Date(evidence.observedAtMs - offsetMs).toISOString();
+};
 const BASELINE_OFFSET_MS = -60_000;
 
 const buildRealtimeDevices = () => ({
@@ -2210,31 +2216,29 @@ describe('DeviceTransport', () => {
         });
 
         it('ignores a device.update that omits the declared onoff value: evidence, snapshot and events stand', async () => {
-            const trustedOnEvidence = {
-                valid: true as const,
-                capabilityId: 'onoff' as const,
-                observedValue: true,
-                observedCapabilityIds: ['onoff'],
-                observedAtMs: new Date('2026-06-03T06:00:00.000Z').getTime(),
-                source: 'realtime_capability' as const,
-            };
             await deviceManager.init();
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(deviceManager, [{
                 id: 'dev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Hall Thermostat',
-                targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-                temperature: {
-                    currentTemperature: 20,
-                    target: { id: 'target_temperature', value: 20, unit: '°C' },
+                class: 'thermostat',
+                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
+                capabilitiesObj: {
+                    onoff: { value: true, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                    measure_temperature: {
+                        value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
+                    },
+                    target_temperature: {
+                        value: 20, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
+                    },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
                 },
-                deviceClass: 'thermostat',
-                deviceType: 'temperature',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: true },
-                binaryControlObservation: trustedOnEvidence,
-            }]));
+            }]);
+            await emitCapability('dev1', 'onoff', true);
+            const trustedOnEvidence = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
+            expect(trustedOnEvidence).toEqual(expect.objectContaining({
+                source: 'realtime_capability',
+                observedValue: true,
+            }));
             const snapshotBefore = structuredClone(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1'));
             const liveStateListener = vi.fn();
             const reconcileListener = vi.fn();
@@ -2501,26 +2505,14 @@ describe('DeviceTransport', () => {
             // A physical toggle delivered as a device.update flips currentOn only
             // with the time Homey observed it. The same push without a stamp
             // cannot be ordered against the realtime OFF, so it is ignored whole.
-            const realtimeOff = {
-                valid: true as const,
-                capabilityId: 'onoff' as const,
+            await deviceManager.init();
+            await seedTransportDevices(deviceManager, Object.values(buildRealtimeDevices()));
+            await emitCapability('dev1', 'onoff', false);
+            const realtimeOff = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
+            expect(realtimeOff).toEqual(expect.objectContaining({
+                source: 'realtime_capability',
                 observedValue: false,
-                observedCapabilityIds: ['onoff'],
-                observedAtMs: new Date('2026-06-03T06:00:00.000Z').getTime(),
-                source: 'realtime_capability' as const,
-            };
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
-                id: 'dev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
-                name: 'Heater',
-                targets: [],
-                deviceClass: 'heater',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: false },
-                binaryControlObservation: realtimeOff,
-            }]));
+            }));
             const pushOn = (onoff: { value: boolean; id: string; lastUpdated?: string }) => {
                 emitDeviceUpdate({
                     id: 'dev1',
@@ -2541,7 +2533,7 @@ describe('DeviceTransport', () => {
                 binaryControlObservation: realtimeOff,
             }));
 
-            const pushedAt = '2026-06-03T06:05:00.000Z';
+            const pushedAt = stampedNow(1_000);
             pushOn({ value: true, id: 'onoff', lastUpdated: pushedAt });
 
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
@@ -2560,29 +2552,27 @@ describe('DeviceTransport', () => {
             // update received five minutes later but stamped before the held ON
             // is stale, however late it arrives.
             vi.useFakeTimers();
+            // Pin the clock to the scenario's morning, so the seeding refresh
+            // does not run against today's wall clock.
+            vi.setSystemTime(new Date('2026-06-03T06:00:30.000Z'));
             try {
                 const originalObservedAt = '2026-06-03T06:00:00.000Z';
                 const originalObservedAtMs = new Date(originalObservedAt).getTime();
                 await deviceManager.init();
-                deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                    available: true,
+                await seedTransportDevices(deviceManager, [{
                     id: 'dev1',
-                    expectedPowerKw: 1, expectedPowerSource: 'default',
                     name: 'Heater',
-                    targets: [],
-                    deviceClass: 'heater',
-                    deviceType: 'onoff',
-                    binaryCapabilityId: 'onoff',
-                    binaryControl: { on: true },
-                    binaryControlObservation: {
-                        valid: true,
-                        capabilityId: 'onoff',
-                        observedValue: true,
-                        observedCapabilityIds: ['onoff'],
-                        observedAtMs: originalObservedAtMs,
-                        source: 'snapshot_refresh',
+                    class: 'heater',
+                    capabilities: ['onoff', 'measure_power'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff', lastUpdated: originalObservedAt },
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: originalObservedAt },
                     },
-                }]));
+                }]);
+                expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(expect.objectContaining({
+                    source: 'snapshot_refresh',
+                    observedAtMs: originalObservedAtMs,
+                }));
                 vi.setSystemTime(new Date('2026-06-03T06:05:00.000Z'));
 
                 emitDeviceUpdate({
@@ -2597,6 +2587,9 @@ describe('DeviceTransport', () => {
                 });
 
                 const device = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+                // The update did land: only its stale onoff was refused.
+                expect((device as (TargetDeviceSnapshot & MeasuredPowerObservedProbe) | undefined)?.measuredPowerKw)
+                    .toBe(0.75);
                 expect(device?.binaryControl).toEqual({ on: true });
                 expect(device?.binaryControlObservation).toEqual(expect.objectContaining({
                     observedValue: true,
@@ -2608,22 +2601,24 @@ describe('DeviceTransport', () => {
         });
 
         it('rejects an older raw EV OFF from a delayed device.update', async () => {
-            const newerRawObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
+            const newerRawObservedAt = '2026-06-03T06:05:00.000Z';
+            const newerRawObservedAtMs = new Date(newerRawObservedAt).getTime();
             await deviceManager.init();
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(deviceManager, [{
                 id: 'ev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
-                targets: [],
-                deviceClass: 'evcharger',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'evcharger_charging',
-                binaryControl: { on: false },
-                evCharging: true,
-                evChargingObservedAtMs: newerRawObservedAtMs,
-                evChargingState: 'plugged_in_paused',
-            }]) as (TransportDeviceSnapshot & EvObservedProbe)[]);
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: true, id: 'evcharger_charging', setable: true, lastUpdated: newerRawObservedAt,
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: newerRawObservedAt,
+                    },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: newerRawObservedAt },
+                },
+            }]);
             const reconcileListener = vi.fn();
             onObservedControlState(deviceManager, reconcileListener);
 
@@ -2656,31 +2651,24 @@ describe('DeviceTransport', () => {
         });
 
         it('rejects stale raw EV OFF and stale paused state from one delayed update', async () => {
-            const newerObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
+            const newerObservedAt = '2026-06-03T06:05:00.000Z';
+            const newerObservedAtMs = new Date(newerObservedAt).getTime();
             await deviceManager.init();
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(deviceManager, [{
                 id: 'ev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
-                targets: [],
-                deviceClass: 'evcharger',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'evcharger_charging',
-                binaryControl: { on: true },
-                evCharging: true,
-                evChargingObservedAtMs: newerObservedAtMs,
-                evChargingState: 'plugged_in_charging',
-                evChargingStateObservedAtMs: newerObservedAtMs,
-                binaryControlObservation: {
-                    valid: true,
-                    capabilityId: 'evcharger_charging',
-                    observedValue: true,
-                    observedCapabilityIds: ['evcharger_charging'],
-                    observedAtMs: newerObservedAtMs,
-                    source: 'snapshot_refresh',
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: true, id: 'evcharger_charging', setable: true, lastUpdated: newerObservedAt,
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: newerObservedAt,
+                    },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: newerObservedAt },
                 },
-            }]) as (TransportDeviceSnapshot & EvObservedProbe)[]);
+            }]);
             const reconcileListener = vi.fn();
             onObservedControlState(deviceManager, reconcileListener);
 
@@ -2722,31 +2710,24 @@ describe('DeviceTransport', () => {
         });
 
         it('keeps the state clock after a raw EV event and rejects a later stale state', async () => {
-            const stateObservedAtMs = new Date('2026-06-03T06:05:00.000Z').getTime();
+            const stateObservedAt = '2026-06-03T06:05:00.000Z';
+            const stateObservedAtMs = new Date(stateObservedAt).getTime();
             await deviceManager.init();
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(deviceManager, [{
                 id: 'ev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Charger',
-                targets: [],
-                deviceClass: 'evcharger',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'evcharger_charging',
-                binaryControl: { on: true },
-                evCharging: true,
-                evChargingObservedAtMs: stateObservedAtMs,
-                evChargingState: 'plugged_in_charging',
-                evChargingStateObservedAtMs: stateObservedAtMs,
-                binaryControlObservation: {
-                    valid: true,
-                    capabilityId: 'evcharger_charging',
-                    observedValue: true,
-                    observedCapabilityIds: ['evcharger_charging'],
-                    observedAtMs: stateObservedAtMs,
-                    source: 'snapshot_refresh',
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: true, id: 'evcharger_charging', setable: true, lastUpdated: stateObservedAt,
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_charging', id: 'evcharger_charging_state', lastUpdated: stateObservedAt,
+                    },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stateObservedAt },
                 },
-            }]) as (TransportDeviceSnapshot & EvObservedProbe)[]);
+            }]);
 
             emitDeviceUpdate({
                 id: 'ev1',
@@ -2871,17 +2852,16 @@ describe('DeviceTransport', () => {
         it('uses device.update capability lastUpdated as the binary evidence timestamp', async () => {
             const observedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
             await deviceManager.init();
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(deviceManager, [{
                 id: 'dev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
-                targets: [],
-                deviceClass: 'heater',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: false },
-            }]));
+                class: 'heater',
+                capabilities: ['onoff', 'measure_power'],
+                capabilitiesObj: {
+                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z' },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
+                },
+            }]);
 
             emitDeviceUpdate({
                 id: 'dev1',
@@ -2926,18 +2906,18 @@ describe('DeviceTransport', () => {
                 observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
                 source: 'snapshot_refresh' as const,
             };
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await deviceManager.init();
+            await seedTransportDevices(deviceManager, [{
                 id: 'dev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
-                targets: [],
-                deviceClass: 'heater',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: false },
-                binaryControlObservation: cachedEvidence,
-            }]));
+                class: 'heater',
+                capabilities: ['onoff', 'measure_power'],
+                capabilitiesObj: {
+                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z' },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
+                },
+            }]);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(cachedEvidence);
 
             await deliver({
                 id: 'dev1',
@@ -2957,27 +2937,22 @@ describe('DeviceTransport', () => {
         });
 
         it('keeps currentOn aligned with newer cached evidence when device.update carries stale binary evidence', async () => {
-            const newerEvidence = {
-                valid: true as const,
-                capabilityId: 'onoff' as const,
-                observedValue: true,
-                observedCapabilityIds: ['onoff'],
-                observedAtMs: new Date('2026-04-01T12:00:00.000Z').getTime(),
-                source: 'realtime_capability' as const,
-            };
+            // Off at the last refresh, then a realtime push saw it on. A
+            // device.update stamped between the two is older than the push.
             await deviceManager.init();
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(deviceManager, [{
                 id: 'dev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
-                targets: [],
-                deviceClass: 'heater',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: true },
-                binaryControlObservation: newerEvidence,
-            }]));
+                class: 'heater',
+                capabilities: ['onoff', 'measure_power'],
+                capabilitiesObj: {
+                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                },
+            }]);
+            await emitCapability('dev1', 'onoff', true);
+            const newerEvidence = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
+            expect(newerEvidence).toEqual(expect.objectContaining({ source: 'realtime_capability', observedValue: true }));
 
             emitDeviceUpdate({
                 id: 'dev1',
@@ -2988,9 +2963,9 @@ describe('DeviceTransport', () => {
                     onoff: {
                         value: false,
                         id: 'onoff',
-                        lastUpdated: '2026-04-01T11:59:00.000Z',
+                        lastUpdated: stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2),
                     },
-                    measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                    measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2) },
                 },
             });
 
@@ -3001,26 +2976,22 @@ describe('DeviceTransport', () => {
         });
 
         it('keeps currentOn aligned with newer cached evidence when snapshot refresh carries stale binary evidence', async () => {
-            const newerEvidence = {
-                valid: true as const,
-                capabilityId: 'onoff' as const,
-                observedValue: true,
-                observedCapabilityIds: ['onoff'],
-                observedAtMs: new Date('2026-04-01T12:00:00.000Z').getTime(),
-                source: 'realtime_capability' as const,
-            };
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            // Off at the last refresh, then a realtime push saw it on. The next
+            // pull is stamped between the two, so it is older than the push.
+            await deviceManager.init();
+            await seedTransportDevices(deviceManager, [{
                 id: 'dev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
-                targets: [],
-                deviceClass: 'heater',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: true },
-                binaryControlObservation: newerEvidence,
-            }]));
+                class: 'heater',
+                capabilities: ['onoff', 'measure_power'],
+                capabilitiesObj: {
+                    onoff: { value: false, id: 'onoff', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                },
+            }]);
+            await emitCapability('dev1', 'onoff', true);
+            const newerEvidence = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
+            expect(newerEvidence).toEqual(expect.objectContaining({ source: 'realtime_capability', observedValue: true }));
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -3031,9 +3002,9 @@ describe('DeviceTransport', () => {
                         onoff: {
                             value: false,
                             id: 'onoff',
-                            lastUpdated: '2026-04-01T11:59:00.000Z',
+                            lastUpdated: stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2),
                         },
-                        measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                        measure_power: { value: 500, id: 'measure_power', lastUpdated: stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2) },
                     },
                 },
             });
@@ -3047,25 +3018,16 @@ describe('DeviceTransport', () => {
         });
 
         it('clears binary evidence when a device disappears from snapshot refresh', async () => {
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(deviceManager, [{
                 id: 'dev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
-                targets: [],
-                deviceClass: 'heater',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: false },
-                binaryControlObservation: {
-                    valid: true,
-                    capabilityId: 'onoff',
-                    observedValue: false,
-                    observedCapabilityIds: ['onoff'],
-                    observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
-                    source: 'snapshot_refresh',
+                class: 'heater',
+                capabilities: ['onoff', 'measure_power'],
+                capabilitiesObj: {
+                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z' },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
                 },
-            }]));
+            }]);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeDefined();
 
             // A single empty read is held under abandon-grace; drive past the
@@ -3079,25 +3041,18 @@ describe('DeviceTransport', () => {
         });
 
         it('clears binary evidence on destroy', async () => {
-            deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(deviceManager, [{
                 id: 'dev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Heater',
-                targets: [],
-                deviceClass: 'heater',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'onoff',
-                binaryControl: { on: false },
-                binaryControlObservation: {
-                    valid: true,
-                    capabilityId: 'onoff',
-                    observedValue: false,
-                    observedCapabilityIds: ['onoff'],
-                    observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
-                    source: 'snapshot_refresh',
+                class: 'heater',
+                capabilities: ['onoff', 'measure_power'],
+                capabilitiesObj: {
+                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z' },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
                 },
-            }]));
+            }]);
+
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeDefined();
 
             deviceManager.destroy();
 
@@ -3109,28 +3064,24 @@ describe('DeviceTransport', () => {
             getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
             });
             await evDeviceManager.init();
-            const previousEvidence = {
-                valid: true as const,
-                capabilityId: 'evcharger_charging' as const,
-                observedValue: false,
-                observedCapabilityIds: ['evcharger_charging'],
-                observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
-                source: 'realtime_capability' as const,
-            };
-            evDeviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(evDeviceManager, [{
                 id: 'ev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Easee',
-                targets: [],
-                deviceClass: 'evcharger',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'evcharger_charging',
-                binaryControl: { on: true },
-                evCharging: false,
-                evChargingState: 'plugged_in_paused',
-                binaryControlObservation: previousEvidence,
-            }]) as (TransportDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T11:50:00.000Z',
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: '2026-04-01T11:50:00.000Z',
+                    },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:50:00.000Z' },
+                },
+            }]);
+            expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(expect.objectContaining({
+                observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+            }));
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -3175,28 +3126,31 @@ describe('DeviceTransport', () => {
             getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
             });
             await evDeviceManager.init();
-            const newerEvidence = {
-                valid: true as const,
-                capabilityId: 'evcharger_charging' as const,
-                observedValue: false,
-                observedCapabilityIds: ['evcharger_charging'],
-                observedAtMs: new Date('2026-04-01T12:00:00.000Z').getTime(),
-                source: 'realtime_capability' as const,
-            };
-            evDeviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            // Paused at the last refresh, then a realtime push of the command
+            // capability. The next pull is stamped between the two.
+            await seedTransportDevices(evDeviceManager, [{
                 id: 'ev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Easee',
-                targets: [],
-                deviceClass: 'evcharger',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'evcharger_charging',
-                binaryControl: { on: true },
-                evCharging: false,
-                evChargingState: 'plugged_in_paused',
-                binaryControlObservation: newerEvidence,
-            }]) as (TransportDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: false, id: 'evcharger_charging', setable: true, lastUpdated: stampedNow(BASELINE_OFFSET_MS),
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: stampedNow(BASELINE_OFFSET_MS),
+                    },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: stampedNow(BASELINE_OFFSET_MS) },
+                },
+            }]);
+            await emitCapability('ev1', 'evcharger_charging', false);
+            const newerEvidence = evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1');
+            expect(newerEvidence).toEqual(expect.objectContaining({
+                source: 'realtime_capability',
+                capabilityId: 'evcharger_charging',
+                observedValue: false,
+            }));
+            const staleAt = stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2);
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -3208,14 +3162,14 @@ describe('DeviceTransport', () => {
                             value: false,
                             id: 'evcharger_charging',
                             setable: true,
-                            lastUpdated: '2026-04-01T11:59:00.000Z',
+                            lastUpdated: staleAt,
                         },
                         evcharger_charging_state: {
                             value: 'plugged_in_paused',
                             id: 'evcharger_charging_state',
-                            lastUpdated: '2026-04-01T11:59:00.000Z',
+                            lastUpdated: staleAt,
                         },
-                        measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                        measure_power: { value: 0, id: 'measure_power', lastUpdated: staleAt },
                     },
                 },
             });
@@ -3234,27 +3188,21 @@ describe('DeviceTransport', () => {
             getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
             });
             await evDeviceManager.init();
-            const previousRawEvidence = {
-                valid: true as const,
-                capabilityId: 'evcharger_charging' as const,
-                observedValue: false,
-                observedCapabilityIds: ['evcharger_charging'],
-                observedAtMs: new Date('2026-04-01T11:59:00.000Z').getTime(),
-                source: 'snapshot_refresh' as const,
-            };
-            evDeviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-                available: true,
+            await seedTransportDevices(evDeviceManager, [{
                 id: 'ev1',
-                expectedPowerKw: 1, expectedPowerSource: 'default',
                 name: 'Easee',
-                targets: [],
-                deviceClass: 'evcharger',
-                deviceType: 'onoff',
-                binaryCapabilityId: 'evcharger_charging',
-                binaryControl: { on: false },
-                evCharging: false,
-                binaryControlObservation: previousRawEvidence,
-            }]));
+                class: 'evcharger',
+                capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                capabilitiesObj: {
+                    evcharger_charging: {
+                        value: false, id: 'evcharger_charging', setable: true, lastUpdated: '2026-04-01T11:59:00.000Z',
+                    },
+                    evcharger_charging_state: {
+                        value: 'plugged_in_paused', id: 'evcharger_charging_state', lastUpdated: '2026-04-01T11:59:00.000Z',
+                    },
+                    measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                },
+            }]);
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -3878,7 +3826,21 @@ describe('DeviceTransport', () => {
                 onObservedControlState(deviceManager, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
-                deviceManager.setSnapshotForTests([]);
+                // The next refresh lists the home's devices without this one.
+                mockApiGet.mockResolvedValue({
+                    dev2: {
+                        id: 'dev2',
+                        name: 'Lamp socket',
+                        class: 'socket',
+                        capabilities: ['measure_power', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: { value: 20, id: 'measure_power', lastUpdated: stampedNow() },
+                            onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
+                        },
+                    },
+                });
+                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                expect(deviceManager.getSnapshot().map(snapshotDeviceId)).toEqual(['dev2']);
 
                 await vi.advanceTimersByTimeAsync(90_000);
 

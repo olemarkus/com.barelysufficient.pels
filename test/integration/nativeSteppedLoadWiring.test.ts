@@ -47,7 +47,6 @@ import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
-import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -172,6 +171,23 @@ const buildTargetPowerDevice = (overrides: Partial<HomeyDeviceLike> = {}): Homey
     ...(overrides.capabilitiesObj ?? {}),
   },
 });
+
+// A load on a smart plug that the owner steps through Flow: PELS has no native
+// write for it, so its saved ladder is commanded through the
+// `desired_stepped_load_changed` trigger.
+const buildFlowSteppedLoad = (): HomeyDeviceLike => {
+  const readAt = new Date().toISOString();
+  return {
+    id: 'flow-step-1',
+    name: 'Flow backed charger',
+    class: 'socket',
+    capabilities: ['onoff', 'measure_power'],
+    capabilitiesObj: {
+      onoff: { id: 'onoff', value: true, lastUpdated: readAt },
+      measure_power: { id: 'measure_power', value: 1840, lastUpdated: readAt },
+    },
+  };
+};
 
 const restoreMockRestClient = () => {
   setRestClient({
@@ -1535,29 +1551,25 @@ describe('native stepped-load wiring', () => {
 
   it('uses DeviceTransport flow transport for non-native stepped-load commands', async () => {
     mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed = [];
+    const ampereProfile: SteppedLoadProfile = {
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: '6a', planningPowerW: 1380 },
+        { id: '8a', planningPowerW: 1840 },
+      ],
+    };
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
-      undefined,
+      {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+        getDeviceControlProfile: () => ampereProfile,
+      },
       undefined,
       { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
     );
-    deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-      available: true,
-      id: 'flow-step-1',
-      expectedPowerKw: 1, expectedPowerSource: 'default',
-      name: 'Flow backed charger',
-      targets: [],
-      binaryControl: { on: true },
-      controlModel: 'stepped_load',
-      steppedLoadProfile: {
-        steps: [
-          { id: 'off', planningPowerW: 0 },
-          { id: '6a', planningPowerW: 1380 },
-          { id: '8a', planningPowerW: 1840 },
-        ],
-      },
-    }]));
+    const [seeded] = await seedTransportDevices(deviceManager, [buildFlowSteppedLoad()]);
+    expect(seeded).toEqual(expect.objectContaining({ controlModel: 'stepped_load', steppedLoadProfile: ampereProfile }));
 
     await expect(deviceManager.requestSteppedLoadStep({
       deviceId: 'flow-step-1',
@@ -1647,20 +1659,14 @@ describe('native stepped-load wiring', () => {
     const deviceManager = createTestDeviceTransport(
       homey,
       logger,
-      undefined,
+      {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+        getDeviceControlProfile: () => steppedProfile,
+      },
       undefined,
       { getFlowTriggerCard: () => ({ trigger: () => Promise.reject(failure) }) },
     );
-    deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-      available: true,
-      id: 'flow-step-1',
-      expectedPowerKw: 1, expectedPowerSource: 'default',
-      name: 'Flow backed charger',
-      targets: [],
-      binaryControl: { on: true },
-      controlModel: 'stepped_load',
-      steppedLoadProfile: steppedProfile,
-    }]));
+    await seedTransportDevices(deviceManager, [buildFlowSteppedLoad()]);
 
     await expect(deviceManager.requestSteppedLoadStep({
       deviceId: 'flow-step-1',
@@ -1698,20 +1704,14 @@ describe('native stepped-load wiring', () => {
       const deviceManager = createTestDeviceTransport(
         homey,
         logger,
-        undefined,
+        {
+          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+          getDeviceControlProfile: () => steppedProfile,
+        },
         undefined,
         { getFlowTriggerCard: () => ({ trigger }) },
       );
-      deviceManager.setSnapshotForTests(transportSnapshotFixtures([{
-        available: true,
-        id: 'flow-step-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Flow backed charger',
-        targets: [],
-        binaryControl: { on: true },
-        controlModel: 'stepped_load',
-        steppedLoadProfile: steppedProfile,
-      }]));
+      await seedTransportDevices(deviceManager, [buildFlowSteppedLoad()]);
 
       const request = deviceManager.requestSteppedLoadStep({
         deviceId: 'flow-step-1',
