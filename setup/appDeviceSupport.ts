@@ -1,6 +1,5 @@
 import type Homey from 'homey';
 import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
-import type { SettingsPort } from '../lib/ports/homeyRuntime';
 import { isBooleanMap } from '../lib/utils/appTypeGuards';
 import { CONTROLLABLE_DEVICES, MANAGED_DEVICES } from '../lib/utils/settingsKeys';
 import {
@@ -50,11 +49,11 @@ export function isManagedFilterActive(managedDevices: BooleanMap): boolean {
 // spelling the comparison twice — the header above demands the consumers stay in
 // step, and two expressions of one rule is how that stops being true.
 //
-// Encoded as `managed !== false` (not `managed === true`): an implicitly-managed
-// device whose `managed` flag is `undefined`/absent (e.g. the managed-filter is
-// inactive and the device was never explicitly toggled) IS planned, matching
-// the planner's own filter. Only an explicit opt-out (`managed === false`) is
-// excluded.
+// In production `managed` is always resolved: the transport asks
+// `resolveManagedState`, which reads a device with no `managed_devices` entry as
+// not managed. So `!== false` and `=== true` agree there; `undefined` only
+// reaches this from a parse with no managed source (a fixture), which it
+// treats as planned.
 const plannedFromManagedFlag = (managed: boolean | undefined): boolean => managed !== false;
 
 export function isRuntimePlannedDevice(device: { managed?: boolean }): boolean {
@@ -114,11 +113,9 @@ export function seedTemperatureShedFloorDefaults(params: {
  */
 export function listModeTargetFillDevices(
   devices: readonly UnrankedPlanInputDevice[],
-  settings: SettingsPort,
 ): Array<ModeTargetDevice & { name: string }> {
-  const managed = parseBooleanMap(settings.get(MANAGED_DEVICES));
   return devices
-    .filter((device) => isRuntimePlannedDevice({ managed: managed[device.id] }))
+    .filter(isRuntimePlannedPlanDevice)
     .flatMap(buildModeTargetProbe);
 }
 

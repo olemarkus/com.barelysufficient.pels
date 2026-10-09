@@ -167,4 +167,36 @@ describe('Mode device targets', () => {
 
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({ Home: {}, Away: { 'dev-1': 21 } });
   });
+
+  it('fills no target for a thermostat PELS does not manage, then its setpoint at opt-in', async () => {
+    // With no `managed_devices` entry the device is in the snapshot but not
+    // managed, so the planner does not plan it, and the fill must not seed a
+    // target the owner never asked PELS to hold.
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_temperature', 'measure_power']);
+    await heater.setCapabilityValue('measure_power', 1000);
+    await heater.setCapabilityValue('measure_temperature', 20);
+    await heater.setCapabilityValue('target_temperature', 21);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: {}, Away: {} });
+
+    const app = createApp();
+    await app.onInit();
+    await app.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
+
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({ Home: {}, Away: {} });
+
+    // The owner changes the setpoint, then opts the device in: the seed is the
+    // setpoint at opt-in, not the one it had when PELS first saw it.
+    await heater.setCapabilityValue('target_temperature', 19);
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    await app.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
+
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({
+      Home: { 'dev-1': 19 },
+      Away: { 'dev-1': 19 },
+    });
+  });
 });

@@ -24,7 +24,7 @@ const mainHomeMode = (mode: string | null): ResolveOperatingModeForDevice => () 
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { TemperatureDiscriminantProbe } from '../../lib/plan/planTypes';
-import { buildPlanInputDevice } from '../utils/planTestUtils';
+import { buildPlanInputDevice, fixtureControlPosture } from '../utils/planTestUtils';
 
 type AppSettings = Homey.App['homey']['settings'];
 // Passes the mock store across the production seam with its provided members
@@ -202,18 +202,13 @@ describe('listModeTargetFillDevices', () => {
     buildPlanInputDevice({ ...thermostatDefaults, unmetered: true })
   );
 
-  const managedSettings = (managed: Record<string, boolean>) => asAppSettings(makeSettings({
-    [MANAGED_DEVICES]: managed,
-    [CONTROLLABLE_DEVICES]: managed,
-  }));
-
   it('lists a planned thermostat with the setpoint PELS holds it at', () => {
-    expect(listModeTargetFillDevices([buildThermostat()], managedSettings({ 't-1': true })))
+    expect(listModeTargetFillDevices([buildThermostat()]))
       .toEqual([{ id: 't-1', name: 'Stue', heldSetpointC: 21 }]);
   });
 
   it('lists a thermostat without a per-device reading, since the plan still sets its mode target', () => {
-    expect(listModeTargetFillDevices([buildUnmeteredThermostat()], managedSettings({ 't-1': true })))
+    expect(listModeTargetFillDevices([buildUnmeteredThermostat()]))
       .toEqual([{ id: 't-1', name: 'Stue', heldSetpointC: 21 }]);
   });
 
@@ -223,7 +218,7 @@ describe('listModeTargetFillDevices', () => {
       targets: [{ id: 'target_temperature', value: 21.34, unit: '°C', min: 5, max: 35, step: 0.5 }],
     });
 
-    expect(listModeTargetFillDevices([thermostat], managedSettings({ 't-1': true })))
+    expect(listModeTargetFillDevices([thermostat]))
       .toEqual([{ id: 't-1', name: 'Stue', heldSetpointC: 21.5 }]);
   });
 
@@ -232,7 +227,7 @@ describe('listModeTargetFillDevices', () => {
       targets: [{ id: 'target_temperature', value: Number.NaN, unit: '°C' }],
     });
 
-    expect(listModeTargetFillDevices([thermostat], managedSettings({ 't-1': true }))).toEqual([]);
+    expect(listModeTargetFillDevices([thermostat])).toEqual([]);
   });
 
   it('lists no device whose temperature control is off', () => {
@@ -240,40 +235,24 @@ describe('listModeTargetFillDevices', () => {
     // away, so the device reaches here as a plain non-temperature device — the
     // SAME shape as an on/off load, which is the point: one predicate covers
     // both reasons a device has no setpoint.
-    expect(listModeTargetFillDevices(
-      [buildThermostat({ deviceType: 'onoff', targets: [] })],
-      managedSettings({ 't-1': true }),
-    )).toEqual([]);
+    expect(listModeTargetFillDevices([buildThermostat({ deviceType: 'onoff', targets: [] })])).toEqual([]);
   });
 
-  it('ignores an explicitly unmanaged device and one with no setpoint', () => {
-    const settings = asAppSettings(makeSettings({ [MANAGED_DEVICES]: { 't-unmanaged': false } }));
-
+  it('ignores a device the planner does not plan and one with no setpoint', () => {
+    // `control.managed` is the planner's own answer: `managed_devices` resolved
+    // per device, where a device with no entry is not managed. Filling a target
+    // for it would seed a setpoint PELS does not hold.
     expect(listModeTargetFillDevices([
-      buildThermostat({ id: 't-unmanaged' }),
+      buildThermostat({ id: 't-unmanaged', control: fixtureControlPosture({ managed: false }) }),
       buildThermostat({ id: 't-notemp', deviceType: 'onoff', targets: [] }),
-    ], settings)).toEqual([]);
-  });
-
-  it('lists an implicitly managed device — the planner plans it too', () => {
-    // `managed` absent is the state of every device on an install where the
-    // owner never opened the Devices screen. `isRuntimePlannedDevice` is
-    // `managed !== false`, so PELS plans and sheds these; requiring an explicit
-    // opt-in here left them with no target to be restored to.
-    expect(listModeTargetFillDevices([buildThermostat()], asAppSettings(makeSettings({}))))
-      .toEqual([{ id: 't-1', name: 'Stue', heldSetpointC: 21 }]);
+    ])).toEqual([]);
   });
 
   it('lists a device whose capacity control is off', () => {
     // A metered thermostat remains eligible for mode-target filling even when
     // its power-limit switch is off. That switch governs shedding; it does not
     // remove the temperature target axis.
-    const settings = asAppSettings(makeSettings({
-      [MANAGED_DEVICES]: { 't-1': true },
-      [CONTROLLABLE_DEVICES]: { 't-1': false },
-    }));
-
-    expect(listModeTargetFillDevices([buildThermostat()], settings))
+    expect(listModeTargetFillDevices([buildThermostat({ control: fixtureControlPosture({ controllable: false }) })]))
       .toEqual([{ id: 't-1', name: 'Stue', heldSetpointC: 21 }]);
   });
 });

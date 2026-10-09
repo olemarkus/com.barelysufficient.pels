@@ -87,12 +87,15 @@ a normal convergence.
 The per-mode target — one per (home, mode, device). **"This device has no target
 for this mode" is not a state the planner can be in.**
 The fill pass (`ModeDeviceTargetFill`, `lib/home/modeDeviceTargetFill.ts`) runs
-on the settings refresh, before the first plan of that cycle, and writes an entry
+on the snapshot refresh, before the first plan of that cycle, and writes an entry
 for every device the planner will plan — seeded from the device's own current
 setpoint, so adopting it moves nothing the owner can see. Candidacy is the
-PLANNED set (`managed !== false`, `listModeTargetFillDevices` in
-`setup/appDeviceSupport.ts`), because that is what the planner plans; capacity
-control being off is about shedding and does not hand the setpoint back.
+PLANNED set: the plan device's own `control.managed`, the same answer the
+planner filters on (`listModeTargetFillDevices` in `setup/appDeviceSupport.ts`).
+A device with no `managed_devices` entry is not managed, so it gets no entry
+until the owner opts it in. Capacity control being off is about shedding and
+does not hand the setpoint back. A device whose home is not known yet — no
+settled membership — is skipped and filled on a later refresh.
 
 Writing it down is what makes ownership durable rather than nominal: a setpoint
 re-derived from the device on every boot is followed, not owned.
@@ -120,12 +123,12 @@ the problem, not the safety net.
 
 ## Consequences to keep true
 
-- **Seed candidacy is the planned set, not the opted-in set.** Narrowing it to
-  `managed === true` excluded every implicitly-managed device; narrowing it to
-  `controllable === true` — the merged flag now spelled
-  `control.commandAuthority` on a plan device — additionally excluded price-only
-  thermostats, which silently disabled price optimization for them (a price
-  delta modulates a configured mode target and nothing else).
+- **Seed candidacy is the planned set (`control.managed`), not the power-limited
+  set.** Narrowing it to `controllable === true` — the merged flag now spelled
+  `control.commandAuthority` on a plan device — excluded price-only thermostats,
+  which silently disabled price optimization for them (a price delta modulates a
+  configured mode target and nothing else). Widening it past `control.managed`
+  seeded first-boot setpoints for thermostats PELS does not plan.
 - **A temperature device with no power reading is planned for its setpoints and
   nothing else** (owner ruling 2026-09-23). It enters the plan without a power
   axis (`MeteredPlanInputKind` absent, `lib/plan/planMeteredDevice.ts`): mode
