@@ -126,7 +126,6 @@ export class DeviceTransport {
     private readonly retainedPower: RetainedPowerPersistence;
     private readonly observationBridge: ObservationBridge;
     private readonly binaryEvidence: BinarySettleEvidenceService;
-    private readonly snapshotCommit: SnapshotCommit;
     // Pre-wiring boot placeholder only: `initializeDeviceApi` wiring always
     // replaces it. `unavailable` is the honest pre-wiring answer — never a
     // fabricated selection.
@@ -237,7 +236,7 @@ export class DeviceTransport {
             this.logger,
             (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
         );
-        this.snapshotCommit = new SnapshotCommit(
+        const snapshotCommit = new SnapshotCommit(
             this.snapshotStore,
             this.deviceConfigurationStore,
             this.binaryEvidence,
@@ -261,7 +260,7 @@ export class DeviceTransport {
         );
         this.refreshService = new SnapshotRefreshService(
             this.refreshState,
-            this.snapshotCommit,
+            snapshotCommit,
             this.observationBridge,
             this.observationProducers,
             temperatureRecovery,
@@ -411,19 +410,6 @@ export class DeviceTransport {
      */
     async readGenerationW(): Promise<LiveGenerationRead> {
         return runFetchLiveGenerationW(this.logger);
-    }
-    setSnapshotForTests(snapshot: TransportDeviceSnapshot[]): void {
-        // Mirror the production refresh funnel (`commitRefreshedSnapshot`): commit
-        // the snapshot, then dispatch the observed-state refresh so the observer
-        // projection is fed exactly as it is in production. Without this, a test
-        // that seeds state via `setSnapshotForTests` leaves the projection empty,
-        // so any reader routed onto the projection would silently fall back to the
-        // snapshot and the projection path would never be exercised by the suite.
-        this.setSnapshot(snapshot);
-        this.observationBridge.dispatchStateRefresh(snapshot, new Set());
-    }
-    setSnapshot(s: TransportDeviceSnapshot[]): void {
-        this.snapshotCommit.commit(s);
     }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> {
         return (await this.deviceSdk.fetchDevices()).devices;

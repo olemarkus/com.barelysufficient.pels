@@ -57,7 +57,7 @@ export const transportSnapshotFixture = (
   fixture: DescriptorIdentityFixture<TransportDeviceSnapshot>,
 ): TransportDeviceSnapshot => withDescriptorIdentity<TransportDeviceSnapshot>(fixture);
 
-/** {@link transportSnapshotFixture} over a list, for `setSnapshotForTests([...])`. */
+/** {@link transportSnapshotFixture} over a list. */
 export const transportSnapshotFixtures = (
   fixtures: DescriptorIdentityFixture<TransportDeviceSnapshot>[],
 ): TransportDeviceSnapshot[] => fixtures.map(transportSnapshotFixture);
