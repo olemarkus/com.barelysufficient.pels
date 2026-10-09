@@ -12,22 +12,78 @@
  * `device.update` frame delivered late or out of order, and a refresh whose
  * fetch was issued before the rejection and is merged after it.
  *
- * Driven through the real refresh and live feed: devices are served by
- * `seedTransportDevices`, frames arrive on the test socket.
+ * Driven through the real refresh: devices are served by `seedTransportDevices`,
+ * frames arrive through the release-branch live-feed adapter below.
  */
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
-import type { Logger } from '../../lib/utils/types';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
-import {
-    createTestDeviceTransport,
-    initWithLiveFeed,
-    seedTransportDevices,
-} from '../helpers/deviceTransportHarness';
-import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
+import { createTestDeviceTransport } from '../helpers/deviceTransportHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import Homey from 'homey';
+
+/*
+ * Release-branch adapter (3.11.x). On main this spec uses the shared live-feed
+ * socket fake and `seedTransportDevices` from the test helpers; this base
+ * predates that harness. The adapter keeps the contract the spec relies on: a
+ * refresh is the transport's real refresh against a served device list, every
+ * frame crosses a JSON wire (NaN arrives as null), a `device.update` always
+ * reaches the transport, and a capability frame reaches only a device the last
+ * committed refresh listed, as the feed subscribes, and throws otherwise.
+ */
+let feedTransport: DeviceTransport | null = null;
+let subscribedDeviceIds = new Set<string>();
+
+const onTheWire = <T>(frame: T): T => JSON.parse(JSON.stringify(frame)) as T;
+
+const initWithLiveFeed = async (transport: DeviceTransport): Promise<void> => {
+    feedTransport = transport;
+    subscribedDeviceIds = new Set();
+    await transport.init();
+};
+
+const seedTransportDevices = async (
+    transport: DeviceTransport,
+    devices: readonly HomeyDeviceLike[],
+): Promise<void> => {
+    const served = new Map(devices.map((device) => [device.id, device]));
+    let serving = true;
+    setRestClient({
+        get: async (path) => {
+            if (serving && path === DEVICES_API_PATH) return Object.fromEntries(served);
+            const byId = serving && path.startsWith(`${DEVICES_API_PATH}/`) ? path.slice(DEVICES_API_PATH.length + 1) : null;
+            if (byId !== null && !byId.includes('/')) {
+                const device = served.get(byId);
+                if (!device) throw new Error(`Mock API GET 404 for device: ${byId}`);
+                return device;
+            }
+            return mockHomeyInstance.api.get(path);
+        },
+        put: (path, body) => mockHomeyInstance.api.put(path, body),
+    });
+    try {
+        await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' }, includeLivePower: false });
+    } finally {
+        serving = false;
+    }
+    subscribedDeviceIds = new Set(transport.getSnapshot().map((device) => device.id));
+};
+
+const emitDeviceUpdate = (device: HomeyDeviceLike): void => {
+    if (feedTransport === null) throw new Error('No live feed; call initWithLiveFeed() first');
+    feedTransport.injectDeviceUpdateForTest(onTheWire(device));
+};
+
+const emitCapability = async (deviceId: string, capabilityId: string, value: unknown): Promise<void> => {
+    if (feedTransport === null || !subscribedDeviceIds.has(deviceId)) {
+        throw new Error(`No live feed subscription for homey:device:${deviceId}`);
+    }
+    const frame = onTheWire({ capabilityId, value });
+    feedTransport.injectCapabilityUpdateForTest(deviceId, frame.capabilityId, frame.value);
+};
 
 const DEVICE_ID = 'dev1';
 
