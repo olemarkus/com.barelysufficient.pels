@@ -34,12 +34,16 @@ export type DeviceModeCatalogOutcome =
   }
   | { state: 'unavailable' };
 
-/** Committed ownership attribution for the device-keyed temperature seed. */
+/**
+ * Committed ownership attribution for the device-keyed temperature seed, or
+ * `null` while ownership is not known — membership not built yet (boot) or no
+ * more (after uninit), or not settled — so nothing is seeded under a guess.
+ */
 export const resolveHomeIdForModeCatalogSeed = (
   membership: HomeMembershipPort | undefined,
   deviceId: string,
 ): HomeId | null => {
-  if (!membership) return MAIN_HOME_ID;
+  if (!membership) return null;
   return membership.isOwnershipReady() && !membership.hasPendingOwnershipGeneration()
     ? membership.getHomeIdForDevice(deviceId)
     : null;
