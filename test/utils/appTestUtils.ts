@@ -21,7 +21,9 @@ type CreateAppOptions = {
   preserveStartupRestoreStabilization?: boolean;
   /**
    * Leave the home with NO meter measurement, so `PowerMeasurementGate` keeps
-   * the plan-build gate shut. Only for suites that exercise the gate itself.
+   * the plan-build gate shut. For suites that exercise the gate itself, and for
+   * a scenario whose first plan must be built from the test's own reading
+   * rather than from boot-time rebuilds.
    *
    * The default seeds one, because a whole-home meter is a documented PELS
    * prerequisite (`docs/getting-started.md`) — a booted app that has never seen
