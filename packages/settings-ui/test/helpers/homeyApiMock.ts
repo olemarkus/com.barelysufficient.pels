@@ -11,7 +11,7 @@ import {
   MIN_DAILY_BUDGET_KWH,
   PRICE_SHAPING_FLEX_SHARE,
   UNMANAGED_RESERVE_MODE,
-} from '../../../shared-domain/src/settings/dailyBudgetConstants.ts';
+} from '../../../shared-domain/src/settings/dailyBudgetSettings.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
@@ -41,7 +41,7 @@ import {
   SETTINGS_UI_SMART_TASK_UPDATE_PATH,
   SETTINGS_UI_SMART_TASK_CANCEL_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../../shared-domain/src/settings/settingsUiBootstrapKeys.ts';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../../../lib/utils/settingsUiBootstrapKeys.ts';
 import { SETTINGS_UI_HOMES_PATH, SETTINGS_UI_HOMES_SAVE_PATH } from '../../../contracts/src/settingsUiHomes.ts';
 import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {

@@ -6,7 +6,7 @@ import { resolveBudgetPressureKwh } from '../../packages/shared-domain/src/energ
 import {
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,
-} from '../../packages/shared-domain/src/settings/dailyBudgetConstants';
+} from '../../packages/shared-domain/src/settings/dailyBudgetSettings';
 
 /**
  * Turns tomorrow's expected mean temperature into an advisory daily budget.

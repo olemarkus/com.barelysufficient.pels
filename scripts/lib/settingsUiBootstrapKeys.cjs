@@ -2,7 +2,7 @@
 
 // Node-executed scripts cannot import the TypeScript module directly (Node 22.17,
 // the oldest supported, needs a flag to strip types). Keep this JS-safe copy in
-// sync with packages/shared-domain/src/settings/settingsUiBootstrapKeys.ts;
+// sync with lib/utils/settingsUiBootstrapKeys.ts;
 // test/unit/settingsUiScripts.test.ts fails when they differ.
 const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'capacity_enabled',

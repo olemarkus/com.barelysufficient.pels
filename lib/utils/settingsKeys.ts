@@ -1,6 +1,6 @@
-// Runtime settings keys. Keys the settings UI also reads have their one copy in
-// `packages/shared-domain/src/settings/settingsKeys.ts` and are re-exported here,
-// so runtime code imports every key from this module.
+// Runtime settings keys. The constants for keys the settings UI also reads are
+// defined once, in `packages/shared-domain/src/settings/settingsKeys.ts`, and
+// re-exported here, so runtime code imports every key constant from this module.
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -50,6 +50,8 @@ export {
   OVERSHOOT_BEHAVIORS,
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_OPTIMIZATION_ENABLED,
+  PRICE_THRESHOLD_PERCENT,
+  PRICE_MIN_DIFF_ORE,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -175,8 +177,6 @@ export const DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH = 'deferred_objective_hour
 export const DEVICE_TARGET_POWER_REACHABILITY = 'device_target_power_reachability';
 export const DEVICE_LAST_CONTROLLED_MS = 'device_last_controlled_ms';
 export const CAPACITY_IN_SHORTFALL = 'capacity_in_shortfall';
-export const PRICE_THRESHOLD_PERCENT = 'price_threshold_percent';
-export const PRICE_MIN_DIFF_ORE = 'price_min_diff_ore';
 // Legacy: the daily budget's plan and learned profiles live in the userdata
 // store (lib/dailyBudget/dailyBudgetStateStore.ts). As a settings key it is only
 // read by the legacy import.

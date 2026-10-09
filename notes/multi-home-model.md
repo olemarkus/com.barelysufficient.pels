@@ -418,5 +418,5 @@ area exists).
 | Per-home bundle registry + lifecycle | `setup/homeRuntime/homeRuntimeRegistry.ts` |
 | HomeScope (main vs sub) | `setup/homeRuntime/homeScope.ts` |
 | Per-meter live read | `extractLiveMeterPowerWatts` (power source) |
-| Suffixed key helper (`homeScopedSettingsKey`) | `lib/utils/settingsKeys.ts` |
+| Suffixed key helper (`homeScopedSettingsKey`) | `packages/shared-domain/src/settings/settingsKeys.ts` (inverse parse: `lib/utils/settingsKeys.ts`) |
 | Read/write UI seam | `setup/settingsUiHomesApi.ts` |

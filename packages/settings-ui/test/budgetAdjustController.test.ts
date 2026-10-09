@@ -9,7 +9,7 @@ import {
   UNMANAGED_RESERVE_BALANCED_MODE,
   UNMANAGED_RESERVE_CONSERVATIVE_MODE,
   UNMANAGED_RESERVE_MODE,
-} from '../../shared-domain/src/settings/dailyBudgetConstants.ts';
+} from '../../shared-domain/src/settings/dailyBudgetSettings.ts';
 import {
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
@@ -304,7 +304,7 @@ describe('budgetAdjustController', () => {
     expect(view.candidate).toBeNull();
   });
 
-  it('tolerates stringified persisted settings', async () => {
+  it('tolerates stringified on/off and kWh settings, and reads stringified options as the runtime does', async () => {
     await installHomey(
       {
         daily_budget_enabled: 'true',
@@ -321,8 +321,10 @@ describe('budgetAdjustController', () => {
     expect(view.draft.enabled).toBe(true);
     expect(view.draft.dailyBudgetKWh).toBe(75);
     expect(view.draft.priceShaping).toBe(false);
-    expect(view.draft.controlledWeight).toBe(UNMANAGED_RESERVE_CONSERVATIVE_MODE);
-    expect(view.draft.priceFlexShare).toBe(PRICE_FLEX_HIGH);
+    // The runtime plans a stored string option as the default, so the draft
+    // shows the default rather than the option the string spells.
+    expect(view.draft.controlledWeight).toBe(UNMANAGED_RESERVE_MODE);
+    expect(view.draft.priceFlexShare).toBe(PRICE_SHAPING_FLEX_SHARE);
   });
 
   it('returns to dirty when preview API throws', async () => {

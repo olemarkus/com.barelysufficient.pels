@@ -50,10 +50,11 @@ export function isManagedFilterActive(managedDevices: BooleanMap): boolean {
 // step, and two expressions of one rule is how that stops being true.
 //
 // In production `managed` is always resolved: the transport asks
-// `resolveManagedState`, which reads a device with no `managed_devices` entry as
-// not managed. So `!== false` and `=== true` agree there; `undefined` only
-// reaches this from a parse with no managed source (a fixture), which it
-// treats as planned.
+// `resolveManagedState`, which answers a boolean for every device (an ordinary
+// load with no `managed_devices` entry reads as not managed, a battery follows
+// its Managed toggle, a panel is always managed). So `!== false` and `=== true`
+// agree there; `undefined` only reaches this from a parse with no managed source
+// (a fixture), which it treats as planned.
 const plannedFromManagedFlag = (managed: boolean | undefined): boolean => managed !== false;
 
 export function isRuntimePlannedDevice(device: { managed?: boolean }): boolean {

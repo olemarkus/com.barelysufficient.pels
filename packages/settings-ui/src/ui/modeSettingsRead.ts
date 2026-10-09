@@ -18,6 +18,8 @@ import {
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_CONTROL_MODES,
   homeScopedSettingsKey,
+  CONTROLLABLE_DEVICES,
+  MANAGED_DEVICES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { getSetting } from './homey.ts';
 
@@ -62,8 +64,8 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
     getSetting(homeScopedSettingsKey(OPERATING_MODE_SETTING, homeId)),
     getSetting(homeScopedSettingsKey(CAPACITY_PRIORITIES, homeId)),
     getSetting(homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId)),
-    getSetting('controllable_devices'),
-    getSetting('managed_devices'),
+    getSetting(CONTROLLABLE_DEVICES),
+    getSetting(MANAGED_DEVICES),
     getSetting(BUDGET_EXEMPT_DEVICES),
     getSetting(RESPECT_EXTERNAL_OFF_DEVICES),
     getSetting(DEVICE_START_POLICIES),

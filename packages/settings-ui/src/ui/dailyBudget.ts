@@ -13,6 +13,9 @@ import { setBudgetAdjustRefresh } from './budgetAdjustController.ts';
 import { resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
 import { normalizeCombinedPrices, type CombinedPriceRow } from './combinedPrices.ts';
 import { setActiveDailyBudgetFromPayload } from './activeDailyBudget.ts';
+import {
+  EXPORT_PRICE_ENABLED,
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 
 let currentDailyBudgetView: BudgetDayView = 'today';
 let latestDailyBudgetRead: DailyBudgetUiRead = { kind: 'unavailable' };
@@ -79,7 +82,7 @@ export const refreshDailyBudgetPlan = async (readOverride?: DailyBudgetUiRead) =
         ? Promise.resolve(readOverride)
         : callApi<DailyBudgetUiRead>('GET', '/daily_budget'),
       getPricesReadModel().then((prices) => prices.combinedPrices).catch(() => null),
-      getSetting('export_price_enabled').then((value) => value === true).catch(() => false),
+      getSetting(EXPORT_PRICE_ENABLED).then((value) => value === true).catch(() => false),
     ]);
     costDisplay = resolveCostDisplayFromCombinedPrices(combinedPrices);
     latestPriceRows = gateExportPriceRows(normalizeCombinedPrices(combinedPrices), exportEnabled);

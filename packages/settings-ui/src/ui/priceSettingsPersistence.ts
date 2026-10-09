@@ -1,6 +1,10 @@
 import { getSetting } from './homey.ts';
 import {
-  NORWAY_PRICE_MODEL, POWERHOUR_DEVICE_ID, PRICE_SCHEME,
+  NORWAY_PRICE_MODEL,
+  POWERHOUR_DEVICE_ID,
+  PRICE_SCHEME,
+  PRICE_THRESHOLD_PERCENT,
+  PRICE_MIN_DIFF_ORE,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   isPriceSchemeSetting,
@@ -92,8 +96,8 @@ export const readCurrentPriceSettings = async (): Promise<PriceSettingsInput> =>
     getSetting(NORWAY_PRICE_MODEL),
     getSetting('price_area'),
     getSetting('provider_surcharge'),
-    getSetting('price_threshold_percent'),
-    getSetting('price_min_diff_ore'),
+    getSetting(PRICE_THRESHOLD_PERCENT),
+    getSetting(PRICE_MIN_DIFF_ORE),
     getSetting(POWERHOUR_DEVICE_ID),
   ]);
 
@@ -137,10 +141,10 @@ export const resolveChangedPriceSettingWrites = (
     writes.push({ key: 'provider_surcharge', value: next.providerSurcharge });
   }
   if (next.thresholdPercent !== current.thresholdPercent) {
-    writes.push({ key: 'price_threshold_percent', value: next.thresholdPercent });
+    writes.push({ key: PRICE_THRESHOLD_PERCENT, value: next.thresholdPercent });
   }
   if (next.minDiffOre !== current.minDiffOre) {
-    writes.push({ key: 'price_min_diff_ore', value: next.minDiffOre });
+    writes.push({ key: PRICE_MIN_DIFF_ORE, value: next.minDiffOre });
   }
   return writes;
 };
