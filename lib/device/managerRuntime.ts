@@ -16,6 +16,7 @@ import {
   type ExplicitControlObservation,
 } from './transport/managerExplicitBinaryObservation';
 import { preserveNewerReportedStepObservation } from './transport/reportedStepObservation';
+import { mergeTemperatureRejectionsIntoDeviceUpdate } from './transport/managerObservation';
 import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
@@ -34,6 +35,14 @@ type RealtimeReconcileResult = {
   observedControlStateChanged: boolean;
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
+  /**
+   * Capabilities whose retained observation this reconcile already settled
+   * (`mergeTemperatureRejectionsIntoDeviceUpdate`): recorded at Homey's own
+   * timestamps, or left to newer evidence PELS held. The update's receipt-time
+   * recorder leaves them alone: re-stamped at delivery, they would outrank a
+   * refresh reading Homey dated after them.
+   */
+  sourceDatedCapabilityIds: readonly string[];
   currentSnapshot: TransportDeviceSnapshot | null;
 };
 
@@ -117,33 +126,22 @@ export function reconcileRealtimeDeviceUpdate(params: {
     observationState,
   } = params;
   const deviceId = device.id;
-  if (!deviceId) return {
-    observedControlStateChanged: false,
-    changes: [],
-    observedCapabilityIds: [],
-    currentSnapshot: null,
-  };
+  if (!deviceId) return noSnapshotEntryResult();
 
   const parsed = parseDevice(device, Date.now());
   const snapshotIndex = latestSnapshot.findIndex((entry) => entry.id === deviceId);
   const previous = latestSnapshot[snapshotIndex] ?? null;
-  if (!parsed) {
-    if (snapshotIndex >= 0) {
-      latestSnapshot.splice(snapshotIndex, 1);
-      return {
-        observedControlStateChanged: false,
-        changes: [],
-        observedCapabilityIds: [],
-        currentSnapshot: null,
-      };
-    }
-    return {
-      observedControlStateChanged: false,
-      changes: [],
-      observedCapabilityIds: [],
-      currentSnapshot: null,
-    };
-  }
+  if (!parsed) return dropSnapshotEntry(latestSnapshot, snapshotIndex);
+  // A temperature rejection retained for this device holds the read to the
+  // refresh merge's rule: a pair older than the rejection does not bring the
+  // temperature facet back, and a device left with no other control facet
+  // stays out of the snapshot.
+  const temperatureMerge = mergeTemperatureRejectionsIntoDeviceUpdate(
+    observationState.getObservationState(),
+    parsed,
+    device,
+  );
+  if (!temperatureMerge.admitted) return dropSnapshotEntry(latestSnapshot, snapshotIndex);
 
   const explicitBinaryValueAccepted = applyExplicitControlObservationFromUpdate({
     device,
@@ -191,7 +189,27 @@ export function reconcileRealtimeDeviceUpdate(params: {
     observedControlStateChanged: changes.length > 0,
     changes,
     observedCapabilityIds,
+    sourceDatedCapabilityIds: temperatureMerge.sourceDatedCapabilityIds,
     currentSnapshot: resolvedParsed,
+  };
+}
+
+/** The read leaves the device without a snapshot entry: drop the one it had, if any. */
+function dropSnapshotEntry(
+  latestSnapshot: TransportDeviceSnapshot[],
+  snapshotIndex: number,
+): RealtimeReconcileResult {
+  if (snapshotIndex >= 0) latestSnapshot.splice(snapshotIndex, 1);
+  return noSnapshotEntryResult();
+}
+
+function noSnapshotEntryResult(): RealtimeReconcileResult {
+  return {
+    observedControlStateChanged: false,
+    changes: [],
+    observedCapabilityIds: [],
+    sourceDatedCapabilityIds: [],
+    currentSnapshot: null,
   };
 }
 /* eslint-enable functional/immutable-data */

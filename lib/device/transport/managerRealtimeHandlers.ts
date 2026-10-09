@@ -145,8 +145,13 @@ export function handleRealtimeDeviceUpdate(params: {
     parseDevice: (nextDevice, nowTs) => parseDevice(nextDevice, nowTs),
   });
   const observedControlStateChanged = result.changes.length > 0;
-  if (result.observedCapabilityIds.length > 0) {
-    recordObservedCapabilities?.(deviceId, result.observedCapabilityIds);
+  // The receipt-time recorder skips what the reconcile already recorded at
+  // Homey's own timestamps (`sourceDatedCapabilityIds`).
+  const receiptTimedCapabilityIds = result.observedCapabilityIds.filter(
+    (capabilityId) => !result.sourceDatedCapabilityIds.includes(capabilityId),
+  );
+  if (receiptTimedCapabilityIds.length > 0) {
+    recordObservedCapabilities?.(deviceId, receiptTimedCapabilityIds);
   }
   const measurePowerBecameSignificantlyPositive = didMeasurePowerBecomeSignificantlyPositive(
     priorSnapshot?.measuredPowerKw,
