@@ -26,7 +26,7 @@ export {
 export { createDeferredObjectiveLifecycleEmitter } from './appInit/deferredObjectiveLifecycle';
 export { subscribePlanObservedState } from './appInit/planObservedStateSubscription';
 export {
-  requireDeviceManager, requirePlanService, resolvePlanService,
+  requireDeviceManager, requireHomeMembership, requirePlanService, resolvePlanService,
 } from './appInit/contextGuards';
 export { createDeviceDiagnosticsService } from './appInit/deviceDiagnosticsService';
 export { createDailyBudgetService } from './appInit/createDailyBudgetService';

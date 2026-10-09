@@ -167,7 +167,7 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   torn down in the uninit path; teardown fences in-flight work and nulls the
   actuator seam so a late callback cannot actuate after ownership moved.
 - **Reading a sub-home goes through its own narrow port, not the registry.** The
-  registry is a private `AppServiceWiring` field; `AppContext.homeRuntimeRead`
+  registry is a private field of the app; `AppContext.homeRuntimeRead`
   (`lib/home/homeRuntimeRead.ts`) is the only consumer surface, and it serves
   ONLY already-committed values — the last committed plan snapshot, that home's
   tracker state, the bundle diagnostics. It exposes no device list on purpose:

@@ -1,11 +1,10 @@
 // SDK-boundary e2e coverage for the `AppContext` per-home read seam
-// (`lib/home/homeRuntimeRead.ts`, published by
-// `AppServiceWiring.initHomeRuntimeRegistry` through
-// `buildHomeRuntimeReadPort`). The registry itself is a private wiring field,
-// so this pins the only thing a consumer ever sees: the port appears on the
-// real booted app, resolves a configured sub-home's already-committed state,
-// reports the main home as unavailable (its reads stay on the unsuffixed ctx
-// path), and goes away at uninit. The sub-home is configured purely through the
+// (`lib/home/homeRuntimeRead.ts`, built once by the app through
+// `buildHomeRuntimeReadPort` over its registry handle). The registry itself is
+// a private field, so this pins the only thing a consumer ever sees: the port
+// on the real booted app resolves a configured sub-home's already-committed
+// state, reports the main home as unavailable (its reads stay on the
+// unsuffixed ctx path), and reports every home unavailable after uninit. The sub-home is configured purely through the
 // SDK seams by the shared harness — nothing internal is stubbed, and (e2e tier)
 // nothing internal is asserted against either: every claim below reads the
 // served payload, which is why the harness's `assertMembership` sanity check
@@ -33,12 +32,9 @@ describe('AppContext per-home runtime read seam', () => {
     vi.clearAllTimers();
   });
 
-  it('publishes the port at boot, serves the sub-home, and clears it at uninit', async () => {
+  it('serves the sub-home once booted and nothing after uninit', async () => {
     const app = await initAppWithSubHome();
-    const ctx = app as AppContext;
-
-    const port = ctx.homeRuntimeRead;
-    if (!port) throw new Error('expected AppServiceWiring to publish homeRuntimeRead');
+    const port = (app as AppContext).homeRuntimeRead;
 
     const read = port.readHome(SUB_HOME.homeId);
     if (read.state !== 'resolved') throw new Error(`expected ${SUB_HOME.homeId} to resolve`);
@@ -55,9 +51,8 @@ describe('AppContext per-home runtime read seam', () => {
 
     await app.onUninit();
     await settleAsyncSeams();
-    expect(ctx.homeRuntimeRead).toBeUndefined();
-    // The captured port instance is lazy over the wiring field, so a consumer
-    // holding it across teardown cannot resurrect a stale reading.
+    // The port is lazy over the registry handle, so a consumer holding it
+    // across teardown cannot resurrect a stale reading.
     expect(port.readHome(SUB_HOME.homeId)).toEqual({ state: 'unavailable' });
   });
 });

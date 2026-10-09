@@ -227,6 +227,7 @@ describe('startup critical path perf guardrails', () => {
     ['deviceManager', 'DeviceTransport'],
     ['planEngine', 'PlanEngine'],
     ['planService', 'PlanService'],
+    ['snapshotWarmupGate', 'SnapshotWarmupGate'],
   ] as const)('refuses the live phase without %s', (serviceKey, serviceName) => {
     const ctx: AppContext = buildContext().ctx;
     Reflect.deleteProperty(ctx, serviceKey);

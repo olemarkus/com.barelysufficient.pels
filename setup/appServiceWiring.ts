@@ -34,6 +34,7 @@ import {
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
   mainStorageLane,
+  requireHomeMembership,
   requirePlanService,
   resolvePlanService,
   subscribePlanObservedState,
@@ -82,9 +83,12 @@ const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
  * accessors below. Calls tests can override route back through the app.
  */
 // Re-exported so `app.ts` can construct the fence it owns without taking a
-// second module dependency — its `import-x/max-dependencies` ceiling of 31 is a
+// second module dependency — its `import-x/max-dependencies` ceiling is a
 // ratchet, and this wiring already imports the factory.
 export { createPreparedMainReconcileFence };
+// Re-exported for the same reason: `app.ts` builds the per-home read port over
+// the registry handle it owns.
+export { buildHomeRuntimeReadPort };
 export type { HomeRuntimeRegistry };
 
 /** The Main-home shortfall gate, as this wiring hands it over and reads it back. */
@@ -407,10 +411,6 @@ export class AppServiceWiring {
       () => this.deps.getHomeMembershipService()?.isSubHomeExecutionReady() === true,
       () => this.deps.getHomeMembershipService()?.isRuntimeActive() === true,
     ));
-    // Publish the per-home read seam. The registry stays private: `ctx` gets a
-    // closure over the app's registry handle exposing only `readHome`, so it
-    // reports `unavailable` before this step and again once `runUninit` clears it.
-    this.deps.ctx.homeRuntimeRead = buildHomeRuntimeReadPort(() => this.deps.getHomeRuntimeRegistry());
     wirePlanStatusRealtime(this.deps.ctx);
   }
 
@@ -433,7 +433,7 @@ export class AppServiceWiring {
       // Discarded, authority closed, prepared reconcile active — see the
       // factory for what each one licenses.
       () => this.deps.isMainActuationStopped(),
-      () => this.deps.getHomeMembershipService()?.isMainHomeActuationFenced() === true,
+      () => this.isMainHomeWideFenced(),
       this.deps.preparedMainReconcileFence.isActive,
     );
     ctx.capacityGuard = runtime.guard;
@@ -524,8 +524,10 @@ export class AppServiceWiring {
    * does not dispatch writes it already knows cannot land.
    */
   private isMainHomeWideFenced(): boolean {
+    // Every reader is built after `initHomeMembership`, and after `runUninit`
+    // the stop flag answers before membership is read.
     return this.deps.isMainActuationStopped()
-      || this.deps.ctx.homeMembership?.isMainHomeActuationFenced() === true;
+      || requireHomeMembership(this.deps.ctx).isMainHomeActuationFenced();
   }
 
   /**
@@ -701,7 +703,6 @@ export class AppServiceWiring {
     // per-meter fan-out: an in-flight poll resolving after this routes nowhere.
     this.deps.getHomeRuntimeRegistry()?.teardownAll();
     this.deps.setHomeRuntimeRegistry(undefined);
-    ctx.homeRuntimeRead = undefined;
     this.clearUninitTimers();
     this.stopUninitServices();
     // Detach battery control's snapshot feed. Nothing is handed back here:

@@ -1,9 +1,9 @@
 /**
  * Boot-wiring helpers for the per-home capacity-bundle registry (multi-home
- * R7b). `AppServiceWiring` owns the registry FIELD (its lifetime spans
- * init→uninit); the closures here keep every consumer seam lazy over that
- * field, so each seam is inert before `initHomeRuntimeRegistry` runs and again
- * after `runUninit` clears it:
+ * R7b). The app holds the registry FIELD and `AppServiceWiring` sets it (its
+ * lifetime spans init→uninit); the closures here keep every consumer seam lazy
+ * over that field, so each seam is inert before `initHomeRuntimeRegistry` runs
+ * and again after `runUninit` clears it:
  *
  * - the transport's per-meter provider pair (`buildHomeRuntimeMeterProviders`)
  *   — one `manager/energy/live` poll serves every home;
