@@ -46,7 +46,6 @@ export const createModeDeviceTargetFill = (ctx: AppContext): ModeDeviceTargetFil
       device,
       createDefaultToPlanDeviceOptions(),
     )),
-    ctx.homey.settings,
   ),
   (deviceId) => resolveHomeIdForModeCatalogSeed(ctx, deviceId),
   (event) => ctx.getStructuredLogger('devices')?.info(event),
