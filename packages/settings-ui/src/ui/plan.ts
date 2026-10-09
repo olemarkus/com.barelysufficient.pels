@@ -1,5 +1,6 @@
 export { parsePlanSnapshot } from './planSnapshotParse.ts';
 export {
+  paintOverviewIfOwed,
   refreshPlan,
   renderPlan,
   resetPlanSurfaceForScopeChange,

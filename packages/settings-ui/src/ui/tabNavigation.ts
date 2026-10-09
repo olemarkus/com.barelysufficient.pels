@@ -12,7 +12,7 @@ import { showToast } from './toast.ts';
 import { state } from './state.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
 import { refreshOverviewPlanWithRescueGate } from './overviewRescueGate.ts';
-import { resetPlanSurfaceIfScopeChanged } from './plan.ts';
+import { paintOverviewIfOwed, resetPlanSurfaceIfScopeChanged } from './plan.ts';
 import { refreshHomesOnHomesPanel } from './homesSettings.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
 import {
@@ -72,7 +72,7 @@ const refreshHomeSettingsPanel = (tabId: string): void => {
 
 const runTabActivationSideEffects = (tabId: string) => {
   if (tabId === 'overview') {
-    document.dispatchEvent(new Event('overview-tab-activated'));
+    paintOverviewIfOwed();
     // The Overview's cards are device rows, so it needs the device payload —
     // without repainting the hidden device panels, which paint on their own
     // activation.
