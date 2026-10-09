@@ -37,7 +37,7 @@ import { resolveReserveAdmission } from '../admission';
 import { computeRestoreBufferKw } from './accounting';
 import { canAdmitWithinBatch, canAttemptBatchContinuation, recordBatchAdmission } from './batch';
 import { shouldWaitForOtherRecovery } from './coordination';
-import { resolveCapacityRestoreBlockReason, resolveMeterSettlingRemainingSec } from './timing';
+import { resolveCapacityRestoreBlockReason, resolveMeterSettlingReason } from './timing';
 import type { RestoreCycle, RestoreLoopState } from './types';
 
 /** Hand the battery back if the lane admits it now: its limit hold (`resolveStorageHandBack`). */
@@ -73,12 +73,9 @@ export function planStorageHandBack(
 
   const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);
   const blockedByInCycleRestore = restoredOneThisCycle && !batchContinuation;
-  const meterSettlingSec = resolveMeterSettlingRemainingSec({
-    timing,
-    lastRestoreTs: state.actuation.lastRestoreMs,
-    restoredOneThisCycle: blockedByInCycleRestore,
-  });
-  if (meterSettlingSec !== null) return reject('meter_settling');
+  if (resolveMeterSettlingReason(timing, state.actuation.lastRestoreMs, blockedByInCycleRestore) !== null) {
+    return reject('meter_settling');
+  }
   const gateReason = resolveCapacityRestoreBlockReason({
     timing,
     restoredOneThisCycle: blockedByInCycleRestore,

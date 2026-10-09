@@ -16,8 +16,7 @@ import type { RestoreTiming } from './timing';
 import {
   buildRestoreTiming,
   buildRestoreCooldownReason,
-  resolveMeterSettlingCountdownTiming,
-  resolveMeterSettlingRemainingSec,
+  resolveMeterSettlingReason,
   shouldPlanBudgetExemptRestores,
   shouldPlanRestores,
 } from './timing';
@@ -26,7 +25,6 @@ import { resolveHeadroomReserves, resolveRestoreDecisionPhase, type HeadroomRese
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
 import { markRestoreCandidatesHeld, markRestoreCandidatesStayShedForShortfall } from './marking';
-import { buildMeterSettlingReason } from '../planReasonStrings';
 import {
   applyActiveSteppedRestoreCandidates,
   applyRestoreCandidates,
@@ -241,15 +239,7 @@ function applyFullRestorePass(
  */
 function applyRestorePlanInCooldown(cycle: RestoreCycle): void {
   const { deviceMap, swapLedger, state, timing } = cycle;
-  const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
-    timing,
-    lastRestoreTs: state.actuation.lastRestoreMs,
-  });
-  const holdReason = meterSettlingRemainingSec === null
-    ? buildRestoreCooldownReason(timing)
-    : buildMeterSettlingReason(
-      meterSettlingRemainingSec,
-      resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.actuation.lastRestoreMs }),
-    );
+  const holdReason = resolveMeterSettlingReason(timing, state.actuation.lastRestoreMs)
+    ?? buildRestoreCooldownReason(timing);
   markRestoreCandidatesHeld(deviceMap, swapLedger, holdReason);
 }

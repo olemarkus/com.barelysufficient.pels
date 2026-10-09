@@ -22,7 +22,7 @@ export function setRestorePlanDevice(
   deviceMap.set(id, next);
 }
 
-export function buildOffSteppedRestoreShedUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
+function buildOffSteppedRestoreShedUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
   const offStepId = isSteppedLoadDevice(dev)
     ? (getSteppedLoadOffStep(dev.steppedLoadProfile) ?? getSteppedLoadLowestStep(dev.steppedLoadProfile))?.id
     : undefined;
@@ -42,6 +42,17 @@ export function buildOffSteppedRestoreHoldUpdate(
     ...buildOffSteppedRestoreShedUpdate(dev),
     reason,
   };
+}
+
+/**
+ * A stepped restore candidate held this cycle with `reason`: one observed off
+ * is held at its off step, any other keeps its level and carries the reason.
+ */
+export function buildSteppedRestoreHoldUpdate(
+  dev: DevicePlanDevice,
+  reason: DevicePlanDevice['reason'],
+): Partial<DevicePlanDevice> {
+  return isOffSteppedRestoreCandidate(dev) ? buildOffSteppedRestoreHoldUpdate(dev, reason) : { reason };
 }
 
 export function resolveRejectedSteppedSwapUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {

@@ -248,6 +248,7 @@ export function getShedCooldownState(
 }
 
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
+import { buildMeterSettlingReason } from '../planReasonStrings';
 
 export type CapacityRestoreBlockReasonTiming = Pick<
   RestoreTiming,
@@ -268,7 +269,11 @@ export type CapacityRestoreBlockReasonTiming = Pick<
   | 'restoreCooldownTotalSec'
 >>;
 
-const buildCountdownTiming = (
+/**
+ * The countdown fields a timer hold reason carries, for the card to
+ * interpolate: each present only when the timer reported it.
+ */
+export const buildCountdownTiming = (
   startedAtMs: number | null | undefined,
   totalSec: number | null | undefined,
 ) => ({
@@ -327,14 +332,25 @@ function resolveStartupStabilizationReason(
 
 function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreBlockReasonTiming): DeviceReason | null {
   if (timing.activeOvershoot) return null;
-  if (timing.inCooldown) {
-    return {
-      code: PLAN_REASON_CODES.cooldownShedding,
-      remainingSec: timing.shedCooldownRemainingSec ?? 0,
-      ...buildCountdownTiming(timing.shedCooldownStartedAtMs, timing.shedCooldownTotalSec),
-    };
-  }
+  if (timing.inCooldown) return buildShedCooldownReason(timing);
   return timing.inRestoreCooldown ? buildRestoreCooldownReason(timing) : null;
+}
+
+/**
+ * The shed cooldown as a hold reason, counting down to the end of the window
+ * that follows the last shed or recovery. Shared by both hold ladders
+ * (`resolveCapacityRestoreBlockReason` here, `resolveOffDeviceReason` in
+ * `restore/devices.ts`).
+ */
+export function buildShedCooldownReason(
+  timing: Pick<RestoreTiming, 'shedCooldownRemainingSec'>
+    & Partial<Pick<RestoreTiming, 'shedCooldownStartedAtMs' | 'shedCooldownTotalSec'>>,
+): DeviceReason {
+  return {
+    code: PLAN_REASON_CODES.cooldownShedding,
+    remainingSec: timing.shedCooldownRemainingSec ?? 0,
+    ...buildCountdownTiming(timing.shedCooldownStartedAtMs, timing.shedCooldownTotalSec),
+  };
 }
 
 /** The restore cooldown as a hold reason, counting down to the next resume. */
@@ -346,33 +362,26 @@ export function buildRestoreCooldownReason(timing: CapacityRestoreBlockReasonTim
   };
 }
 
-export function resolveMeterSettlingRemainingSec(params: {
-  timing: MeterSettlingTiming;
-  lastRestoreTs?: number | null;
-  restoredOneThisCycle?: boolean;
-}): number | null {
-  const { timing, lastRestoreTs = null, restoredOneThisCycle = false } = params;
+/**
+ * The meter-settling hold: the draw of the last restore (or of this cycle's,
+ * once one was admitted) has not yet shown up on the whole-home meter, so
+ * nothing else resumes until a reading after it lands or the settle window
+ * ends. Null when no window is open. The one owner of the remaining time and
+ * the countdown the card interpolates, so each restore lane resolves it once.
+ */
+export function resolveMeterSettlingReason(
+  timing: MeterSettlingTiming,
+  lastRestoreTs: number | null,
+  restoredOneThisCycle = false,
+): DeviceReason | null {
   if (timing.activeOvershoot) return null;
   const referenceRestoreTs = restoredOneThisCycle ? timing.nowTs : lastRestoreTs;
   if (typeof referenceRestoreTs !== 'number') return null;
   if (timing.measurementTs !== null && timing.measurementTs > referenceRestoreTs) return null;
   const remainingMs = (referenceRestoreTs + RESTORE_COOLDOWN_MS) - timing.nowTs;
   if (remainingMs <= 0) return null;
-  return Math.ceil(remainingMs / 1000);
-}
-
-export function resolveMeterSettlingCountdownTiming(params: {
-  timing: MeterSettlingTiming;
-  lastRestoreTs?: number | null;
-  restoredOneThisCycle?: boolean;
-}): { countdownStartedAtMs: number; countdownTotalSec: number } | undefined {
-  const { timing, lastRestoreTs = null, restoredOneThisCycle = false } = params;
-  if (timing.activeOvershoot) return undefined;
-  const referenceRestoreTs = restoredOneThisCycle ? timing.nowTs : lastRestoreTs;
-  if (typeof referenceRestoreTs !== 'number') return undefined;
-  if (timing.measurementTs !== null && timing.measurementTs > referenceRestoreTs) return undefined;
-  return {
+  return buildMeterSettlingReason(Math.ceil(remainingMs / 1000), {
     countdownStartedAtMs: referenceRestoreTs,
     countdownTotalSec: Math.ceil(RESTORE_COOLDOWN_MS / 1000),
-  };
+  });
 }

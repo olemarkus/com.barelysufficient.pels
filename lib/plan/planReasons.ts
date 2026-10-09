@@ -5,12 +5,11 @@ import {
   type DeviceReason,
   type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { computeBaseRestoreNeed } from './restore/accounting';
+import { buildRestoreShortfallReason } from './restore/accounting';
+import { buildShedCooldownReason } from './restore/timing';
 import {
   classifyPlanReason,
-  renderPlanReasonDecision,
   type ClassifiedPlanReason,
-  type PlanReasonDecision,
 } from './planReasonStrings';
 import {
   isBudgetReason,
@@ -106,24 +105,20 @@ function maybeApplyShortfallReason(
   ctx: ReasonContext,
   dev: DevicePlanDevice,
   currentReason: ClassifiedPlanReason,
-): PlanReasonDecision | null {
+): DeviceReason | null {
   const { guardInShortfall, headroomRaw } = ctx;
   if (!guardInShortfall || headroomRaw === null) return null;
   if (isSwapReason(currentReason) || isBudgetReason(currentReason)) return null;
   if (currentReason.code === PLAN_REASON_CODES.neutralStartupHold) return null;
   if (isShortfallReason(currentReason)) return null;
-  const { needed: estimatedNeed } = computeBaseRestoreNeed(dev);
-  return { code: 'shortfall', neededKw: estimatedNeed, headroomKw: headroomRaw };
+  return buildRestoreShortfallReason(dev, headroomRaw);
 }
 
 function maybeApplyCooldownReason(
   ctx: ReasonContext,
   currentReason: ClassifiedPlanReason,
-): PlanReasonDecision | null {
-  const {
-    inCooldown, activeOvershoot, shedCooldownRemainingSec,
-    shedCooldownStartedAtMs, shedCooldownTotalSec,
-  } = ctx;
+): DeviceReason | null {
+  const { inCooldown, activeOvershoot } = ctx;
   if (
     inCooldown
     && !activeOvershoot
@@ -140,16 +135,7 @@ function maybeApplyCooldownReason(
     // where some device happened to be shed inside the last 60 s.
     && currentReason.code !== PLAN_REASON_CODES.startupStabilization
   ) {
-    return {
-      code: 'cooldown_shedding',
-      remainingSec: shedCooldownRemainingSec,
-      countdownTiming: {
-        ...(typeof shedCooldownStartedAtMs === 'number' ? { countdownStartedAtMs: shedCooldownStartedAtMs } : {}),
-        ...(typeof shedCooldownTotalSec === 'number' && shedCooldownTotalSec > 0
-          ? { countdownTotalSec: shedCooldownTotalSec }
-          : {}),
-      },
-    };
+    return buildShedCooldownReason(ctx);
   }
   return null;
 }
@@ -366,7 +352,7 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
   const baseReason = buildBaseReason(ctx, dev);
 
   const shortfallReason = maybeApplyShortfallReason(ctx, dev, currentReason);
-  if (shortfallReason) return { ...dev, reason: renderPlanReasonDecision(shortfallReason) };
+  if (shortfallReason) return { ...dev, reason: shortfallReason };
 
   // Surplus-hold framing takes precedence over the plan-wide shed cooldown for a
   // device whose shed IS the standing "Run on solar surplus" posture: the device
@@ -384,7 +370,7 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
   if (postureHoldReason) return { ...dev, reason: postureHoldReason };
 
   const cooldownReason = maybeApplyCooldownReason(ctx, currentReason);
-  if (cooldownReason) return { ...dev, reason: renderPlanReasonDecision(cooldownReason) };
+  if (cooldownReason) return { ...dev, reason: cooldownReason };
 
   // Smart-task framing wins over capacity / dailyBudget framing when both
   // apply: the user opted into the price-aware plan, so "Waiting for cheaper

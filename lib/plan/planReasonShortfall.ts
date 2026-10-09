@@ -40,11 +40,12 @@ import type { RestoreHeadroomAxes } from './restore/headroomLedger';
  *  - understates by a live reserve claim on the `insufficient`-with-claim
  *    branch: `resolveReserveAdmission` hands back the RAW admission there,
  *    matching the restore gates exactly (parity, not a bug);
- *  - the two OTHER consumers that build a user-visible need from the bare
- *    `computeBaseRestoreNeed` — `maybeApplyShortfallReason` (`planReasons.ts`)
- *    and `buildRestoreShortfallReason` (`restore/marking.ts`) — carry the same
- *    deflation and are deliberately out of scope here; both render the
- *    shortfall-guard copy, not this module's gap;
+ *  - the OTHER consumers that build a user-visible need from the bare
+ *    `computeBaseRestoreNeed` — `buildRestoreShortfallReason`
+ *    (`restore/accounting.ts`), which `maybeApplyShortfallReason`
+ *    (`planReasons.ts`), the shortfall marking and the off-state reason share —
+ *    carry the same deflation and are deliberately out of scope here; they
+ *    render the shortfall-guard copy, not this module's gap;
  *  - can overstate for a RUNNING stepped device denied a step-up: the need is
  *    the full restore power (`estimateRestorePower` → `planningPowerKw`), not
  *    the step-up increment the stepped gate admits on. Exposure is the

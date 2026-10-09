@@ -1,26 +1,18 @@
 import type { DevicePlanDevice } from '../planTypes';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { SwapLedger } from '../swap';
-import { computeBaseRestoreNeed } from './accounting';
+import { buildRestoreShortfallReason } from './accounting';
 import {
-  getInactiveReason,
   getOffDevices,
   getSteppedRestoreCandidates,
   isOffSteppedRestoreCandidate,
   markOffDevicesStayOff,
+  resolveInactiveRestoreUpdate,
 } from './devices';
-import { buildOffSteppedRestoreShedUpdate, setRestorePlanDevice as setDevice } from './helpers';
-import { buildOffSteppedRestoreHoldUpdate } from './planDeviceUpdates';
+import { buildSteppedRestoreHoldUpdate, setRestorePlanDevice as setDevice } from './planDeviceUpdates';
 import { materializeShedSnapshotFields } from '../planActionMaterialization';
 import { holdPendingSwapTargetUntilSourcesAreOff } from './swap';
-import { buildShortfallReason } from '../planReasonStrings';
 
-function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: number): DevicePlanDevice['reason'] {
-  const { needed } = computeBaseRestoreNeed(dev);
-  return buildShortfallReason(needed, headroomKw);
-}
-
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function markRestoreCandidatesStayShedForShortfall(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   headroomKw: number | null;
@@ -43,41 +35,30 @@ export function markRestoreCandidatesStayShedForShortfall(params: {
   });
 
   for (const dev of steppedCandidates) {
-    const currentOff = isOffSteppedRestoreCandidate(dev);
     const reason = buildRestoreShortfallReason(dev, headroomKw);
-    let update: Partial<DevicePlanDevice> = {
+    if (isOffSteppedRestoreCandidate(dev) || dev.selectedStepId === undefined) {
+      setPlanDevice(dev.id, buildSteppedRestoreHoldUpdate(dev, reason));
+      continue;
+    }
+    // Route the post-plan revision through the chunk-6 materialisation adapter so this
+    // site shares the single shed-action snapshot contract. The intent is `set_step`
+    // with `targetStepId` set to the specific step the revision targets — the adapter
+    // forwards it to `releaseShedStepId` on the projected triple.
+    const triple = materializeShedSnapshotFields({
+      intent: { kind: 'set_step', targetStepId: dev.selectedStepId },
+      shouldShed: true,
+    });
+    setPlanDevice(dev.id, {
       reason,
-    };
-    if (currentOff) {
-      const offUpdate = buildOffSteppedRestoreShedUpdate(dev);
-      update = {
-        plannedState: offUpdate.plannedState,
-        desiredStepId: offUpdate.desiredStepId,
-        targetStepId: offUpdate.targetStepId,
-        shedAction: offUpdate.shedAction,
-        reason,
-      };
-    }
-    if (!currentOff && dev.selectedStepId !== undefined) {
-      // Route the post-plan revision through the chunk-6 materialisation adapter so this
-      // site shares the single shed-action snapshot contract. The intent is `set_step`
-      // with `targetStepId` set to the specific step the revision targets — the adapter
-      // forwards it to `releaseShedStepId` on the projected triple.
-      const triple = materializeShedSnapshotFields({
-        intent: { kind: 'set_step', targetStepId: dev.selectedStepId },
-        shouldShed: true,
-      });
-      update.plannedState = 'shed';
-      update.desiredStepId = dev.selectedStepId;
-      update.targetStepId = dev.selectedStepId;
-      update.shedAction = triple.shedAction;
-      update.shedTemperature = triple.shedTemperature;
-      update.releaseShedStepId = triple.releaseShedStepId;
-    }
-    setPlanDevice(dev.id, update);
+      plannedState: 'shed',
+      desiredStepId: dev.selectedStepId,
+      targetStepId: dev.selectedStepId,
+      shedAction: triple.shedAction,
+      shedTemperature: triple.shedTemperature,
+      releaseShedStepId: triple.releaseShedStepId,
+    });
   }
 }
-/* eslint-enable functional/immutable-data */
 
 /**
  * Hold every restore candidate this cycle with ONE reason — the cooldown lane's
@@ -100,20 +81,10 @@ export function markRestoreCandidatesHeld(
   const snapshot = [...deviceMap.values()];
   for (const dev of getOffDevices(snapshot)) {
     if (holdPendingSwapTargetUntilSourcesAreOff(swapLedger, dev, deviceMap)) continue;
-    const inactiveReason = getInactiveReason(dev);
-    setDevice(deviceMap, dev.id, inactiveReason
-      ? { plannedState: 'inactive', reason: inactiveReason }
-      : { plannedState: 'shed', reason });
+    setDevice(deviceMap, dev.id, resolveInactiveRestoreUpdate(dev) ?? { plannedState: 'shed', reason });
   }
   for (const dev of getSteppedRestoreCandidates(snapshot)) {
     if (holdPendingSwapTargetUntilSourcesAreOff(swapLedger, dev, deviceMap)) continue;
-    const inactiveReason = getInactiveReason(dev);
-    if (inactiveReason) {
-      setDevice(deviceMap, dev.id, { plannedState: 'inactive', reason: inactiveReason });
-      continue;
-    }
-    setDevice(deviceMap, dev.id, isOffSteppedRestoreCandidate(dev)
-      ? buildOffSteppedRestoreHoldUpdate(dev, reason)
-      : { reason });
+    setDevice(deviceMap, dev.id, resolveInactiveRestoreUpdate(dev) ?? buildSteppedRestoreHoldUpdate(dev, reason));
   }
 }

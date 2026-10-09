@@ -3,15 +3,14 @@ import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../planTypes';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
-import { getInactiveReason } from './devices';
+import { resolveInactiveRestoreUpdate } from './devices';
 import { blockRestoreForRecentActivationSetback, setRestorePlanDevice as setDevice } from './helpers';
 import {
   shouldWaitForOtherRecovery,
 } from './coordination';
 import {
   resolveCapacityRestoreBlockReason,
-  resolveMeterSettlingCountdownTiming,
-  resolveMeterSettlingRemainingSec,
+  resolveMeterSettlingReason,
 } from './timing';
 import {
   buildReservedForStartReason,
@@ -47,14 +46,11 @@ export function planRestoreForDevice(
   } = cycle;
   const { availableHeadroom, restoredOneThisCycle } = loop;
 
-  const inactiveReason = getInactiveReason(dev);
+  const inactiveUpdate = resolveInactiveRestoreUpdate(dev);
   const restoreDebugKey = `binary:${dev.id}`;
-  if (inactiveReason) {
+  if (inactiveUpdate) {
     clearRestoreDebugEvent(state, restoreDebugKey);
-    setDevice(deviceMap, dev.id, {
-      plannedState: 'inactive',
-      reason: inactiveReason,
-    });
+    setDevice(deviceMap, dev.id, inactiveUpdate);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -65,13 +61,11 @@ export function planRestoreForDevice(
     timing,
     restoredOneThisCycle: shouldBlockForInCycleRestore,
   });
-  const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
-    timing,
-    lastRestoreTs: state.actuation.lastRestoreMs,
-    restoredOneThisCycle: shouldBlockForInCycleRestore,
-  });
-  if (meterSettlingRemainingSec !== null) {
-    return rejectBinaryRestoreForMeterSettling(cycle, dev, loop, shouldBlockForInCycleRestore);
+  const meterSettlingReason = resolveMeterSettlingReason(
+    timing, state.actuation.lastRestoreMs, shouldBlockForInCycleRestore,
+  );
+  if (meterSettlingReason !== null) {
+    return rejectBinaryRestore(cycle, dev, loop, meterSettlingReason);
   }
   if (gateReason) {
     return rejectBinaryRestore(cycle, dev, loop, gateReason);
@@ -108,7 +102,7 @@ export function planRestoreForDevice(
 
   const restoreNeed = getRestoreNeed(dev, state, timing.nowTs, deps.deviceDiagnostics);
   if (batchContinuation && !canAdmitWithinBatch(batchState, restoreNeed.needed)) {
-    return rejectBinaryRestoreForMeterSettling(cycle, dev, loop, true);
+    return rejectBinaryRestore(cycle, dev, loop, resolveBatchFullReason(cycle));
   }
   // Admit against the power this device may actually claim: raw available power minus any startup
   // reservation held by a strictly higher-priority device that has not started yet. The running
@@ -159,9 +153,9 @@ export function planRestoreForDevice(
   return handleInsufficientBinaryRestoreHeadroom(cycle, lane, dev, loop, restoreNeed, reserved);
 }
 
-// Collapses the two near-identical gate/waiting reject branches: both mark the device shed with
-// the supplied reason and emit the identical restore_rejected debug payload (event + signature),
-// differing only in which reason produced the block.
+// Every gate that holds a binary restore (meter settling, the capacity gate, waiting on other
+// devices, a startup reservation) marks the device shed with its reason and emits the identical
+// restore_rejected debug payload (event + signature), differing only in which reason held it.
 function rejectBinaryRestore(
   cycle: RestoreCycle,
   dev: DevicePlanDevice,
@@ -193,46 +187,12 @@ function rejectBinaryRestore(
 }
 
 /**
- * `gateRestoredOne` is the value the settling countdown is computed against
- * (the in-cycle gate's verdict); the value this returns is the caller's own
- * running `loop.restoredOneThisCycle`. They differ on purpose, which is why the
- * bag carried two near-identically named booleans.
+ * The hold a restore carries when the open batch has no room left for it: the
+ * meter-settling window this cycle's admissions opened.
  */
-function rejectBinaryRestoreForMeterSettling(
-  cycle: RestoreCycle,
-  dev: DevicePlanDevice,
-  loop: RestoreLoopState,
-  gateRestoredOne: boolean,
-): RestoreLoopState {
-  const { state, deviceMap, timing, phase } = cycle;
-  const { availableHeadroom } = loop;
-  const lastRestoreTs = state.actuation.lastRestoreMs;
-  const restoredOneThisCycle = gateRestoredOne;
-  const restoreDebugKey = `binary:${dev.id}`;
-  const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs, restoredOneThisCycle }) ?? 0;
-  const reason = buildMeterSettlingReason(
-    remainingSec,
-    resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs, restoredOneThisCycle }),
-  );
-  setDevice(deviceMap, dev.id, {
-    plannedState: 'shed',
-    reason,
-  });
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_rejected',
-      restoreType: 'binary',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      rejectionReason: reason.code,
-    },
-  });
-  return loop;
+function resolveBatchFullReason(cycle: RestoreCycle): DevicePlanDevice['reason'] {
+  return resolveMeterSettlingReason(cycle.timing, cycle.state.actuation.lastRestoreMs, true)
+    ?? buildMeterSettlingReason(null);
 }
 
 function rejectBinaryRestoreForInsufficientHeadroom(

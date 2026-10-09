@@ -1,7 +1,6 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { computeBaseRestoreNeed } from './restore/accounting';
+import { buildRestoreShortfallReason } from './restore/accounting';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
-import { buildShortfallReason } from './planReasonStrings';
 import { getInactiveReason } from './restore/devices';
 import type { DevicePlanDevice } from './planTypes';
 
@@ -46,12 +45,11 @@ export function applyOffStateReason(planDevice: DevicePlanDevice, shortfall: Sho
     };
   }
   if (shortfall.inShortfall) {
-    const { needed: need } = computeBaseRestoreNeed(planDevice);
     return {
       ...planDevice,
       plannedState: 'shed',
       desiredStepId,
-      reason: buildShortfallReason(need, shortfall.headroomKw),
+      reason: buildRestoreShortfallReason(planDevice, shortfall.headroomKw),
     };
   }
   return {

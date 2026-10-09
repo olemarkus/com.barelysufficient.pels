@@ -17,6 +17,7 @@ import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ShedDecisions } from '../shedDecisions';
 import type { StorageLeverState } from '../planState';
+import { buildCountdownTiming, buildShedCooldownReason } from './timing';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
@@ -289,6 +290,16 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   return null;
 }
 
+/**
+ * The update that parks a device the restore lanes must leave alone as
+ * `inactive`, with the reason `getInactiveReason` names; null when it does not
+ * apply.
+ */
+export function resolveInactiveRestoreUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> | null {
+  const reason = getInactiveReason(dev);
+  return reason ? { plannedState: 'inactive', reason } : null;
+}
+
 export function markOffDevicesStayOff(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   timing: OffDeviceReasonTiming;
@@ -311,9 +322,9 @@ export function markOffDevicesStayOff(params: {
     .filter((device) => isOffBinaryRestoreHoldCandidate(device))
     .filter((device) => deviceFilter?.(device) ?? true);
   for (const dev of offDevices) {
-    const inactiveReason = getInactiveReason(dev);
-    if (inactiveReason) {
-      setDevice(dev.id, { plannedState: 'inactive', reason: inactiveReason });
+    const inactiveUpdate = resolveInactiveRestoreUpdate(dev);
+    if (inactiveUpdate) {
+      setDevice(dev.id, inactiveUpdate);
       continue;
     }
     const defaultReason = dev.reason;
@@ -372,27 +383,10 @@ export function resolveOffDeviceReason(
     return lastControlledMs === undefined ? null : { code: PLAN_REASON_CODES.startupStabilization };
   }
   if (timing.activeOvershoot) return defaultReason;
-  if (timing.inCooldown) {
-    const seconds = timing.shedCooldownRemainingSec ?? 0;
-    return {
-      code: PLAN_REASON_CODES.cooldownShedding,
-      remainingSec: seconds,
-      ...(typeof timing.shedCooldownStartedAtMs === 'number'
-        ? { countdownStartedAtMs: timing.shedCooldownStartedAtMs }
-        : {}),
-      ...(typeof timing.shedCooldownTotalSec === 'number' && timing.shedCooldownTotalSec > 0
-        ? { countdownTotalSec: timing.shedCooldownTotalSec }
-        : {}),
-    };
-  }
+  if (timing.inCooldown) return buildShedCooldownReason(timing);
   return {
     code: PLAN_REASON_CODES.cooldownRestore,
     remainingSec: timing.restoreCooldownSeconds,
-    ...(typeof timing.restoreCooldownStartedAtMs === 'number'
-      ? { countdownStartedAtMs: timing.restoreCooldownStartedAtMs }
-      : {}),
-    ...(typeof timing.restoreCooldownTotalSec === 'number' && timing.restoreCooldownTotalSec > 0
-      ? { countdownTotalSec: timing.restoreCooldownTotalSec }
-      : {}),
+    ...buildCountdownTiming(timing.restoreCooldownStartedAtMs, timing.restoreCooldownTotalSec),
   };
 }

@@ -36,7 +36,7 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { applyRestorePlan as applyRestorePlanFromPlanState } from '../../lib/plan/restore';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 
-import { resolveMeterSettlingRemainingSec } from '../../lib/plan/restore/timing';
+import { resolveMeterSettlingReason } from '../../lib/plan/restore/timing';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { buildPlanDevice, restoreTimingFixture, steppedPlanDevice } from '../utils/planTestUtils';
@@ -2055,14 +2055,16 @@ describe('restore cooldown backoff', () => {
   });
 
   it('returns the full settle window for a same-cycle restore before any sample arrives', () => {
-    expect(resolveMeterSettlingRemainingSec({
-      timing: {
-        activeOvershoot: false,
-        measurementTs: null,
-        nowTs: 0,
-      },
-      lastRestoreTs: 0,
-    })).toBe(60);
+    expect(resolveMeterSettlingReason({
+      activeOvershoot: false,
+      measurementTs: null,
+      nowTs: 0,
+    }, 0)).toEqual({
+      code: 'meter_settling',
+      remainingSec: 60,
+      countdownStartedAtMs: 0,
+      countdownTotalSec: 60,
+    });
   });
 
   it('stops stepped meter settling once the shared 60-second settle window has elapsed', () => {

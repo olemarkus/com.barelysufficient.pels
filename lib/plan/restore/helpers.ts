@@ -2,11 +2,11 @@ import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTy
 import type { RestoreTiming } from './timing';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from '../planState';
 import {
-  getInactiveReason,
   getSteppedRestoreCandidates,
   isActiveSteppedRestoreCandidate,
   isOffSteppedRestoreCandidate,
   NEUTRAL_STARTUP_HOLD_REASON,
+  resolveInactiveRestoreUpdate,
 } from './devices';
 import { resolveCapacityRestoreBlockReason } from './timing';
 import {
@@ -53,7 +53,7 @@ import type {
 // Re-export the public restore-helper surface so existing importers
 // (lib/plan/restore/index.ts, lib/plan/restore/gating.ts, tests) are unchanged
 // while the implementation lives in cohesive sibling modules.
-export { setRestorePlanDevice, buildOffSteppedRestoreShedUpdate } from './planDeviceUpdates';
+export { setRestorePlanDevice } from './planDeviceUpdates';
 export type { SteppedSwapExecutor } from './steppedRestoreAdmission';
 
 export function markSteppedDevicesStayAtCurrentLevel(params: {
@@ -365,12 +365,9 @@ function keepInactiveSteppedDeviceInactive(params: {
   state: PlanEngineState;
   restoreDebugKey: string;
 }): boolean {
-  const inactiveReason = getInactiveReason(params.dev);
-  if (!inactiveReason) return false;
+  const inactiveUpdate = resolveInactiveRestoreUpdate(params.dev);
+  if (!inactiveUpdate) return false;
   clearRestoreDebugEvent(params.state, params.restoreDebugKey);
-  setRestorePlanDevice(params.deviceMap, params.dev.id, {
-    plannedState: 'inactive',
-    reason: inactiveReason,
-  });
+  setRestorePlanDevice(params.deviceMap, params.dev.id, inactiveUpdate);
   return true;
 }
