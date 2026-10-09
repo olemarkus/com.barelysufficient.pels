@@ -17,6 +17,9 @@ import {
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_CONTROL_MODES,
   homeScopedSettingsKey,
+  CONTROLLABLE_DEVICES,
+  MANAGED_DEVICES,
+  PRICE_OPTIMIZATION_SETTINGS,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { getHomeScope } from './homeScope.ts';
 import { normalizeEvCarAssociations } from '../../../shared-domain/src/settings/evCarAssociations.ts';
@@ -235,11 +238,11 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
     apply: (value: unknown) => void;
   }> = [
     {
-      key: 'controllable_devices', fallback: state.controllableMap,
+      key: CONTROLLABLE_DEVICES, fallback: state.controllableMap,
       apply: (value) => { state.controllableMap = readRecordSetting(value); },
     },
     {
-      key: 'managed_devices', fallback: state.managedMap,
+      key: MANAGED_DEVICES, fallback: state.managedMap,
       apply: (value) => { state.managedMap = readRecordSetting(value); },
     },
     {
@@ -274,7 +277,7 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
       apply: (value) => { state.evCarAssociations = normalizeEvCarAssociations(value); },
     },
     {
-      key: 'price_optimization_settings',
+      key: PRICE_OPTIMIZATION_SETTINGS,
       fallback: state.priceOptimizationSettings,
       apply: (value) => {
         const read = classifyPriceOptimizationConfigMap(value);
@@ -331,8 +334,8 @@ const performClearMultipleDeviceSettings = async (deviceIds: string[]) => {
   const next = buildPurgedState(ids);
 
   const writeResults = await Promise.allSettled([
-    setSetting('controllable_devices', next.controllableMap),
-    setSetting('managed_devices', next.managedMap),
+    setSetting(CONTROLLABLE_DEVICES, next.controllableMap),
+    setSetting(MANAGED_DEVICES, next.managedMap),
     setSetting(DEVICE_CONTROL_PROFILES, next.deviceControlProfiles),
     setSetting(DEVICE_TARGET_POWER_CONFIGS, next.deviceTargetPowerConfigs),
     setSetting(DEVICE_EXPECTED_POWER_OVERRIDES, next.deviceExpectedPowerOverrides),
@@ -340,7 +343,7 @@ const performClearMultipleDeviceSettings = async (deviceIds: string[]) => {
     setSetting(TEMPERATURE_BOOST_SETTINGS, next.temperatureBoostSettings),
     setSetting(EV_BOOST_SETTINGS, next.evBoostSettings),
     setSetting(EV_CAR_ASSOCIATIONS, next.evCarAssociations),
-    setSetting('price_optimization_settings', next.priceOptimizationSettings),
+    setSetting(PRICE_OPTIMIZATION_SETTINGS, next.priceOptimizationSettings),
     setSetting(TEMPERATURE_CONTROL_MODES, next.temperatureControlModes),
     setSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES, next.temperatureControlDisabledMap),
     purgeModeCatalogDeviceIds(ids, homeIds),

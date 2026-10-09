@@ -1,7 +1,8 @@
 /**
  * Settings keys and realtime event names that BOTH the runtime and the settings
- * UI use. This is their one copy: `lib/utils/settingsKeys.ts` re-exports them
- * beside the runtime-only keys, and the settings UI imports them from here.
+ * UI use. This is the one definition of their constants: `lib/utils/settingsKeys.ts`
+ * re-exports them beside the runtime-only keys, and the settings UI imports them
+ * from here.
  * They cannot live in `packages/contracts`, which the packaged app does not
  * ship (a runtime value import from it crashes boot). A key only the runtime
  * reads stays in `lib/utils/settingsKeys.ts`; see
@@ -76,6 +77,8 @@ export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING = 'deferred_objective_activ
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';
 export const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';
 export const PRICE_OPTIMIZATION_ENABLED = 'price_optimization_enabled';
+export const PRICE_THRESHOLD_PERCENT = 'price_threshold_percent';
+export const PRICE_MIN_DIFF_ORE = 'price_min_diff_ore';
 export const DAILY_BUDGET_ENABLED = 'daily_budget_enabled';
 export const DAILY_BUDGET_KWH = 'daily_budget_kwh';
 export const DAILY_BUDGET_PRICE_SHAPING_ENABLED = 'daily_budget_price_shaping_enabled';

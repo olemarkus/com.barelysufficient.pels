@@ -6,6 +6,9 @@ import {
   readRecordSettingStrict,
   writeFreshSetting,
 } from './settingsWrite.ts';
+import {
+  CONTROLLABLE_DEVICES,
+} from '../../../../shared-domain/src/settings/settingsKeys.ts';
 
 /**
  * Turning Managed on also turns Limit on.
@@ -61,7 +64,7 @@ export async function applyManagedOptInLimit(
   await runSerializedLimitWrite(async () => {
     if (!isStillWanted()) return;
     await writeFreshSetting<Record<string, boolean>>({
-      key: 'controllable_devices',
+      key: CONTROLLABLE_DEVICES,
       context: 'device list',
       logMessage: 'Failed to turn on power-limit control',
       toastMessage: 'Managed is on, but Limit could not be turned on. Turn it on from the device row.',

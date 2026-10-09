@@ -33,8 +33,8 @@ export type OverviewDeviceRowsRead =
  * Membership mirrors the runtime's own planned-device filter
  * (`isRuntimePlannedDevice`, `setup/appDeviceSupport.ts`): `managed !== false`.
  *
- * The runtime always resolves `managed` before the device list reaches the UI
- * (a device with no `managed_devices` entry reads as not managed), so this and
+ * The runtime always resolves `managed` to a boolean before the device list
+ * reaches the UI (`resolveManagedState` answers for every device), so this and
  * `managed === true` agree on every real payload; only a fixture leaves the flag
  * unset. Keying on the runtime's own expression keeps the Overview listing
  * exactly the devices PELS plans.

@@ -39,14 +39,19 @@ import {
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_SCHEME,
+  MODE_DEVICE_TARGETS,
+  MODE_ALIASES,
+  CAPACITY_PRIORITIES,
+  PRICE_THRESHOLD_PERCENT,
+  PRICE_MIN_DIFF_ORE,
 } from './settingsKeys';
 import { toStableFingerprint } from './stableFingerprint';
 
 const DEDUPED_CAPACITY_KEYS = [
-  'mode_device_targets',
+  MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
-  'mode_aliases',
-  'capacity_priorities',
+  MODE_ALIASES,
+  CAPACITY_PRIORITIES,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
@@ -77,8 +82,8 @@ const DEDUPED_PRICE_KEYS = [
   POWERHOUR_DEVICE_ID,
   NORWAY_PRICE_MODEL,
   'provider_surcharge',
-  'price_threshold_percent',
-  'price_min_diff_ore',
+  PRICE_THRESHOLD_PERCENT,
+  PRICE_MIN_DIFF_ORE,
   EXPORT_PRICE_ENABLED,
   EXPORT_SPOT_FACTOR,
   EXPORT_FIXED,

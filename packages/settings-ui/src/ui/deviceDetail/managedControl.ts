@@ -18,6 +18,10 @@ import {
 } from './settingsWrite.ts';
 import { applyManagedOptInControlMode } from './targetPowerConfig.ts';
 import { applyManagedOptInLimit } from './managedOptInLimit.ts';
+import {
+  CONTROLLABLE_DEVICES,
+  MANAGED_DEVICES,
+} from '../../../../shared-domain/src/settings/settingsKeys.ts';
 
 const runSerializedManagedWrite = createSerializedAsyncRunner();
 
@@ -33,7 +37,7 @@ export function initDeviceDetailManagedControlHandlers(
 
     const nextChecked = deviceDetailControllable.selected;
     await writeFreshSetting<Record<string, boolean>>({
-      key: 'controllable_devices',
+      key: CONTROLLABLE_DEVICES,
       context: 'device detail',
       logMessage: 'Failed to update controllable device',
       toastMessage: 'Failed to update controllable device.',
@@ -88,7 +92,7 @@ export function initDeviceDetailManagedControlHandlers(
     const saved = await runSerializedManagedWrite(async () => {
       if (!isCurrentManagedControlIntent(deviceId, intentGeneration)) return false;
       const nextMap = await writeFreshSetting<Record<string, boolean>>({
-        key: 'managed_devices',
+        key: MANAGED_DEVICES,
         context: 'device detail',
         logMessage: 'Failed to update managed device',
         toastMessage: 'Failed to update managed device.',
