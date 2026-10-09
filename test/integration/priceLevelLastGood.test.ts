@@ -4,7 +4,7 @@ import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptim
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { PriceLevel } from '../../lib/price/priceLevels';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
 
 const createCoordinator = (): PriceCoordinator => new PriceCoordinator({
@@ -26,8 +26,7 @@ const createCoordinator = (): PriceCoordinator => new PriceCoordinator({
 // resolved level forward instead of rejecting the caller.
 describe('PriceCoordinator.getCurrentHourPriceLevel', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
   });
 
   afterEach(() => {

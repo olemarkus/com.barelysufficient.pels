@@ -1,5 +1,5 @@
 import {
-  mockHomeyInstance,
+  resetMockHomey,
   MockDevice,
   MockDriver,
   setMockDrivers,
@@ -25,8 +25,7 @@ vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearT
 
 describe('power tracker integration', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     setMockDrivers({
       driverA: new MockDriver('driverA', [new MockDevice('dev-1', 'Heater', ['onoff'])]),
     });

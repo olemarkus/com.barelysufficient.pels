@@ -1,5 +1,6 @@
 import {
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
 } from '../mocks/homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
@@ -51,13 +52,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
   let deviceList: Record<string, ApiDevice>;
 
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     setMockDrivers({});
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
     deviceList = {};

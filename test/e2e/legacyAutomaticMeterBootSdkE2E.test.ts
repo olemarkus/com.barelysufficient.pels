@@ -1,4 +1,4 @@
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 
 // An install with no whole-home meter chosen: a legacy Automatic install
@@ -54,16 +54,7 @@ describe('Whole-home meter not chosen at boot (SDK-boundary e2e)', () => {
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
   });
 
   afterEach(async () => {
@@ -149,16 +140,7 @@ describe('Readings already arriving through a Flow (SDK-boundary e2e)', () => {
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
   });
 
   afterEach(async () => {

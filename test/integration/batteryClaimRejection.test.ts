@@ -21,7 +21,7 @@ import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKey
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { buildSessyBatteryDevice, buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
-import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
 import { buildPlanDevice } from '../utils/planTestUtils';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
@@ -112,8 +112,7 @@ describe('a battery whose app rejects PELS\'s claim', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     vi.setSystemTime(Date.UTC(2026, 9, 6, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set('capacity_limit_kw', 10);
     logs = captureLogger('info');
   });

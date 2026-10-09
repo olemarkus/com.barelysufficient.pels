@@ -17,7 +17,7 @@
 // Counterpart to test/e2e/solarSurplusAbsorb.e2e.test.ts, which proves the same
 // behaviour through the Homey Energy poll.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
@@ -97,13 +97,7 @@ describe('Surplus-absorb temperature lift on the flow power source (SDK-boundary
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
   });
 
   afterEach(async () => {

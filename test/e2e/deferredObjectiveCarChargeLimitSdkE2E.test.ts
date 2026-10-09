@@ -12,7 +12,7 @@
 // task, and the outcome is read back through the settings-UI history endpoint.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
@@ -60,8 +60,7 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(BOOT_MS);
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     setMockDrivers({});
   });
 

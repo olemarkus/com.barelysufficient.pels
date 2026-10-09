@@ -12,7 +12,7 @@
 // the REST client hits); observed only through what PELS writes back via
 // `api.put`. Nothing internal is mocked.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
@@ -168,8 +168,7 @@ describe('a whole-home meter frozen on one value (SDK-boundary e2e)', () => {
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 8, 14, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     energy.meterW = 1100;
     energy.devicesW = {};
     energy.generationW = undefined;

@@ -1,14 +1,13 @@
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { partialDouble } from '../helpers/partialDouble';
 
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 
 describe('Shed vs Restore Logic', () => {
     beforeEach(() => {
-        mockHomeyInstance.settings.removeAllListeners();
-        mockHomeyInstance.settings.clear();
+        resetMockHomey();
         vi.clearAllTimers();
     });
 

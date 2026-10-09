@@ -77,6 +77,7 @@ import {
   MockDevice,
   MockDriver,
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
   setMockZones,
 } from '../mocks/homey';
@@ -238,7 +239,7 @@ const settleDetachedZoneFetch = async (): Promise<void> => (
 );
 
 beforeEach(() => {
-  mockHomeyInstance.settings.clear();
+  resetMockHomey();
   // A fresh store: the homes the tracker specs seed start empty.
   trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   // A non-empty live key snapshot proves the two home-store keys are absent.

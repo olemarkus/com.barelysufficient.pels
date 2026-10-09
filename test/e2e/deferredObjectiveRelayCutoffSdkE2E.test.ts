@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 import {
@@ -20,8 +20,7 @@ describe('relay energy cutoff through Homey SDK and the real control owner', () 
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(START_MS);
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     setMockDrivers({});
   });
   afterEach(async () => {

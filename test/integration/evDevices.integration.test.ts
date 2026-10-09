@@ -16,7 +16,14 @@ import {
   getDateKeyStartMs,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import {
+  getLatestPlanSnapshotForTests,
+  MockDevice,
+  MockDriver,
+  mockHomeyInstance,
+  resetMockHomey,
+  setMockDrivers,
+} from '../mocks/homey';
 import { cleanupApps, createApp, getTransportSnapshotForTests } from '../utils/appTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -186,15 +193,7 @@ afterAll(() => {
 describe('EV charger integration', { retry: 2 }, () => {
   beforeEach(() => {
     currentTimeMs = 1_730_000_000_000;
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     vi.clearAllMocks();
   });
 

@@ -14,7 +14,7 @@
 // its 1 kW while on, the house has a 300 W base load, and the meter reads all
 // of it.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
@@ -178,13 +178,7 @@ describe('home battery charging from surplus (SDK-boundary e2e)', () => {
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 9, 5, 12, 5, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
   });
 
   afterEach(async () => {

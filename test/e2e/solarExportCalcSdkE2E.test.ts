@@ -11,7 +11,7 @@
 // while leaving `lastPowerW` and the capacity guard on signed net (export still grows
 // headroom). Non-solar / flow homes are unaffected (flow rejects power < 0).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, OPERATING_MODE_SETTING, OVERSHOOT_BEHAVIORS,
@@ -55,13 +55,7 @@ describe('energy-bucket correctness under solar export (SDK-boundary e2e)', () =
     vi.useFakeTimers({
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
   });
 
   afterEach(async () => {

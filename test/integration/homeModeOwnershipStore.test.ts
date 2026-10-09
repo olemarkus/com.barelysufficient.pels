@@ -12,13 +12,13 @@ import {
   MODE_TARGET_OWNERSHIP_STATE_INITIALIZED,
 } from '../../lib/utils/settingsKeys';
 import { HomeModeOwnershipStore } from '../../setup/homeRuntime/homeModeOwnershipStore';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 const settings = (mockHomeyInstance as unknown as Homey.App['homey']).settings;
 
 describe('HomeModeOwnershipStore', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
   });
 
   afterEach(() => {

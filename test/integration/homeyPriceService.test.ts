@@ -2,7 +2,7 @@ import PriceService from '../../lib/price/priceService';
 import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import {
   COMBINED_PRICES,
   FLOW_PRICES_TODAY,
@@ -59,9 +59,7 @@ describe('Homey price service', () => {
 
   beforeEach(() => {
     priceCache = createInMemoryPriceCache();
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
   });
 
   afterEach(() => {

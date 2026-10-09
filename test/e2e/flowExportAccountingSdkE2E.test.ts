@@ -22,7 +22,7 @@
 //      flooring it at 0 would report a 0 kW home while the devices are
 //      demonstrably drawing.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, OPERATING_MODE_SETTING, OVERSHOOT_BEHAVIORS,
@@ -51,13 +51,7 @@ describe('export accounting on the flow power source (SDK-boundary e2e)', () => 
     vi.useFakeTimers({
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
   });
 
   afterEach(async () => {

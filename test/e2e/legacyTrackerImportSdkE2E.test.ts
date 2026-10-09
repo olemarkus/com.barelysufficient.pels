@@ -1,4 +1,4 @@
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 
 // An install upgrading from the last settings-blob release boots once with
@@ -13,16 +13,7 @@ describe('legacy tracker import on the first boot after the upgrade (SDK-boundar
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
   });
 
   afterEach(async () => {

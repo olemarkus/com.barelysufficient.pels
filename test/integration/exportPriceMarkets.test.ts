@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PriceService from '../../lib/price/priceService';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { VAT_MULTIPLIER_STANDARD } from '../../lib/price/priceComponents';
 import {
   getDateKeyInTimeZone,
@@ -60,9 +60,7 @@ const enableExport = (params: { spotFactorPercent: number; fixedInclVat: number 
 
 describe('Export (feed-in) pricing applied independently of the import scheme', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
     priceCache = createInMemoryPriceCache();
   });
 

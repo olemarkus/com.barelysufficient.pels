@@ -3,7 +3,7 @@ import type Homey from 'homey';
 import PriceService from '../../lib/price/priceService';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import {
   CONSUMPTION_TAX_STANDARD_EX_VAT,
   ENOVA_FEE_EX_VAT,
@@ -106,8 +106,7 @@ const setNorwayNorgesprisSettings = (params: {
 
 describe('Norway norgespris pricing', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     priceCache = createInMemoryPriceCache();
   });
 

@@ -13,7 +13,7 @@
 // Counterpart to test/integration/surplusDumpLoadPlan.test.ts (the planner-layer
 // integration suite that drives PlanBuilder directly).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
@@ -96,13 +96,7 @@ describe('Solar dump-load posture (SDK-boundary e2e)', () => {
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
     homePowerW = 0;
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
   });
 
   afterEach(async () => {

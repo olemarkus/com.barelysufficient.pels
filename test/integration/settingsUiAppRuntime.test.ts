@@ -1,4 +1,4 @@
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   getLatestDevicesForUiFromApp,
@@ -44,8 +44,7 @@ describe('settings UI app runtime helpers', () => {
 
 
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     vi.restoreAllMocks();
   });
 

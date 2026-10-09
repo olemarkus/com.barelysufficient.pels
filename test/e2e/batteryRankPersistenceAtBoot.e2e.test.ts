@@ -4,7 +4,7 @@
 // must come back to it once they are known: nothing here reloads the catalog
 // by hand, and no unrelated settings change arrives to do it.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MockDevice, mockHomeyInstance, setMockDrivers, MockDriver } from '../mocks/homey';
+import { MockDevice, mockHomeyInstance, resetMockHomey, setMockDrivers, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
@@ -35,8 +35,7 @@ describe('mode priority ranks at boot (SDK-boundary e2e)', () => {
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     vi.setSystemTime(Date.UTC(2026, 9, 5, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
   });
 
   afterEach(async () => {

@@ -8,6 +8,7 @@ import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   getLatestPlanSnapshotForTests,
   mockHomeyInstance,
+  resetMockHomey,
   setMockDrivers,
   MockDevice,
   MockDriver,
@@ -158,15 +159,8 @@ describe('MyApp initialization', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
 
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set('price_scheme', 'flow');
-    mockHomeyInstance.api.clearRealtimeEvents();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     vi.clearAllTimers();
   });
 
@@ -2400,13 +2394,7 @@ describe('MyApp initialization', () => {
 
 describe('computeDynamicSoftLimit', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     vi.clearAllTimers();
   });
 
@@ -2835,15 +2823,8 @@ describe('periodic snapshot refresh scheduling', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
 
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set('price_scheme', 'flow');
-    mockHomeyInstance.api.clearRealtimeEvents();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
   });
 
   afterEach(async () => {

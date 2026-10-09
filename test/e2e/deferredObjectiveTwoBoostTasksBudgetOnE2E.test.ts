@@ -14,7 +14,7 @@
 // only against later residual slots and honestly reports that it needs its
 // deadline reserve to meet this deliberately tight deadline.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
@@ -118,12 +118,7 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     vi.useFakeTimers({
       toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'Date', 'performance'],
     });
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
+    resetMockHomey();
   });
   afterEach(async () => {
     await cleanupApps();

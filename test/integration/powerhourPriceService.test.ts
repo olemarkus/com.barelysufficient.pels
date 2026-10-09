@@ -3,7 +3,7 @@ import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggi
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import type { PriceCacheKey } from '../../lib/price/priceCacheStore';
-import { mockHomeyInstance, setMockApiApp } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockApiApp } from '../mocks/homey';
 import {
   POWERHOUR_DEVICE_ID,
   POWERHOUR_PRICES_CURRENCY,
@@ -80,9 +80,7 @@ describe('Power by the Hour price service', () => {
 
   beforeEach(() => {
     priceCache = createInMemoryPriceCache();
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
     setMockApiApp(POWERHOUR_APP_ID, null);
     vi.useFakeTimers().setSystemTime(fixedNow);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'powerhour');

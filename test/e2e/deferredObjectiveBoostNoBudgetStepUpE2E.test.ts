@@ -30,7 +30,7 @@
 // `blockedByShedInvariant: false`). The ONLY lever between the two task cases is the
 // price curve (which hour the planner books).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
@@ -272,12 +272,7 @@ describe('smart-task boost — no daily budget, hourly hard cap (SDK-boundary e2
     vi.useFakeTimers({
       toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'Date', 'performance'],
     });
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
+    resetMockHomey();
   });
   afterEach(async () => {
     await cleanupApps();

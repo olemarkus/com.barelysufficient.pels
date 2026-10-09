@@ -61,7 +61,7 @@ import {
 import { VOLATILE_WRITE_THROTTLE_MS } from '../../lib/utils/timingConstants';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
 import { getHomeModeCatalogForTest, configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 
@@ -171,8 +171,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       toFake: ['Date', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     // Sub-home meter fan-out only runs under the Homey Energy poll; the registry
     // now mirrors the poll source's power-source discard guard, so the harness
     // reflects the sole production routing condition.

@@ -1,4 +1,4 @@
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../lib/utils/settingsKeys';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import api from '../../api';
@@ -37,9 +37,7 @@ describe('Expected power written through the settings key', () => {
   };
 
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
     vi.clearAllTimers();
   });
 

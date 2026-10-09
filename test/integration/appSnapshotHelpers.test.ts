@@ -11,7 +11,7 @@ import {
   MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 import { normalizePowerSource } from '../../lib/power/powerSource';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { PowerSampleAdmission } from '../../lib/app/appContext';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
@@ -27,7 +27,7 @@ const mainMeterSelection = (): MainMeterSelection => ({ state: 'resolved', meter
 describe('appSnapshotHelpers', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
   });
 
   afterEach(() => {

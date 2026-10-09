@@ -14,7 +14,7 @@ import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
-import { mockHomeyInstance, MockDriver, setMockDrivers } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, MockDriver, setMockDrivers } from '../mocks/homey';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { captureLogger } from '../utils/loggerCapture';
@@ -83,8 +83,7 @@ describe('home battery claim and hand-back through the real transport', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     vi.setSystemTime(Date.now() + 60_000);
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set('capacity_limit_kw', 10);
   });
 

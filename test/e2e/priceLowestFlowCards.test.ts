@@ -1,6 +1,6 @@
 import type MyApp from '../../app.ts';
 import { partialDouble } from '../helpers/partialDouble';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 
 type PriceEntry = { startsAt: string; totalPrice: number };
@@ -23,16 +23,7 @@ describe('Lowest price flow cards', () => {
     vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     mockHomeyInstance.clock.getTimezone = () => 'UTC';
 
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
   });
 
   afterEach(async () => {

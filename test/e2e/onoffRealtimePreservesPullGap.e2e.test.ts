@@ -8,7 +8,7 @@
 // write PELS emits under capacity pressure after trusted realtime evidence
 // survives the ignored pull.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { drainUntil, drainUntilCalledWith } from '../utils/asyncDrain';
 import { connectLiveFeed, emitCapability } from '../helpers/liveFeedSocketHarness';
@@ -85,13 +85,7 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
     });
     connectLiveFeed();
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     setMockDrivers({});
   });
 

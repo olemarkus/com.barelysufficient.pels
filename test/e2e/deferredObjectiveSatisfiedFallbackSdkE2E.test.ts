@@ -15,7 +15,7 @@ import {
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
 } from '../../lib/utils/settingsKeys';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 
@@ -87,13 +87,7 @@ describe('satisfied smart-task fallback (SDK-boundary e2e)', () => {
       ],
     });
     vi.setSystemTime(NOW_MS);
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     setMockDrivers({});
   });
 

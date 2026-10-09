@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 const adjustment = { deviceId: 'heater', temperature: 22, observedAtMs: 1000 };
 
 describe('observation-origin mode edits', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
   });
 
   const start = (homeId = 'main') => {

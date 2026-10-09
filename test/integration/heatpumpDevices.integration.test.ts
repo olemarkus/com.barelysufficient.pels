@@ -1,8 +1,9 @@
 import {
-    mockHomeyInstance,
-    setMockDrivers,
-    MockDevice,
-    MockDriver,
+  mockHomeyInstance,
+  resetMockHomey,
+  setMockDrivers,
+  MockDevice,
+  MockDriver,
 } from '../mocks/homey';
 import { createApp, cleanupApps, getDeviceSurfacesForTests } from '../utils/appTestUtils';
 
@@ -85,13 +86,7 @@ const buildHeatpumpApiDevice = (overrides?: Partial<{
 
 describe('Heatpump device integration', () => {
     beforeEach(() => {
-        mockHomeyInstance.settings.removeAllListeners();
-        mockHomeyInstance.settings.clear();
-        mockHomeyInstance.flow._actionCardListeners = {};
-        mockHomeyInstance.flow._conditionCardListeners = {};
-        mockHomeyInstance.flow._triggerCardRunListeners = {};
-        mockHomeyInstance.flow._triggerCardTriggers = {};
-        mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+        resetMockHomey();
         vi.clearAllTimers();
     });
 

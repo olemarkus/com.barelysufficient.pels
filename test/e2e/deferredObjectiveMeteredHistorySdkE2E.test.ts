@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 
@@ -11,8 +11,7 @@ describe('Smart-task metered history through the SDK', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(BOOT_MS);
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     setMockDrivers({});
   });
 

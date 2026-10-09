@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { drainPending } from '../utils/asyncDrain';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import {
@@ -89,8 +89,7 @@ describe('grid import control through Homey', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
     vi.setSystemTime(new Date('2026-10-06T12:00:00Z'));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     setMockDrivers({});
   });
   afterEach(async () => {

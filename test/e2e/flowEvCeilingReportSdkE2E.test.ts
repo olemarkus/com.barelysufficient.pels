@@ -20,7 +20,7 @@ import {
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 import api from '../../api';
@@ -80,9 +80,7 @@ describe('bridge Flow EV power report (SDK-boundary e2e)', () => {
       ],
     });
     vi.setSystemTime(Date.UTC(2026, 8, 15, 4, 1, 52));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._triggerCardTriggers = {};
+    resetMockHomey();
     setMockDrivers({});
   });
 

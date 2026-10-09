@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import type { FlowBackedDeviceState } from '../../lib/device/flowBackedDeviceState';
 import { createFlowBackedDeviceState } from '../../setup/flowBackedCardAccess';
 import { SettingsRepository } from '../../setup/settingsRepository';
@@ -38,7 +38,7 @@ describe('expected power override persistence', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set('unrelated_key', true);
     timers = new TimerRegistry();
     overrides = {};

@@ -1,7 +1,7 @@
 import { registerAllowSmartTaskRescueCard } from '../../flowCards/smartTaskRescueCard';
 import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives';
 import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/objectives/deferredObjectives/objectiveStore';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 
 const keyFor = (deviceId: string): string => `${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`;
@@ -23,16 +23,7 @@ const readEntry = (deviceId: string): DeferredObjectiveSettingsEntry | undefined
 
 describe('allow_smart_task_rescue flow card', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
-    mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
-    mockHomeyInstance.api.clearRealtimeEvents();
+    resetMockHomey();
     vi.clearAllTimers();
   });
 

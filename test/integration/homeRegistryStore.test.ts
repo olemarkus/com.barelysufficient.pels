@@ -6,7 +6,7 @@
 // round-trips of both keys.
 import { beforeEach, describe, expect, it } from 'vitest';
 import type Homey from 'homey';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import {
   createDeviceHomeAssignmentsStore,
   createHomesStore,
@@ -38,7 +38,7 @@ const throwingHomey = {
 } as unknown as Homey.App['homey'];
 
 beforeEach(() => {
-  mockHomeyInstance.settings.clear();
+  resetMockHomey();
 });
 
 describe('createHomesStore', () => {

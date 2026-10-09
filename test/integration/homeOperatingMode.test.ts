@@ -74,7 +74,7 @@ import { transferModeTargetsForOwnershipMoves } from '../../lib/home/homeModeCat
 import { drainPending } from '../utils/asyncDrain';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { getHomeModeCatalogForTest, configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -151,8 +151,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       toFake: ['Date', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval'],
     });
     vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 0, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     logs = captureLogger();
     rig = buildRig();
@@ -894,8 +893,7 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
   };
 
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(MANAGED_DEVICES, { 'vt-1': true });
     mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { 'vt-1': true });

@@ -24,7 +24,7 @@ import type {
   DecoratedDeviceSnapshot,
   TargetPowerReachabilityState,
 } from '../../packages/contracts/src/types';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
+import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainUntil, drainUntilCalledWith, drainPending } from '../utils/asyncDrain';
 
@@ -132,13 +132,7 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
       ],
     });
     vi.setSystemTime(Date.UTC(2026, 7, 8, 20, 2, 0));
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
-    mockHomeyInstance.flow._actionCardListeners = {};
-    mockHomeyInstance.flow._conditionCardListeners = {};
-    mockHomeyInstance.flow._triggerCardRunListeners = {};
-    mockHomeyInstance.flow._triggerCardTriggers = {};
-    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    resetMockHomey();
     setMockDrivers({});
   });
 

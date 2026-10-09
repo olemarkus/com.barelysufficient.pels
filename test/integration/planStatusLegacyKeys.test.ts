@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { retireLegacyPlanStatusKeys } from '../../lib/plan/planStatusRegistry';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 // The status left settings for the app's memory: nothing is imported (a
 // previous run's status is exactly what must not be served), the old keys —
@@ -8,8 +8,7 @@ import { mockHomeyInstance } from '../mocks/homey';
 // and a key list that cannot be read leaves them for the next boot.
 describe('retireLegacyPlanStatusKeys', () => {
   beforeEach(() => {
-    mockHomeyInstance.settings.removeAllListeners();
-    mockHomeyInstance.settings.clear();
+    resetMockHomey();
     vi.restoreAllMocks();
   });
 

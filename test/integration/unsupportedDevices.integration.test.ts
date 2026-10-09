@@ -1,6 +1,7 @@
 import {
-    mockHomeyInstance,
-    setMockDrivers,
+  mockHomeyInstance,
+  resetMockHomey,
+  setMockDrivers,
 } from '../mocks/homey';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
@@ -37,13 +38,7 @@ const buildVentilationApiDevice = (overrides?: Partial<{
 
 describe('Unsupported device handling', () => {
     beforeEach(() => {
-        mockHomeyInstance.settings.removeAllListeners();
-        mockHomeyInstance.settings.clear();
-        mockHomeyInstance.flow._actionCardListeners = {};
-        mockHomeyInstance.flow._conditionCardListeners = {};
-        mockHomeyInstance.flow._triggerCardRunListeners = {};
-        mockHomeyInstance.flow._triggerCardTriggers = {};
-        mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+        resetMockHomey();
         vi.clearAllTimers();
     });
 
