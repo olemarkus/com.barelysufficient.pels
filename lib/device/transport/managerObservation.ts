@@ -15,7 +15,10 @@ export {
     recordDeviceUpdateObservation,
 } from './observationDebugSources';
 
-export { mergeFresherCapabilityObservations } from './observationMerge';
+export {
+    mergeFresherCapabilityObservations,
+    mergeTemperatureRejectionsIntoDeviceUpdate,
+} from './observationMerge';
 
 export {
     recordLocalWriteObservation,

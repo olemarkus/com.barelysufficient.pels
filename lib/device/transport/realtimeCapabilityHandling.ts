@@ -24,6 +24,7 @@ import {
 } from './nativeSteppedRealtime';
 import type { RealtimeIngestService } from './transportServices';
 import {
+  hasControlFacetBesideTemperature,
   removeTemperatureObservation,
   TARGET_TEMPERATURE_CAPABILITY_ID,
   updateTemperatureTarget,
@@ -247,7 +248,7 @@ function dropDeviceWithoutRemainingControlFacet(
     snapshotIndex: number,
     snapshot: TransportDeviceSnapshot,
 ): void {
-    if (snapshot.binaryCapabilityId || snapshot.steppedLoadProfile) return;
+    if (hasControlFacetBesideTemperature(snapshot)) return;
     ingest.reader.snapshotStore.removeSnapshotAt(snapshotIndex, snapshot.id);
 }
 // Event changes and the held target update belong to this accepted report.
