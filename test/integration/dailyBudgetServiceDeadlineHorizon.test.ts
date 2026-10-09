@@ -152,6 +152,7 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
       priceHorizon: buildPriceHorizonFromCombined(todayOnlyPrices, NOW_MS, DEADLINE_MS),
       dailyBudgetSnapshot: snapshot,
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
     expect(horizon.reasonCode).toBe('objective_missing_price_horizon');
@@ -184,6 +185,7 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
       priceHorizon: buildPriceHorizonFromCombined(withTomorrowPrices, NOW_MS, DEADLINE_MS),
       dailyBudgetSnapshot: snapshot,
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
     expect(horizon.reasonCode).toBeNull();

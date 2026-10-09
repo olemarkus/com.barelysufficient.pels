@@ -618,6 +618,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         prices: Array.from({ length: 24 }, (_, index) => (index === 18 ? 100 : 10)),
       }),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
 
@@ -641,6 +642,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
@@ -668,6 +670,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.25),
       }),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
@@ -691,6 +694,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 5),
       }),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
@@ -715,6 +719,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
@@ -733,6 +738,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot(),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
@@ -757,6 +763,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot(snapshot),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
     const exempt = buildDeferredObjectivePolicyHorizon({
@@ -767,6 +774,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot(snapshot),
       exemptFromBudget: true,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
     expect(capped.buckets.length).toBeGreaterThan(0);
@@ -786,6 +794,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
       powerLimits: capacityOnlyPowerLimits(10),
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [{
         deviceId: 'higher-device',
         topologyKey: 'hour-0',
@@ -807,6 +816,31 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     expect(result.buckets[1]?.maxUsefulEnergyKWh).toBeCloseTo(3.5);
   });
 
+  it('adds an unbooked higher device maximum to timed higher-task bookings', () => {
+    const result = buildDeferredObjectivePolicyHorizon({
+      hasSolarProduction: false,
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 2 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
+      }),
+      powerLimits: capacityOnlyPowerLimits(10),
+      higherPriorityUnbookedPowerKw: 2,
+      higherPriorityReservations: [{
+        deviceId: 'task-above', topologyKey: 'hour-0', startsAtMs: NOW_MS,
+        admissionPowerKw: 3, plannedKWh: 1, exemptFromBudget: true,
+        energySegments: [{ startMs: NOW_MS, endMs: NOW_MS + HOUR_MS, plannedKWh: 1 }],
+      }],
+      exemptFromBudget: true,
+    });
+    expect(result.reasonCode).toBeNull();
+    expect(result.buckets[0]?.higherPriorityAdmissionPowerKw).toBe(5);
+    expect(result.buckets[0]?.reservedHeadroomKw).toBeCloseTo(4.5);
+    expect(result.buckets[1]?.higherPriorityAdmissionPowerKw).toBe(2);
+    expect(result.buckets[1]?.reservedHeadroomKw).toBeCloseTo(7.5);
+  });
+
   it('keeps different higher-priority physical steps exact within one source hour', () => {
     const splitMs = NOW_MS + HOUR_MS / 2;
     const result = buildDeferredObjectivePolicyHorizon({
@@ -819,6 +853,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       }),
       powerLimits: capacityOnlyPowerLimits(10),
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [
         {
           deviceId: 'higher-device',
@@ -880,6 +915,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       ],
       dailyBudgetSnapshot: null,
       powerLimits: capacityOnlyPowerLimits(10),
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [{
         deviceId: 'higher-device',
         topologyKey: 'fractional-hour-0',
@@ -925,6 +961,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       }),
       powerLimits: capacityOnlyPowerLimits(5),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
 
@@ -946,6 +983,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       }),
       powerLimits: capacityOnlyPowerLimits(5),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [],
     });
 
@@ -969,6 +1007,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       }),
       powerLimits: powerLimits({ enabled: false, limitKw: 10, marginKw: 0 }, null),
       exemptFromBudget: false,
+      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [{
         deviceId: 'higher-device',
         topologyKey: 'hour-0',
@@ -3827,18 +3866,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
     });
 
-    it('grants a task below a plain device the limit permission without promoting its floor', () => {
-      // Guards the split the permission gate now relies on. The two questions are
-      // separate: PERSISTING `limitLowerPriorityDevices` is useful at any priority
-      // (swap selection only ever displaces strictly lower-priority devices), but
-      // `fullyReserved` FLOOR PROMOTION needs every higher rank booked, because the
-      // reserved-headroom forecast (`hardCap − uncontrolled − higher bookings`)
-      // leaves out controlled load. A plain device above the task has no bookings.
-      //
-      // So a priority-2 task under a task-less priority-1 device must report the
-      // grant as applied while planning at the un-promoted floor: `min` (1 kW) × 4 h
-      // = 4 kWh against a 6 kWh need, versus the priority-1 control above which
-      // promotes to `top` (3 kW) and reaches `on_track`.
+    it('reserves a plain higher device at its maximum step and promotes into the residual', () => {
+      // A 3 kW device above the task cannot be displaced. With a 5 kW
+      // sustainable rate, the lower task can commit its 2 kW middle step, not
+      // its 3 kW top step or the old 1 kW floor.
       const higherDevice = { ...buildPromotableDevice('higher-device'), priority: 1 };
       const belowTop = { ...buildPromotableDevice('ev-1'), priority: 2 };
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
@@ -3859,12 +3890,56 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
         priceOptimizationEnabled: true,
-        powerLimits: capacityOnlyPowerLimits(HARDCAP_KW),
+        powerLimits: capacityOnlyPowerLimits(5),
       });
-      // The permission is live for the planner's boost lane...
       expect(diagnostic.limitLowerPriorityApplied).toBe(true);
-      // ...but the floor was NOT promoted, so the task cannot claim the top step.
-      expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).not.toBe('on_track');
+      expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
+      expect(diagnostic?.horizonPlan?.plannedBuckets
+        .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
+        .every((bucket) => bucket.plannedAdmissionPowerKw === 2)).toBe(true);
+    });
+
+    it('uses the maximum step after a higher task reaches its target', () => {
+      const higher = buildTemperatureDevice({
+        priority: 1,
+        currentTemperature: 45,
+        expectedPowerKw: 1,
+        steppedLoadProfile: { steps: [
+          { id: 'Low', planningPowerW: 1250 },
+          { id: 'Medium', planningPowerW: 1750 },
+          { id: 'Max', planningPowerW: 3000 },
+        ] },
+      });
+      const lower = { ...buildPromotableDevice('ev-1'), priority: 2 };
+      const diagnostics = buildDeferredObjectiveDiagnostics({
+        hasSolarProduction: false,
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [higher, lower],
+        settings: normalizeDeferredObjectiveSettings({
+          version: 1,
+          objectivesByDeviceId: {
+            'heater-1': {
+              enabled: true, kind: 'temperature', enforcement: 'soft',
+              targetTemperatureC: 45, deadlineAtMs: resolveDeadlineAtMsFor('22:00'),
+            },
+            ...buildPromotableSettings('ev-1', fullyReservedRescue),
+          },
+        }),
+        powerTracker: buildPromotableTracker(['ev-1']),
+        dailyBudgetSnapshot: buildSnapshot({
+          prices: Array.from({ length: 24 }, () => 5),
+          allowedCumKWh: generousAllowedCumKWh,
+          plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+        }),
+        priceOptimizationEnabled: true,
+        powerLimits: capacityOnlyPowerLimits(5),
+      });
+      const lowerDiagnostic = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-1');
+      expect(lowerDiagnostic && resolvedTrajectoryStatus(lowerDiagnostic)).toBe('on_track');
+      expect(lowerDiagnostic?.horizonPlan?.plannedBuckets
+        .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
+        .every((bucket) => bucket.plannedAdmissionPowerKw === 2)).toBe(true);
     });
 
     it('normalizes equal base priorities by device id without double-booking an hour', () => {
@@ -4056,11 +4131,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         .every((bucket) => bucket.plannedAdmissionPowerKw === 2)).toBe(true);
     });
 
-    it('keeps a lower rank on its floor while the task above no longer governs its device', () => {
-      // ev-1 still holds a commitment, but its bookings are suppressed: its device is
-      // back under ordinary control, so its draw reaches ev-2 as nothing, like a plain
-      // device's. ev-2 therefore plans at its 1 kW floor (4 kWh over the four primary
-      // hours against a 6 kWh need) instead of the rung the full 3 kW would admit.
+    it('reserves the maximum step while the task above no longer governs its device', () => {
+      // ev-1 still holds a commitment, but its bookings are suppressed. Its
+      // device is back under ordinary control, so ev-2 reserves its 3 kW
+      // maximum before selecting the 2 kW step left under a 5 kW limit.
       const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
       const diagnostics = buildDeferredObjectiveDiagnostics({
         hasSolarProduction: false,
@@ -4081,15 +4155,15 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
         priceOptimizationEnabled: true,
-        powerLimits: capacityOnlyPowerLimits(HARDCAP_KW),
+        powerLimits: capacityOnlyPowerLimits(5),
         activePlans: buildCommittedHigherTaskPlans(deadlineAtMs),
         isReservationSuppressed: (deviceId) => deviceId === 'ev-1',
       });
       const ev2 = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-2');
-      expect(ev2 && resolvedTrajectoryStatus(ev2)).toBe('at_risk');
+      expect(ev2 && resolvedTrajectoryStatus(ev2)).toBe('on_track');
       expect(ev2?.horizonPlan?.plannedBuckets
         .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
-        .every((bucket) => bucket.plannedAdmissionPowerKw === 1)).toBe(true);
+        .every((bucket) => bucket.plannedAdmissionPowerKw === 2)).toBe(true);
     });
 
     // Regression, prod 2026-09-23/24: a water heater parked at its target kept

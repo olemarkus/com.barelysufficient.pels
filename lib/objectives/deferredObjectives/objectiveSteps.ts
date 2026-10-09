@@ -136,3 +136,10 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
     buildSyntheticChargeStep(device, activeDrawKw ?? device.expectedPowerKw),
   ]);
 };
+
+/** The largest physical step the current planner profile exposes for this device. */
+export const resolveHighestObjectiveAdmissionPowerKw = (device: ObjectiveDeviceInput): number | null => {
+  const steps = resolveObjectiveSteps(device);
+  const highest = steps.reduce((max, step) => Math.max(max, step.admissionPowerKw), 0);
+  return highest > 0 ? highest : null;
+};

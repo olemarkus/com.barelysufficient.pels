@@ -128,6 +128,10 @@ export type DeferredObjectivePolicyHorizonInputs = {
   // Hourly claims already made by higher-priority smart tasks. Physical power
   // is always deducted; planned energy is deducted only for non-exempt tasks.
   higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
+  // Maximum step power of higher-ranked devices running outside smart-task
+  // control. They have no timed booking, so reserve their possible draw across
+  // the horizon without inventing a useful-energy claim for them.
+  higherPriorityUnbookedPowerKw: number;
 };
 
 /**
@@ -164,6 +168,7 @@ export const buildDeferredObjectivePolicyHorizon = (
     exemptFromBudget,
     powerLimits,
     higherPriorityReservations,
+    higherPriorityUnbookedPowerKw,
   } = params;
   if (!priceOptimizationEnabled) {
     return unavailable('objective_price_feature_disabled');
@@ -183,6 +188,7 @@ export const buildDeferredObjectivePolicyHorizon = (
       exemptFromBudget,
       resolvePlanningCeilingKw(powerLimits),
       higherPriorityReservations,
+      higherPriorityUnbookedPowerKw,
     ),
     horizonBucketCount: sourceBuckets.length,
     reasonCode: null,
@@ -519,14 +525,16 @@ const mapPolicyBuckets = (
   exemptFromBudget: boolean,
   planningCeilingKw: number | null,
   higherPriorityReservations: readonly DeferredObjectivePriorityReservation[],
+  higherPriorityUnbookedPowerKw: number,
 ): DeferredObjectiveHorizonBucket[] => {
   return buckets.map((bucket) => {
     const higher = resolveReservationsForBucket(bucket, higherPriorityReservations);
+    const higherPriorityAdmissionPowerKw = higherPriorityUnbookedPowerKw + (higher?.admissionPowerKw ?? 0);
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
     const reservedHeadroomKw = resolveReservedHeadroomKw(
       bucket,
       planningCeilingKw,
-      higher?.admissionPowerKw ?? 0,
+      higherPriorityAdmissionPowerKw,
     );
     return {
       id: bucket.id,
@@ -540,8 +548,8 @@ const mapPolicyBuckets = (
       price: bucket.price,
       ...(cap !== null ? { maxUsefulEnergyKWh: cap } : {}),
       ...(reservedHeadroomKw !== null ? { reservedHeadroomKw } : {}),
-      ...(higher && higher.admissionPowerKw > 0
-        ? { higherPriorityAdmissionPowerKw: higher.admissionPowerKw }
+      ...(higherPriorityAdmissionPowerKw > 0
+        ? { higherPriorityAdmissionPowerKw }
         : {}),
       ...(higher && higher.energySegments.length > 0
         ? { higherPriorityEnergyReservations: higher.energySegments }
