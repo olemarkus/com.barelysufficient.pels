@@ -49,24 +49,37 @@ export type DailyBudgetCapSnapshot = {
   } | undefined>;
 } | null;
 
+/** The current bucket's planned cap, when today's budget is on and the snapshot names one. */
+const resolveCurrentBucketCap = (
+  snapshot: DailyBudgetCapSnapshot,
+): { bucketKey: string; plannedKWh: number } | null => {
+  const today = snapshot?.days?.[snapshot.todayKey] ?? null;
+  if (!today?.budget.enabled) return null;
+  const planned = today.buckets.plannedKWh;
+  const startUtc = today.buckets.startUtc;
+  const index = today.currentBucketIndex;
+  if (!Array.isArray(planned) || !Array.isArray(startUtc)) return null;
+  if (index < 0 || index >= planned.length || index >= startUtc.length) return null;
+  const plannedKWh = planned[index];
+  const bucketKey = startUtc[index];
+  if (plannedKWh === undefined || !Number.isFinite(plannedKWh) || typeof bucketKey !== 'string') {
+    return null;
+  }
+  return { bucketKey, plannedKWh };
+};
+
 export function recordDailyBudgetCap(params: {
   powerTracker: PowerTrackerState;
   snapshot: DailyBudgetCapSnapshot;
 }): PowerTrackerState {
   const { powerTracker, snapshot } = params;
-  const today = snapshot?.days?.[snapshot.todayKey] ?? null;
-  if (!today?.budget.enabled) return powerTracker;
-  const planned = today.buckets.plannedKWh;
-  const startUtc = today.buckets.startUtc;
-  const index = today.currentBucketIndex;
-  if (!Array.isArray(planned) || !Array.isArray(startUtc)) return powerTracker;
-  if (index < 0 || index >= planned.length || index >= startUtc.length) return powerTracker;
-  const plannedKWh = planned[index];
-  const bucketKey = startUtc[index];
-  if (plannedKWh === undefined || !Number.isFinite(plannedKWh) || typeof bucketKey !== 'string') {
-    return powerTracker;
-  }
-  const nextCaps = { ...(powerTracker.dailyBudgetCaps || {}), [bucketKey]: plannedKWh };
+  const cap = resolveCurrentBucketCap(snapshot);
+  if (!cap) return powerTracker;
+  // Every meter reading lands here, and the current bucket's cap rarely moves
+  // between two of them. Recording the same figure again would copy the whole
+  // caps map, one entry per hour of retained history, for nothing.
+  if (powerTracker.dailyBudgetCaps?.[cap.bucketKey] === cap.plannedKWh) return powerTracker;
+  const nextCaps = { ...(powerTracker.dailyBudgetCaps || {}), [cap.bucketKey]: cap.plannedKWh };
   return { ...powerTracker, dailyBudgetCaps: nextCaps };
 }
 
