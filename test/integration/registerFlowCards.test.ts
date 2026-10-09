@@ -327,13 +327,16 @@ describe('registerFlowCards', () => {
     }));
   });
 
-  it('writes a clean boolean map for budget exemption flow cards', async () => {
+  it('refuses to save a budget exemption over a stored map it cannot read', async () => {
+    // A listed key that reads back as something other than a boolean map is a
+    // failed read, not an empty map: saving `{ 'dev-1': true }` over it would
+    // erase every other device's exemption.
     const settingsGet = vi.fn((key: string) => {
       if (key === 'budget_exempt_devices') return [true];
       return undefined;
     });
     const settingsSet = vi.fn();
-    const { deps, actionListeners, structuredInfo } = buildDeps({
+    const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
       homey: {
         flow: {
           getActionCard: (cardId: string) => ({
@@ -362,16 +365,19 @@ describe('registerFlowCards', () => {
 
     registerFlowCards(deps);
 
-    await expect(actionListeners.add_budget_exemption({ device: 'dev-1' })).resolves.toBe(true);
+    await expect(actionListeners.add_budget_exemption({ device: 'dev-1' }))
+      .rejects.toThrow('PELS could not save the budget exemption. Try again shortly.');
 
-    expect(settingsSet).toHaveBeenCalledWith('budget_exempt_devices', { 'dev-1': true });
-    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'device_setting_toggled',
+    expect(settingsSet).not.toHaveBeenCalled();
+    expect(structuredWarn).toHaveBeenCalledWith({
+      event: 'device_setting_toggle_failed',
       setting: 'budget_exemption',
+      reasonCode: 'setting_unreadable',
       enabled: true,
       deviceId: 'dev-1',
       deviceName: 'Heater',
-    }));
+    });
+    expect(structuredInfo).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'device_setting_toggled' }));
     expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
   });
@@ -385,10 +391,17 @@ describe('registerFlowCards', () => {
   //
   // Built on the shared `buildDeps` double, whose action listeners and
   // `settings` spies are the ones every other case here asserts on.
-  const buildCapacityControlDeps = (descriptors: ReadonlyArray<Record<string, unknown>>) => buildDeps({
-    getSnapshot: vi.fn().mockResolvedValue(descriptors),
-    getDeviceDescriptors: vi.fn().mockResolvedValue(descriptors),
-  });
+  //
+  // The store lists other keys but not `controllable_devices`: a map never
+  // written, which the write starts from empty.
+  const buildCapacityControlDeps = (descriptors: ReadonlyArray<Record<string, unknown>>) => {
+    const built = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue(descriptors),
+      getDeviceDescriptors: vi.fn().mockResolvedValue(descriptors),
+    });
+    vi.mocked(built.deps.homey.settings.getKeys).mockReturnValue(['capacity_limit_kw']);
+    return built;
+  };
   const unlimitableThermostat = { id: 'dev-1', name: 'Bad termostat', powerCapable: false };
 
   it('refuses to enable capacity control for a device PELS cannot limit', async () => {

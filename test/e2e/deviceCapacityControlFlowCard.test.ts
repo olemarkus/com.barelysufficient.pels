@@ -19,6 +19,9 @@ describe('Capacity control device condition', () => {
   });
 
   afterEach(async () => {
+    // A refusal case spies on settings reads; a failing one must not leak its
+    // spy into the cases after it.
+    vi.restoreAllMocks();
     await cleanupApps();
     vi.clearAllTimers();
   });
@@ -95,6 +98,45 @@ describe('Capacity control device condition', () => {
     expect(runCondition).toBeDefined();
 
     await expect(runCondition({ device: { id: 'dev-1' } })).resolves.toBe(false);
+
+    await app.onUninit?.();
+  });
+
+  // The stored map holds other devices' capacity control, and the read the
+  // card makes fails: the SDK's transient `null` on a listed key, or a value
+  // that is not a boolean map. A map built from that read would hold only
+  // `dev-1`, so saving it would hand every other device out of capacity control.
+  it.each([
+    ['enable_device_capacity_control', 'reads back null', null],
+    ['disable_device_capacity_control', 'reads back null', null],
+    ['enable_device_capacity_control', 'reads back malformed', 'not-a-map'],
+    ['disable_device_capacity_control', 'reads back malformed', 'not-a-map'],
+  ])('%s refuses to save over a map that %s, and keeps every entry', async (cardId, _label, failedRead) => {
+    const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await device.setCapabilityValue('onoff', true);
+    await device.setCapabilityValue('measure_power', 1000);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true, 'dev-2': true });
+    const stored = { 'dev-1': true, 'dev-2': true };
+    mockHomeyInstance.settings.set('controllable_devices', stored);
+
+    const app = createApp();
+    await app.onInit();
+
+    const listener = mockHomeyInstance.flow._actionCardListeners[cardId];
+    const settings = mockHomeyInstance.settings;
+    const realGet = settings.get.bind(settings);
+    const read = vi.spyOn(settings, 'get').mockImplementation((key: string) => (
+      key === 'controllable_devices' ? failedRead : realGet(key)
+    ));
+    const write = vi.spyOn(settings, 'set');
+
+    await expect(listener({ device: 'dev-1' }))
+      .rejects.toThrow('PELS could not save the power-limit control. Try again shortly.');
+
+    expect(write).not.toHaveBeenCalledWith('controllable_devices', expect.anything());
+    read.mockRestore();
+    expect(settings.get('controllable_devices')).toEqual(stored);
 
     await app.onUninit?.();
   });

@@ -14,7 +14,7 @@ import {
   registerBudgetExemptionCards,
   registerManagedDeviceCondition,
 } from '../../flowCards/deviceSettingsCards';
-import { BUDGET_EXEMPT_DEVICES } from '../../lib/utils/settingsKeys';
+import { BUDGET_EXEMPT_DEVICES, CAPACITY_LIMIT_KW } from '../../lib/utils/settingsKeys';
 import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 
@@ -41,6 +41,10 @@ const buildDeps = (): FlowCardDeps => ({
 
 beforeEach(() => {
   mockHomeyInstance.settings.clear();
+  // PELS always has settings keys, and an empty store is the SDK's transient
+  // flake (`readSettingsKeyList`). A map the owner never wrote is a key missing
+  // from a list that names others.
+  mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
   mockHomeyInstance.flow._actionCardListeners = {};
   mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
   mockHomeyInstance.flow._conditionCardListeners = {};
