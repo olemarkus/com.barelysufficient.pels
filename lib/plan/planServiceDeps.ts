@@ -19,7 +19,7 @@ import type {
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { SnapshotWarmupGate } from './snapshotWarmupGate';
-import type { HomeId } from '../../packages/contracts/src/settingsKeys';
+import type { HomeId } from '../utils/settingsKeys';
 
 type PlanServicePlanEngine = Pick<
   PlanEngine,

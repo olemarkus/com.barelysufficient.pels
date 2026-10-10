@@ -1,4 +1,4 @@
-import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { classifyPowerReadingsFact } from '../../../shared-domain/src/powerReadingsBanner.ts';
 import { resolveHomeScopedRead, type HomeScopedRead } from '../../../contracts/src/homeScopedRead.ts';
 import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';

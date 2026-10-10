@@ -1,4 +1,4 @@
-import { NATIVE_EV_WIRING_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
+import { NATIVE_EV_WIRING_DEVICES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   deviceDetailFlowConflictBody,
   deviceDetailFlowConflictCheck,

@@ -14,7 +14,10 @@ import {
   POWERHOUR_DEVICE_ID,
   PRICE_SCHEME,
   PV_FORECAST_SOURCE,
-} from '../../../contracts/src/settingsKeys.ts';
+  NORWAY_PRICE_MODEL,
+  PRICE_THRESHOLD_PERCENT,
+  PRICE_MIN_DIFF_ORE,
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { normalizePvForecastSourceSetting } from '../../../shared-domain/src/settings/pvForecastSource.ts';
 import { readPowerhourDeviceIdSetting } from '../../../shared-domain/src/settings/priceScheme.ts';
 import type { PriceConfigSettingsPatch, PriceSettingsSaveInput } from './priceConfigTypes.ts';
@@ -136,16 +139,16 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     powerhourDeviceId,
   ] = await Promise.all([
     getSetting(PRICE_SCHEME),
-    getSetting('norway_price_model'),
+    getSetting(NORWAY_PRICE_MODEL),
     getSetting('price_area'),
     getSetting('provider_surcharge'),
-    getSetting('price_threshold_percent'),
-    getSetting('price_min_diff_ore'),
+    getSetting(PRICE_THRESHOLD_PERCENT),
+    getSetting(PRICE_MIN_DIFF_ORE),
     getSetting(PRICE_OPTIMIZATION_ENABLED),
     getSetting('nettleie_fylke'),
     getSetting('nettleie_orgnr'),
     getSetting('nettleie_tariffgruppe'),
-    getSetting('price_optimization_settings'),
+    getSetting(PRICE_OPTIMIZATION_SETTINGS),
     readExportPriceSettings(),
     getSetting(PV_FORECAST_SOURCE),
     getSetting(POWERHOUR_DEVICE_ID),

@@ -41,7 +41,7 @@ import {
   PRICE_FLEX_MEDIUM,
   UNMANAGED_RESERVE_BALANCED_MODE,
   UNMANAGED_RESERVE_CONSERVATIVE_MODE,
-} from '../../../../contracts/src/dailyBudgetConstants.ts';
+} from '../../../../shared-domain/src/settings/dailyBudgetSettings.ts';
 import type { BudgetAdjustDraft, BudgetAdjustStatus } from '../budgetAdjustController.ts';
 import type { AllocationWarning } from '../dailyBudgetAllocationWarning.ts';
 import type { PriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';

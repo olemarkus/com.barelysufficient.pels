@@ -9,30 +9,11 @@ import {
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
 } from '../lib/utils/settingsKeys';
+import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import {
-  MAX_DAILY_BUDGET_KWH,
-  MIN_DAILY_BUDGET_KWH,
-  PRICE_FLEX_HIGH,
-  PRICE_FLEX_HIGH_THRESHOLD,
-  PRICE_FLEX_LOW,
-  PRICE_FLEX_MEDIUM,
-  PRICE_SHAPING_FLEX_SHARE,
-  UNMANAGED_RESERVE_CONSERVATIVE_MODE,
-  UNMANAGED_RESERVE_MODE,
-} from '../lib/dailyBudget/dailyBudgetConstants';
-
-const normalizeUnmanagedReserveMode = (value: unknown): number => {
-  if (!isFiniteNumber(value)) return UNMANAGED_RESERVE_MODE;
-  return value >= 0.5 ? UNMANAGED_RESERVE_CONSERVATIVE_MODE : UNMANAGED_RESERVE_MODE;
-};
-
-const normalizePriceFlexShare = (value: unknown): number => {
-  if (!isFiniteNumber(value)) return PRICE_SHAPING_FLEX_SHARE;
-  const bounded = Math.min(1, Math.max(0, value));
-  if (bounded <= PRICE_FLEX_LOW) return PRICE_FLEX_LOW;
-  if (bounded > PRICE_FLEX_HIGH_THRESHOLD) return PRICE_FLEX_HIGH;
-  return PRICE_FLEX_MEDIUM;
-};
+  normalizePriceFlexShare,
+  normalizeUnmanagedReserveMode,
+} from '../packages/shared-domain/src/settings/dailyBudgetSettings';
 
 /**
  * Builds the {@link DailyBudgetSettingsStore}: the sole owner of the

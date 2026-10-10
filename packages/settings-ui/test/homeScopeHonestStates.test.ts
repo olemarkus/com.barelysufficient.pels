@@ -8,7 +8,7 @@ import {
   CAPACITY_DRY_RUN,
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
-} from '../../contracts/src/settingsKeys.ts';
+} from '../../shared-domain/src/settings/settingsKeys.ts';
 import { createHomeyMock, installHomeyMock } from './helpers/homeyApiMock.ts';
 
 /* -------------------------------------------------------------------------- *

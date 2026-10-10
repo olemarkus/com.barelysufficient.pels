@@ -1,4 +1,4 @@
-import { BATTERY_CONTROL_DEVICES } from '../../contracts/src/settingsKeys.ts';
+import { BATTERY_CONTROL_DEVICES } from '../../shared-domain/src/settings/settingsKeys.ts';
 // A battery's Managed toggle writes the whole `battery_control_devices` map
 // from a fresh read. Two toggles in quick succession (two batteries, or the
 // device list and the device page) must both land: each write runs after the

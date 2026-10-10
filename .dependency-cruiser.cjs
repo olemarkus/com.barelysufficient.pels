@@ -190,15 +190,19 @@ module.exports = {
         + 'drivers/**, packages/shared-domain/**) crashes the app at '
         + 'boot with MODULE_NOT_FOUND (prod outage 2026-06-12, suggestDailyBudget.ts -> '
         + 'dailyBudgetConstants). tsPreCompilationDeps is unset, so this cruise sees only '
-        + 'post-compilation (value) imports - `import type` stays legal and erased. Values '
-        + 'needed at runtime live in duplicated runtime-safe copies (lib/dailyBudget/'
-        + 'dailyBudgetConstants.ts, lib/utils/settingsUiBootstrapKeys.ts, shared-domain '
-        + 'locals); the duplication is the sanctioned price of the packaging boundary. '
-        + 'settings-ui and widgets/** are exempt: esbuild bundles them (scripts/build-widgets.mjs '
-        + 'emits the committed widgets/*/api.js), so their imports are inlined.',
+        + 'post-compilation (value) imports - `import type` stays legal and erased. A value '
+        + 'both the runtime and the settings UI need lives in packages/shared-domain, which '
+        + 'ships (e.g. shared-domain/src/settings/settingsKeys.ts, dailyBudgetSettings.ts). '
+        + 'A value only the runtime needs stays in lib/, keyed by the contract\'s type where '
+        + 'one exists (lib/utils/settingsUiBootstrapKeys.ts). '
+        + 'settings-ui and the widgets\' browser code (widgets/*/src/public/) are exempt: '
+        + 'esbuild bundles them for the browser, so their imports are inlined. A widget\'s API '
+        + 'code (the rest of widgets/*/src/) is compiled by the root tsc and ships like lib/, '
+        + 'so it is covered.',
       severity: 'error',
       from: {
-        path: '^(app\\.ts|api\\.ts|lib/|setup/|flowCards/|drivers/|packages/shared-domain/src/)',
+        path: '^(app\\.ts|api\\.ts|lib/|setup/|flowCards/|drivers/|packages/shared-domain/src/'
+          + '|widgets/[^/]+/src/(?!public/))',
       },
       to: { path: '^packages/contracts/' },
     },

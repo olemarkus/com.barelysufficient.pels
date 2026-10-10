@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { TextDecoder, TextEncoder } from 'node:util';
-import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../packages/contracts/src/settingsUiApi';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../lib/utils/settingsUiBootstrapKeys';
 
 const globalWithEncoding = globalThis as typeof globalThis & {
   TextDecoder?: typeof TextDecoder;

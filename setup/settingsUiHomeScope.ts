@@ -38,15 +38,7 @@ import type { HomeId } from '../lib/utils/settingsKeys';
 import { isListedWholeHomeDevice } from '../lib/home/wholeHomeDeviceListing';
 import type { AppContext } from '../lib/app/appContext';
 import type { SettingsUiPowerStatus } from '../packages/contracts/src/settingsUiApi';
-
-/**
- * Mirror of `SETTINGS_UI_HOME_ID_QUERY_PARAM` in
- * `packages/contracts/src/settingsUiApi.ts`. Declared here as a literal because
- * `packages/contracts` is types-only at runtime (the sanitize step deletes it
- * from the shipped bundle, so a value import crashes boot) — the same mirroring
- * `packages/contracts/src/settingsKeys.ts` already does for settings keys.
- */
-const HOME_ID_QUERY_PARAM = 'homeId';
+import { SETTINGS_UI_HOME_ID_QUERY_PARAM } from '../packages/shared-domain/src/settingsUiHomeIdQuery';
 
 /**
  * The parsed request scope. `rejected` is deliberately distinct from
@@ -126,8 +118,8 @@ export class SettingsUiHomeScopeAdapter {
     // `Object.prototype.homeId` and scope a request the client never scoped. Same
     // read-guard discipline the membership resolver already applies to untrusted
     // record keys (`lib/home/homeConfig.ts`).
-    const raw = record !== null && Object.prototype.hasOwnProperty.call(record, HOME_ID_QUERY_PARAM)
-      ? record[HOME_ID_QUERY_PARAM]
+    const raw = record !== null && Object.prototype.hasOwnProperty.call(record, SETTINGS_UI_HOME_ID_QUERY_PARAM)
+      ? record[SETTINGS_UI_HOME_ID_QUERY_PARAM]
       : undefined;
     if (raw === undefined) return { state: 'whole_home' };
     // Everything below this line is untrusted. `isValidSubHomeId` is the single

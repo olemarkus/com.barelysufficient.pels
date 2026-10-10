@@ -5,7 +5,7 @@ import {
   CAPACITY_PERIOD_MINUTES,
   homeScopedSettingsKey,
   MAIN_HOME_ID,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   SETTINGS_UI_POWER_PATH,
   type SettingsUiCapacityPeak,

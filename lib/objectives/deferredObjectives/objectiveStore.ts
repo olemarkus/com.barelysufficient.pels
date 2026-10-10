@@ -1,6 +1,7 @@
 import {
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
   DEFERRED_OBJECTIVES_SETTINGS,
+  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
 } from '../../utils/settingsKeys';
 import {
   createEmptyDeferredObjectiveSettings,
@@ -44,14 +45,6 @@ export type ObjectiveSettingsStore = {
 // roster, but a persistent outage must eventually stop stale tasks from driving
 // lifecycle and control decisions.
 const TRUSTED_ROSTER_ABANDON_GRACE_MS = 60 * 60 * 1000;
-
-// Singular + dot, deliberately DISTINCT from the plural blob key
-// `deferred_objectives` so a prefix scan never collides with the frozen blob
-// (the blob key has no trailing dot, so it is not matched by the prefix).
-// Mirror of `PER_DEVICE_OBJECTIVE_KEY_PREFIX` in packages/contracts/src/settingsKeys.ts
-// (the settings UI can't import lib, so it detects per-device objective changes via
-// the contracts copy) — keep both in sync.
-export const PER_DEVICE_OBJECTIVE_KEY_PREFIX = 'deferred_objective.';
 
 const perDeviceKey = (deviceId: string): string => `${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`;
 

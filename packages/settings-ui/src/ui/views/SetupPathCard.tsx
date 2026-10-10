@@ -1,5 +1,5 @@
 import { MdElevation, MdList, MdListItem } from './materialWebJSX.tsx';
-import { MAIN_HOME_ID } from '../../../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { formatSetupProgress, type SetupPath, type SetupStep } from '../setupPathModel.ts';
 
 // One icon per status, in the row's leading slot. The ring/check pair carries

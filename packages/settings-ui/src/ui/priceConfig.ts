@@ -30,7 +30,7 @@ import {
 } from './priceConfigSettingsIo.ts';
 import {
   POWERHOUR_DEVICE_ID, PRICE_OPTIMIZATION_ENABLED, PV_FORECAST_SOURCE,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,

@@ -9,8 +9,8 @@ import {
   isAppNotReadyErrorMessage,
   isRetryableHomeyTransportErrorMessage,
 } from './homeyTransportErrors.ts';
-import { SETTINGS_UI_HOME_ID_QUERY_PARAM } from '../../../contracts/src/settingsUiApi.ts';
-import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import { SETTINGS_UI_HOME_ID_QUERY_PARAM } from '../../../shared-domain/src/settingsUiHomeIdQuery.ts';
+import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 
 // Backoff schedule for transient Homey-API transport failures (e.g. "Network
 // request failed", "socket hang up", or "Homey api ... not available" while

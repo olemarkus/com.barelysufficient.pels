@@ -1,6 +1,6 @@
 import type { EvBoostSettings } from '../../../../contracts/src/types.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
-import { EV_BOOST_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
+import { EV_BOOST_SETTINGS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { normalizeEvBoostSettings } from '../../../../shared-domain/src/settings/evBoost.ts';
 import { resolveEvBoostBlockReason } from '../../../../shared-domain/src/commandableNowReason.ts';
 import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';

@@ -11,7 +11,7 @@ import {
   CAPACITY_DRY_RUN,
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
-} from '../../contracts/src/settingsKeys.ts';
+} from '../../shared-domain/src/settings/settingsKeys.ts';
 
 /* -------------------------------------------------------------------------- *
  * The aggregate simulation posture refresh (multi-home PR 8b review fixes).

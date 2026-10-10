@@ -67,19 +67,6 @@ export type SettingsUiRecommendationCarsRead =
   | { state: 'unavailable' };
 
 /**
- * Query parameter naming ONE sub-home on `ui_plan` / `ui_power` / `ui_devices`
- * (multi-home). Absent = the historical whole-home / main-home read, whose URI
- * and payload stay byte-identical: `?homeId=main` is never produced, and the
- * runtime boundary REFUSES it if a client sends it anyway.
- *
- * Runtime mirror: the boundary parser (`setup/settingsUiHomeScope.ts`) reads
- * `query.homeId` as a literal, because `packages/contracts` is types-only at
- * runtime — the sanitize step drops it from the shipped bundle, so a VALUE
- * import from the runtime backend crashes boot. Keep the two in sync.
- */
-export const SETTINGS_UI_HOME_ID_QUERY_PARAM = 'homeId';
-
-/**
  * Producer-resolved home scope of a settings-UI read model — the complete
  * classification of a `?homeId=` request, so no consumer re-derives it.
  *
@@ -131,59 +118,61 @@ export const SETTINGS_UI_SMART_TASK_CANCEL_PATH = '/ui_smart_task_cancel';
 // loading/retry state instead of surfacing a hard error.
 export const SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX = 'PELS_APP_NOT_READY:';
 
-export const SETTINGS_UI_BOOTSTRAP_KEYS = [
-  'capacity_enabled',
-  'grid_import_enabled',
-  'grid_import_limit_kw',
-  'capacity_limit_kw',
-  'capacity_margin_kw',
-  'capacity_period_minutes',
-  'capacity_dry_run',
-  'homey_energy_meter_device_id',
-  'capacity_priorities',
-  'mode_device_targets',
-  'operating_mode',
-  'controllable_devices',
-  'managed_devices',
-  'device_control_profiles',
-  'device_target_power_configs',
-  'budget_exempt_devices',
-  'respect_external_off_devices',
-  'device_start_policies',
-  'temperature_control_disabled_devices',
-  'temperature_control_modes',
-  'temperature_boost_settings',
-  'native_ev_wiring_devices',
-  'device_driver_overrides',
-  'mode_aliases',
-  'overshoot_behaviors',
-  'price_optimization_settings',
-  'price_optimization_enabled',
-  'price_scheme',
-  'powerhour_device_id',
-  'norway_price_model',
-  'price_area',
-  'provider_surcharge',
-  'price_threshold_percent',
-  'price_min_diff_ore',
-  'nettleie_fylke',
-  'nettleie_orgnr',
-  'nettleie_tariffgruppe',
-  'export_price_enabled',
-  'export_spot_factor',
-  'export_fixed',
-  'daily_budget_enabled',
-  'daily_budget_kwh',
-  'daily_budget_price_shaping_enabled',
-  'daily_budget_controlled_weight',
-  'daily_budget_price_flex_share',
-  'debug_logging_topics',
-  'debug_logging_enabled',
-  'deferred_objectives',
-  'weather_advisor_settings',
-] as const;
-
-export type SettingsUiBootstrapKey = (typeof SETTINGS_UI_BOOTSTRAP_KEYS)[number];
+/**
+ * The settings keys the `/ui_bootstrap` payload carries. The runtime's list,
+ * `lib/utils/settingsUiBootstrapKeys.ts`, is keyed by this union, so the two
+ * cannot drift.
+ */
+export type SettingsUiBootstrapKey =
+  | 'capacity_enabled'
+  | 'grid_import_enabled'
+  | 'grid_import_limit_kw'
+  | 'capacity_limit_kw'
+  | 'capacity_margin_kw'
+  | 'capacity_period_minutes'
+  | 'capacity_dry_run'
+  | 'homey_energy_meter_device_id'
+  | 'capacity_priorities'
+  | 'mode_device_targets'
+  | 'operating_mode'
+  | 'controllable_devices'
+  | 'managed_devices'
+  | 'device_control_profiles'
+  | 'device_target_power_configs'
+  | 'budget_exempt_devices'
+  | 'respect_external_off_devices'
+  | 'device_start_policies'
+  | 'temperature_control_disabled_devices'
+  | 'temperature_control_modes'
+  | 'temperature_boost_settings'
+  | 'native_ev_wiring_devices'
+  | 'device_driver_overrides'
+  | 'mode_aliases'
+  | 'overshoot_behaviors'
+  | 'price_optimization_settings'
+  | 'price_optimization_enabled'
+  | 'price_scheme'
+  | 'powerhour_device_id'
+  | 'norway_price_model'
+  | 'price_area'
+  | 'provider_surcharge'
+  | 'price_threshold_percent'
+  | 'price_min_diff_ore'
+  | 'nettleie_fylke'
+  | 'nettleie_orgnr'
+  | 'nettleie_tariffgruppe'
+  | 'export_price_enabled'
+  | 'export_spot_factor'
+  | 'export_fixed'
+  | 'daily_budget_enabled'
+  | 'daily_budget_kwh'
+  | 'daily_budget_price_shaping_enabled'
+  | 'daily_budget_controlled_weight'
+  | 'daily_budget_price_flex_share'
+  | 'debug_logging_topics'
+  | 'debug_logging_enabled'
+  | 'deferred_objectives'
+  | 'weather_advisor_settings';
 
 export type SettingsUiSettingsPatch = {
   settings: Partial<Record<SettingsUiBootstrapKey, unknown>>;

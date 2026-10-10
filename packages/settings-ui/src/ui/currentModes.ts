@@ -5,7 +5,7 @@ import {
   MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
   homeScopedSettingsKey,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
 import { MAIN_HOME_NAME } from '../../../shared-domain/src/homeScopeCopy.ts';
 import { getSetting, setSetting } from './homey.ts';

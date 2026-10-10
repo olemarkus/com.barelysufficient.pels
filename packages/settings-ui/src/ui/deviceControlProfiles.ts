@@ -9,7 +9,10 @@ import type {
   SteppedLoadProfile,
   TargetPowerSteppedLoadConfig,
 } from '../../../contracts/src/types.ts';
-import { DEVICE_CONTROL_PROFILES, DEVICE_TARGET_POWER_CONFIGS } from '../../../contracts/src/settingsKeys.ts';
+import {
+  DEVICE_CONTROL_PROFILES,
+  DEVICE_TARGET_POWER_CONFIGS,
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { resolveTargetPowerLadderIssue } from '../../../shared-domain/src/targetPowerLadder.ts';
 import { getSetting } from './homey.ts';
 import { state, type SettingsUiDeviceView } from './state.ts';

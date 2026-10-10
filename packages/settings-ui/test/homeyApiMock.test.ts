@@ -2,12 +2,12 @@ import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 import { withDescriptorIdentities } from './helpers/deviceSnapshotFixture.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
-  SETTINGS_UI_BOOTSTRAP_KEYS,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_REFRESH_DEVICES_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
-import { UNMANAGED_RESERVE_MODE } from '../../contracts/src/dailyBudgetConstants.ts';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../../lib/utils/settingsUiBootstrapKeys.ts';
+import { UNMANAGED_RESERVE_MODE } from '../../shared-domain/src/settings/dailyBudgetSettings.ts';
 import { createHomeyMock, getUnhandledDeclaredHomeyApiRoutes, type MockHomeyClient } from './helpers/homeyApiMock';
 
 const callHomeyApi = async (

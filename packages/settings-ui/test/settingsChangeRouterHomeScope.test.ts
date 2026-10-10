@@ -21,7 +21,7 @@ import {
   HOMES_CONFIG,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
-} from '../../contracts/src/settingsKeys.ts';
+} from '../../shared-domain/src/settings/settingsKeys.ts';
 
 /* -------------------------------------------------------------------------- *
  * The settings-change router's per-home cache routes (multi-home R5b).

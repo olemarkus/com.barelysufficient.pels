@@ -1,7 +1,7 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import type { SteppedLoadDescriptorProbe } from '../../contracts/src/types';
-import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../contracts/src/settingsKeys';
+import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../shared-domain/src/settings/settingsKeys';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
 const flushPromises = () => new Promise<void>((resolve) => {

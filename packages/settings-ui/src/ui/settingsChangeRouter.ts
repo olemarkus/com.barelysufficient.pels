@@ -32,7 +32,8 @@ import {
   DEBUG_LOGGING_TOPICS,
   DEVICE_HOME_ASSIGNMENTS,
   CAPACITY_PRIORITIES,
-  HOMES_CONFIG, HOMES_CONFIG_INITIALIZED,
+  HOMES_CONFIG,
+  HOMES_CONFIG_INITIALIZED,
   MAIN_HOME_ID,
   MODE_ALIASES,
   MODE_CATALOG_INITIALIZED,
@@ -52,7 +53,9 @@ import {
   POWER_TRACKER_PERSISTED_EVENT,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
-} from '../../../contracts/src/settingsKeys.ts';
+  MANAGED_DEVICES,
+  CONTROLLABLE_DEVICES,
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { refreshCurrentModes } from './currentModes.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
 import { notifyHomeLimitsSettingChanged, notifyHomeLimitsStatusPublished } from './homeLimits.ts';
@@ -158,10 +161,10 @@ const PRICE_REFRESH_KEYS = new Set([
 ]);
 
 const DEVICE_CONTROL_KEYS = new Set([
-  'managed_devices',
+  MANAGED_DEVICES,
   // A home battery's Managed toggle.
   BATTERY_CONTROL_DEVICES,
-  'controllable_devices',
+  CONTROLLABLE_DEVICES,
   BUDGET_EXEMPT_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,

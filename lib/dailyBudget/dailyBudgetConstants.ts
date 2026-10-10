@@ -1,14 +1,17 @@
-export const MIN_DAILY_BUDGET_KWH = 20;
-export const MAX_DAILY_BUDGET_KWH = 360;
+// Daily-budget tuning constants. The setting bounds and option values the
+// settings UI also uses have their one copy in
+// `packages/shared-domain/src/settings/dailyBudgetSettings.ts` and are
+// re-exported here for lib/dailyBudget and its wiring. A peer the dependency
+// rules bar from lib/dailyBudget (lib/weather) imports the shared module itself.
+export {
+  MIN_DAILY_BUDGET_KWH,
+  MAX_DAILY_BUDGET_KWH,
+  UNMANAGED_RESERVE_CONSERVATIVE_MODE,
+  UNMANAGED_RESERVE_MODE,
+  PRICE_SHAPING_FLEX_SHARE,
+} from '../../packages/shared-domain/src/settings/dailyBudgetSettings';
+
 export const CONTROLLED_USAGE_WEIGHT = 0.3;
-export const UNMANAGED_RESERVE_BALANCED_MODE = 0;
-export const UNMANAGED_RESERVE_CONSERVATIVE_MODE = 1;
-export const UNMANAGED_RESERVE_MODE = UNMANAGED_RESERVE_BALANCED_MODE;
-export const PRICE_FLEX_LOW = 0.3;
-export const PRICE_FLEX_MEDIUM = 0.6;
-export const PRICE_FLEX_HIGH = 0.85;
-export const PRICE_FLEX_HIGH_THRESHOLD = 0.7;
-export const PRICE_SHAPING_FLEX_SHARE = PRICE_FLEX_MEDIUM;
 export const PRICE_SHAPING_PRICE_RANGE_EPSILON = 1e-6;
 export const OBSERVED_HOURLY_PEAK_MARGIN_RATIO = 0.2;
 export const OBSERVED_HOURLY_PEAK_WINDOW_DAYS = 30;

@@ -79,10 +79,10 @@ describe('buildOverviewDeviceRows', () => {
     expect(rows[2]).not.toHaveProperty('plan');
   });
 
-  it('includes an implicitly-managed device, matching the runtime planned set', () => {
-    // `isRuntimePlannedDevice` is `managed !== false`. A device the owner never
-    // toggled has no flag and IS planned — keying on `=== true` would omit a
-    // device PELS is actively controlling.
+  it('treats an unset managed flag as planned, like the runtime predicate', () => {
+    // `isRuntimePlannedDevice` is `managed !== false`, and the Overview keys on
+    // the same expression. Production always resolves the flag; only a fixture
+    // leaves it unset, and the two predicates must still agree on it.
     const rows = buildOverviewDeviceRows({
       devices: [device({ id: 'implicit' }), device({ id: 'explicit', managed: true })],
       plan: null,

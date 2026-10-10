@@ -6,7 +6,7 @@ import {
   normalizeDeviceControlProfile,
   normalizeDeviceControlProfiles,
 } from '../../../../shared-domain/src/deviceControlProfiles.ts';
-import { DEVICE_CONTROL_PROFILES } from '../../../../contracts/src/settingsKeys.ts';
+import { DEVICE_CONTROL_PROFILES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { applyLocalDeviceControlProfile } from '../deviceControlProfiles.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';

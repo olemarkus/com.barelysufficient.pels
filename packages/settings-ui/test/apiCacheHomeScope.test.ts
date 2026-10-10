@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   SETTINGS_UI_DEVICES_PATH,
-  SETTINGS_UI_HOME_ID_QUERY_PARAM,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
-import { MAIN_HOME_ID } from '../../contracts/src/settingsKeys.ts';
+import { SETTINGS_UI_HOME_ID_QUERY_PARAM } from '../../shared-domain/src/settingsUiHomeIdQuery.ts';
+import { MAIN_HOME_ID } from '../../shared-domain/src/settings/settingsKeys.ts';
 import {
   getApiReadModel,
   homeScopedApiUri,

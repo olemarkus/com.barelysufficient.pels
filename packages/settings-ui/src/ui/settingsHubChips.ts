@@ -7,7 +7,7 @@ import {
   SETTINGS_UI_POWER_PATH,
   type SettingsUiPowerPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { DAILY_BUDGET_ENABLED } from '../../../contracts/src/settingsKeys.ts';
+import { DAILY_BUDGET_ENABLED } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { isPriceFeedAwaiting, resolveSimulationChipLabel } from '../../../shared-domain/src/settingsHubChips.ts';
 import { resolveSimulationPosture } from '../../../shared-domain/src/simulationPosture.ts';
 import { getApiReadModel, getSetting } from './homey.ts';

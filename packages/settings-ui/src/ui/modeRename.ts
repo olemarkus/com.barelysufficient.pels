@@ -4,7 +4,7 @@ import {
   MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
   homeScopedSettingsKey,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { setSetting } from './homey.ts';
 import { setModeEditorPending } from './modeEditor.ts';
 import { state } from './state.ts';

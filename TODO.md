@@ -1379,7 +1379,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 - [ ] **The device transport's parse providers are optional though production sets all 13.**
       13 members of `DeviceTransportParseProviders` (`lib/device/transport/managerParseDevice.ts`)
-      are optional, and each parse site carries a default (`getManaged?.(id) ?? true`,
+      are optional, and each parse site tolerates a missing one (`providers.getManaged?.(deviceId)`,
       `isManagedFilterActive?.() ?? true`, ...), yet `setup/appInit/buildDeviceParseProviders.ts`
       supplies all of them; the `DeviceTransport` constructor likewise accepts `providers` and
       `powerState` as `| undefined`, with `?? {}` defaults for the injected maps that only tests
@@ -1388,6 +1388,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `createPeakPowerLogState()`) are the transport's own state, created there in production too:
       they stay created by the transport rather than moving to the caller. **Done when:** no
       parse-provider call site defaults a missing provider. [P2]
+
+- [ ] **`DeviceDescriptor.managed` is optional though the runtime always resolves it.**
+      `managed?: boolean` (`packages/contracts/src/types.ts`) lets a fixture leave it unset, so
+      `isRuntimePlannedDevice` (`setup/appDeviceSupport.ts`), the Overview's `isOverviewMember`
+      (`packages/settings-ui/src/ui/overviewDeviceRows.ts`) and the battery/panel branch of
+      `lib/device/temperatureControlPosture.ts` all key on `managed !== false` to treat an unset
+      flag as managed, a case production never produces (`resolveManagedState` answers a boolean
+      for every device). **What changes:** make `managed` required on the descriptor, give the
+      fixtures an explicit value, and key the three readers on `managed`. Pairs with the
+      parse-provider entry above (`managed: providers.getManaged?.(deviceId)` in
+      `managerParseDeviceFields.ts`). **Done when:** no type carrying the device's managed state
+      declares it optional. [P2]
 
 - [ ] **The component loggers are optional because the getter that makes them can return
       `undefined`.** `getStructuredLogger` (`setup/appRuntimeApi.ts`) returns

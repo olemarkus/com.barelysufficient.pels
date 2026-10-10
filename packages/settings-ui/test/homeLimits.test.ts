@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installHomeyMock, type MockHomeyClient } from './helpers/homeyApiMock.ts';
 import { setHomeyClient } from '../src/ui/homey.ts';
-import { HOMES_CONFIG, MAIN_HOME_ID } from '../../contracts/src/settingsKeys.ts';
+import { HOMES_CONFIG, MAIN_HOME_ID } from '../../shared-domain/src/settings/settingsKeys.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes.ts';
 import {
   notifyHomeLimitsSettingChanged,

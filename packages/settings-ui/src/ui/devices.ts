@@ -54,6 +54,10 @@ import {
   beginManagedControlIntent,
   isCurrentManagedControlIntent,
 } from './managedControlIntent.ts';
+import {
+  MANAGED_DEVICES,
+  CONTROLLABLE_DEVICES,
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 
 const refreshHomeBadgesAndRepaint = (): void => {
   void refreshHomeBadges().then(() => {
@@ -190,7 +194,7 @@ const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('ma
   renderPriceOptimization(state.latestDevices);
   // Debounced save: coalesces rapid toggles into single save
   try {
-    await debouncedSetSetting('managed_devices', () => ({ ...state.managedMap }));
+    await debouncedSetSetting(MANAGED_DEVICES, () => ({ ...state.managedMap }));
   } catch (error) {
     await logSettingsError('Failed to update managed device', error, 'device list');
     await showToastError(error, 'Failed to update managed devices.');
@@ -217,7 +221,7 @@ const buildControllableToggleHandler = (deviceId: string) => withInitialLoadGuar
   state.controllableMap[deviceId] = checked;
   // Debounced save: coalesces rapid toggles into single save
   try {
-    await debouncedSetSetting('controllable_devices', () => ({ ...state.controllableMap }));
+    await debouncedSetSetting(CONTROLLABLE_DEVICES, () => ({ ...state.controllableMap }));
   } catch (error) {
     await logSettingsError('Failed to update controllable device', error, 'device list');
     await showToastError(error, 'Failed to update controllable devices.');

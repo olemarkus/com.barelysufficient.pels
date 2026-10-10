@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
-import { MAIN_HOME_ID } from '../../../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { MdFilledSelect, MdSelectOption } from './materialWebJSX.tsx';
 
 export type CurrentModeRow = {

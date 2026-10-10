@@ -1,5 +1,9 @@
 import Homey from 'homey';
-import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
+import {
+  OPERATING_MODE_SETTING,
+  CAPACITY_PRIORITIES,
+  MODE_DEVICE_TARGETS,
+} from '../../lib/utils/settingsKeys';
 import { getAllModes } from '../../lib/utils/capacityHelpers';
 import { getLogger } from '../../lib/logging/logger';
 import { normalizeError } from '../../lib/utils/errorUtils';
@@ -76,8 +80,8 @@ const RETIRED_PLAN_IMAGE_IDS = [
 
 const MODE_SOURCE_SETTING_KEYS: ReadonlySet<string> = new Set([
   OPERATING_MODE_SETTING,
-  'capacity_priorities',
-  'mode_device_targets',
+  CAPACITY_PRIORITIES,
+  MODE_DEVICE_TARGETS,
 ]);
 
 const DEFAULT_MODE = 'Home';
@@ -285,8 +289,8 @@ class PelsInsightsDevice extends Homey.Device {
 
   private getConfiguredModes(): Set<string> {
     const activeMode = this.getActiveMode();
-    const priorities = (this.homey.settings.get('capacity_priorities') as Record<string, Record<string, number>>) || {};
-    const targets = (this.homey.settings.get('mode_device_targets') as Record<string, Record<string, number>>) || {};
+    const priorities = (this.homey.settings.get(CAPACITY_PRIORITIES) as Record<string, Record<string, number>>) || {};
+    const targets = (this.homey.settings.get(MODE_DEVICE_TARGETS) as Record<string, Record<string, number>>) || {};
     return getAllModes(activeMode, priorities, targets);
   }
 

@@ -10,7 +10,7 @@ import {
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
@@ -18,15 +18,11 @@ import {
 import {
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,
-  PRICE_FLEX_HIGH,
-  PRICE_FLEX_HIGH_THRESHOLD,
-  PRICE_FLEX_LOW,
-  PRICE_FLEX_MEDIUM,
   PRICE_SHAPING_FLEX_SHARE,
-  UNMANAGED_RESERVE_BALANCED_MODE,
-  UNMANAGED_RESERVE_CONSERVATIVE_MODE,
   UNMANAGED_RESERVE_MODE,
-} from '../../../contracts/src/dailyBudgetConstants.ts';
+  normalizePriceFlexShare,
+  normalizeUnmanagedReserveMode,
+} from '../../../shared-domain/src/settings/dailyBudgetSettings.ts';
 import { callApi, getSetting, getSettingFresh } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
@@ -40,9 +36,6 @@ export type BudgetAdjustDraft = {
   controlledWeight: number;
   priceFlexShare: number;
 };
-
-const RESERVE_VALUES = new Set([UNMANAGED_RESERVE_BALANCED_MODE, UNMANAGED_RESERVE_CONSERVATIVE_MODE]);
-const FLEX_VALUES = new Set([PRICE_FLEX_LOW, PRICE_FLEX_MEDIUM, PRICE_FLEX_HIGH]);
 
 const parseNumber = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -69,22 +62,6 @@ const parseFlexibleBool = (value: unknown, fallback: boolean): boolean => {
 const clampKWh = (value: number): number => (
   Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, value))
 );
-
-const normaliseReserve = (value: unknown): number => {
-  const parsed = parseNumber(value);
-  if (parsed === null) return UNMANAGED_RESERVE_MODE;
-  if (RESERVE_VALUES.has(parsed)) return parsed;
-  return parsed >= 0.5 ? UNMANAGED_RESERVE_CONSERVATIVE_MODE : UNMANAGED_RESERVE_BALANCED_MODE;
-};
-
-const normaliseFlex = (value: unknown): number => {
-  const parsed = parseNumber(value);
-  if (parsed === null) return PRICE_SHAPING_FLEX_SHARE;
-  if (FLEX_VALUES.has(parsed)) return parsed;
-  if (parsed <= PRICE_FLEX_LOW) return PRICE_FLEX_LOW;
-  if (parsed >= PRICE_FLEX_HIGH_THRESHOLD) return PRICE_FLEX_HIGH;
-  return PRICE_FLEX_MEDIUM;
-};
 
 const defaultDraft = (): BudgetAdjustDraft => ({
   enabled: false,
@@ -134,8 +111,8 @@ const fromModelSettings = (settings: DailyBudgetModelSettings): BudgetAdjustDraf
   enabled: Boolean(settings.enabled),
   dailyBudgetKWh: clampKWh(Number(settings.dailyBudgetKWh)),
   priceShaping: Boolean(settings.priceShapingEnabled),
-  controlledWeight: normaliseReserve(settings.controlledUsageWeight),
-  priceFlexShare: normaliseFlex(settings.priceShapingFlexShare),
+  controlledWeight: normalizeUnmanagedReserveMode(settings.controlledUsageWeight),
+  priceFlexShare: normalizePriceFlexShare(settings.priceShapingFlexShare),
 });
 
 const readDraftFromSettings = async (fresh = false): Promise<BudgetAdjustDraft> => {
@@ -151,8 +128,8 @@ const readDraftFromSettings = async (fresh = false): Promise<BudgetAdjustDraft> 
     enabled: parseFlexibleBool(enabled, false),
     dailyBudgetKWh: clampKWh(parseFlexible(dailyBudgetKWh, MIN_DAILY_BUDGET_KWH)),
     priceShaping: parseFlexibleBool(priceShaping, true),
-    controlledWeight: normaliseReserve(controlledWeightRaw),
-    priceFlexShare: normaliseFlex(priceFlexRaw),
+    controlledWeight: normalizeUnmanagedReserveMode(controlledWeightRaw),
+    priceFlexShare: normalizePriceFlexShare(priceFlexRaw),
   };
 };
 
@@ -216,8 +193,8 @@ export const updateBudgetAdjustField = (patch: Partial<BudgetAdjustDraft>): void
   if (Number.isFinite(next.dailyBudgetKWh)) {
     next.dailyBudgetKWh = clampKWh(next.dailyBudgetKWh);
   }
-  next.controlledWeight = normaliseReserve(next.controlledWeight);
-  next.priceFlexShare = normaliseFlex(next.priceFlexShare);
+  next.controlledWeight = normalizeUnmanagedReserveMode(next.controlledWeight);
+  next.priceFlexShare = normalizePriceFlexShare(next.priceFlexShare);
   workingDraft = next;
   pendingPreview = null;
   draftRevision += 1;

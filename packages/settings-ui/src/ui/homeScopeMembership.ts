@@ -1,4 +1,4 @@
-import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
+import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 
 /** The last admitted home-membership data, independent of shell rendering. */
 export const homeScopeMembership = {

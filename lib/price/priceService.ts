@@ -8,6 +8,8 @@ import {
   POWERHOUR_PRICES_TODAY,
   POWERHOUR_PRICES_TOMORROW,
   PRICE_SCHEME,
+  PRICE_THRESHOLD_PERCENT,
+  PRICE_MIN_DIFF_ORE,
 } from '../utils/settingsKeys';
 import {
   addDays,
@@ -317,8 +319,8 @@ export default class PriceService {
       combined,
       priceScheme: this.getPriceScheme(),
       priceUnit: this.getPriceUnitLabel(),
-      thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
-      minDiffOre: this.getNumberSetting('price_min_diff_ore', 0),
+      thresholdPercent: this.getNumberSetting(PRICE_THRESHOLD_PERCENT, 25),
+      minDiffOre: this.getNumberSetting(PRICE_MIN_DIFF_ORE, 0),
       now,
       timeZone,
     });
@@ -538,8 +540,8 @@ export default class PriceService {
 
   private get priceLevelBand(): PriceLevelBand {
     return {
-      thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
-      minDiff: this.getNumberSetting('price_min_diff_ore', 0),
+      thresholdPercent: this.getNumberSetting(PRICE_THRESHOLD_PERCENT, 25),
+      minDiff: this.getNumberSetting(PRICE_MIN_DIFF_ORE, 0),
     };
   }
 

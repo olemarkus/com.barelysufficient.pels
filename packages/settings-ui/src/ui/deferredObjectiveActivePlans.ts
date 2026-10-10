@@ -3,7 +3,7 @@ import type {
   OverviewDeferredObjectiveActivePlan,
   OverviewDeferredObjectiveActivePlans,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING } from '../../../contracts/src/settingsKeys.ts';
+import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   normalizeDeferredObjectiveActivePlansShape,
 } from '../../../shared-domain/src/deferredObjectiveActivePlanShape.ts';

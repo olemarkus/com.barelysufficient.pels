@@ -49,7 +49,7 @@ import {
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
   POWER_SOURCE,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   hasChosenWholeHomeMeter,
   syncHomeyEnergyMeterSelection,
