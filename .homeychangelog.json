@@ -599,6 +599,9 @@
   "3.11.3": {
     "en": "The Flow cards for power-limit control, budget exemptions and the EV charging phase no longer reset that setting on your other devices when PELS cannot read its saved settings. The Flow now fails with an error you can retry instead."
   },
+  "3.11.4": {
+    "en": "A thermostat that reported an invalid temperature is no longer brought back on an older reading that arrives late. PELS waits for a newer temperature before it plans the device again.\n\nA thermostat that is not Managed by PELS no longer gets a Temperature per mode saved from its current setpoint, which it kept after you later turned Managed on. While PELS starts up, temperatures for devices in a meter area are no longer saved under the Main home."
+  },
   "3.12.0": {
     "en": "You can now set a Grid import limit independently of the Capacity limit. PELS leaves a small margin below the grid limit and reduces flexible loads as measured import approaches it. The settings and Overview show which limit is active, and you can choose either limit, both, or neither.\n\nPrice settings and Smart tasks still work when both limits are off. If the whole-home meter stops reporting, the existing meter-outage protection still applies and may limit managed devices."
   }
