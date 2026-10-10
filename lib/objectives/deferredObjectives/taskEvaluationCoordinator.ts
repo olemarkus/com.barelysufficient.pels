@@ -15,7 +15,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeliveredEnergyReader } from './energyDelivery';
-import { resolveObjectiveSteps } from './objectiveSteps';
+import { resolveHighestObjectiveAdmissionPowerKw, resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import { isAheadOfHourMilestone } from './trajectoryMilestone';
 import { isPastHourSettleMark } from './settleWindow';
@@ -132,15 +132,11 @@ export type TaskEvaluationReaders = {
   // Current mode-catalog priority producer. The batch allocator projects its
   // complete visible-plus-grace roster to unique relative ranks on every read.
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
-  // Idle-classifier reader. A task whose device is parked at its target (the
-  // stall verdict below) reserves nothing against lower-priority tasks: the
-  // device is not drawing its booking, so holding step power for it only
-  // starves the tasks behind it. If the device's own controller starts it
-  // again, it competes live and the capacity guard orders the two by priority.
-  // Every path that allocates passes it — the lifecycle emitter commits the
-  // lower tasks' schedules, the decoration path re-allocates them at the
-  // settle, and the preview projects them — so all three read the same
-  // reservation ledger. It never changes a status here: see
+  // Idle-classifier reader. A task whose device is parked at its target holds
+  // no timed task booking; the device returns to ordinary control, where its
+  // maximum known step is reserved for lower-priority tasks. Every allocation
+  // path passes the reader so lifecycle, decoration and preview agree on that
+  // transition. It never changes a status here: see
   // `reportStalledTasksAsSatisfied`.
   getStallClassification: DeferredObjectiveStallClassificationReader;
   // Durable device-exclusion resolver (this leafward subsystem reads neither
@@ -175,10 +171,8 @@ const holdsItsBookings = (
 ): boolean => task.reservationEligible && completion.kind !== 'accepted_near_target'
   && !readers.isReservationSuppressed(task.deviceId, task.objective.deadlineAtMs);
 
-// A task that holds its bookings counts toward a lower one's booked ranks only
-// while it governs its device through its plan: allocated, unfinished and before
-// its deadline. Otherwise the device is back under ordinary control and its draw
-// reaches the tasks below as nothing, like a plain device's.
+// A task governs its device while allocated, unfinished and before its deadline.
+// Otherwise lower tasks reserve the device's maximum known step as ordinary load.
 const governsItsDevice = (
   task: OrderedDeferredObjective,
   evaluation: TaskEvaluation,
@@ -208,13 +202,25 @@ export const buildDeferredObjectiveTaskResults = (
   });
   const reservations: DeferredObjectivePriorityReservation[] = [];
   let higherTaskBootstrapped = false;
-  // Tasks ahead that govern their device. Active ranks are unique and dense over
-  // the whole roster, so the devices above a task number exactly `priority - 1`:
-  // when the governing tasks ahead account for all of them, every load this task
-  // cannot displace reaches it as bookings, which gates its floor promotion.
-  let governingTasksAhead = 0;
+  const governedHigherDeviceIds = new Set<string>();
   const results = ordered.map((orderedTask, index) => {
-    const task = { ...orderedTask, higherRankedLoadBooked: governingTasksAhead === orderedTask.priority - 1 };
+    let higherPriorityUnbookedPowerKw = 0;
+    let higherRankedLoadAccountedFor = true;
+    for (const higherId of orderedTask.higherRankedDeviceIds) {
+      if (governedHigherDeviceIds.has(higherId)) continue;
+      const higherDevice = deviceById.get(higherId);
+      const maxStepPowerKw = higherDevice ? resolveHighestObjectiveAdmissionPowerKw(higherDevice) : null;
+      if (maxStepPowerKw === null) {
+        higherRankedLoadAccountedFor = false;
+      } else {
+        higherPriorityUnbookedPowerKw += maxStepPowerKw;
+      }
+    }
+    const task: CoordinatedDeferredObjective = {
+      ...orderedTask,
+      higherPriorityUnbookedPowerKw,
+      higherRankedLoadAccountedFor,
+    };
     const { deviceId, objective, device } = task;
     // Lower-priority edits cannot churn an already-committed higher task.
     const rosterSignature = buildAllocationContextSignature(ordered.slice(0, index + 1));
@@ -278,7 +284,7 @@ export const buildDeferredObjectiveTaskResults = (
         higherTaskBootstrapped = true;
       }
     }
-    if (holdsBookings && governsItsDevice(task, evaluationResult, nowMs)) governingTasksAhead += 1;
+    if (holdsBookings && governsItsDevice(task, evaluationResult, nowMs)) governedHigherDeviceIds.add(deviceId);
     return {
       evaluation: evaluationResult,
       diagnostic: { ...coordinated, evaluation: evaluationResult, completion: acceptedCompletion },
@@ -368,6 +374,7 @@ const buildDeferredObjectiveDiagnostic = (
     hasSolarProduction: snapshot.hasSolarProduction,
     exemptFromBudget: false,
     higherPriorityReservations,
+    higherPriorityUnbookedPowerKw: task.higherPriorityUnbookedPowerKw,
   };
   const progress = resolveObjectiveProgress(objective, task.device, readers.getDeliveredEnergyKWh);
   if (isObjectiveProgressSatisfied(progress)) {

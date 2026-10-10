@@ -11,7 +11,7 @@ import {
 import { buildObjectiveSignatureForEntry } from './activePlanSignature';
 import { buildLiveReservationSegments } from './activePlanSchedule';
 import type { TaskEvaluation } from './taskEvaluation';
-import { resolveObjectiveSteps } from './objectiveSteps';
+import { resolveHighestObjectiveAdmissionPowerKw, resolveObjectiveSteps } from './objectiveSteps';
 import type {
   DeferredObjectivePriorityReservation,
 } from './policyHorizon';
@@ -131,15 +131,17 @@ export type OrderedDeferredObjective = {
   device?: ObjectiveDeviceInput;
   priority: number;
   reservationEligible: boolean;
+  /** Complete main-lane roster above this task, including devices without tasks. */
+  higherRankedDeviceIds: readonly string[];
 };
 
 // An ordered task as the coordinator evaluates it, in the context of the tasks
 // already evaluated ahead of it this cycle.
 export type CoordinatedDeferredObjective = OrderedDeferredObjective & {
-  // Every device ranked above this one is governed by a smart task, so all the
-  // load this task cannot displace reaches it as bookings. Gates floor promotion
-  // (`rescueReplan.ts`).
-  higherRankedLoadBooked: boolean;
+  /** Power reserved for higher-ranked devices outside task control. */
+  higherPriorityUnbookedPowerKw: number;
+  /** Every higher-ranked device is task-governed or has a known maximum step. */
+  higherRankedLoadAccountedFor: boolean;
 };
 
 // Keep the same locale-independent tie-break as `lib/plan/planSort.ts` without
@@ -197,12 +199,18 @@ export const orderDeferredObjectives = (params: {
     entries.flatMap((entry) => entry.reservationEligible ? [] : [entry.deviceId]),
   );
   const activeDeviceCount = new Set(activeDeviceIds).size;
+  const rankedActiveDeviceIds = [...new Set(activeDeviceIds)]
+    .sort((left, right) => activePriorities.getPriority(left) - activePriorities.getPriority(right));
   return entries
     .map((entry) => {
       const priority = entry.reservationEligible
         ? activePriorities.getPriority(entry.deviceId)
         : activeDeviceCount + inactivePriorities.getPriority(entry.deviceId);
-      return { ...entry, priority };
+      return {
+        ...entry,
+        priority,
+        higherRankedDeviceIds: rankedActiveDeviceIds.filter((id) => activePriorities.getPriority(id) < priority),
+      };
     })
     .sort((left, right) => left.priority - right.priority || compareDeviceIdAsc(left.deviceId, right.deviceId));
 };
@@ -369,8 +377,16 @@ export const buildPriorityReservations = (params: {
   if (evaluation.completion.kind === 'target_reached'
     || evaluation.completion.kind === 'accepted_near_target') return [];
   const steps = params.device ? resolveObjectiveSteps(params.device) : [];
+  const maxStepPowerKw = params.device ? resolveHighestObjectiveAdmissionPowerKw(params.device) : null;
   const narrow = (reservations: DeferredObjectivePriorityReservation[]): DeferredObjectivePriorityReservation[] => (
-    reservations.map((reservation) => narrowToDrawWindow(reservation, steps, params.nowMs))
+    reservations.map((reservation) => narrowToDrawWindow(
+      maxStepPowerKw === null ? reservation : {
+        ...reservation,
+        admissionPowerKw: Math.min(reservation.admissionPowerKw, maxStepPowerKw),
+      },
+      steps,
+      params.nowMs,
+    ))
   );
   const activePlan = resolveActiveCommittedPlan({
     activePlans: params.activePlans,
