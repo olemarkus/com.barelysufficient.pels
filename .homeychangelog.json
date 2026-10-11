@@ -605,6 +605,9 @@
   "3.11.5": {
     "en": "PELS now uses noticeably less memory while running, which helps it run steadily over long periods."
   },
+  "3.11.6": {
+    "en": "PELS now does less processing on each power reading and plan update. The settings page no longer keeps redrawing the Overview while you are on another tab."
+  },
   "3.12.0": {
     "en": "You can now set a Grid import limit independently of the Capacity limit. PELS leaves a small margin below the grid limit and reduces flexible loads as measured import approaches it. The settings and Overview show which limit is active, and you can choose either limit, both, or neither.\n\nPrice settings and Smart tasks still work when both limits are off. If the whole-home meter stops reporting, the existing meter-outage protection still applies and may limit managed devices."
   }
