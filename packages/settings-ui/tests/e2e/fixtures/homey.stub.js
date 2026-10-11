@@ -868,9 +868,10 @@
     // In-memory plan snapshot
     plan_snapshot: buildSamplePlanSnapshot(),
 
-    // Grid tariff settings
+    // Grid tariff settings: a configured home has its grid company (ELVIA AS,
+    // Oslo), so its prices are set up and the setup path asks nothing of them.
     nettleie_fylke: '03',
-    nettleie_orgnr: '',
+    nettleie_orgnr: '980489698',
     nettleie_tariffgruppe: 'Husholdning',
 
     // Device control profiles (stepped load).

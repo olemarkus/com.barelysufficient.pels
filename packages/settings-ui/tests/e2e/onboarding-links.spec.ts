@@ -90,6 +90,9 @@ test.describe('Onboarding links', () => {
           managed_devices: {},
           controllable_devices: {},
           plan_snapshot: null,
+          // Nor a daily budget: with nothing using prices, the path asks
+          // nothing about them.
+          daily_budget_enabled: false,
         },
         unsetSettings: ['capacity_limit_kw', 'capacity_margin_kw'],
       };
@@ -144,8 +147,10 @@ test.describe('Onboarding links', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const card = page.locator('#overview-setup-path');
-    // Meter and devices are ready; only the hard cap remains.
-    await expect(card).toContainText('2 of 3 done');
+    // Meter, devices and prices are ready; only the hard cap remains. The
+    // fixture's devices respond to prices, which are set up.
+    await expect(card).toContainText('3 of 4 done');
+    await expect(card.locator('[data-setup-step="prices"]')).toHaveAttribute('data-setup-status', 'done');
     const hardCap = card.locator('[data-setup-step="hardCap"]');
     await expect(hardCap).toHaveAttribute('data-setup-status', 'next');
     await expect(hardCap).toContainText('10 kW hard cap (hourly average) until you set yours');

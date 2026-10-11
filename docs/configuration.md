@@ -231,7 +231,7 @@ Price support is optional, but it makes the app more useful for thermal loads, d
 
 | Setting | What it does |
 | --- | --- |
-| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy (dynamic prices)**, **Power by the Hour (app)**, or **Flow (prices from a Flow card)**. Until you choose, PELS uses **Norway (spot + grid tariff)** on a Homey in Norway and **Homey Energy** elsewhere, going by the country Homey reports for its location. |
+| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy (dynamic prices)**, **Power by the Hour (app)**, or **Flow (prices from a Flow card)**. Until you choose, PELS uses **Norway (spot + grid tariff)** on a Homey in Norway and **Homey Energy** elsewhere, going by the country Homey reports for its location. The page then says **Not chosen yet** with a button to keep that source. If Homey Energy has no prices for your Homey, the page says so; turn on dynamic prices under **Energy > Electricity** in the Homey app, or choose another source. |
 
 **Power by the Hour** reads prices straight from that app, with no Flow to build. Install
 [Power by the Hour](https://homey.app/a/com.gruijter.powerhour/) (version 8.10.0 or newer), add a price device
@@ -245,8 +245,11 @@ If you use Norway pricing, you also set:
 - grid company
 - tariff group
 - price area
+- pricing model (Strømstøtte or Norgespris)
 - provider surcharge
 - threshold and minimum difference values
+
+A setting you have not chosen says **Not chosen yet** and what PELS uses in its place, such as NO1 or Strømstøtte. Without a grid company your prices leave out the grid tariff. Choosing another county clears the grid company, because each grid company serves its own counties.
 
 If you use external flow tags:
 
@@ -258,7 +261,7 @@ If you use external flow tags:
 
 If you sell surplus solar back to the grid, turn on **Use an export price** and set a **share of the spot price** and/or a **fixed amount**.
 
-The fixed amount is in øre on the Norway source and in your currency on the others. When the price source changes, whether you pick another one or PELS moves a Homey outside Norway to Homey Energy, PELS turns the export price off rather than read a fixed amount in the wrong unit, so turn it back on and enter the amount again. A share of the spot price is set to 0 on a source without a spot price.
+The fixed amount is in øre on the Norway source and in your currency on the others. When the price source changes, whether you pick another one or PELS switches a Homey outside Norway to Homey Energy, PELS turns the export price off rather than read a fixed amount in the wrong unit, so turn it back on and enter the amount again. A share of the spot price is set to 0 on a source without a spot price.
 
 On the **Homey Energy** price source you also get **Where the price comes from**:
 
@@ -270,6 +273,8 @@ PELS then schedules against the blended **planning price** (what your energy is 
 ## Settings > Price-Aware Devices
 
 This page adjusts devices that already have price response enabled. To add a device here, first open the device under **Settings > Devices** and enable **Price** or **Setup > Price-based control**.
+
+The page starts with **Prices from**: the price source these devices respond to, marked **Not set up** while PELS prices with a source or a Norway setting you have not chosen, or the source has no prices. The device's **Price-based control** says the same.
 
 | Setting | What it does |
 | --- | --- |

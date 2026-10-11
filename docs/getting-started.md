@@ -26,7 +26,7 @@ If PELS is not installed yet, get it from the [Homey App Store](https://homey.ap
 
 In the Homey app, open **More -> Apps -> PELS -> Settings**. This is where all configuration happens. Homey does not take you there after installing, so this is the first thing to find.
 
-The first time you open it, the **Overview** shows a **Set up PELS** card with what PELS needs before it manages anything: your power meter and the devices it manages. Once a device may be limited, the card also shows the hard cap PELS is holding it to, so you can set your own. With two or more such devices it asks which should keep running longest; you can reorder them or keep the order shown. Each row opens the page where you do that step, and the card shows what is done as you go. The same card sits under **Settings > Setup & recommendations**. It disappears once everything that applies to your home is done.
+The first time you open it, the **Overview** shows a **Set up PELS** card with what PELS needs before it manages anything: your power meter and the devices it manages. Once a device may be limited, the card also shows the hard cap PELS is holding it to, so you can set your own. Once something in your home uses prices, it also shows where they come from, until you have set them up. Each row opens the page where you do that step, and the card shows what is done as you go. The same card sits under **Settings > Setup & recommendations**. It disappears once everything that applies to your home is done.
 
 When it does, the Overview may show **PELS can do more for this home**. That opens the features that apply to your home and are not in use yet: following electricity prices, using your own solar, and Smart tasks. Each one can be dismissed if it is not for you.
 
@@ -125,9 +125,9 @@ Re-sending the current mode is also a simple way to reapply targets if a device 
 
 If you want PELS to shift heating to cheaper hours, go to **Settings > Electricity prices**:
 
-1. Choose your price source — **Norway (spot + grid tariff)** if you are in Norway, or **Homey Energy**, **Power by the Hour** or a **Flow card** for other sources. If you already run the Power by the Hour app, that source needs no setup beyond picking it.
+1. Choose your price source — **Norway (spot + grid tariff)** if you are in Norway, or **Homey Energy**, **Power by the Hour** or a **Flow card** for other sources. If you already run the Power by the Hour app, that source needs no setup beyond picking it. Until you choose, the page says which source PELS is using, with a button to keep it.
 2. Make sure the price status shows that data is available.
-3. If using the Norway source, select your county, grid company, and tariff group.
+3. If using the Norway source, select your county, grid company, tariff group, pricing model (Strømstøtte or Norgespris) and price area. A setting you have not chosen yet says what PELS uses in its place, and without a grid company your prices leave out the grid tariff.
 
 Then go to **Settings > Devices**, open each temperature device that should participate, and enable **Price** or **Setup > Price-based control**. Water heaters and floor heating are the highest-impact picks — they carry the thermal mass that makes shifting pay off.
 

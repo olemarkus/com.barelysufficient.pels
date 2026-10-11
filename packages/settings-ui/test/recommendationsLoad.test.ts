@@ -57,6 +57,10 @@ vi.mock('../src/ui/setupPathFacts.ts', () => ({
   readSetupPath: () => ({ state: 'complete' }),
 }));
 
+vi.mock('../src/ui/setupPricesLoad.ts', () => ({
+  loadSetupPrices: () => Promise.resolve(),
+}));
+
 vi.mock('../src/ui/afterSetupFacts.ts', () => ({
   loadAfterSetupFacts: () => Promise.resolve(),
   readAfterSetupFacts: () => afterSetupRead,

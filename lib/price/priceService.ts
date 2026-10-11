@@ -1,19 +1,10 @@
 import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
 import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
-  FLOW_PRICES_TODAY,
-  FLOW_PRICES_TOMORROW,
-  HOMEY_PRICES_TODAY,
-  HOMEY_PRICES_TOMORROW,
-  POWERHOUR_PRICES_TODAY,
-  POWERHOUR_PRICES_TOMORROW,
-  PRICE_THRESHOLD_PERCENT,
-  PRICE_MIN_DIFF_ORE,
+  FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW,
+  POWERHOUR_PRICES_TODAY, POWERHOUR_PRICES_TOMORROW, PRICE_THRESHOLD_PERCENT, PRICE_MIN_DIFF_ORE,
 } from '../utils/settingsKeys';
-import type {
-  ResolvedPriceScheme,
-  SettingsUiHubMarketRead,
-} from '../../packages/contracts/src/settingsUiApi';
+import type { ResolvedPriceScheme, SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
 import {
   addDays,
   fetchGridTariffWithDateFallback,
@@ -21,7 +12,7 @@ import {
   getSpotPriceDates,
 } from './priceServiceUtils';
 import { DEFAULT_PERIOD_MINUTES, getFlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
-import { shouldUseGridTariffCache } from './gridTariffUtils';
+import { dropClearedGridCompanyTariff, shouldUseGridTariffCache } from './gridTariffUtils';
 import { NETTLEIE_FALLBACK_GENERATED_AT, resolveGridTariffFallback } from './staticGridTariffFallback';
 import {
   buildHomeyEnergyDateInfo,
@@ -49,6 +40,7 @@ import {
 } from './priceServiceCombined';
 import type { PowerTrackerReadout } from './priceServiceNorgespris';
 import {
+  NORWAY_SETTING_KEYS,
   readNorwaySchemeSettings,
   resolveNorwayHourlyPrices,
   type NorwaySchemeSettings,
@@ -252,13 +244,12 @@ export default class PriceService {
     }
     const settings = this.norwaySchemeSettings;
     if (!settings.organizationNumber) {
-      this.sinks.structuredLog?.info({ event: 'grid_tariff_skipped', reason: 'no_organization_number' });
+      this.skipGridTariffWithoutCompany();
       return;
     }
-    const requestSettings: { countyCode: string; organizationNumber: string; tariffGroup: string } = {
-      countyCode: settings.countyCode,
+    const requestSettings = {
+      countyCode: settings.countyCode, tariffGroup: settings.tariffGroup,
       organizationNumber: settings.organizationNumber,
-      tariffGroup: settings.tariffGroup,
     };
 
     const todayDate = new Date();
@@ -279,7 +270,7 @@ export default class PriceService {
       errorLog: this.sinks.errorLog,
     });
     if (data) {
-      this.storeGridTariffData(data, logContext);
+      this.storeGridTariffData(data, logContext, requestSettings.organizationNumber);
       return;
     }
 
@@ -298,6 +289,7 @@ export default class PriceService {
       this.storeGridTariffData(
         outcome.entries,
         ` (static fallback — NVE unavailable, no cached tariff; snapshot ${NETTLEIE_FALLBACK_GENERATED_AT})`,
+        requestSettings.organizationNumber,
       );
       return;
     }
@@ -322,7 +314,18 @@ export default class PriceService {
     });
   }
 
-  private storeGridTariffData(data: Array<Record<string, unknown>>, logContext: string): void {
+  /** No grid company, no grid tariff (see `dropClearedGridCompanyTariff`). */
+  private skipGridTariffWithoutCompany(): void {
+    this.sinks.structuredLog?.info({ event: 'grid_tariff_skipped', reason: 'no_organization_number' });
+    const stored = this.getSettingValue(NORWAY_SETTING_KEYS.organizationNumber);
+    if (dropClearedGridCompanyTariff(stored, this.priceDataStore)) this.updateCombinedPrices();
+  }
+
+  private storeGridTariffData(data: Array<Record<string, unknown>>, logContext: string, company: string): void {
+    // The owner chose another grid company, or cleared it, while NVE answered:
+    // this tariff is not theirs, and the refresh their change started stores
+    // the right one.
+    if (this.norwaySchemeSettings.organizationNumber !== company) return;
     this.priceDataStore.writeNettleie(data);
     this.sinks.structuredLog?.info({ event: 'grid_tariff_stored', entryCount: data.length, context: logContext });
     this.updateCombinedPrices();

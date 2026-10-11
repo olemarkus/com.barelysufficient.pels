@@ -805,6 +805,52 @@ describe('Grid tariff fetching', () => {
     expect(firstEntry).toHaveProperty('dateKey');
   });
 
+  it('drops the stored tariff once the owner clears the grid company', async () => {
+    // Choosing another county clears the grid company: the tariff stored for
+    // the old one must not stay in the prices.
+    mockHomeyInstance.settings.set('nettleie_fylke', '03');
+    mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
+    mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
+    (global.fetch as Mock).mockResolvedValue({ ok: true, json: async () => mockNveGridTariffResponse });
+    const app = createApp();
+    await app.onInit();
+    mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+    await flushPromises();
+    expect(getStoredPriceCacheForTests('grid_tariff')).toHaveLength(3);
+
+    mockHomeyInstance.settings.set('nettleie_fylke', '55');
+    mockHomeyInstance.settings.set('nettleie_orgnr', '');
+    mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+    await flushPromises();
+
+    expect(getStoredPriceCacheForTests('grid_tariff')).toEqual([]);
+  });
+
+  it('discards a tariff fetched for a grid company the owner has since cleared', async () => {
+    mockHomeyInstance.settings.set('nettleie_fylke', '03');
+    mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
+    mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
+    (global.fetch as Mock).mockResolvedValue({ ok: true, json: async () => [] });
+    const app = createApp();
+    await app.onInit();
+    await flushPromises();
+
+    // NVE answers the old company's request only after the owner moved county.
+    let answerNve: (value: unknown) => void = () => undefined;
+    (global.fetch as Mock).mockImplementation(() => new Promise((resolve) => { answerNve = resolve; }));
+    mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+    await flushPromises();
+    mockHomeyInstance.settings.set('nettleie_fylke', '55');
+    mockHomeyInstance.settings.set('nettleie_orgnr', '');
+    // The settings page refreshes the tariff after clearing the company.
+    mockHomeyInstance.settings.set('refresh_nettleie', Date.now() + 1);
+    await flushPromises();
+    answerNve({ ok: true, json: async () => mockNveGridTariffResponse });
+    await flushPromises();
+
+    expect(getStoredPriceCacheForTests('grid_tariff') ?? []).toEqual([]);
+  });
+
   it('skips fetch when organization number is not configured', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
@@ -1521,6 +1567,8 @@ describe('Price optimization', () => {
 
     mockHomeyInstance.settings.set('price_area', 'NO1');
     mockHomeyInstance.settings.set('nettleie_fylke', '03');
+    // A stored tariff belongs to a grid company: without one PELS leaves it out.
+    mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
     mockHomeyInstance.settings.set('electricity_prices_area', 'NO1');
     mockHomeyInstance.settings.set('provider_surcharge', 0);
     mockHomeyInstance.settings.set('electricity_prices', [

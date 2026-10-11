@@ -6,7 +6,6 @@ import {
   deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
-  deviceDetailPriceOptRow,
   deviceDetailSurplusOpt,
   deviceDetailSurplusOptRow,
   deviceDetailControlModelRow,
@@ -131,6 +130,7 @@ import {
 } from './overlayHandlers.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { DEVICE_POWER_SUPPORT_HINT } from '../deviceControlAvailability.ts';
+import { syncPriceOptRow } from './priceSourceHint.ts';
 
 let currentDetailDeviceId: string | null = null;
 const pendingDeviceDetailOpen = createPendingDeviceDetailOpen();
@@ -236,7 +236,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   // Kind-inapplicable, not gated: a device with no temperature target can never
   // use price-based temperature control, so the row hides instead of promising
   // "adjust temperature" on a charger or socket.
-  if (deviceDetailPriceOptRow) deviceDetailPriceOptRow.hidden = !controlState.supportsTemperature;
+  void syncPriceOptRow(controlState.supportsTemperature);
   setTemperatureGatedSwitch(deviceDetailPriceOpt, priceConfig?.enabled, controlState);
   setTemperatureGatedSwitch(deviceDetailSurplusOpt, priceConfig?.surplusWilling, {
     ...controlState,

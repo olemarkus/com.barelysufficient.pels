@@ -7408,8 +7408,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   color: var(--accent);
 }
 
+/* The status token, as the page's alert hints and warn chips use: one amber
+   on the price page, not two. */
 .price-config-status-value.warn {
-  color: var(--color-semantic-warning);
+  color: var(--pels-status-on-warning);
 }
 
 .eyebrow--inline {

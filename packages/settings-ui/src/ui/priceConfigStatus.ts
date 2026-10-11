@@ -8,6 +8,7 @@ import {
 } from '../../../shared-domain/src/price/flowPriceUtils.ts';
 import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
 import type { FlowStatus, HomeyStatus, PowerhourStatus } from './priceConfigTypes.ts';
+import { homeyEnergyHasPrices } from './priceSetupStatus.ts';
 
 type FlowStatusTone = 'ok' | 'warn';
 
@@ -113,6 +114,7 @@ export const buildHomeyStatus = (pricesPayload: SettingsUiPricesPayload): HomeyS
   const todayStatus = getFlowPayloadStatus(getFlowPricePayload(pricesPayload.homeyToday), todayKey, timeZone);
   const tomorrowStatus = getFlowPayloadStatus(getFlowPricePayload(pricesPayload.homeyTomorrow), tomorrowKey, timeZone);
   return {
+    hasPrices: homeyEnergyHasPrices(pricesPayload),
     currency,
     currencyTone: currency === 'Unknown' ? 'warn' : 'ok',
     today: todayStatus,

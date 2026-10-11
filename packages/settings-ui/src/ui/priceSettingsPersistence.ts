@@ -50,11 +50,24 @@ export const readPriceSchemeInForce = async (): Promise<PriceScheme> => {
 /** Save the price source the owner picked. The only write of `price_scheme`. */
 export const savePriceScheme = (scheme: PriceScheme): Promise<void> => setSetting(PRICE_SCHEME, scheme);
 
+const PRICE_AREAS: ReadonlySet<string> = new Set(['NO1', 'NO2', 'NO3', 'NO4', 'NO5']);
+
+export const isPriceArea = (value: string): boolean => PRICE_AREAS.has(value);
+
 /**
- * The writes a save of the page's other fields needs. The price source is not
- * among them: it is saved only when the owner picks one (`savePriceScheme`), so
- * a form still showing a source PELS has since replaced with an assumed one
- * cannot save its stale value as the owner's choice.
+ * Save the price area or pricing model the owner picked: the only writes of
+ * these keys. Written even when PELS was already pricing with that value,
+ * because the write is the owner choosing it.
+ */
+export const savePriceArea = (area: string): Promise<void> => setSetting('price_area', area);
+
+export const saveNorwayPriceModel = (model: NorwayPriceModel): Promise<void> => setSetting(NORWAY_PRICE_MODEL, model);
+
+/**
+ * The writes a save of the page's other fields needs. The price source, price
+ * area and pricing model are not among them: each is saved only when the owner
+ * picks one (`savePriceScheme`, `savePriceArea`, `saveNorwayPriceModel`), so a
+ * form still showing a value PELS assumed cannot save it as the owner's choice.
  */
 export const resolveChangedPriceSettingWrites = (
   next: PriceSettingsSaveInput,
@@ -65,12 +78,6 @@ export const resolveChangedPriceSettingWrites = (
     // `''` rather than `null`: the runtime's read policy treats both as "no
     // choice", and a string keeps the key's stored type from varying.
     writes.push({ key: POWERHOUR_DEVICE_ID, value: next.powerhourDeviceId ?? '' });
-  }
-  if (next.norwayPriceModel !== current.norwayPriceModel) {
-    writes.push({ key: NORWAY_PRICE_MODEL, value: next.norwayPriceModel });
-  }
-  if (next.priceArea !== current.priceArea) {
-    writes.push({ key: 'price_area', value: next.priceArea });
   }
   if (next.providerSurcharge !== current.providerSurcharge) {
     writes.push({ key: 'provider_surcharge', value: next.providerSurcharge });

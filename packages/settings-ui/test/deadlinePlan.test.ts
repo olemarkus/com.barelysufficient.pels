@@ -1158,7 +1158,7 @@ describe('deadline plan page payload', () => {
     });
     expect(renderInput?.status).toBe('pending');
     if (renderInput?.status !== 'pending') return;
-    expect(renderInput.pending.hero.headline).toBe('Waiting for tomorrow’s prices');
+    expect(renderInput.pending.hero.headline).toBe('PELS has no electricity prices');
   });
 
   it('renders the price-feature-disabled pending hero when the active plan carries that reason', () => {
@@ -1326,7 +1326,7 @@ describe('deadline plan page payload', () => {
     });
     expect(renderInput?.status).toBe('pending');
     if (renderInput?.status !== 'pending') return;
-    expect(renderInput.pending.hero.headline).toBe('Waiting for tomorrow’s prices');
+    expect(renderInput.pending.hero.headline).toBe('PELS has no electricity prices');
   });
 
   it('shows the bootstrap kWh-per-percent value and refining note when the latest revision was sourced from bootstrap', () => {
@@ -1972,7 +1972,7 @@ describe('deadline plan page payload', () => {
     });
     expect(renderInput?.status).toBe('pending');
     if (renderInput?.status !== 'pending') return;
-    expect(renderInput.pending.hero.headline).toBe('Waiting for tomorrow’s prices');
+    expect(renderInput.pending.hero.headline).toBe('PELS has no electricity prices');
     expect(renderInput.pending.hero.metaLine).not.toContain('Flow');
     expect(renderInput.pending.hero.metaLine).toContain('Last price update:');
   });
@@ -4195,6 +4195,7 @@ describe('shared-domain pending-hero copy', () => {
     const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'managed',
+      hasCurrentPrice: true,
       lastFetchedShort: null,
       deviceId: 'dev_heater',
       deviceName: 'Connected 300',
@@ -4204,6 +4205,37 @@ describe('shared-domain pending-hero copy', () => {
     expect(copy.recourse).toBeNull();
   });
 
+  it('says PELS has no prices at all, and where to set them up, rather than waiting for tomorrow', async () => {
+    // No price for the current hour is no prices at all: tomorrow's arriving
+    // will not fix a source that is not set up.
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
+      priceSource: 'managed',
+      hasCurrentPrice: false,
+      lastFetchedShort: null,
+      deviceId: 'dev_heater',
+      deviceName: 'Connected 300',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headline).toBe('PELS has no electricity prices');
+    expect(copy.recourse).toEqual({ label: 'Check prices', targetTab: 'electricity-prices' });
+  });
+
+  it('tells no prices at all apart from tomorrow not published yet', async () => {
+    const { resolvePendingPriceContext } = await import('../src/ui/deadlinePlanPending.ts');
+    const nowMs = Date.parse('2026-10-11T12:30:00Z');
+    const pricesCovering = (startsAt: string) => ({
+      combinedPrices: { priceScheme: 'homey', prices: [{ startsAt, total: 0.2 }] },
+    }) as unknown as Parameters<typeof resolvePendingPriceContext>[0];
+
+    expect(resolvePendingPriceContext(pricesCovering('2026-10-11T12:00:00Z'), nowMs).hasCurrentPrice).toBe(true);
+    expect(resolvePendingPriceContext(pricesCovering('2026-10-10T12:00:00Z'), nowMs).hasCurrentPrice).toBe(false);
+    expect(resolvePendingPriceContext(
+      { combinedPrices: null } as unknown as Parameters<typeof resolvePendingPriceContext>[0],
+      nowMs,
+    ).hasCurrentPrice).toBe(false);
+  });
+
   it('temperature awaiting_horizon_plan keeps the same headlineReason in external-flow price mode', async () => {
     // Headline + body branch on the price source, but the panic-visitor's
     // "how long am I waiting?" answer is the deadline horizon regardless —
@@ -4211,6 +4243,7 @@ describe('shared-domain pending-hero copy', () => {
     const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'external_flow',
+      hasCurrentPrice: true,
       lastFetchedShort: '14:32',
       deviceId: 'dev_heater',
       deviceName: 'Connected 300',
@@ -4225,6 +4258,7 @@ describe('shared-domain pending-hero copy', () => {
     const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.device_data_missing({
       priceSource: 'managed',
+      hasCurrentPrice: true,
       lastFetchedShort: null,
       deviceId: 'dev_heater',
       deviceName: 'Connected 300',
@@ -4241,6 +4275,7 @@ describe('shared-domain pending-hero copy', () => {
     const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.device_data_missing({
       priceSource: 'managed',
+      hasCurrentPrice: true,
       lastFetchedShort: null,
       deviceId: 'dev_heater',
       deviceName: '',
@@ -4268,6 +4303,7 @@ describe('shared-domain pending-hero copy', () => {
     );
     const copy = deadlineLabels('temperature').pendingHeroByReason.missing_capacity({
       priceSource: 'managed',
+      hasCurrentPrice: true,
       lastFetchedShort: null,
       deviceId: 'dev_heater',
       deviceName: 'Connected 300',
@@ -4294,6 +4330,7 @@ describe('shared-domain pending-hero copy', () => {
     const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.invalid_session({
       priceSource: 'managed',
+      hasCurrentPrice: true,
       lastFetchedShort: null,
       deviceId: 'dev_heater',
       deviceName: 'Connected 300',
@@ -4307,6 +4344,7 @@ describe('shared-domain pending-hero copy', () => {
     const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
     const copy = deadlineLabels('ev_soc').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'managed',
+      hasCurrentPrice: true,
       lastFetchedShort: null,
       deviceId: 'dev_ev',
       deviceName: 'Garage EV',
@@ -4320,6 +4358,7 @@ describe('shared-domain pending-hero copy', () => {
     const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
     const copy = deadlineLabels('ev_soc').pendingHeroByReason.device_data_missing({
       priceSource: 'managed',
+      hasCurrentPrice: true,
       lastFetchedShort: null,
       deviceId: 'dev_ev',
       deviceName: 'Garage EV',
@@ -4335,6 +4374,7 @@ describe('shared-domain pending-hero copy', () => {
     const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
     const copy = deadlineLabels('ev_soc').pendingHeroByReason.invalid_session({
       priceSource: 'managed',
+      hasCurrentPrice: true,
       lastFetchedShort: null,
       deviceId: 'dev_ev',
       deviceName: 'Garage EV',

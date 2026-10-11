@@ -87,8 +87,6 @@ const numberSetting = (value: unknown, fallback: number): number => (
 export const readCurrentPriceSettings = async (): Promise<PriceSettingsSaveInput> => {
   const [
     priceScheme,
-    norwayPriceModel,
-    priceArea,
     providerSurcharge,
     thresholdPercent,
     minDiffOre,
@@ -96,8 +94,6 @@ export const readCurrentPriceSettings = async (): Promise<PriceSettingsSaveInput
     pricesReadModel,
   ] = await Promise.all([
     getSetting(PRICE_SCHEME),
-    getSetting(NORWAY_PRICE_MODEL),
-    getSetting('price_area'),
     getSetting('provider_surcharge'),
     getSetting(PRICE_THRESHOLD_PERCENT),
     getSetting(PRICE_MIN_DIFF_ORE),
@@ -111,8 +107,6 @@ export const readCurrentPriceSettings = async (): Promise<PriceSettingsSaveInput
     // (`resolveChangedPriceSettingWrites`); only picking a source does.
     priceScheme: resolveDisplayedPriceScheme(pricesReadModel.priceSetup, priceScheme),
     powerhourDeviceId: readPowerhourDeviceIdSetting(powerhourDeviceId),
-    norwayPriceModel: normalizeNorwayPriceModel(norwayPriceModel),
-    priceArea: stringSetting(priceArea, 'NO1'),
     providerSurcharge: numberSetting(providerSurcharge, 0),
     thresholdPercent: numberSetting(thresholdPercent, 25),
     minDiffOre: numberSetting(minDiffOre, 0),
@@ -121,13 +115,10 @@ export const readCurrentPriceSettings = async (): Promise<PriceSettingsSaveInput
 
 export const validateAndSavePriceSettings = async (input: PriceSettingsSaveInput) => {
   const {
-    priceScheme, powerhourDeviceId, norwayPriceModel, priceArea,
-    providerSurcharge, thresholdPercent, minDiffOre,
+    priceScheme, powerhourDeviceId, providerSurcharge, thresholdPercent, minDiffOre,
   } = input;
 
   if (priceScheme === 'norway') {
-    const validAreas = ['NO1', 'NO2', 'NO3', 'NO4', 'NO5'];
-    if (!validAreas.includes(priceArea)) throw new Error('Invalid price area.');
     if (providerSurcharge < -100 || providerSurcharge > 100) {
       throw new Error('Provider surcharge must be between -100 and 100 øre.');
     }
@@ -144,8 +135,6 @@ export const validateAndSavePriceSettings = async (input: PriceSettingsSaveInput
     // Carried through the save rather than defaulted: without it every save of
     // this form would write "no device" over a choice the owner had made.
     powerhourDeviceId,
-    norwayPriceModel,
-    priceArea,
     providerSurcharge,
     // A whole percent, as the field steps: a fractional entry is stored truncated.
     thresholdPercent: Math.trunc(thresholdPercent),
@@ -167,6 +156,8 @@ export const validateAndSavePriceSettings = async (input: PriceSettingsSaveInput
 export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatch> => {
   const [
     savedPriceSettings,
+    norwayPriceModel,
+    priceArea,
     priceOptEnabled,
     countyCode,
     organizationNumber,
@@ -176,6 +167,8 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     pvForecastSource,
   ] = await Promise.all([
     readCurrentPriceSettings(),
+    getSetting(NORWAY_PRICE_MODEL),
+    getSetting('price_area'),
     getSetting(PRICE_OPTIMIZATION_ENABLED),
     getSetting('nettleie_fylke'),
     getSetting('nettleie_orgnr'),
@@ -192,6 +185,8 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
 
   return {
     ...savedPriceSettings,
+    norwayPriceModel: normalizeNorwayPriceModel(norwayPriceModel),
+    priceArea: stringSetting(priceArea, 'NO1'),
     optimizationEnabled: priceOptEnabled !== false,
     countyCode: stringSetting(countyCode, '03'),
     organizationNumber: stringSettingOrEmpty(organizationNumber),

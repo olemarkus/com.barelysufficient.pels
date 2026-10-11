@@ -2,7 +2,6 @@ import './materialWeb.ts';
 import {
   callApi,
   getApiReadModel,
-  getSetting,
   invalidateApiCache,
   primeApiCache,
   setSetting,
@@ -14,7 +13,13 @@ import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { resolveManagedState, resolveHomeExhibitsSolar } from './state.ts';
 import { gridCompanies } from './gridCompanies.ts';
 import { readPriceSchemeInForce, savePriceScheme } from './priceSettingsPersistence.ts';
-import { pushSettingWriteIfChanged } from './settingWrites.ts';
+import { createNorwayPriceHandlers } from './norwayPriceHandlers.ts';
+import { getPricesReadModel } from './prices.ts';
+import {
+  resolveNorwayChoices,
+  resolvePriceSetupStatus,
+  resolvePriceSourceAssumption,
+} from './priceSetupStatus.ts';
 import {
   applyExportSchemeChangePlan,
   createExportPriceHandlers,
@@ -56,7 +61,6 @@ import type {
   PriceOptDevice,
   GridCompanyOption,
   PriceScheme,
-  NorwayPriceModel,
   PvForecastSourceSetting,
 } from './priceConfigTypes.ts';
 import { liveStatusOrNull } from './powerStatusRead.ts';
@@ -87,6 +91,8 @@ let configState: PriceConfigState = {
   exportFixed: 0,
   pvForecastSource: 'auto',
   pvForecastStatus: { kind: 'unknown' },
+  priceSetup: { state: 'unavailable' },
+  priceSetupStatus: { state: 'unavailable' },
 };
 
 let electricityPricesSurface: HTMLElement | null = null;
@@ -120,6 +126,8 @@ const renderElectricityPrices = () => {
     config: configState,
     handlers: electricityPricesHandlers,
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
+    sourceAssumption: resolvePriceSourceAssumption(configState.priceSetup, configState.priceScheme),
+    norwayChoices: resolveNorwayChoices(configState.priceSetup),
     // Prosumer gate: any home that exhibits solar — a managed solar device OR
     // material exhibited grid export (a meter-only / string-inverter home) — OR
     // an already-enabled export config, so an enabled user is never stranded
@@ -146,6 +154,7 @@ const renderElectricityPrices = () => {
 const renderPriceAwareDevices = () => {
   if (!priceAwareDevicesSurface) return;
   const props: PriceAwareDevicesViewProps = {
+    priceSetupStatus: configState.priceSetupStatus,
     optimizationEnabled: configState.optimizationEnabled,
     devices: buildPriceOptDevices(state.latestDevices),
     handlers: priceAwareDevicesHandlers,
@@ -268,12 +277,14 @@ const handleSchemeChange = async (scheme: PriceScheme) => {
   // never clobber a newer selection or the export config).
   let schemePersisted = false;
   try {
-    const exportPlan = resolveExportSchemeChangePlan(
+    // Keeping the source in force changes no unit, so it leaves the export price alone.
+    const exportPlan = previousScheme === scheme ? 'none' : resolveExportSchemeChangePlan(
       previousScheme, scheme, configState.exportPriceEnabled, configState.exportSpotFactor, configState.exportFixed,
     );
     await validateAndSavePriceSettings();
     await savePriceScheme(scheme);
     schemePersisted = true;
+    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
     // Export follow-up write runs only after the scheme save itself landed —
     // if it failed, the store never changed scheme and disabling/zeroing
     // would silently degrade a live export config.
@@ -292,30 +303,6 @@ const handleSchemeChange = async (scheme: PriceScheme) => {
     // Repaint so the view reflects the stored export config (and any rollback).
     renderAll();
     await logSettingsError('Failed to save price scheme', error, 'priceConfig');
-    await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
-  }
-};
-
-const handleNorwayModelChange = async (model: NorwayPriceModel) => {
-  configState = { ...configState, norwayPriceModel: model };
-  renderAll();
-  try {
-    await validateAndSavePriceSettings();
-    await showToast('Price settings saved.', 'ok');
-  } catch (error) {
-    await logSettingsError('Failed to save Norway price model', error, 'priceConfig');
-    await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
-  }
-};
-
-const handlePriceAreaChange = async (area: string) => {
-  configState = { ...configState, priceArea: area };
-  renderAll();
-  try {
-    await validateAndSavePriceSettings();
-    await showToast('Price settings saved.', 'ok');
-  } catch (error) {
-    await logSettingsError('Failed to save price area', error, 'priceConfig');
     await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
   }
 };
@@ -353,52 +340,6 @@ const handleMinDiffChange = async (val: number) => {
   }
 };
 
-const handleCountyChange = async (code: string) => {
-  configState = { ...configState, countyCode: code, organizationNumber: '' };
-  renderAll();
-  try {
-    await setSetting('nettleie_fylke', code);
-  } catch (error) {
-    await logSettingsError('Failed to save county', error, 'priceConfig');
-    await showToastError(error, 'Failed to save grid tariff settings.');
-  }
-};
-
-const handleOrganizationChange = async (orgNumber: string) => {
-  configState = { ...configState, organizationNumber: orgNumber };
-  try {
-    const [currentCounty, currentOrg, currentGroup] = await Promise.all([
-      getSetting('nettleie_fylke'),
-      getSetting('nettleie_orgnr'),
-      getSetting('nettleie_tariffgruppe'),
-    ]);
-    const writes: Array<Promise<void>> = [];
-    pushSettingWriteIfChanged(writes, 'nettleie_fylke', currentCounty, configState.countyCode);
-    pushSettingWriteIfChanged(writes, 'nettleie_orgnr', currentOrg, orgNumber);
-    pushSettingWriteIfChanged(writes, 'nettleie_tariffgruppe', currentGroup, configState.tariffGroup);
-    if (writes.length > 0) {
-      await Promise.all(writes);
-      const response = await callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH, {});
-      primeApiCache(SETTINGS_UI_PRICES_PATH, response ?? null);
-    }
-    await showToast('Grid tariff settings saved.', 'ok');
-  } catch (error) {
-    await logSettingsError('Failed to save organization', error, 'priceConfig');
-    await showToastError(error, 'Failed to save grid tariff settings.');
-  }
-};
-
-const handleTariffGroupChange = async (group: string) => {
-  configState = { ...configState, tariffGroup: group };
-  try {
-    await setSetting('nettleie_tariffgruppe', group);
-    await showToast('Grid tariff settings saved.', 'ok');
-  } catch (error) {
-    await logSettingsError('Failed to save tariff group', error, 'priceConfig');
-    await showToastError(error, 'Failed to save grid tariff settings.');
-  }
-};
-
 // Export-section handlers live in exportPriceSettings.ts; config state and the
 // surface repaint stay owned here via the context callbacks.
 const exportPriceHandlersContext = {
@@ -408,6 +349,16 @@ const exportPriceHandlersContext = {
 };
 
 const exportPriceHandlers = createExportPriceHandlers(exportPriceHandlersContext);
+
+const norwayPriceHandlers = createNorwayPriceHandlers({
+  getState: () => configState,
+  patchState: (patch) => { configState = { ...configState, ...patch }; },
+  rerender: () => renderAll(),
+  refreshStatus: async () => {
+    await refreshStatusInfo();
+    renderAll();
+  },
+});
 const exportSourceHandler = createExportSourceHandler(exportPriceHandlersContext);
 
 const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
@@ -487,14 +438,15 @@ const handleRefreshGridTariff = async () => {
 const electricityPricesHandlers: ElectricityPricesHandlers = {
   onSchemeChange: handleSchemeChange,
   onPowerhourDeviceChange: handlePowerhourDeviceChange,
-  onNorwayModelChange: handleNorwayModelChange,
-  onPriceAreaChange: handlePriceAreaChange,
+  onKeepSource: () => handleSchemeChange(configState.priceScheme),
+  onNorwayModelChange: norwayPriceHandlers.onNorwayModelChange,
+  onPriceAreaChange: norwayPriceHandlers.onPriceAreaChange,
   onProviderSurchargeChange: handleProviderSurchargeChange,
   onThresholdChange: handleThresholdChange,
   onMinDiffChange: handleMinDiffChange,
-  onCountyChange: handleCountyChange,
-  onOrganizationChange: handleOrganizationChange,
-  onTariffGroupChange: handleTariffGroupChange,
+  onCountyChange: norwayPriceHandlers.onCountyChange,
+  onOrganizationChange: norwayPriceHandlers.onOrganizationChange,
+  onTariffGroupChange: norwayPriceHandlers.onTariffGroupChange,
   onRefreshPrices: handleRefreshPrices,
   onRefreshGridTariff: handleRefreshGridTariff,
   onPvForecastSourceChange: handlePvForecastSourceChange,
@@ -512,20 +464,17 @@ const priceAwareDevicesHandlers: PriceAwareDevicesHandlers = {
 
 const refreshStatusInfo = async () => {
   try {
-    const [pricesPayload, powerPayload] = await Promise.all([
-      getApiReadModel<SettingsUiPricesPayload>(SETTINGS_UI_PRICES_PATH),
+    const [payload, powerPayload] = await Promise.all([
+      getPricesReadModel(),
       getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH),
     ]);
-    const payload = pricesPayload ?? {
-      combinedPrices: null, priceArea: null,
-      flowToday: null, flowTomorrow: null, homeyCurrency: null, homeyToday: null, homeyTomorrow: null,
-      pvForecastSource: { kind: 'unknown' },
-      homeyPriceFormula: { kind: 'unknown' },
-      powerhourCurrency: null, powerhourToday: null, powerhourTomorrow: null,
-      powerhourSource: { kind: 'unknown' },
-    };
+    // A read that cannot say which settings the owner chose keeps the last one
+    // that could, rather than showing every setting as chosen.
+    const priceSetup = payload.priceSetup.state === 'resolved' ? payload.priceSetup : configState.priceSetup;
     configState = {
       ...configState,
+      priceSetup,
+      priceSetupStatus: resolvePriceSetupStatus({ ...payload, priceSetup }),
       flowStatus: configState.priceScheme === 'flow' ? buildFlowStatus(payload) : null,
       homeyStatus: configState.priceScheme === 'homey' ? buildHomeyStatus(payload) : null,
       powerhourStatus: configState.priceScheme === 'powerhour' ? buildPowerhourStatus(payload) : null,
@@ -544,12 +493,20 @@ const refreshStatusInfo = async () => {
   }
 };
 
+let settingsLoadGeneration = 0;
+
 const loadPriceConfigSettings = async () => {
   // Read FIRST, then merge. Spreading `configState` inside the same literal as
   // the `await` would snapshot it before the 12 settings round trips and revert
   // anything `refreshStatusInfo` wrote meanwhile (both run concurrently off a
   // `price_scheme` change), leaving the "Right now" card stale for the session.
+  // Only the newest read merges: one key change after another (a new county,
+  // then the cleared grid company) starts overlapping reads, and an older one
+  // finishing last would put the old values back.
+  settingsLoadGeneration += 1;
+  const generation = settingsLoadGeneration;
   const patch = await readPriceConfigSettings();
+  if (generation !== settingsLoadGeneration) return;
   configState = { ...configState, ...patch };
   settingsLoaded = true;
 };
@@ -573,6 +530,9 @@ export const refreshPriceConfigView = async () => {
 
 export const reloadPriceConfigSettings = async () => {
   await loadPriceConfigSettings();
+  // Which settings the owner chose, and so whether prices are set up, comes
+  // with the status read.
+  await refreshStatusInfo();
   renderAll();
 };
 
@@ -580,7 +540,9 @@ export const initElectricityPricesView = async (surface: HTMLElement) => {
   electricityPricesSurface = surface;
   await ensureLoaded();
   await refreshStatusInfo();
-  renderElectricityPrices();
+  // Both price pages: Price-aware devices shows whether prices are set up,
+  // which arrives with this status read.
+  renderAll();
 };
 
 export const initPriceAwareDevicesView = async (surface: HTMLElement) => {

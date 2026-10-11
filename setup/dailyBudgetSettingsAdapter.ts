@@ -13,6 +13,8 @@ import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/d
 import {
   normalizePriceFlexShare,
   normalizeUnmanagedReserveMode,
+  readDailyBudgetEnabledSetting,
+  readDailyBudgetPriceShapingSetting,
 } from '../packages/shared-domain/src/settings/dailyBudgetSettings';
 
 /**
@@ -35,9 +37,9 @@ export const createDailyBudgetSettingsStore = (
       ? 0
       : Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, rawBudget));
     return {
-      enabled: enabled === true,
+      enabled: readDailyBudgetEnabledSetting(enabled),
       dailyBudgetKWh: boundedBudget,
-      priceShapingEnabled: priceShapingEnabled !== false,
+      priceShapingEnabled: readDailyBudgetPriceShapingSetting(priceShapingEnabled),
       controlledUsageWeight: normalizeUnmanagedReserveMode(controlledWeight),
       priceShapingFlexShare: normalizePriceFlexShare(priceFlexShare),
     };

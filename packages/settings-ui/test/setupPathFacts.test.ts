@@ -2,7 +2,15 @@ import type { CapacityScalarSettings } from '../../contracts/src/capacitySetting
 
 // The module holds the facts between publishes, so each test loads a fresh copy
 // (and the `state` it reads) rather than inheriting the last test's.
-const load = async (membershipByDeviceId: Readonly<Record<string, string>> = {}) => {
+// Prices nothing uses: the Prices step stays out of these tests unless one
+// publishes otherwise.
+const NO_PRICE_USE = {
+  respondToPrices: false,
+  budgetShapesByPrice: false,
+  status: { state: 'complete' as const, summary: 'Flow' },
+};
+
+const loadUnpublished = async (membershipByDeviceId: Readonly<Record<string, string>> = {}) => {
   vi.resetModules();
   vi.doMock('../src/ui/homeScope.ts', () => ({
     readHomeMembership: () => ({ state: 'resolved', runtimeActive: true, membershipByDeviceId }),
@@ -11,6 +19,12 @@ const load = async (membershipByDeviceId: Readonly<Record<string, string>> = {})
   const facts = await import('../src/ui/setupPathFacts.ts');
   const { state } = await import('../src/ui/state.ts');
   return { facts, state };
+};
+
+const load = async (membershipByDeviceId: Readonly<Record<string, string>> = {}) => {
+  const loaded = await loadUnpublished(membershipByDeviceId);
+  loaded.facts.publishSetupPrices(NO_PRICE_USE);
+  return loaded;
 };
 
 const NEVER = { state: 'never' as const, remedy: 'No power readings yet.' };
@@ -57,15 +71,105 @@ describe('setup path facts', () => {
     );
   });
 
-  it('judges nothing until the readings, the hard cap and the device list have all arrived', async () => {
-    const { facts, state } = await load();
+  it('judges nothing until the readings, the hard cap, the prices and the device list have all arrived', async () => {
+    const { facts, state } = await loadUnpublished();
     expect(facts.readSetupPath()).toEqual({ state: 'loading' });
     facts.publishSetupPower(NEVER);
     facts.publishSetupHardCapRead(false, running);
     // A guess here would tell an owner with ten managed devices to go choose some.
     expect(facts.readSetupPath()).toEqual({ state: 'loading' });
     state.devicesLoaded = true;
+    expect(facts.readSetupPath()).toEqual({ state: 'loading' });
+    facts.publishSetupPrices(NO_PRICE_USE);
     expect(facts.readSetupPath().state).toBe('open');
+  });
+
+  describe('Prices step', () => {
+    let defaultPriceOptimizationConfig: Awaited<typeof import('../src/ui/state.ts')>['defaultPriceOptimizationConfig'];
+    const OPEN_NORWAY = {
+      state: 'open' as const,
+      summary: 'Norway, without your grid tariff. PELS uses NO1 and Strømstøtte until you choose.',
+    };
+
+    const configuredHome = async () => {
+      const loaded = await load();
+      ({ defaultPriceOptimizationConfig } = await import('../src/ui/state.ts'));
+      const { facts, state } = loaded;
+      state.devicesLoaded = true;
+      state.latestDevices = [{ id: 'heater', deviceType: 'temperature' }] as typeof state.latestDevices;
+      state.managedMap = { heater: true };
+      state.controllableMap = { heater: true };
+      state.priceOptimizationSettings = {};
+      state.deferredObjectiveSettings = { objectivesByDeviceId: {} } as typeof state.deferredObjectiveSettings;
+      facts.publishSetupPower(RECEIVED);
+      facts.publishSetupHardCapRead(true, running);
+      return loaded;
+    };
+
+    const pricesStep = (facts: Awaited<ReturnType<typeof load>>['facts']) => {
+      const read = facts.readSetupPath();
+      return read.state === 'open' ? read.path.steps.find((step) => step.id === 'prices') : undefined;
+    };
+
+    it('asks for prices once a managed device responds to them', async () => {
+      const { facts, state } = await configuredHome();
+      facts.publishSetupPrices({ respondToPrices: true, budgetShapesByPrice: false, status: OPEN_NORWAY });
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+
+      state.priceOptimizationSettings = { heater: { ...defaultPriceOptimizationConfig, enabled: true } };
+
+      expect(pricesStep(facts)).toEqual(expect.objectContaining({
+        status: 'next',
+        title: 'Prices',
+        detail: OPEN_NORWAY.summary,
+        target: { panel: 'electricity-prices', anchor: '#price-source-select' },
+      }));
+    });
+
+    it('asks for prices for a Smart task or a budget that shapes toward cheaper hours', async () => {
+      const { facts, state } = await configuredHome();
+      state.deferredObjectiveSettings = {
+        objectivesByDeviceId: { heater: { enabled: true, deadlineAtMs: Date.now() + 3_600_000 } },
+      } as unknown as typeof state.deferredObjectiveSettings;
+      facts.publishSetupPrices({ respondToPrices: true, budgetShapesByPrice: false, status: OPEN_NORWAY });
+      expect(pricesStep(facts)?.status).toBe('next');
+
+      state.deferredObjectiveSettings = { objectivesByDeviceId: {} } as typeof state.deferredObjectiveSettings;
+      facts.publishSetupPrices({ respondToPrices: true, budgetShapesByPrice: true, status: OPEN_NORWAY });
+      expect(pricesStep(facts)?.status).toBe('next');
+    });
+
+    it('asks nothing for a Smart task that has ended, or price control on a device without a temperature', async () => {
+      const { facts, state } = await configuredHome();
+      state.deferredObjectiveSettings = {
+        objectivesByDeviceId: { heater: { enabled: true, deadlineAtMs: Date.now() - 60_000 } },
+      } as unknown as typeof state.deferredObjectiveSettings;
+      state.latestDevices = [{ id: 'heater', deviceType: 'onoff' }] as typeof state.latestDevices;
+      state.priceOptimizationSettings = { heater: { ...defaultPriceOptimizationConfig, enabled: true } };
+      facts.publishSetupPrices({ respondToPrices: true, budgetShapesByPrice: false, status: OPEN_NORWAY });
+
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+    });
+
+    it('asks for nothing while Respond to prices is off', async () => {
+      // Every price behaviour waits on it, so with it off nothing uses prices.
+      const { facts, state } = await configuredHome();
+      state.priceOptimizationSettings = { heater: { ...defaultPriceOptimizationConfig, enabled: true } };
+      facts.publishSetupPrices({ respondToPrices: false, budgetShapesByPrice: true, status: OPEN_NORWAY });
+
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+    });
+
+    it('is done once the owner has set prices up', async () => {
+      const { facts } = await configuredHome();
+      facts.publishSetupPrices({
+        respondToPrices: true,
+        budgetShapesByPrice: true,
+        status: { state: 'complete', summary: 'Norway · ARVA AS · NO4 · Norgespris' },
+      });
+
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+    });
   });
 
   it('reports a bounded first-read failure instead of loading forever', async () => {

@@ -31,11 +31,14 @@ const buildConfig = (overrides: Partial<PriceConfigState> = {}): PriceConfigStat
   exportFixed: 0,
   pvForecastSource: 'auto',
   pvForecastStatus: { kind: 'unknown' },
+  priceSetup: { state: 'unavailable' },
+  priceSetupStatus: { state: 'unavailable' },
   ...overrides,
 });
 
 const buildHandlers = (overrides: Partial<ElectricityPricesHandlers> = {}): ElectricityPricesHandlers => ({
   onSchemeChange: vi.fn(),
+  onKeepSource: vi.fn(),
   onNorwayModelChange: vi.fn(),
   onPriceAreaChange: vi.fn(),
   onProviderSurchargeChange: vi.fn(),
@@ -64,6 +67,8 @@ const buildProps = (
   gridCompanyOptions: [
     { name: 'Grid Company', organizationNumber: '123' },
   ],
+  sourceAssumption: { kind: 'none' },
+  norwayChoices: { kind: 'unknown' },
   showExportSection: false,
   showSolarForecastSection: false,
   ...overrides,
@@ -467,6 +472,7 @@ describe('ElectricityPricesView', () => {
   });
   describe('Homey price setup status', () => {
     const homeyStatusWith = (issue: NonNullable<HomeyStatus['priceSetupIssue']>) => ({
+      hasPrices: true,
       currency: 'NOK',
       currencyTone: 'ok' as const,
       today: { text: 'Loaded', tone: 'ok' as const },
@@ -497,6 +503,7 @@ describe('ElectricityPricesView', () => {
       renderElectricityPricesView(mount, buildProps({
         priceScheme: 'homey',
         homeyStatus: {
+          hasPrices: true,
           currency: 'NOK',
           currencyTone: 'ok',
           today: { text: 'Loaded', tone: 'ok' },
@@ -634,5 +641,133 @@ describe('ElectricityPricesView, Power by the Hour source', () => {
 
     expect(mount.textContent).toContain('Reading prices');
     expect(mount.textContent?.match(/NO_Norway_2 \(hourly prices\)/g) ?? []).toHaveLength(1);
+  });
+
+  describe('chosen vs assumed', () => {
+    const mountWith = (
+      config: Partial<PriceConfigState>,
+      overrides: Partial<ElectricityPricesViewProps> = {},
+    ) => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+      renderElectricityPricesView(mount, buildProps(config, overrides));
+      return mount;
+    };
+
+    const alertHints = (mount: HTMLElement) => (
+      Array.from(mount.querySelectorAll('.field__hint--alert')).map((hint) => hint.textContent)
+    );
+
+    it('says when PELS picked the source, with a button to keep it', () => {
+      const onKeepSource = vi.fn();
+      const mount = mountWith({
+        priceScheme: 'homey',
+        homeyStatus: {
+          hasPrices: true,
+          currency: 'EUR',
+          currencyTone: 'ok',
+          today: { text: 'Loaded', tone: 'ok' },
+          tomorrow: { text: 'Loaded', tone: 'ok' },
+          priceSetupIssue: null,
+        },
+      }, {
+        sourceAssumption: { kind: 'assumed', reason: 'outside_norway' },
+        handlers: buildHandlers({ onKeepSource }),
+      });
+
+      expect(alertHints(mount)).toEqual([
+        'Not chosen yet. Your Homey is outside Norway, so PELS uses Homey Energy.',
+      ]);
+      const keep = Array.from(mount.querySelectorAll('md-outlined-button'))
+        .find((button) => button.textContent === 'Keep Homey Energy') as HTMLElement | undefined;
+      keep?.click();
+      expect(onKeepSource).toHaveBeenCalledTimes(1);
+    });
+
+    it('says Homey Energy has no prices, with where to set them up, rather than offering to keep it', () => {
+      const mount = mountWith({
+        priceScheme: 'homey',
+        homeyStatus: {
+          hasPrices: false,
+          currency: 'Unknown',
+          currencyTone: 'warn',
+          today: { text: 'No data received', tone: 'warn' },
+          tomorrow: { text: 'No data received', tone: 'warn' },
+          priceSetupIssue: null,
+        },
+      }, { sourceAssumption: { kind: 'assumed', reason: 'outside_norway' } });
+
+      expect(alertHints(mount)).toEqual(['Homey Energy has no electricity prices for your Homey yet.']);
+      expect(mount.textContent).toContain('under Energy > Electricity');
+      expect(mount.textContent).toContain('No prices');
+      expect(mount.textContent).not.toContain('Keep Homey Energy');
+    });
+
+    it('marks every Norway setting PELS is assuming, and never claims a grid tariff it leaves out', () => {
+      const mount = mountWith({
+        organizationNumber: '',
+        // The runtime's values, which the hints name: not the page's own copy.
+        priceArea: 'NO4',
+      }, {
+        norwayChoices: {
+          kind: 'resolved',
+          choices: {
+            county: { value: '03', chosen: false },
+            pricingModel: { value: 'stromstotte', chosen: false },
+            priceArea: { value: 'NO1', chosen: false },
+          },
+        },
+      });
+
+      expect(alertHints(mount)).toEqual([
+        'Not chosen yet, so your prices leave out the grid tariff.',
+        'Not chosen yet. PELS uses Strømstøtte.',
+        'Not chosen yet. PELS uses NO1.',
+      ]);
+      expect(mount.textContent).toContain('Not chosen yet. Showing grid companies in Oslo.');
+      expect(mount.textContent).toContain('plus your grid tariff once you choose a grid company.');
+      expect(mount.textContent).not.toContain('combines spot prices, grid tariff');
+    });
+
+    it('lets an owner choose the default PELS was assuming', () => {
+      // Showing NO1 in the field would leave nothing to pick for an owner in NO1:
+      // selecting the value already shown fires no change.
+      const onPriceAreaChange = vi.fn();
+      const mount = mountWith({}, {
+        norwayChoices: {
+          kind: 'resolved',
+          choices: {
+            county: { value: '03', chosen: true },
+            pricingModel: { value: 'stromstotte', chosen: true },
+            priceArea: { value: 'NO1', chosen: false },
+          },
+        },
+        handlers: buildHandlers({ onPriceAreaChange }),
+      });
+      const area = mount.querySelector(
+        'md-filled-select[aria-labelledby="electricity-prices-price-area-label"]',
+      ) as HTMLElement & { value: string };
+      expect(area.value).not.toBe('NO1');
+
+      area.value = 'NO1';
+      area.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(onPriceAreaChange).toHaveBeenCalledWith('NO1');
+    });
+
+    it('shows chosen settings as the owner left them', () => {
+      const mount = mountWith({});
+
+      expect(alertHints(mount)).toEqual([]);
+      expect(mount.textContent).toContain('Where PELS fetches price data.');
+      expect(mount.textContent).toContain('combines spot prices, grid tariff');
+    });
+
+    it('links to the devices that respond to these prices', () => {
+      const mount = mountWith({});
+
+      expect(mount.querySelector('[data-settings-target="price-aware-devices"]')?.textContent?.trim())
+        .toBe('Manage price-aware devices →');
+    });
   });
 });

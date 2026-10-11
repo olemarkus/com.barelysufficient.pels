@@ -87,6 +87,8 @@ Gulvvarme passer ofte godt med prisstyring fordi gulvet lagrer varme. PELS kan h
 
 PELS kan bruke flere priskilder. I Norge er den innebygde kilden laget for norske strømpriser og kan kombinere spotpris, nettleie, leverandørpåslag, avgifter og valgt ordning for strømstøtte eller Norgespris. Du velger dette i innstillingene.
 
+Velg **Grid company** (nettselskap), **Price area** (prisområde) og **Norway pricing model** (strømstøtte eller Norgespris) under **Settings > Electricity prices**. Uten nettselskap regner PELS uten nettleie. En innstilling du ikke har valgt ennå, er merket **Not chosen yet** og viser hva PELS bruker i stedet.
+
 ## Gå videre
 
 Sidene under er foreløpig på engelsk.

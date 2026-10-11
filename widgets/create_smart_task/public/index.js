@@ -377,8 +377,20 @@
     headlineReason: null,
     recourse: null
   }));
+  var NO_PRICES_RECOURSE = { label: "Check prices", targetTab: "electricity-prices" };
   var awaitingHorizonCopy = (kindNoun) => ((ctx) => {
     const isFlow = ctx.priceSource === "external_flow";
+    if (!ctx.hasCurrentPrice && !isFlow) {
+      return {
+        headline: "PELS has no electricity prices",
+        body: withLastFetched(
+          `PELS builds a ${kindNoun} from electricity prices, and it has none right now. Check where prices come from under Electricity prices.`,
+          ctx.lastFetchedShort
+        ),
+        headlineReason: `Need prices through ${ctx.deadlineTime} before the smart task can start.`,
+        recourse: NO_PRICES_RECOURSE
+      };
+    }
     const body = isFlow ? `PELS needs prices through the deadline before it can build a ${kindNoun}. In flow price mode, prices arrive only when a Flow calls the \u201CSet external prices (tomorrow)\u201D action. Check the Flow that publishes prices if this message stays up after tomorrow\u2019s prices should have arrived.` : `PELS will build a ${kindNoun} as soon as prices through the deadline are available.`;
     return {
       headline: isFlow ? "Waiting for tomorrow\u2019s prices from your Flow" : "Waiting for tomorrow\u2019s prices",

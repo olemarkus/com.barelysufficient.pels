@@ -1,6 +1,6 @@
 // The daily-budget settings both the runtime and the settings UI read: their
-// bounds and option values, and the read policy for the two option settings, so
-// a stored value plans and displays the same on both sides. This is their one
+// bounds and option values, and the read policy for the two option settings and
+// the two switches, so a stored value plans and displays the same on both sides. This is their one
 // copy: `lib/dailyBudget/dailyBudgetConstants.ts` re-exports the values beside
 // the runtime-only tuning constants. They cannot live in `packages/contracts`,
 // which the packaged app does not ship.
@@ -38,3 +38,12 @@ export const normalizePriceFlexShare = (value: unknown): number => {
   if (bounded > PRICE_FLEX_HIGH_THRESHOLD) return PRICE_FLEX_HIGH;
   return PRICE_FLEX_MEDIUM;
 };
+
+/**
+ * Read policy for the daily budget's two switches, for any reader deciding what
+ * the budget does: a switch the owner never saved keeps its default, the budget
+ * off and its shaping toward cheaper hours on.
+ */
+export const readDailyBudgetEnabledSetting = (value: unknown): boolean => value === true;
+
+export const readDailyBudgetPriceShapingSetting = (value: unknown): boolean => value !== false;

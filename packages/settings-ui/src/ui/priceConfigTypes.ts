@@ -1,10 +1,12 @@
 import type {
+  PriceSetupRead,
   PowerhourSourceUiStatus,
   PriceSchemeSetting,
   PvForecastSourceSetting,
   PvForecastSourceUiStatus,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { LiveSummarySignals } from './livePriceSignals.ts';
+import type { PriceSetupStatus } from './priceSetupStatus.ts';
 import type { ExportPriceSourceSetting } from '../../../shared-domain/src/settings/exportPriceSource.ts';
 
 /**
@@ -25,6 +27,8 @@ export type FlowStatus = {
 };
 
 export type HomeyStatus = {
+  /** Whether Homey Energy has given PELS prices for today or tomorrow. */
+  hasPrices: boolean;
   currency: string;
   currencyTone: StatusTone;
   today: StatusValue;
@@ -118,6 +122,10 @@ export type PriceConfigState = {
   // (which source actually feeds planning) from the prices payload.
   pvForecastSource: PvForecastSourceSetting;
   pvForecastStatus: PvForecastSourceUiStatus;
+  /** The runtime's account of which price settings the owner chose and which PELS assumed. */
+  priceSetup: PriceSetupRead;
+  /** Whether prices are set up, for the surfaces where price behaviour is turned on. */
+  priceSetupStatus: PriceSetupStatus;
 };
 
 /** Everything the page's config state takes from the settings store. */
@@ -144,6 +152,5 @@ export type PriceConfigSettingsPatch = Pick<
 /** The subset of the page's config state a save validates and writes. */
 export type PriceSettingsSaveInput = Pick<
   PriceConfigState,
-  'priceScheme' | 'powerhourDeviceId' | 'norwayPriceModel' | 'priceArea'
-  | 'providerSurcharge' | 'thresholdPercent' | 'minDiffOre'
+  'priceScheme' | 'powerhourDeviceId' | 'providerSurcharge' | 'thresholdPercent' | 'minDiffOre'
 >;

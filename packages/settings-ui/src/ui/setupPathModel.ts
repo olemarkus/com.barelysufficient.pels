@@ -23,6 +23,11 @@ import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiA
  * to turn both limits off completes it. Hence Devices before Limits: what may be
  * limited, then to what.
  *
+ * Prices follow the same rule. They apply once something in the home uses
+ * them (see `SetupPrices`), and then the step stays open while PELS prices with
+ * a source or a Norway setting the owner never chose, naming what it uses in
+ * the meantime, the way Limits names the 10 kW it runs on.
+ *
  * Priority is automatic, so confirming or customising the order is not a setup
  * requirement. Owners can change it in Modes whenever they want.
  *
@@ -42,7 +47,7 @@ import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiA
  * beside its one consumer rather than in shared-domain.
  */
 
-type SetupStepId = 'power' | 'hardCap' | 'devices';
+type SetupStepId = 'power' | 'hardCap' | 'devices' | 'prices';
 
 /** `next` is the first step still open; every later open step is `later`. */
 type SetupStepStatus = 'done' | 'next' | 'later';
@@ -87,6 +92,14 @@ export type SetupPowerReadings =
   | { state: 'received' }
   | { state: 'never'; remedy: string };
 
+/**
+ * Whether anything in the home uses prices and, when something does, how far
+ * the owner has set them up (`priceSetupStatus.ts`).
+ */
+export type SetupPrices =
+  | { state: 'unused' }
+  | { state: 'used'; complete: boolean; summary: string };
+
 /** What the settings UI knows about how far setup has come, for the Main home. */
 export type SetupPathFacts = {
   power: SetupPowerReadings;
@@ -95,6 +108,7 @@ export type SetupPathFacts = {
   /** Managed devices that also have Limit on: the ones PELS may actually turn down. */
   limitableDeviceCount: number;
   simulating: boolean;
+  prices: SetupPrices;
   /**
    * Where the hub is, from geography alone (never its language). `unavailable`
    * draws the market-neutral copy, which is always correct; a resolved market
@@ -118,6 +132,8 @@ export type SetupPathState =
 type SetupPathVisibility = SetupPathState | { state: 'loading' };
 
 const LEDE = 'Check the essentials PELS uses to manage this home. Prices, solar and Smart tasks build on them.';
+// With prices a step of their own, the lede names only what builds on the steps.
+const LEDE_WITH_PRICES = 'Check the essentials PELS uses to manage this home. Solar and Smart tasks build on them.';
 const formatKw = (value: number): string => `${Number(value.toFixed(1))} kW`;
 
 const countDevices = (count: number): string => (count === 1 ? '1 device' : `${count} devices`);
@@ -216,6 +232,13 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
       detail: resolveHardCapDetail(facts.hardCap, facts.market),
       target: { panel: 'limits' },
     }] : []),
+    ...(facts.prices.state === 'used' ? [{
+      id: 'prices' as const,
+      done: facts.prices.complete,
+      title: 'Prices',
+      detail: facts.prices.summary,
+      target: { panel: 'electricity-prices', anchor: '#price-source-select' },
+    }] : []),
   ];
   if (candidates.every((step) => step.done)) return { state: 'complete' };
 
@@ -234,7 +257,7 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
     path: {
       steps,
       doneCount: candidates.filter((step) => step.done).length,
-      lede: LEDE,
+      lede: facts.prices.state === 'used' ? LEDE_WITH_PRICES : LEDE,
       simulating: facts.simulating,
     },
   };

@@ -20,6 +20,7 @@ const freshInstall: SetupPathFacts = {
   limitableDeviceCount: 0,
   simulating: true,
   market: { state: 'unavailable' },
+  prices: { state: 'unused' },
 };
 
 // Everything the path asks for, with simulation still on: a cautious owner who
@@ -31,6 +32,7 @@ const configuredAndSimulating: SetupPathFacts = {
   limitableDeviceCount: 1,
   simulating: true,
   market: { state: 'unavailable' },
+  prices: { state: 'unused' },
 };
 
 // An owner who manages thermostats for their price response and nothing else:
@@ -42,6 +44,7 @@ const priceOnlyOwner: SetupPathFacts = {
   limitableDeviceCount: 0,
   simulating: false,
   market: { state: 'unavailable' },
+  prices: { state: 'unused' },
 };
 
 const statuses = (facts: SetupPathFacts) => (
@@ -153,6 +156,24 @@ describe('setup path', () => {
     expect(pathOf(freshInstall)?.lede).toBe(
       'Check the essentials PELS uses to manage this home. Prices, solar and Smart tasks build on them.',
     );
+  });
+
+  it('asks for prices last, only once something uses them, naming what PELS prices with meanwhile', () => {
+    const summary = 'Homey Energy has no electricity prices for your Homey yet.';
+    const usingPrices: SetupPathFacts = {
+      ...configuredAndSimulating,
+      prices: { state: 'used', complete: false, summary },
+    };
+
+    expect(statuses(usingPrices)).toEqual(['power:done', 'devices:done', 'hardCap:done', 'prices:next']);
+    expect(pathOf(usingPrices)?.steps.find((step) => step.id === 'prices')?.detail).toBe(summary);
+    // Prices are a step of their own here, so the lede does not promise them.
+    expect(pathOf(usingPrices)?.lede).toBe(
+      'Check the essentials PELS uses to manage this home. Solar and Smart tasks build on them.',
+    );
+    expect(resolveSetupPath({ ...usingPrices, prices: { state: 'used', complete: true, summary: 'Homey Energy' } }))
+      .toEqual({ state: 'complete' });
+    expect(resolveSetupPath(configuredAndSimulating)).toEqual({ state: 'complete' });
   });
 
   it('moves the next step past whatever is already done, in any order', () => {

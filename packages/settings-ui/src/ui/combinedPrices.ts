@@ -74,3 +74,13 @@ export const normalizeCombinedPrices = (combined: unknown): CombinedPriceRow[] =
     }];
   });
 };
+
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
+/** The row whose hour holds `nowMs`, if the prices cover now. */
+export const findCurrentPriceRow = (rows: readonly CombinedPriceRow[], nowMs: number): CombinedPriceRow | undefined => (
+  rows.find((row) => {
+    const startsAtMs = new Date(row.startsAt).getTime();
+    return Number.isFinite(startsAtMs) && startsAtMs <= nowMs && nowMs < startsAtMs + ONE_HOUR_MS;
+  })
+);

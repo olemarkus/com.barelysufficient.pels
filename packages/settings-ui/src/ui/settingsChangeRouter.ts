@@ -55,8 +55,11 @@ import {
   PRICE_OPTIMIZATION_SETTINGS,
   MANAGED_DEVICES,
   CONTROLLABLE_DEVICES,
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { refreshCurrentModes } from './currentModes.ts';
+import { loadSetupPrices } from './setupPricesLoad.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
 import { notifyHomeLimitsSettingChanged, notifyHomeLimitsStatusPublished } from './homeLimits.ts';
 import { getHomeScope, notifyHomeScopeSettingChanged } from './homeScope.ts';
@@ -227,27 +230,44 @@ const refreshDailyBudgetSettings = (key: string) => {
     runLoggedTask(refreshBudgetAdjust(), 'Failed to refresh adjust draft', 'settings.set');
   }
   runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'settings.set');
+  // A budget that shapes toward cheaper hours uses prices: the setup path's
+  // Prices step applies.
+  if (key === DAILY_BUDGET_ENABLED || key === DAILY_BUDGET_PRICE_SHAPING_ENABLED) {
+    runLoggedTask(loadSetupPrices(), 'Failed to refresh the setup path after a daily budget change', 'settings.set');
+  }
   // The hub's Daily-budget `Off` chip tracks `daily_budget_enabled` — cheap
   // cached reads, so syncing on every budget-key change is fine.
   syncSettingsHubChips();
 };
 
+// The price source and the settings the runtime prices with. The prices read
+// says which of them the owner chose, so a change to any of them reloads it.
+const PRICE_SETUP_KEYS: ReadonlySet<string> = new Set([
+  PRICE_SCHEME,
+  NORWAY_PRICE_MODEL,
+  POWERHOUR_DEVICE_ID,
+  'price_area',
+  'provider_surcharge',
+  'nettleie_fylke',
+  'nettleie_orgnr',
+  'nettleie_tariffgruppe',
+]);
+
 const refreshPriceSettings = (key: string, context: 'settings.set' | 'settings.unset') => {
-  if (PRICE_REFRESH_KEYS.has(key)) {
-    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
-    refreshPricesIfVisible(context);
-  }
-  if (key === PRICE_OPTIMIZATION_ENABLED || key === PRICE_OPTIMIZATION_SETTINGS) {
+  const setupChanged = PRICE_SETUP_KEYS.has(key);
+  // Dropped first: every reload below reads it. The page shows the source the
+  // runtime has in force and which settings the owner chose, which the prices
+  // read carries; a cached read would show them from before this change.
+  if (setupChanged || PRICE_REFRESH_KEYS.has(key)) invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+  if (PRICE_REFRESH_KEYS.has(key)) refreshPricesIfVisible(context);
+  if (key === PRICE_OPTIMIZATION_ENABLED || key === PRICE_OPTIMIZATION_SETTINGS || setupChanged) {
     runLoggedTask(
       refreshAfterSetupRecommendations(),
       'Failed to refresh setup suggestions after Price settings changed',
       context,
     );
   }
-  if (key !== PRICE_SCHEME && key !== NORWAY_PRICE_MODEL && key !== POWERHOUR_DEVICE_ID) return;
-  // The page shows the source the runtime has in force, which the prices read
-  // carries; a cached read would show the source from before this change.
-  invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+  if (!setupChanged) return;
   runLoggedTask(reloadPriceConfigSettings(), 'Failed to reload price settings', context);
   refreshPricesIfVisible(context);
 };

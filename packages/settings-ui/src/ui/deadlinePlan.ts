@@ -91,7 +91,7 @@ const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedContextRes
 // retains an older reason: missing prices or a session that ended after planning.
 const buildPendingPayload = (
   ctx: ResolvedObjectiveContext,
-  priceContext: Pick<DeadlinePendingContext, 'priceSource' | 'lastFetchedShort'>,
+  priceContext: Pick<DeadlinePendingContext, 'priceSource' | 'lastFetchedShort' | 'hasCurrentPrice'>,
   reasonOverride?: DeadlinePlanPendingReason,
 ): DeadlinePlanPendingPayload => {
   const labels = deadlineLabels(ctx.objective.kind, ctx.activePlan?.progressDirection ?? 'unknown');
@@ -272,7 +272,7 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   if (ctxResult.kind === 'absent') return { status: 'absent' };
   if (ctxResult.kind === 'completed') return { status: 'completed', kind: ctxResult.objectiveKind };
   const ctx = ctxResult.context;
-  const priceContext = resolvePendingPriceContext(params.prices);
+  const priceContext = resolvePendingPriceContext(params.prices, ctx.nowMs);
   // No persisted record yet, an explicitly pending record, OR a live exclusion
   // blocker (separate meter, device no longer managed) → pending/unavailable
   // hero. The exclusion branch deliberately outranks a committed cached

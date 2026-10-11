@@ -4,6 +4,7 @@ import { MdIconButton, MdOutlinedButton, MdSwitch } from './materialWebJSX.tsx';
 import { AppBar } from './AppBar.tsx';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { MAX_PRICE_ADJUSTMENT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
+import type { PriceSetupStatus } from '../priceSetupStatus.ts';
 
 /** The page's callbacks into its controller (`priceConfig.ts`), one per control. */
 export type PriceAwareDevicesHandlers = {
@@ -13,6 +14,8 @@ export type PriceAwareDevicesHandlers = {
 };
 
 export type PriceAwareDevicesViewProps = {
+  /** The prices these devices respond to, so turning them on never hides an unset source. */
+  priceSetupStatus: PriceSetupStatus;
   optimizationEnabled: boolean;
   devices: PriceOptDevice[];
   handlers: PriceAwareDevicesHandlers;
@@ -121,6 +124,33 @@ const Header = () => (
     lede="Boost when power is cheap, ease off when it is expensive, for eligible temperature devices."
   />
 );
+
+/**
+ * Where the prices these devices respond to come from. Configuration only,
+ * never a price: the price itself has its surfaces elsewhere.
+ */
+const PriceSourceCard = ({ status }: { status: PriceSetupStatus }) => {
+  if (status.state === 'unavailable') return null;
+  const open = status.state === 'open';
+  return (
+    <section class="settings-form-card" id="price-aware-devices-source">
+      <div class="price-config-status-row">
+        <h3 class="section-title">Prices from</h3>
+        {open && <span class="plan-chip plan-chip--warn">Not set up</span>}
+      </div>
+      <p class="pels-card-supporting">{status.summary}</p>
+      <div class="form__actions">
+        <MdOutlinedButton
+          type="button"
+          data-settings-target="electricity-prices"
+          data-settings-anchor="#price-source-select"
+        >
+          {open ? 'Set up prices' : 'Change'}
+        </MdOutlinedButton>
+      </div>
+    </section>
+  );
+};
 
 const RespondTogglesCard = ({
   enabled,
@@ -239,6 +269,7 @@ const DevicesSection = ({ devices, handlers }: { devices: PriceOptDevice[]; hand
 const PriceAwareDevicesRoot = (props: PriceAwareDevicesViewProps) => (
   <>
     <Header />
+    <PriceSourceCard status={props.priceSetupStatus} />
     <RespondTogglesCard enabled={props.optimizationEnabled} onToggle={props.handlers.onOptimizationToggle} />
     {props.optimizationEnabled && <DevicesSection devices={props.devices} handlers={props.handlers} />}
   </>

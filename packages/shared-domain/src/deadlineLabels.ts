@@ -1704,6 +1704,9 @@ export type DeadlinePendingPriceSource = 'external_flow' | 'managed' | 'unknown'
 
 export type DeadlinePendingContext = {
   priceSource: DeadlinePendingPriceSource;
+  // Whether PELS has a price for the current hour. Without one it has no
+  // prices at all, which waiting for tomorrow's prices will not fix.
+  hasCurrentPrice: boolean;
   // Pre-formatted local time of the last successful price refresh (e.g. "14:32"),
   // or null when no refresh has happened yet. Formatting lives in the caller so
   // shared-domain stays free of locale/Date helpers.
@@ -2209,9 +2212,26 @@ const notYetPlannedCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyReso
   })
 );
 
+// No prices at all: the price source is not set up, has none for this home, or
+// its fetch fails, so the recourse goes where prices come from.
+const NO_PRICES_RECOURSE: DeadlineCannotMeetRecourse = { label: 'Check prices', targetTab: 'electricity-prices' };
+
 const awaitingHorizonCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyResolver => (
   (ctx) => {
     const isFlow = ctx.priceSource === 'external_flow';
+    // A Flow price source keeps its own copy below: the Flow is what to check.
+    if (!ctx.hasCurrentPrice && !isFlow) {
+      return {
+        headline: 'PELS has no electricity prices',
+        body: withLastFetched(
+          `PELS builds a ${kindNoun} from electricity prices, and it has none right now. `
+            + 'Check where prices come from under Electricity prices.',
+          ctx.lastFetchedShort,
+        ),
+        headlineReason: `Need prices through ${ctx.deadlineTime} before the smart task can start.`,
+        recourse: NO_PRICES_RECOURSE,
+      };
+    }
     const body = isFlow
       ? `PELS needs prices through the deadline before it can build a ${kindNoun}. `
         + 'In flow price mode, prices arrive only when a Flow calls the '

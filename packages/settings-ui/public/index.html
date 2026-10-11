@@ -1333,7 +1333,14 @@
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Price-based control</span>
                     <small class="field__hint">Adjust temperature based on electricity price fluctuations.</small>
+                    <!-- Where the prices come from, and whether they are set up
+                         (deviceDetail/priceSourceHint.ts): turning price control
+                         on must never hide an unset price source. -->
+                    <small class="field__hint" id="device-detail-price-source-hint" hidden></small>
                   </span>
+                </div>
+                <div class="form__actions" id="device-detail-price-source-action" hidden>
+                  <md-text-button type="button" data-settings-target="electricity-prices" data-settings-anchor="#price-source-select">Set up prices</md-text-button>
                 </div>
 
                 <div class="md-switch-row" id="device-detail-surplus-opt-row" hidden>

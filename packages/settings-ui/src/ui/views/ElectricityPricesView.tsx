@@ -1,4 +1,4 @@
-import { render } from 'preact';
+import { render, type ComponentChildren } from 'preact';
 import type {
   PriceConfigState,
   PriceScheme,
@@ -28,6 +28,11 @@ import {
 } from './materialWebJSX.tsx';
 import { AppBar } from './AppBar.tsx';
 import {
+  NORWAY_PRICE_MODEL_NAMES,
+  type NorwayChoices,
+  type PriceSourceAssumption,
+} from '../priceSetupStatus.ts';
+import {
   EXPORT_FIXED_LIMIT,
   EXPORT_SPOT_FACTOR_MAX,
   EXPORT_SPOT_FACTOR_MIN,
@@ -47,6 +52,10 @@ const readValue = (event: Event): string => (event.currentTarget as ValueElement
 // same way it does for every real option. The sentinel never leaves this view:
 // it is mapped back to `''` on change and from `''` on render.
 const GRID_COMPANY_NONE = '__none__';
+// The same for a pricing model or price area the owner never chose. Showing
+// PELS's default in the field would leave nothing to pick for an owner whose
+// answer IS the default: selecting the value already shown fires no change.
+const NOT_CHOSEN = '__not_chosen__';
 
 const readFiniteNumber = (event: Event): number | null => {
   const value = Number.parseFloat(readValue(event));
@@ -56,6 +65,8 @@ const readFiniteNumber = (event: Event): number | null => {
 /** The page's callbacks into its controller (`priceConfig.ts`), one per control. */
 export type ElectricityPricesHandlers = {
   onSchemeChange: (scheme: PriceScheme) => void;
+  /** Save the assumed source as the owner's choice. */
+  onKeepSource: () => void;
   onPowerhourDeviceChange: (deviceId: string) => void;
   onNorwayModelChange: (model: NorwayPriceModel) => void;
   onPriceAreaChange: (area: string) => void;
@@ -80,6 +91,10 @@ export type ElectricityPricesViewProps = {
   config: PriceConfigState;
   handlers: ElectricityPricesHandlers;
   gridCompanyOptions: GridCompanyOption[];
+  /** Whether PELS assumed the source the page shows, and why. */
+  sourceAssumption: PriceSourceAssumption;
+  /** Which Norway settings the owner chose, so the page never presents a default as theirs. */
+  norwayChoices: NorwayChoices;
   // Export (feed-in) price section. Prosumer-gated by the orchestrator: shown
   // when the home has a managed solar device OR export pricing is already on
   // (never strand an enabled user behind the gate).
@@ -184,7 +199,11 @@ const FlowStatusBlock = ({ status }: { status: FlowStatus }) => (
 
 const HomeyStatusBlock = ({ status }: { status: HomeyStatus }) => (
   <div class="price-config-source-status">
-    <StatusRow label="Homey Energy" value="Enabled" tone="ok" />
+    <StatusRow
+      label="Homey Energy"
+      value={status.hasPrices ? 'Prices found' : 'No prices'}
+      tone={status.hasPrices ? 'ok' : 'warn'}
+    />
     <StatusRow label="Currency" value={status.currency} tone={status.currencyTone} />
     <StatusRow label="Today" value={status.today.text} tone={status.today.tone} />
     <StatusRow label="Tomorrow" value={status.tomorrow.text} tone={status.tomorrow.tone} />
@@ -409,10 +428,15 @@ const PowerhourStatusBlock = ({ status, pendingDeviceId, onDeviceChange }: Power
   );
 };
 
-const schemeNote = (scheme: PriceScheme): string | null => {
+const schemeNote = (scheme: PriceScheme, hasGridCompany: boolean): string | null => {
   if (scheme === 'norway') {
-    return 'Norway combines spot prices, grid tariff, provider surcharge, '
-      + 'taxes, and electricity support into a single total price.';
+    // With no grid company PELS leaves the grid tariff out of every price, so
+    // the note must not claim it is in.
+    return hasGridCompany
+      ? 'Norway combines spot prices, grid tariff, provider surcharge, '
+        + 'taxes, and electricity support into a single total price.'
+      : 'PELS adds up spot price, taxes, your provider surcharge and Strømstøtte or Norgespris, '
+        + 'plus your grid tariff once you choose a grid company.';
   }
   if (scheme === 'flow') {
     return 'Flow source uses values as provided (currency/tax may vary). '
@@ -432,142 +456,244 @@ const schemeNote = (scheme: PriceScheme): string | null => {
   return null;
 };
 
-const NorwaySection = ({ config, handlers, gridCompanyOptions }: ElectricityPricesViewProps) => (
-  <>
-    <p class="eyebrow eyebrow--inline">Grid tariff</p>
-    <div class="field">
-      <span class="field__label pels-text-settings-label" id="electricity-prices-county-label">County</span>
-      <MdFilledSelect
-        value={config.countyCode}
-        aria-labelledby="electricity-prices-county-label"
-        onChange={(e) => handlers.onCountyChange(readValue(e))}
-      >
-        <MdSelectOption value="03"><div slot="headline">Oslo</div></MdSelectOption>
-        <MdSelectOption value="11"><div slot="headline">Rogaland</div></MdSelectOption>
-        <MdSelectOption value="15"><div slot="headline">Møre og Romsdal</div></MdSelectOption>
-        <MdSelectOption value="18"><div slot="headline">Nordland</div></MdSelectOption>
-        <MdSelectOption value="31"><div slot="headline">Østfold</div></MdSelectOption>
-        <MdSelectOption value="32"><div slot="headline">Akershus</div></MdSelectOption>
-        <MdSelectOption value="33"><div slot="headline">Buskerud</div></MdSelectOption>
-        <MdSelectOption value="34"><div slot="headline">Innlandet</div></MdSelectOption>
-        <MdSelectOption value="39"><div slot="headline">Vestfold</div></MdSelectOption>
-        <MdSelectOption value="40"><div slot="headline">Telemark</div></MdSelectOption>
-        <MdSelectOption value="42"><div slot="headline">Agder</div></MdSelectOption>
-        <MdSelectOption value="46"><div slot="headline">Vestland</div></MdSelectOption>
-        <MdSelectOption value="50"><div slot="headline">Trøndelag</div></MdSelectOption>
-        <MdSelectOption value="55"><div slot="headline">Troms</div></MdSelectOption>
-        <MdSelectOption value="56"><div slot="headline">Finnmark</div></MdSelectOption>
-      </MdFilledSelect>
-    </div>
-    <div class="field">
-      <span class="field__label pels-text-settings-label" id="electricity-prices-grid-company-label">Grid company</span>
-      <MdFilledSelect
-        value={config.organizationNumber || GRID_COMPANY_NONE}
-        aria-labelledby="electricity-prices-grid-company-label"
-        onChange={(e) => {
-          const next = readValue(e);
-          handlers.onOrganizationChange(next === GRID_COMPANY_NONE ? '' : next);
-        }}
-      >
-        <MdSelectOption value={GRID_COMPANY_NONE}><div slot="headline">Select grid company</div></MdSelectOption>
-        {gridCompanyOptions.map((c) => (
-          <MdSelectOption key={c.organizationNumber} value={c.organizationNumber}>
-            <div slot="headline">{c.name}</div>
-          </MdSelectOption>
-        ))}
-      </MdFilledSelect>
-      {/* Dependency hint, not a label restatement: the list only shows the
-          companies in the county selected above. */}
-      <small class="field__hint">Filtered by county.</small>
-    </div>
-    <div class="field">
-      <span class="field__label pels-text-settings-label" id="electricity-prices-tariff-group-label">Tariff group</span>
-      <MdFilledSelect
-        value={config.tariffGroup}
-        aria-labelledby="electricity-prices-tariff-group-label"
-        onChange={(e) => handlers.onTariffGroupChange(readValue(e))}
-      >
-        <MdSelectOption value="Husholdning"><div slot="headline">Household</div></MdSelectOption>
-        <MdSelectOption value="Hytter og fritidshus">
-          <div slot="headline">Cabin and holiday home</div>
-        </MdSelectOption>
-      </MdFilledSelect>
-    </div>
-    <div class="form__actions">
-      <MdOutlinedButton type="button" onClick={handlers.onRefreshGridTariff}>
-        Refresh tariffs
-      </MdOutlinedButton>
-    </div>
+const COUNTIES: ReadonlyArray<{ code: string; name: string }> = [
+  { code: '03', name: 'Oslo' },
+  { code: '11', name: 'Rogaland' },
+  { code: '15', name: 'Møre og Romsdal' },
+  { code: '18', name: 'Nordland' },
+  { code: '31', name: 'Østfold' },
+  { code: '32', name: 'Akershus' },
+  { code: '33', name: 'Buskerud' },
+  { code: '34', name: 'Innlandet' },
+  { code: '39', name: 'Vestfold' },
+  { code: '40', name: 'Telemark' },
+  { code: '42', name: 'Agder' },
+  { code: '46', name: 'Vestland' },
+  { code: '50', name: 'Trøndelag' },
+  { code: '55', name: 'Troms' },
+  { code: '56', name: 'Finnmark' },
+];
 
-    <p class="eyebrow eyebrow--inline">Spot price</p>
-    <div class="field">
-      <span class="field__label pels-text-settings-label" id="electricity-prices-norway-model-label">Norway pricing model</span>
-      <MdFilledSelect
-        value={config.norwayPriceModel}
-        aria-labelledby="electricity-prices-norway-model-label"
-        onChange={(e) => handlers.onNorwayModelChange(normalizeNorwayPriceModel(readValue(e)))}
-      >
-        <MdSelectOption value="stromstotte">
-          <div slot="headline">Electricity Subsidy Scheme (Strømstøtte)</div>
-        </MdSelectOption>
-        <MdSelectOption value="norgespris">
-          <div slot="headline">Norway Price (Norgespris)</div>
-        </MdSelectOption>
-      </MdFilledSelect>
-      {/* Explains what the choice governs (which pricing regime shapes your
-          spot price), not just the option names. */}
-      <small class="field__hint">
-        Choose whether Norway prices use the Electricity Subsidy Scheme or Norway Price (Norgespris).
-      </small>
-    </div>
-    {config.norwayPriceModel === 'norgespris' && (
-      <p class="muted">
-        Official Norgespris rules are applied automatically: fixed spot target 50 øre/kWh incl. VAT.
-        Monthly cap: household 5000 kWh, cabin 1000 kWh.
-      </p>
-    )}
-    <div class="field">
-      <span class="field__label pels-text-settings-label" id="electricity-prices-price-area-label">Price area</span>
-      <MdFilledSelect
-        value={config.priceArea}
-        aria-labelledby="electricity-prices-price-area-label"
-        onChange={(e) => handlers.onPriceAreaChange(readValue(e))}
-      >
-        <MdSelectOption value="NO1"><div slot="headline">NO1 — Oslo / East Norway</div></MdSelectOption>
-        <MdSelectOption value="NO2"><div slot="headline">NO2 — Kristiansand / South Norway</div></MdSelectOption>
-        <MdSelectOption value="NO3"><div slot="headline">NO3 — Trondheim / Central Norway</div></MdSelectOption>
-        <MdSelectOption value="NO4"><div slot="headline">NO4 — Tromsø / North Norway (no VAT)</div></MdSelectOption>
-        <MdSelectOption value="NO5"><div slot="headline">NO5 — Bergen / West Norway</div></MdSelectOption>
-      </MdFilledSelect>
-      <small class="field__hint">
-        {'Your electricity price area ('}
-        <a href="https://www.hvakosterstrommen.no/" target="_blank" rel="noopener noreferrer">hvakosterstrommen.no</a>
-        {').'}
-      </small>
-    </div>
-    <label class="field">
-      <span class="field__label pels-text-settings-label" id="electricity-prices-provider-surcharge-label">Provider surcharge</span>
-      <MdFilledTextField
-        type="number"
-        value={String(config.providerSurcharge)}
-        step="0.1"
-        min="-100"
-        max="100"
-        suffix-text="øre/kWh"
-        aria-labelledby="electricity-prices-provider-surcharge-label"
-        onChange={(e) => {
-          const val = readFiniteNumber(e);
-          if (val !== null) handlers.onProviderSurchargeChange(val);
-        }}
-      />
-      <small class="field__hint">Provider surcharge on top of spot price, incl. VAT. Can be negative.</small>
-    </label>
-  </>
+/** What PELS prices with in place of a setting the owner never chose. */
+const NotChosenHint = ({ text }: { text: string }) => (
+  <small class="field__hint field__hint--alert">{text}</small>
 );
+
+const NorwaySection = ({ config, handlers, gridCompanyOptions, norwayChoices }: ElectricityPricesViewProps) => {
+  // What PELS prices with in place of each setting the owner never chose.
+  const choices = norwayChoices.kind === 'resolved' ? norwayChoices.choices : null;
+  const assumedCounty = choices && !choices.county.chosen ? choices.county.value : null;
+  const assumedModel = choices && !choices.pricingModel.chosen ? choices.pricingModel.value : null;
+  const assumedArea = choices && !choices.priceArea.chosen ? choices.priceArea.value : null;
+  return (
+    <>
+      <p class="eyebrow eyebrow--inline">Grid tariff</p>
+      <div class="field">
+        <span class="field__label pels-text-settings-label" id="electricity-prices-county-label">County</span>
+        <MdFilledSelect
+          value={config.countyCode}
+          aria-labelledby="electricity-prices-county-label"
+          onChange={(e) => handlers.onCountyChange(readValue(e))}
+        >
+          {COUNTIES.map((county) => (
+            <MdSelectOption key={county.code} value={county.code}>
+              <div slot="headline">{county.name}</div>
+            </MdSelectOption>
+          ))}
+        </MdFilledSelect>
+        {/* Only while there is no grid company: once there is one, the county is
+            simply where that company operates. Plain, not alert: on its own the
+            county changes no price. */}
+        {!config.organizationNumber && assumedCounty !== null && (
+          <small class="field__hint">
+            {`Not chosen yet. Showing grid companies in ${COUNTIES.find((c) => c.code === assumedCounty)?.name ?? assumedCounty}.`}
+          </small>
+        )}
+      </div>
+      <div class="field">
+        <span class="field__label pels-text-settings-label" id="electricity-prices-grid-company-label">Grid company</span>
+        <MdFilledSelect
+          value={config.organizationNumber || GRID_COMPANY_NONE}
+          aria-labelledby="electricity-prices-grid-company-label"
+          onChange={(e) => {
+            const next = readValue(e);
+            handlers.onOrganizationChange(next === GRID_COMPANY_NONE ? '' : next);
+          }}
+        >
+          <MdSelectOption value={GRID_COMPANY_NONE}><div slot="headline">Select grid company</div></MdSelectOption>
+          {gridCompanyOptions.map((c) => (
+            <MdSelectOption key={c.organizationNumber} value={c.organizationNumber}>
+              <div slot="headline">{c.name}</div>
+            </MdSelectOption>
+          ))}
+        </MdFilledSelect>
+        {!config.organizationNumber && (
+          <NotChosenHint text="Not chosen yet, so your prices leave out the grid tariff." />
+        )}
+        {/* Dependency hint, not a label restatement: the list only shows the
+            companies in the county selected above. */}
+        <small class="field__hint">Filtered by county.</small>
+      </div>
+      <div class="field">
+        <span class="field__label pels-text-settings-label" id="electricity-prices-tariff-group-label">Tariff group</span>
+        <MdFilledSelect
+          value={config.tariffGroup}
+          aria-labelledby="electricity-prices-tariff-group-label"
+          onChange={(e) => handlers.onTariffGroupChange(readValue(e))}
+        >
+          <MdSelectOption value="Husholdning"><div slot="headline">Household</div></MdSelectOption>
+          <MdSelectOption value="Hytter og fritidshus">
+            <div slot="headline">Cabin and holiday home</div>
+          </MdSelectOption>
+        </MdFilledSelect>
+      </div>
+      <div class="form__actions">
+        <MdOutlinedButton type="button" onClick={handlers.onRefreshGridTariff}>
+          Refresh tariffs
+        </MdOutlinedButton>
+      </div>
+
+      <p class="eyebrow eyebrow--inline">Spot price</p>
+      <div class="field">
+        <span class="field__label pels-text-settings-label" id="electricity-prices-norway-model-label">Norway pricing model</span>
+        <MdFilledSelect
+          value={assumedModel === null ? config.norwayPriceModel : NOT_CHOSEN}
+          aria-labelledby="electricity-prices-norway-model-label"
+          onChange={(e) => {
+            const next = readValue(e);
+            if (next !== NOT_CHOSEN) handlers.onNorwayModelChange(normalizeNorwayPriceModel(next));
+          }}
+        >
+          {assumedModel !== null && (
+            <MdSelectOption value={NOT_CHOSEN}><div slot="headline">Select pricing model</div></MdSelectOption>
+          )}
+          <MdSelectOption value="stromstotte">
+            <div slot="headline">Electricity Subsidy Scheme (Strømstøtte)</div>
+          </MdSelectOption>
+          <MdSelectOption value="norgespris">
+            <div slot="headline">Norway Price (Norgespris)</div>
+          </MdSelectOption>
+        </MdFilledSelect>
+        {assumedModel !== null && (
+          <NotChosenHint text={`Not chosen yet. PELS uses ${NORWAY_PRICE_MODEL_NAMES[assumedModel]}.`} />
+        )}
+        {/* The consequence of the choice, not the option names again. */}
+        <small class="field__hint">
+          With Norgespris your electricity price is fixed, so only the grid tariff makes some hours cheaper.
+        </small>
+      </div>
+      {config.norwayPriceModel === 'norgespris' && (
+        <p class="muted">
+          Official Norgespris rules are applied automatically: fixed spot target 50 øre/kWh incl. VAT.
+          Monthly cap: household 5000 kWh, cabin 1000 kWh.
+        </p>
+      )}
+      <div class="field">
+        <span class="field__label pels-text-settings-label" id="electricity-prices-price-area-label">Price area</span>
+        <MdFilledSelect
+          value={assumedArea === null ? config.priceArea : NOT_CHOSEN}
+          aria-labelledby="electricity-prices-price-area-label"
+          onChange={(e) => {
+            const next = readValue(e);
+            if (next !== NOT_CHOSEN) handlers.onPriceAreaChange(next);
+          }}
+        >
+          {assumedArea !== null && (
+            <MdSelectOption value={NOT_CHOSEN}><div slot="headline">Select price area</div></MdSelectOption>
+          )}
+          <MdSelectOption value="NO1"><div slot="headline">NO1 — Oslo / East Norway</div></MdSelectOption>
+          <MdSelectOption value="NO2"><div slot="headline">NO2 — Kristiansand / South Norway</div></MdSelectOption>
+          <MdSelectOption value="NO3"><div slot="headline">NO3 — Trondheim / Central Norway</div></MdSelectOption>
+          <MdSelectOption value="NO4"><div slot="headline">NO4 — Tromsø / North Norway (no VAT)</div></MdSelectOption>
+          <MdSelectOption value="NO5"><div slot="headline">NO5 — Bergen / West Norway</div></MdSelectOption>
+        </MdFilledSelect>
+        {assumedArea !== null && <NotChosenHint text={`Not chosen yet. PELS uses ${assumedArea}.`} />}
+        <small class="field__hint">
+          {'Your electricity price area ('}
+          <a href="https://www.hvakosterstrommen.no/" target="_blank" rel="noopener noreferrer">hvakosterstrommen.no</a>
+          {').'}
+        </small>
+      </div>
+      <label class="field">
+        <span class="field__label pels-text-settings-label" id="electricity-prices-provider-surcharge-label">Provider surcharge</span>
+        <MdFilledTextField
+          type="number"
+          value={String(config.providerSurcharge)}
+          step="0.1"
+          min="-100"
+          max="100"
+          suffix-text="øre/kWh"
+          aria-labelledby="electricity-prices-provider-surcharge-label"
+          onChange={(e) => {
+            const val = readFiniteNumber(e);
+            if (val !== null) handlers.onProviderSurchargeChange(val);
+          }}
+        />
+        <small class="field__hint">Provider surcharge on top of spot price, incl. VAT. Can be negative.</small>
+      </label>
+    </>
+  );
+};
+
+// The source as the Keep button names it, and as the hint above it does.
+const SOURCE_NAMES: Record<PriceScheme, { short: string; inSentence: string }> = {
+  norway: { short: 'Norway', inSentence: 'the Norway source' },
+  flow: { short: 'Flow', inSentence: 'Flow' },
+  homey: { short: 'Homey Energy', inSentence: 'Homey Energy' },
+  powerhour: { short: 'Power by the Hour', inSentence: 'Power by the Hour' },
+};
+
+const ASSUMED_BECAUSE: Record<Extract<PriceSourceAssumption, { kind: 'assumed' }>['reason'], string> = {
+  in_norway: 'Your Homey is in Norway, so ',
+  outside_norway: 'Your Homey is outside Norway, so ',
+  location_unknown: '',
+};
+
+type SourceStatusLines = { hint: ComponentChildren; followUp: ComponentChildren };
+
+/**
+ * What the owner needs to know about the source in force: a hint under the
+ * select and, below the field, what to do about it. A source with no prices
+ * says so first, whoever chose it. A source PELS assumed says so, with a button
+ * to keep it: picking the value the select already shows fires no change, so
+ * without one an owner happy with the assumption could never make it theirs.
+ */
+const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStatusLines => {
+  const { config, handlers } = props;
+  const name = SOURCE_NAMES[config.priceScheme];
+  if (config.priceScheme === 'homey' && config.homeyStatus?.hasPrices === false) {
+    return {
+      hint: <small class="field__hint field__hint--alert">Homey Energy has no electricity prices for your Homey yet.</small>,
+      followUp: (
+        <p class="pels-card-supporting">
+          Turn on dynamic prices in the Homey app under Energy &gt; Electricity, then press Refresh prices.
+          Or choose another source above.
+        </p>
+      ),
+    };
+  }
+  const assumption = props.sourceAssumption;
+  if (assumption.kind === 'none') {
+    return { hint: <small class="field__hint">Where PELS fetches price data.</small>, followUp: null };
+  }
+  return {
+    hint: (
+      <small class="field__hint field__hint--alert">
+        {`Not chosen yet. ${ASSUMED_BECAUSE[assumption.reason]}PELS uses ${name.inSentence}.`}
+      </small>
+    ),
+    followUp: (
+      <div class="form__actions">
+        <MdOutlinedButton type="button" onClick={handlers.onKeepSource}>{`Keep ${name.short}`}</MdOutlinedButton>
+      </div>
+    ),
+  };
+};
 
 const SourceForm = (props: ElectricityPricesViewProps) => {
   const { config, handlers } = props;
-  const note = schemeNote(config.priceScheme);
+  const note = schemeNote(config.priceScheme, config.organizationNumber !== '');
+  const sourceStatus = resolveSourceStatusLines(props);
   const isNorway = config.priceScheme === 'norway';
   const isFlow = config.priceScheme === 'flow';
   const isHomey = config.priceScheme === 'homey';
@@ -596,8 +722,9 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
             <div slot="headline">Power by the Hour (app)</div>
           </MdSelectOption>
         </MdFilledSelect>
-        <small class="field__hint">Where PELS fetches price data.</small>
+        {sourceStatus.hint}
       </div>
+      {sourceStatus.followUp}
 
       {note && <p class="muted">{note}</p>}
       {isFlow && config.flowStatus && <FlowStatusBlock status={config.flowStatus} />}
@@ -870,6 +997,14 @@ const ThresholdForm = ({ config, handlers }: {
   </form>
 );
 
+const PriceAwareDevicesLink = () => (
+  <div class="form__actions">
+    <MdOutlinedButton data-settings-target="price-aware-devices">
+      Manage price-aware devices →
+    </MdOutlinedButton>
+  </div>
+);
+
 const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => (
   <>
     <Header />
@@ -878,6 +1013,7 @@ const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => (
     {props.showSolarForecastSection && <SolarForecastForm config={props.config} handlers={props.handlers} />}
     {props.showExportSection && <ExportPriceForm config={props.config} handlers={props.handlers} />}
     <ThresholdForm config={props.config} handlers={props.handlers} />
+    <PriceAwareDevicesLink />
   </>
 );
 

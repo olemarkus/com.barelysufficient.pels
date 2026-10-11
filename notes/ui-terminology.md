@@ -1326,6 +1326,36 @@ the ceiling, and each exists because its page mission needs it:
 The widgets reuse the same exception-only `Price low` / `Price high` pair
 (`priceLevelChips.ts`) — a glance surface, not a fourth role.
 
+The `Prices from` card on Price-aware devices and the line under a device's
+Price-based control show configuration only (where prices come from, and
+whether they are set up), never a price, so they are not price surfaces.
+
+### Chosen vs assumed price settings
+
+A price setting PELS fills in for the owner is shown as an assumption, never as
+a choice (owner ruling 2026-10-11, after two forum owners ran on defaults they
+never saw). On Electricity prices:
+
+- Source assumed: `Not chosen yet. Your Homey is in Norway, so PELS uses the
+  Norway source.` / `Not chosen yet. Your Homey is outside Norway, so PELS uses
+  Homey Energy.` with a `Keep Norway` / `Keep Homey Energy` button, because
+  selecting the value the select already shows changes nothing.
+- Homey Energy without prices, whoever chose it: `Homey Energy has no electricity
+  prices for your Homey yet.`, then where to turn them on (`Energy >
+  Electricity` in the Homey app, then Refresh prices) or to choose another
+  source. Its status row reads `Prices found` / `No prices`: whether PELS can
+  use them is the `Price setup` row's to say.
+- Norway settings: `Not chosen yet. PELS uses NO1.` / `… Strømstøtte.` under a
+  `Select price area` / `Select pricing model` placeholder, so picking the value
+  PELS was using is a choice. No grid company: `Not chosen yet, so your prices
+  leave out the grid tariff.`, and the source note never claims the grid tariff
+  is included (`…, plus your grid tariff once you choose a grid company.`). The
+  county alone changes no price: `Not chosen yet. Showing grid companies in
+  Oslo.`
+- A Smart task with no price for the current hour says `PELS has no electricity
+  prices` with a `Check prices` recourse, not `Waiting for tomorrow’s prices`
+  (a Flow price source keeps its own Flow copy).
+
 ### Budget tab chart readout (pinned, one interaction grammar)
 
 The Budget chart (Progress + Hourly plan modes) reuses the same pinned-readout primitive. Vocabulary: `Budget` / `Actual` / `Projection` / `Price`. The dashed slate reference stroke is the **budget pace** (the daily budget spread across the day, cumulative) — it is labelled `Budget`, never `Plan` (the weather-blind "Plan" line was retired; "typical usage" lives on the Usage and Weather surfaces, not here). Stroke grammar: solid mint `Actual` up to a visible now dot, dotted ice-blue `Projection` after it, dashed slate `Budget` reference with a `Budget N kWh` pill at its end. Resolvers live in `packages/settings-ui/src/ui/budgetRedesignChartData.ts` + `chartTooltipFormat.ts`.
@@ -1852,6 +1882,20 @@ returning owner who unmanages their last device.
   capacity limit on a built-in 10 kW. A saved grid import limit, a saved hard
   cap, or an explicit choice to turn both limits off completes it. Hence the
   order: Devices before Limits. Apply the same test before adding any step.
+- **`Prices` appears once something uses prices** (owner ruling 2026-10-11):
+  Respond to prices on, and a managed device with Price-based control on, a
+  Smart task, or a daily budget that shapes toward cheaper hours. It stays open
+  while PELS prices with a source the owner never chose, a source with no
+  prices, or a Norway setting the owner never chose (grid company, price area,
+  pricing model). Its detail names what PELS prices with meanwhile, as Limits
+  names its 10 kW: `Norway, without your grid tariff. PELS uses NO1 and
+  Strømstøtte until you choose.` / `PELS uses Homey Energy until you choose a
+  source.` / `Homey Energy has no electricity prices for your Homey yet.` /
+  `PELS can’t use the price setup in Homey Energy.` Done: `Norway ·
+  ARVA AS · NO4 · Norgespris`. Source of truth: `resolvePriceSetupStatus`
+  (`packages/settings-ui/src/ui/priceSetupStatus.ts`), shared with the
+  `Prices from` card on Price-aware devices and the line under a device's
+  Price-based control (`Prices from …` / `Price setup isn’t finished. …`).
 - **Priority is automatic, not a setup step** (owner ruling 2026-09-22).
   Every planned device receives a unique rank, including devices with no saved
   preference in the active mode. Adding a device never reopens setup merely
@@ -1874,8 +1918,9 @@ returning owner who unmanages their last device.
   card is on screen. After: `Readings are arriving`.
 - **The copy sells no single market.** Norway and Flanders come for the capacity
   tariff, the Netherlands for solar and dynamic prices. The lede says what
-  builds on the steps (`Prices, solar and Smart tasks build on them.`) and never
-  frames PELS as a hard-cap product.
+  builds on the steps (`Prices, solar and Smart tasks build on them.`, or
+  `Solar and Smart tasks build on them.` while prices are a step of their own)
+  and never frames PELS as a hard-cap product.
 - **The Limits detail names each limit in force, and the capacity period** in the
   words of the Capacity period options: `8 kW hard cap (hourly average), 0.4 kW
   safety margin` / `2.5 kW hard cap (15-minute average), …`, led by the grid

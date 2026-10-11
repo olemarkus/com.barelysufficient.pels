@@ -9,9 +9,12 @@ import {
   type SetupHardCap,
   type SetupPathState,
   type SetupPowerReadings,
+  type SetupPrices,
 } from './setupPathModel.ts';
+import type { ResolvedPriceSetupStatus } from './priceSetupStatus.ts';
+import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { readHomeMembership, subscribeToHomeScope } from './homeScope.ts';
-import { state } from './state.ts';
+import { hasActiveDeadlineObjective, state } from './state.ts';
 
 /**
  * Where the setup path's facts meet.
@@ -38,6 +41,21 @@ let hardCap: SetupFactsRead<SetupHardCap> = { state: 'loading' };
 // is always correct, so the path never waits for this. A resolved market only
 // ever sharpens what is already on screen.
 let market: SettingsUiHubMarketRead = { state: 'unavailable' };
+
+/**
+ * The prices read and the switches that decide whether anything uses it.
+ * Which devices have Price-based control on and which have a Smart task are
+ * read from `state` at resolve time, like the device facts.
+ */
+export type SetupPriceUse = {
+  /** Respond to prices, which every other price behaviour waits on. */
+  respondToPrices: boolean;
+  /** The daily budget is on and shapes toward cheaper hours. */
+  budgetShapesByPrice: boolean;
+  status: ResolvedPriceSetupStatus;
+};
+
+let prices: SetupFactsRead<SetupPriceUse> = { state: 'loading' };
 const listeners = new Set<() => void>();
 
 // Several callers report "something the path reads may have moved" (a device
@@ -75,6 +93,18 @@ export const publishSetupPower = (next: SetupPowerReadings): void => {
 export const publishSetupPowerUnavailable = (): void => {
   if (power.state === 'ready') return;
   power = { state: 'unavailable' };
+  notify();
+};
+
+export const publishSetupPrices = (next: SetupPriceUse): void => {
+  prices = { state: 'ready', value: next };
+  notify();
+};
+
+/** A bounded first read failed; preserve a previously trusted value. */
+export const publishSetupPricesUnavailable = (): void => {
+  if (prices.state === 'ready') return;
+  prices = { state: 'unavailable' };
   notify();
 };
 
@@ -134,11 +164,31 @@ export type SetupPathRead =
   | { state: 'unavailable' }
   | SetupPathState;
 
+/**
+ * The Prices step applies once something uses prices: a managed device with
+ * Price-based control on or a Smart task, or a daily budget that shapes toward
+ * cheaper hours, all behind Respond to prices. A read that failed asks for
+ * nothing: the step is never judged on a guess.
+ */
+const usesPrices = (deviceId: string): boolean => {
+  const device = state.latestDevices.find((candidate) => candidate.id === deviceId);
+  const priceControlled = state.priceOptimizationSettings[deviceId]?.enabled === true;
+  return (priceControlled && supportsTemperatureDevice(device)) || hasActiveDeadlineObjective(deviceId);
+};
+
+const resolveSetupPrices = (managedIds: readonly string[]): SetupPrices => {
+  if (prices.state !== 'ready') return { state: 'unused' };
+  const { respondToPrices, budgetShapesByPrice, status } = prices.value;
+  const used = respondToPrices && (budgetShapesByPrice || managedIds.some(usesPrices));
+  if (!used) return { state: 'unused' };
+  return { state: 'used', complete: status.state === 'complete', summary: status.summary };
+};
+
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
 export const readSetupPath = (): SetupPathRead => {
   const membership = readHomeMembership();
-  if (power.state === 'loading' || hardCap.state === 'loading' || !state.devicesLoaded
-    || membership.state === 'loading') return { state: 'loading' };
+  if (power.state === 'loading' || hardCap.state === 'loading' || prices.state === 'loading'
+    || !state.devicesLoaded || membership.state === 'loading') return { state: 'loading' };
   if (power.state === 'unavailable' || hardCap.state === 'unavailable'
     || membership.state === 'unavailable') return { state: 'unavailable' };
   const knownIds = new Set(state.latestDevices
@@ -154,6 +204,7 @@ export const readSetupPath = (): SetupPathRead => {
     managedDeviceCount: managedIds.length,
     limitableDeviceCount: limitableIds.length,
     simulating: state.dryRun,
+    prices: resolveSetupPrices(managedIds),
   });
 };
 

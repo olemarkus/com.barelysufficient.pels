@@ -19,6 +19,7 @@ import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/defe
 import type { ResolvedDeferredObjectiveActivePlanV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeadlinePlanPendingPayload } from './views/DeadlinePlan.tsx';
 import { formatDeadlineFull, formatTarget } from './deadlinePlanFormatters.ts';
+import { findCurrentPriceRow, normalizeCombinedPrices } from './combinedPrices.ts';
 
 // Pending heroes share the hero chip ordering `[kind, state, …]`. The state
 // chip uses the same shared label map as the live hero so the three Smart-
@@ -70,24 +71,26 @@ const formatLastFetched = (raw: unknown): string | null => {
   return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
-// Narrow the unknown `combinedPrices` payload to the two fields we care about
-// for pending-hero copy. Returns 'unknown' / null when the payload is missing
-// or unrecognised so the copy falls back to neutral wording. `deviceName` /
+// Narrow the unknown `combinedPrices` payload to the fields we care about for
+// pending-hero copy. Returns 'unknown' / null when the payload is missing or
+// unrecognised so the copy falls back to neutral wording. `deviceName` /
 // `deadlineTime` are appended by `buildPendingPayload` once the resolved
 // objective context is in hand — keeping the price-only fields here means
 // `resolveRenderInput` can share one helper for the absent-plan and ready-
 // but-no-prices branches.
-export const resolvePendingPriceContext = (prices: SettingsUiPricesPayload): Pick<
-  DeadlinePendingContext, 'priceSource' | 'lastFetchedShort'
+export const resolvePendingPriceContext = (prices: SettingsUiPricesPayload, nowMs: number): Pick<
+  DeadlinePendingContext, 'priceSource' | 'lastFetchedShort' | 'hasCurrentPrice'
 > => {
   const combined = prices.combinedPrices;
+  const hasCurrentPrice = findCurrentPriceRow(normalizeCombinedPrices(combined), nowMs) !== undefined;
   if (!combined || typeof combined !== 'object') {
-    return { priceSource: 'unknown', lastFetchedShort: null };
+    return { priceSource: 'unknown', lastFetchedShort: null, hasCurrentPrice };
   }
   const record = combined as { priceScheme?: unknown; lastFetched?: unknown };
   return {
     priceSource: resolvePriceSource(record.priceScheme),
     lastFetchedShort: formatLastFetched(record.lastFetched),
+    hasCurrentPrice,
   };
 };
 

@@ -77,6 +77,7 @@ describe('un-managed device: copy', () => {
   it('spends the pending hero’s four slots on four distinct facts', () => {
     const hero = deadlineLabels('temperature').pendingHeroByReason.device_unmanaged({
       priceSource: 'managed',
+      hasCurrentPrice: true,
       lastFetchedShort: null,
       deviceId: 'heater-1',
       deviceName: 'Bathroom heater',

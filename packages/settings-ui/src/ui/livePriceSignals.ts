@@ -18,10 +18,8 @@ import {
   PLANNING_PRICE_REASON_LINE,
   planningPriceDivergesFromImport,
 } from '../../../shared-domain/src/price/planningPrice.ts';
-import { normalizeCombinedPrices } from './combinedPrices.ts';
+import { findCurrentPriceRow, normalizeCombinedPrices } from './combinedPrices.ts';
 import { formatScaledPriceValue, resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
-
-const ONE_HOUR_MS = 60 * 60 * 1000;
 
 export type LiveSummarySignals = {
   lastFetchedShort: string | null;
@@ -46,11 +44,7 @@ export const resolveLiveSummarySignals = (
   nowMs: number,
 ): LiveSummarySignals => {
   const lastFetchedShort = resolveLastFetchedShort(combinedPrices);
-  const rows = normalizeCombinedPrices(combinedPrices);
-  const current = rows.find((row) => {
-    const startsAtMs = new Date(row.startsAt).getTime();
-    return Number.isFinite(startsAtMs) && startsAtMs <= nowMs && nowMs < startsAtMs + ONE_HOUR_MS;
-  });
+  const current = findCurrentPriceRow(normalizeCombinedPrices(combinedPrices), nowMs);
   if (!current) return { lastFetchedShort, exportText: null, planningReasonLine: null };
   const costDisplay = resolveCostDisplayFromCombinedPrices(combinedPrices);
   return {

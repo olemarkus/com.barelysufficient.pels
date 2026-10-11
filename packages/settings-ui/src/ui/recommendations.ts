@@ -26,6 +26,7 @@ import {
 } from './afterSetupFacts.ts';
 import { resolveAfterSetupRecommendations } from './afterSetupRecommendations.ts';
 import { loadHubMarket } from './hubMarket.ts';
+import { loadSetupPrices } from './setupPricesLoad.ts';
 import { formatSetupProgress } from './setupPathModel.ts';
 import { loadEvCarAssociations } from './deviceDetail/carAssociation.ts';
 import {
@@ -377,7 +378,9 @@ export const refreshRecommendationSurfaces = (): void => {
 };
 
 export const refreshAfterSetupRecommendations = async (): Promise<void> => {
-  await loadAfterSetupFacts();
+  // The setup path's Prices step reads the same price settings; it publishes
+  // to the path, which redraws these surfaces on a change.
+  await Promise.all([loadAfterSetupFacts(), loadSetupPrices()]);
   refreshRecommendationSurfaces();
 };
 
@@ -432,8 +435,9 @@ export const loadRecommendationData = async (): Promise<void> => {
     loadSmartTaskUsage(),
     loadAfterSetupFacts().then(refreshRecommendationSurfaces),
     loadRecommendationFlowFacts(),
-    // Publishes to the setup path, which redraws these surfaces on a change.
+    // Both publish to the setup path, which redraws these surfaces on a change.
     loadHubMarket(),
+    loadSetupPrices(),
   ]);
 };
 

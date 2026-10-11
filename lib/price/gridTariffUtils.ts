@@ -165,3 +165,22 @@ export const fetchAndNormalizeGridTariff = async (params: {
   }
   return normalized;
 };
+
+/**
+ * Drop the tariff stored for a grid company the owner cleared (a new county
+ * clears it): it is another company's, and with none chosen the prices leave
+ * the grid tariff out, as the settings page says they do. Only an empty stored
+ * company counts, which is how the settings page clears it; a saved company
+ * that reads back nothing is a missed read, not a change. Answers whether a
+ * tariff was dropped.
+ */
+export const dropClearedGridCompanyTariff = (
+  storedOrganizationNumber: unknown,
+  store: { readNettleie(): unknown; writeNettleie(data: Array<Record<string, unknown>>): void },
+): boolean => {
+  if (storedOrganizationNumber !== '') return false;
+  const stored = store.readNettleie();
+  if (!Array.isArray(stored) || stored.length === 0) return false;
+  store.writeNettleie([]);
+  return true;
+};

@@ -195,6 +195,14 @@ The banner above the Overview tells you which state you are in:
 
 - Confirm a **Price source** is selected and shows data available (Settings →
   Electricity prices).
+- On the **Norway** source, a field marked **Not chosen yet** is one PELS is
+  filling in for you, such as NO1 or Strømstøtte. Choose your own price area and
+  pricing model, and your grid company: without one, your prices leave out the
+  grid tariff, so the cheapest hours can be the wrong ones.
+- If the page says **Homey Energy has no electricity prices for your Homey
+  yet**, turn on dynamic prices under **Energy > Electricity** in the Homey app,
+  then press **Refresh prices**, or choose another price source. A Smart task
+  says **PELS has no electricity prices** in the same situation.
 - On the **Homey Energy** source, check the status card on that same page. If it
   reads **Not usable** or **No usable prices**, PELS could not work out your
   price setup and has paused prices on purpose. Simplify the formula under
