@@ -43,7 +43,7 @@ import CapacityGuard from '../../lib/power/capacityGuard';
 import { createPlanRebuildOutcome } from '../../lib/plan/planRebuildMetrics';
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';
-import type { PlanRebuildOutcome } from '../../lib/plan/planTypes';
+import type { PlanRebuildOutcome } from '../../lib/planContract/planActuationResult';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import {
   CAPACITY_DRY_RUN,

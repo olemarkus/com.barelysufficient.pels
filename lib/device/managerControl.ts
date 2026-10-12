@@ -37,12 +37,10 @@ export function getControlCapabilityId(params: {
  * observed "off"; the contractual non-optional `currentOn` is synthesized from
  * this at the parse boundary — see `resolveUnobservedControlFallback`.
  */
-export function getCurrentOn(params: {
-  deviceClassKey: DeviceClassKey;
-  capabilityObj: DeviceCapabilityMap;
-  binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
-}): boolean | undefined {
-  const { capabilityObj, binaryCapabilityId } = params;
+export function getCurrentOn(
+  capabilityObj: DeviceCapabilityMap,
+  binaryCapabilityId: TransportDeviceSnapshot['binaryCapabilityId'],
+): boolean | undefined {
   if (binaryCapabilityId === 'evcharger_charging') {
     return resolveEvCurrentOnObservation({
       evchargerCharging: getEvCharging(capabilityObj),

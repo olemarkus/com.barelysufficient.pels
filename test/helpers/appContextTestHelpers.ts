@@ -382,6 +382,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getDailyBudgetUiPayload: vi.fn((): DailyBudgetUiRead => ({ kind: 'unavailable' })),
     getLatestPlanSnapshotForUi: vi.fn((): SettingsUiPlanSnapshot | null => null),
     getPowerCalibrationSnapshot: vi.fn(() => createEmptyPowerCalibrationSnapshot()),
+    syncLivePlanStateAfterTargetActuation: vi.fn(() => false),
     get powerTracker() { return powerTracker; },
     set powerTracker(value) { powerTracker = value; surplusPoolReachability.observeExportEvidence(value); },
     resetMainPowerTrackerFreshness: vi.fn(),

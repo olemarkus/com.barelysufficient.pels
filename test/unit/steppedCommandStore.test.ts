@@ -15,7 +15,7 @@ describe('SteppedCommandStore', () => {
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
 
     expect(store.getDesired('dev-1')).toMatchObject({
-      stepId: 'high', pending: true, status: 'pending',
+      stepId: 'high', status: 'pending',
     });
     expect(store.hasPriorStepCommand('dev-1')).toBe(true);
     expect(store.getDesired('dev-2')).toBeUndefined();
@@ -30,7 +30,7 @@ describe('SteppedCommandStore', () => {
     expect(store.getDesired('dev-1')?.status).toBe('pending');
 
     expect(store.pruneStale(1_000 + STEPPED_LOAD_COMMAND_STALE_MS)).toBe(true);
-    expect(store.getDesired('dev-1')).toMatchObject({ pending: false, status: 'stale' });
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'stale' });
   });
 
   it('clears the whole command session when the ladder changed under it', () => {
@@ -93,7 +93,7 @@ describe('SteppedCommandStore', () => {
     expect(store.hasPriorStepCommand('dev-1')).toBe(false);
     expect(store.isStepCommandPending('dev-1')).toBe(false);
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 3000 });
-    expect(store.getDesired('dev-1')).toMatchObject({ stepId: 'low', retryCount: 0, pending: true });
+    expect(store.getDesired('dev-1')).toMatchObject({ stepId: 'low', retryCount: 0, status: 'pending' });
   });
 
   it('drops a stale initialization latch when the ladder changed under it', () => {

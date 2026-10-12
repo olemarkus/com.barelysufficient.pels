@@ -68,14 +68,11 @@ describe('binary command dispatch', () => {
     ['Elbillader', 'charger-1'],
   ])('runs %s through the identical semantic decision and pending path', async (name, deviceId) => {
     const { requestBinaryControl, state, transport } = buildTransport();
-    await expect(decideAndDispatchBinaryControl({
+    await expect(decideAndDispatchBinaryControl(
       transport,
-      deviceId,
-      name,
-      desired: true,
-      snapshot: { targets: [], currentOn: false, canSetControl: true },
-      logContext: 'capacity',
-    })).resolves.toEqual({ applied: true });
+      { deviceId, name, desired: true, logContext: 'capacity' },
+      { targets: [], currentOn: false, canSetControl: true },
+    )).resolves.toEqual({ applied: true });
 
     expect(requestBinaryControl).toHaveBeenCalledWith(deviceId, true);
     expect(state.pendingBinaryCommands[deviceId]).toMatchObject({ desired: true });
@@ -133,14 +130,11 @@ describe('binary command dispatch', () => {
 
   it('does not dispatch when the observer already reports the desired state', async () => {
     const { requestBinaryControl, transport } = buildTransport();
-    await expect(decideAndDispatchBinaryControl({
+    await expect(decideAndDispatchBinaryControl(
       transport,
-      deviceId: 'device-1',
-      name: 'Load',
-      desired: true,
-      snapshot: { targets: [], currentOn: true, binaryControl: { on: true }, canSetControl: true },
-      logContext: 'capacity',
-    })).resolves.toEqual({ applied: false });
+      { deviceId: 'device-1', name: 'Load', desired: true, logContext: 'capacity' },
+      { targets: [], currentOn: true, binaryControl: { on: true }, canSetControl: true },
+    )).resolves.toEqual({ applied: false });
     expect(requestBinaryControl).not.toHaveBeenCalled();
   });
 
@@ -151,9 +145,9 @@ describe('binary command dispatch', () => {
     store.record('charger-1', { desired: true, startedMs });
     store.recordDispatchAccepted('charger-1', { deviceId: 'charger-1', desired: true });
 
-    expect(syncPendingBinaryCommands({
+    expect(syncPendingBinaryCommands(
       store,
-      liveDevices: [{
+      [{
         id: 'charger-1',
         name: 'Elbillader',
         binaryCommandConfirmation: {
@@ -162,8 +156,8 @@ describe('binary command dispatch', () => {
           observedAtMs: startedMs + 1_000,
         },
       }],
-      source: 'device_update',
-    })).toBe(true);
+      'device_update',
+    )).toBe(true);
     expect(store.peek('charger-1')).toBeUndefined();
   });
 
@@ -193,13 +187,13 @@ describe('binary command dispatch', () => {
     const pending = state.pendingBinaryCommands['device-1'];
     state.pendingBinaryCommands['device-1'] = { ...pending, startedMs: pending.startedMs - 91_000 };
 
-    syncPendingBinaryCommands({
+    syncPendingBinaryCommands(
       store,
-      liveDevices: [{
+      [{
         id: 'device-1', name: 'Load', binaryCommandConfirmation: { state: 'unavailable' },
       }],
-      source: 'rebuild',
-    });
+      'rebuild',
+    );
 
     expect(timedOut).toHaveBeenCalledWith(expect.objectContaining({ deviceId: 'device-1' }));
     expect(store.peek('device-1')).toBeUndefined();
@@ -217,9 +211,9 @@ describe('binary command dispatch', () => {
         const pending = store.peek('flow-load');
         expect(pending).toMatchObject({ desired: true });
         observedAtMs = pending?.startedMs ?? 0;
-        syncPendingBinaryCommands({
+        syncPendingBinaryCommands(
           store,
-          liveDevices: [{
+          [{
             id: 'flow-load',
             name: 'Flow load',
             binaryCommandConfirmation: {
@@ -228,8 +222,8 @@ describe('binary command dispatch', () => {
               observedAtMs,
             },
           }],
-          source: 'device_update',
-        });
+          'device_update',
+        );
       },
       requestTemperatureTarget: async (_deviceId, desired) => desired,
       canTurnOnDevice: () => true,
@@ -260,15 +254,15 @@ describe('binary command dispatch', () => {
     // `isBinaryChangeAttributableToPels` stays true throughout and no
     // PELS-actuation provenance window opens.
     expect(confirmed).not.toHaveBeenCalled();
-    syncPendingBinaryCommands({
+    syncPendingBinaryCommands(
       store,
-      liveDevices: [{
+      [{
         id: 'flow-load',
         name: 'Flow load',
         binaryCommandConfirmation: { state: 'observed', observedValue: true, observedAtMs: observedAtMs },
       }],
-      source: 'rebuild',
-    });
+      'rebuild',
+    );
 
     expect(confirmed).toHaveBeenCalledOnce();
     expect(store.peek('flow-load')).toBeUndefined();
@@ -280,16 +274,16 @@ describe('binary command dispatch', () => {
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, { onConfirmed: confirmed });
     const { transport } = buildTransport(vi.fn(async () => {
       const pending = store.peek('flow-load');
-      syncPendingBinaryCommands({
+      syncPendingBinaryCommands(
         store,
-        liveDevices: [{
+        [{
           id: 'flow-load', name: 'Flow load',
           binaryCommandConfirmation: {
             state: 'observed', observedValue: true, observedAtMs: pending?.startedMs ?? 0,
           },
         }],
-        source: 'device_update',
-      });
+        'device_update',
+      );
       throw new Error('rejected after echo');
     }));
     transport.pendingBinaryCommandStore = store;
@@ -315,16 +309,16 @@ describe('binary command dispatch', () => {
     const { transport } = buildTransport(vi.fn(async () => {
       const pending = store.peek('flow-load');
       timedOutStartedMs = pending?.startedMs ?? 0;
-      syncPendingBinaryCommands({
+      syncPendingBinaryCommands(
         store,
-        liveDevices: [{
+        [{
           id: 'flow-load', name: 'Flow load',
           binaryCommandConfirmation: {
             state: 'observed', observedValue: true, observedAtMs: pending?.startedMs ?? 0,
           },
         }],
-        source: 'device_update',
-      });
+        'device_update',
+      );
       throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/flow-load/capability/onoff');
     }));
     transport.pendingBinaryCommandStore = store;
@@ -343,15 +337,15 @@ describe('binary command dispatch', () => {
     // `isBinaryChangeAttributableToPels` stays true throughout and no
     // PELS-actuation provenance window opens.
     expect(confirmed).not.toHaveBeenCalled();
-    syncPendingBinaryCommands({
+    syncPendingBinaryCommands(
       store,
-      liveDevices: [{
+      [{
         id: 'flow-load',
         name: 'Flow load',
         binaryCommandConfirmation: { state: 'observed', observedValue: true, observedAtMs: timedOutStartedMs },
       }],
-      source: 'rebuild',
-    });
+      'rebuild',
+    );
 
     expect(confirmed).toHaveBeenCalledTimes(1);
     expect(store.peek('flow-load')).toBeUndefined();
@@ -363,16 +357,16 @@ describe('binary command dispatch', () => {
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands, { onConfirmed: confirmed });
     const { transport } = buildTransport(vi.fn(async () => {
       const pending = store.peek('flow-load');
-      syncPendingBinaryCommands({
+      syncPendingBinaryCommands(
         store,
-        liveDevices: [{
+        [{
           id: 'flow-load', name: 'Flow load',
           binaryCommandConfirmation: {
             state: 'observed', observedValue: true, observedAtMs: pending?.startedMs ?? 0,
           },
         }],
-        source: 'device_update',
-      });
+        'device_update',
+      );
     }));
     transport.pendingBinaryCommandStore = store;
     transport.isAuthorityCurrent = () => false;
@@ -393,22 +387,22 @@ describe('binary command dispatch', () => {
     const { transport } = buildTransport(vi.fn(async () => {
       const pending = store.peek('flow-load');
       const observedAtMs = pending?.startedMs ?? 0;
-      syncPendingBinaryCommands({
+      syncPendingBinaryCommands(
         store,
-        liveDevices: [{
+        [{
           id: 'flow-load', name: 'Flow load',
           binaryCommandConfirmation: { state: 'observed', observedValue: true, observedAtMs },
         }],
-        source: 'device_update',
-      });
-      syncPendingBinaryCommands({
+        'device_update',
+      );
+      syncPendingBinaryCommands(
         store,
-        liveDevices: [{
+        [{
           id: 'flow-load', name: 'Flow load',
           binaryCommandConfirmation: { state: 'observed', observedValue: false, observedAtMs: observedAtMs + 1 },
         }],
-        source: 'device_update',
-      });
+        'device_update',
+      );
     }));
     transport.pendingBinaryCommandStore = store;
 
@@ -438,9 +432,11 @@ describe('binary command settlement — when the handshake does not complete', (
     store: ReturnType<typeof createPendingBinaryCommandStore>,
     observedValue: boolean,
     observedAtMs: number,
-  ): boolean => syncPendingBinaryCommands({
-    store, liveDevices: echo(observedValue, observedAtMs), source: 'rebuild',
-  });
+  ): boolean => syncPendingBinaryCommands(
+    store,
+    echo(observedValue, observedAtMs),
+    'rebuild',
+  );
 
   it('never confirms while transport acceptance never arrives, then times out once', () => {
     const state = createPlanEngineState();

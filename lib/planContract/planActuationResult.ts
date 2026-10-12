@@ -15,8 +15,6 @@ export type PlanActuationResult = {
    * fail-closed pass on such an outcome.
    */
   deviceApplyFailureCount: number;
-  /** Devices for which this application wrote or requested a command. */
-  writtenDeviceIds: string[];
 };
 
 /**

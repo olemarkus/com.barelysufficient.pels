@@ -247,6 +247,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
+    syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
     pendingBinaryCommandStore,
     storageLane: { kind: 'none' },
@@ -311,18 +312,18 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
       capabilityId: 'evcharger_charging',
       observedValue: false,
     });
-    syncPendingBinaryCommands({
-      store: pendingBinaryCommandStore,
-      liveDevices: [{
+    syncPendingBinaryCommands(
+      pendingBinaryCommandStore,
+      [{
         id: DEVICE_ID,
         name: 'Elbillader',
         binaryCommandConfirmation: {
           state: 'observed', observedValue: false, observedAtMs: Date.now(),
         },
       }],
-      source: 'snapshot_refresh',
-      onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
-    });
+      'snapshot_refresh',
+      (params) => executor.handleConfirmedBinaryCommand(params),
+    );
     const stampAfterRealShed = state.restoreBackoff.lastInstabilityMs;
     const deviceStampAfterRealShed = state.actuation.lastDeviceShedMs[DEVICE_ID];
     expect(stampAfterRealShed).toBe(Date.now());

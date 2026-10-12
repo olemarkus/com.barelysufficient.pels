@@ -11,10 +11,12 @@ import type {
 } from './managerRealtimeSupport';
 import { cloneBinaryControlObservation } from './transportTypes';
 
-export type TransportObservationCursor = {
-  observationSeq: number;
-  observedAtMs: number;
-};
+/**
+ * Non-optional per-device observation cursor. `nextCursor` always resolves both
+ * fields; this type makes that an enforced invariant rather than an `as number`
+ * assertion at the refresh-dispatch site.
+ */
+export type ObservationCursor = { observationSeq: number; observedAtMs: number };
 
 const LOCAL_CAPABILITY_ECHO_SUPPRESS_MS = 5_000;
 const DUPLICATE_EVENT_PRUNE_AFTER_MS = 10 * 60 * 1_000;
@@ -32,7 +34,7 @@ export class TransportObservationState {
     return this.observations;
   }
 
-  nextCursor(deviceId: string, observedAtMs: number = Date.now()): TransportObservationCursor {
+  nextCursor(deviceId: string, observedAtMs: number = Date.now()): ObservationCursor {
     const observationSeq = (this.observationSeqByDeviceId.get(deviceId) ?? 0) + 1;
     this.observationSeqByDeviceId.set(deviceId, observationSeq);
     return { observationSeq, observedAtMs };

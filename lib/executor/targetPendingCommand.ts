@@ -33,13 +33,13 @@ export const syncPendingTargetCommandAfterActuation = async (
 ): Promise<TargetCommandPostActuationState> => {
   const { deviceId, name, desired } = command;
   await waitForImmediateObservedState();
-  ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
+  ctx.syncLivePlanStateAfterTargetActuation('realtime_capability');
   const latestObservedValueAfterActuation = readObservedTemperature(ctx, deviceId);
   let pendingStillExists = ctx.targetCommands.pendingTargetCommands[deviceId]?.desired === desired;
   if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
     ctx.targetCommands.deletePendingTargetCommand(deviceId);
     pendingStillExists = false;
-    ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
+    ctx.syncLivePlanStateAfterTargetActuation('realtime_capability');
     emitExecutorDebug({
       event: 'executor_target_log_debug',
       msg: `Capacity: confirmed temperature for ${name} at ${desired}°C immediately after actuation`,

@@ -38,7 +38,6 @@ export type PendingBinaryCommand = {
   desired: boolean;
   startedMs: number;
   logContext?: PendingBinaryCommandLogContext;
-  reason?: string;
   /**
    * True when this pending command was issued by the smart-task lifecycle-end
    * disable path, not a capacity shed. `handleConfirmedBinaryCommand` reads it so

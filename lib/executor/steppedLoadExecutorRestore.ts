@@ -95,14 +95,11 @@ const dispatchSteppedLoadRestoreBinaryCommand = async (
   // binary ON outside `applyBinaryRestoreWithSnapshot` — so it needs the same
   // carve-out, for the same stale-plan window.
   if (skipRestoreForExternalOffHold(ctx, intent.id, intent.name)) return false;
-  const outcome = await runBinaryControl({
+  const outcome = await runBinaryControl(
     ctx,
-    deviceId: intent.id,
-    name: intent.name,
-    desired: true,
+    { deviceId: intent.id, name: intent.name, desired: true, logContext: 'capacity' },
     snapshot,
-    logContext: 'capacity',
-  });
+  );
   return outcome.applied;
 };
 

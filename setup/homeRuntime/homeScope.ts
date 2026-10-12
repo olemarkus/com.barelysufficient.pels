@@ -324,7 +324,7 @@ export function buildMainHomeScope(
     getOperatingMode,
     getModeDeviceTargets,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
-    syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
+    syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`
     // hardwired. Byte-identical for the main home.
     emitsUiRealtime: true,

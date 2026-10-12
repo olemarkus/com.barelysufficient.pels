@@ -846,8 +846,6 @@ export type StatusPlanChanges = Pick<
   'actionChanged' | 'actionSignature' | 'detailSignature' | 'metaSignature'
 >;
 
-export type { PlanRebuildOutcome } from '../planContract/planActuationResult';
-
 // `PlanInputDevice` (the planner's input contract) now lives in the
 // `@pels/planner-types` workspace, below the domain peer layer alongside
 // `@pels/contracts`. It is re-exported here so the existing consumers that

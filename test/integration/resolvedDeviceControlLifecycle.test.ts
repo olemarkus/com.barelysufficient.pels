@@ -78,7 +78,7 @@ describe('resolved device control composition and command lifecycle', () => {
     // A fresh Flow decision is allowed to start its own command session.
     helpers.markSteppedLoadDesiredStepIssued({ deviceId: snapshot.id, desiredStepId: 'low', issuedAtMs: 1600 });
     helpers.reconcileTargetPowerReachability([snapshot], 1700);
-    expect(stores.store.getDesired(snapshot.id)).toMatchObject({ stepId: 'low', pending: true });
+    expect(stores.store.getDesired(snapshot.id)).toMatchObject({ stepId: 'low', status: 'pending' });
   });
 
   it('retires a probe when phase configuration changes the watts represented by its step', () => {
@@ -355,7 +355,7 @@ describe('resolved device control composition and command lifecycle', () => {
     expect(updateTargetPowerReachability).not.toHaveBeenCalled();
     expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: '16a',
-      pending: true,
+      status: 'pending',
     });
     expect(stores.store.getDesired('dev-1'))
       .not.toHaveProperty('targetPowerProbeConfirmedMaxPowerW');
@@ -498,7 +498,7 @@ describe('resolved device control composition and command lifecycle', () => {
     // The rung sits above the confirmed ladder by design, so reconciling the
     // configuration must not retire it as a removed rung and drop its pacing.
     expect(stores.store.getDesired('dev-1')).toMatchObject({
-      stepId: '28a', pending: true, lastIssuedAtMs: 1_000,
+      stepId: '28a', status: 'pending', lastIssuedAtMs: 1_000,
     });
     expect(stores.store.hasPriorStepCommand('dev-1')).toBe(true);
   });
@@ -653,7 +653,7 @@ describe('resolved device control composition and command lifecycle', () => {
     expect(helpers.reportSteppedLoadActualStep('dev-1', stepId, reportedW)).toBe('changed');
 
     expect(stores.reportedStore.get('dev-1')).toMatchObject({ stepId, planningPowerW: reportedW });
-    expect(stores.store.getDesired('dev-1')).toMatchObject({ stepId, pending: false, status: 'success' });
+    expect(stores.store.getDesired('dev-1')).toMatchObject({ stepId, status: 'success' });
     // The rung is reported as-is: the ladder gains no off-grid exact step.
     expect(helpers.getSteppedLoadProfile('dev-1')?.steps.map((step) => step.id)).not.toContain(
       `${String(Math.round((reportedW / 230) * 1000) / 1000)}a`,
@@ -704,7 +704,6 @@ describe('resolved device control composition and command lifecycle', () => {
       stepId: 'low',
       previousStepId: 'max',
       retryCount: 0,
-      pending: false,
       status: 'idle',
     });
 
@@ -806,7 +805,6 @@ describe('resolved device control composition and command lifecycle', () => {
       stepId: 'low',
       previousStepId: 'max',
       retryCount: 0,
-      pending: false,
       status: 'idle',
     });
     expect(structuredLogger.info).toHaveBeenCalledWith(expect.objectContaining({
@@ -851,7 +849,6 @@ describe('resolved device control composition and command lifecycle', () => {
       stepId: 'low',
       previousStepId: 'low',
       retryCount: 0,
-      pending: false,
       status: 'success',
     });
 
@@ -898,7 +895,6 @@ describe('resolved device control composition and command lifecycle', () => {
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'low',
       retryCount: 0,
-      pending: false,
       status: 'success',
     });
   });
@@ -935,7 +931,6 @@ describe('resolved device control composition and command lifecycle', () => {
     expect(stores.store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'max',
-      pending: false,
       status: 'success',
       retryCount: 0,
       nextRetryAtMs: undefined,
@@ -1066,7 +1061,6 @@ describe('resolved device control composition and command lifecycle', () => {
     });
     expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'low',
-      pending: false,
       status: 'idle',
     });
   });
@@ -1101,7 +1095,6 @@ describe('resolved device control composition and command lifecycle', () => {
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'off')).toBe('changed');
     expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'max',
-      pending: false,
       status: 'idle',
     });
   });
@@ -1134,7 +1127,6 @@ describe('resolved device control composition and command lifecycle', () => {
     });
     expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'max',
-      pending: false,
       status: 'success',
       nextRetryAtMs: undefined,
     });
@@ -1171,7 +1163,6 @@ describe('resolved device control composition and command lifecycle', () => {
 
     expect(stores.store.getDesired('dev-1')).toMatchObject({
       stepId: 'low',
-      pending: false,
       status: 'idle',
       retryCount: 0,
     });
@@ -1207,7 +1198,6 @@ describe('resolved device control composition and command lifecycle', () => {
     expect(stores.store.getDesired('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'max',
-      pending: true,
       status: 'pending',
       retryCount: 0,
     });
@@ -1242,7 +1232,6 @@ describe('resolved device control composition and command lifecycle', () => {
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       retryCount: 0,
       nextRetryAtMs: 121_000,
-      pending: false,
       status: 'stale',
     });
 
@@ -1257,7 +1246,6 @@ describe('resolved device control composition and command lifecycle', () => {
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       retryCount: 1,
       nextRetryAtMs: undefined,
-      pending: true,
       status: 'pending',
     });
   });
@@ -1286,7 +1274,6 @@ describe('resolved device control composition and command lifecycle', () => {
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       retryCount: 0,
       nextRetryAtMs: undefined,
-      pending: true,
       status: 'pending',
     });
   });

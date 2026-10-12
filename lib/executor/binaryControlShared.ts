@@ -2,7 +2,7 @@ import {
   type BinaryControlOutcome,
   decideAndDispatchBinaryControl,
 } from './binaryControlDispatch';
-import type { BinaryControlDecisionSnapshot } from '../plan/planBinaryControlHelpers';
+import type { BinaryControlDecision, BinaryControlDecisionSnapshot } from '../plan/planBinaryControlHelpers';
 import { getDebugEmitter } from '../logging/logger';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
@@ -46,21 +46,14 @@ export const skipRestoreForExternalOffHold = (
   return true;
 };
 
-export const runBinaryControl = async (params: {
-  ctx: ExecutorCommandContext;
-  deviceId: string;
-  name: string;
-  desired: boolean;
-  snapshot?: BinaryControlDecisionSnapshot;
-  logContext: 'capacity' | 'capacity_control_off';
-  lifecycleRelease?: boolean;
-  forceAgainstReleasedOpposing?: boolean;
-}): Promise<BinaryControlOutcome> => {
-  const {
-    ctx, deviceId, name, desired, snapshot, logContext,
-    lifecycleRelease,
-    forceAgainstReleasedOpposing,
-  } = params;
+/** One binary command through the lane's claim: the command it asks for, and the read it judges by. */
+export const runBinaryControl = async (
+  ctx: ExecutorCommandContext,
+  command: BinaryControlDecision,
+  snapshot: BinaryControlDecisionSnapshot | undefined,
+  forceAgainstReleasedOpposing = false,
+): Promise<BinaryControlOutcome> => {
+  const { deviceId, desired } = command;
   if (isHeldByLifecycleLane(ctx, deviceId)) {
     return { applied: false };
   }
@@ -74,16 +67,7 @@ export const runBinaryControl = async (params: {
   }
   let outcome: BinaryControlOutcome = { applied: false };
   try {
-    outcome = await decideAndDispatchBinaryControl({
-      transport: ctx,
-      deviceId,
-      name,
-      desired,
-      snapshot,
-      logContext,
-      lifecycleRelease,
-      forceAgainstReleasedOpposing,
-    });
+    outcome = await decideAndDispatchBinaryControl(ctx, command, snapshot, forceAgainstReleasedOpposing);
     return outcome;
   } finally {
     ctx.binaryCommandClaim.release(deviceId, ctx.owner, desired, outcome.applied);

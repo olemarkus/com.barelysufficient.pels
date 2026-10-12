@@ -15,7 +15,7 @@ import type { Logger } from '../../lib/utils/types';
 import type {
     ObservedStateChangedEvent,
     ObservedStateRefreshEvent,
-} from '../../lib/observer/observedStateEvents';
+} from '../../lib/ports/observedStateEvents';
 import {
     TARGETED_DEVICE_MISS_GRACE_MS,
     TARGETED_DEVICE_MISS_GRACE_READS,

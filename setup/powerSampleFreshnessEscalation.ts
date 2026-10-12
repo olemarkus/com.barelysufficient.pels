@@ -1,7 +1,7 @@
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { AppContext } from '../lib/app/appContext';
 import type { MeterSilenceMonitor } from '../lib/power/meterSilence';
-import type { PlanRebuildOutcome } from '../lib/plan/planTypes';
+import type { PlanRebuildOutcome } from '../lib/planContract/planActuationResult';
 import type { HomeId } from '../lib/utils/settingsKeys';
 
 const BASE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 5000 : 30 * 1000;

@@ -221,7 +221,7 @@ export type AppContext = {
    */
   computeDynamicSoftLimit: () => number | null;
   getDynamicSoftLimitOverride: () => number | null;
-  syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
+  syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
   evaluateHeadroomForDevice: (
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
   ) => HeadroomForDeviceDecision;

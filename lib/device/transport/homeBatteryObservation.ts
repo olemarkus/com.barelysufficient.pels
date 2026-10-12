@@ -22,7 +22,7 @@ import { resolveBatteryControlSurface } from '../batteryControlWiring';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { ObservationCursor } from './managerRealtimeHandlers';
+import type { ObservationCursor } from './transportObservationState';
 import { normalizeStateOfChargePercent } from './stateOfCharge';
 import { HOME_BATTERY_CLASS_KEY } from '../../../packages/shared-domain/src/batteryOrSolarRole';
 import type { ObservedStateChangedEvent } from '../../ports/observedStateEvents';

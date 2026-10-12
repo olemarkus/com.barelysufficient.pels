@@ -86,14 +86,11 @@ export const applyBinaryRestoreWithSnapshot = async (
   ctx.state.actuation.beginRestore(deviceId);
   try {
     try {
-      const outcome = await runBinaryControl({
+      const outcome = await runBinaryControl(
         ctx,
-        deviceId,
-        name,
-        desired: true,
+        { deviceId, name, desired: true, logContext: 'capacity' },
         snapshot,
-        logContext: 'capacity',
-      });
+      );
       if (!outcome.applied) return false;
       return true;
     } catch (error) {

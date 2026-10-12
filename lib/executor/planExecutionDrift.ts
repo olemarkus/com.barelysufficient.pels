@@ -87,7 +87,7 @@ export function hasPlanDeviceExecutionDrift(
 
 // Drift no longer suppresses on observation staleness — observer-reported
 // state is authoritative. Repeat-drift dampening depends on the per-axis
-// pending-command flags (`binaryCommandPending`, `stepCommandPending`,
+// pending-command state (the pending binary store, the step command session and
 // `pendingTargetCommand`) being set whenever the executor dispatches a command
 // in response to detected drift, and cleared on success/failure. Any future
 // actuation path that bypasses those flags would turn the new behavior into a
@@ -105,9 +105,9 @@ function buildDriftRuntimeState(
   command: DriftCommandRead,
 ): DriftRuntimeState {
   // `pendingTargetCommand` is engine state, projected onto the plan device by
-  // `planBuilder.shouldExposePendingTargetCommand`. The plan snapshot is the
-  // authoritative source for in-flight target commands; the input device only
-  // carries observed capability values.
+  // `decoratePlanWithPendingTargetCommands` (`lib/plan/planTargetControl.ts`).
+  // The plan snapshot is the authoritative source for in-flight target
+  // commands; the input device only carries observed capability values.
   const pendingTarget = planDevice.pendingTargetCommand;
   return {
     pendingBinary: command.binary,

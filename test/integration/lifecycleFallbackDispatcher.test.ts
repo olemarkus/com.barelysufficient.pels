@@ -93,7 +93,7 @@ const withLifecycleAxes = (candidate: LegacyLifecycleFallbackDevice): LifecycleF
       ? { state: 'writable' }
       : { state: 'unavailable' },
     targetAxis: candidate.targetWritable !== false && targetDescriptor
-      ? { state: 'writable', target: 'temperature' }
+      ? { state: 'writable' }
       : { state: 'unavailable' },
     stepAxis: candidate.stepWritable !== false && candidate.steppedLoadProfile
       ? { state: 'writable', profile: candidate.steppedLoadProfile }
@@ -1689,14 +1689,16 @@ describe('LifecycleFallbackDispatcher', () => {
         actuator,
       })
     );
-    const lifecycle = runBinaryControl({
-      ctx: buildContext('lifecycle'), deviceId: snapshot.id, name: snapshot.name,
-      desired: false, snapshot, logContext: 'capacity', lifecycleRelease: true,
-    });
-    expect(await runBinaryControl({
-      ctx: buildContext('ordinary'), deviceId: snapshot.id, name: snapshot.name,
-      desired: ordinaryDesired, snapshot, logContext: 'capacity',
-    })).toEqual({ applied: false });
+    const lifecycle = runBinaryControl(
+      buildContext('lifecycle'),
+      { deviceId: snapshot.id, name: snapshot.name, desired: false, logContext: 'capacity', lifecycleRelease: true },
+      snapshot,
+    );
+    expect(await runBinaryControl(
+      buildContext('ordinary'),
+      { deviceId: snapshot.id, name: snapshot.name, desired: ordinaryDesired, logContext: 'capacity' },
+      snapshot,
+    )).toEqual({ applied: false });
     expect(actuator.apply).toHaveBeenCalledTimes(1);
     resolveWrite?.({ requested: true });
     await lifecycle;
@@ -1728,10 +1730,11 @@ describe('LifecycleFallbackDispatcher', () => {
       pendingBinaryCommandStore: store,
       actuator: createTestActuator(),
     });
-    expect(await runBinaryControl({
-      ctx, deviceId: snapshot.id, name: snapshot.name, desired: false, snapshot,
-      logContext: 'capacity', lifecycleRelease: true,
-    })).toEqual({ applied: true });
+    expect(await runBinaryControl(
+      ctx,
+      { deviceId: snapshot.id, name: snapshot.name, desired: false, logContext: 'capacity', lifecycleRelease: true },
+      snapshot,
+    )).toEqual({ applied: true });
     expect(store.peek(snapshot.id)).toMatchObject({ desired: false, lifecycleRelease: true });
   });
 
@@ -1762,10 +1765,11 @@ describe('LifecycleFallbackDispatcher', () => {
       actuator,
       isAuthorityCurrent: () => current,
     });
-    const result = runBinaryControl({
-      ctx, deviceId: snapshot.id, name: snapshot.name, desired: false, snapshot,
-      logContext: 'capacity', lifecycleRelease: true,
-    });
+    const result = runBinaryControl(
+      ctx,
+      { deviceId: snapshot.id, name: snapshot.name, desired: false, logContext: 'capacity', lifecycleRelease: true },
+      snapshot,
+    );
     expect(store.peek(snapshot.id)).toMatchObject({ desired: false });
     current = false;
     resolveWrite?.({ requested: true });
@@ -1805,10 +1809,11 @@ describe('LifecycleFallbackDispatcher', () => {
       actuator,
       isAuthorityCurrent: () => current,
     });
-    const result = runBinaryControl({
-      ctx, deviceId: snapshot.id, name: snapshot.name, desired: false, snapshot,
-      logContext: 'capacity', lifecycleRelease: true,
-    });
+    const result = runBinaryControl(
+      ctx,
+      { deviceId: snapshot.id, name: snapshot.name, desired: false, logContext: 'capacity', lifecycleRelease: true },
+      snapshot,
+    );
     expect(store.peek(snapshot.id)).toMatchObject({ desired: false });
     current = false;
     rejectWrite?.(new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/heater-1/capability/onoff'));
@@ -1844,10 +1849,11 @@ describe('LifecycleFallbackDispatcher', () => {
         actuator,
       });
       const dispatcher = new ExecutorLifecycleFallbackDispatcher(binaryContext);
-      const ordinary = runBinaryControl({
-        ctx: binaryContext, deviceId: snapshot.id, name: snapshot.name,
-        desired: true, snapshot, logContext: 'capacity',
-      });
+      const ordinary = runBinaryControl(
+        binaryContext,
+        { deviceId: snapshot.id, name: snapshot.name, desired: true, logContext: 'capacity' },
+        snapshot,
+      );
       const request = resolveRequest({
         device: withLifecycleAxes({ ...snapshot, binaryWritable: true }),
         observedState: { ...observedFromDevice(snapshot), binaryControl: { on: false } },
@@ -1945,11 +1951,11 @@ describe('LifecycleFallbackDispatcher', () => {
       getObservedState: observation.getSnapshotByDeviceId,
       actuator,
     });
-    const lifecycleWrite = runBinaryControl({
-      ctx: { ...ordinaryContext, owner: 'lifecycle' },
-      deviceId: 'heater-1', name: 'Stepped heater', desired: true,
-      snapshot: buildSnapshot(), logContext: 'capacity', lifecycleRelease: true,
-    });
+    const lifecycleWrite = runBinaryControl(
+      { ...ordinaryContext, owner: 'lifecycle' },
+      { deviceId: 'heater-1', name: 'Stepped heater', desired: true, logContext: 'capacity', lifecycleRelease: true },
+      buildSnapshot(),
+    );
     observedOn = true;
     const action = steppedAction({
       id: 'heater-1', name: 'Stepped heater', steppedLoadProfile: profile,

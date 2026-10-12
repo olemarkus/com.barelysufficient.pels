@@ -3,6 +3,7 @@ import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
+import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 import type {
   SteppedLoadCommandStatus,
 } from '../../packages/contracts/src/types';
@@ -26,7 +27,7 @@ export type SteppedLoadDesiredRuntimeState = {
   lastIssuedAtMs?: number;
   retryCount: number;
   nextRetryAtMs?: number;
-  pending: boolean;
+  /** `pending` exactly while the command is in flight; there is no separate flag. */
   status: SteppedLoadCommandStatus;
   planningPowerW?: number;
   previousPlanningPowerW?: number;
@@ -68,7 +69,6 @@ export type DeviceControlRuntimeState = {
 
 export type ReportSteppedLoadActualStepResult = 'changed' | 'unchanged' | 'invalid';
 
-export type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 
 
 export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => ({
@@ -97,12 +97,11 @@ export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => 
  * the snapshot contract states outright ("consumers must treat its absence
  * exactly like the old fabricated `currentOn: true`").
  */
-export const expireConfirmedDesiredStepOnBinaryOff = (params: {
-  runtimeState: DeviceControlRuntimeState;
-  deviceId: string;
-  observedOn: boolean;
-}): void => {
-  const { runtimeState, deviceId, observedOn } = params;
+export const expireConfirmedDesiredStepOnBinaryOff = (
+  runtimeState: DeviceControlRuntimeState,
+  deviceId: string,
+  observedOn: boolean,
+): void => {
   if (!observedOn) {
     runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.delete(deviceId);
     runtimeState.steppedLoadStepCommandIssuedByDeviceId.delete(deviceId);
@@ -116,12 +115,11 @@ export const expireConfirmedDesiredStepOnBinaryOff = (params: {
 // Mark the tracked desired step command confirmed. Called from the decorate-time
 // reported-step match; a report matching the commanded step confirms the COMMANDED
 // axis, independently of it also landing on the observed one.
-export const confirmSteppedLoadDesiredStep = (params: {
-  runtimeState: DeviceControlRuntimeState;
-  deviceId: string;
-  desired: SteppedLoadDesiredRuntimeState;
-}): void => {
-  const { runtimeState, deviceId, desired } = params;
+export const confirmSteppedLoadDesiredStep = (
+  runtimeState: DeviceControlRuntimeState,
+  deviceId: string,
+  desired: SteppedLoadDesiredRuntimeState,
+): void => {
   const {
     targetPowerProbeConfirmedMaxPowerW: _targetPowerProbeConfirmedMaxPowerW,
     targetPowerProbeStartedAtMs: _targetPowerProbeStartedAtMs,
@@ -131,27 +129,21 @@ export const confirmSteppedLoadDesiredStep = (params: {
     ...settledDesired,
     retryCount: 0,
     nextRetryAtMs: undefined,
-    pending: false,
     status: 'success',
   });
 };
 
-const buildSteppedLoadPowerMetadata = (params: {
-  previousDesired: SteppedLoadDesiredRuntimeState | undefined;
-  desiredStepId: string;
-  issuedAtMs: number;
-  planningPowerW: number | undefined;
-  previousPlanningPowerW: number | undefined;
-  targetPowerProbeConfirmedMaxPowerW: number | undefined;
-}): Partial<SteppedLoadDesiredRuntimeState> => {
+const buildSteppedLoadPowerMetadata = (
+  previousDesired: SteppedLoadDesiredRuntimeState | undefined,
+  command: MarkSteppedLoadDesiredStepIssuedParams,
+  issuedAtMs: number,
+): Partial<SteppedLoadDesiredRuntimeState> => {
   const {
-    previousDesired,
     desiredStepId,
-    issuedAtMs,
     planningPowerW,
     previousPlanningPowerW,
     targetPowerProbeConfirmedMaxPowerW,
-  } = params;
+  } = command;
   const continuingTargetPowerProbe = targetPowerProbeConfirmedMaxPowerW !== undefined
     && previousDesired?.stepId === desiredStepId
     && previousDesired.planningPowerW === planningPowerW
@@ -169,28 +161,17 @@ const buildSteppedLoadPowerMetadata = (params: {
   };
 };
 
-export const markSteppedLoadDesiredStepIssued = (params: {
-  runtimeState: DeviceControlRuntimeState;
-  deviceId: string;
-  desiredStepId: string;
-  previousStepId?: string;
-  issuedAtMs?: number;
-  confirmationPolicy?: 'required' | 'assume_applied';
-  planningPowerW?: number;
-  previousPlanningPowerW?: number;
-  targetPowerProbeConfirmedMaxPowerW?: number;
-}): void => {
+export const markSteppedLoadDesiredStepIssued = (
+  runtimeState: DeviceControlRuntimeState,
+  command: MarkSteppedLoadDesiredStepIssuedParams,
+): void => {
   const {
-    runtimeState,
     deviceId,
     desiredStepId,
     previousStepId,
     issuedAtMs = Date.now(),
     confirmationPolicy = 'required',
-    planningPowerW,
-    previousPlanningPowerW,
-    targetPowerProbeConfirmedMaxPowerW,
-  } = params;
+  } = command;
   if (confirmationPolicy === 'assume_applied') {
     runtimeState.steppedLoadInitializedAtLowestStepByDeviceId.set(deviceId, desiredStepId);
     runtimeState.steppedLoadStepCommandIssuedByDeviceId.add(deviceId);
@@ -211,44 +192,28 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     lastIssuedAtMs: issuedAtMs,
     retryCount,
     nextRetryAtMs: undefined,
-    pending: true,
     status: 'pending',
-    ...buildSteppedLoadPowerMetadata({
-      previousDesired,
-      desiredStepId,
-      issuedAtMs,
-      planningPowerW,
-      previousPlanningPowerW,
-      targetPowerProbeConfirmedMaxPowerW,
-    }),
+    ...buildSteppedLoadPowerMetadata(previousDesired, command, issuedAtMs),
   });
 };
 
-export const preserveSteppedLoadDesiredStep = (params: {
-  runtimeState: DeviceControlRuntimeState;
-  deviceId: string;
-  desiredStepId: string;
-  previousStepId?: string;
-  changedAtMs?: number;
-  status?: SteppedLoadCommandStatus;
-}): void => {
-  const {
-    runtimeState,
-    deviceId,
-    desiredStepId,
-    previousStepId,
-    changedAtMs = Date.now(),
-    status = 'idle',
-  } = params;
-  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
+/**
+ * Keep the plan's step as the tracked command after `observation`, without
+ * issuing it: confirmed when the device already reports it, else idle.
+ */
+export const preserveSteppedLoadDesiredStep = (
+  runtimeState: DeviceControlRuntimeState,
+  observation: FlowSteppedLoadObservation,
+  desiredStepId: string,
+): void => {
+  runtimeState.steppedLoadDesiredByDeviceId.set(observation.deviceId, {
     capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     stepId: desiredStepId,
-    previousStepId,
-    changedAtMs,
+    previousStepId: observation.stepId,
+    changedAtMs: Date.now(),
     retryCount: 0,
     nextRetryAtMs: undefined,
-    pending: false,
-    status,
+    status: desiredStepId === observation.stepId ? 'success' : 'idle',
   });
 };
 
@@ -262,17 +227,13 @@ export const reportSteppedLoadActualStep = (
 
   const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
   if (desired?.stepId === stepId) {
-    confirmSteppedLoadDesiredStep({ runtimeState, deviceId, desired });
+    confirmSteppedLoadDesiredStep(runtimeState, deviceId, desired);
   } else if (desired?.status === 'success') {
     // Fresh trusted telemetry contradicts an earlier confirmation (e.g. the
     // charger current was re-zeroed after the flow confirmed the prepared
     // step). The confirmation must lose to the newer report so a stale
     // 'success' cannot fast-track a restore whose preparation was un-applied.
-    runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
-      ...desired,
-      pending: false,
-      status: 'idle',
-    });
+    runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, { ...desired, status: 'idle' });
   }
 
   return changed;
@@ -284,7 +245,7 @@ export const pruneStaleSteppedLoadCommandStates = (
 ): boolean => {
   let changed = false;
   for (const [deviceId, desired] of runtimeState.steppedLoadDesiredByDeviceId.entries()) {
-    if (!desired.pending || typeof desired.lastIssuedAtMs !== 'number') continue;
+    if (desired.status !== 'pending' || typeof desired.lastIssuedAtMs !== 'number') continue;
     if (nowMs - desired.lastIssuedAtMs < STEPPED_LOAD_COMMAND_STALE_MS) continue;
     runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
       ...desired,
@@ -292,7 +253,6 @@ export const pruneStaleSteppedLoadCommandStates = (
         desired.lastIssuedAtMs
         + STEPPED_LOAD_COMMAND_STALE_MS
         + resolveSteppedLoadCommandRetryDelayMs(desired.retryCount),
-      pending: false,
       status: 'stale',
     });
     changed = true;

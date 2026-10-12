@@ -107,25 +107,34 @@ describe('getPendingTargetCommandDecision', () => {
   const state = () => createPlanEngineState();
 
   it('sends when nothing is pending for the device', () => {
-    expect(getPendingTargetCommandDecision({
-      state: state(), deviceId: 'dev-1', desired: 21, nowMs: 1_000,
-    })).toEqual({ type: 'send' });
+    expect(getPendingTargetCommandDecision(
+      state(),
+      'dev-1',
+      21,
+      1_000,
+    )).toEqual({ type: 'send' });
   });
 
   it('sends when the pending command is for a different desired value', () => {
     const s = state();
     recordTargetCommandAttempt(s, 'dev-1', 19, 1_000, 'waiting_confirmation', undefined);
-    expect(getPendingTargetCommandDecision({
-      state: s, deviceId: 'dev-1', desired: 21, nowMs: 1_000,
-    })).toEqual({ type: 'send' });
+    expect(getPendingTargetCommandDecision(
+      s,
+      'dev-1',
+      21,
+      1_000,
+    )).toEqual({ type: 'send' });
   });
 
   it('skips while the retry window has not elapsed, and reports the remaining wait', () => {
     const s = state();
     const pending = recordTargetCommandAttempt(s, 'dev-1', 21, 1_000, 'waiting_confirmation', undefined);
-    const decision = getPendingTargetCommandDecision({
-      state: s, deviceId: 'dev-1', desired: 21, nowMs: 1_500,
-    });
+    const decision = getPendingTargetCommandDecision(
+      s,
+      'dev-1',
+      21,
+      1_500,
+    );
     expect(decision).toEqual({
       type: 'skip',
       pending,
@@ -136,8 +145,11 @@ describe('getPendingTargetCommandDecision', () => {
   it('retries once the window has elapsed', () => {
     const s = state();
     const pending = recordTargetCommandAttempt(s, 'dev-1', 21, 1_000, 'waiting_confirmation', undefined);
-    expect(getPendingTargetCommandDecision({
-      state: s, deviceId: 'dev-1', desired: 21, nowMs: pending.nextRetryAtMs,
-    })).toEqual({ type: 'retry', pending });
+    expect(getPendingTargetCommandDecision(
+      s,
+      'dev-1',
+      21,
+      pending.nextRetryAtMs,
+    )).toEqual({ type: 'retry', pending });
   });
 });

@@ -24,7 +24,11 @@
  * resolver here that returns 'unknown' is
  * `resolveObservedSteppedLoadCurrentState`, and only for that structural case.
  */
-import { getSteppedLoadStep, isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadStep,
+  isSteppedLoadOffStep,
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
@@ -37,6 +41,24 @@ export type ObservedCurrentStateInput = {
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
 };
+
+/**
+ * A stepped device's effective rung: its reported step on `ladder`, else the
+ * ladder's lowest active step. The one rule for it: the planner-input decorator
+ * (`lib/planInput/deviceControlProjection.ts`) and the executor's observed-state
+ * producer (`buildExecutableObservedDeviceState`) both resolve the rung here.
+ *
+ * It reads the device's report and the ladder, and deliberately NOT the
+ * commanded step: what PELS asked for is not evidence of where the device is,
+ * and treating it as such is how a command gets mistaken for its own
+ * confirmation.
+ */
+export const resolveSelectedStepId = (
+  ladder: SteppedLoadProfile,
+  reportedStepId: string | undefined,
+): string | undefined => (
+  getSteppedLoadStep(ladder, reportedStepId)?.id ?? getSteppedLoadLowestActiveStep(ladder)?.id
+);
 
 // Deliberately narrower than `ObservedCurrentStateInput`: the off-step question
 // is answered on the stepped axis alone. Withholding `binaryControl` keeps this

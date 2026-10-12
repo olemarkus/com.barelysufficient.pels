@@ -583,7 +583,7 @@ describe('MyApp initialization', () => {
         issuedAtMs: Date.now() - STEPPED_LOAD_COMMAND_STALE_MS - 1,
       });
       expect(app.steppedCommandStore.pruneStale()).toBe(true);
-      expect(app.steppedCommandStore.getDesired('dev-1')).toMatchObject({ pending: false, status: 'stale' });
+      expect(app.steppedCommandStore.getDesired('dev-1')).toMatchObject({ status: 'stale' });
       // The prior report is the observer's to record — it builds the capability
       // and source itself, so the test states only what the device said and when.
       app.steppedReportedStore.record({

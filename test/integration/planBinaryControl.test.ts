@@ -30,10 +30,9 @@ describe('generic binary observation and pending confirmation', () => {
     };
     vi.spyOn(Date, 'now').mockReturnValue(61_000);
 
-    expect(syncPendingBinaryCommands({
-      store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-      source: 'snapshot_refresh',
-      liveDevices: [{
+    expect(syncPendingBinaryCommands(
+      createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      [{
         id: deviceId,
         name,
         binaryCommandConfirmation: {
@@ -42,7 +41,8 @@ describe('generic binary observation and pending confirmation', () => {
           observedAtMs: 61_000,
         },
       }],
-    })).toBe(true);
+      'snapshot_refresh',
+    )).toBe(true);
     expect(state.pendingBinaryCommands[deviceId]).toMatchObject({
       desired: true,
       lastObservedValue: false,
@@ -57,10 +57,9 @@ describe('generic binary observation and pending confirmation', () => {
     };
     vi.spyOn(Date, 'now').mockReturnValue(2_000);
 
-    expect(syncPendingBinaryCommands({
-      store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-      source: 'realtime_capability',
-      liveDevices: [{
+    expect(syncPendingBinaryCommands(
+      createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      [{
         id: 'device-1',
         name: 'Load',
         binaryCommandConfirmation: {
@@ -69,7 +68,8 @@ describe('generic binary observation and pending confirmation', () => {
           observedAtMs: 2_000,
         },
       }],
-    })).toBe(true);
+      'realtime_capability',
+    )).toBe(true);
     expect(state.pendingBinaryCommands['device-1']).toBeUndefined();
     expect(logs.findEvent('pending_binary_command_confirmed')).toMatchObject({
       deviceId: 'device-1', observedValue: true, source: 'realtime_capability',

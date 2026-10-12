@@ -36,13 +36,12 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   desired: boolean;
   snapshot?: BinaryControlDecisionSnapshot;
   logContext: BinaryControlLogContext;
-  reason?: string;
   lifecycleRelease?: boolean;
   forceAgainstReleasedOpposing?: boolean;
 }): BinaryControlDecision | null {
   const {
     pendingBinaryCommandStore, getObservedBinaryControl,
-    deviceId, name, desired, snapshot, logContext, reason,
+    deviceId, name, desired, snapshot, logContext,
     lifecycleRelease,
     forceAgainstReleasedOpposing,
   } = params;
@@ -68,7 +67,6 @@ export function decideBinaryControl(params: BinaryControlDeps & {
     name,
     desired,
     logContext,
-    reason,
     ...(lifecycleRelease ? { lifecycleRelease: true } : {}),
   };
 }

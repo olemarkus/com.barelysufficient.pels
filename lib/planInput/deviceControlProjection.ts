@@ -5,12 +5,11 @@ import type {
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import {
-  getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
   resolveSteppedLoadPlanningPowerKw,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { SteppedCommandStore } from '../executor/steppedCommandStore';
-import { resolveCurrentOn } from '../observer/observedState';
+import { resolveCurrentOn, resolveSelectedStepId } from '../observer/observedState';
 import { resolveTemperatureDeniedControlModel } from './temperatureControlDenial';
 import type { DeviceConfiguration } from '../device/deviceConfiguration';
 import type { ProjectedObservedDeviceState } from '../../packages/contracts/src/types';
@@ -52,7 +51,7 @@ function projectSteppedDeviceControl<T extends DeviceControlProjectionSource>(
   device: T, profile: SteppedLoadProfile, store: SteppedCommandStore,
 ): T & DeviceControlDecoration {
   const currentDesired = store.getDesired(device.id);
-  const selectedStepId = device.reportedStepId ?? getSteppedLoadLowestActiveStep(profile)?.id;
+  const selectedStepId = resolveSelectedStepId(profile, device.reportedStepId);
   return {
     ...device,
     desiredStepId: getSteppedLoadStep(profile, currentDesired?.stepId)?.id,
@@ -68,7 +67,7 @@ function projectSteppedDeviceControl<T extends DeviceControlProjectionSource>(
     lastStepCommandIssuedAt: currentDesired?.lastIssuedAtMs,
     stepCommandRetryCount: currentDesired?.retryCount,
     nextStepCommandRetryAtMs: currentDesired?.nextRetryAtMs,
-    stepCommandPending: currentDesired?.pending ?? false,
+    stepCommandPending: store.isStepCommandPending(device.id),
     stepCommandStatus: currentDesired?.status ?? 'idle',
   };
 }

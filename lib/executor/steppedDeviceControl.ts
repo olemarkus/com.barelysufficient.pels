@@ -77,8 +77,7 @@ export class SteppedDeviceControl {
     const preserved = resolvePlannedDesiredStepToPreserve(
       previousDesired, profile, latestPlanDesiredStepId, observation,
     );
-    if (preserved) this.store.preserveDesiredStep({ deviceId, desiredStepId: preserved,
-      previousStepId: observation.stepId, status: preserved === observation.stepId ? 'success' : 'idle' });
+    if (preserved) this.store.preserveDesiredStep(observation, preserved);
     if (changed === 'unchanged') {
       this.loggers.debugStructured?.({ event: 'stepped_load_feedback_unchanged', deviceId, stepId });
     } else {

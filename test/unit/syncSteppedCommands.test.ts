@@ -31,7 +31,7 @@ describe('syncSteppedCommands', () => {
     });
 
     expect(changed).toBe(true);
-    expect(store.getDesired('dev-1')).toMatchObject({ status: 'success', pending: false });
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'success' });
   });
 
   it('concludes nothing when the device has said nothing about a rung', () => {
@@ -40,7 +40,7 @@ describe('syncSteppedCommands', () => {
 
     syncSteppedCommands({ store, devices: [device()], nowMs: 1_500 });
 
-    expect(store.getDesired('dev-1')).toMatchObject({ status: 'pending', pending: true });
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'pending' });
   });
 
   it('does not confirm a command against a different rung than the one asked for', () => {
@@ -68,7 +68,7 @@ describe('syncSteppedCommands', () => {
       nowMs: 1_000 + STEPPED_LOAD_COMMAND_STALE_MS,
     });
 
-    expect(store.getDesired('dev-1')).toMatchObject({ status: 'stale', pending: false });
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'stale' });
   });
 
   it('ends the command session when the on-session ends', () => {

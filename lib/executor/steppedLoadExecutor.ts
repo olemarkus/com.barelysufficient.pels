@@ -113,7 +113,6 @@ export const applySteppedLoadCommand = async (
   const commandStepId = intent.desired.stepId;
   const currentOn = resolveCurrentOn(action, snapshot);
   const forceCommand = options.force === true;
-  const initializesUnknownStep = intent.transition?.effectiveTransition === 'initialize_unknown_step_at_low';
   if (isSettledAtPlannedOff(action, currentOn)) return false;
   if (!commandStepId) return false;
   if (!forceCommand && isSteppedLoadStepCommandRedundant(action, commandStepId)) return false;
@@ -127,13 +126,7 @@ export const applySteppedLoadCommand = async (
     );
   }
   if (!forceCommand && maybeLogSteppedLoadCommandPendingSkip(intent, commandStepId)) return false;
-  return executeSteppedLoadCommand(ctx, {
-    action,
-    options,
-    desiredStep,
-    previousStepId: initializesUnknownStep ? undefined : intent.previousStepId,
-    now: Date.now(),
-  });
+  return executeSteppedLoadCommand(ctx, action, desiredStep, options);
 };
 
 export const applySteppedLoadRestore = async (
@@ -204,14 +197,11 @@ export const applySteppedLoadShedOff = async (
   if (!snapshot) return false;
   const name = intent.name;
   try {
-    const outcome = await runBinaryControl({
+    const outcome = await runBinaryControl(
       ctx,
-      deviceId: intent.id,
-      name,
-      desired: false,
+      { deviceId: intent.id, name, desired: false, logContext: 'capacity' },
       snapshot,
-      logContext: 'capacity',
-    });
+    );
     if (!outcome.applied) return false;
     return true;
   } catch (error) {

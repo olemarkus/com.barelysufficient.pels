@@ -28,8 +28,9 @@ import {
   applySteppedLoadShedOff,
 } from './steppedLoadExecutor';
 import {
-  applyDeferredBinaryCommand,
   applyBinaryRestore,
+  applyBinarySheddingToDevice,
+  applyDeferredBinaryCommand,
   applyUncontrolledBinaryRestore,
 } from './binaryExecutor';
 import { applyShedReleaseIntent } from './shedReleaseActuation';
@@ -65,9 +66,9 @@ const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 /**
  * One device's contribution. Deliberately NOT `PlanActuationResult`: that is the
- * plan-wide total and additionally names WHICH devices were touched, which a
- * per-device delta cannot know. Aliasing the two is what let a plan-wide
- * "something was written" answer be attributed to every device in a batch.
+ * plan-wide total, which also counts apply failures a per-device delta cannot
+ * know. Aliasing the two is what let a plan-wide "something was written" answer
+ * be attributed to every device in a batch.
  */
 type DispatchDelta = {
   deviceWriteCount: number;
@@ -164,7 +165,7 @@ const applyBinaryShedIntent = async (
   // thermostat with an on/off handle and a `set_temperature` floor was written to
   // its setback and left running under a plan that said off, which is how the
   // start-policy hold failed to turn one off at all.
-  return ctx.applySheddingToDevice(intent.deviceId, intent.name);
+  return applyBinarySheddingToDevice(ctx, intent.deviceId, intent.name);
 };
 
 const dispatchSteppedLoadCommand = async (
@@ -280,13 +281,7 @@ const applyDeviceIntent = async (
     ctx.getSteppedLoadCommandSession(intent.id),
   );
   const snapshot = observed?.snapshot;
-  if (shouldSkipUnavailable({
-    snapshot,
-    name: intent.name,
-    operation: 'actuation',
-  })) {
-    return ZERO_DELTA;
-  }
+  if (shouldSkipUnavailable(snapshot, intent.name, 'actuation')) return ZERO_DELTA;
   const device: ResolvedDeviceIntent = {
     observed, snapshot, hasShedDevices, steppedAction, ...commands,
   };
@@ -349,7 +344,6 @@ export const dispatchPlanActions = async (
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
   let deviceApplyFailureCount = 0;
-  const writtenDeviceIds: string[] = [];
   for (const intent of executablePlan.devices) {
     try {
       const result = await applyDeviceIntent(
@@ -361,10 +355,6 @@ export const dispatchPlanActions = async (
       );
       deviceWriteCount += result.deviceWriteCount;
       commandRequestCount += result.commandRequestCount;
-      if (result.deviceWriteCount > 0 || result.commandRequestCount > 0) {
-        // eslint-disable-next-line functional/immutable-data -- local accumulator, same shape as the counters above
-        writtenDeviceIds.push(intent.id);
-      }
     } catch (error) {
       deviceApplyFailureCount += 1;
       logger.error({
@@ -378,9 +368,8 @@ export const dispatchPlanActions = async (
   const storageResult = await dispatchStorageDecisions(storage, plan);
   return {
     deviceWriteCount,
-    commandRequestCount: commandRequestCount + storageResult.writtenDeviceIds.length,
+    commandRequestCount: commandRequestCount + storageResult.commandRequestCount,
     deviceApplyFailureCount: deviceApplyFailureCount + storageResult.failureCount,
-    writtenDeviceIds: [...writtenDeviceIds, ...storageResult.writtenDeviceIds],
   };
 };
 
@@ -388,14 +377,13 @@ export const dispatchPlanActions = async (
 const dispatchStorageDecisions = async (
   storage: StorageLane,
   plan: DevicePlan,
-): Promise<{ writtenDeviceIds: string[]; failureCount: number }> => {
-  const writtenDeviceIds: string[] = [];
+): Promise<{ commandRequestCount: number; failureCount: number }> => {
+  let commandRequestCount = 0;
   let failureCount = 0;
   for (const device of plan.devices) {
     if (!hasStorageDecision(device)) continue;
     try {
-      // eslint-disable-next-line functional/immutable-data -- local accumulator
-      if (await storage.apply(device)) writtenDeviceIds.push(device.id);
+      if (await storage.apply(device)) commandRequestCount += 1;
     } catch (error) {
       failureCount += 1;
       logger.error({
@@ -409,8 +397,7 @@ const dispatchStorageDecisions = async (
   }
   for (const intent of plan.storageReleases) {
     try {
-      // eslint-disable-next-line functional/immutable-data -- local accumulator
-      if (await storage.releaseAbsent(intent)) writtenDeviceIds.push(intent.deviceId);
+      if (await storage.releaseAbsent(intent)) commandRequestCount += 1;
     } catch (error) {
       failureCount += 1;
       logger.error({
@@ -418,5 +405,5 @@ const dispatchStorageDecisions = async (
       });
     }
   }
-  return { writtenDeviceIds, failureCount };
+  return { commandRequestCount, failureCount };
 };

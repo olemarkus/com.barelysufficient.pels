@@ -66,15 +66,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     : null;
   // One resolution, two consumers: the restore lane and the command lane ask
   // the same question of the same step, so they read the same answer.
-  const matchingCommandAttempt = resolveSteppedCommandAttempt({
-    requestedStepId: desired.stepId,
-    lastDesiredStepId: dev.lastDesiredStepId,
-    steppedLoadProfile: dev.steppedLoadProfile,
-    stepCommandPending: dev.stepCommandPending,
-    stepCommandStatus: dev.stepCommandStatus,
-    nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
-    nowMs: Date.now(),
-  });
+  const matchingCommandAttempt = resolveSteppedCommandAttempt(dev, desired.stepId, Date.now());
   const intent: ExecutableSteppedLoadIntent = {
     id: dev.id,
     name: dev.name,
@@ -166,7 +158,8 @@ export function buildExecutableSteppedLoadDevice(
       ...intent,
       desired,
       transition,
-      previousStepId: current.stepId ?? intent.previousStepId,
+      // A seeded unknown step has no step before it to report.
+      previousStepId: initializesUnknownStep ? undefined : current.stepId ?? intent.previousStepId,
     },
     current,
     stepActuation,

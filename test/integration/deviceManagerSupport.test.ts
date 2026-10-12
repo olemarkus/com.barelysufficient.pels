@@ -101,39 +101,34 @@ describe('device manager support helpers', () => {
 
     expect(getControlCapabilityId({ deviceClassKey: 'evcharger', capabilities: ['onoff', 'evcharger_charging'] })).toBe('evcharger_charging');
     expect(getControlCapabilityId({ deviceClassKey: 'socket', capabilities: ['onoff'] })).toBe('onoff');
-    expect(getCurrentOn({ deviceClassKey: 'evcharger', capabilityObj, binaryCapabilityId: 'evcharger_charging' })).toBe(false);
-    expect(getCurrentOn({
-      deviceClassKey: 'evcharger',
-      capabilityObj: { evcharger_charging_state: { value: 'plugged_in_paused' } },
-      binaryCapabilityId: 'evcharger_charging',
-    })).toBeUndefined();
-    expect(getCurrentOn({
-      deviceClassKey: 'evcharger',
-      capabilityObj: { evcharger_charging_state: { value: 'plugged_in_charging' } },
-      binaryCapabilityId: 'evcharger_charging',
-    })).toBeUndefined();
+    expect(getCurrentOn(capabilityObj, 'evcharger_charging')).toBe(false);
+    expect(getCurrentOn(
+      { evcharger_charging_state: { value: 'plugged_in_paused' } },
+      'evcharger_charging',
+    )).toBeUndefined();
+    expect(getCurrentOn(
+      { evcharger_charging_state: { value: 'plugged_in_charging' } },
+      'evcharger_charging',
+    )).toBeUndefined();
     // Charging-state telemetry does not redefine the command/readback axis.
-    expect(getCurrentOn({
-      deviceClassKey: 'evcharger',
-      capabilityObj: {
+    expect(getCurrentOn(
+      {
         evcharger_charging: { value: true },
         evcharger_charging_state: { value: 'plugged_in_paused' },
       },
-      binaryCapabilityId: 'evcharger_charging',
-    })).toBe(true);
-    expect(getCurrentOn({
-      deviceClassKey: 'evcharger',
-      capabilityObj: {
+      'evcharger_charging',
+    )).toBe(true);
+    expect(getCurrentOn(
+      {
         evcharger_charging: { value: true },
         evcharger_charging_state: { value: 'plugged_out' },
       },
-      binaryCapabilityId: 'evcharger_charging',
-    })).toBe(true);
-    expect(getCurrentOn({
-      deviceClassKey: 'socket',
-      capabilityObj: { onoff: { value: true } },
-      binaryCapabilityId: 'onoff',
-    })).toBe(true);
+      'evcharger_charging',
+    )).toBe(true);
+    expect(getCurrentOn(
+      { onoff: { value: true } },
+      'onoff',
+    )).toBe(true);
     expect(getCanSetControl('evcharger_charging', capabilityObj)).toBe(true);
     expect(getCanSetControl('onoff', capabilityObj)).toBe(false);
     expect(getEvCharging(capabilityObj)).toBe(false);

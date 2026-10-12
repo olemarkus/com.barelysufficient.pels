@@ -213,11 +213,12 @@ describe('device owner control resolution', () => {
     syncSteppedCommands({ store, devices, nowMs: nowMs + 30 * 60 * 1000 });
 
     const desired = store.getDesired('heater');
-    expect(desired).toMatchObject({ stepId: 'medium', status: 'success', pending: false, retryCount: 0 });
-    expect(resolveSteppedCommandAttempt({ requestedStepId: 'medium', lastDesiredStepId: desired?.stepId,
-      steppedLoadProfile: projected.steppedLoadProfile!, stepCommandPending: desired?.pending,
+    expect(desired).toMatchObject({ stepId: 'medium', status: 'success', retryCount: 0 });
+    expect(store.isStepCommandPending('heater')).toBe(false);
+    expect(resolveSteppedCommandAttempt({ lastDesiredStepId: desired?.stepId,
+      steppedLoadProfile: projected.steppedLoadProfile!, stepCommandPending: store.isStepCommandPending('heater'),
       stepCommandStatus: desired?.status, nextStepCommandRetryAtMs: desired?.nextRetryAtMs,
-      nowMs: nowMs + 30 * 60 * 1000 })).toBeNull();
+    }, 'medium', nowMs + 30 * 60 * 1000)).toBeNull();
   });
 
   it('publishes the active native ladder with its matching observation through the runtime configuration seam', async () => {

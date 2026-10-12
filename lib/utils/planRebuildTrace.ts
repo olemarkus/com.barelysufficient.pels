@@ -1,7 +1,7 @@
 import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
 
 /** One finished rebuild as the diagnostics window keeps it: its outcome, and where it sat in the queue. */
-export type PlanRebuildTrace = Omit<PlanRebuildOutcome, 'gated' | 'writtenDeviceIds'> & {
+export type PlanRebuildTrace = Omit<PlanRebuildOutcome, 'gated'> & {
   reason: string;
   endedAtMs: number;
   queueDepth: number;

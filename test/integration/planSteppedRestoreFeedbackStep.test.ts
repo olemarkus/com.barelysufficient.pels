@@ -58,7 +58,6 @@ const inFlightCommand = (stepId: string): SteppedLoadDesiredRuntimeState => ({
   changedAtMs: NOW_MS,
   lastIssuedAtMs: NOW_MS,
   retryCount: 0,
-  pending: true,
   status: 'pending',
 });
 

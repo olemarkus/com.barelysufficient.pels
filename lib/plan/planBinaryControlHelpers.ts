@@ -49,8 +49,9 @@ export type { BinaryControlPlan };
 export type BinaryControlLogContext = 'capacity' | 'capacity_control_off';
 
 /**
- * The plan layer hands one of these to the executor per cycle for each
- * device that should actuate. The executor records provisional pending state
+ * One binary command. The executor asks for it in this shape (`runBinaryControl`)
+ * and the plan layer's `decideBinaryControl` hands it back for each device that
+ * should actuate. The executor records provisional pending state
  * before dispatch, accepts it only after transport success and a live authority
  * check, and clears it when dispatch cannot proceed.
  *
@@ -63,7 +64,6 @@ export type BinaryControlDecision = {
   name: string;
   desired: boolean;
   logContext: BinaryControlLogContext;
-  reason?: string;
   /**
    * True when this decision comes from the smart-task lifecycle-end disable path
    * rather than a capacity shed. Carried onto the pending entry so the executor's

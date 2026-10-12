@@ -67,14 +67,11 @@ export const applyUncontrolledBinaryRestore = async (
   // is not consent to undo the owner's own off action.
   if (skipRestoreForExternalOffHold(ctx, intent.deviceId, intent.name)) return false;
   try {
-    const outcome = await runBinaryControl({
+    const outcome = await runBinaryControl(
       ctx,
-      deviceId: intent.deviceId,
-      name: intent.name,
-      desired: true,
-      snapshot: entry,
-      logContext: 'capacity_control_off',
-    });
+      { deviceId: intent.deviceId, name: intent.name, desired: true, logContext: 'capacity_control_off' },
+      entry,
+    );
     return outcome.applied;
   } catch (error) {
     logger.error({
@@ -208,16 +205,12 @@ const turnOffDevice = async (
     return false;
   }
   try {
-    const outcome = await runBinaryControl({
+    const outcome = await runBinaryControl(
       ctx,
-      deviceId,
-      name,
-      desired: false,
+      { deviceId, name, desired: false, logContext: 'capacity', lifecycleRelease },
       snapshot,
-      logContext: 'capacity',
-      lifecycleRelease,
       forceAgainstReleasedOpposing,
-    });
+    );
     if (!outcome.applied) return false;
     return true;
   } catch (error) {

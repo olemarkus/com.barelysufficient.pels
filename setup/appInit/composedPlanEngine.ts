@@ -180,19 +180,12 @@ export class ComposedPlanEngine implements PlanEngine {
     devices: PendingBinaryLiveDevice[],
     source: PendingTargetObservationSource,
   ): boolean {
-    return syncPendingBinaryCommands({
-      store: this.pendingBinaryCommandStore,
-      liveDevices: devices,
+    return syncPendingBinaryCommands(
+      this.pendingBinaryCommandStore,
+      devices,
       source,
-      onConfirmed: ({ deviceId, liveDevice, pending, confirmedAtMs }) => {
-        this.executor.handleConfirmedBinaryCommand({
-          deviceId,
-          liveDevice,
-          pending,
-          confirmedAtMs,
-        });
-      },
-    });
+      (confirmation) => this.executor.handleConfirmedBinaryCommand(confirmation),
+    );
   }
 
   public decoratePlanWithPendingTargetCommands(plan: DevicePlan): DevicePlan {

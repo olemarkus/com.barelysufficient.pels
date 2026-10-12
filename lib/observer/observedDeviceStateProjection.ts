@@ -14,7 +14,7 @@ import type {
 import type {
     ObservedStateChangedEvent,
     ObservedStateRefreshEvent,
-} from './observedStateEvents';
+} from '../ports/observedStateEvents';
 import { resolveThermalDirection } from './thermalDirection';
 import { hasLiveMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 

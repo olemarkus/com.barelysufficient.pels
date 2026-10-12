@@ -1,8 +1,8 @@
+import type { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import type {
   ObservedStateChangedEvent,
-  ObservedStateEmitter,
   ObservedControlStateChangedEvent,
-} from '../../lib/observer/observedStateEvents';
+} from '../../lib/ports/observedStateEvents';
 import { incPerfCounter } from '../../lib/utils/perfCounters';
 import type { AppContext } from '../../lib/app/appContext';
 import { canDeviceChangeOwningHomeActionableLoad, type OwningHomeRouter } from '../appObservedControlStateRuntime';

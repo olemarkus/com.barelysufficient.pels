@@ -201,12 +201,7 @@ const handleTargetCommandPreflight = (
   // Retry suppression is now unconditional. The reconcile lane used to bypass it
   // (a re-assert had no pending-command bookkeeping of its own), which is half of
   // how a re-assert could outrun the planner in inc_26449fb9.
-  const decision = getPendingTargetCommandDecision({
-    state: ctx.targetCommands,
-    deviceId,
-    desired,
-    nowMs,
-  });
+  const decision = getPendingTargetCommandDecision(ctx.targetCommands, deviceId, desired, nowMs);
   if (decision.type !== 'skip') {
     return { type: 'proceed', decisionType: decision.type };
   }

@@ -26,9 +26,9 @@ import type {
   PendingTargetObservationSource,
   PlanChangeSet,
   PlanInputDevice,
-  PlanRebuildOutcome,
   StatusPlanChanges,
 } from './planTypes';
+import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
 import type {
   HeadroomCardDeviceLike,
   HeadroomCardQuery,

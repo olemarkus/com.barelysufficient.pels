@@ -17,18 +17,13 @@ import { getDebugEmitter } from '../logging/logger';
  */
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
-export const shouldSkipUnavailable = (params: {
+export const shouldSkipUnavailable = (
   // Stage 5: narrowed to the observed surface — this gate reads only the
   // realtime-merged `available` flag, never descriptor/config fields.
-  snapshot: Pick<ObservedDeviceState, 'available'> | undefined;
-  name: string;
-  operation: string;
-}): boolean => {
-  const {
-    snapshot,
-    name,
-    operation,
-  } = params;
+  snapshot: Pick<ObservedDeviceState, 'available'> | undefined,
+  name: string,
+  operation: string,
+): boolean => {
   if (snapshot?.available !== false) return false;
   emitExecutorDebug({
     event: 'plan_executor_skip_unavailable',
@@ -86,56 +81,24 @@ export const shouldSkipShedding = (
   return false;
 };
 
-export const recordDiagnosticsRestore = (params: {
-  diagnostics: DeviceDiagnosticsRecorder | undefined;
-  deviceId: string;
-  name: string;
-  nowTs: number;
-}): void => {
-  params.diagnostics?.recordControlEvent({
-    kind: 'pels_restore',
-    deviceId: params.deviceId,
-    name: params.name,
-    nowTs: params.nowTs,
-  });
+export const recordActivationAttemptStarted = (
+  state: PlanEngineState,
+  diagnostics: DeviceDiagnosticsRecorder | undefined,
+  deviceId: string,
+  name: string,
+  nowTs: number,
+): void => {
+  const transition = recordActivationAttemptStart(state, deviceId, 'pels_restore', nowTs);
+  if (transition) diagnostics?.recordActivationTransition(transition, { name });
 };
 
-export const recordDiagnosticsShed = (params: {
-  diagnostics: DeviceDiagnosticsRecorder | undefined;
-  deviceId: string;
-  name: string;
-  nowTs: number;
-}): void => {
-  params.diagnostics?.recordControlEvent({
-    kind: 'pels_shed',
-    deviceId: params.deviceId,
-    name: params.name,
-    nowTs: params.nowTs,
-  });
-};
-
-export const recordActivationAttemptStarted = (params: {
-  state: PlanEngineState;
-  diagnostics: DeviceDiagnosticsRecorder | undefined;
-  deviceId: string;
-  name: string;
-  nowTs: number;
-}): void => {
-  const transition = recordActivationAttemptStart(params.state, params.deviceId, 'pels_restore', params.nowTs);
-  if (transition) {
-    params.diagnostics?.recordActivationTransition(transition, { name: params.name });
-  }
-};
-
-export const closeActivationAttemptForShedActuation = (params: {
-  state: PlanEngineState;
-  diagnostics: DeviceDiagnosticsRecorder | undefined;
-  deviceId: string;
-  name: string;
-  nowTs: number;
-}): void => {
-  const transition = closeActivationAttemptForShed(params.state, params.deviceId, params.nowTs);
-  if (transition) {
-    params.diagnostics?.recordActivationTransition(transition, { name: params.name });
-  }
+export const closeActivationAttemptForShedActuation = (
+  state: PlanEngineState,
+  diagnostics: DeviceDiagnosticsRecorder | undefined,
+  deviceId: string,
+  name: string,
+  nowTs: number,
+): void => {
+  const transition = closeActivationAttemptForShed(state, deviceId, nowTs);
+  if (transition) diagnostics?.recordActivationTransition(transition, { name });
 };

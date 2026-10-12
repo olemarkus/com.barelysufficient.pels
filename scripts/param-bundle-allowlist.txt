@@ -43,7 +43,6 @@ lib/device/expectedPowerOverrideState.ts 1
 lib/device/flowBackedDeviceState.ts 3
 lib/device/learnedPowerPeakState.ts 1
 lib/device/liveFeed.ts 2
-lib/device/managerControl.ts 1
 lib/device/managerFlowSupport.ts 3
 lib/device/managerMeasuredPower.ts 1
 lib/device/managerNativeEv.ts 6
@@ -77,15 +76,6 @@ lib/device/transport/targetedSnapshotMerge.ts 2
 lib/diagnostics/deviceDiagnosticsModel.ts 1
 lib/diagnostics/perfLogging.ts 1
 lib/diagnostics/periodicStatus.ts 1
-lib/executor/binaryControlDispatch.ts 1
-lib/executor/binaryControlShared.ts 1
-lib/executor/executorSupport.ts 5
-lib/executor/planExecutor.ts 1
-lib/executor/steppedCommandAttempt.ts 1
-lib/executor/steppedCommandState.ts 5
-lib/executor/steppedCommandStore.ts 1
-lib/executor/targetCommandRetry.ts 1
-lib/executor/targetPowerReachability.ts 4
 lib/logging/deviationGate.ts 1
 lib/logging/logDedupe.ts 1
 lib/objectives/deferredObjectives/activePlanDuration.ts 1
@@ -117,7 +107,6 @@ lib/objectives/profiles.ts 8
 lib/objectives/stats.ts 2
 lib/observer/generationFreshness.ts 1
 lib/observer/idleClassifier.ts 2
-lib/observer/pendingBinaryCommands.ts 1
 lib/observer/steppedReportedStep.ts 2
 lib/plan/admission/binaryCommandReachability.ts 1
 lib/plan/admission/headroomReserve.ts 3

@@ -310,6 +310,7 @@ const buildHarness = (
     // stepCommandPending/stepCommandStatus, and the flow report has to confirm
     // it — the loop under test.
     markSteppedLoadDesiredStepIssued: (params) => helpers.markSteppedLoadDesiredStepIssued(params),
+    syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: (deviceId) => helpers.getSteppedLoadCommandSession(deviceId),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },

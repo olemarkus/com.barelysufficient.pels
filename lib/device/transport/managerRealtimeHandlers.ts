@@ -1,6 +1,6 @@
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { TransportObservationState } from './transportObservationState';
+import type { ObservationCursor, TransportObservationState } from './transportObservationState';
 import {
   reconcileRealtimeDeviceUpdate,
 } from '../managerRuntime';
@@ -10,15 +10,6 @@ import type {
   ObservedControlStateChangedEvent,
   ObservedStateChangedEvent,
 } from '../../ports/observedStateEvents';
-
-export type DeviceObservationCursor = Pick<ObservedStateChangedEvent, 'observationSeq' | 'observedAtMs'>;
-
-/**
- * Non-optional per-device observation cursor. `nextObservationCursor` always
- * resolves both fields; this type makes that an enforced invariant rather than
- * an `as number` assertion at the refresh-dispatch site.
- */
-export type ObservationCursor = { observationSeq: number; observedAtMs: number };
 
 export type DeviceUpdateProcessedDebugEvent = {
   event: 'device_update_processed';
@@ -75,7 +66,7 @@ export function handleRealtimeDeviceUpdate(params: {
   minSignificantPowerW?: number;
   recordObservedCapabilities?: (deviceId: string, capabilityIds: string[]) => void;
   emitDeviceUpdateProcessed?: (event: DeviceUpdateProcessedDebugEvent) => void;
-  createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
+  createObservationCursor: (deviceId: string) => ObservationCursor;
   emitObservedControlStateChanged: (event: ObservedControlStateChangedEvent) => void;
   emitObservedState: (event: ObservedStateChangedEvent) => void;
 }): HandleRealtimeDeviceUpdateResult {
@@ -165,7 +156,7 @@ function emitDeviceObservationEvents(params: {
   changes: ObservedCapabilityChange[];
   observedCapabilityIds: string[];
   measurePowerBecameSignificantlyPositive: boolean;
-  createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
+  createObservationCursor: (deviceId: string) => ObservationCursor;
   emitObservedControlStateChanged: (event: ObservedControlStateChangedEvent) => void;
   emitObservedState: (event: ObservedStateChangedEvent) => void;
 }): void {
@@ -184,7 +175,7 @@ function emitDeviceObservationEvents(params: {
     capabilityId === 'measure_temperature' || isStateOfChargeCapabilityId(capabilityId)
   ));
   if (!observedControlStateChanged && !observedNonControlFacet) return;
-  const eventCursor = createObservationCursor?.(deviceId) ?? {};
+  const eventCursor = createObservationCursor(deviceId);
   emitObservedState({
     source: 'device_update',
     deviceId,

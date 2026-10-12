@@ -1,4 +1,3 @@
-import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan, SteppedPlanDevice } from '../plan/planTypes';
 import type { PlanEngineState } from '../plan/planState';
 import type {
@@ -10,24 +9,16 @@ import {
   isPlanDeviceObservedOff,
   isPlanDeviceObservedOn,
   isSteppedLoadDevice,
-  resolveSteppedKeepDesiredStepId,
-  resolveSteppedLoadTransition,
 } from '../plan/planSteppedLoad';
 import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
-import {
-  allowsSteppedLoadKeepInvariantRestore,
-  isRestoreAdmissionHoldReason,
-} from '../planContract/planDecisionSemantics';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
-import { resolveBinaryShedReasonCode } from './lifecycleReleaseRecording';
+import { resolveSteppedCommandAttempt } from './steppedCommandAttempt';
 
 export function resolveConfirmedBinaryCommandReasonCode(
   pending: PlanEngineState['pendingBinaryCommands'][string],
 ): string {
-  if (!pending.desired) {
-    return resolveBinaryShedReasonCode(pending.reason, pending.lifecycleRelease);
-  }
+  if (!pending.desired) return pending.lifecycleRelease ? 'lifecycle_release' : 'shedding';
   if (pending.logContext === 'capacity_control_off') {
     return 'capacity_control_off_restore';
   }
@@ -83,32 +74,36 @@ const shouldInitializeUnknownRunningStep = (
     && !commandSession.hasPriorStepCommand;
 };
 
+/**
+ * A kept stepped device whose planned step differs from its current one, with no
+ * equivalent command already in flight.
+ *
+ * `intent` is the stepped intent dispatch will carry out
+ * (`buildExecutableSteppedLoadIntent`), and its absence is the answer: the
+ * projection holds a device the plan does not let change step (a
+ * restore-admission hold, or a keep reason other than `keep` / `restoreNeed`),
+ * so dispatch issues nothing for it and this must not ask for an apply either.
+ * That holds for a step-down too: a kept device's step-down under such a hold
+ * waits for the hold to clear, in both this gate and dispatch.
+ */
 export function hasStableSteppedLoadStepActuation(
   dev: DevicePlan['devices'][number],
+  intent: ExecutableSteppedLoadIntent | undefined,
   commandSession: ExecutableSteppedLoadCommandSession,
 ): boolean {
-  if (!isSteppedLoadDevice(dev) || dev.plannedState !== 'keep') return false;
-  const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
-  if (!desiredStepId) return false;
-  const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
+  if (!intent || !isSteppedLoadDevice(dev) || dev.plannedState !== 'keep') return false;
+  const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, intent.desired.plannedStepId);
   if (!desiredStep) return false;
-  if (shouldInitializeUnknownRunningStep(dev, desiredStep, commandSession)) {
-    return allowsSteppedLoadKeepInvariantRestore(dev.reason);
-  }
-  if (desiredStepId === dev.selectedStepId) return false;
-  if (hasEquivalentSteppedLoadCommandHold(dev, desiredStepId)) return false;
-
+  if (shouldInitializeUnknownRunningStep(dev, desiredStep, commandSession)) return true;
+  if (desiredStep.id === dev.selectedStepId) return false;
+  // An EV target-power probe commands a rung outside the configured ladder,
+  // which the decorator resolves the stored command against, so the plan device
+  // carries no `lastDesiredStepId` for it. The plan's own desired step then
+  // names the command in flight.
+  const commanded = { ...dev, lastDesiredStepId: dev.lastDesiredStepId ?? dev.desiredStepId };
+  if (resolveSteppedCommandAttempt(commanded, desiredStep.id, Date.now()) !== null) return false;
   const selectedStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
-  if (!selectedStep) return false;
-  if (desiredStep.planningPowerW < selectedStep.planningPowerW) {
-    // Stepping down. "Off" is kind-aware: a binary stepper via `currentOn`, a
-    // step-only stepper (no onoff handle) via the step axis. Not-off ⇒ it can
-    // still shed further (stable); when off, stability hinges on not being held
-    // for a restore.
-    return !isPlanDeviceObservedOff(dev) || !isRestoreHoldReason(dev.reason);
-  }
-  return desiredStep.planningPowerW > selectedStep.planningPowerW
-    && allowsSteppedLoadKeepInvariantRestore(dev.reason);
+  return selectedStep !== null && desiredStep.planningPowerW !== selectedStep.planningPowerW;
 }
 
 /**
@@ -121,12 +116,15 @@ export function hasStableSteppedLoadStepActuation(
  * the regular step-actuation predicate can be stable while the binary axis
  * still needs work. This companion predicate makes sure the executor runs.
  * Commandability remains enforced downstream against the live snapshot. The
- * reason allow-set preserves planner-owned capacity and cooldown holds.
+ * projection's hold (no intent) preserves planner-owned capacity and cooldown
+ * holds.
  */
 export function hasStableSteppedLoadBinaryRestoreActuation(
   dev: DevicePlan['devices'][number],
+  intent: ExecutableSteppedLoadIntent | undefined,
 ): boolean {
-  if (!isSteppedLoadDevice(dev) || dev.plannedState !== 'keep') return false;
+  // No intent: the projection holds this device's state (see above).
+  if (!intent || dev.plannedState !== 'keep') return false;
   // A binary handle is required: this is the binary-axis phase, and a step-only
   // stepper has no on/off to write (its restore rides the step axis instead).
   if (!isBinaryPlanDevice(dev)) return false;
@@ -135,24 +133,6 @@ export function hasStableSteppedLoadBinaryRestoreActuation(
   // restore-from-off branch.
   if (dev.currentOn) return false;
   if (dev.binaryCommandPending === true) return false;
-  if (!allowsSteppedLoadKeepInvariantRestore(dev.reason)) return false;
-  const transition = resolveSteppedLoadTransition(dev, resolveSteppedKeepDesiredStepId(dev));
+  const { transition } = intent;
   return transition?.binaryTarget === true && transition.transitionPhase === 'binary_transition';
-}
-
-export function hasEquivalentSteppedLoadCommandHold(
-  dev: DevicePlan['devices'][number],
-  desiredStepId: string,
-): boolean {
-  const lastDesiredStepId = dev.lastDesiredStepId ?? dev.desiredStepId;
-  const sameCommand = lastDesiredStepId === desiredStepId;
-  if (!sameCommand) return false;
-  if (dev.stepCommandPending === true) return true;
-  return dev.stepCommandStatus === 'stale'
-    && typeof dev.nextStepCommandRetryAtMs === 'number'
-    && Date.now() < dev.nextStepCommandRetryAtMs;
-}
-
-export function isRestoreHoldReason(reason: DeviceReason | undefined): boolean {
-  return reason ? isRestoreAdmissionHoldReason(reason) : false;
 }

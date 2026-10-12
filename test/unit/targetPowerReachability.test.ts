@@ -170,18 +170,18 @@ describe('targetPowerReachability', () => {
 
   it('keeps the proven maximum when only an early lower ramp sample exists at settlement', () => {
     const config = buildConfig();
-    const transition = resolveTargetPowerReachabilityTransition({
-      profileFingerprint: config.reachability!.profileFingerprint,
-      currentReachability: config.reachability,
-      command: {
+    const transition = resolveTargetPowerReachabilityTransition(
+      config.reachability!.profileFingerprint,
+      config.reachability,
+      {
         requestedPowerW: 6_440,
         confirmedMaxPowerW: 5_750,
         issuedAtMs: 1_000,
         settleWindowMs: 100,
       },
-      observation: { planningPowerW: 1_380, observedAtMs: 1_050 },
-      nowMs: 2_000,
-    });
+      { planningPowerW: 1_380, observedAtMs: 1_050 },
+      2_000,
+    );
 
     expect(transition).toMatchObject({
       kind: 'failed',
@@ -192,18 +192,18 @@ describe('targetPowerReachability', () => {
 
   it('retains backoff while advancing to an early intermediate clamp', () => {
     const config = buildConfig(5_520);
-    const transition = resolveTargetPowerReachabilityTransition({
-      profileFingerprint: config.reachability!.profileFingerprint,
-      currentReachability: config.reachability,
-      command: {
+    const transition = resolveTargetPowerReachabilityTransition(
+      config.reachability!.profileFingerprint,
+      config.reachability,
+      {
         requestedPowerW: 6_440,
         confirmedMaxPowerW: 5_520,
         issuedAtMs: 1_000,
         settleWindowMs: 100,
       },
-      observation: { planningPowerW: 5_750, observedAtMs: 1_050 },
-      nowMs: 2_000,
-    });
+      { planningPowerW: 5_750, observedAtMs: 1_050 },
+      2_000,
+    );
 
     expect(transition).toMatchObject({
       kind: 'failed',
@@ -218,18 +218,18 @@ describe('targetPowerReachability', () => {
 
   it('captures a settled exact intermediate rung without lowering prior proof', () => {
     const config = buildConfig(5_520);
-    const transition = resolveTargetPowerReachabilityTransition({
-      profileFingerprint: config.reachability!.profileFingerprint,
-      currentReachability: config.reachability,
-      command: {
+    const transition = resolveTargetPowerReachabilityTransition(
+      config.reachability!.profileFingerprint,
+      config.reachability,
+      {
         requestedPowerW: 6_440,
         confirmedMaxPowerW: 5_520,
         issuedAtMs: 1_000,
         settleWindowMs: 100,
       },
-      observation: { planningPowerW: 5_750, observedAtMs: 1_500 },
-      nowMs: 2_000,
-    });
+      { planningPowerW: 5_750, observedAtMs: 1_500 },
+      2_000,
+    );
 
     expect(transition).toMatchObject({
       kind: 'failed',

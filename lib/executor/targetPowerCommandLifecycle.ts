@@ -90,18 +90,18 @@ export class TargetPowerCommandLifecycle {
     evidence: TargetPowerExactObservation | undefined,
     nowMs: number,
   ): boolean {
-    const transition = resolveTargetPowerReachabilityTransition({
-      profileFingerprint: configuration.profileFingerprint,
-      currentReachability: configuration.kind === 'proven' ? configuration.reachability : undefined,
-      command: {
+    const transition = resolveTargetPowerReachabilityTransition(
+      configuration.profileFingerprint,
+      configuration.kind === 'proven' ? configuration.reachability : undefined,
+      {
         requestedPowerW: desired.planningPowerW,
         confirmedMaxPowerW: desired.targetPowerProbeConfirmedMaxPowerW,
         issuedAtMs: desired.targetPowerProbeStartedAtMs,
         settleWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
       },
-      observation: evidence,
+      evidence,
       nowMs,
-    });
+    );
     if (transition.kind === 'waiting') return false;
     this.owner.update(device.id, transition.reachability);
     if (transition.kind === 'confirmed') {

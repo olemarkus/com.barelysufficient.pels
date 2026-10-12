@@ -2,27 +2,13 @@
  * Single source of truth for the "a lifecycle disable records via the
  * diagnostic-only recorder" rule. A smart-task lifecycle-end disable is a
  * planning decision, not capacity pressure, so it must NOT stamp the capacity
- * cooldown markers — it routes through the diagnostic-only release recorder and
- * carries the `lifecycle_release` reason-code label.
+ * cooldown markers — it routes through the diagnostic-only release recorder.
  *
  * Both the direct (non-flow-backed) executor path and the deferred
  * (flow-backed, confirmed-after-the-fact) path resolve through these helpers so
  * the two paths cannot drift.
  */
 import type { ActuationRecorder, ExecutorCommandContext } from './executorCommandContext';
-
-/**
- * Reason-code label for a binary OFF (`desired === false`) command. A lifecycle
- * release is always `lifecycle_release`; a capacity shed is `shed_with_reason`
- * when a reason string is present, else `shedding`.
- */
-export function resolveBinaryShedReasonCode(
-  reason: string | undefined,
-  lifecycleRelease: boolean | undefined,
-): 'lifecycle_release' | 'shed_with_reason' | 'shedding' {
-  if (lifecycleRelease) return 'lifecycle_release';
-  return reason ? 'shed_with_reason' : 'shedding';
-}
 
 /**
  * Selects the recorder for a binary OFF actuation: the diagnostic-only release

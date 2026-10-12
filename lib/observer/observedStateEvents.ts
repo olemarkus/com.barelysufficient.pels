@@ -8,14 +8,6 @@ import type {
 } from '../ports/observedStateEvents';
 import type { ObservedHomePower } from './observedHomePower';
 
-// The event shapes are shared with transport, which may not import observer;
-// they live in `lib/ports/observedStateEvents.ts`.
-export type {
-    ObservedControlStateChangedEvent,
-    ObservedStateChangedEvent,
-    ObservedStateRefreshEvent,
-};
-
 /**
  * Observer-owned typed observation events.
  *

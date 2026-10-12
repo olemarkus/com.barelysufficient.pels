@@ -34,12 +34,11 @@ import {
   pruneStaleSteppedLoadCommandStates,
   reportSteppedLoadActualStep,
   type DeviceControlRuntimeState,
-  type MarkSteppedLoadDesiredStepIssuedParams,
   type ReportSteppedLoadActualStepResult,
   type SteppedLoadDesiredRuntimeState,
 } from './steppedCommandState';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
-import type { SteppedLoadCommandStatus } from '../../packages/contracts/src/types';
+import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 
 export class SteppedCommandStore {
   private readonly state: DeviceControlRuntimeState = createDeviceControlRuntimeState();
@@ -124,7 +123,7 @@ export class SteppedCommandStore {
 
   /** Whether a step command is issued and not yet settled. */
   isStepCommandPending(deviceId: string): boolean {
-    return this.state.steppedLoadDesiredByDeviceId.get(deviceId)?.pending === true;
+    return this.state.steppedLoadDesiredByDeviceId.get(deviceId)?.status === 'pending';
   }
 
   /**
@@ -135,7 +134,7 @@ export class SteppedCommandStore {
   hasPendingTargetPowerProbe(): boolean {
     for (const desired of this.state.steppedLoadDesiredByDeviceId.values()) {
       if (
-        desired.pending
+        desired.status === 'pending'
         && desired.targetPowerProbeConfirmedMaxPowerW !== undefined
         && desired.targetPowerProbeStartedAtMs !== undefined
       ) {
@@ -147,18 +146,12 @@ export class SteppedCommandStore {
 
   // --- Writes ----------------------------------------------------------------
 
-  markDesiredStepIssued(params: Omit<MarkSteppedLoadDesiredStepIssuedParams, 'unacknowledged'>): void {
-    markSteppedLoadDesiredStepIssued({ runtimeState: this.state, ...params });
+  markDesiredStepIssued(command: Omit<MarkSteppedLoadDesiredStepIssuedParams, 'unacknowledged'>): void {
+    markSteppedLoadDesiredStepIssued(this.state, command);
   }
 
-  preserveDesiredStep(params: {
-    deviceId: string;
-    desiredStepId: string;
-    previousStepId?: string;
-    changedAtMs?: number;
-    status?: SteppedLoadCommandStatus;
-  }): void {
-    preserveSteppedLoadDesiredStep({ runtimeState: this.state, ...params });
+  preserveDesiredStep(observation: FlowSteppedLoadObservation, desiredStepId: string): void {
+    preserveSteppedLoadDesiredStep(this.state, observation, desiredStepId);
   }
 
   reportActualStep(observation: FlowSteppedLoadObservation): ReportSteppedLoadActualStepResult {
@@ -180,11 +173,11 @@ export class SteppedCommandStore {
   // --- Lifecycle ------------------------------------------------------------
 
   confirmDesired(deviceId: string, desired: SteppedLoadDesiredRuntimeState): void {
-    confirmSteppedLoadDesiredStep({ runtimeState: this.state, deviceId, desired });
+    confirmSteppedLoadDesiredStep(this.state, deviceId, desired);
   }
 
   expireConfirmedDesiredOnBinaryOff(deviceId: string, observedOn: boolean): void {
-    expireConfirmedDesiredStepOnBinaryOff({ runtimeState: this.state, deviceId, observedOn });
+    expireConfirmedDesiredStepOnBinaryOff(this.state, deviceId, observedOn);
   }
 
   pruneStale(nowMs: number = Date.now()): boolean {

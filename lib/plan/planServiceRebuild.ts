@@ -32,9 +32,9 @@ import type {
   DevicePlan,
   PlanChangeSet,
   PlanInputDevice,
-  PlanRebuildOutcome,
   StatusPlanChanges,
 } from './planTypes';
+import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 
 const logger = getLogger('plan/service');

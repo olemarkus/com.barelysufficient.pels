@@ -1,4 +1,4 @@
-import type { SteppedLoadCommandStatus, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { SteppedLoadDecoration, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { ExecutableSteppedCommandAttempt } from './executablePlan';
 
@@ -23,29 +23,25 @@ import type { ExecutableSteppedCommandAttempt } from './executablePlan';
  * predicate's job. It stays planner-side, where the restore reservation it
  * qualifies also lives.
  */
-export const resolveSteppedCommandAttempt = (params: {
-  /** The step this attempt is about. */
-  requestedStepId: string | undefined;
+export const resolveSteppedCommandAttempt = (
   /**
-   * The step the last command was issued for. An outstanding command for a
-   * DIFFERENT step says nothing about this one, so the attempt is null.
+   * The plan device's command state. `lastDesiredStepId` is the step the last
+   * command was issued for: an outstanding command for a DIFFERENT step says
+   * nothing about this one, so the attempt is null.
    */
-  lastDesiredStepId: string | undefined;
-  steppedLoadProfile: SteppedLoadProfile;
-  stepCommandPending: boolean | undefined;
-  stepCommandStatus: SteppedLoadCommandStatus | undefined;
-  nextStepCommandRetryAtMs: number | undefined;
-  nowMs: number;
-}): ExecutableSteppedCommandAttempt => {
+  device: Pick<SteppedLoadDecoration, 'stepCommandPending' | 'stepCommandStatus' | 'nextStepCommandRetryAtMs'>
+    & { steppedLoadProfile: SteppedLoadProfile; lastDesiredStepId?: string },
+  /** The step this attempt is about. */
+  requestedStepId: string | undefined,
+  nowMs: number,
+): ExecutableSteppedCommandAttempt => {
   const {
-    requestedStepId,
     lastDesiredStepId,
     steppedLoadProfile,
     stepCommandPending,
     stepCommandStatus,
     nextStepCommandRetryAtMs,
-    nowMs,
-  } = params;
+  } = device;
   if (requestedStepId === undefined) return null;
   if (lastDesiredStepId !== requestedStepId) return null;
   // A step id the current profile no longer knows (driver swap remapped the

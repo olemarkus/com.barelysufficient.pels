@@ -19,7 +19,7 @@
  */
 import { getLogger } from '../../logging/logger';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { ObservationCursor } from './managerRealtimeHandlers';
+import type { ObservationCursor } from './transportObservationState';
 import type { ObservedControlStateChangedEvent, ObservedStateChangedEvent } from '../../ports/observedStateEvents';
 
 export const THERMOSTAT_MODE_CAPABILITY_ID = 'thermostat_mode';

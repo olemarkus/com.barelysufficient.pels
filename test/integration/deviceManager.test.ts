@@ -15,7 +15,7 @@ import {
     createObservationState,
     mergeFresherCapabilityObservations,
 } from '../../lib/device/transport/managerObservation';
-import type { ObservedStateRefreshEvent } from '../../lib/observer/observedStateEvents';
+import type { ObservedStateRefreshEvent } from '../../lib/ports/observedStateEvents';
 import type { MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe, ThermostatModeObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';

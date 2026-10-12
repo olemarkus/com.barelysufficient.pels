@@ -26,7 +26,6 @@ export function resolveDeviceParsedControlState(params: {
   deviceId: string;
   deviceName: string | null;
   deviceLabel: string;
-  deviceClassKey: string;
   binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
   binaryWriteCapabilityId?: string;
   capabilityObj: DeviceCapabilityMap;
@@ -41,7 +40,6 @@ export function resolveDeviceParsedControlState(params: {
     deviceId,
     deviceName,
     deviceLabel,
-    deviceClassKey,
     binaryCapabilityId,
     binaryWriteCapabilityId,
     capabilityObj,
@@ -51,7 +49,7 @@ export function resolveDeviceParsedControlState(params: {
     previousSnapshot,
     suppressDropLog = false,
   } = params;
-  const observedCurrentOn = getCurrentOn({ deviceClassKey, capabilityObj, binaryCapabilityId });
+  const observedCurrentOn = getCurrentOn(capabilityObj, binaryCapabilityId);
   const invalidControlPayload = hasInvalidControlPayload({ capabilityObj, binaryCapabilityId });
   // `currentOn` ("whether the device may draw power") is strictly `boolean`, so
   // an unobserved control needs a fallback — see `resolveUnobservedControlFallback`.

@@ -331,6 +331,7 @@ const buildExecutor = (
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
+    syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
@@ -497,7 +498,7 @@ describe('PlanExecutor declined actuator requests', () => {
       desired: false,
     });
     expect(result).toEqual({
-      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [],
+      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0,
     });
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
     expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
@@ -540,7 +541,7 @@ describe('PlanExecutor declined actuator requests', () => {
       value: 23,
     });
     expect(result).toEqual({
-      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [],
+      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0,
     });
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
     expect(state.actuation.lastDeviceRestoreMs['dev-1']).toBeUndefined();
@@ -617,10 +618,6 @@ describe('PlanExecutor restore logging', () => {
       // The thrown projection counts as an apply failure — the silence
       // escalation reads this to keep its fail-closed pass owed.
       deviceApplyFailureCount: 1,
-      // Names the device actually written, not the one that threw and not both.
-      // The realtime circuit breaker charges a strike per id in this list, so a
-      // wrong id here suppresses an innocent device's observations for 60 s.
-      writtenDeviceIds: ['dev-1'],
     });
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -964,9 +961,9 @@ describe('PlanExecutor restore logging', () => {
     flowBackedTurnOnTrigger.trigger.mockImplementation(async () => {
       const pending = state.pendingBinaryCommands['dev-1'];
       expect(pending).toMatchObject({ desired: true });
-      syncPendingBinaryCommands({
-        store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        liveDevices: [{
+      syncPendingBinaryCommands(
+        createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        [{
           id: 'dev-1',
           name: 'Heater',
           binaryCommandConfirmation: {
@@ -975,9 +972,9 @@ describe('PlanExecutor restore logging', () => {
             observedAtMs: pending.startedMs + 1,
           },
         }],
-        source: 'device_update',
-        onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
-      });
+        'device_update',
+        (params) => executor.handleConfirmedBinaryCommand(params),
+      );
     });
 
     await executor.applyPlanActions(buildPlan());
@@ -988,17 +985,17 @@ describe('PlanExecutor restore logging', () => {
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     const acceptedPending = state.pendingBinaryCommands['dev-1'];
-    syncPendingBinaryCommands({
-      store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-      liveDevices: [{
+    syncPendingBinaryCommands(
+      createPendingBinaryCommandStore(state.pendingBinaryCommands),
+      [{
         id: 'dev-1', name: 'Heater',
         binaryCommandConfirmation: {
           state: 'observed', observedValue: true, observedAtMs: acceptedPending.startedMs + 1,
         },
       }],
-      source: 'rebuild',
-      onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
-    });
+      'rebuild',
+      (params) => executor.handleConfirmedBinaryCommand(params),
+    );
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
     // The confirmed turn-on undoes the shed at once, not at the next build: an
     // owner who switches the heater off before then is not overruled later.
@@ -1069,7 +1066,10 @@ describe('PlanExecutor restore logging', () => {
     expect(pending).toMatchObject({ desired: false });
 
     executor.handleConfirmedBinaryCommand({
-      deviceId: 'dev-1', liveDevice: { id: 'dev-1', name: 'Heater' }, pending,
+      liveDevice: { id: 'dev-1', name: 'Heater', binaryCommandConfirmation: { state: 'unavailable' } },
+      pending,
+      source: 'device_update',
+      confirmedAtMs: Date.now(),
     });
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -1099,18 +1099,18 @@ describe('PlanExecutor restore logging', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     const restorePending = nextState.pendingBinaryCommands['dev-1'];
-    syncPendingBinaryCommands({
-      store: createPendingBinaryCommandStore(nextState.pendingBinaryCommands),
-      liveDevices: [{
+    syncPendingBinaryCommands(
+      createPendingBinaryCommandStore(nextState.pendingBinaryCommands),
+      [{
         id: 'dev-1',
         name: 'Heater',
         binaryCommandConfirmation: {
           state: 'observed', observedValue: true, observedAtMs: restorePending.startedMs + 1,
         },
       }],
-      source: 'device_update',
-      onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
-    });
+      'device_update',
+      (params) => executor.handleConfirmedBinaryCommand(params),
+    );
     expect(nextState.actuation.lastRestoreMs).toBeGreaterThan(previousLastRestoreMs);
     expect(nextState.actuation.lastDeviceRestoreMs['dev-1']).toBeGreaterThan(previousDeviceRestoreMs);
     expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
@@ -1165,18 +1165,18 @@ describe('PlanExecutor restore logging', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
     const shedPending = nextState.pendingBinaryCommands['dev-1'];
-    syncPendingBinaryCommands({
-      store: createPendingBinaryCommandStore(nextState.pendingBinaryCommands),
-      liveDevices: [{
+    syncPendingBinaryCommands(
+      createPendingBinaryCommandStore(nextState.pendingBinaryCommands),
+      [{
         id: 'dev-1',
         name: 'Heater',
         binaryCommandConfirmation: {
           state: 'observed', observedValue: false, observedAtMs: shedPending.startedMs + 1,
         },
       }],
-      source: 'device_update',
-      onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
-    });
+      'device_update',
+      (params) => executor.handleConfirmedBinaryCommand(params),
+    );
     expect(nextState.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(nextState.activationPenaltyByDevice['dev-1']?.level).toBe(2);
     expect(deviceDiagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
@@ -1487,7 +1487,21 @@ describe('PlanExecutor pending target commands', () => {
       },
     ]);
 
-    await expect(executor.applySheddingToDevice('dev-1', 'Heater')).resolves.toBe(true);
+    await expect(executor.applyPlanActions({
+      meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4 }),
+      devices: [pd({
+        id: 'dev-1',
+        name: 'Heater',
+        binaryCapabilityId: 'onoff',
+        binaryControl: { on: true },
+        currentState: 'on',
+        plannedState: 'shed',
+        controllable: true,
+        shedAction: 'turn_off',
+        reason: CAPACITY_REASON,
+      })],
+      storageReleases: [],
+    })).resolves.toEqual(expect.objectContaining({ deviceWriteCount: 1 }));
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
@@ -2250,14 +2264,24 @@ describe('PlanExecutor stepped loads', () => {
     }))).toBe(true);
   });
 
-  it('marks stable keep step-down intent as actuatable even when restore is not admitted', () => {
-    const { executor } = buildExecutor();
-
-    expect(executor.hasStablePlanActuation(steppedPlan({
+  it('does not mark a kept step-down actuatable while the plan holds the device for restore admission', async () => {
+    // Under a restore-admission hold the stepped projection holds the device
+    // where it is, so dispatch issues no step command. Marking the step-down
+    // stable work applied a plan that did nothing for the device.
+    const plan = steppedPlan({
       selectedStepId: 'max',
+      reportedStepId: 'max',
       desiredStepId: 'low',
       reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
-    }))).toBe(true);
+    });
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, steppedSnapshot({ reportedStepId: 'max' }));
+
+    expect(executor.hasStablePlanActuation(plan)).toBe(false);
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+      deviceWriteCount: 0,
+      commandRequestCount: 0,
+    }));
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
   });
 
   it('does not mark off stepped keep step-down intent actuatable during restore hold', () => {
@@ -2285,6 +2309,19 @@ describe('PlanExecutor stepped loads', () => {
     expect(executor.hasStablePlanActuation(steppedPlan({
       lastDesiredStepId: 'max',
       lastStepCommandIssuedAt: Date.now() - 1_000,
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    }))).toBe(false);
+  });
+
+  it('does not mark a stepped step-up actuatable while a probe rung outside the confirmed ladder is in flight', () => {
+    // An EV target-power probe commands a rung the configured ladder does not
+    // hold yet, so the plan device carries no `lastDesiredStepId` for it; the
+    // command in flight is still the plan's desired step.
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      lastDesiredStepId: undefined,
       stepCommandPending: true,
       stepCommandStatus: 'pending',
     }))).toBe(false);
@@ -4722,17 +4759,17 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       const pending = state.pendingBinaryCommands['dev-1'];
-      syncPendingBinaryCommands({
-        store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        liveDevices: [{
+      syncPendingBinaryCommands(
+        createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        [{
           id: 'dev-1', name: 'Charger',
           binaryCommandConfirmation: {
             state: 'observed', observedValue: false, observedAtMs: pending.startedMs + 1,
           },
         }],
-        source: 'device_update',
-        onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
-      });
+        'device_update',
+        (params) => executor.handleConfirmedBinaryCommand(params),
+      );
       expect(typeof state.restoreBackoff.lastInstabilityMs).toBe('number');
       expect(typeof state.actuation.lastDeviceShedMs['dev-1']).toBe('number');
     });
@@ -4754,17 +4791,17 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       const pending = state.pendingBinaryCommands['dev-1'];
-      syncPendingBinaryCommands({
-        store: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        liveDevices: [{
+      syncPendingBinaryCommands(
+        createPendingBinaryCommandStore(state.pendingBinaryCommands),
+        [{
           id: 'dev-1', name: 'Charger',
           binaryCommandConfirmation: {
             state: 'observed', observedValue: false, observedAtMs: pending.startedMs + 1,
           },
         }],
-        source: 'device_update',
-        onConfirmed: (params) => executor.handleConfirmedBinaryCommand(params),
-      });
+        'device_update',
+        (params) => executor.handleConfirmedBinaryCommand(params),
+      );
       expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
       expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     });

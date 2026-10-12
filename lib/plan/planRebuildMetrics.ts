@@ -20,7 +20,6 @@ export const createPlanRebuildOutcome = (isDryRun: boolean): PlanRebuildOutcome 
   deviceWriteCount: 0,
   commandRequestCount: 0,
   deviceApplyFailureCount: 0,
-  writtenDeviceIds: [],
   hadShedding: false,
   isDryRun,
   failed: false,
@@ -71,8 +70,8 @@ export const recordPlanRebuildMetrics = (
   addPerfDuration('plan_rebuild_status_write_ms', outcome.statusWriteMs);
   addPerfDuration('plan_rebuild_apply_ms', outcome.applyMs);
   incPerfCounter('plan_rebuild_total');
-  // A gated rebuild never reaches here, and the written ids have no trace reader.
-  const { gated: _gated, writtenDeviceIds: _writtenDeviceIds, ...measured } = outcome;
+  // A gated rebuild never reaches here.
+  const { gated: _gated, ...measured } = outcome;
   recordPlanRebuildTrace({
     ...measured, reason, queueDepth, queueWaitMs, totalMs, endedAtMs,
   });

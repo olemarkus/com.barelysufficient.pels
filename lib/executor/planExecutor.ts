@@ -1,5 +1,5 @@
 import type {
-  DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedBehavior,
+  DevicePlan, PendingTargetObservationSource, ShedBehavior,
 } from '../plan/planTypes';
 import {
   type ExecutorDeviceReadDeps,
@@ -11,11 +11,9 @@ import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnostics
 import {
   closeActivationAttemptForShedActuation,
   recordActivationAttemptStarted,
-  recordDiagnosticsRestore,
-  recordDiagnosticsShed,
 } from './executorSupport';
 import { getLogger } from '../logging/logger';
-import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
+import type { PendingBinaryCommandStore, PendingBinaryConfirmation } from '../observer/pendingBinaryCommands';
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import type { Actuator } from '../actuator/deviceActuator';
 import type { ExecutorCommandContext } from './executorCommandContext';
@@ -30,7 +28,6 @@ import {
 } from './planExecutorPredicates';
 import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
 import { dispatchPlanActions } from './planExecutorDispatch';
-import { applyBinarySheddingToDevice } from './binaryExecutor';
 import { ShortfallExecutor, type ShortfallExecutorDeps } from './shortfallExecutor';
 import {
   LifecycleFallbackDispatcher,
@@ -40,6 +37,7 @@ import { createTargetCommandClaim } from './targetCommandClaim';
 import { createSteppedCommandClaim } from './steppedCommandClaim';
 import { createBinaryCommandClaim } from './binaryCommandClaim';
 import { buildExecutablePlan, buildExecutableObservedDeviceState } from './executablePlanProjection';
+import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import type { DriftObservationDeps } from './driftObservedDevice';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
@@ -81,7 +79,7 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
   getShedBehavior: (deviceId: string) => ShedBehavior;
   markSteppedLoadDesiredStepIssued: (params: MarkSteppedLoadDesiredStepIssuedParams) => void;
   getSteppedLoadCommandSession: (deviceId: string) => ExecutableSteppedLoadCommandSession;
-  syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
+  syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   /**
    * Observer-owned pending-binary-command store. The executor's
@@ -136,17 +134,12 @@ export class PlanExecutor {
         getOwnedTargetPending: (deviceId) => this.lifecycleFallback.getOwnedTargetPending(deviceId),
       },
       isAuthorityCurrent: () => true,
-      applySheddingToDevice: (deviceId, deviceName) => this.applySheddingToDevice(deviceId, deviceName),
       recordShedActuation: (deviceId, name, now) => this.recordShedActuation(deviceId, name, now),
       recordReleaseShedActuation: (deviceId, name, now) => this.recordReleaseShedActuation(deviceId, name, now),
       recordRestoreActuation: (deviceId, name, now) => this.recordRestoreActuation(deviceId, name, now),
-      recordActivationAttemptStarted: (deviceId, name, now) => recordActivationAttemptStarted({
-        state,
-        diagnostics: deps.deviceDiagnostics,
-        deviceId,
-        name,
-        nowTs: now,
-      }),
+      recordActivationAttemptStarted: (deviceId, name, now) => recordActivationAttemptStarted(
+        state, deps.deviceDiagnostics, deviceId, name, now,
+      ),
     };
     this.lifecycleFallback = new LifecycleFallbackDispatcher(this.ctx);
     this.storage = deps.storageLane.kind === 'none' ? NO_STORAGE_LANE : new BatteryExecutor(
@@ -192,30 +185,14 @@ export class PlanExecutor {
   // capacity-driven shed.
   private recordReleaseShedActuation(deviceId: string, name: string, now: number): void {
     this.recordControlTimestamp(deviceId, now);
-    recordDiagnosticsShed({
-      diagnostics: this.deps.deviceDiagnostics,
-      deviceId,
-      name,
-      nowTs: now,
-    });
-    closeActivationAttemptForShedActuation({
-      state: this.state,
-      diagnostics: this.deps.deviceDiagnostics,
-      deviceId,
-      name,
-      nowTs: now,
-    });
+    this.deps.deviceDiagnostics?.recordControlEvent({ kind: 'pels_shed', deviceId, name, nowTs: now });
+    closeActivationAttemptForShedActuation(this.state, this.deps.deviceDiagnostics, deviceId, name, now);
   }
 
   private recordRestoreActuation(deviceId: string, name: string, now: number): void {
     this.state.actuation.markRestore(deviceId, now);
     this.recordControlTimestamp(deviceId, now);
-    recordDiagnosticsRestore({
-      diagnostics: this.deps.deviceDiagnostics,
-      deviceId,
-      name,
-      nowTs: now,
-    });
+    this.deps.deviceDiagnostics?.recordControlEvent({ kind: 'pels_restore', deviceId, name, nowTs: now });
   }
 
   private recordControlTimestamp(deviceId: string, now: number): void {
@@ -223,14 +200,9 @@ export class PlanExecutor {
     this.lastControlledPersistenceDirty = true;
   }
 
-  public handleConfirmedBinaryCommand(params: {
-    deviceId: string;
-    liveDevice: Pick<PlanInputDevice, 'id' | 'name'>;
-    pending: PlanEngineState['pendingBinaryCommands'][string];
-    confirmedAtMs?: number;
-  }): void {
-    const { deviceId, liveDevice, pending } = params;
-    const now = params.confirmedAtMs ?? Date.now();
+  public handleConfirmedBinaryCommand(confirmation: PendingBinaryConfirmation): void {
+    const { liveDevice, pending, confirmedAtMs: now } = confirmation;
+    const deviceId = liveDevice.id;
     logger.info({
       event: 'binary_command_applied',
       deviceId,
@@ -280,20 +252,6 @@ export class PlanExecutor {
 
   public getLifecycleFallbackPort(): LifecycleFallbackPort {
     return this.lifecycleFallback;
-  }
-
-  /**
-   * Carries out a binary shed: turn the device off. The plan decided this end
-   * state (`plannedShedTargetKind` resolved the axis before a binary intent
-   * could exist), so nothing here reads the configured shed behaviour again; a
-   * setpoint shed reaches the device as a target update, not through this path.
-   */
-  public async applySheddingToDevice(deviceId: string, deviceName: string): Promise<boolean> {
-    try {
-      return await applyBinarySheddingToDevice(this.ctx, deviceId, deviceName);
-    } finally {
-      this.flushLastControlledPersistence();
-    }
   }
 
   /** The observer's accepted-write counter. See `PlanEngine.getObservationRevision`. */
@@ -356,16 +314,25 @@ export class PlanExecutor {
     }));
   }
 
+  /**
+   * Does the plan just built leave work for the executor, judged from the
+   * plan's own view of each device? It stays beside
+   * `hasPlanExecutionDriftAgainstIntent` because the two ask different
+   * questions. Drift compares the LIVE observation with the intent, and the
+   * apply gate drops its answer once the observer has moved since the build.
+   * This compares the plan's desired step with the plan's current one, which
+   * drift never does (its step axis checks the effective step against the
+   * observed one), and covers an uncontrolled device's restore, for which drift
+   * sets no expectation. The stepped checks read the stepped intent dispatch
+   * carries out, so a device the projection holds is not reported as work.
+   */
   public hasStablePlanActuation(plan: DevicePlan): boolean {
-    return plan.devices.some((dev) => (
-      hasStableUncontrolledRestoreActuation(dev, this.state)
-      || hasStableBinaryReleaseActuation(dev)
-      || hasStableSteppedLoadStepActuation(
-        dev,
-        this.deps.getSteppedLoadCommandSession(dev.id),
-      )
-      || hasStableSteppedLoadBinaryRestoreActuation(dev)
-    ));
+    return plan.devices.some((dev) => {
+      if (hasStableUncontrolledRestoreActuation(dev, this.state) || hasStableBinaryReleaseActuation(dev)) return true;
+      const stepped = buildExecutableSteppedLoadIntent(dev);
+      return hasStableSteppedLoadStepActuation(dev, stepped, this.deps.getSteppedLoadCommandSession(dev.id))
+        || hasStableSteppedLoadBinaryRestoreActuation(dev, stepped);
+    });
   }
 
   public async handleShortfall(deficitKw: number): Promise<void> {
@@ -378,7 +345,7 @@ export class PlanExecutor {
 
   public async applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
     if (!plan || !Array.isArray(plan.devices)) {
-      return { deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, writtenDeviceIds: [] };
+      return { deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0 };
     }
 
     this.nonCapacityHoldShedIds = new Set(

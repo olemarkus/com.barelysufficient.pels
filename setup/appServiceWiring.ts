@@ -1,7 +1,8 @@
 import { createObservedTemperatureModeUpdates } from './appInit/createObservedTemperatureModeUpdates';
 import type { TeardownRegistry } from '../lib/utils/teardownRegistry';
 import type Homey from 'homey';
-import type { ObservedControlStateChangedEvent, ObservedStateEmitter } from '../lib/observer/observedStateEvents';
+import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
+import type { ObservedControlStateChangedEvent } from '../lib/ports/observedStateEvents';
 import type { ObservedHomePower } from '../lib/observer/observedHomePower';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';

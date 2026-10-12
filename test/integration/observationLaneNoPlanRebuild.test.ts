@@ -60,11 +60,9 @@ const buildLane = () => {
 /** The sweep as the observation lane runs it: `syncLivePlanState`'s source. */
 const sweepOnObservationLane = (
   store: ReturnType<typeof buildLane>['store'],
-  liveDevices: Parameters<typeof syncPendingBinaryCommands>[0]['liveDevices'] = [],
-  onConfirmed?: Parameters<typeof syncPendingBinaryCommands>[0]['onConfirmed'],
-): boolean => syncPendingBinaryCommands({
-  store, liveDevices, source: 'device_update', onConfirmed,
-});
+  liveDevices: Parameters<typeof syncPendingBinaryCommands>[1] = [],
+  onConfirmed?: Parameters<typeof syncPendingBinaryCommands>[3],
+): boolean => syncPendingBinaryCommands(store, liveDevices, 'device_update', onConfirmed);
 
 describe('the observation lane never requests an immediate plan rebuild', () => {
   it('times out a pending resume without asking the planner to rebuild', () => {

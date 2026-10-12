@@ -82,7 +82,7 @@ function logConfirmed(
     targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     reportedStepId: stepId,
     desiredStepId: desiredStepId,
-    pending: previousDesired?.pending ?? false,
+    pending: previousDesired?.status === 'pending',
     stale: previousDesired?.status === 'stale',
   });
 }

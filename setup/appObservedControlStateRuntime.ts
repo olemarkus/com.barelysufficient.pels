@@ -4,12 +4,14 @@ import {
   type ExternalOffHoldSyncDeps,
 } from './externalOffHoldDetection';
 import type { AppContext } from '../lib/app/appContext';
-import type { ObservedStateChangedEvent } from '../lib/observer/observedStateEvents';
+import type {
+  ObservedControlStateChangedEvent,
+  ObservedStateChangedEvent,
+} from '../lib/ports/observedStateEvents';
 import type { HomeId } from '../lib/utils/settingsKeys';
 import type { OwningHomeHooks } from './homeRuntime/createHomeCapacityBundle';
 import { getDebugEmitter, type StructuredDebugEmitter } from '../lib/logging/logger';
 import { requirePlanService } from './appInit/contextGuards';
-import type { ObservedControlStateChangedEvent } from '../lib/observer/observedStateEvents';
 
 /**
  * Structural slice of the home-runtime registry this consumes (multi-home R7b

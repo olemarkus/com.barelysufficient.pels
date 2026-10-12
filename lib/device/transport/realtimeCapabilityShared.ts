@@ -17,7 +17,7 @@ import { TARGET_TEMPERATURE_CAPABILITY_ID } from './temperatureObservation';
 
 import { recordCapabilityObservation } from './managerObservation';
 
-import type { ObservationCursor } from './managerRealtimeHandlers';
+import type { ObservationCursor } from './transportObservationState';
 import type { RealtimeIngestService } from './transportServices';
 import type { ObservedControlStateChangedEvent } from '../../ports/observedStateEvents';
 

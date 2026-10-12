@@ -65,7 +65,7 @@ export type ExecutorCommandContext = {
   getShedBehavior: (deviceId: string) => ShedBehavior;
   getSteppedLoadCommandSession: (deviceId: string) => ExecutableSteppedLoadCommandSession;
   markSteppedLoadDesiredStepIssued: (params: MarkSteppedLoadDesiredStepIssuedParams) => void;
-  syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
+  syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
   /** Synchronous claims closing the pre-pending async dispatch race between the lanes. */
   binaryCommandClaim: BinaryCommandClaim;
   steppedCommandClaim: SteppedCommandClaim;
@@ -77,11 +77,6 @@ export type ExecutorCommandContext = {
   onBinaryCommandClaimReleased?: (released: BinaryCommandClaimState) => void;
   onSteppedCommandClaimReleased?: (released: SteppedCommandClaimState) => void;
   onTargetCommandClaimReleased?: (released: TargetCommandClaimState) => void;
-  /**
-   * The executor's binary shed entry (`PlanExecutor.applySheddingToDevice`), so
-   * a plan's binary shed and a direct call go through the same public method.
-   */
-  applySheddingToDevice: (deviceId: string, deviceName: string) => Promise<boolean>;
   recordShedActuation: ActuationRecorder;
   /**
    * Diagnostic-only recorder for the smart-task lifecycle-end disable path:

@@ -366,9 +366,9 @@ export type ExecutableSteppedLoadIntent = {
 /**
  * One stepped device ready to command this cycle: the intent with this cycle's
  * resolved `desired` / `transition` / `previousStepId` (an unknown running step
- * is seeded at the lowest active rung, and the previous step is the current
- * one), the current state it is commanded from, and whether the requested step
- * has materialized.
+ * is seeded at the lowest active rung with no previous step; otherwise the
+ * previous step is the current one), the current state it is commanded from,
+ * and whether the requested step has materialized.
  */
 export type ExecutableSteppedLoadDevice = {
   intent: ExecutableSteppedLoadIntent;

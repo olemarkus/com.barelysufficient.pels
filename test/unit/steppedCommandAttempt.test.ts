@@ -11,18 +11,21 @@ const steppedLoadProfile: SteppedLoadProfile = {
 
 const NOW = 1_000_000;
 
-const resolve = (
-  overrides: Partial<Parameters<typeof resolveSteppedCommandAttempt>[0]> = {},
-) => resolveSteppedCommandAttempt({
-  requestedStepId: 'low',
-  lastDesiredStepId: 'low',
-  steppedLoadProfile,
-  stepCommandPending: false,
-  stepCommandStatus: 'idle',
-  nextStepCommandRetryAtMs: undefined,
-  nowMs: NOW,
-  ...overrides,
-});
+type AttemptOverrides = Partial<Parameters<typeof resolveSteppedCommandAttempt>[0]> & {
+  requestedStepId?: string;
+};
+
+const resolve = (overrides: AttemptOverrides = {}) => {
+  const { requestedStepId, ...device } = { requestedStepId: 'low', ...overrides };
+  return resolveSteppedCommandAttempt({
+    lastDesiredStepId: 'low',
+    steppedLoadProfile,
+    stepCommandPending: false,
+    stepCommandStatus: 'idle',
+    nextStepCommandRetryAtMs: undefined,
+    ...device,
+  }, requestedStepId, NOW);
+};
 
 describe('resolveSteppedCommandAttempt', () => {
   it('reports awaiting_confirmation while a command for that step is in flight', () => {

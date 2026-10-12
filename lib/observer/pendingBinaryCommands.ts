@@ -330,7 +330,6 @@ export function createPendingBinaryCommandStore(
 
 /** A pending binary command telemetry just confirmed. */
 export type PendingBinaryConfirmation = {
-  deviceId: string;
   liveDevice: PendingBinaryLiveDevice;
   pending: PendingBinaryCommand;
   source: PendingObservationSource;
@@ -350,13 +349,12 @@ export type PendingBinaryConfirmation = {
  * progress fields mutated). This drives the live-plan refresh in
  * `PlanService.syncLivePlanState`.
  */
-export function syncPendingBinaryCommands(params: {
-  store: PendingBinaryCommandStore;
-  liveDevices: PendingBinaryLiveDevice[];
-  source: PendingObservationSource;
-  onConfirmed?: (confirmation: PendingBinaryConfirmation) => void;
-}): boolean {
-  const { store, liveDevices, source, onConfirmed } = params;
+export function syncPendingBinaryCommands(
+  store: PendingBinaryCommandStore,
+  liveDevices: PendingBinaryLiveDevice[],
+  source: PendingObservationSource,
+  onConfirmed?: (confirmation: PendingBinaryConfirmation) => void,
+): boolean {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   const nowMs = Date.now();
   let changed = false;
@@ -456,7 +454,6 @@ function confirmPendingBinaryCommand(
   const deviceId = liveDevice.id;
   store.recordConfirmedBinaryCommand(deviceId, pending.desired, observation.observedAtMs);
   onConfirmed?.({
-    deviceId,
     liveDevice,
     pending,
     source,

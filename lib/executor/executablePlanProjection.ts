@@ -1,5 +1,5 @@
 import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
-import { resolveCurrentOn } from '../observer/observedState';
+import { resolveCurrentOn, resolveSelectedStepId } from '../observer/observedState';
 import {
   hasSteppedCommand,
 } from './executablePlan';
@@ -29,10 +29,6 @@ import type {
 } from './executablePlan';
 import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
-import {
-  getSteppedLoadLowestActiveStep,
-  getSteppedLoadStep,
-} from '../../packages/shared-domain/src/deviceControlProfiles';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
@@ -176,30 +172,12 @@ const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
 );
 
 /**
- * The device's effective rung.
- *
- * `reportedStepId ?? lowest active step` — the same rule the snapshot producer
- * applies (`lib/planInput/deviceControlProjection.ts`). It reads the
- * device's report and the configured ladder, and deliberately NOT the commanded
- * target step: what PELS asked for is not evidence of where the device is, and
- * treating it as such is how a command gets mistaken for its own confirmation.
- */
-const resolveObservedSelectedStepId = (
-  profile: SteppedLoadProfile | undefined,
-  reportedStepId: string | undefined,
-): string | undefined => {
-  if (!profile) return undefined;
-  return getSteppedLoadStep(profile, reportedStepId)?.id
-    ?? getSteppedLoadLowestActiveStep(profile)?.id;
-};
-
-/**
  * The executor's one observed-state producer. Every path — plan dispatch,
  * drift, the settings-UI execution state and the lifecycle fallback request —
  * builds from the executor's read of the device, and the values the read does
  * not carry are resolved here, once:
  *
- * - `selectedStepId`, the effective rung (`resolveObservedSelectedStepId`)
+ * - `selectedStepId`, the effective rung (`resolveSelectedStepId`)
  *   against `ladder`, the ladder the caller judges the device by: the plan's
  *   for drift, the configured one for the execution state, the step
  *   posture's for a lifecycle step fallback (its first build and retries).
@@ -221,7 +199,7 @@ export function buildExecutableObservedDeviceState(
   const snapshot = ladder === undefined ? read : {
     ...read,
     steppedLoadProfile: ladder,
-    selectedStepId: resolveObservedSelectedStepId(ladder, read.reportedStepId),
+    selectedStepId: resolveSelectedStepId(ladder, read.reportedStepId),
   };
   return {
     id: read.id,

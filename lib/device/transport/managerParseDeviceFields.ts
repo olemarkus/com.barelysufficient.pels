@@ -214,7 +214,6 @@ function resolveDeviceControlBundle(params: {
         logger,
         deviceId, deviceName: effectiveDevice.name ?? null,
         deviceLabel,
-        deviceClassKey,
         binaryCapabilityId,
         binaryWriteCapabilityId: overlay.binaryWriteCapabilityId,
         capabilityObj: overlay.capabilityObj,

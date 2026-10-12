@@ -71,7 +71,6 @@ const actuation = (counts: Partial<PlanActuationResult> = {}): PlanActuationResu
   deviceWriteCount: 0,
   commandRequestCount: 0,
   deviceApplyFailureCount: 0,
-  writtenDeviceIds: [],
   ...counts,
 });
 

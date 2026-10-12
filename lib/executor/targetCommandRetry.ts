@@ -38,15 +38,14 @@ type PendingTargetDecision =
   | { type: 'retry'; pending: PendingTargetCommandState }
   | { type: 'skip'; pending: PendingTargetCommandState; remainingMs: number };
 
-export function getPendingTargetCommandDecision(params: {
-  state: PendingTargetStore;
-  deviceId: string;
-  desired: number;
-  nowMs: number;
-}): PendingTargetDecision {
-  const { state, deviceId, desired, nowMs } = params;
+export function getPendingTargetCommandDecision(
+  state: PendingTargetStore,
+  deviceId: string,
+  desired: number,
+  nowMs: number,
+): PendingTargetDecision {
   const pending = state.pendingTargetCommands[deviceId];
-  if (!pending || pending.target !== 'temperature' || pending.desired !== desired) {
+  if (!pending || pending.desired !== desired) {
     return { type: 'send' };
   }
   if (nowMs >= pending.nextRetryAtMs) {
@@ -70,7 +69,7 @@ export function recordTargetCommandAttempt(
 ): PendingTargetCommandState {
   const { pendingTargetCommands } = state;
   const previous = pendingTargetCommands[deviceId];
-  const isRetry = previous?.target === 'temperature' && previous.desired === desired;
+  const isRetry = previous !== undefined && previous.desired === desired;
   const retryCount = isRetry ? previous.retryCount + 1 : 0;
   const waitingConfirmation = status === 'waiting_confirmation';
   const retainedObservedValue = isRetry ? previous.lastObservedValue : undefined;

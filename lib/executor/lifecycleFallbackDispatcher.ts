@@ -65,7 +65,7 @@ SteppedLoadDecoration,
     | { state: 'writable' }
     | { state: 'unavailable' };
   targetAxis:
-    | { state: 'writable'; target: 'temperature' }
+    | { state: 'writable' }
     | { state: 'unavailable' };
   stepAxis:
     | { state: 'writable'; profile: SteppedLoadProfile }
@@ -325,12 +325,9 @@ export class LifecycleFallbackDispatcher {
     };
     void this.dispatch(observed, authorityToken, async () => {
       const deviceId = observed.id;
-      const ordinaryPendingDecision = getPendingTargetCommandDecision({
-        state: this.ctx.targetCommands,
-        deviceId,
-        desired,
-        nowMs: Date.now(),
-      });
+      const ordinaryPendingDecision = getPendingTargetCommandDecision(
+        this.ctx.targetCommands, deviceId, desired, Date.now(),
+      );
       if (ordinaryPendingDecision.type !== 'send') {
         this.targetState.setPendingTargetCommand(deviceId, ordinaryPendingDecision.pending);
         this.ctx.targetCommands.deletePendingTargetCommand(deviceId);

@@ -110,7 +110,7 @@ describe('PendingBinaryCommandStore provenance predicate', () => {
     store.isBinaryChangeAttributableToPels('ev-1');
     expect(onTimedOut).not.toHaveBeenCalled();
 
-    syncPendingBinaryCommands({ store, liveDevices: [], source: 'rebuild' });
+    syncPendingBinaryCommands(store, [], 'rebuild');
 
     expect(onTimedOut).toHaveBeenCalledTimes(1);
     expect(backing['ev-1']).toBeUndefined();
