@@ -1,5 +1,5 @@
-import { buildPriceDebugData, type CombinedPriceData } from './dailyBudgetMath';
-import type { RebuildPlanDebug } from './dailyBudgetManagerTypes';
+import { buildPriceDebugData } from './dailyBudgetMath';
+import type { DailyBudgetPlanInputs, RebuildPlanDebug } from './dailyBudgetManagerTypes';
 import type { PriceData } from './dailyBudgetState';
 import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
 
@@ -20,14 +20,13 @@ export const NEXT_DAY_PLAN_DEBUG: RebuildPlanDebug = {
 export function buildNextDayPriceDebugData(
   preview: DailyBudgetDayPayload,
   settings: DailyBudgetSettings,
-  combinedPrices: CombinedPriceData | null,
-  priceOptimizationEnabled: boolean,
+  inputs: DailyBudgetPlanInputs,
 ): PriceData {
   return buildPriceDebugData({
     bucketStartUtcMs: preview.buckets.startUtc.map((ts) => new Date(ts).getTime()),
     currentBucketIndex: preview.currentBucketIndex,
-    combinedPrices,
-    priceOptimizationEnabled,
+    combinedPrices: inputs.combinedPrices,
+    priceOptimizationEnabled: inputs.priceOptimizationEnabled,
     priceShapingEnabled: settings.priceShapingEnabled,
     priceShapingFlexShare: settings.priceShapingFlexShare,
   });

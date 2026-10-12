@@ -11,7 +11,7 @@ import {
   UNMANAGED_RESERVE_MODE,
 } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
-import type { CombinedPriceData } from './dailyBudgetManager';
+import type { DailyBudgetPlanInputs } from './dailyBudgetManagerTypes';
 import {
   buildTomorrowPreview as computeTomorrowPreview,
   buildYesterdayHistory as computeYesterdayHistory,
@@ -44,6 +44,7 @@ import { resolvePlanningPowerCeiling } from '../power/capacityModel';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 const moduleLogger = getLogger('dailyBudget/service');
+const discardDebug = (): void => undefined;
 
 type DailyBudgetServiceDeps = {
   dailyBudgetStateStore: DailyBudgetStateStore;
@@ -115,12 +116,17 @@ export class DailyBudgetService {
     return this.manager.observedGrossBackgroundKwh(hourOfDay);
   }
 
-  private createManagerClone(): DailyBudgetManager {
+  /**
+   * The Budget Adjust candidate: a copy of the live manager that plans unsaved
+   * settings. It writes no debug entries, which would read like the live
+   * plan's; debug output never feeds what it computes.
+   */
+  private createCandidateManager(): DailyBudgetManager {
     const manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
-      isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
-      structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
-      debugStructured: this.deps.debugStructured,
+      isDebugTopicEnabled: () => false,
+      structuredDebug: discardDebug,
+      debugStructured: discardDebug,
     });
     manager.loadState(this.manager.exportState());
     return manager;
@@ -162,6 +168,17 @@ export class DailyBudgetService {
     return this.deps.getTimeZone();
   }
 
+  /** The update's one read of the prices, price switch and ceiling (`DailyBudgetPlanInputs`). */
+  private readPlanInputs(nowMs: number, timeZone: string): DailyBudgetPlanInputs {
+    return {
+      combinedPrices: readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone),
+      priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
+      // `null` when no power limit is enabled: the day's hours are then capped by
+      // observed peaks alone.
+      planningCeiling: resolvePlanningPowerCeiling(this.deps.getCapacitySettings()),
+    };
+  }
+
   /**
    * `forcePlanRebuild` is how commands and settings changes say an input moved.
    * It also rebuilds the adjacent days and re-checks confidence, since those
@@ -182,10 +199,7 @@ export class DailyBudgetService {
     const nowMs = params.nowMs ?? Date.now();
     const forced = params.forcePlanRebuild === true;
     const timeZone = this.resolveTimeZone();
-    const combinedPrices = readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone);
-    // `null` when no power limit is enabled: the day's hours are then capped by
-    // observed peaks alone.
-    const planningCeiling = resolvePlanningPowerCeiling(this.deps.getCapacitySettings());
+    const inputs = this.readPlanInputs(nowMs, timeZone);
     try {
       const computeStart = Date.now();
       const computeRssBefore = safeRss();
@@ -194,10 +208,8 @@ export class DailyBudgetService {
         timeZone,
         settings: this.settings,
         powerTracker: this.deps.getPowerTracker(),
-        combinedPrices,
-        priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
+        ...inputs,
         forcePlanRebuild: params.forcePlanRebuild,
-        planningCeiling,
         refreshObservedStats: params.refreshObservedStats,
         refreshConfidence: forced,
         includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
@@ -206,7 +218,7 @@ export class DailyBudgetService {
       });
       incPerfCounter('daily_budget_compute_total');
       recordOpDuration('daily_budget_compute_ms', computeStart, computeRssBefore);
-      this.setDaySnapshot(update.snapshot, nowMs, combinedPrices, forced);
+      this.setDaySnapshot(update.snapshot, nowMs, inputs, forced);
       const snap = update.snapshot;
       if (params.emitStructuredEvent !== false && this.shouldEmitBudgetRecomputed(snap)) {
         (this.deps.structuredLog ?? moduleLogger).info({
@@ -259,10 +271,7 @@ export class DailyBudgetService {
     if (!this.adjacentDayDepsCache) {
       this.adjacentDayDepsCache = {
         resolveTimeZone: () => this.resolveTimeZone(),
-        combinedPricesReader: this.deps.combinedPricesReader,
-        getCapacitySettings: () => this.deps.getCapacitySettings(),
         getPowerTracker: () => this.deps.getPowerTracker(),
-        getPriceOptimizationEnabled: () => this.deps.getPriceOptimizationEnabled(),
         structuredLog: this.deps.structuredLog,
       };
     }
@@ -274,14 +283,15 @@ export class DailyBudgetService {
   // (the forecast bodies themselves now live and are unit-tested in that module).
   private buildTomorrowPreview(
     nowMs: number,
+    inputs: DailyBudgetPlanInputs,
     manager: DailyBudgetManager = this.manager,
     settings: DailyBudgetSettings = this.settings,
   ): DailyBudgetDayPayload | null {
-    return computeTomorrowPreview(this.adjacentDayDeps, nowMs, manager, settings);
+    return computeTomorrowPreview(this.adjacentDayDeps, nowMs, inputs, manager, settings);
   }
 
-  private buildYesterdayHistory(nowMs: number): DailyBudgetDayPayload | null {
-    return computeYesterdayHistory(this.adjacentDayDeps, nowMs, this.manager, this.settings);
+  private buildYesterdayHistory(nowMs: number, inputs: DailyBudgetPlanInputs): DailyBudgetDayPayload | null {
+    return computeYesterdayHistory(this.adjacentDayDeps, nowMs, inputs, this.manager, this.settings);
   }
 
   getSnapshot(): DailyBudgetUiPayload | null { return this.snapshot; }
@@ -388,26 +398,23 @@ export class DailyBudgetService {
     const nowMs = Date.now();
     const settings = this.resolveSettingsInput(input);
     const active = this.getUiPayload();
-    const manager = this.createManagerClone();
+    const manager = this.createCandidateManager();
     const timeZone = this.resolveTimeZone();
-    const combinedPrices = readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone);
-    const planningCeiling = resolvePlanningPowerCeiling(this.deps.getCapacitySettings());
+    const inputs = this.readPlanInputs(nowMs, timeZone);
     const update = manager.update({
       nowMs,
       timeZone,
       settings,
       powerTracker: this.deps.getPowerTracker(),
-      combinedPrices,
-      priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
+      ...inputs,
       forcePlanRebuild: true,
       recomputeFrozenPlan: true,
-      planningCeiling,
       refreshObservedStats: false,
       refreshConfidence: true,
       includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
     });
     const tomorrowSnapshot = this.applyOverallModelConfidence(
-      this.buildTomorrowPreview(nowMs, manager, settings),
+      this.buildTomorrowPreview(nowMs, inputs, manager, settings),
       update.snapshot,
     );
     const candidate: DailyBudgetUiPayload = {
@@ -498,26 +505,27 @@ export class DailyBudgetService {
   // all reach tomorrow, yesterday and the deferred-objective policyHorizon —
   // see `computeAdjacentDaysSeedSignature` and `getAdjacentDaysInputsMark`.
   private setDaySnapshot(snap: DailyBudgetDayPayload, nowMs: number,
-    prices: CombinedPriceData | null, includeAdjacentDays = false): void {
-    const priceSignature = computeAdjacentDaysSeedSignature(snap.dateKey, prices);
+    inputs: DailyBudgetPlanInputs, includeAdjacentDays = false): void {
+    const priceSignature = computeAdjacentDaysSeedSignature(snap.dateKey, inputs.combinedPrices);
     const seedSignature = `${priceSignature}|${this.manager.getAdjacentDaysInputsMark()}`;
     if (includeAdjacentDays || seedSignature !== this.adjacentDaysSeedSignature) {
       this.adjacentDaysSeedSignature = seedSignature;
-      this.rebuildSnapshotWithAdjacentDays(snap, nowMs, prices);
+      this.rebuildSnapshotWithAdjacentDays(snap, nowMs, inputs);
       return;
     }
     ({ daySnapshots: this.daySnapshots, snapshot: this.snapshot }
       = composeHotPathDailyBudgetSnapshot(snap, this.snapshot));
   }
 
-  // `prices` are the ones this update read, so the ones tomorrow's preview is built on.
+  // The adjacent days and tomorrow's debug entry are built on the update's own
+  // `inputs`, the ones today's plan used.
   private rebuildSnapshotWithAdjacentDays(
-    snapshot: DailyBudgetDayPayload, nowMs: number, prices: CombinedPriceData | null,
+    snapshot: DailyBudgetDayPayload, nowMs: number, inputs: DailyBudgetPlanInputs,
   ): void {
     const todayKey = snapshot.dateKey;
-    const tomorrowPreview = this.buildTomorrowPreview(nowMs);
+    const tomorrowPreview = this.buildTomorrowPreview(nowMs, inputs);
     const tomorrowSnapshot = this.applyOverallModelConfidence(tomorrowPreview, snapshot);
-    const yesterdaySnapshot = this.applyOverallModelConfidence(this.buildYesterdayHistory(nowMs), snapshot);
+    const yesterdaySnapshot = this.applyOverallModelConfidence(this.buildYesterdayHistory(nowMs, inputs), snapshot);
     this.daySnapshots = {
       [todayKey]: snapshot,
       ...(tomorrowSnapshot ? { [tomorrowSnapshot.dateKey]: tomorrowSnapshot } : {}),
@@ -529,13 +537,21 @@ export class DailyBudgetService {
       tomorrowKey: tomorrowSnapshot?.dateKey ?? null,
       yesterdayKey: yesterdaySnapshot?.dateKey ?? null,
     };
-    // Tomorrow's plan is logged here, when its inputs move, rather than on every
-    // rebuild of today's plan; the Budget Adjust candidate never reaches this.
-    if (tomorrowPreview) {
-      this.manager.logNextDayPlan(
-        tomorrowPreview, this.settings, prices,
-        this.deps.getPriceOptimizationEnabled(), resolvePlanningPowerCeiling(this.deps.getCapacitySettings()),
-      );
+    if (tomorrowPreview) this.logTomorrowPlan(tomorrowPreview, inputs);
+  }
+
+  // Tomorrow's plan is logged when the adjacent days are rebuilt, not on every
+  // rebuild of today's plan; the Budget Adjust candidate never reaches this. A
+  // failed debug write must not fail the update: `manager.update` has already
+  // handed over its persist reason, which a throw here would drop.
+  private logTomorrowPlan(preview: DailyBudgetDayPayload, inputs: DailyBudgetPlanInputs): void {
+    try {
+      this.manager.logNextDayPlan(preview, this.settings, inputs);
+    } catch (error) {
+      (this.deps.structuredLog ?? moduleLogger).error({
+        event: 'daily_budget_next_day_plan_log_failed',
+        err: normalizeError(error),
+      });
     }
   }
 

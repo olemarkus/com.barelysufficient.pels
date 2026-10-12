@@ -20,6 +20,19 @@ export type DailyBudgetManagerDeps = {
   debugStructured?: import('../logging/logger').StructuredDebugEmitter;
 };
 
+/**
+ * The price and power-limit inputs one daily-budget update reads once: the
+ * combined prices, the price-optimization switch and the planning ceiling
+ * (`null` when no power limit is on). Today's plan, the adjacent days and
+ * tomorrow's debug entry of that update are all built on this one read, so
+ * they cannot disagree.
+ */
+export type DailyBudgetPlanInputs = {
+  combinedPrices: CombinedPriceData | null;
+  priceOptimizationEnabled: boolean;
+  planningCeiling: PowerLimitCeiling | null;
+};
+
 export type ExistingPlanState = {
   planStateMismatch: boolean;
   existingPlan: number[] | null;

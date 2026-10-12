@@ -5,14 +5,11 @@ import {
   getNextLocalDayStartUtcMs,
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
-import { readCombinedPriceData } from '../price/priceStore';
-import type { CombinedPricesReader } from '../price/combinedPricesReader';
-import { resolvePlanningPowerCeiling } from '../power/capacityModel';
-import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import type { DailyBudgetManager } from './dailyBudgetManager';
+import type { DailyBudgetPlanInputs } from './dailyBudgetManagerTypes';
 import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
 
 const moduleLogger = getLogger('dailyBudget/service');
@@ -21,19 +18,19 @@ const moduleLogger = getLogger('dailyBudget/service');
  * Collaborators the adjacent-day (tomorrow preview / yesterday history) builders need from
  * `DailyBudgetService`. Bundled so the forecast computation lives outside the service body
  * (keeping it under the 500-LOC floor) without each builder growing a long positional param list.
+ * The prices, price switch and ceiling are not read here: each builder takes the update's one
+ * read of them (`DailyBudgetPlanInputs`).
  */
 export type DailyBudgetAdjacentDayDeps = {
   resolveTimeZone: () => string;
-  combinedPricesReader: CombinedPricesReader;
-  getCapacitySettings: () => PowerLimitSettings;
   getPowerTracker: () => PowerTrackerState;
-  getPriceOptimizationEnabled: () => boolean;
   structuredLog?: PinoLogger;
 };
 
 export const buildTomorrowPreview = (
   deps: DailyBudgetAdjacentDayDeps,
   nowMs: number,
+  inputs: DailyBudgetPlanInputs,
   manager: DailyBudgetManager,
   settings: DailyBudgetSettings,
 ): DailyBudgetDayPayload | null => {
@@ -42,15 +39,11 @@ export const buildTomorrowPreview = (
     const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
     const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
     const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
-    const combinedPrices = readCombinedPriceData(deps.combinedPricesReader, new Date(nowMs), timeZone);
-    const planningCeiling = resolvePlanningPowerCeiling(deps.getCapacitySettings());
     return manager.buildPreview({
       dayStartUtcMs: tomorrowStartUtcMs,
       timeZone,
       settings,
-      combinedPrices,
-      priceOptimizationEnabled: deps.getPriceOptimizationEnabled(),
-      planningCeiling,
+      ...inputs,
     });
   } catch (error) {
     (deps.structuredLog ?? moduleLogger).error({
@@ -83,6 +76,7 @@ const resolveYesterdayContext = (
 export const buildYesterdayHistory = (
   deps: DailyBudgetAdjacentDayDeps,
   nowMs: number,
+  inputs: DailyBudgetPlanInputs,
   manager: DailyBudgetManager,
   settings: DailyBudgetSettings,
 ): DailyBudgetDayPayload | null => {
@@ -90,16 +84,13 @@ export const buildYesterdayHistory = (
   if (!context) return null;
   const { timeZone, yesterdayStartUtcMs } = context;
   try {
-    const combinedPrices = readCombinedPriceData(deps.combinedPricesReader, new Date(nowMs), timeZone);
     return manager.buildHistory({
       dayStartUtcMs: yesterdayStartUtcMs,
       timeZone,
       powerTracker: deps.getPowerTracker(),
-      combinedPrices,
-      priceOptimizationEnabled: deps.getPriceOptimizationEnabled(),
+      ...inputs,
       priceShapingEnabled: settings.priceShapingEnabled,
       controlledUsageWeight: settings.controlledUsageWeight,
-      planningCeiling: resolvePlanningPowerCeiling(deps.getCapacitySettings()),
     });
   } catch (error) {
     (deps.structuredLog ?? moduleLogger).error({

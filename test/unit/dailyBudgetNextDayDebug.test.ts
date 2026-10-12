@@ -1,4 +1,5 @@
 import { DailyBudgetManager } from '../../lib/dailyBudget/dailyBudgetManager';
+import type { DailyBudgetPlanInputs } from '../../lib/dailyBudget/dailyBudgetManagerTypes';
 import type { DailyBudgetDayPayload, DailyBudgetSettings } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 
@@ -15,11 +16,15 @@ const SETTINGS: DailyBudgetSettings = {
   priceShapingFlexShare: 0.5,
 };
 
-const combinedPrices = {
-  prices: Array.from({ length: 24 }, (_, index) => ({
-    startsAt: new Date(TOMORROW_START_UTC_MS + index * HOUR_MS).toISOString(),
-    total: 100 + index * 20,
-  })),
+const INPUTS: DailyBudgetPlanInputs = {
+  combinedPrices: {
+    prices: Array.from({ length: 24 }, (_, index) => ({
+      startsAt: new Date(TOMORROW_START_UTC_MS + index * HOUR_MS).toISOString(),
+      total: 100 + index * 20,
+    })),
+  },
+  priceOptimizationEnabled: true,
+  planningCeiling: null,
 };
 
 const buildManager = (isDebugTopicEnabled = true) => {
@@ -36,9 +41,7 @@ const buildTomorrowPreview = (manager: DailyBudgetManager, settings: DailyBudget
   dayStartUtcMs: TOMORROW_START_UTC_MS,
   timeZone: TZ,
   settings,
-  combinedPrices,
-  priceOptimizationEnabled: true,
-  planningCeiling: null,
+  ...INPUTS,
 });
 
 const nextDayEntries = (debugStructured: ReturnType<typeof vi.fn<StructuredDebugEmitter>>) => (
@@ -52,7 +55,7 @@ describe('daily budget next-day debug', () => {
     const { manager, debugStructured } = buildManager();
     const preview = buildTomorrowPreview(manager, SETTINGS);
 
-    manager.logNextDayPlan(preview, SETTINGS, combinedPrices, true, null);
+    manager.logNextDayPlan(preview, SETTINGS, INPUTS);
 
     const [entry, ...extra] = nextDayEntries(debugStructured);
     expect(extra).toHaveLength(0);
@@ -88,7 +91,7 @@ describe('daily budget next-day debug', () => {
     const { manager, debugStructured } = buildManager(topicEnabled);
     const preview = buildTomorrowPreview(manager, SETTINGS);
 
-    manager.logNextDayPlan(preview, settings, combinedPrices, true, null);
+    manager.logNextDayPlan(preview, settings, INPUTS);
 
     expect(debugStructured).not.toHaveBeenCalled();
   });

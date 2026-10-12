@@ -1,4 +1,6 @@
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
+import type { CombinedPriceData } from '../../lib/dailyBudget/dailyBudgetMath';
+import type { DailyBudgetPlanInputs } from '../../lib/dailyBudget/dailyBudgetManagerTypes';
 import type { ConfidenceDebug, DailyBudgetDayPayload, DailyBudgetState, DailyBudgetStatePersistReason } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
@@ -22,6 +24,13 @@ const nullSettingsStore = createDailyBudgetSettingsStore(
   }),
 );
 const NOW_MS = new Date('2025-03-15T12:00:00Z').getTime();
+
+// An update's read of the prices, with price optimization off and no ceiling.
+const planInputs = (combinedPrices: CombinedPriceData | null): DailyBudgetPlanInputs => ({
+  combinedPrices,
+  priceOptimizationEnabled: false,
+  planningCeiling: null,
+});
 
 function buildConfidenceDebug(overrides: Partial<ConfidenceDebug> = {}): ConfidenceDebug {
   return {
@@ -146,7 +155,7 @@ describe('DailyBudgetService', () => {
     service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
     service['buildYesterdayHistory'] = vi.fn(() => yesterday);
 
-    service['setDaySnapshot'](today, NOW_MS, null, true);
+    service['setDaySnapshot'](today, NOW_MS, planInputs(null), true);
 
     const snapshot = service.getSnapshot();
     expect(snapshot?.days['2025-03-15']?.state.confidence).toBe(0.72);
@@ -165,7 +174,7 @@ describe('DailyBudgetService', () => {
     service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
     service['buildYesterdayHistory'] = vi.fn(() => yesterday);
 
-    service['setDaySnapshot'](today, NOW_MS, null, true);
+    service['setDaySnapshot'](today, NOW_MS, planInputs(null), true);
     const cachedTomorrow = service.getSnapshot()?.days['2025-03-16'];
     const cachedYesterday = service.getSnapshot()?.days['2025-03-14'];
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
@@ -179,7 +188,7 @@ describe('DailyBudgetService', () => {
     });
 
     const refreshedToday = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.65 });
-    service['setDaySnapshot'](refreshedToday, NOW_MS, null);
+    service['setDaySnapshot'](refreshedToday, NOW_MS, planInputs(null));
 
     const snapshot = service.getSnapshot();
     expect(snapshot?.todayKey).toBe('2025-03-15');
@@ -199,14 +208,14 @@ describe('DailyBudgetService', () => {
     service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
     service['buildYesterdayHistory'] = vi.fn(() => yesterday);
 
-    service['setDaySnapshot'](today, NOW_MS, null, true);
+    service['setDaySnapshot'](today, NOW_MS, planInputs(null), true);
 
     const newToday = buildDayPayload({ dateKey: '2025-03-17', confidence: 0.5 });
     const newTomorrow = buildDayPayload({ dateKey: '2025-03-18', confidence: 0.5 });
     const newYesterday = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.5 });
     service['buildTomorrowPreview'] = vi.fn(() => newTomorrow);
     service['buildYesterdayHistory'] = vi.fn(() => newYesterday);
-    service['setDaySnapshot'](newToday, NOW_MS, null);
+    service['setDaySnapshot'](newToday, NOW_MS, planInputs(null));
 
     const snapshot = service.getSnapshot();
     expect(snapshot?.todayKey).toBe('2025-03-17');
@@ -264,13 +273,13 @@ describe('DailyBudgetService', () => {
     const noTomorrowBuilder = vi.fn(() => null);
     service['buildTomorrowPreview'] = noTomorrowBuilder;
     service['buildYesterdayHistory'] = vi.fn(() => null);
-    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
+    service['setDaySnapshot'](today, NOW_MS, planInputs(combinedPrices));
     expect(service.getSnapshot()?.tomorrowKey).toBe(null);
     expect(noTomorrowBuilder).toHaveBeenCalledTimes(1);
 
     // Subsequent hot-path updates with the same prices: no rebuild attempt.
-    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
-    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
+    service['setDaySnapshot'](today, NOW_MS, planInputs(combinedPrices));
+    service['setDaySnapshot'](today, NOW_MS, planInputs(combinedPrices));
     expect(noTomorrowBuilder).toHaveBeenCalledTimes(1);
 
     // Tomorrow prices arrive: a new entry appears.
@@ -285,13 +294,13 @@ describe('DailyBudgetService', () => {
     const tomorrowBuilder = vi.fn(() => tomorrow);
     service['buildTomorrowPreview'] = tomorrowBuilder;
 
-    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
+    service['setDaySnapshot'](today, NOW_MS, planInputs(combinedPrices));
     expect(tomorrowBuilder).toHaveBeenCalledTimes(1);
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
     expect(service.getSnapshot()?.days['2025-03-16']).toBeDefined();
 
     // Once seeded, further hot-path updates do not re-attempt the rebuild.
-    service['setDaySnapshot'](today, NOW_MS, combinedPrices);
+    service['setDaySnapshot'](today, NOW_MS, planInputs(combinedPrices));
     expect(tomorrowBuilder).toHaveBeenCalledTimes(1);
   });
 
@@ -310,7 +319,7 @@ describe('DailyBudgetService', () => {
     };
     service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
     service['buildYesterdayHistory'] = vi.fn(() => null);
-    service['setDaySnapshot'](today, NOW_MS, prices);
+    service['setDaySnapshot'](today, NOW_MS, planInputs(prices));
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
 
     const builderSpy = vi.spyOn(service as unknown as Record<'rebuildSnapshotWithAdjacentDays', (...args: never[]) => unknown>, 'rebuildSnapshotWithAdjacentDays');
@@ -319,7 +328,7 @@ describe('DailyBudgetService', () => {
       '2026-01-01T01:00:00Z',
       '2026-01-01T02:00:00Z',
     ]) {
-      service['setDaySnapshot'](today, NOW_MS, { ...prices, lastFetched });
+      service['setDaySnapshot'](today, NOW_MS, planInputs({ ...prices, lastFetched }));
     }
     expect(builderSpy).not.toHaveBeenCalled();
   });
@@ -1018,7 +1027,7 @@ describe('DailyBudgetService', () => {
     ];
     service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
     service['buildYesterdayHistory'] = vi.fn(() => null);
-    service['setDaySnapshot'](today, NOW_MS, { prices: baseEntries });
+    service['setDaySnapshot'](today, NOW_MS, planInputs({ prices: baseEntries }));
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
 
     const builderSpy = vi.spyOn(service as unknown as Record<'rebuildSnapshotWithAdjacentDays', (...args: never[]) => unknown>, 'rebuildSnapshotWithAdjacentDays');
@@ -1027,7 +1036,7 @@ describe('DailyBudgetService', () => {
       { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: true, isExpensive: false },
       { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: true },
     ];
-    service['setDaySnapshot'](today, NOW_MS, { prices: flippedEntries });
+    service['setDaySnapshot'](today, NOW_MS, planInputs({ prices: flippedEntries }));
     expect(builderSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -1046,7 +1055,7 @@ describe('DailyBudgetService', () => {
     ];
     service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
     service['buildYesterdayHistory'] = vi.fn(() => null);
-    service['setDaySnapshot'](today, NOW_MS, { prices: baseEntries });
+    service['setDaySnapshot'](today, NOW_MS, planInputs({ prices: baseEntries }));
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
 
     const builderSpy = vi.spyOn(service as unknown as Record<'rebuildSnapshotWithAdjacentDays', (...args: never[]) => unknown>, 'rebuildSnapshotWithAdjacentDays');
@@ -1055,7 +1064,7 @@ describe('DailyBudgetService', () => {
       { startsAt: '2025-03-15T00:00:00Z', total: 1.25, isCheap: false, isExpensive: false },
       { startsAt: '2025-03-16T00:00:00Z', total: 1.25, isCheap: false, isExpensive: false },
     ];
-    service['setDaySnapshot'](today, NOW_MS, { prices: shiftedTotals });
+    service['setDaySnapshot'](today, NOW_MS, planInputs({ prices: shiftedTotals }));
     expect(builderSpy).toHaveBeenCalledTimes(1);
   });
 

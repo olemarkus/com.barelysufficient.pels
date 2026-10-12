@@ -26,6 +26,7 @@ import type {
 import {
   type DailyBudgetUpdateParams,
   type DailyBudgetManagerDeps,
+  type DailyBudgetPlanInputs,
   type ExistingPlanState,
   type PlanResult,
   type RebuildPlanDebug,
@@ -544,22 +545,22 @@ export class DailyBudgetManager {
 
   /**
    * Writes tomorrow's preview to the `daily_budget` debug topic as the `next_day`
-   * plan entry. The service calls this from its adjacent-day rebuild, which runs
-   * when tomorrow's inputs move, so the entry follows those inputs rather than
-   * every rebuild of today's plan. The prices, price setting and ceiling are the
-   * ones `preview` was built on.
+   * plan entry. The service calls this when it rebuilds the adjacent days: on a
+   * forced update (settings, commands), or when the prices, the learned model,
+   * the closed-day history mark or the planning ceiling move, or the day rolls
+   * over. The entry therefore follows those rebuilds rather than every rebuild
+   * of today's plan, and can repeat unchanged when only today's side moved (a
+   * today-only price change, a closed-day mark). `inputs` are the ones `preview`
+   * was built on.
    */
-  logNextDayPlan(
-    preview: DailyBudgetDayPayload, settings: DailyBudgetSettings, combinedPrices: CombinedPriceData | null,
-    priceOptimizationEnabled: boolean, planningCeiling: PowerLimitCeiling | null,
-  ): void {
+  logNextDayPlan(preview: DailyBudgetDayPayload, settings: DailyBudgetSettings, inputs: DailyBudgetPlanInputs): void {
     if (!this.isEnabled(settings) || !(this.deps.isDebugTopicEnabled?.('daily_budget') ?? true)) return;
     logDailyBudgetPlanDebug({
       debugStructured: (payload) => this.emitDebug(payload),
       snapshot: preview,
-      priceData: buildNextDayPriceDebugData(preview, settings, combinedPrices, priceOptimizationEnabled),
-      priceOptimizationEnabled,
-      planningCeiling,
+      priceData: buildNextDayPriceDebugData(preview, settings, inputs),
+      priceOptimizationEnabled: inputs.priceOptimizationEnabled,
+      planningCeiling: inputs.planningCeiling,
       settings,
       state: this.state,
       defaultProfile: DEFAULT_PROFILE,

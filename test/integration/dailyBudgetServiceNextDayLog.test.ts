@@ -2,6 +2,8 @@ import type Homey from 'homey';
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { Logger, StructuredDebugEmitter } from '../../lib/logging/logger';
+import type { PowerTrackerState } from '../../lib/power/tracker';
+import { resolvePlanningPowerCeiling } from '../../lib/power/capacityModel';
 import { COMBINED_PRICES_VERSION, type CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   DAILY_BUDGET_ENABLED,
@@ -13,15 +15,21 @@ import { partialDouble } from '../helpers/partialDouble';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 // Tomorrow's plan goes to the `daily_budget` debug topic as the `next_day`
-// variant of `daily_budget_plan_debug`. It is written when tomorrow's inputs
-// move (prices, settings, the learned model, the day rolling over), not on
-// every rebuild of today's plan, and never for the Budget Adjust candidate.
+// variant of `daily_budget_plan_debug`. It is written when the service rebuilds
+// the adjacent days (tomorrow's inputs, the closed-day history mark or the
+// planning ceiling moving), not on every rebuild of today's plan. The Budget
+// Adjust candidate writes no debug entries at all.
 
 type AppHomey = Homey.App['homey'];
 type PlanDebugEntry = DailyBudgetDayPayload & {
   event: string;
   variant: string;
-  meta: { settings: { dailyBudgetKWh: number } };
+  meta: {
+    settings: { dailyBudgetKWh: number };
+    priceSpreadFactor: number | null;
+    priceOptimizationEnabled: boolean;
+    planningCeiling: unknown;
+  };
 };
 
 const TZ = 'Europe/Oslo';
@@ -31,6 +39,7 @@ const NOW_MS = Date.UTC(2025, 2, 15, 12, 0, 0);
 const TODAY_START_UTC_MS = Date.UTC(2025, 2, 14, 23, 0, 0);
 const TOMORROW_START_UTC_MS = Date.UTC(2025, 2, 15, 23, 0, 0);
 const TOMORROW_TOTALS = Array.from({ length: 24 }, (_, index) => 0.5 + (index % 6) * 0.3);
+const POWER_LIMITS = capacityOnlyPowerLimits(10, 2);
 
 const buildHours = (startMs: number, totals: number[]) => totals.map((total, index) => ({
   startsAt: new Date(startMs + index * HOUR_MS).toISOString(),
@@ -65,23 +74,28 @@ const buildHarness = () => {
     }),
   });
   const prices: { store: CombinedPricesV2 | null } = { store: buildPriceStore(false) };
+  const tracker: { state: PowerTrackerState } = { state: { buckets: {} } };
+  const readStore = vi.fn(() => prices.store);
+  const writeState = vi.fn();
+  const info = vi.fn();
+  const error = vi.fn();
   const debugStructured = vi.fn<StructuredDebugEmitter>();
   const service = new DailyBudgetService({
     getTimeZone: () => TZ,
     log: () => undefined,
     isDebugTopicEnabled: () => true,
-    getPowerTracker: () => ({ buckets: {} }),
+    getPowerTracker: () => tracker.state,
     getPriceOptimizationEnabled: () => true,
-    getCapacitySettings: () => capacityOnlyPowerLimits(10, 2),
-    combinedPricesReader: { readStore: () => prices.store },
+    getCapacitySettings: () => POWER_LIMITS,
+    combinedPricesReader: { readStore },
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
-    dailyBudgetStateStore: { read: () => null, write: vi.fn() },
-    structuredLog: partialDouble<Logger>({ info: vi.fn() as Logger['info'], error: vi.fn() as Logger['error'] }),
+    dailyBudgetStateStore: { read: () => null, write: writeState },
+    structuredLog: partialDouble<Logger>({ info: info as Logger['info'], error: error as Logger['error'] }),
     debugStructured,
   });
   service.loadSettings();
   service.loadState();
-  return { service, prices, debugStructured };
+  return { service, prices, tracker, readStore, writeState, info, error, debugStructured };
 };
 
 const planDebugEntries = (
@@ -124,6 +138,11 @@ describe('DailyBudgetService next-day plan log', () => {
     expect(entry?.buckets.price).toEqual(TOMORROW_TOTALS);
     const tomorrow = service.getSnapshot()?.days['2025-03-16'];
     expect(entry?.buckets.plannedKWh).toEqual(tomorrow?.buckets.plannedKWh);
+    // The price block and settings come from the same read as the preview.
+    expect(entry?.meta.priceOptimizationEnabled).toBe(true);
+    expect(entry?.meta.planningCeiling).not.toBeNull();
+    expect(entry?.meta.planningCeiling).toEqual(resolvePlanningPowerCeiling(POWER_LIMITS));
+    expect(entry?.meta.priceSpreadFactor).toBeGreaterThan(0);
 
     debugStructured.mockClear();
     service.updateState({ nowMs: NOW_MS + 30_000 });
@@ -158,18 +177,59 @@ describe('DailyBudgetService next-day plan log', () => {
     expect(entries[0]?.dateKey).toBe('2025-03-17');
   });
 
-  it('writes none for the Budget Adjust model preview', () => {
+  it('reads the prices once per update, for today, the adjacent days and the next-day entry', () => {
+    const { service, readStore, debugStructured } = buildHarness();
+
+    service.updateState({ nowMs: NOW_MS });
+
+    expect(planDebugEntries(debugStructured, 'next_day')).toHaveLength(1);
+    expect(readStore).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the update and its persistence when the next-day entry fails', () => {
+    const { service, writeState, error, debugStructured } = buildHarness();
+    service.updateState({ nowMs: TOMORROW_START_UTC_MS - 10_000 });
+    writeState.mockClear();
+    service['manager'].logNextDayPlan = () => {
+      throw new Error('debug write failed');
+    };
+
+    // The rollover rebuilds the adjacent days and carries a high-priority persist reason.
+    service.updateState({ nowMs: TOMORROW_START_UTC_MS + 10_000 });
+
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'daily_budget_next_day_plan_log_failed',
+      err: expect.objectContaining({ message: 'debug write failed' }),
+    }));
+    expect(error).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'daily_budget_state_update_failed' }));
+    expect(service.getSnapshot()?.todayKey).toBe('2025-03-16');
+    expect(writeState).toHaveBeenCalled();
+    expect(planDebugEntries(debugStructured, 'current').length).toBeGreaterThan(0);
+  });
+
+  it('writes no daily_budget debug entry for the Budget Adjust model preview', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW_MS);
-    const { service, prices, debugStructured } = buildHarness();
+    const { service, prices, tracker, info, debugStructured } = buildHarness();
     prices.store = buildPriceStore(true);
     service.updateState({ nowMs: NOW_MS });
     expect(planDebugEntries(debugStructured, 'next_day')).toHaveLength(1);
+    // Overrun the current hour so the live plan freezes: the candidate then also
+    // takes the recompute-a-frozen-plan path.
+    tracker.state = { buckets: { [new Date(NOW_MS).toISOString()]: 10 } };
+    service.updateState({ nowMs: NOW_MS + 10_000 });
+    expect(service.getSnapshot()?.days['2025-03-15']?.state.frozen).toBe(true);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'daily_budget_plan_frozen' }));
     debugStructured.mockClear();
+    info.mockClear();
 
+    vi.setSystemTime(NOW_MS + 20_000);
     const preview = service.previewModelSettings({ dailyBudgetKWh: 30, priceShapingEnabled: false });
 
+    expect(preview.candidate.todayKey).toBe('2025-03-15');
     expect(preview.candidate.tomorrowKey).toBe('2025-03-16');
-    expect(planDebugEntries(debugStructured, 'next_day')).toHaveLength(0);
+    expect(preview.candidate.days['2025-03-15']?.budget.dailyBudgetKWh).toBe(30);
+    expect(debugStructured).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalledWith(expect.objectContaining({ debugTopic: 'daily_budget' }));
   });
 });
