@@ -28,14 +28,8 @@ import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userda
 import { createRetainedPowerStore } from '../../lib/device/retainedPowerStore';
 import { vi } from 'vitest';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
-import type { TransportObservedStateDispatcher } from '../../lib/device/deviceTransport';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
-import type {
-  ObservedControlStateChangedEvent,
-  ObservedStateChangedEvent,
-  ObservedStateRefreshEvent,
-} from '../../lib/observer/observedStateEvents';
 import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import type { SnapshotRefreshOptions } from '../../lib/device/transport/transportTypes';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -43,6 +37,12 @@ import type { DeviceTransportParseProviders } from '../../lib/device/transport/m
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import { connectLiveFeed, settleLiveFeed } from './liveFeedSocketHarness';
+import type {
+  ObservedControlStateChangedEvent,
+  ObservedStateChangedEvent,
+  ObservedStateEmitterDispatcher,
+  ObservedStateRefreshEvent,
+} from '../../lib/ports/observedStateEvents';
 
 type TransportArgs = ConstructorParameters<typeof DeviceTransport>;
 
@@ -72,14 +72,12 @@ const resolveTestParseProviders = (providers: TestParseProviders | undefined): D
 /**
  * A fully-populated dispatcher of spies, for the specs that assert on the
  * dispatcher itself rather than on delivered events. Every member is present,
- * so adding one to `TransportObservedStateDispatcher` is a one-line edit here
- * instead of an edit in each spec that stubs it — which is how the mirror's
- * `externalTemperatureAdjusted` could stay optional while observer's side had
- * always been required.
+ * so adding one to `ObservedStateEmitterDispatcher` is a one-line edit here
+ * instead of an edit in each spec that stubs it.
  */
 export const createTestObservedStateDispatcher = (
-  overrides: Partial<TransportObservedStateDispatcher> = {},
-): TransportObservedStateDispatcher => ({
+  overrides: Partial<ObservedStateEmitterDispatcher> = {},
+): ObservedStateEmitterDispatcher => ({
   observedStateChanged: vi.fn(),
   observedStateRefresh: vi.fn(),
   observedControlStateChanged: vi.fn(),

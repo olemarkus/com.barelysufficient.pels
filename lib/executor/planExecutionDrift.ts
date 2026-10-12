@@ -1,8 +1,5 @@
 import type { DevicePlan } from '../plan/planTypes';
-import {
-  buildDriftObservedSnapshot,
-  type DriftCommandRead,
-} from './driftObservedDevice';
+import type { DriftCommandRead } from './driftObservedDevice';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
 import {
   hasBinaryCommand,
@@ -44,15 +41,12 @@ type DriftRuntimeState = {
 };
 type ExecutableSteppedLoadTransition = NonNullable<ExecutableSteppedLoadIntent['transition']>;
 
-export function hasPlanDeviceExecutionDrift(params: {
-  planDevice: PlanDevice;
-  observed: ExecutorDeviceRead;
-  command: DriftCommandRead;
-  externalOffHeld: boolean;
-}): boolean {
-  const {
-    planDevice, observed, command, externalOffHeld,
-  } = params;
+export function hasPlanDeviceExecutionDrift(
+  planDevice: PlanDevice,
+  observed: ExecutorDeviceRead,
+  command: DriftCommandRead,
+  externalOffHeld: boolean,
+): boolean {
   // "Leave off until turned on again": the device is off because the user turned
   // it off, and the producer only sets this bit while it is STILL observed off.
   // A plan built before the hold started still says `keep`, and converging that
@@ -68,42 +62,27 @@ export function hasPlanDeviceExecutionDrift(params: {
   // a posture rather than a reading, and this layer never asks why.
   if (externalOffHeld) return false;
   const intent = buildExecutableDeviceIntent(planDevice);
-  return hasExecutableDeviceExecutionDrift({
-    intent,
-    // The observation comes from the observer and the ladder from the intent —
-    // no plan decision passes through either. `buildDriftObservedSnapshot`
-    // resolves the rung, the on/off fold and the draw at this one seam, so the
-    // comparison below reads settled values.
-    observed: buildExecutableObservedDeviceState(
-      buildDriftObservedSnapshot(
-        observed,
-        hasSteppedCommand(intent) ? intent.steppedLoad.steppedLoadProfile : undefined,
-      ),
-    ),
-    runtime: buildDriftRuntimeState(planDevice, command),
-    // The planned current step is the plan device's producer-resolved effective
-    // step; drift compares it against the live observed step. It is read from the
-    // plan device (narrowed — a non-stepped plan device tracks no step), not
-    // from the (desired-only) executable intent.
-    plannedCurrentStepId: isSteppedLoadDevice(planDevice) ? planDevice.selectedStepId : undefined,
-  });
-}
-
-function hasExecutableDeviceExecutionDrift(params: {
-  intent: ExecutableDeviceIntent;
-  observed: ExecutableObservedDeviceState;
-  runtime: DriftRuntimeState;
-  plannedCurrentStepId: string | undefined;
-}): boolean {
+  // The observation comes from the observer and the ladder from the intent —
+  // no plan decision passes through either. The one observed-state producer
+  // resolves the rung, the on/off fold and the draw, so the comparison below
+  // reads settled values. A device the plan drives no step for is read without
+  // a rung.
+  const observedState = buildExecutableObservedDeviceState(
+    observed,
+    hasSteppedCommand(intent) ? intent.steppedLoad.steppedLoadProfile : undefined,
+  );
+  const runtime = buildDriftRuntimeState(planDevice, command);
+  // The planned current step is the plan device's producer-resolved effective
+  // step; drift compares it against the live observed step. It is read from the
+  // plan device (narrowed — a non-stepped plan device tracks no step), not
+  // from the (desired-only) executable intent.
+  const plannedCurrentStepId = isSteppedLoadDevice(planDevice) ? planDevice.selectedStepId : undefined;
   // Drift compares observer-reported state with planner-intended state.
   // Observer-reported state is authoritative here — even a stale observation
   // is what the device actually shows, and re-actuating against a drift is
   // idempotent, so we no longer gate drift on observation freshness.
-  const {
-    intent, observed, runtime, plannedCurrentStepId,
-  } = params;
-  if (hasExecutableBinaryExecutionDrift(intent, observed, runtime, plannedCurrentStepId)) return true;
-  return hasExecutableTargetExecutionDrift(intent, observed, runtime);
+  if (hasExecutableBinaryExecutionDrift(intent, observedState, runtime, plannedCurrentStepId)) return true;
+  return hasExecutableTargetExecutionDrift(intent, observedState, runtime);
 }
 
 // Drift no longer suppresses on observation staleness — observer-reported
@@ -182,11 +161,7 @@ function hasExecutableBinaryExecutionDrift(
   // executor primitives that have their own pending-command dampening, so drift here is the
   // empty case — re-emission cycle-over-cycle is the intended idempotent behaviour.
   const expectedBinaryState = resolveExpectedBinaryStateForIntent(intent);
-  return hasBinaryStateDrift({
-    expectedBinaryState,
-    observed,
-    pendingBinary: runtime.pendingBinary,
-  });
+  return hasBinaryStateDrift(expectedBinaryState, observed, runtime.pendingBinary);
 }
 
 function hasExecutableBinaryReleaseExecutionDrift(
@@ -215,18 +190,17 @@ function hasExecutableSteppedLoadExecutionDrift(
 ): boolean {
   if (isSteppedBinaryTransitionInFlight(intent, observed, runtime, plannedCurrentStepId)) return false;
   const expectedBinaryState = resolveExpectedBinaryStateForSteppedIntent(intent);
-  if (hasBinaryStateDrift({ expectedBinaryState, observed, pendingBinary: runtime.pendingBinary })) {
+  if (hasBinaryStateDrift(expectedBinaryState, observed, runtime.pendingBinary)) {
     return true;
   }
   return hasSteppedStepDrift(intent, observed, runtime, plannedCurrentStepId);
 }
 
-function hasBinaryStateDrift(params: {
-  expectedBinaryState: BinaryState | undefined;
-  observed: ExecutableObservedDeviceState;
-  pendingBinary: DriftPendingBinaryCommand;
-}): boolean {
-  const { expectedBinaryState, observed, pendingBinary } = params;
+function hasBinaryStateDrift(
+  expectedBinaryState: BinaryState | undefined,
+  observed: ExecutableObservedDeviceState,
+  pendingBinary: DriftPendingBinaryCommand,
+): boolean {
   if (!expectedBinaryState) return false;
   if (isPendingBinaryCommandMatchingExpected(pendingBinary, expectedBinaryState)) return false;
   const observedBinaryState: BinaryState = observed.observedEffectiveOn ? 'on' : 'off';

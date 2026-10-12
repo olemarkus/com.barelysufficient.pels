@@ -26,14 +26,7 @@
  * comparison without merging their meanings.
  */
 import type { StorageDecidedDevice, StorageReleaseIntent } from '../planContract/storageDecision';
-import { getCurrentDrawKw } from '../observer/observedPower';
-import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
-import {
-  getSteppedLoadLowestActiveStep,
-  getSteppedLoadStep,
-} from '../../packages/shared-domain/src/deviceControlProfiles';
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 /** In-flight command state, owned by this layer. */
 export type DriftCommandRead = {
@@ -68,46 +61,4 @@ export type DriftObservationDeps = {
    */
   hasStorageDrift: (device: StorageDecidedDevice) => boolean;
   hasStorageReleaseDrift: (intent: StorageReleaseIntent) => boolean;
-};
-
-/**
- * The device's effective rung.
- *
- * `reportedStepId ?? lowest active step` — the same rule the snapshot producer
- * applies (`lib/planInput/deviceControlProjection.ts`). It reads the
- * device's report and the configured ladder, and deliberately NOT the commanded
- * target step: what PELS asked for is not evidence of where the device is, and
- * treating it as such is how a command gets mistaken for its own confirmation.
- */
-export const resolveObservedSelectedStepId = (
-  profile: SteppedLoadProfile | undefined,
-  reportedStepId: string | undefined,
-): string | undefined => {
-  if (!profile) return undefined;
-  return getSteppedLoadStep(profile, reportedStepId)?.id
-    ?? getSteppedLoadLowestActiveStep(profile)?.id;
-};
-
-/**
- * The observed device state the drift comparison reads, assembled from the
- * observer's reading and the configured ladder.
- *
- * The on/off fold is NOT applied here. It is applied once, at the single seam
- * that builds `ExecutableObservedDeviceState`, which resolves both the raw axis
- * and the fold for every caller — so this hands over the raw ingredients (the
- * binary bag, the ladder, the resolved rung) and lets that seam answer both
- * questions the same way on every path.
- */
-export const buildDriftObservedSnapshot = (
-  observed: ExecutorDeviceRead,
-  profile: SteppedLoadProfile | undefined,
-) => {
-  const selectedStepId = resolveObservedSelectedStepId(profile, observed.reportedStepId);
-  return {
-    ...observed,
-    ...(profile !== undefined ? { steppedLoadProfile: profile } : {}),
-    ...(selectedStepId !== undefined ? { selectedStepId } : {}),
-    commandableNow: resolveCommandableNow(observed),
-    currentDrawKw: getCurrentDrawKw(observed),
-  };
 };

@@ -10,11 +10,6 @@
 import type { TargetPowerSteppedLoadPreset } from '../../../packages/contracts/src/types';
 import { getLogger } from '../../logging/logger';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import { recordCapabilityObservation } from './managerObservation';
-import {
-  observeNativeSteppedLoadCapabilityUpdate,
-  resolveObservedNativeSteppedLoadReportedStepId,
-} from '../managerNativeSteppedCommand';
 import {
   AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID,
   EASEE_CHARGER_CURRENT_CAPABILITY_ID,
@@ -29,22 +24,22 @@ import { resolveTargetPowerObservationProfile } from '../targetPowerObservationP
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { resolveTargetPowerPresetPhaseCount } from '../../../packages/shared-domain/src/targetPowerStepping';
 import {
+  dispatchRealtimeObservation,
   emitCapabilityEventReceived,
   hasMatchingRecentLocalWrite,
   normalizeRealtimeCapabilityEventValue,
+  recordRealtimeObservation,
 } from './realtimeCapabilityShared';
 import type { RealtimeIngestService } from './transportServices';
 
 const moduleLogger = getLogger('device/transport');
 
-function resolveNativeSteppedCapabilityUpdateKind(params: {
-    capabilityId: string;
-    value: unknown;
-    snapshot: TransportDeviceSnapshot;
-}): {
-    isNativePowerStepUpdate: boolean;
-} | null {
-    const { capabilityId, value, snapshot } = params;
+/** Whether this update is a native power step (true), a native binary report (false), or neither (null). */
+function resolveNativePowerStepUpdate(
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: unknown,
+): boolean | null {
     const isNativePowerStepUpdate = capabilityId === 'target_power'
         ? true
         : isNativeSteppedLoadControlCapabilityId({
@@ -55,26 +50,17 @@ function resolveNativeSteppedCapabilityUpdateKind(params: {
             },
         });
     const isNativeBinaryUpdate = capabilityId === snapshot.binaryCapabilityId && typeof value === 'boolean';
-    if (!isNativePowerStepUpdate && !isNativeBinaryUpdate) {
-        return null;
-    }
-    return {
-        isNativePowerStepUpdate,
-    };
+    if (!isNativePowerStepUpdate && !isNativeBinaryUpdate) return null;
+    return isNativePowerStepUpdate;
 }
 
-function emitNativeSteppedLoadReportedStepChanged(ingest: RealtimeIngestService, params: {
-    deviceId: string;
-    deviceName: string;
-    previousReportedStepId: string | undefined;
-    nextReportedStepId: string | undefined;
-}): void {
-    const {
-        deviceId,
-        deviceName,
-        previousReportedStepId,
-        nextReportedStepId,
-    } = params;
+function emitNativeSteppedLoadReportedStepChanged(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    previousReportedStepId: string | undefined,
+    nextReportedStepId: string | undefined,
+): void {
+    const { id: deviceId, name: deviceName } = snapshot;
     const change = {
         capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
         previousValue: previousReportedStepId ?? 'unknown',
@@ -86,7 +72,6 @@ function emitNativeSteppedLoadReportedStepChanged(ingest: RealtimeIngestService,
         PELS_MEASURE_STEP_CAPABILITY_ID,
         nextReportedStepId ?? 'unknown',
     );
-    const cursor = ingest.observationBridge.nextCursor(deviceId);
     moduleLogger.info({
         event: 'native_stepped_load_report_changed',
         deviceId,
@@ -96,12 +81,7 @@ function emitNativeSteppedLoadReportedStepChanged(ingest: RealtimeIngestService,
         reportedStepId: nextReportedStepId ?? null,
         changes: [change],
     });
-    ingest.observationBridge.dispatchStateChanged({
-        source: 'realtime_capability',
-        deviceId,
-        ...cursor,
-        capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-    });
+    const cursor = dispatchRealtimeObservation(ingest, deviceId, PELS_MEASURE_STEP_CAPABILITY_ID);
     ingest.observationBridge.dispatchControlStateChanged({
         deviceId,
         ...cursor,
@@ -111,29 +91,23 @@ function emitNativeSteppedLoadReportedStepChanged(ingest: RealtimeIngestService,
 }
 
 // Transport owns the held snapshot and updates it before dispatch through the observer bridge.
-/* eslint-disable functional/immutable-data */
-function applyNativeSteppedLoadSnapshotUpdate(ingest: RealtimeIngestService, params: {
-    snapshotIndex: number;
-    deviceId: string;
-    capabilityId: string;
-    nextReportedStepId: string | undefined;
-    isNativePowerStepUpdate: boolean;
-    reportedStepPowerW?: number;
-    reportedStepObservedAtMs?: number;
-}): void {
-    const {
-        snapshotIndex,
-        deviceId,
-        capabilityId,
-        nextReportedStepId,
-        isNativePowerStepUpdate,
-        reportedStepPowerW,
-        reportedStepObservedAtMs,
-    } = params;
-    const currentSnapshot = ingest.reader.snapshotStore.getSnapshot()[snapshotIndex];
-    // The index was resolved against this same snapshot array by the caller, so a miss
-    // cannot happen; there is nothing to update if it ever did.
-    if (currentSnapshot === undefined) return;
+/* eslint-disable functional/immutable-data, no-param-reassign */
+/**
+ * Apply a native step report to the held snapshot. A power-step report carries
+ * the exact watts it reported (`reportedStepPowerW`, absent when the report has
+ * no exact power) and is stamped observed now; a binary report only moves the
+ * reported step.
+ */
+function applyNativeSteppedLoadSnapshotUpdate(
+    ingest: RealtimeIngestService,
+    currentSnapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    nextReportedStepId: string | undefined,
+    isNativePowerStepUpdate: boolean,
+    reportedStepPowerW: number | undefined,
+): void {
+    const deviceId = currentSnapshot.id;
+    const reportedStepObservedAtMs = isNativePowerStepUpdate ? Date.now() : undefined;
     const previousReportedStepId = currentSnapshot.reportedStepId;
     const previousReportedStepPowerW = currentSnapshot.reportedStepPowerW;
     const previousReportedStepObservedAtMs = currentSnapshot.reportedStepObservedAtMs;
@@ -150,12 +124,7 @@ function applyNativeSteppedLoadSnapshotUpdate(ingest: RealtimeIngestService, par
     ingest.publishDeviceConfiguration(deviceId);
     const reportedStepChanged = previousReportedStepId !== nextReportedStepId;
     if (reportedStepChanged) {
-        emitNativeSteppedLoadReportedStepChanged(ingest, {
-            deviceId,
-            deviceName: currentSnapshot.name,
-            previousReportedStepId,
-            nextReportedStepId,
-        });
+        emitNativeSteppedLoadReportedStepChanged(ingest, currentSnapshot, previousReportedStepId, nextReportedStepId);
     }
     const exactPowerObservationChanged = isNativePowerStepUpdate && (
         previousReportedStepPowerW !== reportedStepPowerW
@@ -173,15 +142,10 @@ function applyNativeSteppedLoadSnapshotUpdate(ingest: RealtimeIngestService, par
     // step changed, emitNativeSteppedLoadReportedStepChanged already dispatched
     // the (freshness-inclusive) delta, so this guards against a double push.
     if (isNativePowerStepUpdate && !reportedStepChanged) {
-        ingest.observationBridge.dispatchStateChanged({
-            source: 'realtime_capability',
-            deviceId,
-            ...ingest.observationBridge.nextCursor(deviceId),
-            capabilityId,
-        });
+        dispatchRealtimeObservation(ingest, deviceId, capabilityId);
     }
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 /**
  * Watts per unit of a native EV step observation, for the preset's
@@ -209,31 +173,19 @@ function resolveNativeReportedStepPowerW(
     return Math.round(value * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
 }
 
-export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestService, params: {
-    snapshotIndex: number;
-    deviceId: string;
-    capabilityId: string;
-    value: unknown;
-    snapshot: TransportDeviceSnapshot;
-}): boolean {
-    const {
-        snapshotIndex,
-        deviceId,
-        capabilityId,
-        value,
-        snapshot,
-    } = params;
+export function handleNativeSteppedLoadCapabilityUpdate(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: unknown,
+): boolean {
+    const deviceId = snapshot.id;
     if (!isNativeSteppedLoadControlEnabled(snapshot)) return false;
     const profile = snapshot.steppedLoadProfile;
     if (!profile) return false;
 
-    const updateKind = resolveNativeSteppedCapabilityUpdateKind({
-        capabilityId,
-        value,
-        snapshot,
-    });
-    if (!updateKind) return false;
-    const { isNativePowerStepUpdate } = updateKind;
+    const isNativePowerStepUpdate = resolveNativePowerStepUpdate(snapshot, capabilityId, value);
+    if (isNativePowerStepUpdate === null) return false;
 
     // A malformed current is not an observation. Consume it before it can
     // replace the adapter's last-good step or advance device freshness.
@@ -254,24 +206,11 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
     if (reportedStepPowerW !== undefined) extendLadderWithExactTargetPower(snapshot, reportedStepPowerW);
 
     if (capabilityId === 'target_power' || capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID) {
-        recordCapabilityObservation({
-            state: ingest.observationBridge.state.getObservationState(),
-            latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
-            deviceId,
-            capabilityId,
-            value: normalizedValue,
-            source: 'realtime_capability',
-            countsTowardDeviceFreshness: true,
-        });
+        recordRealtimeObservation(ingest, deviceId, capabilityId, normalizedValue, true);
     }
 
-    observeNativeSteppedLoadCapabilityUpdate({
-        owner: ingest.reader.snapshotStore,
-        deviceId,
-        capabilityId,
-        value,
-        logger: ingest.reader.logger,
-    });
+    const adapters = ingest.reader.snapshotStore.nativeSteppedAdapters;
+    adapters.observeCapabilityUpdate(deviceId, capabilityId, value);
 
     const fallbackReportedStepId = value === false
         ? resolveNativeSteppedLoadReportedStepId({
@@ -282,21 +221,12 @@ export function handleNativeSteppedLoadCapabilityUpdate(ingest: RealtimeIngestSe
             },
         })
         : undefined;
-    const nextReportedStepId = resolveObservedNativeSteppedLoadReportedStepId({
-        owner: ingest.reader.snapshotStore,
-        deviceId,
-        profile: snapshot.steppedLoadProfile ?? profile,
-    }) ?? fallbackReportedStepId;
+    const nextReportedStepId = adapters.getReportedStepId(deviceId, snapshot.steppedLoadProfile ?? profile)
+        ?? fallbackReportedStepId;
 
-    applyNativeSteppedLoadSnapshotUpdate(ingest, {
-        snapshotIndex,
-        deviceId,
-        capabilityId,
-        nextReportedStepId,
-        isNativePowerStepUpdate,
-        reportedStepPowerW,
-        ...(isNativePowerStepUpdate ? { reportedStepObservedAtMs: Date.now() } : {}),
-    });
+    applyNativeSteppedLoadSnapshotUpdate(
+        ingest, snapshot, capabilityId, nextReportedStepId, isNativePowerStepUpdate, reportedStepPowerW,
+    );
     return isNativePowerStepUpdate;
 }
 
@@ -315,23 +245,15 @@ function shouldSuppressOwnNativeStepEcho(
         && hasMatchingRecentLocalWrite(ingest.observationBridge.state, deviceId, capabilityId, normalizedValue);
 }
 
-export function handleTargetPowerSourceCapabilityUpdate(ingest: RealtimeIngestService, params: {
-    snapshotIndex: number;
-    deviceId: string;
-    capabilityId: string;
-    value: unknown;
+export function handleTargetPowerSourceCapabilityUpdate(
+    ingest: RealtimeIngestService,
     // Owner seam reading the transport's own snapshot: `TransportDeviceSnapshot`
     // carries `targetPowerConfig` / `steppedLoadProfile` via the descriptor probe
     // (omitted from the base `TargetDeviceSnapshot`).
-    snapshot: TransportDeviceSnapshot;
-}): boolean {
-    const {
-        snapshotIndex,
-        deviceId,
-        capabilityId,
-        value,
-        snapshot,
-    } = params;
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: unknown,
+): boolean {
     if (capabilityId !== AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID) return false;
     if (isNativeSteppedLoadControlEnabled(snapshot)
         && snapshot.capabilities?.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID)) return true;
@@ -348,24 +270,8 @@ export function handleTargetPowerSourceCapabilityUpdate(ingest: RealtimeIngestSe
             target_power: { value: targetPowerW },
         },
     });
-    recordCapabilityObservation({
-        state: ingest.observationBridge.state.getObservationState(),
-        latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
-        deviceId,
-        capabilityId,
-        value,
-        source: 'realtime_capability',
-        countsTowardDeviceFreshness: true,
-    });
-    applyNativeSteppedLoadSnapshotUpdate(ingest, {
-        snapshotIndex,
-        deviceId,
-        capabilityId,
-        nextReportedStepId,
-        isNativePowerStepUpdate: true,
-        reportedStepPowerW: targetPowerW,
-        reportedStepObservedAtMs: Date.now(),
-    });
+    recordRealtimeObservation(ingest, snapshot.id, capabilityId, value, true);
+    applyNativeSteppedLoadSnapshotUpdate(ingest, snapshot, capabilityId, nextReportedStepId, true, targetPowerW);
     return true;
 }
 

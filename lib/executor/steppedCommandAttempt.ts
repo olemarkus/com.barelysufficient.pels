@@ -1,6 +1,6 @@
 import type { SteppedLoadCommandStatus, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
-import type { ExecutableSteppedLoadRestoreAttempt } from './executablePlan';
+import type { ExecutableSteppedCommandAttempt } from './executablePlan';
 
 /**
  * Is one of THIS layer's own step commands still outstanding for the requested
@@ -36,7 +36,7 @@ export const resolveSteppedCommandAttempt = (params: {
   stepCommandStatus: SteppedLoadCommandStatus | undefined;
   nextStepCommandRetryAtMs: number | undefined;
   nowMs: number;
-}): ExecutableSteppedLoadRestoreAttempt => {
+}): ExecutableSteppedCommandAttempt => {
   const {
     requestedStepId,
     lastDesiredStepId,

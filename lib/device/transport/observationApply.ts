@@ -90,11 +90,7 @@ function applyEvChargingStateObservation(
     snapshot.evChargingState = normalized;
     // Unconditional: the plug-state contract gate drops a device that reports a
     // non-enum value, so a normalised state is always known here.
-    updateStateOfChargeSessionBoundary({
-        snapshot,
-        evChargingState: normalized,
-        observedAtMs: observation.observedAt,
-    });
+    updateStateOfChargeSessionBoundary(snapshot, normalized, observation.observedAt);
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;
@@ -123,12 +119,9 @@ function applyStateOfChargeObservation(
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
-    const changed = updateStateOfChargeFromRealtimeCapability({
-        snapshot,
-        capabilityId,
-        value: observation.value,
-        observedAtMs: observation.observedAt,
-    });
+    const changed = updateStateOfChargeFromRealtimeCapability(
+        snapshot, capabilityId, observation.value, observation.observedAt,
+    );
     if (!changed) return false;
     return true;
 }

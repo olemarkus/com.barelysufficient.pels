@@ -19,18 +19,12 @@ import type {
   ExecutableReleaseIntent,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
-import {
-  runBinaryControl,
-  skipRestoreForExternalOffHold,
-  type PlanExecutorBinaryContext,
-} from './binaryControlShared';
+import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
+import type { ExecutorCommandContext } from './executorCommandContext';
 import {
   applyBinaryRestoreWithSnapshot,
   canApplyRestoreSnapshot,
 } from './binaryRestoreHelpers';
-
-// Re-exported so existing importers keep resolving the context type from binaryExecutor.
-export type { PlanExecutorBinaryContext };
 
 const logger = getLogger('executor/binary');
 /**
@@ -43,33 +37,19 @@ const logger = getLogger('executor/binary');
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const applyBinaryRestore = async (
-  ctx: PlanExecutorBinaryContext,
+  ctx: ExecutorCommandContext,
   intent: ExecutableBinaryIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   if (!intent || !intent.desiredOn || intent.source !== 'controlled') return false;
   const snapshot = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
-  if (!snapshot) {
-    canApplyRestoreSnapshot(ctx, {
-      snapshot,
-      deviceId: intent.deviceId,
-      name: intent.name,
-      logContext: 'capacity',
-    });
-    return false;
-  }
-  if (isBinaryOnOrUnknown(snapshot)) return false;
-  if (!canApplyRestoreSnapshot(ctx, {
-    snapshot,
-    deviceId: intent.deviceId,
-    name: intent.name,
-    logContext: 'capacity',
-  })) return false;
+  if (snapshot && isBinaryOnOrUnknown(snapshot)) return false;
+  if (!canApplyRestoreSnapshot(ctx, snapshot, intent.deviceId, intent.name, 'capacity') || !snapshot) return false;
   return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot);
 };
 
 export const applyUncontrolledBinaryRestore = async (
-  ctx: PlanExecutorBinaryContext,
+  ctx: ExecutorCommandContext,
   intent: ExecutableBinaryIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
@@ -79,22 +59,10 @@ export const applyUncontrolledBinaryRestore = async (
   // never started here.
   if (!ctx.state.shedDecisions.standingShedIds.has(intent.deviceId)) return false;
   const entry = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
-  if (!entry) {
-    canApplyRestoreSnapshot(ctx, {
-      snapshot: entry,
-      deviceId: intent.deviceId,
-      name: intent.name,
-      logContext: 'capacity_control_off',
-    });
+  if (entry && isBinaryOnOrUnknown(entry)) return false;
+  if (!canApplyRestoreSnapshot(ctx, entry, intent.deviceId, intent.name, 'capacity_control_off') || !entry) {
     return false;
   }
-  if (isBinaryOnOrUnknown(entry)) return false;
-  if (!canApplyRestoreSnapshot(ctx, {
-    snapshot: entry,
-    deviceId: intent.deviceId,
-    name: intent.name,
-    logContext: 'capacity_control_off',
-  })) return false;
   // "Leave off until turned on again" holds here too: losing control authority
   // is not consent to undo the owner's own off action.
   if (skipRestoreForExternalOffHold(ctx, intent.deviceId, intent.name)) return false;
@@ -118,75 +86,52 @@ export const applyUncontrolledBinaryRestore = async (
   }
 };
 
+/**
+ * A capacity shed: turn the device off unless it is unreachable, already off,
+ * or already being shed (`shouldSkipShedding`), tracked as a pending shed while
+ * the write is in flight. Capacity dry run suppresses it.
+ */
 export const applyBinarySheddingToDevice = async (
-  ctx: PlanExecutorBinaryContext,
-  params: {
-    deviceId: string;
-    deviceName: string;
-    reason?: string;
-    skipPrecheck?: boolean;
-    trackPendingShed?: boolean;
-    // Set by the smart-task lifecycle-end disable path. Routes recording through the
-    // diagnostic-only recorder (no capacity cooldown markers) and, by default, bypasses
-    // the capacity precheck (shouldSkipShedding) and the pendingSheds bookkeeping:
-    // skipPrecheck / trackPendingShed default from this flag, so lifecycle callers pass
-    // only `lifecycleRelease: true`. An explicit skipPrecheck / trackPendingShed still wins.
-    lifecycleRelease?: boolean;
-    /** Trusted observer projection for lifecycle-owned dispatch. */
-    snapshotOverride?: ExecutorDeviceSnapshot;
-    /** Bypass observation idempotency after an accepted opposing claim releases. */
-    forceAgainstReleasedOpposing?: boolean;
-  },
+  ctx: ExecutorCommandContext,
+  deviceId: string,
+  deviceName: string,
 ): Promise<boolean> => {
-  const {
-    deviceId,
-    deviceName,
-    reason,
-    lifecycleRelease,
-    snapshotOverride,
-    forceAgainstReleasedOpposing,
-  } = params;
-  // A lifecycle disable is off the capacity path: skip the capacity precheck and don't
-  // track it as a pending capacity shed, unless the caller explicitly overrides.
-  const skipPrecheck = params.skipPrecheck ?? Boolean(lifecycleRelease);
-  const trackPendingShed = params.trackPendingShed ?? !lifecycleRelease;
-  if (ctx.capacityDryRun && !lifecycleRelease) return false;
-  const snapshotState = snapshotOverride ?? ctx.readDevice(deviceId);
-  if (!skipPrecheck && shouldSkipShedding({
-    state: ctx.state,
-    deviceId,
-    deviceName,
-    snapshotState,
-  })) {
-    return false;
-  }
-  if (!trackPendingShed) {
-    return turnOffDevice(ctx, {
-      deviceId,
-      name: deviceName,
-      reason,
-      snapshot: snapshotState,
-      lifecycleRelease,
-      forceAgainstReleasedOpposing,
-    });
-  }
+  if (ctx.getCapacityDryRun()) return false;
+  const snapshot = ctx.readDevice(deviceId);
+  if (shouldSkipShedding(ctx.state.actuation, deviceId, deviceName, snapshot)) return false;
   ctx.state.actuation.beginShed(deviceId);
   try {
-    return await turnOffDevice(ctx, {
-      deviceId,
-      name: deviceName,
-      reason,
-      snapshot: snapshotState,
-      lifecycleRelease,
-      forceAgainstReleasedOpposing,
-    });
+    return await turnOffDevice(ctx, deviceId, deviceName, snapshot, false, false);
   } finally {
     ctx.state.actuation.endShed(deviceId);
   }
 };
 
+/**
+ * A smart task's lifecycle-end disable. It is off the capacity path, so it
+ * skips the capacity precheck, the pending-shed bookkeeping and the dry-run
+ * fence, and records through the diagnostic-only recorder — for both the
+ * direct write here and any deferred flow-backed confirmation in
+ * `handleConfirmedBinaryCommand`. `snapshot` is the trusted observer projection
+ * when the caller holds one; otherwise the device is read now.
+ */
+export const applyBinaryLifecycleRelease = async (
+  ctx: ExecutorCommandContext,
+  deviceId: string,
+  deviceName: string,
+  snapshot: ExecutorDeviceSnapshot | undefined,
+  forceAgainstReleasedOpposing: boolean,
+): Promise<boolean> => turnOffDevice(
+  ctx,
+  deviceId,
+  deviceName,
+  snapshot ?? ctx.readDevice(deviceId),
+  true,
+  forceAgainstReleasedOpposing,
+);
+
 export const applyDeferredBinaryCommand = async (
-  ctx: PlanExecutorBinaryContext,
+  ctx: ExecutorCommandContext,
   intent: ExecutableReleaseIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
   options: {
@@ -208,18 +153,18 @@ export const applyDeferredBinaryCommand = async (
     // A released binary device is just onoff=false; release only one that is
     // currently on. `binaryControl.on` is the consolidated binary truth.
     // Lifecycle-end release (smart task satisfied/idle), not a capacity shed:
-    // lifecycleRelease routes through the diagnostic-only recorder and (by
-    // default) bypasses the capacity precheck / pendingSheds path so it does not
-    // stamp the cooldown markers. The binary-on check is the trusted-evidence
-    // gate, mirroring applyShedReleaseBinaryOff's gate.
+    // it routes through the diagnostic-only recorder and bypasses the capacity
+    // precheck / pendingSheds path so it does not stamp the cooldown markers.
+    // The binary-on check is the trusted-evidence gate, mirroring
+    // applyShedReleaseBinaryOff's gate.
     if (options.forceAgainstReleasedOpposing !== true && isBinaryObservedOff(snapshot)) return false;
-    return applyBinarySheddingToDevice(ctx, {
-      deviceId: intent.deviceId,
-      deviceName: intent.name,
-      lifecycleRelease: true,
-      snapshotOverride: snapshot,
-      forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing === true,
-    });
+    return applyBinaryLifecycleRelease(
+      ctx,
+      intent.deviceId,
+      intent.name,
+      snapshot,
+      options.forceAgainstReleasedOpposing === true,
+    );
   }
 
   // Restore only an off device — i.e. released. Reads the binary truth
@@ -228,38 +173,21 @@ export const applyDeferredBinaryCommand = async (
   // through `canTurnOnDevice` and logs the skip, so a second silent copy of it
   // only added a way for the two to disagree.
   if (isBinaryOnOrUnknown(snapshot)) return false;
-  if (!canApplyRestoreSnapshot(ctx, {
-    snapshot,
-    deviceId: intent.deviceId,
-    name: intent.name,
-    logContext: 'capacity',
-  })) return false;
+  if (!canApplyRestoreSnapshot(ctx, snapshot, intent.deviceId, intent.name, 'capacity')) return false;
   return applyBinaryRestoreWithSnapshot(ctx, intent.deviceId, intent.name, snapshot);
 };
 
 const turnOffDevice = async (
-  ctx: PlanExecutorBinaryContext,
-  params: {
-    deviceId: string;
-    name: string;
-    reason?: string;
-    snapshot?: ExecutorDeviceSnapshot;
-    lifecycleRelease?: boolean;
-    forceAgainstReleasedOpposing?: boolean;
-  },
+  ctx: ExecutorCommandContext,
+  deviceId: string,
+  name: string,
+  snapshot: ExecutorDeviceSnapshot | undefined,
+  lifecycleRelease: boolean,
+  forceAgainstReleasedOpposing: boolean,
 ): Promise<boolean> => {
-  const {
-    deviceId,
-    name,
-    reason,
-    snapshot,
-    lifecycleRelease,
-    forceAgainstReleasedOpposing,
-  } = params;
-  const snapshotEntry = snapshot ?? ctx.readDevice(deviceId);
-  const controlPlan = getBinaryControlPlan(snapshotEntry);
+  const controlPlan = getBinaryControlPlan(snapshot);
   if (!controlPlan) {
-    const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;
+    const hasTarget = Array.isArray(snapshot?.targets) && snapshot.targets.length > 0;
     if (shedActuationStampsCapacityMarkers(lifecycleRelease)) {
       const now = Date.now();
       ctx.state.actuation.markShed(deviceId, now);
@@ -285,9 +213,8 @@ const turnOffDevice = async (
       deviceId,
       name,
       desired: false,
-      snapshot: snapshotEntry,
+      snapshot,
       logContext: 'capacity',
-      reason,
       lifecycleRelease,
       forceAgainstReleasedOpposing,
     });

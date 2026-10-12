@@ -96,7 +96,7 @@ Executor boundary:
 
 - Planner decisions are projected into `ExecutablePlan` intent. Only the planning/admission step
   needs observed current state and desired future state together. Execution reads current state from
-  `ExecutableObservedState`, not from planner output carried into execution.
+  `ExecutableObservedDeviceState`, not from planner output carried into execution.
 - `lib/plan` owns desired state, planner reasons, and admission decisions. A finalized plan should
   say what state PELS wants for each device; it should not encode whether the command is native,
   flow-backed, or otherwise transported.
@@ -112,8 +112,9 @@ Executor boundary:
 - Executable intents should be commandable, not partially inferred planner snapshots. For example,
   a stepped `set_step` intent should carry a concrete requested step or be represented as
   non-executable / blocked before it reaches drift or dispatch code.
-- `ExecutableObservedState` is the executor-facing observed-state set. It is built from accepted
-  Observer records joined with device configuration, not planner-carried current fields.
+- `ExecutableObservedDeviceState` is the executor-facing observed state, one per device. One builder
+  (`buildExecutableObservedDeviceState`) makes it from accepted Observer records joined with device
+  configuration, not planner-carried current fields.
 - Executor dispatch reconciles `ExecutableDeviceIntent` with `ExecutableObservedDeviceState`.
   Re-reading observer state after awaited work is valid; carrying old current fields forward in
   executable intent is not.

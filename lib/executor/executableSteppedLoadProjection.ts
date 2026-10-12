@@ -25,11 +25,12 @@ import type {
   ExecutableObservedDeviceState,
   ExecutableShedTarget,
   ExecutableObservedSteppedLoadState,
-  ExecutableSteppedLoadCurrentFallback,
   ExecutableSteppedLoadCommandSession,
   ExecutableSteppedLoadCurrentState,
+  ExecutableSteppedLoadDesiredState,
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
+  ExecutableSteppedLoadState,
 } from './executablePlan';
 import {
   getSteppedLoadLowestActiveStep,
@@ -56,19 +57,15 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
   };
   const plannedStepId = resolveSteppedKeepDesiredStepId(dev);
   const plannedTransition = resolveSteppedLoadTransition(dev, plannedStepId);
-  const { desired, desiredOn } = resolveDesiredState({
-    dev,
-    current: planningCurrent,
-    plannedStepId,
-    plannedTransition,
-  });
+  const desiredStepId = resolveDesiredStepId(dev, planningCurrent, plannedStepId, plannedTransition);
+  const desired = { stepId: desiredStepId, plannedStepId };
+  const desiredOn = resolveDesiredOn(dev, planningCurrent, plannedTransition, desiredStepId);
   if (isUnderspecifiedSetStepShedIntent(dev, desired)) return undefined;
   const transition = desiredMatchesTransition(desired, desiredOn, plannedTransition)
     ? plannedTransition
     : null;
-  // One resolution, two consumers. These were two byte-identical calls into the
-  // planner; the restore lane and the command lane ask the same question of the
-  // same step, so they get the same answer rather than computing it twice.
+  // One resolution, two consumers: the restore lane and the command lane ask
+  // the same question of the same step, so they read the same answer.
   const matchingCommandAttempt = resolveSteppedCommandAttempt({
     requestedStepId: desired.stepId,
     lastDesiredStepId: dev.lastDesiredStepId,
@@ -78,7 +75,6 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
     nowMs: Date.now(),
   });
-  const matchingRestoreAttempt = matchingCommandAttempt;
   const intent: ExecutableSteppedLoadIntent = {
     id: dev.id,
     name: dev.name,
@@ -94,7 +90,6 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     ...(desiredOn !== null ? { desiredOn } : {}),
     previousStepId: dev.selectedStepId,
     transition,
-    matchingRestoreAttempt,
     matchingCommandAttempt,
     stepCommandRetryCount: dev.stepCommandRetryCount ?? 0,
     nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
@@ -116,7 +111,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
  */
 export function resolveSteppedLoadCurrentFallback(
   dev: PlanDevice,
-): ExecutableSteppedLoadCurrentFallback | undefined {
+): ExecutableSteppedLoadState | undefined {
   if (!isSteppedLoadDevice(dev)) return undefined;
   return {
     on: resolvePlanDeviceObservedOn(dev),
@@ -127,8 +122,8 @@ export function resolveSteppedLoadCurrentFallback(
 export function buildExecutableSteppedLoadDevice(
   intent: ExecutableSteppedLoadIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
-  currentFallback?: ExecutableSteppedLoadCurrentFallback,
-  commandSession?: ExecutableSteppedLoadCommandSession,
+  currentFallback: ExecutableSteppedLoadState | undefined,
+  commandSession: ExecutableSteppedLoadCommandSession,
 ): ExecutableSteppedLoadDevice | null {
   if (!intent) return null;
   const resolvedObserved = withCommandSessionReportedStep(observed, commandSession);
@@ -138,7 +133,7 @@ export function buildExecutableSteppedLoadDevice(
   const desired = initializesUnknownStep
     ? { ...intent.desired, stepId: initializationStepId }
     : intent.desired;
-  const transition: ExecutableSteppedLoadDevice['transition'] = initializesUnknownStep
+  const transition: ExecutableSteppedLoadIntent['transition'] = initializesUnknownStep
     ? {
       effectiveTransition: 'initialize_unknown_step_at_low',
       stepPreparationPurpose: 'initialize_unknown_step',
@@ -164,29 +159,26 @@ export function buildExecutableSteppedLoadDevice(
       confirmedCommandStepId,
     ),
   });
-  // Same inputs, same resolution — the two fields exist for their distinct
-  // consumers (restore gating vs command dispatch), not distinct semantics.
-  const commandStepActuation = stepActuation;
   const desiredIsNonOff = desired.stepId
     && !isSteppedLoadOffStep(intent.steppedLoadProfile, desired.stepId);
   return {
-    ...intent,
+    intent: {
+      ...intent,
+      desired,
+      transition,
+      previousStepId: current.stepId ?? intent.previousStepId,
+    },
     current,
-    desired,
-    transition,
-    previousStepId: current.stepId ?? intent.previousStepId,
     stepActuation,
-    commandStepActuation,
     stepNeedsAdjustment: Boolean(desiredIsNonOff && stepActuation.materialization.kind !== 'materialized'),
-    initializationStepId,
   };
 }
 
 const withCommandSessionReportedStep = (
   observed: ExecutableObservedDeviceState | undefined,
-  commandSession: ExecutableSteppedLoadCommandSession | undefined,
+  commandSession: ExecutableSteppedLoadCommandSession,
 ): ExecutableObservedDeviceState | undefined => {
-  const reportedStepId = commandSession?.reportedStepId;
+  const reportedStepId = commandSession.reportedStepId;
   if (!observed || !reportedStepId) return observed;
   if (observed.steppedLoad?.reportedStepId !== undefined) return observed;
   return {
@@ -207,15 +199,15 @@ const withCommandSessionReportedStep = (
 const resolveInitializationStepId = (
   intent: ExecutableSteppedLoadIntent,
   observed: ExecutableObservedDeviceState | undefined,
-  commandSession: ExecutableSteppedLoadCommandSession | undefined,
+  commandSession: ExecutableSteppedLoadCommandSession,
 ): string | undefined => {
   // Initialization is a KEEP-side concern: a shed already has a decided
   // destination (`plannedShedTarget`), so there is no unknown step to seed.
   if (intent.plannedShedTarget !== undefined) return undefined;
   if (!isBinaryControlled(observed) || !getBinaryOn(observed)) return undefined;
   if (observed.steppedLoad?.reportedStepId !== undefined) return undefined;
-  if (commandSession?.reportedStepId !== undefined) return undefined;
-  if (!commandSession || commandSession.hasPriorStepCommand) return undefined;
+  if (commandSession.reportedStepId !== undefined) return undefined;
+  if (commandSession.hasPriorStepCommand) return undefined;
   const lowestActiveStep = getSteppedLoadLowestActiveStep(intent.steppedLoadProfile);
   const desiredStep = intent.desired.stepId
     ? getSteppedLoadStep(intent.steppedLoadProfile, intent.desired.stepId)
@@ -229,7 +221,7 @@ const resolveInitializationStepId = (
 const buildCurrentState = (
   intent: ExecutableSteppedLoadIntent,
   observedDevice: ExecutableObservedDeviceState | undefined,
-  currentFallback: ExecutableSteppedLoadCurrentFallback | undefined,
+  currentFallback: ExecutableSteppedLoadState | undefined,
 ): ExecutableSteppedLoadCurrentState => {
   const observed = observedDevice?.steppedLoad;
   // Current state is producer-resolved: from the observation when present, else
@@ -284,48 +276,18 @@ const toExecutableShedTarget = (
 // the executor cannot converge on.
 const isUnderspecifiedSetStepShedIntent = (
   dev: PlanDevice,
-  desired: ExecutableSteppedLoadDevice['desired'],
+  desired: ExecutableSteppedLoadDesiredState,
 ): boolean => (
   dev.plannedShedTargetKind === 'step'
   && desired.stepId === undefined
 );
 
-const resolveDesiredState = (params: {
-  dev: PlanDevice;
-  current: ExecutableSteppedLoadDevice['current'];
-  plannedStepId?: string;
-  plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>;
-}): { desired: ExecutableSteppedLoadDevice['desired']; desiredOn: boolean | null } => {
-  const {
-    dev,
-    current,
-    plannedStepId,
-    plannedTransition,
-  } = params;
-  const desiredStepId = resolveDesiredStepId({
-    dev,
-    current,
-    plannedStepId,
-    plannedTransition,
-  });
-  return {
-    desired: { stepId: desiredStepId, plannedStepId },
-    desiredOn: resolveDesiredOn({ dev, current, plannedTransition, desiredStepId }),
-  };
-};
-
-const resolveDesiredStepId = (params: {
-  dev: PlanDevice;
-  current: ExecutableSteppedLoadDevice['current'];
-  plannedStepId?: string;
-  plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>;
-}): string | undefined => {
-  const {
-    dev,
-    current,
-    plannedStepId,
-    plannedTransition,
-  } = params;
+const resolveDesiredStepId = (
+  dev: PlanDevice,
+  current: ExecutableSteppedLoadCurrentState,
+  plannedStepId: string | undefined,
+  plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>,
+): string | undefined => {
   const desiredStepId = plannedTransition?.commandStepId ?? plannedStepId;
   if (dev.plannedState !== 'shed' || !desiredStepId || !isSteppedLoadDevice(dev)) return desiredStepId;
 
@@ -336,7 +298,7 @@ const resolveDesiredStepId = (params: {
 };
 
 const desiredMatchesTransition = (
-  desired: ExecutableSteppedLoadDevice['desired'],
+  desired: ExecutableSteppedLoadDesiredState,
   desiredOn: boolean | null,
   transition: ReturnType<typeof resolveSteppedLoadTransition>,
 ): boolean => {
@@ -345,15 +307,12 @@ const desiredMatchesTransition = (
   return transition.binaryTarget === null || desiredOn === transition.binaryTarget;
 };
 
-const resolveDesiredOn = (params: {
-  dev: PlanDevice;
-  current: ExecutableSteppedLoadDevice['current'];
-  plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>;
-  desiredStepId: string | undefined;
-}): boolean | null => {
-  const {
-    dev, current, plannedTransition, desiredStepId,
-  } = params;
+const resolveDesiredOn = (
+  dev: PlanDevice,
+  current: ExecutableSteppedLoadCurrentState,
+  plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>,
+  desiredStepId: string | undefined,
+): boolean | null => {
   if (plannedTransition?.binaryTarget !== null && plannedTransition?.binaryTarget !== undefined) {
     return plannedTransition.binaryTarget;
   }
@@ -409,7 +368,7 @@ const shouldHoldCurrentState = (dev: PlanDevice): boolean => (
 
 const resolveCurrentStepForShed = (
   dev: PlanDevice,
-): ExecutableSteppedLoadDevice['current']['stepForShed'] => {
+): ExecutableSteppedLoadCurrentState['stepForShed'] => {
   if (!isSteppedLoadDevice(dev)) return undefined;
   // A `selectedStepId` outside the (possibly capped) planner profile is a real
   // domain state, not a presence gap — no measured-draw fallback lane exists

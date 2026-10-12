@@ -24,7 +24,7 @@ const buildTransport = (
 ) => {
   const state = createPlanEngineState();
   const transport: BinaryControlTransport = {
-    getObservedBinaryControl: () => undefined,
+    getObservedState: () => undefined,
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     actuator: createDeviceActuator({
       requestBinaryControl,
@@ -34,6 +34,7 @@ const buildTransport = (
       requestSteppedLoadStep: vi.fn(async () => ({ requested: false as const })),
       ...noStorageTransport,
     }),
+    isAuthorityCurrent: () => true,
   };
   return { requestBinaryControl, state, transport };
 };
@@ -237,9 +238,10 @@ describe('binary command dispatch', () => {
       ...noStorageTransport,
     });
     const transport: BinaryControlTransport = {
-      getObservedBinaryControl: () => undefined,
+      getObservedState: () => undefined,
       pendingBinaryCommandStore: store,
       actuator,
+      isAuthorityCurrent: () => true,
     };
 
     await expect(dispatchBinaryControlDecision({
@@ -373,11 +375,11 @@ describe('binary command dispatch', () => {
       });
     }));
     transport.pendingBinaryCommandStore = store;
+    transport.isAuthorityCurrent = () => false;
 
     await expect(dispatchBinaryControlDecision({
       decision: { deviceId: 'flow-load', name: 'Flow load', desired: true, logContext: 'capacity' },
       transport,
-      isAuthorityCurrent: () => false,
     })).resolves.toEqual({ ok: false, reason: 'not_requested' });
 
     expect(confirmed).not.toHaveBeenCalled();

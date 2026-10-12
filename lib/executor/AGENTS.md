@@ -5,7 +5,7 @@
 ## Decision boundary
 
 - The plan's `plannedShedTargetKind` names the selected end state (`binary_off`, `step`, or `target_value`). A configured `turn_off` behavior is only the deepest floor the planner may choose; the current plan may leave a stepped device running at an intermediate rung. Binary shed dispatch consumes the selected end state and must not re-read shed policy.
-- Legacy release paths in `shedReleaseActuation.ts` and `lifecycleFallbackDispatcher.ts` still read `getShedBehavior`. They are migration debt, not a pattern for new sites. Do not add another policy read; remove these through the planner/executor seam work when that work is in scope.
+- The legacy `shed_release` path in `shedReleaseActuation.ts` (`applyShedReleaseIntent`) still reads `getShedBehavior`. It is migration debt, not a pattern for new sites. Do not add another policy read; remove it through the planner/executor seam work when that work is in scope. The lifecycle fallback lane drives its own resolved posture and reads no policy.
 - Project broad plan-device shapes into narrow executor intent and observation types. Compatibility reads from legacy plan fields belong in small adapters. Keep planner admission, UI wording, snapshot serialization, and settings contracts out of this layer.
 
 ## Convergence

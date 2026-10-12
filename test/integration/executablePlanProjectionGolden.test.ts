@@ -145,7 +145,6 @@ describe('executable plan projection (characterization)', () => {
             "desiredOn": true,
             "id": "dev-1",
             "matchingCommandAttempt": null,
-            "matchingRestoreAttempt": null,
             "name": "Tank",
             "nextStepCommandRetryAtMs": undefined,
             "plannedShedTarget": undefined,
@@ -203,7 +202,6 @@ describe('executable plan projection (characterization)', () => {
             },
             "id": "dev-1",
             "matchingCommandAttempt": null,
-            "matchingRestoreAttempt": null,
             "name": "Tank",
             "nextStepCommandRetryAtMs": undefined,
             "plannedShedTarget": {
@@ -265,7 +263,6 @@ describe('executable plan projection (characterization)', () => {
             "desiredOn": true,
             "id": "dev-1",
             "matchingCommandAttempt": null,
-            "matchingRestoreAttempt": null,
             "name": "Tank",
             "nextStepCommandRetryAtMs": undefined,
             "plannedShedTarget": undefined,

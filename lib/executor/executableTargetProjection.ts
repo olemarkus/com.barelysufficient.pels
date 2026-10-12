@@ -63,7 +63,6 @@ export function buildExecutableTargetCommand(
   return {
     deviceId: intent.deviceId,
     name: intent.name,
-    target: 'temperature',
     desired: intent.desired,
     observedValue: observed.target.observedValue,
   };

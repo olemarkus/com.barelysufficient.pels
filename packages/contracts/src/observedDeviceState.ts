@@ -5,10 +5,8 @@ import type { ObservedDeviceState } from './types.js';
  * (so the observer projection's sequenced guard supersedes in-flight deltas)
  * plus the decided observed value. Stage 4a of the snapshot decomposition.
  *
- * Lives in shared contracts so the device-side event type
- * (`ObservedDeviceStateRefreshEvent`) and the observer-side mirror
- * (`ObservedStateRefreshEvent`) share one definition rather than being
- * hand-kept in sync across the `lib/device/` ↔ `lib/observer/` boundary.
+ * The entry of `ObservedStateRefreshEvent` (`lib/ports/observedStateEvents.ts`),
+ * the one refresh event type that transport dispatches and observer receives.
  */
 export type ObservedDeviceStateRefreshEntry = {
     observationSeq: number;

@@ -45,12 +45,12 @@ export function hasPlanExecutionDriftAgainstIntent(
     if (hasStorageDecision(planDevice) && deps.hasStorageDrift(planDevice)) return true;
     const observed = deps.getObservedState(planDevice.id);
     if (!observed) continue;
-    if (hasPlanDeviceExecutionDrift({
+    if (hasPlanDeviceExecutionDrift(
       planDevice,
       observed,
-      command: deps.getCommandState(planDevice.id),
-      externalOffHeld: deps.isExternalOffHeld(planDevice.id),
-    })) return true;
+      deps.getCommandState(planDevice.id),
+      deps.isExternalOffHeld(planDevice.id),
+    )) return true;
   }
   return false;
 }

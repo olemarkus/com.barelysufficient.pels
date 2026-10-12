@@ -21,16 +21,12 @@ import {
     resolveZoneLabel,
 } from './managerHelpers';
 import { estimatePower } from '../devicePowerEstimate';
-import {
-    type FlowReportedCapabilityId,
-    type FlowReportedCapabilitiesForDevice,
-} from './flowReportedCapabilities';
+import { type FlowReportedCapabilityId } from './flowReportedCapabilities';
 import {
   getControlCapabilityId,
   getEvCharging,
   getEvChargingState,
   toCapabilityTimestampMs,
-  type DeviceCapabilityMap,
 } from '../managerControl';
 import {
     buildTargets,
@@ -344,13 +340,13 @@ export function assembleDeviceSnapshot(params: {
             overlay.capabilityObj.evcharger_charging_state?.lastUpdated,
         ),
         thermostatMode,
-        stateOfCharge: resolveParsedSoc({
+        stateOfCharge: resolveStateOfChargeSnapshot(
             deviceClassKey,
-            capabilityObj: overlay.capabilityObj,
-            reportedCapabilities: overlay.reportedCapabilities,
-            retainedStateOfCharge: previousSnapshot?.stateOfCharge,
-            eligibleCarIds: providers.getEvCarAssociationCarIds?.(deviceId) ?? [],
-        }),
+            overlay.capabilityObj,
+            overlay.reportedCapabilities,
+            previousSnapshot?.stateOfCharge,
+            providers.getEvCarAssociationCarIds?.(deviceId) ?? [],
+        ),
         capabilities: overlay.capabilities,
         flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
         controlAdapter: overlay.controlAdapter,
@@ -375,25 +371,6 @@ export function assembleDeviceSnapshot(params: {
         lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
     });
     return withHomeBatteryParseFields(parsed, effectiveDevice, deviceClassKey, overlay, previousSnapshot);
-}
-
-// `retainedSession` carries the session anchor the transport already holds for
-// this charger. A full refresh sees only the CURRENT plug state, never the
-// plug-out that preceded it, so re-deriving the anchor from scratch would let a
-// mid-session charging-state change look like a reconnect and invalidate the
-// last SoC report. Same rule as "never let an older full fetch erase a fresher
-// realtime observation" (`lib/device/AGENTS.md`).
-function resolveParsedSoc(params: {
-    deviceClassKey: string;
-    capabilityObj: DeviceCapabilityMap;
-    reportedCapabilities: FlowReportedCapabilitiesForDevice;
-    retainedStateOfCharge: DeviceStateOfChargeSnapshot | undefined;
-    eligibleCarIds: readonly string[];
-}): DeviceStateOfChargeSnapshot | undefined {
-    return resolveStateOfChargeSnapshot({
-        ...params,
-        retainedSession: params.retainedStateOfCharge,
-    });
 }
 
 function buildParsedDeviceSnapshot(params: {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildExecutableObservedDeviceStateFromSnapshot,
+  buildExecutableObservedDeviceState,
   buildExecutablePlan,
   hasExecutableShedDevices,
 } from '../../lib/executor/executablePlanProjection';
@@ -37,16 +37,15 @@ describe('planExecutablePlan', () => {
     };
 
     it('answers both questions for a stepped device parked at its off rung with the switch armed', () => {
-      const observed = buildExecutableObservedDeviceStateFromSnapshot({
+      const observed = buildExecutableObservedDeviceState({
         available: true,
         isEvCharger: false,
         id: 'dev-1',
         name: 'Tank',
         binaryControl: { on: true },
-        steppedLoadProfile: steppedProfileAtOff,
-        selectedStepId: 'off',
+        reportedStepId: 'off',
         targets: [],
-      });
+      }, steppedProfileAtOff);
 
       // The handle IS on — `shedReleaseActuation` must not treat a binary-off
       // write as a no-op here.
@@ -56,23 +55,23 @@ describe('planExecutablePlan', () => {
     });
 
     it('agrees on both fields for a pure-binary device', () => {
-      const on = buildExecutableObservedDeviceStateFromSnapshot({
+      const on = buildExecutableObservedDeviceState({
         available: true, isEvCharger: false, id: 'dev-1', name: 'Tank', binaryControl: { on: true }, targets: [],
-      });
+      }, undefined);
       expect(on.observedBinaryAxis).toBe('on');
       expect(on.observedEffectiveOn).toBe(true);
 
-      const off = buildExecutableObservedDeviceStateFromSnapshot({
+      const off = buildExecutableObservedDeviceState({
         available: true, isEvCharger: false, id: 'dev-1', name: 'Tank', binaryControl: { on: false }, targets: [],
-      });
+      }, undefined);
       expect(off.observedBinaryAxis).toBe('off');
       expect(off.observedEffectiveOn).toBe(false);
     });
 
     it('reads an unobserved binary control as on — "may draw, stays sheddable"', () => {
-      const unobserved = buildExecutableObservedDeviceStateFromSnapshot({
+      const unobserved = buildExecutableObservedDeviceState({
         available: true, isEvCharger: false, id: 'dev-1', name: 'Tank', targets: [],
-      });
+      }, undefined);
       expect(unobserved.observedBinaryAxis).toBe('on');
       expect(unobserved.observedEffectiveOn).toBe(true);
     });
@@ -139,14 +138,14 @@ describe('planExecutablePlan', () => {
       recordRestoreOnTargetApply: true,
     });
     const intent = buildExecutableTargetIntent(thermostat);
-    const observed = buildExecutableObservedDeviceStateFromSnapshot({
+    const observed = buildExecutableObservedDeviceState({
       available: true,
       isEvCharger: false,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
-    });
+    }, undefined);
 
     expect(buildExecutableTargetUpdate(
       intent,
@@ -154,7 +153,6 @@ describe('planExecutablePlan', () => {
     )).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',
-      target: 'temperature',
       desired: 21,
       observedValue: 16,
       isRestoring: true,
@@ -177,19 +175,18 @@ describe('planExecutablePlan', () => {
     });
     const intent = buildExecutableTargetIntent(thermostat);
     // Observed moved off the floor (a person nudged it to 17) after the build.
-    const observed = buildExecutableObservedDeviceStateFromSnapshot({
+    const observed = buildExecutableObservedDeviceState({
       available: true,
       isEvCharger: false,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 17, unit: '°C' }],
-    });
+    }, undefined);
 
     expect(buildExecutableTargetUpdate(intent, observed)).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',
-      target: 'temperature',
       desired: 21,
       observedValue: 17,
       isRestoring: true,
@@ -211,19 +208,18 @@ describe('planExecutablePlan', () => {
       recordRestoreOnTargetApply: true,
     });
     const intent = buildExecutableTargetIntent(thermostat);
-    const observed = buildExecutableObservedDeviceStateFromSnapshot({
+    const observed = buildExecutableObservedDeviceState({
       available: true,
       isEvCharger: false,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
-    });
+    }, undefined);
 
     expect(buildExecutableTargetUpdate(intent, observed)).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',
-      target: 'temperature',
       desired: 21,
       observedValue: 22,
       isRestoring: false,
@@ -244,14 +240,14 @@ describe('planExecutablePlan', () => {
       recordRestoreOnTargetApply: true,
     });
     const intent = buildExecutableTargetIntent(coolingUnit);
-    const observedAt = (value: number) => buildExecutableObservedDeviceStateFromSnapshot({
+    const observedAt = (value: number) => buildExecutableObservedDeviceState({
       available: true,
       isEvCharger: false,
       id: 'ac-1',
       name: 'AC',
       binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value, unit: '°C' }],
-    });
+    }, undefined);
 
     expect(buildExecutableTargetUpdate(intent, observedAt(28))).toMatchObject({ desired: 22, isRestoring: true });
     // Someone set it to 20 between build and apply: writing 22 now RAISES it.
@@ -461,14 +457,14 @@ describe('planExecutablePlan', () => {
       plannedTarget: 20,
     });
     const intent = buildExecutableTargetIntent(thermostat);
-    const observed = buildExecutableObservedDeviceStateFromSnapshot({
+    const observed = buildExecutableObservedDeviceState({
       available: true,
       isEvCharger: false,
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
-    });
+    }, undefined);
 
     // An ordinary target raise (18 -> 20, not from a shed floor) carries no
     // planner restore stamp, so the update is not a restore.
@@ -478,7 +474,6 @@ describe('planExecutablePlan', () => {
     )).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',
-      target: 'temperature',
       desired: 20,
       observedValue: 18,
       isRestoring: false,

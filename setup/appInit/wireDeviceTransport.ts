@@ -12,7 +12,8 @@
 import { createRetainedPowerStore } from '../../lib/device/retainedPowerStore';
 import type Homey from 'homey';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
-import type { ObservedStateEmitter, ObservedStateEmitterDispatcher } from '../../lib/observer/observedStateEvents';
+import type { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
+import type { ObservedStateEmitterDispatcher } from '../../lib/ports/observedStateEvents';
 import type { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { createCalibrationSnapshotMutationHook } from '../../lib/device/devicePowerCalibrationStore';
 import { getDebugEmitter, type Logger as PinoLogger } from '../../lib/logging/logger';

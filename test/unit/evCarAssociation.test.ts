@@ -116,7 +116,7 @@ describe('applyAssociatedCarStateOfCharge', () => {
     )).toBe(true);
     expect(snapshot.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 63, carChargeLimitPercent: 70 });
 
-    expect(updateStateOfChargeObservationFreshness({ snapshot, reportedAt: 9_000 })).toBe(true);
+    expect(updateStateOfChargeObservationFreshness(snapshot, 9_000)).toBe(true);
     expect(snapshot.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 63, carChargeLimitPercent: 70 });
 
     // A limit that is disproved goes with the next reading, and that is a change.

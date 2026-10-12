@@ -1,5 +1,6 @@
 import { getDebugEmitter, getLogger } from '../logging/logger';
-import type { PlanExecutorTargetContext } from './targetExecutorContext';
+import type { ExecutableTargetCommand } from './executablePlan';
+import type { ExecutorCommandContext, PendingTargetCommandStore } from './executorCommandContext';
 
 const logger = getLogger('executor/target');
 /**
@@ -20,27 +21,28 @@ const waitForImmediateObservedState = async (): Promise<void> => {
   await Promise.resolve();
 };
 
+/** The observer's latest reading of the device's primary setpoint. */
+export const readObservedTemperature = (ctx: ExecutorCommandContext, deviceId: string): unknown => (
+  ctx.getObservedState(deviceId)?.targets[0]?.value
+);
+
+/** `command` carries the value actually requested. */
 export const syncPendingTargetCommandAfterActuation = async (
-  ctx: PlanExecutorTargetContext,
-  params: {
-    deviceId: string;
-    name: string;
-    target: 'temperature';
-    desired: number;
-  },
+  ctx: ExecutorCommandContext,
+  command: ExecutableTargetCommand,
 ): Promise<TargetCommandPostActuationState> => {
-  const { deviceId, name, target, desired } = params;
+  const { deviceId, name, desired } = command;
   await waitForImmediateObservedState();
   ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
-  const latestObservedValueAfterActuation = ctx.getObservedTemperatureValue(deviceId);
-  let pendingStillExists = hasMatchingPendingTargetCommand(ctx, deviceId, desired);
+  const latestObservedValueAfterActuation = readObservedTemperature(ctx, deviceId);
+  let pendingStillExists = ctx.targetCommands.pendingTargetCommands[deviceId]?.desired === desired;
   if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
-    ctx.state.deletePendingTargetCommand(deviceId);
+    ctx.targetCommands.deletePendingTargetCommand(deviceId);
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
     emitExecutorDebug({
       event: 'executor_target_log_debug',
-      msg: `Capacity: confirmed ${target} for ${name} at ${desired}°C immediately after actuation`,
+      msg: `Capacity: confirmed temperature for ${name} at ${desired}°C immediately after actuation`,
     });
   }
   return {
@@ -49,16 +51,9 @@ export const syncPendingTargetCommandAfterActuation = async (
   };
 };
 
-const hasMatchingPendingTargetCommand = (
-  ctx: PlanExecutorTargetContext,
-  deviceId: string,
-  desired: number,
-): boolean => ctx.state.pendingTargetCommands[deviceId]?.target === 'temperature'
-  && ctx.state.pendingTargetCommands[deviceId]?.desired === desired;
-
 export const logPendingTargetRetry = (
   name: string,
-  pending: NonNullable<PlanExecutorTargetContext['state']['pendingTargetCommands'][string]>,
+  pending: PendingTargetCommandStore['pendingTargetCommands'][string],
   retryDelaySec: number,
 ): void => {
   const { target, desired, retryCount, lastObservedValue, lastObservedSource } = pending;

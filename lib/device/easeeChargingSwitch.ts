@@ -8,8 +8,8 @@
  * reads the switch from the plug state and the current instead of from the
  * app's switch. See `notes/native-wiring/README.md`.
  */
-import type { HomeyDeviceLike } from '../utils/types';
-import type { DeviceCapabilityMap, DeviceCapabilityValue } from './managerControl';
+import type { CapabilityValue, HomeyDeviceLike } from '../utils/types';
+import type { DeviceCapabilityMap } from './managerControl';
 import { toCapabilityTimestampMs } from './managerControl';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
@@ -198,7 +198,7 @@ function readCurrentA(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-function latestOf(first: DeviceCapabilityValue, second: DeviceCapabilityValue): DeviceCapabilityValue {
+function latestOf(first: CapabilityValue<unknown>, second: CapabilityValue<unknown>): CapabilityValue<unknown> {
   const firstMs = toCapabilityTimestampMs(first.lastUpdated) ?? Number.NEGATIVE_INFINITY;
   const secondMs = toCapabilityTimestampMs(second.lastUpdated) ?? Number.NEGATIVE_INFINITY;
   return secondMs > firstMs ? second : first;

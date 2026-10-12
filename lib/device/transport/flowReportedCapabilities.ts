@@ -1,8 +1,7 @@
-import type { HomeyDeviceLike } from '../../utils/types';
+import { isUnknownRecord, type CapabilityValue, type HomeyDeviceLike } from '../../utils/types';
 import {
   toCapabilityTimestampMs,
   type DeviceCapabilityMap,
-  type DeviceCapabilityValue,
 } from '../managerControl';
 import { getCapabilities, isBatteryOrSolarClassKey, resolveDeviceClassKey } from './managerHelpers';
 
@@ -73,10 +72,6 @@ type FlowEffectiveRequiredCapabilityId =
   | (typeof BINARY_EFFECTIVE_REQUIRED_CAPABILITIES)[number]
   | (typeof EV_EFFECTIVE_REQUIRED_CAPABILITIES)[number];
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
 function isSupportedReportedCapabilityId(value: string): value is FlowReportedCapabilityId {
   return FLOW_REPORTED_CAPABILITY_SET.has(value);
 }
@@ -87,11 +82,11 @@ export function isFlowReportedObservationCapabilityId(value: string): value is F
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function parseFlowReportedCapabilities(value: unknown): FlowReportedCapabilitiesByDevice {
-  if (!isRecord(value)) return {};
+  if (!isUnknownRecord(value)) return {};
 
   const parsed: FlowReportedCapabilitiesByDevice = {};
   for (const [deviceId, deviceEntry] of Object.entries(value)) {
-    if (!isRecord(deviceEntry)) continue;
+    if (!isUnknownRecord(deviceEntry)) continue;
     const nextDeviceEntry = parseFlowReportedDeviceEntry(deviceEntry);
 
     if (Object.keys(nextDeviceEntry).length > 0) {
@@ -342,9 +337,9 @@ export function augmentCapabilitiesWithFlowReports(params: {
 function buildFlowBackedCapabilityValue(params: {
   capabilityId: FlowReportedCapabilityId;
   reportedEntry: FlowReportedCapabilityEntry;
-  rawCapability: DeviceCapabilityValue | undefined;
+  rawCapability: CapabilityValue<unknown> | undefined;
   rawCapabilityPresent: boolean;
-}): DeviceCapabilityValue {
+}): CapabilityValue<unknown> {
   const {
     capabilityId,
     reportedEntry,
@@ -356,7 +351,7 @@ function buildFlowBackedCapabilityValue(params: {
     return { ...rawCapability };
   }
 
-  const nextValue: DeviceCapabilityValue = {
+  const nextValue: CapabilityValue<unknown> = {
     ...(rawCapability ?? {}),
     value: reportedEntry.value,
     lastUpdated: reportedEntry.reportedAt,
@@ -441,7 +436,7 @@ function resolveDerivedEvChargingStateReportedAt(params: {
 }
 
 function resolveCapabilityLastUpdatedMs(
-  rawLastUpdated: DeviceCapabilityValue['lastUpdated'],
+  rawLastUpdated: CapabilityValue<unknown>['lastUpdated'],
   fallbackReportedAt?: number,
 ): number | undefined {
   const parsed = toCapabilityTimestampMs(rawLastUpdated);
@@ -481,7 +476,7 @@ function parseFlowReportedEntry(
   capabilityId: FlowReportedCapabilityId,
   rawEntry: unknown,
 ): FlowReportedCapabilityEntry | null {
-  if (!isRecord(rawEntry) || rawEntry.source !== 'flow' || !('value' in rawEntry)) {
+  if (!isUnknownRecord(rawEntry) || rawEntry.source !== 'flow' || !('value' in rawEntry)) {
     return null;
   }
 

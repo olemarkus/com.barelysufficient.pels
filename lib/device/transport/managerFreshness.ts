@@ -6,13 +6,13 @@ import {
   updateStateOfChargeFromRealtimeCapability,
   updateStateOfChargeSessionBoundary,
 } from './stateOfCharge';
-import type { RealtimeDeviceReconcileChange } from '../managerRuntime';
 import { normalizeMeasuredPowerKw } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 import { applyHomeBatteryPowerObservation, isHomeBatterySnapshot } from './homeBatteryObservation';
 import {
   removeTemperatureObservation,
   updateTemperatureMeasurement,
 } from './temperatureObservation';
+import type { ObservedCapabilityChange } from '../../ports/observedStateEvents';
 
 export type FreshnessOnlyCapabilityUpdateResult = {
   changed: boolean;
@@ -31,7 +31,7 @@ export type FreshnessOnlyCapabilityUpdateResult = {
    */
   observationAdvanced?: boolean;
   normalizedValue: unknown;
-  reconcileChange?: RealtimeDeviceReconcileChange;
+  reconcileChange?: ObservedCapabilityChange;
   temperatureRecoveryRequested?: boolean;
   temperatureFacetRemoved?: boolean;
 };
@@ -47,13 +47,13 @@ const resolveRealtimeMeasuredPowerKw = (
     : normalizeMeasuredPowerKw(typeof value === 'number' ? value / 1000 : value)
 );
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function applyFreshnessOnlyCapabilityUpdate(params: {
-  snapshot: TransportDeviceSnapshot;
-  capabilityId: string;
-  value: unknown;
-}): FreshnessOnlyCapabilityUpdateResult {
-  const { snapshot, capabilityId, value } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+export function applyFreshnessOnlyCapabilityUpdate(
+  snapshot: TransportDeviceSnapshot,
+  capabilityId: string,
+  value: unknown,
+): FreshnessOnlyCapabilityUpdateResult {
   // `normalizeMeasuredPowerKw` is the shared rule every `measuredPowerKw` write
   // seam applies (`resolveMeasuredPowerKw` at parse, `getCurrentDrawKw` at the plan producer), so a realtime
   // `NaN`/`Infinity`/negative power event from the Homey live feed is DROPPED
@@ -109,12 +109,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     // without touching it when a guard declines (not a charger, car-sourced,
     // unparseable percent), so identity is the honest "did anything happen".
     const previousStateOfCharge = snapshot.stateOfCharge;
-    const changed = updateStateOfChargeFromRealtimeCapability({
-      snapshot,
-      capabilityId,
-      value,
-      observedAtMs,
-    });
+    const changed = updateStateOfChargeFromRealtimeCapability(snapshot, capabilityId, value, observedAtMs);
     return {
       changed,
       observationAdvanced: snapshot.stateOfCharge !== previousStateOfCharge,
@@ -130,7 +125,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
   }
   return { changed: false, normalizedValue: undefined };
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 function applyTemperatureUpdate(
   snapshot: TransportDeviceSnapshot,
@@ -172,11 +167,7 @@ function applyEvChargingStateUpdate(
   // Session-boundary tracking is only meaningful for a known plug-state; a
   // normalised-unknown (`undefined`) transition has no session semantics.
   if (value !== undefined) {
-    updateStateOfChargeSessionBoundary({
-      snapshot: mutableSnapshot,
-      evChargingState: value,
-      observedAtMs,
-    });
+    updateStateOfChargeSessionBoundary(mutableSnapshot, value, observedAtMs);
   }
   return {
     changed: true,

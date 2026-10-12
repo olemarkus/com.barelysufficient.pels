@@ -6,12 +6,15 @@
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
+import { NativeSteppedLoadCommandAdapters } from '../managerNativeSteppedCommand';
 
 export class TransportSnapshotStore {
   private snapshot: TransportDeviceSnapshot[] = [];
   private snapshotByDeviceId = new Map<string, TransportDeviceSnapshot>();
   private readonly trackedRawDeviceById = new Map<string, HomeyDeviceLike>();
   private latestRawDevices: HomeyDeviceLike[] = [];
+  /** The tracked devices' native step channels, built from the raw devices above. */
+  readonly nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
 
   getSnapshot(): TransportDeviceSnapshot[] {
     return this.snapshot;
@@ -35,11 +38,6 @@ export class TransportSnapshotStore {
   removeSnapshotEntry(deviceId: string): void {
     const index = this.snapshot.findIndex((entry) => entry.id === deviceId);
     if (index !== -1) this.snapshot.splice(index, 1);
-    this.snapshotByDeviceId.delete(deviceId);
-  }
-
-  removeSnapshotAt(index: number, deviceId: string): void {
-    this.snapshot.splice(index, 1);
     this.snapshotByDeviceId.delete(deviceId);
   }
 

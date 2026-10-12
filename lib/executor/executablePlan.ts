@@ -120,10 +120,6 @@ export const hasSteppedCommand = <T extends ExecutableDeviceIntent>(
   'steppedLoad' in i && (i as T & ExecutableSteppedCommandKind).steppedLoad != null
 );
 
-export type ExecutableObservedState = {
-  devices: ExecutableObservedDeviceState[];
-};
-
 export type ExecutableObservedDeviceState = {
   id: string;
   name: string;
@@ -167,8 +163,8 @@ export type ExecutableObservedDeviceState = {
   steppedLoad: ExecutableObservedSteppedLoadState | null;
 };
 
+/** The device's primary (temperature) setpoint as observed. */
 export type ExecutableObservedTargetState = {
-  target: 'temperature';
   observedValue: unknown;
 };
 
@@ -273,10 +269,10 @@ export type ExecutableTargetIntent = {
   restoreFromTarget: number;
 };
 
+/** A temperature setpoint write: the desired value against the observed one. */
 export type ExecutableTargetCommand = {
   deviceId: string;
   name: string;
-  target: 'temperature';
   desired: number;
   observedValue: unknown;
 };
@@ -307,11 +303,21 @@ export type ExecutableSteppedLoadTransition = {
  * helper WITHOUT a write clock, so the meter-settle branch could never fire. The
  * meter question is not the executor's, so the variant is gone rather than wired up.
  */
-export type ExecutableSteppedLoadRestoreAttempt = {
+export type ExecutableSteppedCommandAttempt = {
   status: 'awaiting_confirmation' | 'retry_backoff';
   requestedStepId: string;
 } | null;
 
+/**
+ * A stepped device's current on/step. The base of the projection's current
+ * state, and on its own the producer-resolved fallback the device-projection
+ * uses ONLY when the device has no observation this cycle (no descriptor or no
+ * observer record for it between planning and dispatch — `executorDeviceRead.ts`).
+ * The observed-state producer owns that resolution from the plan device's
+ * kind-aware observed-state predicates and `selectedStepId`; the executor never
+ * re-derives a planning fallback. When an observation exists, the observed
+ * state is authoritative and the fallback is ignored.
+ */
 export type ExecutableSteppedLoadState = {
   on: boolean | null;
   stepId?: string;
@@ -336,19 +342,6 @@ export type ExecutableSteppedLoadDesiredState = {
   plannedStepId?: string;
 };
 
-/**
- * Producer-resolved current state used by the device-projection ONLY when the
- * device has no observation this cycle (no descriptor or no observer record for
- * it between planning and dispatch — `executorDeviceRead.ts`). The observed-state
- * producer owns the resolution from the plan device's kind-aware observed-state
- * predicates and `selectedStepId`; the executor never re-derives a planning fallback. When an
- * observation exists, the observed state is authoritative and this is ignored.
- */
-export type ExecutableSteppedLoadCurrentFallback = {
-  on: boolean | null;
-  stepId?: string;
-};
-
 export type ExecutableSteppedLoadIntent = {
   id: string;
   name: string;
@@ -359,8 +352,8 @@ export type ExecutableSteppedLoadIntent = {
   desired: ExecutableSteppedLoadDesiredState;
   previousStepId?: string;
   transition: ExecutableSteppedLoadTransition | null;
-  matchingRestoreAttempt: ExecutableSteppedLoadRestoreAttempt;
-  matchingCommandAttempt: ExecutableSteppedLoadRestoreAttempt;
+  /** Read by both the restore lane and the command lane: one attempt, one answer. */
+  matchingCommandAttempt: ExecutableSteppedCommandAttempt;
   stepCommandRetryCount: number;
   nextStepCommandRetryAtMs?: number;
   // Step of the last issued step command when that command was confirmed by
@@ -370,29 +363,24 @@ export type ExecutableSteppedLoadIntent = {
   confirmedCommandStepId?: string;
 };
 
+/**
+ * One stepped device ready to command this cycle: the intent with this cycle's
+ * resolved `desired` / `transition` / `previousStepId` (an unknown running step
+ * is seeded at the lowest active rung, and the previous step is the current
+ * one), the current state it is commanded from, and whether the requested step
+ * has materialized.
+ */
 export type ExecutableSteppedLoadDevice = {
-  id: string;
-  name: string;
-  steppedLoadProfile: SteppedLoadProfile;
-  controlAdapter?: DeviceControlAdapterSnapshot;
-  /** This cycle's shed end state — see `ExecutableShedTarget`. */
-  plannedShedTarget?: ExecutableShedTarget;
+  intent: ExecutableSteppedLoadIntent;
   current: ExecutableSteppedLoadCurrentState;
-  desired: ExecutableSteppedLoadDesiredState;
-  previousStepId?: string;
-  transition: ExecutableSteppedLoadTransition | null;
   stepActuation: SteppedStepActuationState;
-  commandStepActuation: SteppedStepActuationState;
-  matchingRestoreAttempt: ExecutableSteppedLoadRestoreAttempt;
-  matchingCommandAttempt: ExecutableSteppedLoadRestoreAttempt;
   stepNeedsAdjustment: boolean;
-  stepCommandRetryCount: number;
-  nextStepCommandRetryAtMs?: number;
-  initializationStepId?: string;
 };
 
 export type ExecutableSteppedLoadCommandSession = {
   initializationAssumedStepId?: string;
   hasPriorStepCommand: boolean;
   reportedStepId?: string;
+  /** Commanded-axis: a step command is issued and not yet settled. */
+  stepCommandPending: boolean;
 };

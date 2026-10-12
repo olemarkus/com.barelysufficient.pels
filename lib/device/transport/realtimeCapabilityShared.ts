@@ -1,20 +1,85 @@
 /**
  * Low-level shared helpers for the realtime capability-update pipeline:
- * value normalization, capability classification, echo-suppression lookup, and
- * the windowed debug emission. Kept in their own module so the native
- * stepped-load handlers and the main capability handler can both depend on them
- * without a cyclic import.
+ * value normalization, capability classification, echo-suppression lookup, the
+ * windowed debug emission, and the record-and-dispatch steps every accepted
+ * report ends with. Kept in their own module so the native stepped-load
+ * handlers and the main capability handler can both depend on them without a
+ * cyclic import.
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { isStateOfChargeCapabilityId } from './stateOfCharge';
 import { REALTIME_CAPABILITY_EVENT_WINDOW_MS } from './transportTypes';
-import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
+import { getDebugEmitter, getLogger, isDebugTopicEnabled } from '../../logging/logger';
 import type { TransportObservationState } from './transportObservationState';
 import { TARGET_TEMPERATURE_CAPABILITY_ID } from './temperatureObservation';
 
+import { recordCapabilityObservation } from './managerObservation';
+
+import type { ObservationCursor } from './managerRealtimeHandlers';
+import type { RealtimeIngestService } from './transportServices';
+import type { ObservedControlStateChangedEvent } from '../../ports/observedStateEvents';
+
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
+const moduleLogger = getLogger('device/transport');
+
+/** Record an accepted realtime capability report on the transport's observation state. */
+export function recordRealtimeObservation(
+    ingest: RealtimeIngestService,
+    deviceId: string,
+    capabilityId: string,
+    value: unknown,
+    countsTowardDeviceFreshness: boolean,
+): void {
+    recordCapabilityObservation({
+        state: ingest.observationBridge.state.getObservationState(),
+        latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
+        deviceId,
+        capabilityId,
+        value,
+        source: 'realtime_capability',
+        countsTowardDeviceFreshness,
+    });
+}
+
+/** Dispatch an accepted realtime report of `capabilityId`; returns the cursor it stamped. */
+export function dispatchRealtimeObservation(
+    ingest: RealtimeIngestService,
+    deviceId: string,
+    capabilityId: string,
+): ObservationCursor {
+    const cursor = ingest.observationBridge.nextCursor(deviceId);
+    ingest.observationBridge.dispatchStateChanged({
+        source: 'realtime_capability',
+        deviceId,
+        ...cursor,
+        capabilityId,
+    });
+    return cursor;
+}
+
+/** Log a realtime control-state drift and dispatch it under the report's `cursor`. */
+export function dispatchRealtimeDrift(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    cursor: ObservationCursor,
+    capabilityId: string,
+    changes: NonNullable<ObservedControlStateChangedEvent['changes']>,
+): void {
+    moduleLogger.info({
+        event: 'realtime_capability_drift',
+        deviceId: snapshot.id,
+        capabilityId,
+        changes,
+    });
+    ingest.observationBridge.dispatchControlStateChanged({
+        deviceId: snapshot.id,
+        ...cursor,
+        name: snapshot.name,
+        changes,
+    });
+}
 
 export function normalizeRealtimeCapabilityEventValue(capabilityId: string, value: unknown): unknown {
     if (typeof value === 'boolean') return value;

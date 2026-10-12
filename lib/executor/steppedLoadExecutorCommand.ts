@@ -2,21 +2,19 @@ import {
   getSteppedLoadStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { SteppedLoadStep } from '../../packages/contracts/src/types';
-import {
-  recordActivationAttemptStarted,
-} from './executorSupport';
 import { isRequestedStepMaterialized } from './steppedLoadActuation';
 import type {
   ExecutableSteppedLoadDevice,
+  ExecutableSteppedLoadIntent,
   ExecutableSteppedLoadTransition,
 } from './executablePlan';
 import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import type { SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite';
+import type { SteppedLoadStepRequestResult, SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isHomeyRequestTimeout } from '../utils/errorUtils';
-import type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
+import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
 
 const logger = getLogger('executor/stepped-load');
 /**
@@ -32,67 +30,61 @@ export const isSteppedLoadStepCommandRedundant = (
   action: ExecutableSteppedLoadDevice,
   commandStepId: string,
 ): boolean => {
-  const needsStepPreparation = action.transition?.transitionPhase === 'step_preparation'
-    && action.transition.commandStepId === commandStepId;
-  const restoreStepNeedsMaterialization = action.transition?.effectiveTransition === 'restore_from_off_at_low'
-    && !isRequestedStepMaterialized(action.commandStepActuation);
+  const { transition } = action.intent;
+  const needsStepPreparation = transition?.transitionPhase === 'step_preparation'
+    && transition.commandStepId === commandStepId;
+  const restoreStepNeedsMaterialization = transition?.effectiveTransition === 'restore_from_off_at_low'
+    && !isRequestedStepMaterialized(action.stepActuation);
   return commandStepId === action.current.stepId
     && !needsStepPreparation
     && !restoreStepNeedsMaterialization;
 };
 
 export const maybeLogSteppedLoadCommandPendingSkip = (
-  ctx: PlanExecutorSteppedContext,
-  action: ExecutableSteppedLoadDevice,
+  intent: ExecutableSteppedLoadIntent,
   commandStepId: string,
 ): boolean => {
-  const sameDesiredStepPendingState = action.matchingCommandAttempt;
+  const sameDesiredStepPendingState = intent.matchingCommandAttempt;
   if (sameDesiredStepPendingState?.status === 'awaiting_confirmation') {
-    logSteppedLoadCommandSkip(ctx, {
-      action,
-      reasonCode: 'waiting_for_confirmation',
-      logMessage: `Capacity: skip stepped-load command for ${action.name}, `
-        + `awaiting confirmation of ${commandStepId}`,
-      fields: { desiredStepId: commandStepId, plannedDesiredStepId: action.desired.plannedStepId ?? null },
-    });
+    logSteppedLoadCommandSkip(
+      intent,
+      'waiting_for_confirmation',
+      `Capacity: skip stepped-load command for ${intent.name}, awaiting confirmation of ${commandStepId}`,
+      { desiredStepId: commandStepId, plannedDesiredStepId: intent.desired.plannedStepId ?? null },
+    );
     return true;
   }
   if (sameDesiredStepPendingState?.status === 'retry_backoff') {
-    logSteppedLoadCommandSkip(ctx, {
-      action,
-      reasonCode: 'retry_backoff',
-      logMessage: `Capacity: skip stepped-load command for ${action.name}, `
-        + `retry backoff for ${commandStepId} remains active`,
-      fields: {
+    logSteppedLoadCommandSkip(
+      intent,
+      'retry_backoff',
+      `Capacity: skip stepped-load command for ${intent.name}, retry backoff for ${commandStepId} remains active`,
+      {
         desiredStepId: commandStepId,
-        nextRetryAtMs: action.nextStepCommandRetryAtMs ?? null,
-        retryCount: action.stepCommandRetryCount,
+        nextRetryAtMs: intent.nextStepCommandRetryAtMs ?? null,
+        retryCount: intent.stepCommandRetryCount,
       },
-    });
+    );
     return true;
   }
   return false;
 };
 
 export const logSteppedLoadCommandSkip = (
-  _ctx: PlanExecutorSteppedContext,
-  params: {
-    action: ExecutableSteppedLoadDevice;
-    reasonCode:
-      | 'missing_step'
-      | 'waiting_for_confirmation'
-      | 'retry_backoff'
-      | 'command_unavailable';
-    logMessage: string;
-    fields: Record<string, unknown>;
-  },
+  intent: ExecutableSteppedLoadIntent,
+  reasonCode:
+    | 'missing_step'
+    | 'waiting_for_confirmation'
+    | 'retry_backoff'
+    | 'command_unavailable',
+  logMessage: string,
+  fields: Record<string, unknown>,
 ): false => {
-  const { action, reasonCode, logMessage, fields } = params;
   emitExecutorDebug({
     event: 'stepped_load_command_skipped',
     reasonCode,
-    deviceId: action.id,
-    deviceName: action.name,
+    deviceId: intent.id,
+    deviceName: intent.name,
     targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     logContext: 'capacity',
     ...fields,
@@ -101,16 +93,24 @@ export const logSteppedLoadCommandSkip = (
   return false;
 };
 
+/**
+ * How a step command is issued and accounted. `force` bypasses the redundant-step
+ * and pending-command dampening: the post-activation reassertion uses it for a
+ * step that already reads as reached, and a lifecycle release uses it after an
+ * accepted opposing claim released.
+ */
+export type SteppedCommandOptions = {
+  recordPlanActuation?: boolean;
+  force?: boolean;
+  preserveMaterializedConfirmation?: boolean;
+  commandPurpose?: 'post_activation_step';
+};
+
+/** One step command being issued: the device, the rung, and how to account for it. */
 export type ExecuteSteppedLoadCommandParams = {
   action: ExecutableSteppedLoadDevice;
-  options: {
-    recordPlanActuation?: boolean;
-    preserveMaterializedConfirmation?: boolean;
-    commandPurpose?: 'post_activation_step';
-    forceAgainstReleasedOpposing?: boolean;
-  };
+  options: SteppedCommandOptions;
   desiredStep: NonNullable<ReturnType<typeof getSteppedLoadStep>>;
-  transition: ExecutableSteppedLoadTransition | null;
   previousStepId: string | undefined;
   now: number;
 };
@@ -120,7 +120,7 @@ type AcceptedSteppedLoadCommandParams = ExecuteSteppedLoadCommandParams & {
 };
 
 const markAcceptedSteppedLoadCommand = (
-  ctx: PlanExecutorSteppedContext,
+  ctx: ExecutorCommandContext,
   params: AcceptedSteppedLoadCommandParams,
 ): void => {
   const {
@@ -128,16 +128,15 @@ const markAcceptedSteppedLoadCommand = (
     desiredStep,
     previousStepId,
     now,
-    transition,
     options,
   } = params;
   if (
     options.preserveMaterializedConfirmation === true
-    && isRequestedStepMaterialized(action.commandStepActuation)
+    && isRequestedStepMaterialized(action.stepActuation)
   ) return;
-  if (transition?.effectiveTransition === 'initialize_unknown_step_at_low') {
+  if (action.intent.transition?.effectiveTransition === 'initialize_unknown_step_at_low') {
     ctx.markSteppedLoadDesiredStepIssued({
-      deviceId: action.id,
+      deviceId: action.intent.id,
       desiredStepId: desiredStep.id,
       issuedAtMs: now,
       confirmationPolicy: 'assume_applied',
@@ -145,7 +144,7 @@ const markAcceptedSteppedLoadCommand = (
     return;
   }
   ctx.markSteppedLoadDesiredStepIssued({
-    deviceId: action.id,
+    deviceId: action.intent.id,
     desiredStepId: desiredStep.id,
     previousStepId,
     issuedAtMs: now,
@@ -164,18 +163,15 @@ const resolveCommandPurpose = (
   return 'step_adjustment';
 };
 
-const logAcceptedSteppedLoadCommand = (
-  _ctx: PlanExecutorSteppedContext,
-  params: AcceptedSteppedLoadCommandParams,
-): void => {
+const logAcceptedSteppedLoadCommand = (params: AcceptedSteppedLoadCommandParams): void => {
   const {
     action,
     desiredStep,
-    transition,
     previousStepId,
     commandTransport,
     options,
   } = params;
+  const { transition } = action.intent;
   const commandPurpose = resolveCommandPurpose(transition, options.commandPurpose);
   const postActivation = commandPurpose === 'post_activation_step';
   const transitionFields = transition ? {
@@ -195,8 +191,8 @@ const logAcceptedSteppedLoadCommand = (
   };
   logger.info({
     event: 'stepped_load_command_requested',
-    deviceId: action.id,
-    deviceName: action.name,
+    deviceId: action.intent.id,
+    deviceName: action.intent.name,
     targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     previousStepId: previousStepId ?? null,
     desiredStepId: desiredStep.id,
@@ -207,7 +203,7 @@ const logAcceptedSteppedLoadCommand = (
 };
 
 const recordAcceptedSteppedLoadPlanActuation = (
-  ctx: PlanExecutorSteppedContext,
+  ctx: ExecutorCommandContext,
   params: AcceptedSteppedLoadCommandParams,
   // An unacknowledged write still stamps the cooldown CLOCKS — see the caller
   // for why that is the conservative reading in both directions — but it must
@@ -216,44 +212,38 @@ const recordAcceptedSteppedLoadPlanActuation = (
   options?: { recordActivationAttempt?: boolean },
 ): void => {
   const {
-    action,
+    action: { intent },
     options: commandOptions,
-    transition,
     now,
   } = params;
   const shouldRecordPlanActuation = commandOptions.recordPlanActuation !== false;
   if (!shouldRecordPlanActuation) return;
-  if (transition?.effectiveTransition === 'step_down_while_on') {
-    ctx.recordShedActuation(action.id, action.name, now);
+  const effectiveTransition = intent.transition?.effectiveTransition;
+  if (effectiveTransition === 'step_down_while_on') {
+    ctx.recordShedActuation(intent.id, intent.name, now);
     return;
   }
   if (
-    transition?.effectiveTransition !== 'step_up_while_on'
-    && transition?.effectiveTransition !== 'restore_from_off_at_low'
-    && !isSteppedLoadRestoreStepIncrease(action, params.desiredStep.id, params.previousStepId)
+    effectiveTransition !== 'step_up_while_on'
+    && effectiveTransition !== 'restore_from_off_at_low'
+    && !isSteppedLoadRestoreStepIncrease(intent, params.desiredStep.id, params.previousStepId)
   ) return;
-  ctx.recordRestoreActuation(action.id, action.name, now);
+  ctx.recordRestoreActuation(intent.id, intent.name, now);
   if (options?.recordActivationAttempt === false) return;
-  recordActivationAttemptStarted({
-    state: ctx.state,
-    diagnostics: ctx.deviceDiagnostics,
-    deviceId: action.id,
-    name: action.name,
-    nowTs: now,
-  });
+  ctx.recordActivationAttemptStarted(intent.id, intent.name, now);
 };
 
 const isSteppedLoadRestoreStepIncrease = (
-  action: ExecutableSteppedLoadDevice,
+  intent: ExecutableSteppedLoadIntent,
   desiredStepId: string,
   previousStepId: string | undefined,
 ): boolean => {
   // Load-bearing, not cosmetic: this gates `recordRestoreActuation`, which
   // stamps the restore cooldown. A shed device observed BELOW its decided rung
   // is commanded up, so the power comparison alone would read that as a restore.
-  if (action.plannedShedTarget !== undefined || !previousStepId) return false;
-  const previousStep = getSteppedLoadStep(action.steppedLoadProfile, previousStepId);
-  const desiredStep = getSteppedLoadStep(action.steppedLoadProfile, desiredStepId);
+  if (intent.plannedShedTarget !== undefined || !previousStepId) return false;
+  const previousStep = getSteppedLoadStep(intent.steppedLoadProfile, previousStepId);
+  const desiredStep = getSteppedLoadStep(intent.steppedLoadProfile, desiredStepId);
   return Boolean(previousStep && desiredStep && desiredStep.planningPowerW > previousStep.planningPowerW);
 };
 
@@ -275,11 +265,11 @@ const isSteppedLoadRestoreStepIncrease = (
  * on an unacknowledged write.
  */
 const markUnacknowledgedSteppedLoadCommand = (
-  ctx: PlanExecutorSteppedContext,
+  ctx: ExecutorCommandContext,
   params: AcceptedSteppedLoadCommandParams,
 ): void => {
   const {
-    action, desiredStep, previousStepId, now, transition,
+    action, desiredStep, previousStepId, now,
   } = params;
   // Deliberately WITHOUT the accepted path's `preserveMaterializedConfirmation`
   // guard, and the omission is load-bearing.
@@ -304,9 +294,9 @@ const markUnacknowledgedSteppedLoadCommand = (
   // ordering that exists for safety, on the one hub that just failed to answer.
   // Recording nothing keeps initialization retriable, which is what a timeout
   // did before this branch existed.
-  if (transition?.effectiveTransition === 'initialize_unknown_step_at_low') return;
+  if (action.intent.transition?.effectiveTransition === 'initialize_unknown_step_at_low') return;
   ctx.markSteppedLoadDesiredStepIssued({
-    deviceId: action.id,
+    deviceId: action.intent.id,
     desiredStepId: desiredStep.id,
     previousStepId,
     issuedAtMs: now,
@@ -324,14 +314,15 @@ const logUnacknowledgedSteppedLoadCommand = (
   params: UnacknowledgedSteppedLoadCommandParams,
 ): void => {
   const {
-    action, desiredStep, previousStepId, transition, options,
+    action, desiredStep, previousStepId, options,
     commandTransport, unacknowledgedReason, err,
   } = params;
+  const { transition } = action.intent;
   logger.warn({
     event: 'stepped_load_command_outcome_unknown',
     reasonCode: unacknowledgedReason,
-    deviceId: action.id,
-    deviceName: action.name,
+    deviceId: action.intent.id,
+    deviceName: action.intent.name,
     targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     previousStepId: previousStepId ?? null,
     desiredStepId: desiredStep.id,
@@ -355,21 +346,20 @@ const logUnacknowledgedSteppedLoadCommand = (
  * to try, which is an ordinary skip.
  */
 const handleUnrequestedSteppedLoadResult = (
-  ctx: PlanExecutorSteppedContext,
+  ctx: ExecutorCommandContext,
   params: ExecuteSteppedLoadCommandParams,
   reason: 'flow_trigger_timeout' | undefined,
 ): boolean => {
-  const { action, desiredStep } = params;
+  const { action: { intent }, desiredStep } = params;
   if (reason !== 'flow_trigger_timeout') {
-    return logSteppedLoadCommandSkip(ctx, {
-      action,
-      reasonCode: 'command_unavailable',
-      logMessage: `Capacity: skip stepped-load command for ${action.name}, `
-        + `no command transport for desired step ${desiredStep.id}`,
-      fields: { desiredStepId: desiredStep.id },
-    });
+    return logSteppedLoadCommandSkip(
+      intent,
+      'command_unavailable',
+      `Capacity: skip stepped-load command for ${intent.name}, no command transport for desired step ${desiredStep.id}`,
+      { desiredStepId: desiredStep.id },
+    );
   }
-  if (ctx.isSteppedCommandAuthorityCurrent?.() === false) return false;
+  if (!ctx.isAuthorityCurrent()) return false;
   return recordUnacknowledgedSteppedLoadCommand(ctx, {
     ...params,
     commandTransport: 'flow',
@@ -405,7 +395,7 @@ const handleUnrequestedSteppedLoadResult = (
  * 2 m → 5 m → 15 m) is what replaced the burst of 30 s-spaced retries.
  */
 const recordUnacknowledgedSteppedLoadCommand = (
-  ctx: PlanExecutorSteppedContext,
+  ctx: ExecutorCommandContext,
   params: UnacknowledgedSteppedLoadCommandParams,
 ): boolean => {
   markUnacknowledgedSteppedLoadCommand(ctx, params);
@@ -415,51 +405,60 @@ const recordUnacknowledgedSteppedLoadCommand = (
 };
 
 const recordAcceptedSteppedLoadCommand = (
-  ctx: PlanExecutorSteppedContext,
+  ctx: ExecutorCommandContext,
   params: AcceptedSteppedLoadCommandParams,
 ): boolean => {
   markAcceptedSteppedLoadCommand(ctx, params);
-  logAcceptedSteppedLoadCommand(ctx, params);
+  logAcceptedSteppedLoadCommand(params);
   recordAcceptedSteppedLoadPlanActuation(ctx, params);
   return true;
 };
 
+/**
+ * The step write, through the single actuator seam. The not-requested arm keeps
+ * the outcome's `reason` — dropping it collapsed an unacknowledged Flow trigger
+ * into an ordinary "no transport" skip.
+ */
+const requestSteppedLoadStep = async (
+  ctx: ExecutorCommandContext,
+  params: ExecuteSteppedLoadCommandParams,
+): Promise<SteppedLoadStepRequestResult> => {
+  const { action: { intent }, desiredStep, previousStepId } = params;
+  const outcome = await ctx.actuator.apply({
+    kind: 'step',
+    deviceId: intent.id,
+    profile: intent.steppedLoadProfile,
+    desiredStepId: desiredStep.id,
+    planningPowerW: desiredStep.planningPowerW,
+    planningCurrentA: resolvePlanningCurrentA(desiredStep),
+    previousStepId,
+  });
+  if (outcome.requested && outcome.kind === 'step') return outcome.steppedResult;
+  // A step's only not-requested reason; a storage claim's is never a step's.
+  const reason = !outcome.requested && outcome.reason === 'flow_trigger_timeout' ? outcome.reason : undefined;
+  return { requested: false, ...(reason ? { reason } : {}) };
+};
+
 export const executeSteppedLoadCommand = async (
-  ctx: PlanExecutorSteppedContext,
+  ctx: ExecutorCommandContext,
   params: ExecuteSteppedLoadCommandParams,
 ): Promise<boolean> => {
-  const {
-    action,
-    desiredStep,
-    previousStepId,
-  } = params;
-  const planningPowerW = desiredStep.planningPowerW;
-  const planningCurrentA = resolvePlanningCurrentA(desiredStep);
-  if (
-    ctx.steppedCommandOwner === 'ordinary'
-    && ctx.isLifecycleFallbackActive?.(action.id) === true
-  ) return false;
+  const { action: { intent }, desiredStep } = params;
+  if (isHeldByLifecycleLane(ctx, intent.id)) return false;
   if (!ctx.steppedCommandClaim.acquire(
-    action.id,
-    ctx.steppedCommandOwner,
+    intent.id,
+    ctx.owner,
     desiredStep.id,
     ctx.onSteppedCommandClaimReleased,
   )) return false;
   let accepted = false;
   try {
-    const result = await ctx.requestSteppedLoadStep({
-      deviceId: action.id,
-      profile: action.steppedLoadProfile,
-      desiredStepId: desiredStep.id,
-      planningPowerW,
-      planningCurrentA,
-      previousStepId,
-    });
+    const result = await requestSteppedLoadStep(ctx, params);
     if (!result.requested) {
       accepted = handleUnrequestedSteppedLoadResult(ctx, params, result.reason);
       return accepted;
     }
-    if (ctx.isSteppedCommandAuthorityCurrent?.() === false) return false;
+    if (!ctx.isAuthorityCurrent()) return false;
     accepted = recordAcceptedSteppedLoadCommand(ctx, {
       ...params,
       commandTransport: result.transport,
@@ -472,7 +471,7 @@ export const executeSteppedLoadCommand = async (
       // Checked as its own step, not folded into the condition above — a
       // superseded write is still an UNKNOWN one, and falling through to the
       // failure branch would log it as the definite failure it is not.
-      if (ctx.isSteppedCommandAuthorityCurrent?.() === false) return false;
+      if (!ctx.isAuthorityCurrent()) return false;
       accepted = recordUnacknowledgedSteppedLoadCommand(ctx, {
         ...params,
         err: error,
@@ -486,21 +485,21 @@ export const executeSteppedLoadCommand = async (
     logger.error({
       event: 'stepped_load_command_failed',
       reasonCode: 'command_failed',
-      deviceId: action.id,
-      deviceName: action.name,
+      deviceId: intent.id,
+      deviceName: intent.name,
       desiredStepId: desiredStep.id,
       planningPowerW: desiredStep.planningPowerW,
     });
     logger.error({
       event: 'executor_stepped_error',
-      msg: `Failed to request stepped-load command for ${action.name}`,
+      msg: `Failed to request stepped-load command for ${intent.name}`,
       err: error,
     });
     return false;
   } finally {
     ctx.steppedCommandClaim.release(
-      action.id,
-      ctx.steppedCommandOwner,
+      intent.id,
+      ctx.owner,
       desiredStep.id,
       accepted,
     );

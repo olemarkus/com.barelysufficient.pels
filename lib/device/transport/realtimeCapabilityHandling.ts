@@ -1,21 +1,20 @@
 /** Reconciles pushed capability values into transport state and observer events. */
-import { getLogger } from '../../logging/logger';
-import { recordCapabilityObservation } from './managerObservation';
 import { formatBinaryState, formatTargetValue } from './managerRealtimeSupport';
 import { applyFreshnessOnlyCapabilityUpdate } from './managerFreshness';
 import {
   didMeasurePowerBecomeSignificantlyPositive,
-  type ObservedDeviceStateEvent,
-  type PlanRealtimeUpdateEvent,
 } from './managerRealtimeHandlers';
 import { normalizeNativeEvCapabilityUpdate } from '../nativeEvWiring';
 import { MIN_SIGNIFICANT_POWER_W } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
+  dispatchRealtimeDrift,
+  dispatchRealtimeObservation,
   emitCapabilityEventReceived,
   hasMatchingRecentLocalWrite,
   isFreshnessOnlyCapability,
   normalizeRealtimeCapabilityEventValue,
+  recordRealtimeObservation,
   resolveRealtimeCapabilityEvent,
 } from './realtimeCapabilityShared';
 import {
@@ -34,32 +33,20 @@ import {
     handleHomeBatteryClaimCapabilityUpdate,
     handleHomeBatteryLevelCapabilityUpdate,
 } from './homeBatteryObservation';
-
-const moduleLogger = getLogger('device/transport');
+import type { ObservedControlStateChangedEvent, ObservedStateChangedEvent } from '../../ports/observedStateEvents';
 
 const resolveBinaryAxisOn = (snapshot: TransportDeviceSnapshot, capabilityId: string, fallback: boolean): boolean => (
     capabilityId === 'evcharger_charging' ? (snapshot.evCharging ?? fallback) : (snapshot.binaryControl?.on ?? fallback)
 );
 
 /* eslint-disable functional/immutable-data -- Event changes are accumulated per accepted realtime update. */
-function applyBinaryCapabilityUpdate(ingest: RealtimeIngestService, params: {
-    snapshotIndex: number;
-    deviceId: string;
-    capabilityId: string;
-    value: boolean;
-    changes: NonNullable<PlanRealtimeUpdateEvent['changes']>;
-}): boolean {
-    const {
-        snapshotIndex,
-        deviceId: _deviceId,
-        capabilityId,
-        value,
-        changes,
-    } = params;
-    const snapshot = ingest.reader.snapshotStore.getSnapshot()[snapshotIndex];
-    // The caller resolved this index against the same snapshot array; there is no
-    // binary axis to update without it.
-    if (snapshot === undefined) return false;
+function applyBinaryCapabilityUpdate(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: boolean,
+    changes: NonNullable<ObservedControlStateChangedEvent['changes']>,
+): void {
     const previousCurrentOn = snapshot.binaryControl?.on;
     const previousBinaryAxisOn = resolveBinaryAxisOn(
         snapshot,
@@ -81,77 +68,42 @@ function applyBinaryCapabilityUpdate(ingest: RealtimeIngestService, params: {
     // accepted write", `test/integration/deviceManager.test.ts`), and separating
     // "re-stamped an observation" from "echoed a command we have not settled"
     // needs the settle path's own analysis, not a fold comparison.
-    if (nextOn === previousOn) return false;
+    if (nextOn === previousOn) return;
     changes.push({
         capabilityId,
         ...(capabilityId === 'evcharger_charging' ? { observedCapabilityId: capabilityId } : {}),
         previousValue: formatBinaryState(previousOn),
         nextValue: formatBinaryState(nextOn),
     });
-    return false;
 }
 /* eslint-enable functional/immutable-data */
 
-/** Accepted repeated reports still advance freshness; push that stamp even when
- * the value is unchanged, or the observer stays stale until the next refresh.
- * This is also required by `resolveConfirmedNotDrawing`'s 60-second window.
- * Rejected payloads remain a no-op. See the parallel step-report path in
- * `nativeSteppedRealtime.ts`.
- */
-const dispatchFreshnessOnlyObservation = (
-    ingest: RealtimeIngestService,
-    deviceId: string,
-    capabilityId: string,
-): void => ingest.observationBridge.dispatchStateChanged({
-    source: 'realtime_capability',
-    deviceId,
-    ...ingest.observationBridge.nextCursor(deviceId),
-    capabilityId,
-});
-
 function handleFreshnessOnlyCapabilityUpdate(
     ingest: RealtimeIngestService,
-    snapshotIndex: number,
-    deviceId: string,
+    snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,
 ): void {
-    const snapshot = ingest.reader.snapshotStore.getSnapshot()[snapshotIndex];
-    // The caller resolved this index against the same snapshot array; without an entry
-    // there is nothing to bump freshness on.
-    if (snapshot === undefined) return;
+    const deviceId = snapshot.id;
     const previousPowerKw = capabilityId === 'measure_power'
         ? snapshot.measuredPowerKw
         : undefined;
-    const result = applyFreshnessOnlyCapabilityUpdate({
-        snapshot,
-        capabilityId,
-        value,
-    });
-    if (handleTemperatureFreshnessOutcome(ingest, {
-        snapshotIndex,
-        deviceId,
-        capabilityId,
-        snapshot,
-        result,
-    })) return;
+    const result = applyFreshnessOnlyCapabilityUpdate(snapshot, capabilityId, value);
+    if (handleTemperatureFreshnessOutcome(ingest, snapshot, capabilityId, result)) return;
     const reconcileChange = result.reconcileChange;
     if (!result.changed) {
         // ONLY for a reading that was accepted and advanced a stamp. A rejected
         // one mutated nothing, and dispatching it would bump the projection's
         // accepted-write revision for an observation that never happened.
-        if (result.observationAdvanced) dispatchFreshnessOnlyObservation(ingest, deviceId, capabilityId);
+        // Accepted repeated reports still advance freshness; push that stamp even
+        // when the value is unchanged, or the observer stays stale until the next
+        // refresh. This is also required by `resolveConfirmedNotDrawing`'s
+        // 60-second window. See the parallel step-report path in
+        // `nativeSteppedRealtime.ts`.
+        if (result.observationAdvanced) dispatchRealtimeObservation(ingest, deviceId, capabilityId);
         return;
     }
-    recordCapabilityObservation({
-        state: ingest.observationBridge.state.getObservationState(),
-        latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
-        deviceId,
-        capabilityId,
-        value: result.normalizedValue,
-        source: 'realtime_capability',
-        countsTowardDeviceFreshness: true,
-    });
+    recordRealtimeObservation(ingest, deviceId, capabilityId, result.normalizedValue, true);
     if (capabilityId === 'measure_power') {
         ingest.notifications.snapshotChanged(snapshot, Date.now());
     }
@@ -169,133 +121,61 @@ function handleFreshnessOnlyCapabilityUpdate(
             ),
     });
     if (reconcileChange) {
-        moduleLogger.info({
-            event: 'realtime_capability_drift',
-            deviceId,
-            capabilityId: reconcileChange.capabilityId,
-            changes: [reconcileChange],
-        });
-        ingest.observationBridge.dispatchControlStateChanged({
-            deviceId,
-            ...cursor,
-            name: snapshot.name,
-            changes: [reconcileChange],
-        });
+        dispatchRealtimeDrift(ingest, snapshot, cursor, reconcileChange.capabilityId, [reconcileChange]);
     }
 }
 
 function handleTemperatureFreshnessOutcome(
     ingest: RealtimeIngestService,
-    params: {
-        snapshotIndex: number;
-        deviceId: string;
-        capabilityId: string;
-        snapshot: TransportDeviceSnapshot;
-        result: ReturnType<typeof applyFreshnessOnlyCapabilityUpdate>;
-    },
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    result: ReturnType<typeof applyFreshnessOnlyCapabilityUpdate>,
 ): boolean {
-    const {
-        snapshotIndex, deviceId, capabilityId, snapshot, result,
-    } = params;
     if (!result.temperatureRecoveryRequested && !result.temperatureFacetRemoved) return false;
-    recordCapabilityObservation({
-        state: ingest.observationBridge.state.getObservationState(),
-        latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
-        deviceId,
-        capabilityId,
-        value: result.normalizedValue,
-        source: 'realtime_capability',
-        countsTowardDeviceFreshness: false,
-    });
+    recordRealtimeObservation(ingest, snapshot.id, capabilityId, result.normalizedValue, false);
     if (result.temperatureRecoveryRequested) {
-        ingest.temperatureRecovery.request(deviceId);
+        ingest.temperatureRecovery.request(snapshot.id);
         return true;
     }
-    dropDeviceWithoutRemainingControlFacet(ingest, snapshotIndex, snapshot);
-    const cursor = ingest.observationBridge.nextCursor(deviceId);
-    ingest.observationBridge.dispatchStateChanged({
-        source: 'realtime_capability',
-        deviceId,
-        ...cursor,
-        capabilityId,
-    });
-    dispatchTemperatureFacetRemoval(ingest, deviceId, snapshot, cursor);
+    dropTemperatureFacet(ingest, snapshot, capabilityId);
     return true;
 }
 
-function dispatchTemperatureFacetRemoval(
+/**
+ * The device lost its setpoint: drop it entirely when no other control facet
+ * remains, then publish the removal.
+ */
+function dropTemperatureFacet(
     ingest: RealtimeIngestService,
-    deviceId: string,
     snapshot: TransportDeviceSnapshot,
-    cursor: ReturnType<RealtimeIngestService['observationBridge']['nextCursor']>,
+    capabilityId: string,
 ): void {
-    const changes = [{
+    if (!hasControlFacetBesideTemperature(snapshot)) ingest.reader.snapshotStore.removeSnapshotEntry(snapshot.id);
+    const cursor = dispatchRealtimeObservation(ingest, snapshot.id, capabilityId);
+    dispatchRealtimeDrift(ingest, snapshot, cursor, TARGET_TEMPERATURE_CAPABILITY_ID, [{
         capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
         previousValue: 'present',
         nextValue: 'absent',
-    }];
-    moduleLogger.info({
-        event: 'realtime_capability_drift',
-        deviceId,
-        capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
-        changes,
-    });
-    ingest.observationBridge.dispatchControlStateChanged({ deviceId, ...cursor, name: snapshot.name, changes });
+    }]);
 }
 
-function dropDeviceWithoutRemainingControlFacet(
-    ingest: RealtimeIngestService,
-    snapshotIndex: number,
-    snapshot: TransportDeviceSnapshot,
-): void {
-    if (hasControlFacetBesideTemperature(snapshot)) return;
-    ingest.reader.snapshotStore.removeSnapshotAt(snapshotIndex, snapshot.id);
-}
 // Event changes and the held target update belong to this accepted report.
 /* eslint-disable functional/immutable-data */
-function handleTemperatureCapabilityUpdate(ingest: RealtimeIngestService, params: {
-    snapshotIndex: number;
-    deviceId: string;
-    value: unknown;
-    snapshot: TransportDeviceSnapshot;
-    changes: NonNullable<PlanRealtimeUpdateEvent['changes']>;
-}): boolean {
-    const {
-        snapshotIndex, deviceId, value, snapshot, changes,
-    } = params;
+function handleTemperatureCapabilityUpdate(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    value: unknown,
+    changes: NonNullable<ObservedControlStateChangedEvent['changes']>,
+): boolean {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
-        recordCapabilityObservation({
-            state: ingest.observationBridge.state.getObservationState(),
-            latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
-            deviceId,
-            capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
-            value,
-            source: 'realtime_capability',
-            countsTowardDeviceFreshness: false,
-        });
+        recordRealtimeObservation(ingest, snapshot.id, TARGET_TEMPERATURE_CAPABILITY_ID, value, false);
         if (!removeTemperatureObservation(snapshot)) return true;
-        dropDeviceWithoutRemainingControlFacet(ingest, snapshotIndex, snapshot);
-        const cursor = ingest.observationBridge.nextCursor(deviceId);
-        ingest.observationBridge.dispatchStateChanged({
-            source: 'realtime_capability',
-            deviceId,
-            ...cursor,
-            capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
-        });
-        dispatchTemperatureFacetRemoval(ingest, deviceId, snapshot, cursor);
+        dropTemperatureFacet(ingest, snapshot, TARGET_TEMPERATURE_CAPABILITY_ID);
         return true;
     }
     if (!snapshot.temperature) {
-        recordCapabilityObservation({
-            state: ingest.observationBridge.state.getObservationState(),
-            latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
-            deviceId,
-            capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
-            value,
-            source: 'realtime_capability',
-            countsTowardDeviceFreshness: false,
-        });
-        ingest.temperatureRecovery.request(deviceId);
+        recordRealtimeObservation(ingest, snapshot.id, TARGET_TEMPERATURE_CAPABILITY_ID, value, false);
+        ingest.temperatureRecovery.request(snapshot.id);
         return true;
     }
     const result = updateTemperatureTarget(snapshot, value);
@@ -309,64 +189,41 @@ function handleTemperatureCapabilityUpdate(ingest: RealtimeIngestService, params
 }
 /* eslint-enable functional/immutable-data */
 
-function handleBinaryCapabilityEvent(ingest: RealtimeIngestService, params: {
-    snapshotIndex: number;
-    deviceId: string;
-    capabilityId: string;
-    value: unknown;
-    snapshot: TransportDeviceSnapshot;
-    changes: NonNullable<PlanRealtimeUpdateEvent['changes']>;
-}): boolean {
-    const {
-        snapshotIndex, deviceId, capabilityId, value, snapshot, changes,
-    } = params;
+function handleBinaryCapabilityEvent(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: unknown,
+    changes: NonNullable<ObservedControlStateChangedEvent['changes']>,
+): boolean {
     if (capabilityId !== snapshot.binaryCapabilityId) return false;
     if (typeof value === 'boolean') {
-        const settled = applyBinaryCapabilityUpdate(ingest, {
-            snapshotIndex, deviceId, capabilityId, value, changes,
-        });
-        if (settled) {
-            emitCapabilityEventReceived(
-                ingest.observationBridge.state,
-                deviceId,
-                capabilityId,
-                normalizeRealtimeCapabilityEventValue(capabilityId, value),
-            );
-        }
-        return settled;
+        // Not handled here: the shared tail of `handleReconcileCapabilityUpdate`
+        // publishes the change this collected.
+        applyBinaryCapabilityUpdate(ingest, snapshot, capabilityId, value, changes);
+        return false;
     }
     if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return false;
-    ingest.binaryEvidence.clearInvalidControlPayload(deviceId, capabilityId);
+    ingest.binaryEvidence.clearInvalidControlPayload(snapshot.id, capabilityId);
     return true;
 }
 
 /* eslint-disable functional/immutable-data -- Realtime writes update the transport-owned snapshot before dispatch. */
-function handleReconcileCapabilityUpdate(ingest: RealtimeIngestService, params: {
-    snapshotIndex: number;
-    deviceId: string;
-    capabilityId: string;
-    value: unknown;
-    snapshot: TransportDeviceSnapshot;
-}): void {
-    const {
-        snapshotIndex,
-        deviceId,
-        capabilityId,
-        value,
-        snapshot,
-    } = params;
-    const changes: PlanRealtimeUpdateEvent['changes'] = [];
+function handleReconcileCapabilityUpdate(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: unknown,
+): void {
+    const deviceId = snapshot.id;
+    const changes: ObservedControlStateChangedEvent['changes'] = [];
 
     if (
         capabilityId === TARGET_TEMPERATURE_CAPABILITY_ID
-        && handleTemperatureCapabilityUpdate(ingest, {
-            snapshotIndex, deviceId, value, snapshot, changes,
-        })
+        && handleTemperatureCapabilityUpdate(ingest, snapshot, value, changes)
     ) return;
 
-    if (handleBinaryCapabilityEvent(ingest, {
-        snapshotIndex, deviceId, capabilityId, value, snapshot, changes,
-    })) return;
+    if (handleBinaryCapabilityEvent(ingest, snapshot, capabilityId, value, changes)) return;
 
     for (const target of snapshot.targets) {
         if (target.id === TARGET_TEMPERATURE_CAPABILITY_ID) continue;
@@ -395,26 +252,9 @@ function handleReconcileCapabilityUpdate(ingest: RealtimeIngestService, params: 
         capabilityId,
         normalizeRealtimeCapabilityEventValue(capabilityId, value),
     );
-    moduleLogger.info({
-        event: 'realtime_capability_drift',
-        deviceId,
-        capabilityId,
-        changes,
-    });
     ingest.binaryEvidence.recordRealtimeCapabilityObservation(deviceId, [capabilityId]);
-    const cursor = ingest.observationBridge.nextCursor(deviceId);
-    ingest.observationBridge.dispatchStateChanged({
-        source: 'realtime_capability',
-        deviceId,
-        ...cursor,
-        capabilityId,
-    });
-    ingest.observationBridge.dispatchControlStateChanged({
-        deviceId,
-        ...cursor,
-        name: snapshot.name,
-        changes,
-    });
+    const cursor = dispatchRealtimeObservation(ingest, deviceId, capabilityId);
+    dispatchRealtimeDrift(ingest, snapshot, cursor, capabilityId, changes);
 }
 /* eslint-enable functional/immutable-data */
 
@@ -425,9 +265,7 @@ export function handleRealtimeCapabilityUpdate(
     value: unknown,
 ): void {
     if (!ingest.reader.shouldTrackRealtimeDevice(deviceId)) return;
-    const snapshotIndex = ingest.reader.snapshotStore.getSnapshot().findIndex((entry) => entry.id === deviceId);
-    const snapshot = ingest.reader.snapshotStore.getSnapshot()[snapshotIndex];
-    // `findIndex` misses read back as an absent entry, so one check covers both.
+    const snapshot = ingest.reader.snapshotStore.getSnapshot().find((entry) => entry.id === deviceId);
     if (snapshot === undefined) {
         recoverMissingTemperatureSnapshot(ingest, deviceId, capabilityId, value);
         return;
@@ -440,22 +278,12 @@ export function handleRealtimeCapabilityUpdate(
         value,
     });
     for (const normalizedEvent of normalizedEvents) {
-        const handledNativeSteppedLoadUpdate = handleNativeSteppedLoadCapabilityUpdate(ingest, {
-            snapshotIndex,
-            deviceId,
-            capabilityId: normalizedEvent.capabilityId,
-            value: normalizedEvent.value,
-            snapshot,
-        });
-        if (handledNativeSteppedLoadUpdate) continue;
-        const handledTargetPowerSourceUpdate = handleTargetPowerSourceCapabilityUpdate(ingest, {
-            snapshotIndex,
-            deviceId,
-            capabilityId: normalizedEvent.capabilityId,
-            value: normalizedEvent.value,
-            snapshot,
-        });
-        if (handledTargetPowerSourceUpdate) continue;
+        if (handleNativeSteppedLoadCapabilityUpdate(
+            ingest, snapshot, normalizedEvent.capabilityId, normalizedEvent.value,
+        )) continue;
+        if (handleTargetPowerSourceCapabilityUpdate(
+            ingest, snapshot, normalizedEvent.capabilityId, normalizedEvent.value,
+        )) continue;
 
         const resolvedEvent = resolveRealtimeCapabilityEvent(
             snapshot,
@@ -488,23 +316,11 @@ export function handleRealtimeCapabilityUpdate(
         }
 
         if (isFreshnessOnlyCapability(effectiveCapabilityId)) {
-            handleFreshnessOnlyCapabilityUpdate(
-                ingest,
-                snapshotIndex,
-                deviceId,
-                effectiveCapabilityId,
-                effectiveValue,
-            );
+            handleFreshnessOnlyCapabilityUpdate(ingest, snapshot, effectiveCapabilityId, effectiveValue);
             continue;
         }
 
-        handleReconcileCapabilityUpdate(ingest, {
-            snapshotIndex,
-            deviceId,
-            capabilityId: effectiveCapabilityId,
-            value: effectiveValue,
-            snapshot,
-        });
+        handleReconcileCapabilityUpdate(ingest, snapshot, effectiveCapabilityId, effectiveValue);
     }
 }
 
@@ -520,7 +336,7 @@ function handleObservedOnlyCapabilityUpdate(
     value: unknown,
 ): boolean {
     const nextCursor = (id: string) => ingest.observationBridge.nextCursor(id);
-    const dispatchStateChanged = (event: ObservedDeviceStateEvent) => (
+    const dispatchStateChanged = (event: ObservedStateChangedEvent) => (
         ingest.observationBridge.dispatchStateChanged(event)
     );
     return handleThermostatModeCapabilityUpdate(
@@ -541,15 +357,7 @@ function recoverMissingTemperatureSnapshot(
     const isTemperatureCapability = capabilityId === 'measure_temperature'
         || capabilityId === TARGET_TEMPERATURE_CAPABILITY_ID;
     if (!isTemperatureCapability || typeof value !== 'number' || !Number.isFinite(value)) return;
-    recordCapabilityObservation({
-        state: ingest.observationBridge.state.getObservationState(),
-        latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
-        deviceId,
-        capabilityId,
-        value,
-        source: 'realtime_capability',
-        countsTowardDeviceFreshness: false,
-    });
+    recordRealtimeObservation(ingest, deviceId, capabilityId, value, false);
     ingest.temperatureRecovery.request(deviceId);
 }
 

@@ -1,5 +1,4 @@
 import type { PendingTargetCommandState } from '../plan/planState';
-import type { ShedBehavior } from '../plan/planTypes';
 import type { DesiredBinaryKind } from './executableDesiredState';
 import { getPendingTargetCommandDecision } from './targetCommandRetry';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
@@ -19,8 +18,9 @@ import type {
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
 import { applyDeferredBinaryCommand } from './binaryExecutor';
-import { applyShedReleaseIntent, type ShedReleaseActuationDeps } from './shedReleaseActuation';
-import type { TargetCommandClaim } from './targetCommandClaim';
+import { applyShedReleaseStepFallback, applyShedReleaseTemperature } from './shedReleaseActuation';
+import { buildExecutableObservedDeviceState } from './executablePlanProjection';
+import type { ExecutorCommandContext } from './executorCommandContext';
 import type { BinaryCommandClaimState } from './binaryCommandClaim';
 import type { SteppedCommandClaimState } from './steppedCommandClaim';
 import type { TargetCommandClaimState } from './targetCommandClaim';
@@ -48,13 +48,6 @@ export type LifecycleFallbackRequest = {
 };
 
 export type LifecycleFallbackResult = { settled: boolean };
-
-type LifecycleFallbackDeps = Omit<ShedReleaseActuationDeps, 'getShedBehavior'> & {
-  targetCommandClaim: TargetCommandClaim;
-  capacityDryRun: () => boolean;
-  /** Re-projects observer truth before a claim-release retry. */
-  refreshObserved?: (deviceId: string) => ExecutableObservedDeviceState | undefined;
-};
 
 export type LifecycleFallbackPort = Pick<LifecycleFallbackDispatcher, 'abandon' | 'converge'>;
 
@@ -117,7 +110,8 @@ export class LifecycleFallbackDispatcher {
   /** Accepted opposing writes whose telemetry may still show the old fallback posture. */
   private readonly releasedOpposingCommands = new Map<string, ReleasedOpposingCommand>();
 
-  public constructor(private readonly deps: LifecycleFallbackDeps) {}
+  /** `ctx` is the ordinary lane's; this lane spreads it as its own (`lifecycleContext`). */
+  public constructor(private readonly ctx: ExecutorCommandContext) {}
 
   public getOwnedTargetPending(deviceId: string): PendingTargetCommandState | undefined {
     return this.targetState.pendingTargetCommands[deviceId];
@@ -155,9 +149,9 @@ export class LifecycleFallbackDispatcher {
         ) {
           return { settled: true };
         }
-        this.dispatchBinaryOff(observed, authorityToken, {
-          forceAgainstReleasedOpposing: hasReleasedOpposingCommand(releasedOpposing, request.kind),
-        });
+        this.dispatchBinaryOff(
+          observed, authorityToken, hasReleasedOpposingCommand(releasedOpposing, request.kind),
+        );
         return { settled: false };
       case 'target_fallback':
         return this.convergeTargetFallback(request, authorityToken, releasedOpposing);
@@ -169,9 +163,13 @@ export class LifecycleFallbackDispatcher {
           target && current && current.planningPowerW <= target.planningPowerW
           && !hasReleasedOpposingCommand(releasedOpposing, request.kind)
         ) return { settled: true };
-        this.dispatchStepFallback(observed, request.targetStepId, request.steppedLoad, authorityToken, {
-          forceAgainstReleasedOpposing: hasReleasedOpposingCommand(releasedOpposing, request.kind),
-        });
+        this.dispatchStepFallback(
+          observed,
+          request.targetStepId,
+          request.steppedLoad,
+          authorityToken,
+          hasReleasedOpposingCommand(releasedOpposing, request.kind),
+        );
         return { settled: false };
       }
       default: {
@@ -195,9 +193,9 @@ export class LifecycleFallbackDispatcher {
     // A present target capability can still be transiently unreadable. Lifecycle
     // fallback needs trusted numeric evidence before deciding a write is needed.
     if (typeof observed.target?.observedValue !== 'number') return { settled: false };
-    this.dispatchTargetFallback(observed, desired, authorityToken, {
-      forceAgainstReleasedOpposing: hasReleasedOpposingCommand(releasedOpposing, request.kind),
-    });
+    this.dispatchTargetFallback(
+      observed, desired, authorityToken, hasReleasedOpposingCommand(releasedOpposing, request.kind),
+    );
     return { settled: false };
   }
 
@@ -206,11 +204,11 @@ export class LifecycleFallbackDispatcher {
     desired: number,
   ): void {
     if (!observed.target) return;
-    const state = this.deps.buildTargetExecutorContext().state;
-    const pending = state.pendingTargetCommands[observed.id];
+    const ordinaryTargetCommands = this.ctx.targetCommands;
+    const pending = ordinaryTargetCommands.pendingTargetCommands[observed.id];
     if (!pending) return;
-    if (pending.target === 'temperature' && Object.is(pending.desired, desired)) return;
-    state.deletePendingTargetCommand(observed.id);
+    if (Object.is(pending.desired, desired)) return;
+    ordinaryTargetCommands.deletePendingTargetCommand(observed.id);
   }
 
   private waitForOpposingClaim(
@@ -235,7 +233,7 @@ export class LifecycleFallbackDispatcher {
     observed: ExecutableObservedDeviceState,
     authorityToken: object,
   ): boolean {
-    const claim = this.deps.buildBinaryExecutorContext().binaryCommandClaim;
+    const claim = this.ctx.binaryCommandClaim;
     if (claim.ownerOf(observed.id) !== 'ordinary') return false;
     claim.acquire(
       observed.id,
@@ -252,10 +250,9 @@ export class LifecycleFallbackDispatcher {
     authorityToken: object,
   ): boolean {
     if (!observed.target) return false;
-    if (this.deps.targetCommandClaim.ownerOf(observed.id, 'temperature') !== 'ordinary') return false;
-    this.deps.targetCommandClaim.acquire(
+    if (this.ctx.targetCommandClaim.ownerOf(observed.id) !== 'ordinary') return false;
+    this.ctx.targetCommandClaim.acquire(
       observed.id,
-      'temperature',
       'lifecycle',
       desired,
       (released) => this.retryAfterTargetClaimRelease(observed.id, authorityToken, released),
@@ -268,7 +265,7 @@ export class LifecycleFallbackDispatcher {
     desiredStepId: string,
     authorityToken: object,
   ): boolean {
-    const claim = this.deps.buildSteppedExecutorContext().steppedCommandClaim;
+    const claim = this.ctx.steppedCommandClaim;
     if (claim.ownerOf(observed.id) !== 'ordinary') return false;
     claim.acquire(
       observed.id,
@@ -279,53 +276,69 @@ export class LifecycleFallbackDispatcher {
     return true;
   }
 
+  /**
+   * This lane's command context: the ordinary one with this lane as owner, its
+   * own target retry store, and authority tied to the token that dispatched.
+   */
+  private lifecycleContext(deviceId: string, authorityToken: object): ExecutorCommandContext {
+    return {
+      ...this.ctx,
+      owner: 'lifecycle',
+      targetCommands: this.targetState,
+      isAuthorityCurrent: () => this.authorityTokens.get(deviceId) === authorityToken,
+      onBinaryCommandClaimReleased: (released) => (
+        this.retryAfterBinaryClaimRelease(deviceId, authorityToken, released)
+      ),
+      onSteppedCommandClaimReleased: (released) => (
+        this.retryAfterStepClaimRelease(deviceId, authorityToken, released)
+      ),
+      onTargetCommandClaimReleased: (released) => (
+        this.retryAfterTargetClaimRelease(deviceId, authorityToken, released)
+      ),
+    };
+  }
+
   private dispatchBinaryOff(
     observed: ExecutableObservedDeviceState,
     authorityToken: object,
-    options: { forceAgainstReleasedOpposing: boolean },
+    forceAgainstReleasedOpposing: boolean,
   ): void {
     const intent: ExecutableReleaseIntent = {
       kind: 'binary_release', deviceId: observed.id, name: observed.name,
     };
-    void this.dispatch({
+    void this.dispatch(observed, authorityToken, () => applyDeferredBinaryCommand(
+      this.lifecycleContext(observed.id, authorityToken),
+      intent,
       observed,
-      authorityToken,
-      run: async () => {
-        const binaryContext = this.deps.buildBinaryExecutorContext();
-        return applyDeferredBinaryCommand({
-          ...binaryContext,
-          binaryCommandOwner: 'lifecycle',
-          isLifecycleFallbackActive: () => true,
-          isBinaryCommandAuthorityCurrent: () => (
-            this.authorityTokens.get(observed.id) === authorityToken
-          ),
-          onBinaryCommandClaimReleased: (released) => (
-            this.retryAfterBinaryClaimRelease(observed.id, authorityToken, released)
-          ),
-        }, intent, observed, {
-          preferObservedSnapshot: true,
-          forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing,
-        });
-      },
-    });
+      { preferObservedSnapshot: true, forceAgainstReleasedOpposing },
+    ));
   }
 
   private dispatchTargetFallback(
     observed: ExecutableObservedDeviceState,
     desired: number,
     authorityToken: object,
-    options: { forceAgainstReleasedOpposing: boolean },
+    forceAgainstReleasedOpposing: boolean,
   ): void {
     const intent: ExecutableReleaseIntent = {
       kind: 'shed_release', deviceId: observed.id, name: observed.name, releaseShedStepId: null,
     };
-    this.dispatchRelease({
-      observed,
-      authorityToken,
-      intent,
-      steppedLoad: null,
-      behavior: { action: 'set_temperature', temperature: desired },
-      forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing,
+    void this.dispatch(observed, authorityToken, async () => {
+      const deviceId = observed.id;
+      const ordinaryPendingDecision = getPendingTargetCommandDecision({
+        state: this.ctx.targetCommands,
+        deviceId,
+        desired,
+        nowMs: Date.now(),
+      });
+      if (ordinaryPendingDecision.type !== 'send') {
+        this.targetState.setPendingTargetCommand(deviceId, ordinaryPendingDecision.pending);
+        this.ctx.targetCommands.deletePendingTargetCommand(deviceId);
+        if (ordinaryPendingDecision.type === 'skip') return false;
+      }
+      return applyShedReleaseTemperature(
+        this.lifecycleContext(deviceId, authorityToken), intent, desired, observed, forceAgainstReleasedOpposing,
+      );
     });
   }
 
@@ -334,115 +347,21 @@ export class LifecycleFallbackDispatcher {
     targetStepId: string,
     steppedLoad: ExecutableSteppedLoadIntent,
     authorityToken: object,
-    options: { forceAgainstReleasedOpposing: boolean },
+    forceAgainstReleasedOpposing: boolean,
   ): void {
     const intent: ExecutableReleaseIntent = {
       kind: 'shed_release', deviceId: observed.id, name: observed.name, releaseShedStepId: targetStepId,
     };
-    this.dispatchRelease({
-      observed,
-      authorityToken,
-      intent,
-      steppedLoad,
-      behavior: { action: 'set_step' },
-      forceAgainstReleasedOpposing: options.forceAgainstReleasedOpposing,
-    });
+    void this.dispatch(observed, authorityToken, () => applyShedReleaseStepFallback(
+      this.lifecycleContext(observed.id, authorityToken), intent, steppedLoad, observed, forceAgainstReleasedOpposing,
+    ));
   }
 
-  private dispatchRelease(params: {
-    observed: ExecutableObservedDeviceState;
-    authorityToken: object;
-    intent: ExecutableReleaseIntent;
-    steppedLoad: ExecutableSteppedLoadIntent | null;
-    behavior: Exclude<ShedBehavior, { action: 'turn_off' }>;
-    forceAgainstReleasedOpposing: boolean;
-  }): void {
-    const { observed, authorityToken } = params;
-    void this.dispatch({
-      observed,
-      authorityToken,
-      run: async () => this.applyRelease(params),
-    });
-  }
-
-  private async applyRelease(params: {
-    observed: ExecutableObservedDeviceState;
-    authorityToken: object;
-    intent: ExecutableReleaseIntent;
-    steppedLoad: ExecutableSteppedLoadIntent | null;
-    behavior: Exclude<ShedBehavior, { action: 'turn_off' }>;
-    forceAgainstReleasedOpposing: boolean;
-  }): Promise<boolean> {
-    const {
-      observed, authorityToken, intent, steppedLoad, behavior, forceAgainstReleasedOpposing,
-    } = params;
-    const deviceId = observed.id;
-    const targetContext = this.deps.buildTargetExecutorContext();
-    const ordinaryPendingDecision = (
-      behavior.action === 'set_temperature'
-      && observed.target
-    ) ? getPendingTargetCommandDecision({
-        state: targetContext.state,
-        deviceId,
-        desired: behavior.temperature,
-        nowMs: Date.now(),
-      }) : null;
-    if (ordinaryPendingDecision && ordinaryPendingDecision.type !== 'send') {
-      this.targetState.setPendingTargetCommand(deviceId, ordinaryPendingDecision.pending);
-      targetContext.state.deletePendingTargetCommand(deviceId);
-      if (ordinaryPendingDecision.type === 'skip') return false;
-    }
-    return applyShedReleaseIntent({
-      intent,
-      steppedLoadIntent: steppedLoad ?? undefined,
-      observed,
-      snapshot: observed.snapshot,
-      forceAgainstReleasedOpposing,
-      deps: {
-        ...this.deps,
-        getShedBehavior: () => behavior,
-        buildTargetExecutorContext: () => ({
-          ...targetContext,
-          state: this.targetState,
-          targetCommandClaim: this.deps.targetCommandClaim,
-          targetCommandOwner: 'lifecycle',
-          isLifecycleFallbackActive: () => true,
-          isTargetCommandAuthorityCurrent: () => (
-            this.authorityTokens.get(deviceId) === authorityToken
-          ),
-          onTargetCommandClaimReleased: (released) => (
-            this.retryAfterTargetClaimRelease(deviceId, authorityToken, released)
-          ),
-          getLifecycleOwnedPendingTargetCommand: () => undefined,
-        }),
-        buildSteppedExecutorContext: () => ({
-          ...this.deps.buildSteppedExecutorContext(),
-          steppedCommandOwner: 'lifecycle',
-          binaryCommandOwner: 'lifecycle',
-          isLifecycleFallbackActive: () => true,
-          isSteppedCommandAuthorityCurrent: () => (
-            this.authorityTokens.get(deviceId) === authorityToken
-          ),
-          isBinaryCommandAuthorityCurrent: () => (
-            this.authorityTokens.get(deviceId) === authorityToken
-          ),
-          onSteppedCommandClaimReleased: (released) => (
-            this.retryAfterStepClaimRelease(deviceId, authorityToken, released)
-          ),
-          onBinaryCommandClaimReleased: (released) => (
-            this.retryAfterBinaryClaimRelease(deviceId, authorityToken, released)
-          ),
-        }),
-      },
-    });
-  }
-
-  private async dispatch(params: {
-    observed: ExecutableObservedDeviceState;
-    authorityToken: object;
-    run: () => Promise<boolean | void>;
-  }): Promise<void> {
-    const { observed, authorityToken, run } = params;
+  private async dispatch(
+    observed: ExecutableObservedDeviceState,
+    authorityToken: object,
+    run: () => Promise<boolean>,
+  ): Promise<void> {
     try {
       const applied = await run();
       if (applied === true && this.authorityTokens.get(observed.id) === authorityToken) {
@@ -474,7 +393,11 @@ export class LifecycleFallbackDispatcher {
     if (this.authorityTokens.get(deviceId) !== authorityToken) return;
     const current = this.currentRequests.get(deviceId);
     if (!current) return;
-    const observed = this.deps.refreshObserved?.(deviceId) ?? current.observed;
+    // Re-project observer truth before the retry, judged by the same ladder as
+    // the request's first build: the step posture's, or none.
+    const device = this.ctx.readDevice(deviceId);
+    const ladder = current.kind === 'step_fallback' ? current.steppedLoad.steppedLoadProfile : undefined;
+    const observed = device ? buildExecutableObservedDeviceState(device, ladder) : current.observed;
     this.converge({ ...current, observed });
   }
 
@@ -533,7 +456,7 @@ export class LifecycleFallbackDispatcher {
   }
 
   private fenceCapacityDryRun(deviceId: string): boolean {
-    if (!this.deps.capacityDryRun()) return false;
+    if (!this.ctx.getCapacityDryRun()) return false;
     this.abandon(deviceId);
     return true;
   }

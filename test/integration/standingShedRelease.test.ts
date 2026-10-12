@@ -19,10 +19,9 @@ import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 import {
   applyUncontrolledBinaryRestore,
-  type PlanExecutorBinaryContext,
 } from '../../lib/executor/binaryExecutor';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
-import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
+import { createTestExecutorCommandContext } from '../helpers/executorCommandContext';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
@@ -135,32 +134,21 @@ const offHeaterSnapshot = {
 const releaseLane = (state: PlanEngineState) => {
   const turnOnCalls: boolean[] = [];
   const read = (id: string) => (id === HEATER ? offHeaterSnapshot : undefined);
-  const ctx: PlanExecutorBinaryContext = {
-    state,
+  const ctx = createTestExecutorCommandContext(state, {
     readDevice: read,
-    capacityDryRun: false,
-    canTurnOnDevice: () => true,
-    buildBinaryControlTransport: () => ({
-      getObservedBinaryControl: read,
-      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-      actuator: createDeviceActuator({
-        canTurnOnDevice: () => true,
-        resolveTemperatureTarget: (_deviceId, desired) => desired,
-        requestSteppedLoadStep: async () => ({ requested: false }),
-        ...noStorageTransport,
-        requestBinaryControl: async (_deviceId: string, desired: boolean) => {
-          turnOnCalls.push(desired);
-          return undefined;
-        },
-        requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
-      }),
+    getObservedState: read,
+    actuator: createDeviceActuator({
+      canTurnOnDevice: () => true,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+      requestSteppedLoadStep: async () => ({ requested: false }),
+      ...noStorageTransport,
+      requestBinaryControl: async (_deviceId: string, desired: boolean) => {
+        turnOnCalls.push(desired);
+        return undefined;
+      },
+      requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
     }),
-    recordShedActuation: vi.fn(),
-    recordReleaseShedActuation: vi.fn(),
-    recordRestoreActuation: vi.fn(),
-    binaryCommandClaim: createBinaryCommandClaim(),
-    binaryCommandOwner: 'ordinary',
-  };
+  });
   return { ctx, turnOnCalls };
 };
 

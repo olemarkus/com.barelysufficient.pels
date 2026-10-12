@@ -1,6 +1,6 @@
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import type { PlanRealtimeUpdateEvent } from './transport/managerRealtimeHandlers';
 import type { ExternalTemperatureAdjustment } from '../../packages/contracts/src/temperatureAdjustment';
+import type { ObservedControlStateChangedEvent } from '../ports/observedStateEvents';
 
 // Keep superseded commands through the device confirmation window. The latest
 // command remains attributable until another command replaces it, even if its
@@ -31,7 +31,7 @@ export class TemperatureAdjustmentObserver {
 
   observeControlChange(
     snapshot: TransportDeviceSnapshot | undefined,
-    event: PlanRealtimeUpdateEvent,
+    event: ObservedControlStateChangedEvent,
   ): ExternalTemperatureAdjustment | undefined {
     const changed = event.changes?.some((change) => change.capabilityId === 'target_temperature'
       && change.previousValue !== 'unknown' && change.previousValue !== 'absent'

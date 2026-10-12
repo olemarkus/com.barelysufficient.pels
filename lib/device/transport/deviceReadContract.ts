@@ -30,7 +30,7 @@
  * outside the model — buttons, camera commands — are never read, so their
  * routine `null` values are none of this contract's business.
  */
-import type { HomeyDeviceLike } from '../../utils/types';
+import { isUnknownRecord, type HomeyDeviceLike } from '../../utils/types';
 import { isEvCarDeviceClass } from '../evCarDeviceClass';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import { applyNativeEvWiringOverlay } from '../nativeEvWiring';
@@ -159,10 +159,6 @@ export type DeviceReadContractViolation =
     | { reason: 'unexpected_value'; capabilityId: string }
     | { reason: 'missing_stamp'; capabilityId: string };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-    typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
 const hasModelType = (value: unknown, type: ModelValueType): boolean => {
     if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
     return typeof value === type;
@@ -180,7 +176,7 @@ export function findDeviceReadContractViolation(device: HomeyDeviceLike): Device
     if (!Array.isArray(capabilities) || !capabilities.every((id) => typeof id === 'string')) {
         return { reason: 'missing_capability_list' };
     }
-    if (!isRecord(capabilitiesObj)) return { reason: 'missing_capability_values' };
+    if (!isUnknownRecord(capabilitiesObj)) return { reason: 'missing_capability_values' };
     // Convert to the model first; only then validate.
     const model = applyNativeEvWiringOverlay({
         device,
@@ -192,7 +188,7 @@ export function findDeviceReadContractViolation(device: HomeyDeviceLike): Device
         const type = modelTypes[capabilityId];
         if (type === undefined) continue;
         const entry: unknown = model.capabilityObj[capabilityId];
-        if (!isRecord(entry)) return { reason: 'missing_capability_entry', capabilityId };
+        if (!isUnknownRecord(entry)) return { reason: 'missing_capability_entry', capabilityId };
         if (!isModelValue(capabilityId, entry.value, type)) return { reason: 'unexpected_value', capabilityId };
         if (toCapabilityTimestampMs(entry.lastUpdated) === undefined) return { reason: 'missing_stamp', capabilityId };
     }

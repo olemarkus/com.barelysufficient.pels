@@ -4,9 +4,9 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { SnapshotRefreshOptions } from './transportTypes';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import type { TransportObservationState, TransportObservationCursor } from './transportObservationState';
-import type { PlanRealtimeUpdateEvent } from './managerRealtimeHandlers';
 import type { DeviceTransportParseProviders } from './managerParseDevice';
 import { TARGET_TEMPERATURE_CAPABILITY_ID } from './temperatureObservation';
+import type { ObservedControlStateChangedEvent } from '../../ports/observedStateEvents';
 
 const moduleLogger = getLogger('device/transport');
 
@@ -19,7 +19,7 @@ export class TemperatureRecoveryService {
     private readonly refreshSnapshot: TemperatureRefresh,
     private readonly providers: DeviceTransportParseProviders,
     private readonly nextCursor: (deviceId: string) => TransportObservationCursor,
-    private readonly dispatchControlStateChanged: (event: PlanRealtimeUpdateEvent) => void,
+    private readonly dispatchControlStateChanged: (event: ObservedControlStateChangedEvent) => void,
   ) {}
 
   request(deviceId: string): void {

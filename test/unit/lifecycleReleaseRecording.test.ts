@@ -2,10 +2,10 @@ import {
   resolveBinaryShedReasonCode,
   selectShedActuationRecorder,
   shedActuationStampsCapacityMarkers,
-  type ShedActuationRecorder,
 } from '../../lib/executor/lifecycleReleaseRecording';
 import { resolveConfirmedBinaryCommandReasonCode } from '../../lib/executor/planExecutorPredicates';
 import type { PlanEngineState } from '../../lib/plan/planState';
+import type { ActuationRecorder } from '../../lib/executor/executorCommandContext';
 
 type PendingBinaryCommand = PlanEngineState['pendingBinaryCommands'][string];
 
@@ -31,22 +31,16 @@ describe('lifecycleReleaseRecording shared rule', () => {
   });
 
   describe('selectShedActuationRecorder', () => {
-    const recordShedActuation: ShedActuationRecorder = vi.fn();
-    const recordReleaseShedActuation: ShedActuationRecorder = vi.fn();
+    const recorders = {
+      recordShedActuation: vi.fn<ActuationRecorder>(),
+      recordReleaseShedActuation: vi.fn<ActuationRecorder>(),
+    };
     it('routes lifecycle release to the diagnostic-only recorder', () => {
-      expect(selectShedActuationRecorder({
-        lifecycleRelease: true,
-        recordShedActuation,
-        recordReleaseShedActuation,
-      })).toBe(recordReleaseShedActuation);
+      expect(selectShedActuationRecorder(true, recorders)).toBe(recorders.recordReleaseShedActuation);
     });
     it('routes a capacity shed to the shed recorder', () => {
       for (const lifecycleRelease of [false, undefined]) {
-        expect(selectShedActuationRecorder({
-          lifecycleRelease,
-          recordShedActuation,
-          recordReleaseShedActuation,
-        })).toBe(recordShedActuation);
+        expect(selectShedActuationRecorder(lifecycleRelease, recorders)).toBe(recorders.recordShedActuation);
       }
     });
   });

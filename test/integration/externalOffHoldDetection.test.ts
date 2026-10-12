@@ -465,11 +465,7 @@ describe('external-off hold — release under an unreadable store', () => {
   it('uses a newer pull-observed raw EV ON to end old PELS-OFF attribution', () => {
     const h = buildCtx({ optedIn: true });
     const store = createPendingBinaryCommandStore({});
-    store.recordConfirmedBinaryCommand({
-      deviceId: DEVICE_ID,
-      desired: false,
-      confirmedAtMs: NOW,
-    });
+    store.recordConfirmedBinaryCommand(DEVICE_ID, false, NOW);
     h.ctx.externalOffHold?.startHold(DEVICE_ID);
     const charger = buildSnapshot({
       deviceClass: 'evcharger',

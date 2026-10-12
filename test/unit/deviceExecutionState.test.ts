@@ -1,6 +1,5 @@
 import { resolveDeviceExecutionState } from '../../lib/executor/deviceExecutionState';
-import { buildExecutableDeviceIntent, buildExecutableObservedDeviceStateFromSnapshot } from '../../lib/executor/executablePlanProjection';
-import { buildDriftObservedSnapshot } from '../../lib/executor/driftObservedDevice';
+import { buildExecutableDeviceIntent, buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
 import { steppedPlanDevice, buildPlanDevice } from '../utils/planTestUtils';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
@@ -13,10 +12,11 @@ const offPlan = steppedPlanDevice({
   reason: { code: 'deferred_objective_avoid' },
 });
 const profile = isSteppedLoadDevice(offPlan) ? offPlan.steppedLoadProfile : undefined;
-const observe = (binaryOn: boolean, reportedStepId?: string) => buildExecutableObservedDeviceStateFromSnapshot(
-  buildDriftObservedSnapshot({ id: offPlan.id, name: offPlan.name, isEvCharger: false, available: true,
+const observe = (binaryOn: boolean, reportedStepId?: string) => buildExecutableObservedDeviceState(
+  { id: offPlan.id, name: offPlan.name, isEvCharger: false, available: true,
     targets: [], binaryControl: { on: binaryOn }, reportedStepId, steppedLoadProfile: profile,
-  } as ExecutorDeviceRead, profile),
+  } as ExecutorDeviceRead,
+  profile,
 );
 
 describe('resolveDeviceExecutionState', () => {
@@ -30,10 +30,10 @@ describe('resolveDeviceExecutionState', () => {
     const plan = steppedPlanDevice({ binaryCapabilityId: undefined, currentState: 'off',
       selectedStepId: 'off', reportedStepId: 'off', plannedState: 'keep',
       desiredStepId: 'low' });
-    const observed = buildExecutableObservedDeviceStateFromSnapshot(buildDriftObservedSnapshot({
+    const observed = buildExecutableObservedDeviceState({
       id: plan.id, name: plan.name, isEvCharger: false, available: true, targets: [], reportedStepId: 'off',
       steppedLoadProfile: plan.steppedLoadProfile,
-    }, plan.steppedLoadProfile));
+    }, plan.steppedLoadProfile);
     const intent = buildExecutableDeviceIntent(plan);
     expect(resolveDeviceExecutionState(intent, observed, noCommands, false)).toMatchObject({
       physicalState: 'off', desiredBinary: null, desiredStepId: 'low', resumeExpected: true,
@@ -98,8 +98,8 @@ describe('resolveDeviceExecutionState', () => {
   it('compares a setpoint command against observed setpoint and pending command state', () => {
     const plan = buildPlanDevice({ deviceType: 'temperature', binaryCapabilityId: undefined,
       currentState: 'not_applicable', currentTarget: 18, plannedTarget: 21, currentTemperature: 19 });
-    const observed = buildExecutableObservedDeviceStateFromSnapshot({ id: plan.id, name: plan.name,
-      isEvCharger: false, available: true, targets: [{ id: 'target_temperature', value: 18, unit: '°C' }] });
+    const observed = buildExecutableObservedDeviceState({ id: plan.id, name: plan.name,
+      isEvCharger: false, available: true, targets: [{ id: 'target_temperature', value: 18, unit: '°C' }] }, undefined);
     const intent = buildExecutableDeviceIntent(plan);
     expect(resolveDeviceExecutionState(intent, observed, { ...noCommands, target: { desired: 21 } }, false))
       .toMatchObject({ targetProgress: 'pending', physicalState: 'not_applicable' });

@@ -32,7 +32,7 @@ export type BinaryControlOutcome =
 /**
  * Transport seam for binary-control dispatch. Executor talks to this rather
  * than importing `DeviceTransport` directly. Its one read is the observer's
- * binary axis (`getObservedBinaryControl`), so the decision cannot consult a
+ * record (`getObservedState`, whose binary axis decides), so the decision cannot consult a
  * transport snapshot the projection has not recorded (stage 5 of the snapshot
  * decomposition); its writes go through the actuator.
  *
@@ -44,7 +44,7 @@ export type BinaryControlOutcome =
  * cleared from the declined/failure arms here as well).
  */
 export type BinaryControlTransport = {
-  getObservedBinaryControl: ObservedBinaryControlRead;
+  getObservedState: ObservedBinaryControlRead;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   /**
    * The single device write seam. Binary control routes through
@@ -52,13 +52,15 @@ export type BinaryControlTransport = {
    * native capability versus Flow routing.
    */
   actuator: Actuator;
+  /** False once the issuing lane lost the device mid-write; its outcome is then not recorded. */
+  isAuthorityCurrent: () => boolean;
 };
 
 const logger = getLogger('executor/binary-dispatch');
 
 /**
  * Convenience wrapper: ask the plan layer to decide (reading the binary axis
- * via the transport's bound `getObservedBinaryControl`) and, if it returns a
+ * via the transport's `getObservedState`) and, if it returns a
  * decision, dispatch it via the same transport. Returns `{ applied: true }`
  * when the underlying dispatch succeeded, `{ applied: false }` when the plan
  * skipped or the dispatch failed.
@@ -75,33 +77,26 @@ export async function decideAndDispatchBinaryControl(params: {
   desired: boolean;
   snapshot?: BinaryControlDecisionSnapshot;
   logContext: BinaryControlLogContext;
-  reason?: string;
   lifecycleRelease?: boolean;
   forceAgainstReleasedOpposing?: boolean;
-  isAuthorityCurrent?: () => boolean;
 }): Promise<BinaryControlOutcome> {
   const {
     transport, deviceId, name, desired, snapshot, logContext,
-    reason, lifecycleRelease, forceAgainstReleasedOpposing,
+    lifecycleRelease, forceAgainstReleasedOpposing,
   } = params;
   const decision = decideBinaryControl({
     pendingBinaryCommandStore: transport.pendingBinaryCommandStore,
-    getObservedBinaryControl: transport.getObservedBinaryControl,
+    getObservedBinaryControl: transport.getObservedState,
     deviceId,
     name,
     desired,
     snapshot,
     logContext,
-    reason,
     lifecycleRelease,
     forceAgainstReleasedOpposing,
   });
   if (!decision) return { applied: false };
-  const result = await dispatchBinaryControlDecision({
-    decision,
-    transport,
-    isAuthorityCurrent: params.isAuthorityCurrent,
-  });
+  const result = await dispatchBinaryControlDecision({ decision, transport });
   if (!result.ok) return { applied: false };
   return { applied: true };
 }
@@ -135,11 +130,8 @@ export async function decideAndDispatchBinaryControl(params: {
 export async function dispatchBinaryControlDecision(params: {
   decision: BinaryControlDecision;
   transport: BinaryControlTransport;
-  isAuthorityCurrent?: () => boolean;
 }): Promise<DispatchBinaryControlResult> {
-  const {
-    decision, transport, isAuthorityCurrent,
-  } = params;
+  const { decision, transport } = params;
   recordPendingForDispatch({
     store: transport.pendingBinaryCommandStore,
     decision,
@@ -156,7 +148,7 @@ export async function dispatchBinaryControlDecision(params: {
     if (outcome.kind !== 'binary') {
       throw new Error(`Binary actuator returned ${outcome.kind} outcome for ${decision.deviceId}`);
     }
-    if (isAuthorityCurrent?.() === false) {
+    if (!transport.isAuthorityCurrent()) {
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
       return { ok: false, reason: 'not_requested' };
     }
@@ -181,7 +173,7 @@ export async function dispatchBinaryControlDecision(params: {
       // it owns the pending entry now, so accepting ours here would flip a
       // record we no longer own and fire its deferred confirm against a stale
       // desired value. Losing authority outranks not knowing the outcome.
-      if (isAuthorityCurrent?.() === false) {
+      if (!transport.isAuthorityCurrent()) {
         transport.pendingBinaryCommandStore.clear(decision.deviceId);
         return { ok: false, reason: 'not_requested' };
       }

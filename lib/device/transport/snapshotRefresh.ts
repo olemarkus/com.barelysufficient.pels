@@ -298,7 +298,7 @@ function adoptCommittedDeviceList(
 // still present. The guard already preserves the snapshot on such a read, so
 // the matching native adapters must be preserved too — otherwise a default-on
 // native stepped-load command (e.g. a Høiax heater) would silently no-op
-// (`setObservedNativeSteppedLoadStep` returns false with no adapter) until the
+// (`NativeSteppedLoadCommandAdapters.setStep` returns false with no adapter) until the
 // next good read re-registered it.
 async function fetchDevicesForSnapshotRefresh(
     refresh: SnapshotRefreshService,

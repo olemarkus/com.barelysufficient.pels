@@ -9,9 +9,7 @@
  * (flow-backed, confirmed-after-the-fact) path resolve through these helpers so
  * the two paths cannot drift.
  */
-
-/** Recorder that closes a binary OFF actuation (diagnostics + control clocks). */
-export type ShedActuationRecorder = (deviceId: string, name: string, now: number) => void;
+import type { ActuationRecorder, ExecutorCommandContext } from './executorCommandContext';
 
 /**
  * Reason-code label for a binary OFF (`desired === false`) command. A lifecycle
@@ -31,12 +29,11 @@ export function resolveBinaryShedReasonCode(
  * recorder for a lifecycle disable, otherwise the capacity-shed recorder (which
  * additionally stamps the cooldown markers).
  */
-export function selectShedActuationRecorder(params: {
-  lifecycleRelease: boolean | undefined;
-  recordShedActuation: ShedActuationRecorder;
-  recordReleaseShedActuation: ShedActuationRecorder;
-}): ShedActuationRecorder {
-  return params.lifecycleRelease ? params.recordReleaseShedActuation : params.recordShedActuation;
+export function selectShedActuationRecorder(
+  lifecycleRelease: boolean | undefined,
+  recorders: Pick<ExecutorCommandContext, 'recordShedActuation' | 'recordReleaseShedActuation'>,
+): ActuationRecorder {
+  return lifecycleRelease ? recorders.recordReleaseShedActuation : recorders.recordShedActuation;
 }
 
 /**

@@ -37,55 +37,50 @@ type StateOfChargeCandidate = {
 // Threaded through the parse so a full refresh reasons from the retained
 // session instead of re-deriving one from whatever timestamp the charging-state
 // capability happens to carry right now (see `resolveEvSessionBoundary`).
-export type RetainedStateOfChargeSession = Pick<
+type RetainedStateOfChargeSession = Pick<
   DeviceStateOfChargeSnapshot, 'sessionStartedAtMs' | 'invalidatedAtMs'
 >;
 
-export function resolveStateOfChargeSnapshot(params: {
-  deviceClassKey: string;
-  capabilityObj: DeviceCapabilityMap;
-  reportedCapabilities: FlowReportedCapabilitiesForDevice;
-  retainedSession?: RetainedStateOfChargeSession;
-  /**
-   * Whether the user ticked any car for this charger. When they have, the car
-   * is the ONLY source of its battery level: the charger's own native reading
-   * and the `report_evcharger_battery_level` flow card are both ignored, so the
-   * level cannot flip between two sources mid-session and the user gets what
-   * they asked for. The value itself arrives on the realtime seam
-   * (`updateStateOfChargeFromCarObservation`); parse's job is to carry it, not
-   * to re-derive it.
-   */
-  eligibleCarIds?: readonly string[];
-  /** The level parse last held, so an adopting charger can retain a car reading. */
-  retainedStateOfCharge?: DeviceStateOfChargeSnapshot;
-}): DeviceStateOfChargeSnapshot | undefined {
-  const {
-    deviceClassKey,
-    capabilityObj,
-    reportedCapabilities,
-    retainedSession,
-    eligibleCarIds,
-    retainedStateOfCharge,
-  } = params;
+/**
+ * The charger's level as a full parse sees it.
+ *
+ * `retained` is the level transport already holds for this charger. It carries
+ * the session anchor forward: a full refresh sees only the CURRENT plug state,
+ * never the plug-out that preceded it, so re-deriving the anchor from scratch
+ * would let a mid-session charging-state change look like a reconnect and
+ * invalidate the last SoC report. Same rule as "never let an older full fetch
+ * erase a fresher realtime observation" (`lib/device/AGENTS.md`). It also lets an
+ * adopting charger retain a car reading.
+ *
+ * `eligibleCarIds` says whether the user ticked any car for this charger. When
+ * they have, the car is the ONLY source of its battery level: the charger's own
+ * native reading and the `report_evcharger_battery_level` flow card are both
+ * ignored, so the level cannot flip between two sources mid-session and the user
+ * gets what they asked for. The value itself arrives on the realtime seam
+ * (`updateStateOfChargeFromCarObservation`); parse's job is to carry it, not to
+ * re-derive it.
+ */
+export function resolveStateOfChargeSnapshot(
+  deviceClassKey: string,
+  capabilityObj: DeviceCapabilityMap,
+  reportedCapabilities: FlowReportedCapabilitiesForDevice,
+  retained: DeviceStateOfChargeSnapshot | undefined,
+  eligibleCarIds: readonly string[],
+): DeviceStateOfChargeSnapshot | undefined {
   if (deviceClassKey !== 'evcharger') return undefined;
 
-  const candidate = eligibleCarIds && eligibleCarIds.length > 0
-    ? retainedCarCandidate(retainedStateOfCharge, eligibleCarIds)
-    : resolveStateOfChargeCandidate({ capabilityObj });
+  const candidate = eligibleCarIds.length > 0
+    ? retainedCarCandidate(retained, eligibleCarIds)
+    : resolveStateOfChargeCandidate(capabilityObj);
   if (!candidate) return undefined;
 
   // The candidate's provenance travels with it into the build; there is no
   // second pass re-stamping `source` onto the result, which is what made a
   // car-sourced reading with no car id representable in the first place.
-  return buildStateOfChargeSnapshot({
-    percent: candidate.percent,
-    observedAtMs: candidate.observedAtMs,
-    capabilityId: candidate.capabilityId,
-    capabilityObj,
-    reportedCapabilities,
-    retainedSession,
-    source: candidate.source,
-  });
+  return buildStateOfChargeSnapshot(
+    candidate,
+    resolveEvSessionBoundary(capabilityObj, reportedCapabilities, retained),
+  );
 }
 
 /**
@@ -118,100 +113,91 @@ function retainedCarCandidate(
 }
 
 /**
- * Writes the associated car's battery level onto the charger, on the realtime
- * seam the probe reports it on. Mirrors
- * `updateStateOfChargeFromRealtimeCapability` — same session anchoring, same
- * invalidation carry-forward, same status rule — because a car-sourced level is
- * the charger's level as far as everything downstream is concerned; only its
- * provenance differs.
+ * Writes a live battery-level reading onto the charger — its own
+ * (`updateStateOfChargeFromRealtimeCapability`) or its associated car's
+ * (`updateStateOfChargeFromCarObservation`). Both take the same session
+ * anchoring, the same invalidation carry-forward and the same status rule,
+ * because a car-sourced level is the charger's level as far as everything
+ * downstream is concerned; only its provenance differs. Returns the reading as
+ * built (`built`) and as stored after the carry-forward (`stored`).
  */
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function updateStateOfChargeFromCarObservation(params: {
-  snapshot: TransportDeviceSnapshot;
-  percent: number;
-  observedAtMs: number;
-  carId: string;
-  chargeLimitPct: number | null;
-}): boolean {
-  const { snapshot, percent, observedAtMs, carId, chargeLimitPct } = params;
-  if (snapshot.deviceClass !== 'evcharger') return false;
-  const normalized = normalizeStateOfChargePercent(percent);
-  if (normalized === undefined) return false;
-
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+function applyLiveStateOfChargeReading(
+  snapshot: TransportDeviceSnapshot,
+  reading: StateOfChargeCandidate,
+): { built: DeviceStateOfChargeSnapshot; stored: DeviceStateOfChargeSnapshot } {
   const previous = snapshot.stateOfCharge;
-  const source = { kind: 'car', carId, chargeLimitPercent: chargeLimitPct } as const;
-  const next = buildStateOfChargeSnapshot({
-    percent: normalized,
-    observedAtMs,
-    capabilityId: EV_SOC_CAPABILITY_ID,
-    capabilityObj: {
+  const next = buildStateOfChargeSnapshot(reading, resolveEvSessionBoundary(
+    {
       evcharger_charging_state: {
         value: snapshot.evChargingState,
-        lastUpdated: previous?.sessionStartedAtMs ?? observedAtMs,
+        lastUpdated: previous?.sessionStartedAtMs ?? reading.observedAtMs,
       },
     },
-    reportedCapabilities: {},
-    retainedSession: previous,
-    source,
-  });
+    {},
+    previous,
+  ));
   const invalidatedAtMs = maxPositive([
     previous?.invalidatedAtMs,
     next.invalidatedAtMs,
   ].filter(isFinitePositiveNumber));
   const sessionStartedAtMs = resolveRealtimeSessionStartedAtMs(previous, next);
-  snapshot.stateOfCharge = {
+  const stored = withLevel({
     ...next,
     ...(sessionStartedAtMs ? { sessionStartedAtMs } : {}),
     ...(invalidatedAtMs ? { invalidatedAtMs } : {}),
-    ...resolveLevelFields({
-      percent: normalized,
-      observedAtMs,
-      sessionStartedAtMs,
-      invalidatedAtMs,
-      source,
-    }),
-  };
-  return hasCarStateOfChargeChanged(previous, snapshot.stateOfCharge, carId);
+  });
+  snapshot.stateOfCharge = stored;
+  return { built: next, stored };
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function updateStateOfChargeObservationFreshness(params: {
-  snapshot: TransportDeviceSnapshot;
-  reportedAt: number;
-}): boolean {
-  const { snapshot, reportedAt } = params;
+/** Writes the associated car's battery level onto the charger, on the realtime seam the probe reports it on. */
+export function updateStateOfChargeFromCarObservation(
+  snapshot: TransportDeviceSnapshot,
+  percent: number,
+  observedAtMs: number,
+  carId: string,
+  chargeLimitPct: number | null,
+): boolean {
+  if (snapshot.deviceClass !== 'evcharger') return false;
+  const normalized = normalizeStateOfChargePercent(percent);
+  if (normalized === undefined) return false;
+
+  const previous = snapshot.stateOfCharge;
+  const { stored } = applyLiveStateOfChargeReading(snapshot, {
+    percent: normalized,
+    observedAtMs,
+    capabilityId: EV_SOC_CAPABILITY_ID,
+    source: { kind: 'car', carId, chargeLimitPercent: chargeLimitPct },
+  });
+  return hasCarStateOfChargeChanged(previous, stored, carId);
+}
+
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+export function updateStateOfChargeObservationFreshness(
+  snapshot: TransportDeviceSnapshot,
+  reportedAt: number,
+): boolean {
   if (!snapshot.stateOfCharge) return false;
   const previous = snapshot.stateOfCharge;
   const observedAtMs = Math.max(previous.report.observedAtMs, reportedAt);
-  snapshot.stateOfCharge = {
+  snapshot.stateOfCharge = withLevel({
     ...previous,
     report: { ...previous.report, observedAtMs },
-    ...resolveLevelFields({
-      percent: previous.report.percent,
-      observedAtMs,
-      sessionStartedAtMs: previous.sessionStartedAtMs,
-      invalidatedAtMs: previous.invalidatedAtMs,
-      source: previous.source,
-    }),
-  };
+  });
   return true;
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function updateStateOfChargeFromRealtimeCapability(params: {
-  snapshot: TransportDeviceSnapshot;
-  capabilityId: string;
-  value: unknown;
-  observedAtMs: number;
-}): boolean {
-  const {
-    snapshot,
-    capabilityId,
-    value,
-    observedAtMs,
-  } = params;
+export function updateStateOfChargeFromRealtimeCapability(
+  snapshot: TransportDeviceSnapshot,
+  capabilityId: string,
+  value: unknown,
+  observedAtMs: number,
+): boolean {
   if (!isStateOfChargeCapabilityId(capabilityId)) return false;
   if (snapshot.deviceClass !== 'evcharger') return false;
   // A charger-sourced realtime reading never displaces an adopted car value.
@@ -223,59 +209,25 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
   if (snapshot.stateOfCharge?.source.kind === 'car') return false;
   const percent = normalizeStateOfChargePercent(value);
   if (percent === undefined) return false;
-  // Reached only past the car guard above, so this reading is the charger's own.
-  const source = CHARGER_SOURCE;
 
-  const next = buildStateOfChargeSnapshot({
-    percent,
-    observedAtMs,
-    capabilityId,
-    capabilityObj: {
-      evcharger_charging_state: {
-        value: snapshot.evChargingState,
-        lastUpdated: snapshot.stateOfCharge?.sessionStartedAtMs ?? observedAtMs,
-      },
-    },
-    reportedCapabilities: {},
-    retainedSession: snapshot.stateOfCharge,
-    source,
-  });
   const previous = snapshot.stateOfCharge;
-  const invalidatedAtMs = maxPositive([
-    previous?.invalidatedAtMs,
-    next.invalidatedAtMs,
-  ].filter(isFinitePositiveNumber));
-  const sessionStartedAtMs = resolveRealtimeSessionStartedAtMs(previous, next);
-  snapshot.stateOfCharge = {
-    ...next,
-    ...(sessionStartedAtMs ? { sessionStartedAtMs } : {}),
-    ...(invalidatedAtMs ? { invalidatedAtMs } : {}),
-    ...resolveLevelFields({
-      percent,
-      observedAtMs,
-      sessionStartedAtMs,
-      invalidatedAtMs,
-      source,
-    }),
-  };
+  // Reached only past the car guard above, so this reading is the charger's own.
+  const { built: next } = applyLiveStateOfChargeReading(snapshot, {
+    percent, observedAtMs, capabilityId, source: CHARGER_SOURCE,
+  });
   return !previous
     || previous.report.percent !== next.report.percent
     || previous.report.observedAtMs !== next.report.observedAtMs
     || stateOfChargeLevelsDiffer(previous.level, next.level);
 }
-/* eslint-enable functional/immutable-data */
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function updateStateOfChargeSessionBoundary(params: {
-  snapshot: TransportDeviceSnapshot;
-  evChargingState: EvChargingState;
-  observedAtMs: number;
-}): boolean {
-  const {
-    snapshot,
-    evChargingState,
-    observedAtMs,
-  } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+export function updateStateOfChargeSessionBoundary(
+  snapshot: TransportDeviceSnapshot,
+  evChargingState: EvChargingState,
+  observedAtMs: number,
+): boolean {
   const previous = snapshot.stateOfCharge;
   if (!previous) return false;
   const sessionStartedAtMs = shouldStartNewSession(previous, evChargingState)
@@ -284,24 +236,16 @@ export function updateStateOfChargeSessionBoundary(params: {
   const invalidatedAtMs = isDisconnectedEvState(evChargingState)
     ? Math.max(previous.invalidatedAtMs ?? 0, observedAtMs)
     : previous.invalidatedAtMs;
-  const levelFields = resolveLevelFields({
-    percent: previous.report.percent,
-    observedAtMs: previous.report.observedAtMs,
-    sessionStartedAtMs: sessionStartedAtMs || undefined,
-    invalidatedAtMs: invalidatedAtMs || undefined,
-    source: previous.source,
-  });
-  snapshot.stateOfCharge = {
+  snapshot.stateOfCharge = withLevel({
     ...previous,
-    ...levelFields,
     ...(sessionStartedAtMs ? { sessionStartedAtMs } : {}),
     ...(invalidatedAtMs ? { invalidatedAtMs } : {}),
-  };
-  return stateOfChargeLevelsDiffer(previous.level, levelFields.level)
+  });
+  return stateOfChargeLevelsDiffer(previous.level, snapshot.stateOfCharge.level)
     || previous.sessionStartedAtMs !== snapshot.stateOfCharge.sessionStartedAtMs
     || previous.invalidatedAtMs !== snapshot.stateOfCharge.invalidatedAtMs;
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 export function isStateOfChargeCapabilityId(
   capabilityId: string,
@@ -353,10 +297,7 @@ function shouldStartNewSession(
   return isEvPlugStateConnected(evChargingState) && hasPendingReconnect(previous);
 }
 
-function resolveStateOfChargeCandidate(params: {
-  capabilityObj: DeviceCapabilityMap;
-}): StateOfChargeCandidate | null {
-  const { capabilityObj } = params;
+function resolveStateOfChargeCandidate(capabilityObj: DeviceCapabilityMap): StateOfChargeCandidate | null {
   for (const capabilityId of EV_SOC_NATIVE_CAPABILITY_IDS) {
     const capability = capabilityObj[capabilityId];
     const percent = normalizeStateOfChargePercent(capability?.value);
@@ -373,44 +314,18 @@ function resolveStateOfChargeCandidate(params: {
   return null;
 }
 
-function buildStateOfChargeSnapshot(params: {
-  percent: number;
-  observedAtMs: number;
-  capabilityId: string;
-  capabilityObj: DeviceCapabilityMap;
-  reportedCapabilities: FlowReportedCapabilitiesForDevice;
-  retainedSession?: RetainedStateOfChargeSession;
-  source: DeviceStateOfChargeSnapshot['source'];
-}): DeviceStateOfChargeSnapshot {
-  const {
-    percent,
-    observedAtMs,
-    capabilityId,
-    capabilityObj,
-    reportedCapabilities,
-    retainedSession,
-    source,
-  } = params;
-  const session = resolveEvSessionBoundary({
-    capabilityObj,
-    reportedCapabilities,
-    retainedSession,
-  });
-  const levelFields = resolveLevelFields({
-    percent,
-    observedAtMs,
-    invalidatedAtMs: session.invalidatedAtMs,
-    sessionStartedAtMs: session.sessionStartedAtMs,
-    source,
-  });
-  return {
+function buildStateOfChargeSnapshot(
+  reading: StateOfChargeCandidate,
+  session: RetainedStateOfChargeSession,
+): DeviceStateOfChargeSnapshot {
+  const { percent, observedAtMs, capabilityId, source } = reading;
+  return withLevel({
     report: { percent, observedAtMs },
-    ...levelFields,
     capabilityId,
     source,
     ...(session.sessionStartedAtMs ? { sessionStartedAtMs: session.sessionStartedAtMs } : {}),
     ...(session.invalidatedAtMs ? { invalidatedAtMs: session.invalidatedAtMs } : {}),
-  };
+  });
 }
 
 /**
@@ -430,16 +345,12 @@ function buildStateOfChargeSnapshot(params: {
  * detect it either — it produced a qualifier every consumer then had to
  * interpret, which is what this file no longer emits.
  */
-function resolveStateOfChargeLevel(params: {
-  percent: number;
-  observedAtMs: number;
-  invalidatedAtMs?: number;
-  sessionStartedAtMs?: number;
-  source: DeviceStateOfChargeSnapshot['source'];
-}): DeviceStateOfChargeSnapshot['level'] {
+function resolveStateOfChargeLevel(
+  stateOfCharge: Omit<DeviceStateOfChargeSnapshot, 'level'>,
+): DeviceStateOfChargeSnapshot['level'] {
   const {
-    percent, observedAtMs, invalidatedAtMs, sessionStartedAtMs, source,
-  } = params;
+    report: { percent, observedAtMs }, invalidatedAtMs, sessionStartedAtMs, source,
+  } = stateOfCharge;
   // A disconnect is recorded and no reconnect has been observed since, so there
   // is no session for a level to belong to.
   if (hasPendingReconnect({ sessionStartedAtMs, invalidatedAtMs })) {
@@ -477,25 +388,16 @@ function resolveStateOfChargeLevel(params: {
   return { kind: 'known', percent, observedAtMs };
 }
 
-function resolveLevelFields(params: {
-  percent: number;
-  observedAtMs: number;
-  invalidatedAtMs?: number;
-  sessionStartedAtMs?: number;
-  source: DeviceStateOfChargeSnapshot['source'];
-}): Pick<DeviceStateOfChargeSnapshot, 'level'> {
-  return { level: resolveStateOfChargeLevel(params) };
+/** The reading with the level its session gives it, which the reading's other fields decide. */
+function withLevel(stateOfCharge: Omit<DeviceStateOfChargeSnapshot, 'level'>): DeviceStateOfChargeSnapshot {
+  return { ...stateOfCharge, level: resolveStateOfChargeLevel(stateOfCharge) };
 }
 
-function resolveEvSessionBoundary(params: {
-  capabilityObj: DeviceCapabilityMap;
-  reportedCapabilities: FlowReportedCapabilitiesForDevice;
-  retainedSession?: RetainedStateOfChargeSession;
-}): {
-  sessionStartedAtMs?: number;
-  invalidatedAtMs?: number;
-} {
-  const { capabilityObj, reportedCapabilities, retainedSession } = params;
+function resolveEvSessionBoundary(
+  capabilityObj: DeviceCapabilityMap,
+  reportedCapabilities: FlowReportedCapabilitiesForDevice,
+  retainedSession: RetainedStateOfChargeSession | undefined,
+): RetainedStateOfChargeSession {
   const chargingState = getStringCapabilityValue(capabilityObj.evcharger_charging_state?.value);
   const chargingStateObservedAt = getCapabilityLastUpdatedMs(capabilityObj, 'evcharger_charging_state');
   const flowConnected = getBooleanFlowEntry(reportedCapabilities['alarm_generic.car_connected']);
@@ -518,9 +420,7 @@ function resolveEvSessionBoundary(params: {
     invalidatedAtMs,
   });
   const reconnectAtMs = reconnectPending && invalidatedAtMs !== undefined
-    ? resolveReconnectAtMs({
-      chargingState, chargingStateObservedAt, flowConnected, invalidatedAtMs,
-    })
+    ? resolveReconnectAtMs(chargingState, chargingStateObservedAt, flowConnected, invalidatedAtMs)
     : undefined;
 
   return {
@@ -540,15 +440,12 @@ function resolveEvSessionBoundary(params: {
  * guarantees a conforming read dates its plug state, so the timestamp-less
  * reconnect this once had to leave unanchored no longer reaches here.
  */
-function resolveReconnectAtMs(params: {
-  chargingState?: string;
-  chargingStateObservedAt?: number;
-  flowConnected?: { value: boolean; reportedAt: number };
-  invalidatedAtMs: number;
-}): number | undefined {
-  const {
-    chargingState, chargingStateObservedAt, flowConnected, invalidatedAtMs,
-  } = params;
+function resolveReconnectAtMs(
+  chargingState: string | undefined,
+  chargingStateObservedAt: number | undefined,
+  flowConnected: { value: boolean; reportedAt: number } | undefined,
+  invalidatedAtMs: number,
+): number | undefined {
   const candidates = [
     isConnectedCapabilityValue(chargingState) ? chargingStateObservedAt : undefined,
     flowConnected?.value === true ? flowConnected.reportedAt : undefined,

@@ -1,10 +1,7 @@
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
-import {
-  type PlanExecutorBinaryContext,
-  runBinaryControl,
-  skipRestoreForExternalOffHold,
-} from './binaryControlShared';
+import { runBinaryControl, skipRestoreForExternalOffHold } from './binaryControlShared';
+import type { ExecutorCommandContext } from './executorCommandContext';
 
 const logger = getLogger('executor/binary');
 /**
@@ -17,20 +14,12 @@ const logger = getLogger('executor/binary');
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 export const canApplyRestoreSnapshot = (
-  ctx: PlanExecutorBinaryContext,
-  params: {
-    snapshot?: ExecutorDeviceSnapshot;
-    deviceId: string;
-    name: string;
-    logContext: 'capacity' | 'capacity_control_off';
-  },
+  ctx: ExecutorCommandContext,
+  snapshot: ExecutorDeviceSnapshot | undefined,
+  deviceId: string,
+  name: string,
+  logContext: 'capacity' | 'capacity_control_off',
 ): boolean => {
-  const {
-    snapshot,
-    deviceId,
-    name,
-    logContext,
-  } = params;
   if (!snapshot) {
     emitExecutorDebug({
       event: 'restore_command_skipped',
@@ -47,7 +36,7 @@ export const canApplyRestoreSnapshot = (
     }
     return false;
   }
-  if (!ctx.canTurnOnDevice(deviceId)) {
+  if (!ctx.actuator.canTurnOnDevice(deviceId)) {
     // Same wording the owner sees on the device card: both come from
     // `resolveCommandabilityDetail` over the same observed facts.
     const suffix = ' (observer reports the control unavailable)';
@@ -70,7 +59,7 @@ export const canApplyRestoreSnapshot = (
 };
 
 export const applyBinaryRestoreWithSnapshot = async (
-  ctx: PlanExecutorBinaryContext,
+  ctx: ExecutorCommandContext,
   deviceId: string,
   name: string,
   snapshot: ExecutorDeviceSnapshot,

@@ -28,7 +28,6 @@ import {
   type PlanInputDevice,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { resolveFixtureCurrentOn, withFixtureResidualKw } from '../utils/planTestUtils';
 import { SURPLUS_ABSORB_SETTLE_MS } from '../../lib/plan/admission/surplusAbsorb';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -36,10 +35,9 @@ import { buildExecutablePlan, hasExecutableShedDevices } from '../../lib/executo
 import {
   applyBinarySheddingToDevice,
   applyUncontrolledBinaryRestore,
-  type PlanExecutorBinaryContext,
 } from '../../lib/executor/binaryExecutor';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
-import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
+import { createTestExecutorCommandContext } from '../helpers/executorCommandContext';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { buildSwapCandidates } from '../../lib/plan/swap/candidates';
 import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
@@ -693,32 +691,21 @@ const buildExecutorCtx = (snapshot: TargetDeviceSnapshot, state: PlanEngineState
     getSnapshot: () => [snapshot],
     getSnapshotByDeviceId: (id: string) => (id === snapshot.id ? snapshot : undefined),
   };
-  const ctx: PlanExecutorBinaryContext = {
-    state,
+  const ctx = createTestExecutorCommandContext(state, {
     readDevice: observation.getSnapshotByDeviceId,
-    capacityDryRun: false,
-    canTurnOnDevice: () => true,
-    buildBinaryControlTransport: () => ({
-      getObservedBinaryControl: observation.getSnapshotByDeviceId,
-      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-      actuator: createDeviceActuator({
-        canTurnOnDevice: () => true,
-        resolveTemperatureTarget: (_deviceId, desired) => desired,
-        requestSteppedLoadStep: async () => ({ requested: false }),
-        ...noStorageTransport,
-        requestBinaryControl: async (_deviceId: string, desired: boolean) => {
-          setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
-          return undefined;
-        },
-        requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
-      }),
+    getObservedState: observation.getSnapshotByDeviceId,
+    actuator: createDeviceActuator({
+      canTurnOnDevice: () => true,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+      requestSteppedLoadStep: async () => ({ requested: false }),
+      ...noStorageTransport,
+      requestBinaryControl: async (_deviceId: string, desired: boolean) => {
+        setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
+        return undefined;
+      },
+      requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
     }),
-    recordShedActuation: vi.fn(),
-    recordReleaseShedActuation: vi.fn(),
-    recordRestoreActuation: vi.fn(),
-    binaryCommandClaim: createBinaryCommandClaim(),
-    binaryCommandOwner: 'ordinary',
-  };
+  });
   return { ctx, state, setCapabilityCalls };
 };
 
@@ -826,10 +813,7 @@ describe('capacity-control-off can never force-turn-ON a dump load', () => {
     // shed, and the executor turns it off — the exact behaviour the toggle's
     // helper copy promises.
     const h = buildExecutorCtx(onPumpSnapshot);
-    const applied = await applyBinarySheddingToDevice(h.ctx, {
-      deviceId: PUMP,
-      deviceName: 'Pool pump',
-    });
+    const applied = await applyBinarySheddingToDevice(h.ctx, PUMP, 'Pool pump');
     expect(applied).toBe(true);
     expect(h.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: false }]);
   });

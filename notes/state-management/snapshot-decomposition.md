@@ -82,7 +82,7 @@ helpers. The observer was created but never handed the observation contract.
    is the producer invariant; the two fields travel together and owner seams carry
    them through the `MeasuredPowerObservedProbe` widening. Absence stops here: the
    producer seams (`toPlanDevice`, `withHeadroomCurrentOn`,
-   `buildResidualKwForPlanDevice`, `buildExecutableObservedDeviceStateFromSnapshot`)
+   `buildResidualKwForPlanDevice`, `buildExecutableObservedDeviceState`)
    resolve it once into the REQUIRED `currentDrawKw` carried by the plan device, the
    executor's observed state, the objectives sample contract, and the settings-UI
    `DeviceOverviewSnapshot` — the meter's reading, or 0 — so no plan, executor,

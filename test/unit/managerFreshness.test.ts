@@ -51,11 +51,7 @@ const NON_FINITE: ReadonlyArray<[string, unknown]> = [
 describe('applyFreshnessOnlyCapabilityUpdate — evcharger_charging_state', () => {
   it('applies a known→known realtime transition', () => {
     const snapshot = evSnapshot('plugged_in_charging', true);
-    const result = applyFreshnessOnlyCapabilityUpdate({
-      snapshot,
-      capabilityId: 'evcharger_charging_state',
-      value: 'plugged_out',
-    });
+    const result = applyFreshnessOnlyCapabilityUpdate(snapshot, 'evcharger_charging_state', 'plugged_out');
     expect(result.changed).toBe(true);
     expect(snapshot.evChargingState).toBe('plugged_out');
   });
@@ -65,11 +61,7 @@ describe('applyFreshnessOnlyCapabilityUpdate — evcharger_charging_state', () =
     // for an unrecognised value must transition to the uncommandable unknown
     // state, not retain the stale (still commandable) `plugged_in_charging`.
     const snapshot = evSnapshot('plugged_in_charging', false);
-    const result = applyFreshnessOnlyCapabilityUpdate({
-      snapshot,
-      capabilityId: 'evcharger_charging_state',
-      value: 'mystery',
-    });
+    const result = applyFreshnessOnlyCapabilityUpdate(snapshot, 'evcharger_charging_state', 'mystery');
     expect(result.changed).toBe(true);
     expect(snapshot.evChargingState).toBeUndefined();
     // undefined defers to the evcharger_charging boolean (false here) → off.
@@ -78,11 +70,7 @@ describe('applyFreshnessOnlyCapabilityUpdate — evcharger_charging_state', () =
 
   it('ignores a non-string realtime value, leaving the prior state intact', () => {
     const snapshot = evSnapshot('plugged_in_charging', true);
-    const result = applyFreshnessOnlyCapabilityUpdate({
-      snapshot,
-      capabilityId: 'evcharger_charging_state',
-      value: 42,
-    });
+    const result = applyFreshnessOnlyCapabilityUpdate(snapshot, 'evcharger_charging_state', 42);
     expect(result.changed).toBe(false);
     expect(snapshot.evChargingState).toBe('plugged_in_charging');
   });
@@ -95,7 +83,7 @@ describe('applyFreshnessOnlyCapabilityUpdate — evcharger_charging_state', () =
 describe('applyFreshnessOnlyCapabilityUpdate — numeric boundary (present implies finite)', () => {
   it('writes a finite measure_power value (in kW), as the device\'s own reading', () => {
     const snapshot: TransportDeviceSnapshot = numericSnapshot({ measuredPowerKw: 1 });
-    const result = applyFreshnessOnlyCapabilityUpdate({ snapshot, capabilityId: 'measure_power', value: 2000 });
+    const result = applyFreshnessOnlyCapabilityUpdate(snapshot, 'measure_power', 2000);
     expect(result.changed).toBe(true);
     expect(snapshot.measuredPowerKw).toBe(2);
     expect(snapshot.measuredPowerSource).toBe('measure_power');
@@ -103,7 +91,7 @@ describe('applyFreshnessOnlyCapabilityUpdate — numeric boundary (present impli
 
   it.each(NON_FINITE)('drops a non-finite measure_power value (%s) — no write, no change', (_label, value) => {
     const snapshot = numericSnapshot({ measuredPowerKw: 2 });
-    const result = applyFreshnessOnlyCapabilityUpdate({ snapshot, capabilityId: 'measure_power', value });
+    const result = applyFreshnessOnlyCapabilityUpdate(snapshot, 'measure_power', value);
     expect(result.changed).toBe(false);
     // Prior finite value retained — junk never reaches the snapshot.
     expect(snapshot.measuredPowerKw).toBe(2);
@@ -116,23 +104,21 @@ describe('applyFreshnessOnlyCapabilityUpdate — numeric boundary (present impli
     // or negative depending on which seam wrote last, and the contract's
     // "present implies finite, NON-NEGATIVE kW" is false.
     const snapshot = numericSnapshot({ measuredPowerKw: 2 });
-    const result = applyFreshnessOnlyCapabilityUpdate({
-      snapshot, capabilityId: 'measure_power', value: -1500,
-    });
+    const result = applyFreshnessOnlyCapabilityUpdate(snapshot, 'measure_power', -1500);
     expect(result.changed).toBe(false);
     expect(snapshot.measuredPowerKw).toBe(2);
   });
 
   it('writes a finite measure_temperature value', () => {
     const snapshot = numericSnapshot({ currentTemperature: 18 });
-    const result = applyFreshnessOnlyCapabilityUpdate({ snapshot, capabilityId: 'measure_temperature', value: 21 });
+    const result = applyFreshnessOnlyCapabilityUpdate(snapshot, 'measure_temperature', 21);
     expect(result.changed).toBe(true);
     expect(snapshot.temperature?.currentTemperature).toBe(21);
   });
 
   it.each(NON_FINITE)('removes the temperature facet for malformed measure_temperature (%s)', (_label, value) => {
     const snapshot = numericSnapshot({ currentTemperature: 18 });
-    const result = applyFreshnessOnlyCapabilityUpdate({ snapshot, capabilityId: 'measure_temperature', value });
+    const result = applyFreshnessOnlyCapabilityUpdate(snapshot, 'measure_temperature', value);
     expect(result.changed).toBe(true);
     expect(result.temperatureFacetRemoved).toBe(true);
     expect(snapshot.temperature).toBeUndefined();

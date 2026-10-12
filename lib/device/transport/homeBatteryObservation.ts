@@ -22,9 +22,10 @@ import { resolveBatteryControlSurface } from '../batteryControlWiring';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { ObservationCursor, ObservedDeviceStateEvent } from './managerRealtimeHandlers';
+import type { ObservationCursor } from './managerRealtimeHandlers';
 import { normalizeStateOfChargePercent } from './stateOfCharge';
 import { HOME_BATTERY_CLASS_KEY } from '../../../packages/shared-domain/src/batteryOrSolarRole';
+import type { ObservedStateChangedEvent } from '../../ports/observedStateEvents';
 
 const MEASURE_POWER_CAPABILITY_ID = 'measure_power';
 const MEASURE_BATTERY_CAPABILITY_ID = 'measure_battery';
@@ -237,7 +238,7 @@ export function applyHomeBatteryPowerObservation(
  */
 export function handleHomeBatteryClaimCapabilityUpdate(
     nextObservationCursor: (deviceId: string) => ObservationCursor,
-    dispatchObservedStateChanged: (event: ObservedDeviceStateEvent) => void,
+    dispatchObservedStateChanged: (event: ObservedStateChangedEvent) => void,
     snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,
@@ -266,7 +267,7 @@ export function handleHomeBatteryClaimCapabilityUpdate(
  */
 export function handleHomeBatteryLevelCapabilityUpdate(
     nextObservationCursor: (deviceId: string) => ObservationCursor,
-    dispatchObservedStateChanged: (event: ObservedDeviceStateEvent) => void,
+    dispatchObservedStateChanged: (event: ObservedStateChangedEvent) => void,
     snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,

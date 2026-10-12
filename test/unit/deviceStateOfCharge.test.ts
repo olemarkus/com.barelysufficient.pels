@@ -8,9 +8,9 @@ import { clearCarStateOfCharge } from '../../lib/device/transport/carStateOfChar
 
 describe('resolveStateOfChargeSnapshot', () => {
   it('prefers native SoC capabilities over flow-backed battery reports', () => {
-    const snapshot = resolveStateOfChargeSnapshot({
-      deviceClassKey: 'evcharger',
-      capabilityObj: {
+    const snapshot = resolveStateOfChargeSnapshot(
+      'evcharger',
+      {
         evcharger_charging_state: {
           value: 'plugged_in_charging',
           lastUpdated: '2026-03-20T06:00:00.000Z',
@@ -20,14 +20,16 @@ describe('resolveStateOfChargeSnapshot', () => {
           lastUpdated: '2026-03-20T06:00:01.000Z',
         },
       },
-      reportedCapabilities: {
+      {
         measure_battery: {
           value: 42,
           reportedAt: Date.parse('2026-03-20T05:58:00.000Z'),
           source: 'flow',
         },
       },
-    });
+      undefined,
+      [],
+    );
 
     const socAt = Date.parse('2026-03-20T06:00:01.000Z');
     expect(snapshot).toEqual(expect.objectContaining({
@@ -44,9 +46,9 @@ describe('resolveStateOfChargeSnapshot', () => {
     chargingStateAt: number;
     charging?: boolean;
     retainedSession?: { sessionStartedAtMs?: number; invalidatedAtMs?: number };
-  }) => resolveStateOfChargeSnapshot({
-    deviceClassKey: 'evcharger',
-    capabilityObj: {
+  }) => resolveStateOfChargeSnapshot(
+    'evcharger',
+    {
       evcharger_charging_state: {
         value: params.chargingState,
         lastUpdated: params.chargingStateAt,
@@ -56,9 +58,14 @@ describe('resolveStateOfChargeSnapshot', () => {
         : { evcharger_charging: { value: params.charging } }),
       measure_battery: { value: 34, lastUpdated: SOC_AT },
     },
-    reportedCapabilities: {},
-    retainedSession: params.retainedSession,
-  });
+    {},
+    // Only the retained session matters here: with no car ticked, the level is
+    // the charger's own reading.
+    params.retainedSession === undefined
+      ? undefined
+      : stateOfChargeFixture({ percent: 34, observedAtMs: SOC_AT, ...params.retainedSession }),
+    [],
+  );
 
   // Prod 2026-07-26: PELS paused an Easee, the charger dropped
   // `plugged_in_charging` → `plugged_in` two minutes after the last SoC report,
@@ -216,30 +223,22 @@ describe('car-sourced state of charge', () => {
     // The opt-in makes the car the only source: a native reading and a
     // flow-reported one are both ignored, so the level cannot flip between two
     // sources mid-session.
-    expect(resolveStateOfChargeSnapshot({
-      deviceClassKey: 'evcharger',
-      capabilityObj: chargerCaps,
-      reportedCapabilities: {},
-      eligibleCarIds: ['car-1'],
-    })).toBeUndefined();
+    expect(resolveStateOfChargeSnapshot('evcharger', chargerCaps, {}, undefined, ['car-1'])).toBeUndefined();
   });
 
   it('still reads the charger when no car is ticked', () => {
-    expect(resolveStateOfChargeSnapshot({
-      deviceClassKey: 'evcharger',
-      capabilityObj: chargerCaps,
-      reportedCapabilities: {},
-    })).toMatchObject({ report: { percent: 55 } });
+    expect(resolveStateOfChargeSnapshot('evcharger', chargerCaps, {}, undefined, []))
+      .toMatchObject({ report: { percent: 55 } });
   });
 
   it('carries a car-sourced level across a refresh, with its provenance', () => {
-    const resolved = resolveStateOfChargeSnapshot({
-      deviceClassKey: 'evcharger',
-      capabilityObj: chargerCaps,
-      reportedCapabilities: {},
-      eligibleCarIds: ['car-1'],
-      retainedStateOfCharge: stateOfChargeFixture({ percent: 63, observedAtMs: 1_500, carId: 'car-1' }),
-    });
+    const resolved = resolveStateOfChargeSnapshot(
+      'evcharger',
+      chargerCaps,
+      {},
+      stateOfChargeFixture({ percent: 63, observedAtMs: 1_500, carId: 'car-1' }),
+      ['car-1'],
+    );
     expect(resolved).toMatchObject({
       report: { percent: 63, observedAtMs: 1_500 },
       source: { kind: 'car', carId: 'car-1' },
@@ -261,16 +260,12 @@ describe('car-sourced state of charge', () => {
       evChargingState: 'plugged_in_charging',
       evCharging: true,
       targets: [],
-    } as unknown as Parameters<typeof updateStateOfChargeFromCarObservation>[0]['snapshot'];
+    } as unknown as Parameters<typeof updateStateOfChargeFromCarObservation>[0];
 
     // A reading the car took BEFORE this charging session was anchored.
-    updateStateOfChargeFromCarObservation({
-      snapshot, percent: 63, observedAtMs: 1_000, chargeLimitPct: null, carId: 'car-1',
-    });
+    updateStateOfChargeFromCarObservation(snapshot, 63, 1_000, 'car-1', null);
     snapshot.stateOfCharge = { ...snapshot.stateOfCharge!, sessionStartedAtMs: 4_000 };
-    updateStateOfChargeFromCarObservation({
-      snapshot, percent: 63, observedAtMs: 1_000, chargeLimitPct: null, carId: 'car-1',
-    });
+    updateStateOfChargeFromCarObservation(snapshot, 63, 1_000, 'car-1', null);
 
     expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63, observedAtMs: 1_000 });
   });
@@ -278,13 +273,13 @@ describe('car-sourced state of charge', () => {
   it('never carries a charger-owned level forward as if a car had reported it', () => {
     // The toggle may have been switched on while one of the charger's own
     // readings was still present; adopting it would relabel someone else's data.
-    expect(resolveStateOfChargeSnapshot({
-      deviceClassKey: 'evcharger',
-      capabilityObj: chargerCaps,
-      reportedCapabilities: {},
-      eligibleCarIds: ['car-1'],
-      retainedStateOfCharge: stateOfChargeFixture({ percent: 71, observedAtMs: 1_500 }),
-    })).toBeUndefined();
+    expect(resolveStateOfChargeSnapshot(
+      'evcharger',
+      chargerCaps,
+      {},
+      stateOfChargeFixture({ percent: 71, observedAtMs: 1_500 }),
+      ['car-1'],
+    )).toBeUndefined();
   });
 
   it('writes a car reading onto the charger and drops it when the session ends', () => {
@@ -295,11 +290,9 @@ describe('car-sourced state of charge', () => {
       evChargingState: 'plugged_in_charging',
       evCharging: true,
       targets: [],
-    } as unknown as Parameters<typeof updateStateOfChargeFromCarObservation>[0]['snapshot'];
+    } as unknown as Parameters<typeof updateStateOfChargeFromCarObservation>[0];
 
-    expect(updateStateOfChargeFromCarObservation({
-      snapshot, percent: 63, observedAtMs: 1_500, chargeLimitPct: null, carId: 'car-1',
-    })).toBe(true);
+    expect(updateStateOfChargeFromCarObservation(snapshot, 63, 1_500, 'car-1', null)).toBe(true);
     expect(snapshot.stateOfCharge).toMatchObject({
       report: { percent: 63 },
       source: { kind: 'car', carId: 'car-1' },
@@ -331,8 +324,8 @@ describe('updateStateOfChargeObservationFreshness', () => {
     reportedAt: number,
   ): string | undefined => {
     const snapshot = { stateOfCharge } as unknown as
-      Parameters<typeof updateStateOfChargeObservationFreshness>[0]['snapshot'];
-    updateStateOfChargeObservationFreshness({ snapshot, reportedAt });
+      Parameters<typeof updateStateOfChargeObservationFreshness>[0];
+    updateStateOfChargeObservationFreshness(snapshot, reportedAt);
     return snapshot.stateOfCharge?.level.kind;
   };
 

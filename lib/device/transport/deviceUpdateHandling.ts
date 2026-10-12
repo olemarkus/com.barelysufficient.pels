@@ -20,14 +20,13 @@ import {
 } from './managerObservation';
 import {
   handleRealtimeDeviceUpdate as runRealtimeDeviceUpdate,
-  type ObservedDeviceStateEvent,
-  type PlanRealtimeUpdateEvent,
 } from './managerRealtimeHandlers';
 import { buildNativeEvObservationDevice } from '../nativeEvWiring';
 import { MIN_SIGNIFICANT_POWER_W } from './transportTypes';
 import type { RealtimeIngestService } from './transportServices';
 import type { SnapshotRefreshService } from './snapshotRefresh';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
+import type { ObservedControlStateChangedEvent, ObservedStateChangedEvent } from '../../ports/observedStateEvents';
 
 const moduleLogger = getLogger('device/transport');
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
@@ -142,8 +141,8 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
     // PRE-update snapshot and lag the projection one device-update behind
     // (Codex P2 on PR-4a). Collect now, dispatch once the committed snapshot
     // (incl. binary-settle evidence) is in place.
-    const deferredObservedStateEvents: ObservedDeviceStateEvent[] = [];
-    const deferredControlEvents: PlanRealtimeUpdateEvent[] = [];
+    const deferredObservedStateEvents: ObservedStateChangedEvent[] = [];
+    const deferredControlEvents: ObservedControlStateChangedEvent[] = [];
     const result = runRealtimeDeviceUpdate({
         device: observedDevice,
         latestSnapshot: ingest.reader.snapshotStore.getSnapshot(),
@@ -167,7 +166,7 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
         // Call-local queues defer events until the snapshot commit.
         /* eslint-disable functional/immutable-data */
         emitObservedControlStateChanged: (event) => deferredControlEvents.push(event),
-        emitObservedState: (event: ObservedDeviceStateEvent) => deferredObservedStateEvents.push(event),
+        emitObservedState: (event: ObservedStateChangedEvent) => deferredObservedStateEvents.push(event),
         /* eslint-enable functional/immutable-data */
     });
     const currentSnapshot = deviceId
@@ -229,7 +228,7 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
 function flushDeferredObservedState(
     ingest: RealtimeIngestService,
     deviceId: string,
-    events: readonly ObservedDeviceStateEvent[],
+    events: readonly ObservedStateChangedEvent[],
     previousSnapshot: Pick<TargetDeviceSnapshot, 'available'> | undefined,
     currentSnapshot: Pick<TargetDeviceSnapshot, 'available'> | null,
 ): void {

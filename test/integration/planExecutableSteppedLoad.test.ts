@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildExecutableObservedDeviceStateFromSnapshot,
+  buildExecutableObservedDeviceState,
 } from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
@@ -14,6 +14,7 @@ import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { isBinaryDrivenIntent } from '../../lib/executor/executableDesiredState';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { steppedPlanDevice } from '../utils/planTestUtils';
+import { PRIOR_STEP_COMMAND_SESSION } from '../helpers/executorCommandContext';
 
 const buildObservedState = (
   device: DevicePlanDevice,
@@ -27,7 +28,9 @@ const buildObservedState = (
   // keep the optional read + fallback rather than asserting it.
   const observedOn = (isBinaryPlanDevice(device) ? device.currentOn : undefined)
     ?? device.currentState === 'on';
-  return buildExecutableObservedDeviceStateFromSnapshot({
+  // The decorated plan-input shape, read as-is (no ladder): the fixture's own
+  // `selectedStepId` is the rung under test.
+  const read = {
     id: device.id,
     name: device.name,
     binaryControl: { on: observedOn },
@@ -44,7 +47,8 @@ const buildObservedState = (
     available: overrides.available ?? true,
     // The identity `readExecutorDevice` joins from device configuration.
     isEvCharger: overrides.isEvCharger ?? device.isEvCharger,
-  });
+  };
+  return buildExecutableObservedDeviceState(read, undefined);
 };
 
 const buildAction = (
@@ -53,6 +57,8 @@ const buildAction = (
 ) => buildExecutableSteppedLoadDevice(
   buildExecutableSteppedLoadIntent(device),
   buildObservedState(device, observedOverrides),
+  undefined,
+  PRIOR_STEP_COMMAND_SESSION,
 );
 
 describe('planExecutableSteppedLoad', () => {
@@ -70,17 +76,19 @@ describe('planExecutableSteppedLoad', () => {
         on: false,
         stepId: 'low',
       },
-      // The binary drive moved off the `desired` bag onto the intent; still
-      // asserted, so this keeps proving the plan wants the device ON.
-      desiredOn: true,
-      desired: {
-        stepId: 'low',
-        plannedStepId: 'low',
-      },
-      previousStepId: 'low',
-      transition: {
-        effectiveTransition: 'restore_from_off_at_low',
-        transitionPhase: 'binary_transition',
+      intent: {
+        // The binary drive moved off the `desired` bag onto the intent; still
+        // asserted, so this keeps proving the plan wants the device ON.
+        desiredOn: true,
+        desired: {
+          stepId: 'low',
+          plannedStepId: 'low',
+        },
+        previousStepId: 'low',
+        transition: {
+          effectiveTransition: 'restore_from_off_at_low',
+          transitionPhase: 'binary_transition',
+        },
       },
       stepActuation: {
         kind: 'requested',
@@ -104,7 +112,6 @@ describe('planExecutableSteppedLoad', () => {
       requestedStepId: 'low',
       materialization: { kind: 'not_materialized', reason: 'fallback_only' },
     });
-    expect(action?.commandStepActuation).toEqual(action?.stepActuation);
   });
 
   it('materializes a flow-confirmed prepared step while the device is off', () => {
@@ -165,6 +172,7 @@ describe('planExecutableSteppedLoad', () => {
       buildExecutableSteppedLoadIntent(planDevice),
       undefined,
       resolveSteppedLoadCurrentFallback(planDevice),
+      PRIOR_STEP_COMMAND_SESSION,
     );
 
     expect(action?.current.on).toBe(false);
@@ -271,11 +279,12 @@ describe('planExecutableSteppedLoad', () => {
       steppedLoadProfile: rawSteppedLoadProfile,
     } as unknown as TargetDeviceSnapshot;
 
-    const observed = buildExecutableObservedDeviceStateFromSnapshot(rawSnapshot);
+    const observed = buildExecutableObservedDeviceState(rawSnapshot, undefined);
     const action = buildExecutableSteppedLoadDevice(
       buildExecutableSteppedLoadIntent(planDevice),
       observed,
       resolveSteppedLoadCurrentFallback(planDevice),
+      PRIOR_STEP_COMMAND_SESSION,
     );
 
     // Observed step is undefined on the raw dispatch path (no decoration) ...
@@ -300,6 +309,7 @@ describe('planExecutableSteppedLoad', () => {
       buildExecutableSteppedLoadIntent(planDevice),
       undefined,
       resolveSteppedLoadCurrentFallback(planDevice),
+      PRIOR_STEP_COMMAND_SESSION,
     );
 
     expect(action?.current.stepId).toBe('low');

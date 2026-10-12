@@ -2,13 +2,13 @@ import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types
 import { projectObservedState } from '../observedStateProjection';
 import { TransportObservationState } from './transportObservationState';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
-import type {
-  ObservedDeviceStateEvent,
-  ObservedDeviceStateRefreshEvent,
-  PlanRealtimeUpdateEvent,
-} from './managerRealtimeHandlers';
 import type { TemperatureAdjustmentObserver } from '../temperatureAdjustmentObserver';
-import type { TransportObservedStateDispatcher } from './transportTypes';
+import type {
+  ObservedControlStateChangedEvent,
+  ObservedStateChangedEvent,
+  ObservedStateEmitterDispatcher,
+  ObservedStateRefreshEvent,
+} from '../../ports/observedStateEvents';
 
 /** Publishes transport decisions to Observer and assigns their observation order. */
 export class ObservationBridge {
@@ -16,7 +16,7 @@ export class ObservationBridge {
 
   constructor(
     private readonly snapshotStore: TransportSnapshotStore,
-    private readonly dispatcher: TransportObservedStateDispatcher,
+    private readonly dispatcher: ObservedStateEmitterDispatcher,
     private readonly temperatureAdjustments: TemperatureAdjustmentObserver,
   ) {}
 
@@ -24,7 +24,7 @@ export class ObservationBridge {
     return this.state.nextCursor(deviceId, observedAtMs);
   }
 
-  dispatchStateChanged(event: ObservedDeviceStateEvent): void {
+  dispatchStateChanged(event: ObservedStateChangedEvent): void {
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(event.deviceId);
     this.dispatcher.observedStateChanged(
       snapshot ? { ...event, observed: projectObservedState(snapshot) } : event,
@@ -44,7 +44,7 @@ export class ObservationBridge {
   dispatchStateRefresh(snapshot: readonly TargetDeviceSnapshot[], ignoredReadIds: ReadonlySet<string>): void {
     this.temperatureAdjustments.retainDevices(new Set(snapshot.map((device) => device.id)));
     const observedAtMs = Date.now();
-    const event: ObservedDeviceStateRefreshEvent = {
+    const event: ObservedStateRefreshEvent = {
       entries: snapshot.map((device) => {
         const cursor = this.nextCursor(device.id, observedAtMs);
         return {
@@ -58,7 +58,7 @@ export class ObservationBridge {
     this.dispatcher.observedStateRefresh(event);
   }
 
-  dispatchControlStateChanged(event: PlanRealtimeUpdateEvent): void {
+  dispatchControlStateChanged(event: ObservedControlStateChangedEvent): void {
     const adjustment = this.temperatureAdjustments.observeControlChange(
       this.snapshotStore.getSnapshotByDeviceId(event.deviceId),
       event,
@@ -71,7 +71,7 @@ export class ObservationBridge {
     this.dispatcher.setGenerationW(watts, observedAtMs);
   }
 
-  emitControlStateChanged(event: PlanRealtimeUpdateEvent): void {
+  emitControlStateChanged(event: ObservedControlStateChangedEvent): void {
     const cursor = event.observationSeq === undefined || event.observedAtMs === undefined
       ? this.nextCursor(event.deviceId)
       : {};

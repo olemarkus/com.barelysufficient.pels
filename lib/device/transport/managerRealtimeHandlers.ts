@@ -1,48 +1,17 @@
-import type { ObservedDeviceState } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { ObservedDeviceStateRefreshPayload } from '../../../packages/contracts/src/observedDeviceState';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { TransportObservationState } from './transportObservationState';
 import {
   reconcileRealtimeDeviceUpdate,
-  type RealtimeDeviceReconcileChange,
 } from '../managerRuntime';
 import { isStateOfChargeCapabilityId } from './stateOfCharge';
+import type {
+  ObservedCapabilityChange,
+  ObservedControlStateChangedEvent,
+  ObservedStateChangedEvent,
+} from '../../ports/observedStateEvents';
 
-export type PlanRealtimeUpdateEvent = {
-  deviceId: string;
-  observationSeq?: number;
-  observedAtMs?: number;
-  name?: string;
-  capabilityId?: string;
-  changes?: RealtimeDeviceReconcileChange[];
-};
-
-export type ObservedDeviceStateEvent = {
-  source: 'realtime_capability' | 'device_update';
-  deviceId: string;
-  observationSeq?: number;
-  observedAtMs?: number;
-  capabilityId?: string;
-  observedCapabilityIds?: string[];
-  measurePowerBecameSignificantlyPositive?: boolean;
-  // The decided observed value transport's fresher-wins merge produced for this
-  // device, attached once at the dispatch funnel (`dispatchObservedStateChanged`)
-  // so the observer projection records the merged value rather than re-merging.
-  // Stage 4a of the snapshot decomposition.
-  observed?: ObservedDeviceState;
-};
-
-export type DeviceObservationCursor = Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'>;
-
-/**
- * Batch full-refresh event. One entry per device in the committed snapshot,
- * carrying a fresh per-device cursor (so it supersedes in-flight deltas) and
- * the decided observed value. Aliases the shared contracts payload so the
- * device-side type and the observer-side `ObservedStateRefreshEvent` can't
- * drift — neither layer imports the other; both reference contracts.
- */
-export type ObservedDeviceStateRefreshEvent = ObservedDeviceStateRefreshPayload;
+export type DeviceObservationCursor = Pick<ObservedStateChangedEvent, 'observationSeq' | 'observedAtMs'>;
 
 /**
  * Non-optional per-device observation cursor. `nextObservationCursor` always
@@ -59,7 +28,7 @@ export type DeviceUpdateProcessedDebugEvent = {
   reasonCode: 'control_state_changed' | 'no_snapshot_change';
   observedControlStateChanged: boolean;
   changeCount: number;
-  changes: RealtimeDeviceReconcileChange[];
+  changes: ObservedCapabilityChange[];
   observedCapabilityIds: string[];
   binaryCapabilityId: string | null;
   rawBinaryObserved: boolean;
@@ -92,7 +61,7 @@ export type HandleRealtimeDeviceUpdateResult = {
    * splitting into separate fields.
    */
   observedControlStateChanged: boolean;
-  changes: RealtimeDeviceReconcileChange[];
+  changes: ObservedCapabilityChange[];
   observedCapabilityIds: string[];
   currentSnapshot: TransportDeviceSnapshot | null | undefined;
 };
@@ -107,8 +76,8 @@ export function handleRealtimeDeviceUpdate(params: {
   recordObservedCapabilities?: (deviceId: string, capabilityIds: string[]) => void;
   emitDeviceUpdateProcessed?: (event: DeviceUpdateProcessedDebugEvent) => void;
   createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
-  emitObservedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void;
-  emitObservedState: (event: ObservedDeviceStateEvent) => void;
+  emitObservedControlStateChanged: (event: ObservedControlStateChangedEvent) => void;
+  emitObservedState: (event: ObservedStateChangedEvent) => void;
 }): HandleRealtimeDeviceUpdateResult {
   const {
     device,
@@ -193,12 +162,12 @@ function emitDeviceObservationEvents(params: {
   observedControlStateChanged: boolean;
   deviceId: string;
   label?: string;
-  changes: RealtimeDeviceReconcileChange[];
+  changes: ObservedCapabilityChange[];
   observedCapabilityIds: string[];
   measurePowerBecameSignificantlyPositive: boolean;
   createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
-  emitObservedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void;
-  emitObservedState: (event: ObservedDeviceStateEvent) => void;
+  emitObservedControlStateChanged: (event: ObservedControlStateChangedEvent) => void;
+  emitObservedState: (event: ObservedStateChangedEvent) => void;
 }): void {
   const {
     observedControlStateChanged,
@@ -251,7 +220,7 @@ function buildDeviceUpdateProcessedDebugEvent(params: {
   binaryCapabilityId: string | undefined;
   rawBinaryValue: boolean | undefined;
   observedControlStateChanged: boolean;
-  changes: RealtimeDeviceReconcileChange[];
+  changes: ObservedCapabilityChange[];
   observedCapabilityIds: string[];
   measurePowerBecameSignificantlyPositive: boolean;
 }): DeviceUpdateProcessedDebugEvent {

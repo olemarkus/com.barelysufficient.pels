@@ -1,7 +1,6 @@
 import { resolveTaskDeliveryControl } from '../../lib/plan/taskDeliveryControl';
 import { resolveDeviceExecutionState } from '../../lib/executor/deviceExecutionState';
-import { buildExecutableDeviceIntent, buildExecutableObservedDeviceStateFromSnapshot } from '../../lib/executor/executablePlanProjection';
-import { buildDriftObservedSnapshot } from '../../lib/executor/driftObservedDevice';
+import { buildExecutableDeviceIntent, buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
 // Multi-owner integration reproduction: relay on/off + measured watts, or EV SoC +
 // car charge limit, with real lifecycle, diagnostics, allocation, energy and
@@ -159,10 +158,10 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
           currentOn: true, currentState: 'on', plannedState: 'keep',
           binaryCapabilityId: 'onoff', control: fixtureControlPosture({ controllable: true }),
         });
-        const observed = buildExecutableObservedDeviceStateFromSnapshot(buildDriftObservedSnapshot({
+        const observed = buildExecutableObservedDeviceState({
           id: device.id, name: device.name, available: true, isEvCharger: false,
           targets: [], binaryControl: { on: true },
-        } as ExecutorDeviceRead, undefined));
+        } as ExecutorDeviceRead, undefined);
         return resolveTaskDeliveryControl(planDevice, resolveDeviceExecutionState(
           buildExecutableDeviceIntent(planDevice), observed,
           { binary: { kind: 'none' }, step: { kind: 'none' }, target: null }, false,

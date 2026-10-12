@@ -1,16 +1,11 @@
-import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { ExecutorDeviceRead } from './executorDeviceRead';
 import {
   type BinaryControlOutcome,
-  type BinaryControlTransport,
   decideAndDispatchBinaryControl,
 } from './binaryControlDispatch';
-import type { PlanEngineState } from '../plan/planState';
 import type { BinaryControlDecisionSnapshot } from '../plan/planBinaryControlHelpers';
 import { getDebugEmitter } from '../logging/logger';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { BinaryCommandClaim, BinaryCommandClaimState } from './binaryCommandClaim';
-import type { TargetCommandOwner } from './targetCommandClaim';
+import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
 
 /**
  * Command decisions go to the `plan` debug topic: a skip is the executor half of
@@ -20,36 +15,6 @@ import type { TargetCommandOwner } from './targetCommandClaim';
  * `*_command_skipped` event was absent from production.
  */
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
-
-export type PlanExecutorBinaryContext = {
-  state: PlanEngineState;
-  canTurnOnDevice: (deviceId: string) => boolean;
-  /** The device as the executor reads it now — descriptor joined with the observer's record. */
-  readDevice: (deviceId: string) => ExecutorDeviceRead | undefined;
-  capacityDryRun: boolean;
-  buildBinaryControlTransport: () => BinaryControlTransport;
-  recordShedActuation: (deviceId: string, name: string, now: number) => void;
-  // Diagnostic-only recorder for the smart-task lifecycle-end disable path: records
-  // the pels_shed diagnostic + closes the activation attempt WITHOUT stamping the
-  // capacity cooldown markers (a lifecycle disable is not capacity pressure).
-  recordReleaseShedActuation: (deviceId: string, name: string, now: number) => void;
-  recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
-  deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  binaryCommandClaim: BinaryCommandClaim;
-  binaryCommandOwner: TargetCommandOwner;
-  isLifecycleFallbackActive?: (deviceId: string) => boolean;
-  /** Prevents late actuator completion from installing pending state after authority ended. */
-  isBinaryCommandAuthorityCurrent?: () => boolean;
-  /** Lifecycle-only retry scheduled when an already-running ordinary write releases its claim. */
-  onBinaryCommandClaimReleased?: (released: BinaryCommandClaimState) => void;
-};
-
-export type BinaryCommandDispatchContext = Pick<
-PlanExecutorBinaryContext,
-'buildBinaryControlTransport' | 'binaryCommandClaim' | 'binaryCommandOwner'
-| 'isLifecycleFallbackActive' | 'isBinaryCommandAuthorityCurrent'
-| 'onBinaryCommandClaimReleased'
->;
 
 /**
  * "Leave off until turned on again" restore carve-out. A device the user turned
@@ -67,7 +32,7 @@ PlanExecutorBinaryContext,
  * the user turned it off, and nothing PELS recorded about it is released by that.
  */
 export const skipRestoreForExternalOffHold = (
-  ctx: Pick<PlanExecutorBinaryContext, 'state'>,
+  ctx: Pick<ExecutorCommandContext, 'state'>,
   deviceId: string,
   name: string,
 ): boolean => {
@@ -82,27 +47,26 @@ export const skipRestoreForExternalOffHold = (
 };
 
 export const runBinaryControl = async (params: {
-  ctx: BinaryCommandDispatchContext;
+  ctx: ExecutorCommandContext;
   deviceId: string;
   name: string;
   desired: boolean;
   snapshot?: BinaryControlDecisionSnapshot;
   logContext: 'capacity' | 'capacity_control_off';
-  reason?: string;
   lifecycleRelease?: boolean;
   forceAgainstReleasedOpposing?: boolean;
 }): Promise<BinaryControlOutcome> => {
   const {
-    ctx, deviceId, name, desired, snapshot, logContext, reason,
+    ctx, deviceId, name, desired, snapshot, logContext,
     lifecycleRelease,
     forceAgainstReleasedOpposing,
   } = params;
-  if (ctx.binaryCommandOwner === 'ordinary' && ctx.isLifecycleFallbackActive?.(deviceId) === true) {
+  if (isHeldByLifecycleLane(ctx, deviceId)) {
     return { applied: false };
   }
   if (!ctx.binaryCommandClaim.acquire(
     deviceId,
-    ctx.binaryCommandOwner,
+    ctx.owner,
     desired,
     ctx.onBinaryCommandClaimReleased,
   )) {
@@ -111,19 +75,17 @@ export const runBinaryControl = async (params: {
   let outcome: BinaryControlOutcome = { applied: false };
   try {
     outcome = await decideAndDispatchBinaryControl({
-      transport: ctx.buildBinaryControlTransport(),
+      transport: ctx,
       deviceId,
       name,
       desired,
       snapshot,
       logContext,
-      reason,
       lifecycleRelease,
       forceAgainstReleasedOpposing,
-      isAuthorityCurrent: ctx.isBinaryCommandAuthorityCurrent,
     });
     return outcome;
   } finally {
-    ctx.binaryCommandClaim.release(deviceId, ctx.binaryCommandOwner, desired, outcome.applied);
+    ctx.binaryCommandClaim.release(deviceId, ctx.owner, desired, outcome.applied);
   }
 };

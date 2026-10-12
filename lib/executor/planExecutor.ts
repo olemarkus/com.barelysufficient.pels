@@ -1,4 +1,6 @@
-import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedBehavior } from '../plan/planTypes';
+import type {
+  DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedBehavior,
+} from '../plan/planTypes';
 import {
   type ExecutorDeviceReadDeps,
   readExecutorDevice,
@@ -16,9 +18,9 @@ import { getLogger } from '../logging/logger';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
 import type { Actuator } from '../actuator/deviceActuator';
-import type { PlanExecutorTargetContext } from './targetExecutor';
-import type { PlanExecutorSteppedContext } from './steppedLoadExecutor';
-import type { PlanExecutorBinaryContext } from './binaryExecutor';
+import type { ExecutorCommandContext } from './executorCommandContext';
+import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
+import type { ExecutableSteppedLoadCommandSession } from './executablePlan';
 import {
   hasStableBinaryReleaseActuation,
   hasStableSteppedLoadBinaryRestoreActuation,
@@ -27,11 +29,8 @@ import {
   resolveConfirmedBinaryCommandReasonCode,
 } from './planExecutorPredicates';
 import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
-import {
-  applySheddingToDeviceImpl,
-  dispatchPlanActions,
-  type PlanExecutorCore,
-} from './planExecutorDispatch';
+import { dispatchPlanActions } from './planExecutorDispatch';
+import { applyBinarySheddingToDevice } from './binaryExecutor';
 import { ShortfallExecutor, type ShortfallExecutorDeps } from './shortfallExecutor';
 import {
   LifecycleFallbackDispatcher,
@@ -40,14 +39,12 @@ import {
 import { createTargetCommandClaim } from './targetCommandClaim';
 import { createSteppedCommandClaim } from './steppedCommandClaim';
 import { createBinaryCommandClaim } from './binaryCommandClaim';
-import { buildExecutablePlan } from './executablePlanProjection';
+import { buildExecutablePlan, buildExecutableObservedDeviceState } from './executablePlanProjection';
 import type { DriftObservationDeps } from './driftObservedDevice';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { resolveDeviceExecutionState } from './deviceExecutionState';
-import { buildDriftObservedSnapshot } from './driftObservedDevice';
-import { buildExecutableObservedDeviceStateFromSnapshot } from './executablePlanProjection';
 import { BatteryExecutor, NO_STORAGE_LANE, type StorageLane } from './batteryExecutor';
 import type { StorageLaneBinding } from '../ports/batteryControlOwner';
 
@@ -82,22 +79,8 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  markSteppedLoadDesiredStepIssued: (params: {
-    deviceId: string;
-    desiredStepId: string;
-    previousStepId?: string;
-    issuedAtMs?: number;
-    confirmationPolicy?: 'required' | 'assume_applied';
-    /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
-    unacknowledged?: boolean;
-  }) => void;
-  getSteppedLoadCommandSession: (deviceId: string) => {
-    initializationAssumedStepId?: string;
-    hasPriorStepCommand: boolean;
-    reportedStepId?: string;
-    /** Commanded-axis: a step command is issued and not yet settled. */
-    stepCommandPending: boolean;
-  };
+  markSteppedLoadDesiredStepIssued: (params: MarkSteppedLoadDesiredStepIssuedParams) => void;
+  getSteppedLoadCommandSession: (deviceId: string) => ExecutableSteppedLoadCommandSession;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   /**
@@ -125,79 +108,60 @@ export class PlanExecutor {
   /** The storage lane; a meter area builds none, and its plans carry no storage decision. */
   private readonly storage: StorageLane;
 
-  constructor(private deps: PlanExecutorDeps, private state: PlanEngineState) {
+  /** The ordinary lane's command context, built once; the lifecycle lane spreads it. */
+  private readonly ctx: ExecutorCommandContext;
+  private readonly lifecycleFallback: LifecycleFallbackDispatcher;
+
+  constructor(private readonly deps: PlanExecutorDeps, private readonly state: PlanEngineState) {
     this.shortfallExecutor = new ShortfallExecutor(deps, state);
+    this.ctx = {
+      owner: 'ordinary',
+      state,
+      targetCommands: state,
+      actuator: deps.actuator,
+      pendingBinaryCommandStore: deps.pendingBinaryCommandStore,
+      getObservedState: deps.getObservedState,
+      readDevice: (deviceId) => readExecutorDevice(deps, deviceId),
+      getCapacityDryRun: deps.getCapacityDryRun,
+      getOperatingMode: deps.getOperatingMode,
+      getShedBehavior: deps.getShedBehavior,
+      getSteppedLoadCommandSession: deps.getSteppedLoadCommandSession,
+      markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
+      syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
+      binaryCommandClaim: createBinaryCommandClaim(),
+      steppedCommandClaim: createSteppedCommandClaim(),
+      targetCommandClaim: createTargetCommandClaim(),
+      lifecycleFallback: {
+        isActive: (deviceId) => this.lifecycleFallback.isActive(deviceId),
+        getOwnedTargetPending: (deviceId) => this.lifecycleFallback.getOwnedTargetPending(deviceId),
+      },
+      isAuthorityCurrent: () => true,
+      applySheddingToDevice: (deviceId, deviceName) => this.applySheddingToDevice(deviceId, deviceName),
+      recordShedActuation: (deviceId, name, now) => this.recordShedActuation(deviceId, name, now),
+      recordReleaseShedActuation: (deviceId, name, now) => this.recordReleaseShedActuation(deviceId, name, now),
+      recordRestoreActuation: (deviceId, name, now) => this.recordRestoreActuation(deviceId, name, now),
+      recordActivationAttemptStarted: (deviceId, name, now) => recordActivationAttemptStarted({
+        state,
+        diagnostics: deps.deviceDiagnostics,
+        deviceId,
+        name,
+        nowTs: now,
+      }),
+    };
+    this.lifecycleFallback = new LifecycleFallbackDispatcher(this.ctx);
     this.storage = deps.storageLane.kind === 'none' ? NO_STORAGE_LANE : new BatteryExecutor(
       deps.storageLane.owner,
       deps.actuator,
       deps,
       deps.getPowerTracker,
       state.actuation,
-      this.boundRecordRestoreActuation,
+      this.ctx.recordRestoreActuation,
     );
   }
 
   /** Judge the storage lane's setpoints in flight against this reading. */
   public syncStorageCommands(): void {
     this.storage.sync(Date.now());
-  }
-
-  private readonly boundGetShedBehavior = (deviceId: string) => this.getShedBehavior(deviceId);
-  private readonly boundBuildBinaryControlTransport = () => this.buildBinaryControlTransport();
-  private readonly boundMarkSteppedLoadDesiredStepIssued = (params: {
-    deviceId: string;
-    desiredStepId: string;
-    previousStepId?: string;
-    issuedAtMs?: number;
-    confirmationPolicy?: 'required' | 'assume_applied';
-    /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
-    unacknowledged?: boolean;
-  }): void => this.markSteppedLoadDesiredStepIssued(params);
-  private readonly boundRecordShedActuation = (
-    deviceId: string,
-    name: string,
-    now: number,
-  ): void => this.recordShedActuation(deviceId, name, now);
-  private readonly boundRecordRestoreActuation = (
-    deviceId: string,
-    name: string,
-    now: number,
-  ): void => this.recordRestoreActuation(deviceId, name, now);
-  private readonly boundRecordActivationAttemptStarted = (
-    deviceId: string,
-    name: string,
-    now: number,
-  ): void => {
-    recordActivationAttemptStarted({
-      state: this.state,
-      diagnostics: this.deps.deviceDiagnostics,
-      deviceId,
-      name,
-      nowTs: now,
-    });
-  };
-  private targetExecutorContext?: PlanExecutorTargetContext;
-  private steppedExecutorContext?: PlanExecutorSteppedContext;
-  private binaryExecutorContext?: PlanExecutorBinaryContext;
-  private lifecycleFallbackDispatcher?: LifecycleFallbackDispatcher;
-  private readonly targetCommandClaim = createTargetCommandClaim();
-  private readonly steppedCommandClaim = createSteppedCommandClaim();
-  private readonly binaryCommandClaim = createBinaryCommandClaim();
-
-  private get capacityDryRun(): boolean {
-    return this.deps.getCapacityDryRun();
-  }
-
-  private get operatingMode(): string {
-    return this.deps.getOperatingMode();
-  }
-
-  private buildBinaryControlTransport() {
-    return {
-      getObservedBinaryControl: (deviceId: string) => this.deps.getObservedState(deviceId),
-      pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
-      actuator: this.deps.actuator,
-    };
   }
 
   /**
@@ -225,8 +189,8 @@ export class PlanExecutor {
 
   // Lifecycle-end release variant: skips the shed-cooldown / instability clocks because a
   // release is the smart task handing the device back to its configured shed posture, not a
-  // capacity-driven shed. Property form so it can be passed as a dep without a bound wrapper.
-  private readonly recordReleaseShedActuation = (deviceId: string, name: string, now: number): void => {
+  // capacity-driven shed.
+  private recordReleaseShedActuation(deviceId: string, name: string, now: number): void {
     this.recordControlTimestamp(deviceId, now);
     recordDiagnosticsShed({
       diagnostics: this.deps.deviceDiagnostics,
@@ -241,7 +205,7 @@ export class PlanExecutor {
       name,
       nowTs: now,
     });
-  };
+  }
 
   private recordRestoreActuation(deviceId: string, name: string, now: number): void {
     this.state.actuation.markRestore(deviceId, now);
@@ -252,22 +216,6 @@ export class PlanExecutor {
       name,
       nowTs: now,
     });
-  }
-
-  private markSteppedLoadDesiredStepIssued(params: {
-    deviceId: string;
-    desiredStepId: string;
-    previousStepId?: string;
-    issuedAtMs?: number;
-    confirmationPolicy?: 'required' | 'assume_applied';
-    /** See `MarkSteppedLoadDesiredStepIssuedParams`: no probe on an unanswered write. */
-    unacknowledged?: boolean;
-  }): void {
-    this.deps.markSteppedLoadDesiredStepIssued(params);
-  }
-
-  private getShedBehavior(deviceId: string): ShedBehavior {
-    return this.deps.getShedBehavior(deviceId);
   }
 
   private recordControlTimestamp(deviceId: string, now: number): void {
@@ -300,13 +248,7 @@ export class PlanExecutor {
         this.state.actuation.clearShed(deviceId);
       } else {
         this.recordRestoreActuation(deviceId, liveDevice.name, now);
-        recordActivationAttemptStarted({
-          state: this.state,
-          diagnostics: this.deps.deviceDiagnostics,
-          deviceId,
-          name: liveDevice.name,
-          nowTs: now,
-        });
+        this.ctx.recordActivationAttemptStarted(deviceId, liveDevice.name, now);
       }
 
     } else {
@@ -315,11 +257,7 @@ export class PlanExecutor {
       // smart-task lifecycle-end disable records diagnostics only via the release recorder
       // (no capacity cooldown markers, because it is a planning decision, not capacity
       // pressure); a capacity shed stamps the markers via recordShedActuation.
-      selectShedActuationRecorder({
-        lifecycleRelease: pending.lifecycleRelease,
-        recordShedActuation: this.boundRecordShedActuation,
-        recordReleaseShedActuation: this.recordReleaseShedActuation,
-      })(deviceId, liveDevice.name, now);
+      selectShedActuationRecorder(pending.lifecycleRelease, this.ctx)(deviceId, liveDevice.name, now);
     }
 
     this.flushLastControlledPersistence();
@@ -340,145 +278,27 @@ export class PlanExecutor {
     }
   }
 
-  private buildTargetExecutorContext(): PlanExecutorTargetContext {
-    if (!this.targetExecutorContext) {
-      this.targetExecutorContext = {
-        state: this.state,
-        getObservedTemperatureValue: (deviceId) => (
-          this.deps.getObservedState(deviceId)?.targets[0]?.value
-        ),
-        getLifecycleOwnedPendingTargetCommand: (deviceId) => (
-          this.lifecycleFallbackDispatcher?.getOwnedTargetPending(deviceId)
-        ),
-        isLifecycleFallbackActive: (deviceId) => (
-          this.lifecycleFallbackDispatcher?.isActive(deviceId) === true
-        ),
-        targetCommandClaim: this.targetCommandClaim,
-        targetCommandOwner: 'ordinary',
-        actuator: this.deps.actuator,
-        operatingMode: this.operatingMode,
-        syncLivePlanStateAfterTargetActuation: this.deps.syncLivePlanStateAfterTargetActuation,
-        recordShedActuation: this.boundRecordShedActuation,
-        recordRestoreActuation: this.boundRecordRestoreActuation,
-        recordActivationAttemptStarted: this.boundRecordActivationAttemptStarted,
-        deviceDiagnostics: this.deps.deviceDiagnostics,
-      };
-    }
-
-    this.targetExecutorContext.state = this.state;
-    this.targetExecutorContext.operatingMode = this.operatingMode;
-    this.targetExecutorContext.syncLivePlanStateAfterTargetActuation = this.deps.syncLivePlanStateAfterTargetActuation;
-    this.targetExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
-    return this.targetExecutorContext;
-  }
-
-  private buildSteppedExecutorContext(): PlanExecutorSteppedContext {
-    if (!this.steppedExecutorContext) {
-      this.steppedExecutorContext = {
-        state: this.state,
-        canTurnOnDevice: (deviceId) => this.deps.actuator.canTurnOnDevice(deviceId),
-        steppedCommandClaim: this.steppedCommandClaim,
-        steppedCommandOwner: 'ordinary',
-        binaryCommandClaim: this.binaryCommandClaim,
-        binaryCommandOwner: 'ordinary',
-        isLifecycleFallbackActive: (deviceId) => (
-          this.lifecycleFallbackDispatcher?.isActive(deviceId) === true
-        ),
-        buildBinaryControlTransport: this.boundBuildBinaryControlTransport,
-        markSteppedLoadDesiredStepIssued: this.boundMarkSteppedLoadDesiredStepIssued,
-        recordShedActuation: this.boundRecordShedActuation,
-        recordRestoreActuation: this.boundRecordRestoreActuation,
-        // Route step writes through the single actuator seam. The not-requested
-        // arm keeps the outcome's `reason` — dropping it collapsed an
-        // unacknowledged Flow trigger into an ordinary "no transport" skip.
-        requestSteppedLoadStep: (params) => this.deps.actuator.apply({ kind: 'step', ...params })
-          .then((outcome) => {
-            if (outcome.requested && outcome.kind === 'step') return outcome.steppedResult;
-            // A step's only not-requested reason; a storage claim's is never a step's.
-            const reason = !outcome.requested && outcome.reason === 'flow_trigger_timeout' ? outcome.reason : undefined;
-            return { requested: false as const, ...(reason ? { reason } : {}) };
-          }),
-        deviceDiagnostics: this.deps.deviceDiagnostics,
-      };
-    }
-
-    this.steppedExecutorContext.state = this.state;
-    this.steppedExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
-    return this.steppedExecutorContext;
-  }
-
-  private buildBinaryExecutorContext(): PlanExecutorBinaryContext {
-    if (!this.binaryExecutorContext) {
-      this.binaryExecutorContext = {
-        state: this.state,
-        canTurnOnDevice: (deviceId) => this.deps.actuator.canTurnOnDevice(deviceId),
-        readDevice: (deviceId) => readExecutorDevice(this.deps, deviceId),
-        capacityDryRun: this.capacityDryRun,
-        buildBinaryControlTransport: this.boundBuildBinaryControlTransport,
-        recordShedActuation: this.boundRecordShedActuation,
-        recordReleaseShedActuation: this.recordReleaseShedActuation,
-        recordRestoreActuation: this.boundRecordRestoreActuation,
-        deviceDiagnostics: this.deps.deviceDiagnostics,
-        binaryCommandClaim: this.binaryCommandClaim,
-        binaryCommandOwner: 'ordinary',
-        isLifecycleFallbackActive: (deviceId) => (
-          this.lifecycleFallbackDispatcher?.isActive(deviceId) === true
-        ),
-      };
-    }
-
-    this.binaryExecutorContext.state = this.state;
-    this.binaryExecutorContext.capacityDryRun = this.capacityDryRun;
-    this.binaryExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
-    return this.binaryExecutorContext;
-  }
-
-  private dispatchCore?: PlanExecutorCore;
-
-  private getDispatchCore(): PlanExecutorCore {
-    if (!this.dispatchCore) {
-      this.dispatchCore = {
-        buildTargetExecutorContext: () => this.buildTargetExecutorContext(),
-        buildSteppedExecutorContext: () => this.buildSteppedExecutorContext(),
-        buildBinaryExecutorContext: () => this.buildBinaryExecutorContext(),
-        getShedBehavior: this.boundGetShedBehavior,
-        getSteppedLoadCommandSession: this.deps.getSteppedLoadCommandSession,
-        recordReleaseShedActuation: this.recordReleaseShedActuation,
-        readDevice: (deviceId) => readExecutorDevice(this.deps, deviceId),
-        readDevices: () => readExecutorDevices(this.deps),
-        capacityDryRun: () => this.capacityDryRun,
-        state: this.state,
-        storage: this.storage,
-        flushLastControlledPersistence: () => this.flushLastControlledPersistence(),
-        applySheddingToDevice: (deviceId, deviceName) => (
-          this.applySheddingToDevice(deviceId, deviceName)
-        ),
-      };
-    }
-    this.dispatchCore.state = this.state;
-    return this.dispatchCore;
-  }
-
   public getLifecycleFallbackPort(): LifecycleFallbackPort {
-    if (!this.lifecycleFallbackDispatcher) {
-      this.lifecycleFallbackDispatcher = new LifecycleFallbackDispatcher({
-        buildBinaryExecutorContext: () => this.buildBinaryExecutorContext(),
-        buildTargetExecutorContext: () => this.buildTargetExecutorContext(),
-        buildSteppedExecutorContext: () => this.buildSteppedExecutorContext(),
-        recordReleaseShedActuation: this.recordReleaseShedActuation,
-        targetCommandClaim: this.targetCommandClaim,
-        capacityDryRun: () => this.capacityDryRun,
-        refreshObserved: (deviceId) => {
-          const device = readExecutorDevice(this.deps, deviceId);
-          return device ? buildExecutableObservedDeviceStateFromSnapshot(device) : undefined;
-        },
-      });
-    }
-    return this.lifecycleFallbackDispatcher;
+    return this.lifecycleFallback;
   }
 
+  /**
+   * Carries out a binary shed: turn the device off. The plan decided this end
+   * state (`plannedShedTargetKind` resolved the axis before a binary intent
+   * could exist), so nothing here reads the configured shed behaviour again; a
+   * setpoint shed reaches the device as a target update, not through this path.
+   */
   public async applySheddingToDevice(deviceId: string, deviceName: string): Promise<boolean> {
-    return applySheddingToDeviceImpl(this.getDispatchCore(), deviceId, deviceName);
+    try {
+      return await applyBinarySheddingToDevice(this.ctx, deviceId, deviceName);
+    } finally {
+      this.flushLastControlledPersistence();
+    }
+  }
+
+  /** The observer's accepted-write counter. See `PlanEngine.getObservationRevision`. */
+  public getObservationRevision(): number {
+    return this.deps.getObservationRevision();
   }
 
   /**
@@ -488,11 +308,6 @@ export class PlanExecutor {
    * posture. Exposed as a bundle so the caller composes nothing itself — and so
    * no `PlanInputDevice` has to travel here to carry an observation.
    */
-  /** The observer's accepted-write counter. See `PlanEngine.getObservationRevision`. */
-  public getObservationRevision(): number {
-    return this.deps.getObservationRevision();
-  }
-
   public driftObservationDeps(): DriftObservationDeps {
     return {
       getObservedState: (deviceId) => readExecutorDevice(this.deps, deviceId),
@@ -529,9 +344,7 @@ export class PlanExecutor {
     const intents = buildExecutablePlan(plan).devices;
     return new Map(plan.devices.map((device, index) => {
       const live = readExecutorDevice(this.deps, device.id);
-      const observed = live ? buildExecutableObservedDeviceStateFromSnapshot(
-        buildDriftObservedSnapshot(live, live.steppedLoadProfile),
-      ) : undefined;
+      const observed = live ? buildExecutableObservedDeviceState(live, live.steppedLoadProfile) : undefined;
       const execution = resolveDeviceExecutionState(intents[index]!, observed, {
         ...this.resolveCommandState(device.id, this.deps.pendingBinaryCommandStore.peekActive(device.id)),
         target: this.state.pendingTargetCommands[device.id] ?? null,
@@ -573,7 +386,7 @@ export class PlanExecutor {
     );
     this.controlPersistenceBatchDepth += 1;
     try {
-      return await dispatchPlanActions(this.getDispatchCore(), plan);
+      return await dispatchPlanActions(this.ctx, plan, readExecutorDevices(this.deps), this.storage);
     } finally {
       this.controlPersistenceBatchDepth = Math.max(0, this.controlPersistenceBatchDepth - 1);
       this.flushLastControlledPersistence();

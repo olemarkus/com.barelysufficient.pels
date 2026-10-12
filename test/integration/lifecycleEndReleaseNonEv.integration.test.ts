@@ -19,30 +19,25 @@
  * Approach: rather than re-wire a complete deferred-objective allocation around
  * this executor-focused assertion, we drive the
  * release dispatch directly through `applyShedReleaseIntent`, using the real
- * `applyBinarySheddingToDevice` / `applyTargetUpdate` executors (no mocks for
+ * `applyBinaryLifecycleRelease` / `applyTargetUpdate` executors (no mocks for
  * the dispatch itself). The intent shape is exactly what the planner emits in
  * the cap-off idle-bucket case, so the executor's view of the world is
  * production-faithful.
  */
 import { applyShedReleaseIntent } from '../../lib/executor/shedReleaseActuation';
-import { applyBinarySheddingToDevice, type PlanExecutorBinaryContext } from '../../lib/executor/binaryExecutor';
-import type { PlanExecutorTargetContext } from '../../lib/executor/targetExecutor';
+import { applyBinarySheddingToDevice } from '../../lib/executor/binaryExecutor';
+import type { ExecutorCommandContext } from '../../lib/executor/executorCommandContext';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
-import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import {
-  createPendingBinaryCommandStore,
-  type PendingBinaryCommandStore,
-} from '../../lib/observer/pendingBinaryCommands';
 import type {
   ExecutableObservedDeviceState,
   ExecutableReleaseIntent,
 } from '../../lib/executor/executablePlan';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
-import { createTargetCommandClaim } from '../../lib/executor/targetCommandClaim';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { createTestExecutorCommandContext } from '../helpers/executorCommandContext';
 
 // ---------------------------------------------------------------------------
 // Minimal mock device scaffolding (~80 LOC). The EaseeMockCharger pattern is
@@ -130,11 +125,8 @@ type ObservationDouble = {
 const buildHarness = (devices: TargetDeviceSnapshot[]): {
   state: ReturnType<typeof createPlanEngineState>;
   observation: ObservationDouble;
-  pendingBinaryCommandStore: PendingBinaryCommandStore;
-  setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;
   setCapabilityCalls: SetCapabilityCall[];
-  binaryCtx: PlanExecutorBinaryContext;
-  targetCtx: PlanExecutorTargetContext;
+  ctx: ExecutorCommandContext;
 } => {
   const snapshots = new Map(devices.map((d) => [d.id, d] as const));
   const observation = {
@@ -142,7 +134,6 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
     getSnapshotByDeviceId: (id: string) => snapshots.get(id),
   };
   const state = createPlanEngineState(1_730_000_000_000);
-  const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
 
   const setCapabilityCalls: SetCapabilityCall[] = [];
   const setCapability = async (deviceId: string, capabilityId: string, value: unknown): Promise<unknown> => {
@@ -163,47 +154,19 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
     return undefined;
   };
 
-  const binaryCtx: PlanExecutorBinaryContext = {
-    state,
+  // Binary and setpoint writes route through the actuator over the harness
+  // `setCapability`, so `setCapabilityCalls` observes both.
+  const ctx = createTestExecutorCommandContext(state, {
     readDevice: observation.getSnapshotByDeviceId,
-    capacityDryRun: false,
-    canTurnOnDevice: () => true,
-    buildBinaryControlTransport: () => ({
-      getObservedBinaryControl: observation.getSnapshotByDeviceId,
-      pendingBinaryCommandStore,
-      // Binary writes route through the actuator over the same harness
-      // `setCapability`, so `setCapabilityCalls` still observes onoff writes.
-      actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
-    }),
-    recordShedActuation: () => {},
-    recordReleaseShedActuation: () => {},
-    recordRestoreActuation: () => {},
-    binaryCommandClaim: createBinaryCommandClaim(),
-    binaryCommandOwner: 'ordinary',
-  };
-
-  const targetCtx: PlanExecutorTargetContext = {
-    state,
-    targetCommandClaim: createTargetCommandClaim(),
-    targetCommandOwner: 'ordinary',
-    getObservedTemperatureValue: (id) => snapshots.get(id)?.targets[0]?.value,
-    // The capability-addressed setpoint write routes through the actuator over
-    // the same `setCapability`, so `setCapabilityCalls` still observes it.
+    getObservedState: observation.getSnapshotByDeviceId,
     actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
-    operatingMode: 'Home',
-    recordShedActuation: () => {},
-    recordRestoreActuation: () => {},
-    recordActivationAttemptStarted: () => {},
-  };
+  });
 
   return {
     state,
     observation,
-    pendingBinaryCommandStore,
-    setCapability,
     setCapabilityCalls,
-    binaryCtx,
-    targetCtx,
+    ctx,
   };
 };
 
@@ -217,7 +180,6 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
     getSnapshotByDeviceId: (id: string) => snapshots.get(id),
   };
   const state = createPlanEngineState(1_730_000_000_000);
-  const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
 
   const setCapabilityCalls: SetCapabilityCall[] = [];
   const setCapability = async (deviceId: string, capabilityId: string, value: unknown): Promise<unknown> => {
@@ -225,43 +187,19 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
     return undefined;
   };
 
-  const binaryCtx: PlanExecutorBinaryContext = {
-    state,
+  // Binary and setpoint writes route through the actuator over the harness
+  // `setCapability`, so `setCapabilityCalls` observes both.
+  const ctx = createTestExecutorCommandContext(state, {
     readDevice: observation.getSnapshotByDeviceId,
-    capacityDryRun: false,
-    canTurnOnDevice: () => true,
-    buildBinaryControlTransport: () => ({
-      getObservedBinaryControl: observation.getSnapshotByDeviceId,
-      pendingBinaryCommandStore,
-      actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
-    }),
-    recordShedActuation: () => {},
-    recordReleaseShedActuation: () => {},
-    recordRestoreActuation: () => {},
-    binaryCommandClaim: createBinaryCommandClaim(),
-    binaryCommandOwner: 'ordinary',
-  };
-
-  const targetCtx: PlanExecutorTargetContext = {
-    state,
-    targetCommandClaim: createTargetCommandClaim(),
-    targetCommandOwner: 'ordinary',
-    getObservedTemperatureValue: (id) => snapshots.get(id)?.targets[0]?.value,
+    getObservedState: observation.getSnapshotByDeviceId,
     actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
-    operatingMode: 'Home',
-    recordShedActuation: () => {},
-    recordRestoreActuation: () => {},
-    recordActivationAttemptStarted: () => {},
-  };
+  });
 
   return {
     state,
     observation,
-    pendingBinaryCommandStore,
-    setCapability,
     setCapabilityCalls,
-    binaryCtx,
-    targetCtx,
+    ctx,
   };
 };
 
@@ -290,21 +228,10 @@ const buildObserved = (
   commandableNow: overrides?.commandableNow ?? true,
 });
 
-const buildDeps = (params: {
-  shedBehavior: ShedBehavior;
-  binaryCtx: PlanExecutorBinaryContext;
-  targetCtx: PlanExecutorTargetContext;
-}) => ({
-  getShedBehavior: () => params.shedBehavior,
-  buildBinaryExecutorContext: () => params.binaryCtx,
-  buildTargetExecutorContext: () => params.targetCtx,
-  // Stub: this integration test focuses on binary + target paths; no stepped
-  // dispatch is exercised. Returning an empty context is safe because none of
-  // the asserted paths call applySteppedLoadCommand. The
-  // recordReleaseShedActuation no-op is required by ShedReleaseActuationDeps —
-  // the release paths fire the per-device pels_shed diagnostic event.
-  buildSteppedExecutorContext: () => ({} as never),
-  recordReleaseShedActuation: () => {},
+/** The harness context with the device's configured release posture. */
+const withShedBehavior = (ctx: ExecutorCommandContext, shedBehavior: ShedBehavior): ExecutorCommandContext => ({
+  ...ctx,
+  getShedBehavior: () => shedBehavior,
 });
 
 describe('idle-bucket release for non-EV devices — integration', () => {
@@ -315,18 +242,8 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // First released-bucket cycle: shed_release intent → binary turn-off.
       const intent = buildIntent(heater.id, heater.name);
       const observed = buildObserved(heater.id, heater.name, heater);
-      const deps = buildDeps({
-        shedBehavior: { action: 'turn_off' },
-        binaryCtx: harness.binaryCtx,
-        targetCtx: harness.targetCtx,
-      });
-      const firstResult = await applyShedReleaseIntent({
-        intent,
-        steppedLoadIntent: undefined,
-        observed,
-        snapshot: heater,
-        deps,
-      });
+      const ctx = withShedBehavior(harness.ctx, { action: 'turn_off' });
+      const firstResult = await applyShedReleaseIntent(ctx, intent, undefined, observed);
 
       expect(firstResult).toBe(true);
       const onoffWrites = harness.setCapabilityCalls.filter((c) => c.capabilityId === 'onoff');
@@ -344,13 +261,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       const refreshedSnapshot = harness.observation.getSnapshotByDeviceId(heater.id)!;
       expect(refreshedSnapshot.binaryControl?.on).toBe(false);
 
-      const secondResult = await applyShedReleaseIntent({
-        intent,
-        steppedLoadIntent: undefined,
-        observed: buildObserved(heater.id, heater.name, refreshedSnapshot, { binaryControl: { on: false }, observedBinaryAxis: 'off', observedEffectiveOn: false }),
-        snapshot: refreshedSnapshot,
-        deps,
-      });
+      const secondResult = await applyShedReleaseIntent(ctx, intent, undefined, buildObserved(heater.id, heater.name, refreshedSnapshot, { binaryControl: { on: false }, observedBinaryAxis: 'off', observedEffectiveOn: false }));
 
       expect(secondResult).toBe(false);
       const onoffWritesAfterReEmit = harness.setCapabilityCalls.filter((c) => c.capabilityId === 'onoff');
@@ -368,10 +279,7 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // Drive the first shed manually through `applyBinarySheddingToDevice`,
       // then put the snapshot back to currentOn=true to simulate "the off
       // command landed but telemetry hasn't refreshed yet."
-      await applyBinarySheddingToDevice(harness.binaryCtx, {
-        deviceId: heater.id,
-        deviceName: heater.name,
-      });
+      await applyBinarySheddingToDevice(harness.ctx, heater.id, heater.name);
 
       // Force the snapshot back to `currentOn: true` so the executor's
       // already-off gate does NOT short-circuit; we want to verify the
@@ -379,24 +287,14 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       const racedSnap = { ...heater, binaryControl: { on: true } } as TargetDeviceSnapshot;
       const intent = buildIntent(heater.id, heater.name);
       const observed = buildObserved(heater.id, heater.name, racedSnap, { binaryControl: { on: true } });
-      const deps = buildDeps({
-        shedBehavior: { action: 'turn_off' },
-        binaryCtx: harness.binaryCtx,
-        targetCtx: harness.targetCtx,
-      });
+      const ctx = withShedBehavior(harness.ctx, { action: 'turn_off' });
       // `shouldSkipShedding` only asks whether the device is reachable and
       // whether one of THIS executor's writes is still in flight
       // (the record's in-flight shed set), and pendingSheds is cleared in the first call's
       // finally block. So the gate that actually fires is one level down: the
       // first call recorded a pending binary command, and `shouldSkipBinaryControl`
       // skips a matching desired state as `already_pending`.
-      const secondResult = await applyShedReleaseIntent({
-        intent,
-        steppedLoadIntent: undefined,
-        observed,
-        snapshot: racedSnap,
-        deps,
-      });
+      const secondResult = await applyShedReleaseIntent(ctx, intent, undefined, observed);
       // The pending-binary-command guard skips the write; no SECOND capability
       // write is issued.
       expect(secondResult).toBe(false);
@@ -412,22 +310,12 @@ describe('idle-bucket release for non-EV devices — integration', () => {
 
       const intent = buildIntent(thermostat.id, thermostat.name);
       const observed = buildObserved(thermostat.id, thermostat.name, thermostat, {
-        target: { target: 'temperature', observedValue: 22 },
+        target: { observedValue: 22 },
       });
-      const deps = buildDeps({
-        shedBehavior: { action: 'set_temperature', temperature: shedTemperature },
-        binaryCtx: harness.binaryCtx,
-        targetCtx: harness.targetCtx,
-      });
+      const ctx = withShedBehavior(harness.ctx, { action: 'set_temperature', temperature: shedTemperature });
 
       // First cycle.
-      const firstResult = await applyShedReleaseIntent({
-        intent,
-        steppedLoadIntent: undefined,
-        observed,
-        snapshot: thermostat,
-        deps,
-      });
+      const firstResult = await applyShedReleaseIntent(ctx, intent, undefined, observed);
       expect(firstResult).toBe(true);
       const tempWrites = harness.setCapabilityCalls.filter((c) => c.capabilityId === 'target_temperature');
       expect(tempWrites).toHaveLength(1);
@@ -446,15 +334,9 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // from the observed-equals-target short-circuit in
       // `applyShedReleaseTemperature`.
       const refreshedObserved = buildObserved(thermostat.id, thermostat.name, thermostat, {
-        target: { target: 'temperature', observedValue: shedTemperature },
+        target: { observedValue: shedTemperature },
       });
-      const secondResult = await applyShedReleaseIntent({
-        intent,
-        steppedLoadIntent: undefined,
-        observed: refreshedObserved,
-        snapshot: thermostat,
-        deps,
-      });
+      const secondResult = await applyShedReleaseIntent(ctx, intent, undefined, refreshedObserved);
       expect(secondResult).toBe(false);
       const tempWritesAfter = harness.setCapabilityCalls.filter((c) => c.capabilityId === 'target_temperature');
       expect(tempWritesAfter).toHaveLength(1); // unchanged
@@ -479,20 +361,10 @@ describe('idle-bucket release for non-EV devices — integration', () => {
 
       const intent = buildIntent(thermostat.id, thermostat.name);
       const initialObserved = buildObserved(thermostat.id, thermostat.name, thermostat, {
-        target: { target: 'temperature', observedValue: 22 },
+        target: { observedValue: 22 },
       });
-      const deps = buildDeps({
-        shedBehavior: { action: 'set_temperature', temperature: shedTemperature },
-        binaryCtx: harness.binaryCtx,
-        targetCtx: harness.targetCtx,
-      });
-      const firstResult = await applyShedReleaseIntent({
-        intent,
-        steppedLoadIntent: undefined,
-        observed: initialObserved,
-        snapshot: thermostat,
-        deps,
-      });
+      const ctx = withShedBehavior(harness.ctx, { action: 'set_temperature', temperature: shedTemperature });
+      const firstResult = await applyShedReleaseIntent(ctx, intent, undefined, initialObserved);
       expect(firstResult).toBe(true);
 
       // After the first write, the pendingTargetCommands tracker holds the
@@ -508,15 +380,9 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // window. (Production retries on the configured cadence; tests run
       // back-to-back inside the initial-attempt window, so no retry fires.)
       const staleObserved = buildObserved(thermostat.id, thermostat.name, thermostat, {
-        target: { target: 'temperature', observedValue: 22 },
+        target: { observedValue: 22 },
       });
-      await applyShedReleaseIntent({
-        intent,
-        steppedLoadIntent: undefined,
-        observed: staleObserved,
-        snapshot: thermostat,
-        deps,
-      });
+      await applyShedReleaseIntent(ctx, intent, undefined, staleObserved);
       const tempWrites = harness.setCapabilityCalls.filter((c) => c.capabilityId === 'target_temperature');
       expect(tempWrites).toHaveLength(1);
     });

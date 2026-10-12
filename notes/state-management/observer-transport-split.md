@@ -446,6 +446,10 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    Verified by probe — re-optionalizing the member, adding a member to one side,
    and changing one member's parameter type each fail the typecheck.
 
+   The mirror itself has since gone, and the guard with it: the dispatcher and
+   event shapes are declared once in `lib/ports/observedStateEvents.ts`, which
+   both layers may import, so there is no second copy left to drift.
+
 ## Secondary cleanups surfaced during review
 
 These are not strictly part of the split but block it in subtle ways:

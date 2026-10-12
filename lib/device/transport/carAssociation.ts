@@ -78,11 +78,7 @@ export const applyAssociatedCarStateOfCharge = (
   if (associated?.carId !== reading.carId) return false;
   const snapshot = snapshotStore.getSnapshotByDeviceId(reading.chargerId);
   if (!snapshot) return false;
-  return updateStateOfChargeFromCarObservation({
-    snapshot,
-    percent: reading.socPct,
-    observedAtMs: reading.socAtMs,
-    carId: reading.carId,
-    chargeLimitPct: reading.chargeLimitPct,
-  });
+  return updateStateOfChargeFromCarObservation(
+    snapshot, reading.socPct, reading.socAtMs, reading.carId, reading.chargeLimitPct,
+  );
 };

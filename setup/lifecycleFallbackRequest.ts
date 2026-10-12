@@ -4,7 +4,6 @@ import type {
   LifecycleFallbackRequest,
 } from '../lib/executor/lifecycleFallbackDispatcher';
 import { buildExecutableObservedDeviceState } from '../lib/executor/executablePlanProjection';
-import { getCurrentDrawKw } from '../lib/observer/observedPower';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadOffStep,
@@ -49,16 +48,14 @@ export const resolveLifecycleFallbackRequest = (params: {
   } = params;
   const posture = resolveFallbackPosture(device, configuredFallback);
   if (posture.kind === 'no_writable_axis') return { state: 'no_writable_axis' };
-  const steppedDescriptor = device.stepAxis.state === 'writable'
-    ? { steppedLoadProfile: device.stepAxis.profile }
-    : {};
-  const observed = buildExecutableObservedDeviceState({
-    ...device,
-    ...steppedDescriptor,
-    ...observedState,
-    selectedStepId: observedState.reportedStepId,
-    currentDrawKw: getCurrentDrawKw(observedState),
-  });
+  // The plan's rung decoration stays out of the read: the observed rung is
+  // resolved from the report, against the ladder the step posture drives. The
+  // dispatcher's retries judge a fresh read by the same ladder.
+  const { selectedStepId: _plannedStepId, ...descriptor } = device;
+  const observed = buildExecutableObservedDeviceState(
+    { ...descriptor, ...observedState },
+    posture.kind === 'step' ? posture.profile : undefined,
+  );
   if (posture.kind === 'binary_off') return { state: 'resolved', request: { kind: 'binary_off', observed } };
   if (posture.kind === 'target') {
     return { state: 'resolved', request: { kind: 'target_fallback', observed, desired: posture.temperature } };
@@ -123,7 +120,7 @@ const buildSteppedIntent = (
   controlAdapter: device.controlAdapter,
   // The lifecycle fallback drives the device to its configured posture, and for
   // a step-axis device that posture IS `posture.stepId`. It keeps its own
-  // discriminant (the `behavior` the dispatcher carries) rather than borrowing
+  // discriminant (the `step_fallback` request kind) rather than borrowing
   // the capacity path's — see
   // `notes/state-management/deferred-objective-lifecycle-carveout.md`.
   plannedShedTarget: { kind: 'step', stepId: posture.stepId },
@@ -131,7 +128,6 @@ const buildSteppedIntent = (
   desired: {},
   previousStepId: device.selectedStepId ?? device.previousStepId,
   transition: null,
-  matchingRestoreAttempt: null,
   matchingCommandAttempt: resolveMatchingStepCommandAttempt(device, posture.stepId, nowMs),
   stepCommandRetryCount: device.stepCommandRetryCount ?? 0,
   nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,

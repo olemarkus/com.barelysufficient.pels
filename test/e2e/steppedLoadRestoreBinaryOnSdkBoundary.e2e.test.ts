@@ -6,7 +6,7 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * Homey SDK device boundary: the mock `deviceManager` whose `getSnapshot`
  * returns the snapshot produced by the real `parseDevice` from a mock Homey
  * device, whose `setCapability` is a spy, and whose `requestSteppedLoadStep`
- * delegates to the real `setObservedNativeSteppedLoadStep`.
+ * delegates to the real `NativeSteppedLoadCommandAdapters.setStep`.
  *
  * Guards against the prod bug fixed in 04e668ea: a Høiax stepped-load water
  * heater that a deferred objective wants restored to step 'low' got its
@@ -22,10 +22,7 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
-import {
-  observeNativeSteppedLoadCommandAdapter,
-  setObservedNativeSteppedLoadStep,
-} from '../../lib/device/managerNativeSteppedCommand';
+import { NativeSteppedLoadCommandAdapters } from '../../lib/device/managerNativeSteppedCommand';
 import {
   parseDevice,
   isDevicePowerCapable,
@@ -41,7 +38,7 @@ import {
   withTemperatureDiscriminant,
   withSteppedDiscriminant,
 } from '../../lib/plan/planTypes';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
@@ -150,25 +147,24 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
   } as const;
   const state = createPlanEngineState();
+  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
   const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue([snapshot]),
     setCapability: vi.fn().mockResolvedValue(undefined),
     requestSteppedLoadStep: vi.fn(async (params: {
       deviceId: string;
-      profile: Parameters<typeof setObservedNativeSteppedLoadStep>[0]['profile'];
+      profile: SteppedLoadProfile;
       desiredStepId: string;
       planningPowerW: number;
       planningCurrentA: number;
       previousStepId?: string;
     }) => {
-      const nativeRequested = await setObservedNativeSteppedLoadStep({
-        owner: deviceManager,
-        deviceId: params.deviceId,
-        profile: params.profile,
-        desiredStepId: params.desiredStepId,
-        setCapability: (capabilityId, value) =>
-          deviceManager.setCapability(params.deviceId, capabilityId, value),
-      });
+      const nativeRequested = await nativeSteppedAdapters.setStep(
+        params.deviceId,
+        params.profile,
+        params.desiredStepId,
+        (capabilityId, value) => deviceManager.setCapability(params.deviceId, capabilityId, value),
+      );
       if (nativeRequested) return { requested: true, transport: 'native_capability' as const };
       const triggerPromise = triggerCards.desired_stepped_load_changed.trigger({
         step_id: params.desiredStepId,
@@ -183,12 +179,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
 
   // Register the native stepped-load command adapter on the mock deviceManager
   // (the executor delegates step writes to it via requestSteppedLoadStep).
-  observeNativeSteppedLoadCommandAdapter({
-    owner: deviceManager,
-    deviceId: DEVICE_ID,
-    device,
-    clearWhenUnavailable: true,
-  });
+  nativeSteppedAdapters.observe(DEVICE_ID, device);
 
   const deps: PlanExecutorDeps = {
     getHomeDisplayName: () => 'Main home',

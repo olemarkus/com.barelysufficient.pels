@@ -93,7 +93,6 @@ export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './tr
 export type {
   DeviceTransportOptions,
   SnapshotRefreshMetrics,
-  TransportObservedStateDispatcher,
 } from './transport/transportTypes';
 
 /**

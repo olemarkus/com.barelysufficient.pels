@@ -43,7 +43,7 @@ setup/homeRuntime/homeScope.ts 5  # objectives, observer, plan, power, price
 setup/homeRuntime/homeTrackerConfigSafety.ts 2  # home, power
 setup/homeyEnergySolarForecastAdapter.ts 2  # device, solar
 setup/homeyLocationAdapter.ts 2  # device, solar
-setup/lifecycleFallbackRequest.ts 3  # executor, observer, plan
+setup/lifecycleFallbackRequest.ts 2  # executor, plan
 setup/powerSampleFreshnessEscalation.ts 2  # plan, power
 setup/powerSamplePipeline.ts 3  # objectives, plan, power
 setup/settingsUiApi.ts 4  # device, objectives, observer, power

@@ -180,18 +180,8 @@ describe('device manager support helpers', () => {
       { available: true, id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_out', expectedPowerKw: 0, expectedPowerSource: 'default', binaryCapabilityId: 'evcharger_charging' },
     ]);
 
-    logEvCapabilityRequest({
-      snapshotBefore: previousSnapshot[0],
-      deviceId: 'ev1',
-      capabilityId: 'evcharger_charging',
-      value: true,
-    });
-    logEvCapabilityAccepted({
-      snapshotAfter: nextSnapshot[0],
-      deviceId: 'ev1',
-      capabilityId: 'evcharger_charging',
-      value: true,
-    });
+    logEvCapabilityRequest('ev1', 'evcharger_charging', true, previousSnapshot[0]);
+    logEvCapabilityAccepted('ev1', 'evcharger_charging', true, nextSnapshot[0]);
     logEvSnapshotChanges({ previousSnapshot, nextSnapshot });
     logEvSnapshotChanges({ previousSnapshot: nextSnapshot, nextSnapshot: [nextSnapshot[0]] });
 

@@ -3,15 +3,13 @@ export type TargetCommandOwner = 'lifecycle' | 'ordinary';
 export type TargetCommandClaim = {
   acquire: (
     deviceId: string,
-    target: 'temperature',
     owner: TargetCommandOwner,
     desired: number,
     onRelease?: (released: TargetCommandClaimState) => void,
   ) => boolean;
-  ownerOf: (deviceId: string, target: 'temperature') => TargetCommandOwner | undefined;
+  ownerOf: (deviceId: string) => TargetCommandOwner | undefined;
   release: (
     deviceId: string,
-    target: 'temperature',
     owner: TargetCommandOwner,
     desired: number,
     accepted: boolean,
@@ -33,26 +31,23 @@ export type TargetCommandClaimState = {
 export const createTargetCommandClaim = (): TargetCommandClaim => {
   const owners = new Map<string, { owner: TargetCommandOwner; desired: number }>();
   const waiters = new Map<string, (released: TargetCommandClaimState) => void>();
-  const keyFor = (deviceId: string, target: 'temperature'): string => `${deviceId}\u0000${target}`;
   return {
-    acquire: (deviceId, target, owner, desired, onRelease) => {
-      const key = keyFor(deviceId, target);
-      const current = owners.get(key);
+    acquire: (deviceId, owner, desired, onRelease) => {
+      const current = owners.get(deviceId);
       if (current) {
-        if (current.owner !== owner && onRelease) waiters.set(key, onRelease);
+        if (current.owner !== owner && onRelease) waiters.set(deviceId, onRelease);
         return false;
       }
-      owners.set(key, { owner, desired });
+      owners.set(deviceId, { owner, desired });
       return true;
     },
-    ownerOf: (deviceId, target) => owners.get(keyFor(deviceId, target))?.owner,
-    release: (deviceId, target, owner, desired, accepted) => {
-      const key = keyFor(deviceId, target);
-      const current = owners.get(key);
+    ownerOf: (deviceId) => owners.get(deviceId)?.owner,
+    release: (deviceId, owner, desired, accepted) => {
+      const current = owners.get(deviceId);
       if (current?.owner !== owner || !Object.is(current.desired, desired)) return;
-      owners.delete(key);
-      const waiter = waiters.get(key);
-      waiters.delete(key);
+      owners.delete(deviceId);
+      const waiter = waiters.get(deviceId);
+      waiters.delete(deviceId);
       waiter?.({ ...current, accepted });
     },
   };

@@ -1,5 +1,4 @@
 import type { RetainedPowerStore } from '../retainedPowerStore';
-import type { ExternalTemperatureAdjustment } from '../../../packages/contracts/src/temperatureAdjustment';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 /**
  * Public type contracts + pure helpers for the `DeviceTransport` leaf and its
@@ -12,11 +11,7 @@ import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../pa
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { EvCarLinkSnapshotAccess } from '../evCarLinkWiring';
 import type { PowerEstimateState } from '../devicePowerEstimate';
-import type {
-  ObservedDeviceStateEvent,
-  ObservedDeviceStateRefreshEvent,
-  PlanRealtimeUpdateEvent,
-} from './managerRealtimeHandlers';
+import type { ObservedStateEmitterDispatcher } from '../../ports/observedStateEvents';
 
 /**
  * Hysteresis threshold for the binary-settle EDGE detector
@@ -73,30 +68,6 @@ export type SteppedLoadFlowTriggerCard = {
 };
 
 
-/**
- * Structural mirror of observer's `ObservedStateEmitterDispatcher` from
- * `lib/observer/observedStateEvents.ts`. Defined locally so transport does
- * not have to reference observer's type directly — the cruiser still blocks
- * any `lib/device/` → `lib/observer/` import (`no-device-to-peer-except-power`).
- *
- * See PR #5 of the observer/transport split
- * (`notes/state-management/observer-transport-split.md`).
- */
-export type TransportObservedStateDispatcher = {
-    observedStateChanged: (event: ObservedDeviceStateEvent) => void;
-    observedStateRefresh: (event: ObservedDeviceStateRefreshEvent) => void;
-    observedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void;
-    externalTemperatureAdjusted: (adjustment: ExternalTemperatureAdjustment) => void;
-    /**
-     * Push the gross PV generation (W) resolved from the same energy report into
-     * observer's holder, or `null` when absent, stamped with its read time. Used
-     * to gross up the authoritative whole-home actual consumption for the
-     * managed/unmanaged split, and to co-sample production on the flow source —
-     * it never reaches the hard-cap import path.
-     */
-    setGenerationW: (w: number | null, observedAtMs: number) => void;
-};
-
 export type DeviceTransportOptions = {
     /**
      * Persistence port for the EV car-link probe, supplied by the wiring layer.
@@ -118,7 +89,7 @@ export type DeviceTransportOptions = {
      * to. Wiring (`setup/`) builds it against `ObservedStateEmitter`; specs build
      * it through `test/helpers/deviceTransportHarness.ts`.
      */
-    observedStateDispatcher: TransportObservedStateDispatcher;
+    observedStateDispatcher: ObservedStateEmitterDispatcher;
     /**
      * Where the transport keeps its last trusted power readings and meter
      * anchors across a restart (`retainedPowerStore.ts`). REQUIRED: without it a

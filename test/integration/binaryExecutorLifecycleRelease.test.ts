@@ -1,15 +1,14 @@
 import {
+  applyBinaryLifecycleRelease,
   applyBinarySheddingToDevice,
   applyDeferredBinaryCommand,
-  type PlanExecutorBinaryContext,
 } from '../../lib/executor/binaryExecutor';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { ExecutableReleaseIntent } from '../../lib/executor/executablePlan';
-import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { createTestExecutorCommandContext } from '../helpers/executorCommandContext';
 
 // Dispatch-level coverage for the binary lifecycle-disable path. Accounting is
 // intentionally absent here: every binary transport remains pending until the
@@ -30,35 +29,29 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
   // Mirror PlanExecutor.recordReleaseShedActuation: diagnostic-only, no marker stamp.
   const recordReleaseShedActuation = vi.fn();
 
-  const ctx: PlanExecutorBinaryContext = {
-    state,
+  let capacityDryRun = false;
+  const ctx = createTestExecutorCommandContext(state, {
     readDevice: observation.getSnapshotByDeviceId,
-    capacityDryRun: false,
+    getObservedState: observation.getSnapshotByDeviceId,
+    getCapacityDryRun: () => capacityDryRun,
     // Binary writes route through the actuator over a recording `setCapability`,
     // so the native-path assertions still observe the onoff/evcharger writes.
-    canTurnOnDevice: () => true,
-    buildBinaryControlTransport: () => ({
-      getObservedBinaryControl: observation.getSnapshotByDeviceId,
-      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-      actuator: createDeviceActuator({
-        canTurnOnDevice: () => true,
-        resolveTemperatureTarget: (_deviceId, desired) => desired,
-        requestSteppedLoadStep: async () => ({ requested: false }),
-        ...noStorageTransport,
-        requestBinaryControl: async (_deviceId: string, desired: boolean) => {
-          setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
-          return undefined;
-        },
-        requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
-      }),
+    actuator: createDeviceActuator({
+      canTurnOnDevice: () => true,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+      requestSteppedLoadStep: async () => ({ requested: false }),
+      ...noStorageTransport,
+      requestBinaryControl: async (_deviceId: string, desired: boolean) => {
+        setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
+        return undefined;
+      },
+      requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
     }),
     recordShedActuation,
     recordReleaseShedActuation,
-    recordRestoreActuation: () => {},
-    binaryCommandClaim: createBinaryCommandClaim(),
-    binaryCommandOwner: 'ordinary',
-  };
-  return { ctx, state, recordShedActuation, recordReleaseShedActuation, setCapabilityCalls };
+  });
+  const setCapacityDryRun = (value: boolean): void => { capacityDryRun = value; };
+  return { ctx, state, recordShedActuation, recordReleaseShedActuation, setCapabilityCalls, setCapacityDryRun };
 };
 
 const onoffSnapshot: TargetDeviceSnapshot = {
@@ -86,12 +79,7 @@ const evSnapshot: TargetDeviceSnapshot = {
 describe('binary lifecycle-disable marker routing (direct paths)', () => {
   it('non-EV direct: lifecycleRelease stays pending without accounting at SDK acceptance', async () => {
     const h = buildCtx(onoffSnapshot);
-    // Pass only lifecycleRelease — applyBinarySheddingToDevice derives skipPrecheck/trackPendingShed.
-    const applied = await applyBinarySheddingToDevice(h.ctx, {
-      deviceId: 'dev-1',
-      deviceName: 'Heater',
-      lifecycleRelease: true,
-    });
+    const applied = await applyBinaryLifecycleRelease(h.ctx, 'dev-1', 'Heater', undefined, false);
     expect(applied).toBe(true);
     expect(h.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: false }]);
     expect(h.recordReleaseShedActuation).not.toHaveBeenCalled();
@@ -103,11 +91,7 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
 
   it('non-EV direct: a capacity shed stays pending without accounting at SDK acceptance', async () => {
     const h = buildCtx(onoffSnapshot);
-    const applied = await applyBinarySheddingToDevice(h.ctx, {
-      deviceId: 'dev-1',
-      deviceName: 'Heater',
-      skipPrecheck: true,
-    });
+    const applied = await applyBinarySheddingToDevice(h.ctx, 'dev-1', 'Heater');
     expect(applied).toBe(true);
     expect(h.recordShedActuation).not.toHaveBeenCalled();
     expect(h.recordReleaseShedActuation).not.toHaveBeenCalled();
@@ -130,21 +114,13 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
 
   it('lifecycle release bypasses capacity dry-run while an ordinary capacity shed still honors it', async () => {
     const lifecycle = buildCtx(onoffSnapshot);
-    lifecycle.ctx.capacityDryRun = true;
-    expect(await applyBinarySheddingToDevice(lifecycle.ctx, {
-      deviceId: 'dev-1',
-      deviceName: 'Heater',
-      lifecycleRelease: true,
-    })).toBe(true);
+    lifecycle.setCapacityDryRun(true);
+    expect(await applyBinaryLifecycleRelease(lifecycle.ctx, 'dev-1', 'Heater', undefined, false)).toBe(true);
     expect(lifecycle.setCapabilityCalls).toEqual([{ capabilityId: 'onoff', value: false }]);
 
     const ordinary = buildCtx(onoffSnapshot);
-    ordinary.ctx.capacityDryRun = true;
-    expect(await applyBinarySheddingToDevice(ordinary.ctx, {
-      deviceId: 'dev-1',
-      deviceName: 'Heater',
-      skipPrecheck: true,
-    })).toBe(false);
+    ordinary.setCapacityDryRun(true);
+    expect(await applyBinarySheddingToDevice(ordinary.ctx, 'dev-1', 'Heater')).toBe(false);
     expect(ordinary.setCapabilityCalls).toEqual([]);
   });
 });

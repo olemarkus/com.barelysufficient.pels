@@ -42,7 +42,8 @@ const hasPlanExecutionDriftForDevice = (
   const planDevice = plan.devices.find((device) => device.id === deviceId);
   const live = liveDevices.find((device) => device.id === deviceId);
   if (!planDevice || !live) return false;
-  return hasPlanDeviceExecutionDrift({ planDevice, ...splitPlanInputDevice(live, binaryCommand) });
+  const { observed, command, externalOffHeld } = splitPlanInputDevice(live, binaryCommand);
+  return hasPlanDeviceExecutionDrift(planDevice, observed, command, externalOffHeld);
 };
 
 describe('executorConvergence stepped device drift', () => {

@@ -13,3 +13,21 @@
  * ever wrote that map, so every device already ran this window in practice.
  */
 export const CONTROL_COMMAND_CONFIRMATION_MS = 90 * 1000;
+
+/**
+ * A device as binary-command confirmation reads it: transport projects only
+ * these confirmation facts (`binaryCommandConfirmationSnapshot.ts`), and the
+ * observer's settle sweep confirms pending commands against them. Raw
+ * capability and Flow bindings never enter this handoff.
+ */
+export type PendingBinaryLiveDevice = {
+  id: string;
+  name: string;
+  binaryCommandConfirmation:
+    | { state: 'unavailable' }
+    | {
+      state: 'observed';
+      observedValue: boolean;
+      observedAtMs: number;
+    };
+};

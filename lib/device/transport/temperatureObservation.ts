@@ -3,6 +3,7 @@ import type {
   TemperatureObservation,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
 export const TARGET_TEMPERATURE_CAPABILITY_ID = 'target_temperature';
 
@@ -81,7 +82,3 @@ export function updateTemperatureTarget(
   return { changed: true, previousValue };
 }
 /* eslint-enable functional/immutable-data */
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}

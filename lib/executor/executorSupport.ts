@@ -48,18 +48,12 @@ export const shouldSkipUnavailable = (params: {
  * executor silently drop a shed the planner had already decided. See
  * `notes/state-management/actuation-clocks-and-settle.md`.
  */
-export const shouldSkipShedding = (params: {
-  state: PlanEngineState;
-  deviceId: string;
-  deviceName: string;
-  snapshotState: Pick<ObservedDeviceState, 'available' | 'binaryControl'> | undefined;
-}): boolean => {
-  const {
-    state,
-    deviceId,
-    deviceName,
-    snapshotState,
-  } = params;
+export const shouldSkipShedding = (
+  actuation: PlanEngineState['actuation'],
+  deviceId: string,
+  deviceName: string,
+  snapshotState: Pick<ObservedDeviceState, 'available' | 'binaryControl'> | undefined,
+): boolean => {
   const isUnavailable = snapshotState?.available === false;
   const isAlreadyOff = isBinaryObservedOff(snapshotState);
   if (isUnavailable) {
@@ -71,7 +65,7 @@ export const shouldSkipShedding = (params: {
     });
     return true;
   }
-  if (state.actuation.isShedInFlight(deviceId)) {
+  if (actuation.isShedInFlight(deviceId)) {
     emitExecutorDebug({
       event: 'plan_shed_skipped',
       reasonCode: 'already_in_progress',

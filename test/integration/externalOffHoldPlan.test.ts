@@ -9,15 +9,14 @@
  * `externalOffHoldDetection.test.ts`; here the hold is a given.
  */
 import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import {
   applyUncontrolledBinaryRestore,
-  type PlanExecutorBinaryContext,
 } from '../../lib/executor/binaryExecutor';
 import { applyBinaryRestoreWithSnapshot } from '../../lib/executor/binaryRestoreHelpers';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
-import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
+import { createTestExecutorCommandContext } from '../helpers/executorCommandContext';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   getInactiveReason,
@@ -217,32 +216,21 @@ const buildExecutorCtx = (held: boolean) => {
     getSnapshot: () => [offHeaterSnapshot],
     getSnapshotByDeviceId: (id: string) => (id === HEATER ? offHeaterSnapshot : undefined),
   };
-  const ctx: PlanExecutorBinaryContext = {
-    state,
+  const ctx = createTestExecutorCommandContext(state, {
     readDevice: observation.getSnapshotByDeviceId,
-    capacityDryRun: false,
-    canTurnOnDevice: () => true,
-    buildBinaryControlTransport: () => ({
-      getObservedBinaryControl: observation.getSnapshotByDeviceId,
-      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-      actuator: createDeviceActuator({
-        canTurnOnDevice: () => true,
-        resolveTemperatureTarget: (_deviceId, desired) => desired,
-        requestSteppedLoadStep: async () => ({ requested: false }),
-        ...noStorageTransport,
-        requestBinaryControl: async (_deviceId: string, desired: boolean) => {
-          setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
-          return undefined;
-        },
-        requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
-      }),
+    getObservedState: observation.getSnapshotByDeviceId,
+    actuator: createDeviceActuator({
+      canTurnOnDevice: () => true,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+      requestSteppedLoadStep: async () => ({ requested: false }),
+      ...noStorageTransport,
+      requestBinaryControl: async (_deviceId: string, desired: boolean) => {
+        setCapabilityCalls.push({ capabilityId: 'onoff', value: desired });
+        return undefined;
+      },
+      requestTemperatureTarget: (_deviceId, desired) => Promise.resolve(desired),
     }),
-    recordShedActuation: vi.fn(),
-    recordReleaseShedActuation: vi.fn(),
-    recordRestoreActuation: vi.fn(),
-    binaryCommandClaim: createBinaryCommandClaim(),
-    binaryCommandOwner: 'ordinary',
-  };
+  });
   return { ctx, state, setCapabilityCalls };
 };
 

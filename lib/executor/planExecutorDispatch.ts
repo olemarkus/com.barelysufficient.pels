@@ -1,22 +1,16 @@
-import type { DevicePlan, ShedBehavior } from '../plan/planTypes';
+import type { DevicePlan } from '../plan/planTypes';
 import { isBinaryDrivenIntent } from './executableDesiredState';
-import type {
-  ExecutableDeviceIntent,
-} from './executablePlan';
 import {
   hasBinaryCommand,
   hasReleaseCommand,
   hasSteppedCommand,
   hasTargetCommand,
 } from './executablePlan';
-import type { PlanEngineState } from '../plan/planState';
-import {
-  shouldSkipShedding,
-  shouldSkipUnavailable,
-} from './executorSupport';
+import { shouldSkipUnavailable } from './executorSupport';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import type {
   ExecutableBinaryIntent,
+  ExecutableDeviceIntent,
   ExecutableObservedDeviceState,
   ExecutablePlan,
   ExecutableReleaseIntent,
@@ -26,28 +20,21 @@ import type {
   ExecutorDeviceSnapshot,
 } from './executablePlan';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
-import {
-  applyShedTemperaturePlan,
-  applyTargetUpdate,
-  type PlanExecutorTargetContext,
-} from './targetExecutor';
+import type { ExecutorCommandContext } from './executorCommandContext';
+import { applyShedTemperaturePlan, applyTargetUpdate } from './targetExecutor';
 import {
   applySteppedLoadCommand,
   applySteppedLoadRestore,
   applySteppedLoadShedOff,
-  type PlanExecutorSteppedContext,
 } from './steppedLoadExecutor';
 import {
   applyDeferredBinaryCommand,
   applyBinaryRestore,
-  applyBinarySheddingToDevice,
   applyUncontrolledBinaryRestore,
-  type PlanExecutorBinaryContext,
 } from './binaryExecutor';
 import { applyShedReleaseIntent } from './shedReleaseActuation';
 import {
-  buildExecutableObservedDeviceStateFromSnapshot,
-  buildExecutableObservedState,
+  buildExecutableObservedDeviceState,
   buildExecutablePlan,
   findDroppedSteppedShedIntents,
   hasExecutableShedDevices,
@@ -77,38 +64,6 @@ const logger = getLogger('executor/plan');
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 /**
- * The capabilities the dispatch free functions need from the owning
- * `PlanExecutor`. Context builders, recorders, and snapshot/state reads stay on
- * the class (they close over `this.deps`/`this.state`); the dispatch layer
- * consumes them through this handle so the actuation-path logic lives in one
- * navigable module without dragging the class along.
- */
-export type PlanExecutorCore = {
-  buildTargetExecutorContext: () => PlanExecutorTargetContext;
-  buildSteppedExecutorContext: () => PlanExecutorSteppedContext;
-  buildBinaryExecutorContext: () => PlanExecutorBinaryContext;
-  getShedBehavior: (deviceId: string) => ShedBehavior;
-  getSteppedLoadCommandSession: (deviceId: string) => {
-    initializationAssumedStepId?: string;
-    hasPriorStepCommand: boolean;
-    reportedStepId?: string;
-    stepCommandPending: boolean;
-  };
-  recordReleaseShedActuation: (deviceId: string, name: string, now: number) => void;
-  /** One device as the executor reads it — see `executorDeviceRead.ts`. */
-  readDevice: (deviceId: string) => ExecutorDeviceRead | undefined;
-  readDevices: () => ExecutorDeviceRead[];
-  capacityDryRun: () => boolean;
-  state: PlanEngineState;
-  /** The storage lane: home-battery setpoints and hand-backs (`batteryExecutor.ts`); none in a meter area. */
-  storage: StorageLane;
-  flushLastControlledPersistence: () => void;
-  // Routes through the spyable instance method so `applyPlanActions` → binary shed
-  // still hits any test spy on `executor.applySheddingToDevice`.
-  applySheddingToDevice: (deviceId: string, deviceName: string) => Promise<boolean>;
-};
-
-/**
  * One device's contribution. Deliberately NOT `PlanActuationResult`: that is the
  * plan-wide total and additionally names WHICH devices were touched, which a
  * per-device delta cannot know. Aliasing the two is what let a plan-wide
@@ -126,23 +81,18 @@ const delta = (deviceWriteCount: number, commandRequestCount: number): DispatchD
 
 const ZERO_DELTA: DispatchDelta = { deviceWriteCount: 0, commandRequestCount: 0 };
 
-type DeviceIntentArgs = {
-  intent: ExecutablePlan['devices'][number];
-  observed: ExecutableObservedDeviceState | undefined;
-  snapshot: ExecutorDeviceSnapshot | undefined;
-  hasShedDevices: boolean;
-  steppedFallback: ReturnType<typeof resolveSteppedLoadCurrentFallback>;
-};
-
 /**
- * The per-device dispatch context: the intent plus its commands resolved ONCE,
- * through the `has*Command` guards. Downstream branches read these locals
+ * The per-device dispatch context: the device's observation, the plan-wide shed
+ * flag, and the intent's commands resolved ONCE through the `has*Command` guards. Downstream branches read these locals
  * instead of re-narrowing the intent at each of ~14 call sites; `undefined`
  * here means the plan does not drive that axis, which the appliers treat as a
  * no-op.
  */
-type ResolvedDeviceIntent = DeviceIntentArgs & {
-  steppedAction: ReturnType<typeof buildExecutableSteppedLoadDevice>;
+type ResolvedDeviceIntent = {
+  observed: ExecutableObservedDeviceState | undefined;
+  snapshot: ExecutorDeviceSnapshot | undefined;
+  hasShedDevices: boolean;
+  steppedAction: ExecutableSteppedLoadDevice | null;
   targetCommand: ExecutableTargetIntent | undefined;
   binaryCommand: ExecutableBinaryIntent | undefined;
   releaseCommand: ExecutableReleaseIntent | undefined;
@@ -159,91 +109,51 @@ const resolveDeviceCommands = (intent: ExecutableDeviceIntent): Pick<
   steppedCommand: hasSteppedCommand(intent) ? intent.steppedLoad : undefined,
 });
 
-const applyBinaryRestoreIntent = async (
-  core: PlanExecutorCore,
-  intent: ExecutableBinaryIntent | undefined,
-  observed: ExecutableObservedDeviceState | undefined,
-): Promise<boolean> => applyBinaryRestore(core.buildBinaryExecutorContext(), intent, observed);
-
-const applyDeferredBinaryIntent = async (
-  core: PlanExecutorCore,
-  intent: ExecutableReleaseIntent | undefined,
-  observed: ExecutableObservedDeviceState | undefined,
-): Promise<boolean> => applyDeferredBinaryCommand(core.buildBinaryExecutorContext(), intent, observed);
-
-const dispatchShedReleaseIntent = async (
-  core: PlanExecutorCore,
-  params: {
-    intent: ExecutableReleaseIntent;
-    steppedLoadIntent: ExecutableSteppedLoadIntent | undefined;
-    observed: ExecutableObservedDeviceState | undefined;
-    snapshot: ExecutorDeviceSnapshot | undefined;
-  },
-): Promise<boolean> => applyShedReleaseIntent({
-  ...params,
-  deps: {
-    getShedBehavior: core.getShedBehavior,
-    buildBinaryExecutorContext: () => core.buildBinaryExecutorContext(),
-    buildTargetExecutorContext: () => core.buildTargetExecutorContext(),
-    buildSteppedExecutorContext: () => core.buildSteppedExecutorContext(),
-    recordReleaseShedActuation: core.recordReleaseShedActuation,
-  },
-});
-
 const resolveLatestObservedDevice = (
-  core: PlanExecutorCore,
+  ctx: ExecutorCommandContext,
   deviceId: string,
   observed: ExecutableObservedDeviceState | undefined,
 ): ExecutableObservedDeviceState | undefined => {
-  const device = core.readDevice(deviceId);
-  return device ? buildExecutableObservedDeviceStateFromSnapshot(device) : observed;
+  const device = ctx.readDevice(deviceId);
+  return device ? buildExecutableObservedDeviceState(device, undefined) : observed;
 };
 
 const applyShedTemperatureIntent = async (
-  core: PlanExecutorCore,
+  ctx: ExecutorCommandContext,
   intent: ExecutableTargetIntent,
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   const command = buildExecutableTargetCommand(intent, observed);
-  if (core.capacityDryRun()) {
-    logger.info({ event: 'executor_plan_log', msg: `Capacity (dry run): would set ${command?.target || 'target'} `
-      + `for ${intent.name} to ${intent.desired}°C (shedding)` });
+  if (ctx.getCapacityDryRun()) {
+    logger.info({ event: 'executor_plan_log', msg: 'Capacity (dry run): would set '
+      + `${command ? 'temperature' : 'target'} for ${intent.name} to ${intent.desired}°C (shedding)` });
     return false;
   }
   if (!command) return false;
   if (Object.is(command.observedValue, command.desired)) {
-    emitExecutorDebug({ event: 'executor_plan_log_debug', msg: `Capacity: skip setting ${command.target || 'target'} `
+    emitExecutorDebug({ event: 'executor_plan_log_debug', msg: `Capacity: skip setting temperature `
       + `for ${intent.name}, already at ${intent.desired}°C` });
     return false;
   }
-  const result = await applyShedTemperaturePlan(core.buildTargetExecutorContext(), command);
-  return result.wrote;
+  return applyShedTemperaturePlan(ctx, command);
 };
 
 const applyTargetIntent = async (
-  core: PlanExecutorCore,
+  ctx: ExecutorCommandContext,
   intent: ExecutableTargetIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   if (!intent) return false;
-  const latestObserved = resolveLatestObservedDevice(core, intent.deviceId, observed);
+  const latestObserved = resolveLatestObservedDevice(ctx, intent.deviceId, observed);
   if (intent.purpose === 'shed_temperature') {
-    return applyShedTemperatureIntent(core, intent, latestObserved);
+    return applyShedTemperatureIntent(ctx, intent, latestObserved);
   }
-  return applyTargetUpdate(
-    core.buildTargetExecutorContext(),
-    buildExecutableTargetUpdate(intent, latestObserved),
-  );
+  const update = buildExecutableTargetUpdate(intent, latestObserved);
+  return update ? applyTargetUpdate(ctx, update) : false;
 };
 
-const applyUncontrolledRestore = async (
-  core: PlanExecutorCore,
-  intent: ExecutableBinaryIntent | undefined,
-  observed: ExecutableObservedDeviceState | undefined,
-): Promise<boolean> => applyUncontrolledBinaryRestore(core.buildBinaryExecutorContext(), intent, observed);
-
 const applyBinaryShedIntent = async (
-  core: PlanExecutorCore,
+  ctx: ExecutorCommandContext,
   intent: ExecutableBinaryIntent | undefined,
 ): Promise<boolean> => {
   if (!intent || intent.desiredOn) return false;
@@ -254,47 +164,20 @@ const applyBinaryShedIntent = async (
   // thermostat with an on/off handle and a `set_temperature` floor was written to
   // its setback and left running under a plan that said off, which is how the
   // start-policy hold failed to turn one off at all.
-  return core.applySheddingToDevice(intent.deviceId, intent.name);
+  return ctx.applySheddingToDevice(intent.deviceId, intent.name);
 };
 
 const dispatchSteppedLoadCommand = async (
-  core: PlanExecutorCore,
-  action: ExecutableSteppedLoadDevice | null,
-  snapshot?: ExecutorDeviceSnapshot,
-  options: {
-    recordPlanActuation?: boolean;
-    force?: boolean;
-    preserveMaterializedConfirmation?: boolean;
-    commandPurpose?: 'post_activation_step';
-  } = {},
-): Promise<boolean> => (action
-  ? applySteppedLoadCommand(core.buildSteppedExecutorContext(), action, snapshot, options)
-  : false);
-
-const dispatchSteppedLoadRestore = async (
-  core: PlanExecutorCore,
-  action: ExecutableSteppedLoadDevice | null,
-  params: {
-    snapshot: ExecutorDeviceSnapshot | undefined;
-    hasShedDevices: boolean;
-  },
-) => (action
-  ? applySteppedLoadRestore(core.buildSteppedExecutorContext(), { action, ...params })
-  : { ready: false, wroteBinary: false });
-
-const dispatchSteppedLoadShedOff = async (
-  core: PlanExecutorCore,
+  ctx: ExecutorCommandContext,
   action: ExecutableSteppedLoadDevice | null,
   snapshot: ExecutorDeviceSnapshot | undefined,
-): Promise<boolean> => (action
-  ? applySteppedLoadShedOff(core.buildSteppedExecutorContext(), action, snapshot)
-  : false);
+): Promise<boolean> => (action ? applySteppedLoadCommand(ctx, action, snapshot) : false);
 
 const applyUncontrolledDeviceIntent = async (
-  core: PlanExecutorCore,
-  ctx: ResolvedDeviceIntent,
+  ctx: ExecutorCommandContext,
+  device: ResolvedDeviceIntent,
 ): Promise<DispatchDelta> => {
-  const { observed, snapshot, steppedAction, targetCommand, binaryCommand, releaseCommand, steppedCommand } = ctx;
+  const { observed, snapshot, steppedAction, targetCommand, binaryCommand, releaseCommand, steppedCommand } = device;
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
   // Cap-off + deferred release is the lifecycle-end path: the deferred objective
@@ -302,47 +185,39 @@ const applyUncontrolledDeviceIntent = async (
   // of plannable status. Fire the device's configured release posture and skip the
   // uncontrolled-restore so we don't immediately re-enable what we just released.
   if (releaseCommand?.kind === 'binary_release') {
-    if (await dispatchSteppedLoadCommand(core, steppedAction, snapshot)) commandRequestCount += 1;
-    if (await applyDeferredBinaryIntent(core, releaseCommand, observed)) deviceWriteCount += 1;
+    if (await dispatchSteppedLoadCommand(ctx, steppedAction, snapshot)) commandRequestCount += 1;
+    if (await applyDeferredBinaryCommand(ctx, releaseCommand, observed)) deviceWriteCount += 1;
     return delta(deviceWriteCount, commandRequestCount);
   }
   if (releaseCommand?.kind === 'shed_release') {
-    if (await dispatchShedReleaseIntent(core, {
-      intent: releaseCommand,
-      steppedLoadIntent: steppedCommand,
-      observed,
-      snapshot,
-    })) deviceWriteCount += 1;
+    if (await applyShedReleaseIntent(ctx, releaseCommand, steppedCommand, observed)) deviceWriteCount += 1;
     return delta(deviceWriteCount, commandRequestCount);
   }
-  if (await dispatchSteppedLoadCommand(core, steppedAction, snapshot)) commandRequestCount += 1;
-  if (await applyUncontrolledRestore(core, binaryCommand, observed)) deviceWriteCount += 1;
-  if (await applyTargetIntent(core, targetCommand, observed)) deviceWriteCount += 1;
+  if (await dispatchSteppedLoadCommand(ctx, steppedAction, snapshot)) commandRequestCount += 1;
+  if (await applyUncontrolledBinaryRestore(ctx, binaryCommand, observed)) deviceWriteCount += 1;
+  if (await applyTargetIntent(ctx, targetCommand, observed)) deviceWriteCount += 1;
   return delta(deviceWriteCount, commandRequestCount);
 };
 
 const applySteppedRestoreFromOffIntent = async (
-  core: PlanExecutorCore,
-  ctx: ResolvedDeviceIntent,
+  ctx: ExecutorCommandContext,
+  device: ResolvedDeviceIntent,
 ): Promise<DispatchDelta> => {
-  const { observed, snapshot, steppedAction, hasShedDevices, targetCommand } = ctx;
+  const { observed, snapshot, steppedAction, hasShedDevices, targetCommand } = device;
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
-  if (steppedAction === null || !isBinaryDrivenIntent(steppedAction) || !steppedAction.desiredOn) {
-    if (await applyTargetIntent(core, targetCommand, observed)) deviceWriteCount += 1;
+  if (steppedAction === null || !isBinaryDrivenIntent(steppedAction.intent) || !steppedAction.intent.desiredOn) {
+    if (await applyTargetIntent(ctx, targetCommand, observed)) deviceWriteCount += 1;
     return delta(deviceWriteCount, commandRequestCount);
   }
-  const stepRestore = await dispatchSteppedLoadRestore(core, steppedAction, {
-    snapshot,
-    hasShedDevices,
-  });
+  const stepRestore = await applySteppedLoadRestore(ctx, steppedAction, snapshot, hasShedDevices);
   if (
     stepRestore.ready
     && (
       stepRestore.wroteBinary
-      || !isRequestedStepMaterialized(steppedAction.commandStepActuation)
+      || !isRequestedStepMaterialized(steppedAction.stepActuation)
     )
-    && await dispatchSteppedLoadCommand(core, steppedAction, snapshot, {
+    && await applySteppedLoadCommand(ctx, steppedAction, snapshot, {
       recordPlanActuation: false,
       // The activation cycle must reassert even a matching observed step.
       // Later OFF-echo cycles may reconcile a contradictory report, but keep
@@ -353,74 +228,82 @@ const applySteppedRestoreFromOffIntent = async (
     })
   ) commandRequestCount += 1;
   if (stepRestore.wroteBinary) deviceWriteCount += 1;
-  if (await applyTargetIntent(core, targetCommand, observed)) deviceWriteCount += 1;
+  if (await applyTargetIntent(ctx, targetCommand, observed)) deviceWriteCount += 1;
   return delta(deviceWriteCount, commandRequestCount);
 };
 
 const applySteppedShedRestoreIntent = async (
-  core: PlanExecutorCore,
-  ctx: ResolvedDeviceIntent,
+  ctx: ExecutorCommandContext,
+  device: ResolvedDeviceIntent,
 ): Promise<DispatchDelta> => {
-  const { observed, snapshot, steppedAction, hasShedDevices, targetCommand } = ctx;
+  const { observed, snapshot, steppedAction, hasShedDevices, targetCommand } = device;
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
-  if (await dispatchSteppedLoadCommand(core, steppedAction, snapshot)) commandRequestCount += 1;
-  if (await dispatchSteppedLoadShedOff(core, steppedAction, snapshot)) deviceWriteCount += 1;
-  const restored = await dispatchSteppedLoadRestore(core, steppedAction, { snapshot, hasShedDevices });
-  if (restored.wroteBinary) deviceWriteCount += 1;
-  if (await applyTargetIntent(core, targetCommand, observed)) deviceWriteCount += 1;
+  if (steppedAction) {
+    if (await applySteppedLoadCommand(ctx, steppedAction, snapshot)) commandRequestCount += 1;
+    if (await applySteppedLoadShedOff(ctx, steppedAction, snapshot)) deviceWriteCount += 1;
+    const restored = await applySteppedLoadRestore(ctx, steppedAction, snapshot, hasShedDevices);
+    if (restored.wroteBinary) deviceWriteCount += 1;
+  }
+  if (await applyTargetIntent(ctx, targetCommand, observed)) deviceWriteCount += 1;
   return delta(deviceWriteCount, commandRequestCount);
 };
 
 const applyDefaultBinaryIntent = async (
-  core: PlanExecutorCore,
-  ctx: ResolvedDeviceIntent,
+  ctx: ExecutorCommandContext,
+  device: ResolvedDeviceIntent,
 ): Promise<DispatchDelta> => {
-  const { observed, targetCommand, binaryCommand, releaseCommand } = ctx;
+  const { observed, targetCommand, binaryCommand, releaseCommand } = device;
   let deviceWriteCount = 0;
-  if (await applyDeferredBinaryIntent(core, releaseCommand, observed)) {
+  if (await applyDeferredBinaryCommand(ctx, releaseCommand, observed)) {
     return delta(1, 0);
   }
-  if (await applyBinaryRestoreIntent(core, binaryCommand, observed)) deviceWriteCount += 1;
-  if (await applyTargetIntent(core, targetCommand, observed)) deviceWriteCount += 1;
+  if (await applyBinaryRestore(ctx, binaryCommand, observed)) deviceWriteCount += 1;
+  if (await applyTargetIntent(ctx, targetCommand, observed)) deviceWriteCount += 1;
   return delta(deviceWriteCount, 0);
 };
 
 const applyDeviceIntent = async (
-  core: PlanExecutorCore,
-  args: DeviceIntentArgs,
+  ctx: ExecutorCommandContext,
+  intent: ExecutableDeviceIntent,
+  observed: ExecutableObservedDeviceState | undefined,
+  hasShedDevices: boolean,
+  steppedFallback: ReturnType<typeof resolveSteppedLoadCurrentFallback>,
 ): Promise<DispatchDelta> => {
-  const { intent } = args;
   if (intent.projectionError) throw intent.projectionError;
   const commands = resolveDeviceCommands(intent);
+  const { steppedCommand } = commands;
   const steppedAction = buildExecutableSteppedLoadDevice(
-    commands.steppedCommand,
-    args.observed,
-    args.steppedFallback,
-    core.getSteppedLoadCommandSession(intent.id),
+    steppedCommand,
+    observed,
+    steppedFallback,
+    ctx.getSteppedLoadCommandSession(intent.id),
   );
+  const snapshot = observed?.snapshot;
   if (shouldSkipUnavailable({
-    snapshot: args.snapshot,
+    snapshot,
     name: intent.name,
     operation: 'actuation',
   })) {
     return ZERO_DELTA;
   }
-  const ctx: ResolvedDeviceIntent = { ...args, ...commands, steppedAction };
-  if (intent.commandAuthority === false) return applyUncontrolledDeviceIntent(core, ctx);
-  if (isSteppedLoadRestoreFromOff(commands.steppedCommand, steppedAction)) {
-    return applySteppedRestoreFromOffIntent(core, ctx);
+  const device: ResolvedDeviceIntent = {
+    observed, snapshot, hasShedDevices, steppedAction, ...commands,
+  };
+  if (intent.commandAuthority === false) return applyUncontrolledDeviceIntent(ctx, device);
+  if (isSteppedLoadRestoreFromOff(steppedCommand, steppedAction)) {
+    return applySteppedRestoreFromOffIntent(ctx, device);
   }
-  if (commands.steppedCommand) return applySteppedShedRestoreIntent(core, ctx);
-  if (commands.targetCommand?.purpose === 'shed_temperature') {
-    return (await applyTargetIntent(core, commands.targetCommand, args.observed))
+  if (steppedCommand) return applySteppedShedRestoreIntent(ctx, device);
+  if (device.targetCommand?.purpose === 'shed_temperature') {
+    return (await applyTargetIntent(ctx, device.targetCommand, observed))
       ? delta(1, 0)
       : ZERO_DELTA;
   }
-  if (commands.binaryCommand?.desiredOn === false) {
-    return (await applyBinaryShedIntent(core, commands.binaryCommand)) ? delta(1, 0) : ZERO_DELTA;
+  if (device.binaryCommand?.desiredOn === false) {
+    return (await applyBinaryShedIntent(ctx, device.binaryCommand)) ? delta(1, 0) : ZERO_DELTA;
   }
-  return applyDefaultBinaryIntent(core, ctx);
+  return applyDefaultBinaryIntent(ctx, device);
 };
 
 const logUnderspecifiedSteppedShedDevices = (
@@ -436,13 +319,21 @@ const logUnderspecifiedSteppedShedDevices = (
   }
 };
 
+/**
+ * Carries out a plan against the executor's current read of every device, then
+ * the storage lane's decisions.
+ */
 export const dispatchPlanActions = async (
-  core: PlanExecutorCore,
+  ctx: ExecutorCommandContext,
   plan: DevicePlan,
+  devices: ExecutorDeviceRead[],
+  storage: StorageLane,
 ): Promise<PlanActuationResult> => {
   const executablePlan = buildExecutablePlan(plan);
-  const observedState = buildExecutableObservedState(core.readDevices());
-  const observedMap = new Map(observedState.devices.map((entry) => [entry.id, entry]));
+  const observedMap = new Map(devices.map((device) => [
+    device.id,
+    buildExecutableObservedDeviceState(device, undefined),
+  ]));
   // Producer-resolved current state per device. The raw dispatch snapshot carries
   // no observed step (`selectedStepId` is a plan-device decoration, absent here),
   // so the effective current step/on is resolved once on the plan device and
@@ -460,16 +351,14 @@ export const dispatchPlanActions = async (
   let deviceApplyFailureCount = 0;
   const writtenDeviceIds: string[] = [];
   for (const intent of executablePlan.devices) {
-    const observed = observedMap.get(intent.id);
-    const snapshot = observed?.snapshot;
     try {
-      const result = await applyDeviceIntent(core, {
+      const result = await applyDeviceIntent(
+        ctx,
         intent,
-        observed,
-        snapshot,
+        observedMap.get(intent.id),
         hasShedDevices,
-        steppedFallback: steppedFallbackMap.get(intent.id),
-      });
+        steppedFallbackMap.get(intent.id),
+      );
       deviceWriteCount += result.deviceWriteCount;
       commandRequestCount += result.commandRequestCount;
       if (result.deviceWriteCount > 0 || result.commandRequestCount > 0) {
@@ -486,18 +375,18 @@ export const dispatchPlanActions = async (
     }
   }
   // Batteries after every shed: a slow cloud battery must never delay one.
-  const storage = await dispatchStorageDecisions(core, plan);
+  const storageResult = await dispatchStorageDecisions(storage, plan);
   return {
     deviceWriteCount,
-    commandRequestCount: commandRequestCount + storage.writtenDeviceIds.length,
-    deviceApplyFailureCount: deviceApplyFailureCount + storage.failureCount,
-    writtenDeviceIds: [...writtenDeviceIds, ...storage.writtenDeviceIds],
+    commandRequestCount: commandRequestCount + storageResult.writtenDeviceIds.length,
+    deviceApplyFailureCount: deviceApplyFailureCount + storageResult.failureCount,
+    writtenDeviceIds: [...writtenDeviceIds, ...storageResult.writtenDeviceIds],
   };
 };
 
 /** The plan's home-battery decisions, through the storage lane (none in a meter area). */
 const dispatchStorageDecisions = async (
-  core: PlanExecutorCore,
+  storage: StorageLane,
   plan: DevicePlan,
 ): Promise<{ writtenDeviceIds: string[]; failureCount: number }> => {
   const writtenDeviceIds: string[] = [];
@@ -506,7 +395,7 @@ const dispatchStorageDecisions = async (
     if (!hasStorageDecision(device)) continue;
     try {
       // eslint-disable-next-line functional/immutable-data -- local accumulator
-      if (await core.storage.apply(device)) writtenDeviceIds.push(device.id);
+      if (await storage.apply(device)) writtenDeviceIds.push(device.id);
     } catch (error) {
       failureCount += 1;
       logger.error({
@@ -521,7 +410,7 @@ const dispatchStorageDecisions = async (
   for (const intent of plan.storageReleases) {
     try {
       // eslint-disable-next-line functional/immutable-data -- local accumulator
-      if (await core.storage.releaseAbsent(intent)) writtenDeviceIds.push(intent.deviceId);
+      if (await storage.releaseAbsent(intent)) writtenDeviceIds.push(intent.deviceId);
     } catch (error) {
       failureCount += 1;
       logger.error({
@@ -530,44 +419,4 @@ const dispatchStorageDecisions = async (
     }
   }
   return { writtenDeviceIds, failureCount };
-};
-
-/**
- * Carries out a plan's binary shed intent: turn the device off. The plan
- * decided this end state (`plannedShedTargetKind` resolved the axis before a
- * binary intent could exist), so nothing here reads the configured shed
- * behaviour again; a setpoint shed reaches the device as a target update, not
- * through this path.
- */
-export const applySheddingToDeviceImpl = async (
-  core: PlanExecutorCore,
-  deviceId: string,
-  deviceName: string,
-): Promise<boolean> => {
-  try {
-    if (core.capacityDryRun()) return false;
-    const snapshotState = core.readDevice(deviceId);
-    if (shouldSkipShedding({
-      state: core.state,
-      deviceId,
-      deviceName,
-      snapshotState,
-    })) {
-      return false;
-    }
-    // Mark as pending before async operation
-    core.state.actuation.beginShed(deviceId);
-    try {
-      return await applyBinarySheddingToDevice(core.buildBinaryExecutorContext(), {
-        deviceId,
-        deviceName,
-        skipPrecheck: true,
-        trackPendingShed: false,
-      });
-    } finally {
-      core.state.actuation.endShed(deviceId);
-    }
-  } finally {
-    core.flushLastControlledPersistence();
-  }
 };

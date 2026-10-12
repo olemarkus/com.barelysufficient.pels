@@ -1,20 +1,9 @@
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-
-export type BinaryCommandConfirmationDevice = {
-    id: string;
-    name: string;
-    binaryCommandConfirmation:
-      | { state: 'unavailable' }
-      | {
-        state: 'observed';
-        observedValue: boolean;
-        observedAtMs: number;
-      };
-};
+import type { PendingBinaryLiveDevice } from '../../ports/controlCommandConfirmation';
 
 function projectBinaryCommandConfirmation(
     device: TransportDeviceSnapshot,
-): BinaryCommandConfirmationDevice['binaryCommandConfirmation'] {
+): PendingBinaryLiveDevice['binaryCommandConfirmation'] {
     const observation = device.binaryControlObservation;
     const confirmationCapabilityId = device.binaryObservationCapabilityId
         ?? device.binaryCapabilityId;
@@ -34,7 +23,7 @@ function projectBinaryCommandConfirmation(
 
 export function buildBinaryCommandConfirmationSnapshot(
     snapshot: TransportDeviceSnapshot[],
-): BinaryCommandConfirmationDevice[] {
+): PendingBinaryLiveDevice[] {
     return snapshot.map((device) => ({
         id: device.id,
         name: device.name,

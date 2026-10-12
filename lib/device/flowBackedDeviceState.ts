@@ -374,10 +374,10 @@ export class FlowBackedDeviceState {
       // own observation — laundering one device's reading into another's, and
       // outliving the association that justified adopting it.
       if (hasObservedStateOfCharge(device) && device.stateOfCharge.source.kind === 'car') return;
-      updateStateOfChargeObservationFreshness({ snapshot: device, reportedAt: params.reportedAt });
+      updateStateOfChargeObservationFreshness(device, params.reportedAt);
       // Dispatched since stage 6 of the snapshot decomposition. This branch
       // advances `stateOfCharge` freshness AND re-resolves `level`
-      // (`resolveLevelFields`), so a heartbeat can give a charger a level it did
+      // (`withLevel`), so a heartbeat can give a charger a level it did
       // not have. The reader an earlier comment here said did not exist is
       // `toPlanDevice`, which reads `stateOfCharge` off the observer's record
       // now — and the objectives layer behind it, which drops samples whose

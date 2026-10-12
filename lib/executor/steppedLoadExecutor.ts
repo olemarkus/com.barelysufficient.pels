@@ -15,19 +15,18 @@ import {
   isSteppedLoadStepCommandRedundant,
   logSteppedLoadCommandSkip,
   maybeLogSteppedLoadCommandPendingSkip,
+  type SteppedCommandOptions,
 } from './steppedLoadExecutorCommand';
 import {
   applyKeepInvariantShedBlock,
   executeSteppedLoadRestoreBinary,
   logSteppedLoadRestoreAttemptSkip,
   logSteppedLoadRestoreSkip,
-  logSteppedLoadRestoreViolations,
+  logSteppedLoadStepViolation,
   maybeSkipSteppedLoadRestoreBinary,
 } from './steppedLoadExecutorRestore';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-
-export type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
-import type { PlanExecutorSteppedContext } from './steppedLoadExecutorContext';
+import type { ExecutorCommandContext } from './executorCommandContext';
 
 const logger = getLogger('executor/stepped-load');
 /**
@@ -62,29 +61,19 @@ const resolveCurrentOn = (
 ): boolean | null => (snapshot ? isBinaryOnOrUnknown(snapshot) : action.current.on);
 
 const suppressRecentSteppedBinaryRestore = (
-  ctx: PlanExecutorSteppedContext,
-  params: {
-    action: ExecutableSteppedLoadDevice;
-    snapshot: ExecutorDeviceSnapshot | undefined;
-    effectiveCurrentOn: boolean | null;
-  },
+  ctx: ExecutorCommandContext,
+  action: ExecutableSteppedLoadDevice,
+  snapshot: ExecutorDeviceSnapshot | undefined,
 ): boolean => {
-  const {
-    action,
-    snapshot,
-    effectiveCurrentOn,
-  } = params;
+  const effectiveCurrentOn = action.current.on;
   if (
     effectiveCurrentOn !== false
     || !isBinaryObservedOff(snapshot)
     || !ctx.state.actuation.hasRecentSteppedBinaryRestoreAttempt(
-      action.id, Date.now(), ctx.state.restoreBackoff.restoreCooldownMs,
+      action.intent.id, Date.now(), ctx.state.restoreBackoff.restoreCooldownMs,
     )
   ) return false;
-  logSteppedLoadRestoreSkip({
-    action,
-    reasonCode: 'recent_binary_restore_attempt',
-  });
+  logSteppedLoadRestoreSkip(action.intent, 'recent_binary_restore_attempt');
   return true;
 };
 
@@ -100,117 +89,81 @@ const suppressRecentSteppedBinaryRestore = (
 const isSettledAtPlannedOff = (
   action: ExecutableSteppedLoadDevice,
   currentOn: boolean | null,
-): boolean => currentOn === false && isBinaryDrivenIntent(action) && !action.desiredOn;
-
-const shouldForceSteppedLoadCommand = (options: {
-  force?: boolean;
-  forceAgainstReleasedOpposing?: boolean;
-}): boolean => options.force === true || options.forceAgainstReleasedOpposing === true;
+): boolean => currentOn === false && isBinaryDrivenIntent(action.intent) && !action.intent.desiredOn;
 
 export const applySteppedLoadCommand = async (
-  ctx: PlanExecutorSteppedContext,
+  ctx: ExecutorCommandContext,
   action: ExecutableSteppedLoadDevice,
   snapshot?: ExecutorDeviceSnapshot,
-  options: {
-    recordPlanActuation?: boolean;
-    force?: boolean;
-    forceAgainstReleasedOpposing?: boolean;
-    preserveMaterializedConfirmation?: boolean;
-    commandPurpose?: 'post_activation_step';
-  } = {},
+  options: SteppedCommandOptions = {},
 ): Promise<boolean> => {
   // A plan built before an outside OFF can still carry a step-up command. Step
   // commands are real actuation too: suppress every one while the durable hold
   // is active, just as the binary restore funnels do.
-  if (ctx.state.isExternalOffHeld(action.id)) {
+  const { intent } = action;
+  if (ctx.state.isExternalOffHeld(intent.id)) {
     emitExecutorDebug({
       event: 'stepped_load_command_skipped',
-      deviceId: action.id,
-      deviceName: action.name,
+      deviceId: intent.id,
+      deviceName: intent.name,
       reasonCode: PLAN_REASON_CODES.externalOffHold,
     });
     return false;
   }
-  const commandStepId = action.desired.stepId;
+  const commandStepId = intent.desired.stepId;
   const currentOn = resolveCurrentOn(action, snapshot);
-  const forceCommand = shouldForceSteppedLoadCommand(options);
-  const initializesUnknownStep = action.transition?.effectiveTransition === 'initialize_unknown_step_at_low';
+  const forceCommand = options.force === true;
+  const initializesUnknownStep = intent.transition?.effectiveTransition === 'initialize_unknown_step_at_low';
   if (isSettledAtPlannedOff(action, currentOn)) return false;
   if (!commandStepId) return false;
   if (!forceCommand && isSteppedLoadStepCommandRedundant(action, commandStepId)) return false;
-  const desiredStep = getSteppedLoadStep(action.steppedLoadProfile, commandStepId);
+  const desiredStep = getSteppedLoadStep(intent.steppedLoadProfile, commandStepId);
   if (!desiredStep) {
-    return logSteppedLoadCommandSkip(ctx, {
-      action,
-      reasonCode: 'missing_step',
-      logMessage: `Capacity: skip stepped-load command for ${action.name}, `
-        + `desired step ${commandStepId} is not in profile`,
-      fields: { desiredStepId: commandStepId, plannedDesiredStepId: action.desired.plannedStepId ?? null },
-    });
+    return logSteppedLoadCommandSkip(
+      intent,
+      'missing_step',
+      `Capacity: skip stepped-load command for ${intent.name}, desired step ${commandStepId} is not in profile`,
+      { desiredStepId: commandStepId, plannedDesiredStepId: intent.desired.plannedStepId ?? null },
+    );
   }
-  if (
-    !forceCommand
-    && maybeLogSteppedLoadCommandPendingSkip(ctx, action, commandStepId)
-  ) return false;
+  if (!forceCommand && maybeLogSteppedLoadCommandPendingSkip(intent, commandStepId)) return false;
   return executeSteppedLoadCommand(ctx, {
     action,
     options,
     desiredStep,
-    transition: action.transition,
-    previousStepId: initializesUnknownStep ? undefined : action.previousStepId,
+    previousStepId: initializesUnknownStep ? undefined : intent.previousStepId,
     now: Date.now(),
   });
 };
 
-export type ApplySteppedLoadRestoreParams = {
-  action: ExecutableSteppedLoadDevice;
-  snapshot: ExecutorDeviceSnapshot | undefined;
-  hasShedDevices: boolean;
-};
-
 export const applySteppedLoadRestore = async (
-  ctx: PlanExecutorSteppedContext,
-  params: ApplySteppedLoadRestoreParams,
+  ctx: ExecutorCommandContext,
+  action: ExecutableSteppedLoadDevice,
+  snapshot: ExecutorDeviceSnapshot | undefined,
+  hasShedDevices: boolean,
 ): Promise<SteppedLoadRestoreResult> => {
-  const {
-    action,
-    snapshot,
-    hasShedDevices,
-  } = params;
-  const name = action.name;
-  if (!isBinaryDrivenIntent(action) || !action.desiredOn) {
+  const { intent, stepNeedsAdjustment } = action;
+  const { name, matchingCommandAttempt } = intent;
+  if (!isBinaryDrivenIntent(intent) || !intent.desiredOn) {
     return NOT_RESTORED;
   }
-  const {
-    matchingRestoreAttempt,
-    stepNeedsAdjustment,
-  } = action;
   const effectiveCurrentOn = action.current.on;
-  const requestedStepId = action.desired.stepId;
+  const requestedStepId = intent.desired.stepId;
   // Once the device reports on, keep the existing step-command attempt
   // dampening. While it is still off, activation owns the ordering: dispatch
   // binary ON first and immediately reassert the desired step even when an
   // earlier step request was pending or in retry backoff.
-  const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingRestoreAttempt
+  const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingCommandAttempt
     && effectiveCurrentOn === true;
   if (shouldDeferRestoreForAttempt) {
-    logSteppedLoadRestoreAttemptSkip({
-      action,
-      matchingRestoreAttempt,
-    });
+    logSteppedLoadRestoreAttemptSkip(intent, matchingCommandAttempt);
     return NOT_RESTORED;
   }
-  logSteppedLoadRestoreViolations(action, name, {
-    desiredStepId: requestedStepId,
-    stepNeedsAdjustment,
-  });
+  if (stepNeedsAdjustment) logSteppedLoadStepViolation(action, requestedStepId);
 
   if (effectiveCurrentOn === true) {
     if (stepNeedsAdjustment) return NOT_RESTORED;
-    logSteppedLoadRestoreSkip({
-      action,
-      reasonCode: 'no_keep_violation',
-    });
+    logSteppedLoadRestoreSkip(intent, 'no_keep_violation');
     return NOT_RESTORED;
   }
   if (isBinaryObservedOff(snapshot)) {
@@ -219,18 +172,10 @@ export const applySteppedLoadRestore = async (
       msg: `Capacity: ${name} violates keep invariant: onoff=${isBinaryOnOrUnknown(snapshot)}`,
     });
   }
-  if (applyKeepInvariantShedBlock(ctx, action, name, hasShedDevices, requestedStepId)) return NOT_RESTORED;
-  ctx.state.clearKeepInvariantShedBlock(action.id);
-  if (suppressRecentSteppedBinaryRestore(ctx, {
-    action,
-    snapshot,
-    effectiveCurrentOn,
-  })) return { ready: true, wroteBinary: false };
-  const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, {
-    action,
-    snapshot,
-    stepNeedsAdjustment,
-  });
+  if (applyKeepInvariantShedBlock(ctx, intent, hasShedDevices, requestedStepId)) return NOT_RESTORED;
+  ctx.state.clearKeepInvariantShedBlock(intent.id);
+  if (suppressRecentSteppedBinaryRestore(ctx, action, snapshot)) return { ready: true, wroteBinary: false };
+  const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, intent, snapshot, stepNeedsAdjustment);
   if (binaryRestoreSkip === false) return NOT_RESTORED;
   // `maybeSkipSteppedLoadRestoreBinary` already returns `false` (handled above)
   // when the snapshot is missing, so it is defined here; this guard only narrows
@@ -239,32 +184,29 @@ export const applySteppedLoadRestore = async (
   // Binary already on (no write needed) but the restore is "ready" so the caller
   // can proceed to issue the step command.
   if (isBinaryOnOrUnknown(snapshot)) return { ready: true, wroteBinary: false };
-  const wroteBinary = await executeSteppedLoadRestoreBinary(ctx, {
-    action,
-    snapshot,
-    name,
-  });
+  const wroteBinary = await executeSteppedLoadRestoreBinary(ctx, intent, snapshot);
   return { ready: wroteBinary, wroteBinary };
 };
 
 export const applySteppedLoadShedOff = async (
-  ctx: PlanExecutorSteppedContext,
+  ctx: ExecutorCommandContext,
   action: ExecutableSteppedLoadDevice,
   snapshot: ExecutorDeviceSnapshot | undefined,
 ): Promise<boolean> => {
-  if (!isBinaryDrivenIntent(action) || action.desiredOn) return false;
+  const { intent } = action;
+  if (!isBinaryDrivenIntent(intent) || intent.desiredOn) return false;
   const atOffStep = action.current.stepIsOffStep;
   // The binary axis is this device's own end state only when the plan decided
   // the device should be off. A plan that wants it parked at a step (or at a
   // setpoint) reaches the binary handle only once the device already sits at its
   // off step — otherwise the step command owns the descent.
-  if (action.plannedShedTarget?.kind !== 'binary_off' && !atOffStep) return false;
+  if (intent.plannedShedTarget?.kind !== 'binary_off' && !atOffStep) return false;
   if (!snapshot) return false;
-  const name = action.name;
+  const name = intent.name;
   try {
     const outcome = await runBinaryControl({
       ctx,
-      deviceId: action.id,
+      deviceId: intent.id,
       name,
       desired: false,
       snapshot,

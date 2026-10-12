@@ -18,7 +18,6 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { ObservationBridge } from './observationBridge';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import { getDeviceId } from './managerHelpers';
-import { syncNativeSteppedLoadCommandAdapters } from '../managerNativeSteppedCommand';
 import { isHomeBatteryDevice } from '../managerEnergy';
 import { isRuntimeTrackedDevice, resolveManagedFilterDecision } from './managerManagedFilter';
 import { isHomeBatterySnapshot, toBatteryControlRead } from './homeBatteryObservation';
@@ -109,12 +108,10 @@ export class DeviceSnapshotReader {
   }
 
   syncNativeSteppedLoadCommandAdapters(): void {
-    syncNativeSteppedLoadCommandAdapters({
-      owner: this.snapshotStore,
-      devices: [...this.snapshotStore.getTrackedRawDevicesById().values()],
-      shouldTrackDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
-      logger: this.logger,
-    });
+    this.snapshotStore.nativeSteppedAdapters.sync(
+      [...this.snapshotStore.getTrackedRawDevicesById().values()],
+      (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
+    );
   }
 
   private isTracked(deviceId: string, isHomeBattery: boolean): boolean {

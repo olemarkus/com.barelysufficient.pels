@@ -14,26 +14,25 @@ import {
   isSwapTargetPendingReason,
 } from '../planContract/planDecisionSemantics';
 import type {
-  EvObservedProbe,
-  MeasuredPowerObservedProbe,
   ObservedDeviceState,
-  ReportedStepObservedProbe,
   SteppedLoadDecoration,
-  SteppedLoadDescriptorProbe,
+  SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableDeviceIntent,
   ExecutableObservedDeviceState,
-  ExecutableObservedState,
   ExecutableObservedSteppedLoadState,
   ExecutableObservedTargetState,
   ExecutablePlan,
   ExecutableReleaseIntent,
-  ExecutorDeviceSnapshot,
 } from './executablePlan';
 import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadStep,
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
@@ -78,14 +77,6 @@ function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: Plan
       projectionError: error,
     };
   }
-}
-
-export function buildExecutableObservedState(
-  devices: ExecutorDeviceRead[],
-): ExecutableObservedState {
-  return {
-    devices: devices.map(buildExecutableObservedDeviceStateFromSnapshot),
-  };
 }
 
 /**
@@ -185,57 +176,64 @@ const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
 );
 
 /**
- * The executor's producer boundary for a RAW transport snapshot: resolve the
- * device's draw once, here, then build the observed state from the resolved
- * value. The raw `measuredPowerKw` reaches no further into this layer.
+ * The device's effective rung.
  *
- * It is a separate entry point rather than a resolution inside
- * `buildExecutableObservedDeviceState` because that function also serves the
- * drift path, which feeds a live `PlanInputDevice` — a shape with no
- * `measuredPowerKw` at all. Resolving inside would silently answer `0` for
- * every device on that path.
+ * `reportedStepId ?? lowest active step` — the same rule the snapshot producer
+ * applies (`lib/planInput/deviceControlProjection.ts`). It reads the
+ * device's report and the configured ladder, and deliberately NOT the commanded
+ * target step: what PELS asked for is not evidence of where the device is, and
+ * treating it as such is how a command gets mistaken for its own confirmation.
  */
-export function buildExecutableObservedDeviceStateFromSnapshot(
-  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
-    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & MeasuredPowerObservedProbe
-    & EvObservedProbe
-    & { currentOn?: boolean; commandableNow?: boolean },
-): ExecutableObservedDeviceState {
-  return buildExecutableObservedDeviceState({
-    ...snapshot,
-    currentDrawKw: getCurrentDrawKw(snapshot),
-  });
-}
+const resolveObservedSelectedStepId = (
+  profile: SteppedLoadProfile | undefined,
+  reportedStepId: string | undefined,
+): string | undefined => {
+  if (!profile) return undefined;
+  return getSteppedLoadStep(profile, reportedStepId)?.id
+    ?? getSteppedLoadLowestActiveStep(profile)?.id;
+};
 
+/**
+ * The executor's one observed-state producer. Every path — plan dispatch,
+ * drift, the settings-UI execution state and the lifecycle fallback request —
+ * builds from the executor's read of the device, and the values the read does
+ * not carry are resolved here, once:
+ *
+ * - `selectedStepId`, the effective rung (`resolveObservedSelectedStepId`)
+ *   against `ladder`, the ladder the caller judges the device by: the plan's
+ *   for drift, the configured one for the execution state, the step
+ *   posture's for a lifecycle step fallback (its first build and retries).
+ *   `undefined` reads no rung: plan dispatch takes the current step from the
+ *   plan device instead
+ *   (`resolveSteppedLoadCurrentFallback`), and a drift check of a device the
+ *   plan drives no step for must not fold one into its on/off;
+ * - `commandableNow` (`resolveCommandableNow`);
+ * - `currentDrawKw` (`getCurrentDrawKw`): the raw `measuredPowerKw` reaches no
+ *   further into this layer.
+ *
+ * The on/off fold is applied here too, so the raw axis (`observedBinaryAxis`)
+ * and the fold (`observedEffectiveOn`) answer the same way on every path.
+ */
 export function buildExecutableObservedDeviceState(
-  // Widened past the raw snapshot to carry the optional `selectedStepId`
-  // decoration: the drift path feeds a live `PlanInputDevice` (decoration
-  // present), the raw observed-state path feeds transport snapshots (absent).
-  // Producer-fed funnel: also carries the stepped-descriptor + reported-step
-  // probes the base type omits, which the stepped-load projection
-  // (`buildObservedSteppedLoadState`) reads.
-  //
-  // `currentDrawKw` is REQUIRED: the drift path resolves it from the observed
-  // state (`driftObservedDevice.ts`), and a raw snapshot gets it from
-  // `buildExecutableObservedDeviceStateFromSnapshot` above. Making
-  // it optional here would let a caller drop it without a compile error, which
-  // reads as "not drawing" and silently un-prices every unknown-step shed.
-  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
-    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
-    & EvObservedProbe
-    & { currentOn?: boolean; commandableNow?: boolean; currentDrawKw: number },
+  read: ExecutorDeviceRead,
+  ladder: SteppedLoadProfile | undefined,
 ): ExecutableObservedDeviceState {
+  const snapshot = ladder === undefined ? read : {
+    ...read,
+    steppedLoadProfile: ladder,
+    selectedStepId: resolveObservedSelectedStepId(ladder, read.reportedStepId),
+  };
   return {
-    id: snapshot.id,
-    name: snapshot.name,
+    id: read.id,
+    name: read.name,
     snapshot,
-    available: snapshot.available,
-    commandableNow: snapshot.commandableNow ?? resolveCommandableNow(snapshot),
-    binaryControl: snapshot.binaryControl,
-    observedBinaryAxis: isBinaryOnOrUnknown(snapshot) ? 'on' : 'off',
+    available: read.available,
+    commandableNow: resolveCommandableNow(read),
+    binaryControl: read.binaryControl,
+    observedBinaryAxis: isBinaryOnOrUnknown(read) ? 'on' : 'off',
     observedEffectiveOn: resolveCurrentOn(snapshot),
-    target: buildObservedTargetState(snapshot),
-    steppedLoad: buildObservedSteppedLoadState(snapshot),
+    target: buildObservedTargetState(read),
+    steppedLoad: buildObservedSteppedLoadState(snapshot, getCurrentDrawKw(read)),
   };
 }
 
@@ -244,22 +242,12 @@ const buildObservedTargetState = (
   snapshot: Pick<ObservedDeviceState, 'targets'>,
 ): ExecutableObservedTargetState | null => {
   const primaryTarget = snapshot.targets?.[0];
-  return primaryTarget
-    ? {
-      target: 'temperature',
-      observedValue: primaryTarget.value,
-    }
-    : null;
+  return primaryTarget ? { observedValue: primaryTarget.value } : null;
 };
 
 const buildObservedSteppedLoadState = (
-  // Accepts the optional `selectedStepId` decoration: on the raw
-  // `buildExecutableObservedDeviceStateFromSnapshot` path it is always absent
-  // (the transport snapshot carries no decoration), but on the drift path
-  // (`planExecutionDrift` → live `PlanInputDevice`) it is the producer-resolved
-  // effective step. The read must survive both, so widen past the raw snapshot.
-  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
-    & ReportedStepObservedProbe & { currentOn?: boolean; currentDrawKw: number },
+  snapshot: ExecutorDeviceRead & Pick<SteppedLoadDecoration, 'selectedStepId'>,
+  currentDrawKw: number,
 ): ExecutableObservedSteppedLoadState | null => {
   if (!isSteppedLoadSnapshot(snapshot)) return null;
   return {
@@ -270,7 +258,7 @@ const buildObservedSteppedLoadState = (
     on: isBinaryOnOrUnknown(snapshot),
     stepId: snapshot.selectedStepId,
     reportedStepId: snapshot.reportedStepId,
-    currentDrawKw: snapshot.currentDrawKw,
+    currentDrawKw,
   };
 };
 

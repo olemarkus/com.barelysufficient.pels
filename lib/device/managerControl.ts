@@ -1,24 +1,13 @@
 import type { EvChargingState } from '../../packages/contracts/src/types';
 import { isEvChargingState } from '../../packages/shared-domain/src/evPlugState';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import { resolveBinaryOn } from '../utils/binaryControl';
+import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
+import type { CapabilityValue } from '../utils/types';
 import { getDebugEmitter } from '../logging/logger';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
-export type DeviceCapabilityValue = {
-  value?: unknown;
-  units?: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  excludeMin?: number;
-  excludeMax?: number;
-  setable?: boolean;
-  lastUpdated?: string | number | Date | null;
-};
-
-export type DeviceCapabilityMap = Record<string, DeviceCapabilityValue>;
+export type DeviceCapabilityMap = Record<string, CapabilityValue<unknown>>;
 
 type DeviceClassKey = string;
 
@@ -179,18 +168,12 @@ function parseTimeValueMs(rawValue: unknown): number | undefined {
   return undefined;
 }
 
-export function logEvCapabilityRequest(params: {
-  snapshotBefore?: TransportDeviceSnapshot;
-  deviceId: string;
-  capabilityId: string;
-  value: unknown;
-}): void {
-  const {
-    snapshotBefore,
-    deviceId,
-    capabilityId,
-    value,
-  } = params;
+export function logEvCapabilityRequest(
+  deviceId: string,
+  capabilityId: string,
+  value: unknown,
+  snapshotBefore: TransportDeviceSnapshot | undefined,
+): void {
   if (capabilityId !== 'evcharger_charging') return;
   emitDeviceDebug({
     event: 'ev_command_requested',
@@ -202,18 +185,12 @@ export function logEvCapabilityRequest(params: {
   });
 }
 
-export function logEvCapabilityAccepted(params: {
-  snapshotAfter?: TransportDeviceSnapshot;
-  deviceId: string;
-  capabilityId: string;
-  value: unknown;
-}): void {
-  const {
-    snapshotAfter,
-    deviceId,
-    capabilityId,
-    value,
-  } = params;
+export function logEvCapabilityAccepted(
+  deviceId: string,
+  capabilityId: string,
+  value: unknown,
+  snapshotAfter: TransportDeviceSnapshot | undefined,
+): void {
   if (capabilityId !== 'evcharger_charging') return;
   emitDeviceDebug({
     event: 'ev_command_accepted',
@@ -276,8 +253,8 @@ function buildEvSnapshotChangeLines(
   nextEv: TransportDeviceSnapshot,
 ): string[] {
   const changes: string[] = [];
-  const previousOn = resolveBinaryOn(previousEv);
-  const nextOn = resolveBinaryOn(nextEv);
+  const previousOn = isBinaryOnOrUnknown(previousEv);
+  const nextOn = isBinaryOnOrUnknown(nextEv);
   if (previousOn !== nextOn) {
     changes.push(`currentOn ${String(previousOn)} -> ${String(nextOn)}`);
   }
@@ -302,7 +279,7 @@ function buildEvSnapshotChangeLines(
 
 function formatEvSnapshotDiscovery(snapshot: TransportDeviceSnapshot): string {
   return [
-    `currentOn=${String(resolveBinaryOn(snapshot))}`,
+    `currentOn=${String(isBinaryOnOrUnknown(snapshot))}`,
     `evState=${snapshot.evChargingState ?? 'unknown'}`,
     `available=${snapshot.available !== false}`,
     `expectedPowerKw=${snapshot.expectedPowerKw}`,
@@ -316,7 +293,7 @@ function formatEvSnapshotDetails(
   includePower: boolean,
 ): string {
   const details = [
-    `currentOn=${String(snapshot ? resolveBinaryOn(snapshot) : true)}`,
+    `currentOn=${String(snapshot ? isBinaryOnOrUnknown(snapshot) : true)}`,
     `evState=${snapshot?.evChargingState ?? 'unknown'}`,
   ];
   if (includePower) {

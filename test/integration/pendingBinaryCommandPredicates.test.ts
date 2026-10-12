@@ -94,7 +94,7 @@ describe('PendingBinaryCommandStore provenance predicate', () => {
       { 'ev-1': pending({ desired: false }) },
       { onTimedOut },
     );
-    store.recordConfirmedBinaryCommand({ deviceId: 'ev-2', desired: false });
+    store.recordConfirmedBinaryCommand('ev-2', false);
 
     expect(store.isBinaryChangeAttributableToPels('ev-1')).toBe(true);
     expect(store.isBinaryChangeAttributableToPels('ev-2')).toBe(true);

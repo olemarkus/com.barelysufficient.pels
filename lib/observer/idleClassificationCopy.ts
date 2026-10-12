@@ -24,6 +24,7 @@
  */
 
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 export type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 
 export type IdleClassificationCopyInput = {
@@ -46,10 +47,6 @@ export type IdleClassificationCopy = {
   /** UI tone for the chip; warning is shown for unresponsive only. */
   tone: 'neutral' | 'warning';
 };
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 const formatTemperature = (value: number): string => {
   const rounded = Math.round(value * 10) / 10;

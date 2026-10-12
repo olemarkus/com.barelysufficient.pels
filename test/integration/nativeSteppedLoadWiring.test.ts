@@ -16,10 +16,15 @@ import {
   resolveNativeSteppedLoadReportedStepId,
 } from '../../lib/device/nativeSteppedLoadWiring';
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
-import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../../lib/executor/steppedLoadExecutor';
-import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClaim';
+import { applySteppedLoadCommand } from '../../lib/executor/steppedLoadExecutor';
+import type { ExecutorCommandContext } from '../../lib/executor/executorCommandContext';
+import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
+import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
+import { createTestExecutorCommandContext, PRIOR_STEP_COMMAND_SESSION } from '../helpers/executorCommandContext';
+import { noStorageTransport } from '../helpers/storageTransportStub';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
-import { buildExecutableObservedDeviceStateFromSnapshot } from '../../lib/executor/executablePlanProjection';
+import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
   buildExecutableSteppedLoadIntent,
@@ -82,7 +87,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
   ) as DevicePlanDevice;
   return buildExecutableSteppedLoadDevice(
     buildExecutableSteppedLoadIntent(device),
-    buildExecutableObservedDeviceStateFromSnapshot({
+    buildExecutableObservedDeviceState({
       available: true,
       id: device.id,
       expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -98,9 +103,31 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
       selectedStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
       reportedStepId: device.reportedStepId,
       measuredPowerKw: isMeteredPlanDevice(device) ? device.currentDrawKw : undefined,
-    } as Parameters<typeof buildExecutableObservedDeviceStateFromSnapshot>[0]),
+    } as Parameters<typeof buildExecutableObservedDeviceState>[0], undefined),
+    undefined,
+    PRIOR_STEP_COMMAND_SESSION,
   );
 };
+
+/** A command context whose actuator hands step writes to `requestSteppedLoadStep`. */
+const steppedCommandContext = (
+  requestSteppedLoadStep: ActuatorTransport['requestSteppedLoadStep'],
+  overrides: Partial<ExecutorCommandContext> = {},
+  isExternalOffHeld: (deviceId: string) => boolean = () => false,
+): ExecutorCommandContext => createTestExecutorCommandContext(
+  createPlanEngineState(Date.now(), isExternalOffHeld),
+  {
+    actuator: createDeviceActuator({
+      canTurnOnDevice: () => true,
+      resolveTemperatureTarget: (_deviceId, desired) => desired,
+      requestBinaryControl: async () => undefined,
+      requestTemperatureTarget: async (_deviceId, desired) => desired,
+      requestSteppedLoadStep,
+      ...noStorageTransport,
+    }),
+    ...overrides,
+  },
+);
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -848,20 +875,7 @@ describe('native stepped-load wiring', () => {
   it('writes native capability instead of triggering the stepped-load flow when enabled', async () => {
     const requestSteppedLoadStep = vi.fn(async () => ({ requested: true, transport: 'native_capability' as const }));
     const trigger = vi.fn(async () => undefined);
-    const structuredLog = { info: vi.fn(), error: vi.fn() };
-    const ctx = {
-      steppedCommandClaim: createSteppedCommandClaim(),
-      steppedCommandOwner: 'ordinary',
-      state: { isExternalOffHeld: () => false },
-      debugStructured: vi.fn(),
-      error: vi.fn(),
-      structuredLog,
-      buildBinaryControlTransport: () => ({}),
-      markSteppedLoadDesiredStepIssued: vi.fn(),
-      recordShedActuation: vi.fn(),
-      recordRestoreActuation: vi.fn(),
-      requestSteppedLoadStep,
-    } as unknown as PlanExecutorSteppedContext;
+    const ctx = steppedCommandContext(requestSteppedLoadStep);
 
     const action = buildSteppedAction({
       id: 'hoiax-1',
@@ -916,16 +930,11 @@ describe('native stepped-load wiring', () => {
     const markSteppedLoadDesiredStepIssued = vi.fn();
     const recordShedActuation = vi.fn();
     const recordRestoreActuation = vi.fn();
-    const ctx = {
-      steppedCommandClaim: createSteppedCommandClaim(),
-      steppedCommandOwner: 'ordinary',
-      state: { isExternalOffHeld: () => false },
-      buildBinaryControlTransport: () => ({}),
+    const ctx = steppedCommandContext(requestSteppedLoadStep, {
       markSteppedLoadDesiredStepIssued,
       recordShedActuation,
       recordRestoreActuation,
-      requestSteppedLoadStep,
-    } as unknown as PlanExecutorSteppedContext;
+    });
     const action = buildSteppedAction({
       id: 'hoiax-1',
       name: 'Connected 300',
@@ -981,16 +990,9 @@ describe('native stepped-load wiring', () => {
       reason: 'flow_trigger_timeout' as const,
     }));
     const markSteppedLoadDesiredStepIssued = vi.fn();
-    const ctx = {
-      steppedCommandClaim: createSteppedCommandClaim(),
-      steppedCommandOwner: 'ordinary',
-      state: { isExternalOffHeld: () => false },
-      buildBinaryControlTransport: () => ({}),
+    const ctx = steppedCommandContext(requestSteppedLoadStep, {
       markSteppedLoadDesiredStepIssued,
-      recordShedActuation: vi.fn(),
-      recordRestoreActuation: vi.fn(),
-      requestSteppedLoadStep,
-    } as unknown as PlanExecutorSteppedContext;
+    });
     const action = buildSteppedAction({
       id: 'hoiax-1',
       name: 'Connected 300',
@@ -1028,19 +1030,12 @@ describe('native stepped-load wiring', () => {
       throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/hoiax-1/capability/max_power_3000');
     });
     const markSteppedLoadDesiredStepIssued = vi.fn();
-    const ctx = {
-      steppedCommandClaim: createSteppedCommandClaim(),
-      steppedCommandOwner: 'ordinary',
-      state: { isExternalOffHeld: () => false },
-      buildBinaryControlTransport: () => ({}),
+    const ctx = steppedCommandContext(requestSteppedLoadStep, {
       markSteppedLoadDesiredStepIssued,
-      recordShedActuation: vi.fn(),
-      recordRestoreActuation: vi.fn(),
-      requestSteppedLoadStep,
       // The write lost its claim while in flight; the successor owns the
       // bookkeeping now.
-      isSteppedCommandAuthorityCurrent: () => false,
-    } as unknown as PlanExecutorSteppedContext;
+      isAuthorityCurrent: () => false,
+    });
     const action = buildSteppedAction({
       id: 'hoiax-1',
       name: 'Connected 300',
@@ -1078,16 +1073,9 @@ describe('native stepped-load wiring', () => {
       throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/hoiax-1/capability/max_power_3000');
     });
     const markSteppedLoadDesiredStepIssued = vi.fn();
-    const ctx = {
-      steppedCommandClaim: createSteppedCommandClaim(),
-      steppedCommandOwner: 'ordinary',
-      state: { isExternalOffHeld: () => false },
-      buildBinaryControlTransport: () => ({}),
+    const ctx = steppedCommandContext(requestSteppedLoadStep, {
       markSteppedLoadDesiredStepIssued,
-      recordShedActuation: vi.fn(),
-      recordRestoreActuation: vi.fn(),
-      requestSteppedLoadStep,
-    } as unknown as PlanExecutorSteppedContext;
+    });
     const action = buildSteppedAction({
       id: 'hoiax-1',
       name: 'Connected 300',
@@ -1123,16 +1111,9 @@ describe('native stepped-load wiring', () => {
       throw new Error('HTTP 500: Failed to change the settings.');
     });
     const markSteppedLoadDesiredStepIssued = vi.fn();
-    const ctx = {
-      steppedCommandClaim: createSteppedCommandClaim(),
-      steppedCommandOwner: 'ordinary',
-      state: { isExternalOffHeld: () => false },
-      buildBinaryControlTransport: () => ({}),
+    const ctx = steppedCommandContext(requestSteppedLoadStep, {
       markSteppedLoadDesiredStepIssued,
-      recordShedActuation: vi.fn(),
-      recordRestoreActuation: vi.fn(),
-      requestSteppedLoadStep,
-    } as unknown as PlanExecutorSteppedContext;
+    });
     const action = buildSteppedAction({
       id: 'hoiax-1',
       name: 'Connected 300',
@@ -1162,16 +1143,7 @@ describe('native stepped-load wiring', () => {
       requested: true,
       transport: 'native_capability' as const,
     }));
-    const ctx = {
-      steppedCommandClaim: createSteppedCommandClaim(),
-      steppedCommandOwner: 'ordinary',
-      state: { isExternalOffHeld: (deviceId: string) => deviceId === 'hoiax-1' },
-      buildBinaryControlTransport: () => ({}),
-      markSteppedLoadDesiredStepIssued: vi.fn(),
-      recordShedActuation: vi.fn(),
-      recordRestoreActuation: vi.fn(),
-      requestSteppedLoadStep,
-    } as unknown as PlanExecutorSteppedContext;
+    const ctx = steppedCommandContext(requestSteppedLoadStep, {}, (deviceId: string) => deviceId === 'hoiax-1');
     const action = buildSteppedAction({
       id: 'hoiax-1',
       name: 'Connected 300',
@@ -1208,20 +1180,7 @@ describe('native stepped-load wiring', () => {
       });
       return { requested: true, transport: 'flow' as const };
     });
-    const structuredLog = { info: vi.fn(), error: vi.fn() };
-    const ctx = {
-      steppedCommandClaim: createSteppedCommandClaim(),
-      steppedCommandOwner: 'ordinary',
-      state: { isExternalOffHeld: () => false },
-      debugStructured: vi.fn(),
-      error: vi.fn(),
-      structuredLog,
-      buildBinaryControlTransport: () => ({}),
-      markSteppedLoadDesiredStepIssued: vi.fn(),
-      recordShedActuation: vi.fn(),
-      recordRestoreActuation: vi.fn(),
-      requestSteppedLoadStep,
-    } as unknown as PlanExecutorSteppedContext;
+    const ctx = steppedCommandContext(requestSteppedLoadStep);
 
     const action = buildSteppedAction({
       id: 'synthetic-target-power-1',
@@ -1249,7 +1208,7 @@ describe('native stepped-load wiring', () => {
     expect(wrote).toBe(true);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith({
       deviceId: 'synthetic-target-power-1',
-      profile: action!.steppedLoadProfile,
+      profile: action!.intent.steppedLoadProfile,
       desiredStepId: '6a',
       planningPowerW: 1380,
       planningCurrentA: 0,
@@ -1290,20 +1249,7 @@ describe('native stepped-load wiring', () => {
       });
       return { requested: true, transport: 'flow' as const };
     });
-    const structuredLog = { info: vi.fn(), error: vi.fn() };
-    const ctx = {
-      steppedCommandClaim: createSteppedCommandClaim(),
-      steppedCommandOwner: 'ordinary',
-      state: { isExternalOffHeld: () => false },
-      debugStructured: vi.fn(),
-      error: vi.fn(),
-      structuredLog,
-      buildBinaryControlTransport: () => ({}),
-      markSteppedLoadDesiredStepIssued: vi.fn(),
-      recordShedActuation: vi.fn(),
-      recordRestoreActuation: vi.fn(),
-      requestSteppedLoadStep,
-    } as unknown as PlanExecutorSteppedContext;
+    const ctx = steppedCommandContext(requestSteppedLoadStep);
 
     const action = buildSteppedAction({
       id: 'zaptec-go-1',
@@ -1339,7 +1285,7 @@ describe('native stepped-load wiring', () => {
     expect(wrote).toBe(true);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith({
       deviceId: 'zaptec-go-1',
-      profile: action!.steppedLoadProfile,
+      profile: action!.intent.steppedLoadProfile,
       desiredStepId: '6a',
       planningPowerW: 4140,
       planningCurrentA: 4140 / (230 * 3),

@@ -16,10 +16,7 @@ import {
 } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceActuator';
 import { makeFlowBackedBinaryTrigger } from '../../setup/appInit/buildDeviceActuator';
-import {
-  observeNativeSteppedLoadCommandAdapter,
-  setObservedNativeSteppedLoadStep,
-} from '../../lib/device/managerNativeSteppedCommand';
+import { NativeSteppedLoadCommandAdapters } from '../../lib/device/managerNativeSteppedCommand';
 import { DEVICE_LAST_CONTROLLED_MS } from '../../lib/utils/settingsKeys';
 import {
   PELS_TARGET_STEP_CAPABILITY_ID,
@@ -242,24 +239,24 @@ const buildExecutor = (
     flow_backed_device_start_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
     flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
   } as const;
+  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
   const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),
     requestSteppedLoadStep: vi.fn(async (params: {
       deviceId: string;
-      profile: Parameters<typeof setObservedNativeSteppedLoadStep>[0]['profile'];
+      profile: SteppedLoadProfile;
       desiredStepId: string;
       planningPowerW: number;
       planningCurrentA: number;
       previousStepId?: string;
     }): Promise<SteppedLoadStepRequestResult> => {
-      const nativeRequested = await setObservedNativeSteppedLoadStep({
-        owner: deviceManager,
-        deviceId: params.deviceId,
-        profile: params.profile,
-        desiredStepId: params.desiredStepId,
-        setCapability: (capabilityId, value) => deviceManager.setCapability(params.deviceId, capabilityId, value),
-      });
+      const nativeRequested = await nativeSteppedAdapters.setStep(
+        params.deviceId,
+        params.profile,
+        params.desiredStepId,
+        (capabilityId, value) => deviceManager.setCapability(params.deviceId, capabilityId, value),
+      );
       if (nativeRequested) return { requested: true, transport: 'native_capability' as const };
       const triggerPromise = triggerCards.desired_stepped_load_changed.trigger({
         step_id: params.desiredStepId,
@@ -343,6 +340,7 @@ const buildExecutor = (
     executor: new PlanExecutor(deps, state),
     deps,
     deviceManager,
+    nativeSteppedAdapters,
     state,
     desiredSteppedTrigger: triggerCards.desired_stepped_load_changed,
     flowBackedTurnOnTrigger: triggerCards.flow_backed_device_turn_on_requested,
@@ -2191,7 +2189,9 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('counts native stepped-load commands as command requests without concrete device writes', async () => {
-    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, [{
+    const {
+      executor, deviceManager, desiredSteppedTrigger, nativeSteppedAdapters,
+    } = buildExecutor(undefined, [{
       id: 'dev-1',
       name: 'Tank',
       binaryCapabilityId: 'onoff',
@@ -2202,22 +2202,17 @@ describe('PlanExecutor stepped loads', () => {
     }], {
       getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: true, stepCommandPending: false }),
     });
-    observeNativeSteppedLoadCommandAdapter({
-      owner: deviceManager,
-      deviceId: 'dev-1',
-      device: {
-        id: 'dev-1',
-        name: 'Tank',
-        ownerUri: 'homey:app:no.hoiax',
-        binaryCapabilityId: 'onoff',
-        capabilities: ['onoff', 'max_power_3000'],
-        capabilitiesObj: {
-          onoff: { value: true },
-          max_power_3000: { value: '1' },
-        },
-      } as HomeyDeviceLike,
-      clearWhenUnavailable: true,
-    });
+    nativeSteppedAdapters.observe('dev-1', {
+      id: 'dev-1',
+      name: 'Tank',
+      ownerUri: 'homey:app:no.hoiax',
+      binaryCapabilityId: 'onoff',
+      capabilities: ['onoff', 'max_power_3000'],
+      capabilitiesObj: {
+        onoff: { value: true },
+        max_power_3000: { value: '1' },
+      },
+    } as HomeyDeviceLike);
 
     await expect(executor.applyPlanActions(steppedPlan({
       controlAdapter: {

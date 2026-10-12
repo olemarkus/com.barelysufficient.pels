@@ -1,8 +1,20 @@
 import type { ExternalTemperatureAdjustment } from '../../packages/contracts/src/temperatureAdjustment';
 import { EventEmitter } from 'events';
-import type { ObservedDeviceState } from '../../packages/contracts/src/types';
-import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
+import type {
+    ObservedControlStateChangedEvent,
+    ObservedStateChangedEvent,
+    ObservedStateEmitterDispatcher,
+    ObservedStateRefreshEvent,
+} from '../ports/observedStateEvents';
 import type { ObservedHomePower } from './observedHomePower';
+
+// The event shapes are shared with transport, which may not import observer;
+// they live in `lib/ports/observedStateEvents.ts`.
+export type {
+    ObservedControlStateChangedEvent,
+    ObservedStateChangedEvent,
+    ObservedStateRefreshEvent,
+};
 
 /**
  * Observer-owned typed observation events.
@@ -52,82 +64,6 @@ export const OBSERVED_CONTROL_STATE_CHANGED_EVENT = 'observed_control_state_chan
  * decomposition (`notes/state-management/snapshot-decomposition.md`).
  */
 export const OBSERVED_STATE_REFRESH_EVENT = 'plan_live_state_observed_refresh';
-
-/**
- * Structural shape of a single capability change. Mirrors transport's
- * `RealtimeDeviceReconcileChange` without importing across the
- * `lib/observer/` ↔ `lib/device/` boundary; both shapes are kept compatible
- * by hand.
- */
-export type ObservedCapabilityChange = {
-    capabilityId: string;
-    previousValue: string;
-    nextValue: string;
-};
-
-export type ObservedStateChangedEvent = {
-    source: 'realtime_capability' | 'device_update';
-    deviceId: string;
-    observationSeq?: number;
-    observedAtMs?: number;
-    capabilityId?: string;
-    observedCapabilityIds?: string[];
-    measurePowerBecameSignificantlyPositive?: boolean;
-    // The decided observed value transport's fresher-wins merge produced for
-    // this device (Stage 4a). The projection records it; existing reapply/SoC
-    // listeners ignore it.
-    observed?: ObservedDeviceState;
-};
-
-/**
- * Batch payload for a full snapshot refresh. Aliases the shared contracts
- * payload so this observer-side type and transport's
- * `ObservedDeviceStateRefreshEvent` share one definition — neither layer
- * imports the other; both reference contracts.
- */
-export type ObservedStateRefreshEvent = ObservedDeviceStateRefreshPayload;
-
-export type ObservedControlStateChangedEvent = {
-    deviceId: string;
-    observationSeq?: number;
-    observedAtMs?: number;
-    name?: string;
-    capabilityId?: string;
-    changes?: ObservedCapabilityChange[];
-};
-
-/**
- * Dispatcher passed into `DeviceTransport` at construction time. Wiring builds
- * this against an `ObservedStateEmitter` so that whenever transport finishes
- * translating a Homey realtime event, observer's emitter is the single source
- * of truth for the post-translation fan-out.
- *
- * Required at construction: transport once fell back to an EventEmitter of its
- * own when this was omitted, and that surface is gone. Specs build one through
- * `test/helpers/deviceTransportHarness.ts`.
- *
- * Transport mirrors this type by hand as `TransportObservedStateDispatcher`
- * (`lib/device/transport/transportTypes.ts`) because the cruiser blocks the
- * import in both directions. The two are held in step by the per-member
- * assignability assertions in `test/unit/observerObservedStateEvents.test.ts`;
- * a member added here needs an assertion there, or the mirror can drift.
- */
-export type ObservedStateEmitterDispatcher = {
-    observedStateChanged: (event: ObservedStateChangedEvent) => void;
-    observedStateRefresh: (event: ObservedStateRefreshEvent) => void;
-    observedControlStateChanged: (event: ObservedControlStateChangedEvent) => void;
-    externalTemperatureAdjusted: (adjustment: ExternalTemperatureAdjustment) => void;
-    /**
-     * Push the gross PV generation reading (watts) into observer's
-     * `ObservedHomePower` holder, or `null` when absent, stamped with its read
-     * time. The *source* is a Homey SDK energy report read in the device layer;
-     * transport resolves the scalar and hands it here. The stamp is carried
-     * explicitly because the flow source's separate generation reader rides a
-     * different clock, and the holder's consumers must be able to tell a fresh
-     * reading from an abandoned one.
-     */
-    setGenerationW: (w: number | null, observedAtMs: number) => void;
-};
 
 /**
  * Tiny typed EventEmitter wrapper owned by wiring (`setup/`) and consumed by

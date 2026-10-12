@@ -20,6 +20,7 @@ import type {
   StepCalibration,
 } from '../../packages/contracts/src/powerCalibration';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { isUnknownRecord } from '../utils/types';
 
 /**
  * Runtime version constant for {@link PowerCalibrationSnapshot}. Defined here
@@ -144,11 +145,11 @@ export type PersistedPowerCalibration =
  * rule, so they are counted before it.
  */
 export function normalizePersistedPowerCalibration(value: unknown): PersistedPowerCalibration | null {
-  if (!isRecord(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   const versionRaw = (value as { version?: unknown }).version;
   if (versionRaw !== POWER_CALIBRATION_VERSION) return null;
   const devicesRaw = (value as { devices?: unknown }).devices;
-  if (!isRecord(devicesRaw)) return null;
+  if (!isUnknownRecord(devicesRaw)) return null;
 
   const entries = Object.entries(devicesRaw).flatMap(([deviceId, deviceRaw]) => {
     if (typeof deviceId !== 'string' || deviceId.length === 0) return [];
@@ -485,19 +486,15 @@ function isValidInput(input: RecordSampleInput): boolean {
     && isFiniteNumber(input.nowMs);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
  * One device's calibration as persisted, read defensively. Used for a legacy
  * settings value and for every row the store reads back.
  */
 export function normalizeDeviceCalibration(value: unknown): DeviceCalibration | null {
-  if (!isRecord(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   const stepsRaw = (value as { steps?: unknown }).steps;
   const lastTouchedRaw = (value as { lastTouchedMs?: unknown }).lastTouchedMs;
-  if (!isRecord(stepsRaw)) return null;
+  if (!isUnknownRecord(stepsRaw)) return null;
   if (!isFiniteNumber(lastTouchedRaw)) return null;
 
   // Preserve the device entry even when every persisted step record is
@@ -515,12 +512,12 @@ export function normalizeDeviceCalibration(value: unknown): DeviceCalibration | 
 
 /** How many step records a raw device record carried, malformed ones included. */
 function stepCount(deviceRaw: unknown): number {
-  return isRecord(deviceRaw) && isRecord(deviceRaw.steps) ? Object.keys(deviceRaw.steps).length : 0;
+  return isUnknownRecord(deviceRaw) && isUnknownRecord(deviceRaw.steps) ? Object.keys(deviceRaw.steps).length : 0;
 }
 
 /** `value` carries every field of a `StepCalibration` in a usable range; fields beyond them are dropped. */
 function normalizeStepCalibration(value: unknown): StepCalibration | null {
-  if (!isRecord(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   if (!isFiniteNumber(value.observedKw) || value.observedKw < 0) return null;
   if (!isFiniteNumber(value.nameplateAtSampleKw) || value.nameplateAtSampleKw <= 0) return null;
   if (!isFiniteNumber(value.samples) || value.samples < 0) return null;

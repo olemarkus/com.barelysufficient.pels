@@ -3,46 +3,9 @@ import {
   OBSERVED_STATE_CHANGED_EVENT,
   ObservedStateEmitter,
   OBSERVED_CONTROL_STATE_CHANGED_EVENT,
-  type ObservedStateChangedEvent,
-  type ObservedStateEmitterDispatcher,
-  type ObservedControlStateChangedEvent,
 } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
-import { type TransportObservedStateDispatcher } from '../../lib/device/deviceTransport';
-
-// ---------- compile-time shape-parity guard ----------
-// Observer's `ObservedStateEmitterDispatcher` and transport's
-// `TransportObservedStateDispatcher` are structurally mirrored by hand because
-// the cruiser correctly blocks both directions of import between `lib/device/`
-// and `lib/observer/`. Wiring passes the observer dispatcher into transport's
-// slot, and TypeScript's bivariance bridges the two — so a member added, dropped
-// or re-shaped on one side alone still typechecks at the binding site and routes
-// the wrong shape at runtime. The assertion below fails compilation instead, and
-// two details in it are load-bearing.
-//
-// The operands are wrapped in tuples. A NAKED type parameter on the left of
-// `extends` DISTRIBUTES over a union, so an optional member — `F | undefined` —
-// evaluates element-wise to `true | false`, which is `boolean`, and `[true, true]`
-// is happily assignable to `[true, boolean]`. Written that way the guard passes on
-// exactly the divergence it exists to catch. `[B] extends [A]` does not distribute.
-//
-// It compares the WHOLE dispatcher types rather than a list of members. A
-// per-member assertion can only police members someone remembered to list, and a
-// member present on one side alone is invisible to every one of them — which is
-// how transport's copy of `externalTemperatureAdjusted` stayed `?:` for a whole
-// train while observer's was required and `asDispatcher` always supplied it.
-type _MutuallyAssignable<A, B> = [
-  [A] extends [B] ? true : false,
-  [B] extends [A] ? true : false,
-];
-
-const _dispatcherParity: _MutuallyAssignable<
-  ObservedStateEmitterDispatcher,
-  TransportObservedStateDispatcher
-> = [true, true];
-
-// Reference the value so the compiler doesn't strip it as unused.
-void _dispatcherParity;
+import type { ObservedControlStateChangedEvent, ObservedStateChangedEvent } from '../../lib/ports/observedStateEvents';
 
 describe('ObservedStateEmitter', () => {
   it('pins the event-name strings this emitter routes on', () => {

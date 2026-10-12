@@ -18,7 +18,6 @@ import { isSteppedLoadOffStep } from '../../../packages/shared-domain/src/device
 import { logEvCapabilityAccepted, logEvCapabilityRequest } from '../managerControl';
 import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { recordLocalWriteObservation } from './managerObservation';
-import { setObservedNativeSteppedLoadStep } from '../managerNativeSteppedCommand';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
 import { isEaseeUnderBuiltInControl, resolveEaseeSwitchWrite } from '../easeeChargingSwitch';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
@@ -158,12 +157,7 @@ export class DeviceWriteService {
           requested,
         )
         : { write: requested, readBackAsWritten: true };
-    logEvCapabilityRequest({
-        snapshotBefore,
-        deviceId,
-        capabilityId,
-        value: normalizedValue,
-    });
+    logEvCapabilityRequest(deviceId, capabilityId, normalizedValue, snapshotBefore);
 
     if (capabilityId === 'target_temperature' && typeof normalizedValue === 'number') {
         this.temperatureAdjustments.recordCommand(deviceId, normalizedValue, Date.now());
@@ -214,12 +208,7 @@ export class DeviceWriteService {
     }
 
     const snapshotAfter = this.snapshotStore.getSnapshotByDeviceId(deviceId);
-    logEvCapabilityAccepted({
-        snapshotAfter,
-        deviceId,
-        capabilityId,
-        value: normalizedValue,
-    });
+    logEvCapabilityAccepted(deviceId, capabilityId, normalizedValue, snapshotAfter);
     return normalizedValue;
   }
 
@@ -299,14 +288,12 @@ export class DeviceWriteService {
     if (isSteppedLoadOffStep(profile, desiredStepId)) this.noteStopCommand(deviceId, Date.now());
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
-      const nativeRequested = await setObservedNativeSteppedLoadStep({
-        owner: this.snapshotStore,
+      const nativeRequested = await this.snapshotStore.nativeSteppedAdapters.setStep(
         deviceId,
         profile,
         desiredStepId,
-        setCapability: (capabilityId, value) => this.setCapability(deviceId, capabilityId, value),
-        logger: this.logger,
-      });
+        (capabilityId, value) => this.setCapability(deviceId, capabilityId, value),
+      );
       return nativeRequested ? { requested: true, transport: 'native_capability' } : { requested: false };
     }
 

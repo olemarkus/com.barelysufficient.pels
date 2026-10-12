@@ -24,6 +24,7 @@
  * `observedAtMs` here is when PELS took the reading, not when the device last
  * changed its mind.
  */
+import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
 
 /**
  * How long a learned peak stands without being re-observed. 30 days: a water
@@ -141,8 +142,8 @@ export const pruneExpiredLearnedPeaks = (
 };
 /* eslint-enable functional/immutable-data */
 
-export type ExpectedPowerOverride = { kw: number; ts: number };
-export type ExpectedPowerOverridesByDeviceId = Record<string, ExpectedPowerOverride>;
+/** The contracts map, under the name its app-layer readers import it by. */
+export type ExpectedPowerOverridesByDeviceId = DeviceExpectedPowerOverrides;
 
 const isFinitePositive = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value > 0

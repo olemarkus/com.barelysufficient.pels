@@ -1,29 +1,20 @@
 import { isBinaryControlled, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
-import type { ShedAction, ShedBehavior } from '../plan/planTypes';
+import type { ShedAction } from '../plan/planTypes';
 import type { DesiredBinaryKind } from './executableDesiredState';
 import type {
-  ObservedDeviceState,
   SteppedLoadProfile,
   SteppedLoadStep,
 } from '../../packages/contracts/src/types';
-import {
-  applyBinarySheddingToDevice,
-  type PlanExecutorBinaryContext,
-} from './binaryExecutor';
-import {
-  applyTargetUpdate,
-  type PlanExecutorTargetContext,
-} from './targetExecutor';
-import {
-  applySteppedLoadCommand,
-  type PlanExecutorSteppedContext,
-} from './steppedLoadExecutor';
+import { applyBinaryLifecycleRelease } from './binaryExecutor';
+import { applyTargetUpdate } from './targetExecutor';
+import { applySteppedLoadCommand } from './steppedLoadExecutor';
 import type {
   ExecutableObservedDeviceState,
   ExecutableReleaseIntent,
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
+import type { ExecutorCommandContext } from './executorCommandContext';
 import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
@@ -58,31 +49,19 @@ const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 // shed, it does NOT poke `lastInstabilityMs` or `lastDeviceShedMs`, so a lifecycle-end
 // release doesn't start a 5 s shed-throttle window that would interfere with later capacity
 // decisions for unrelated devices.
-export type ShedReleaseActuationDeps = {
-  getShedBehavior: (deviceId: string) => ShedBehavior;
-  buildBinaryExecutorContext: () => PlanExecutorBinaryContext;
-  buildTargetExecutorContext: () => PlanExecutorTargetContext;
-  buildSteppedExecutorContext: () => PlanExecutorSteppedContext;
-  recordReleaseShedActuation: (deviceId: string, name: string, now: number) => void;
-};
-
-export const applyShedReleaseIntent = async (params: {
-  intent: ExecutableReleaseIntent;
-  steppedLoadIntent: ExecutableSteppedLoadIntent | undefined;
-  observed: ExecutableObservedDeviceState | undefined;
-  snapshot: Pick<ObservedDeviceState, 'binaryControl'> | undefined;
-  forceAgainstReleasedOpposing?: boolean;
-  deps: ShedReleaseActuationDeps;
-}): Promise<boolean> => {
-  const {
-    intent, steppedLoadIntent, observed, snapshot, forceAgainstReleasedOpposing, deps,
-  } = params;
+//
+// The lifecycle fallback lane drives its own posture through the temperature and stepped
+// halves directly (`applyShedReleaseTemperature`, `applyShedReleaseStepFallback`).
+export const applyShedReleaseIntent = async (
+  ctx: ExecutorCommandContext,
+  intent: ExecutableReleaseIntent,
+  steppedLoadIntent: ExecutableSteppedLoadIntent | undefined,
+  observed: ExecutableObservedDeviceState | undefined,
+): Promise<boolean> => {
   if (intent.kind !== 'shed_release') return false;
-  const behavior = deps.getShedBehavior(intent.deviceId);
+  const behavior = ctx.getShedBehavior(intent.deviceId);
   if (behavior.action === 'set_temperature') {
-    return applyShedReleaseTemperature({
-      intent, shedTemperature: behavior.temperature, observed, forceAgainstReleasedOpposing, deps,
-    });
+    return applyShedReleaseTemperature(ctx, intent, behavior.temperature, observed, false);
   }
   // Stepped-only devices (no `onoff`/`evcharger_charging` capability) cannot route through
   // the binary off path: re-project a shed-purpose stepped action at apply time and dispatch
@@ -90,116 +69,116 @@ export const applyShedReleaseIntent = async (params: {
   if (
     behavior.action === 'set_step'
     && steppedLoadIntent
-    && !isBinaryControlled(snapshot)
-  ) {
-    const handled = await applyShedReleaseSteppedLoad({
-      intent,
-      steppedLoadIntent,
-      observed,
-      forceAgainstReleasedOpposing: forceAgainstReleasedOpposing === true,
-      deps,
-    });
-    if (handled) return true;
-  }
-  return applyShedReleaseBinaryOff({
-    intent, behavior, snapshot, observed, forceAgainstReleasedOpposing, deps,
-  });
+    && !isBinaryControlled(observed?.snapshot)
+    && await applyShedReleaseSteppedLoad(ctx, intent, steppedLoadIntent, observed, false)
+  ) return true;
+  return applyShedReleaseBinaryOff(ctx, intent, behavior.action, observed);
 };
 
-const applyShedReleaseTemperature = async (params: {
-  intent: ExecutableReleaseIntent;
-  shedTemperature: number;
-  observed: ExecutableObservedDeviceState | undefined;
-  forceAgainstReleasedOpposing?: boolean;
-  deps: ShedReleaseActuationDeps;
-}): Promise<boolean> => {
-  const {
-    intent, shedTemperature, observed, forceAgainstReleasedOpposing, deps,
-  } = params;
+export const applyShedReleaseTemperature = async (
+  ctx: ExecutorCommandContext,
+  intent: ExecutableReleaseIntent,
+  shedTemperature: number,
+  observed: ExecutableObservedDeviceState | undefined,
+  forceAgainstReleasedOpposing: boolean,
+): Promise<boolean> => {
   const target = observed?.target;
   if (!target) return false;
   if (
-    forceAgainstReleasedOpposing !== true
+    !forceAgainstReleasedOpposing
     && typeof target.observedValue === 'number'
     && target.observedValue === shedTemperature
   ) return false;
-  const wrote = await applyTargetUpdate(deps.buildTargetExecutorContext(), {
+  const wrote = await applyTargetUpdate(ctx, {
     deviceId: intent.deviceId,
     name: intent.name,
-    target: target.target,
     desired: shedTemperature,
     observedValue: target.observedValue,
     isRestoring: false,
-  }, { forceAgainstReleasedOpposing });
+  }, forceAgainstReleasedOpposing);
   if (wrote) {
     // applyTargetUpdate only records on the restore axis. Record the shed here too, as
     // any shed write does: the per-device `pels_shed` event must fire for the release write so
     // forensic traces and per-device actuation counters stay accurate.
-    deps.recordReleaseShedActuation(intent.deviceId, intent.name, Date.now());
+    ctx.recordReleaseShedActuation(intent.deviceId, intent.name, Date.now());
   }
   return wrote;
 };
 
-const applyShedReleaseBinaryOff = async (params: {
-  intent: ExecutableReleaseIntent;
-  behavior: { action: ShedAction };
-  snapshot: Pick<ObservedDeviceState, 'binaryControl'> | undefined;
-  observed: ExecutableObservedDeviceState | undefined;
-  forceAgainstReleasedOpposing?: boolean;
-  deps: ShedReleaseActuationDeps;
-}): Promise<boolean> => {
-  const {
-    intent, behavior, snapshot, observed, forceAgainstReleasedOpposing, deps,
-  } = params;
+const applyShedReleaseBinaryOff = async (
+  ctx: ExecutorCommandContext,
+  intent: ExecutableReleaseIntent,
+  action: ShedAction,
+  observed: ExecutableObservedDeviceState | undefined,
+): Promise<boolean> => {
   // No EV re-derivation here: shed_release is only ever produced for non-EV (temperature)
   // objectives — binary-controlled (ev_soc) objectives route through 'binary_release'. The
   // intent is authoritative (see the objectiveKind↔device invariant note in admission.ts);
   // a device with no binary handle is still rejected below.
-  if (!isBinaryControlled(snapshot)) {
+  if (!isBinaryControlled(observed?.snapshot)) {
     // No binary handle, and the stepped re-projection above either didn't apply (turn_off
     // shedBehavior, or no steppedLoad intent available) or returned false. Stay silent on
     // turn_off (rare config); for set_step log a one-off so any remaining gap shows up in
     // prod traces.
-    if (behavior.action === 'set_step') {
-      emitExecutorDebug({
-        event: 'shed_release_skipped',
-        reasonCode: 'no_binary_handle_for_set_step',
-        deviceId: intent.deviceId,
-        deviceName: intent.name,
-      });
-    }
+    if (action === 'set_step') emitShedReleaseSkipped(intent, 'no_binary_handle_for_set_step');
     return false;
   }
   // Idempotency: only fire the release when the device is observed 'on'; treat 'off' as
   // already in shed posture (no-op). Observed binary state is the producer-resolved
   // `currentOn` (an honest boolean — an unobserved binary control resolves to a
   // non-optimistic `false`), so there is no separate 'unknown' to grace here.
-  if (forceAgainstReleasedOpposing !== true && (!observed || observed.observedBinaryAxis !== 'on')) return false;
-  return applyBinarySheddingToDevice(deps.buildBinaryExecutorContext(), {
+  if (!observed || observed.observedBinaryAxis !== 'on') return false;
+  // Lifecycle-end disable, not a capacity shed: it records via the diagnostic-only
+  // recorder and bypasses the capacity precheck / pendingSheds bookkeeping, for both
+  // the direct write here and any deferred flow-backed confirmation in
+  // handleConfirmedBinaryCommand.
+  return applyBinaryLifecycleRelease(ctx, intent.deviceId, intent.name, observed.snapshot, false);
+};
+
+const emitShedReleaseSkipped = (
+  intent: ExecutableReleaseIntent,
+  reasonCode: 'no_binary_handle_for_set_step' | 'binary_handle_not_writable',
+): void => {
+  emitExecutorDebug({
+    event: 'shed_release_skipped',
+    reasonCode,
     deviceId: intent.deviceId,
     deviceName: intent.name,
-    // Lifecycle-end disable, not a capacity shed: lifecycleRelease records via the
-    // diagnostic-only recorder and (by default) bypasses the capacity precheck /
-    // pendingSheds bookkeeping, for both the direct write here and any deferred
-    // flow-backed confirmation in handleConfirmedBinaryCommand.
-    lifecycleRelease: true,
-    snapshotOverride: observed?.snapshot,
-    forceAgainstReleasedOpposing: forceAgainstReleasedOpposing === true,
   });
 };
 
-const buildShedReleaseSteppedAction = (params: {
-  intent: ExecutableReleaseIntent;
-  steppedLoadIntent: ExecutableSteppedLoadIntent;
-  observed: ExecutableObservedDeviceState | undefined;
-  targetStep: SteppedLoadStep;
-  currentStepId: string | undefined;
-}): ExecutableSteppedLoadDevice & DesiredBinaryKind => {
-  const {
-    intent, steppedLoadIntent, observed, targetStep, currentStepId,
-  } = params;
+/**
+ * The lifecycle lane's step posture. As on the ordinary lane, only a device
+ * without an on/off handle takes the step path. A device with one gets no write
+ * here: the posture is a step because its on/off is not writable.
+ */
+export const applyShedReleaseStepFallback = async (
+  ctx: ExecutorCommandContext,
+  intent: ExecutableReleaseIntent,
+  steppedLoadIntent: ExecutableSteppedLoadIntent,
+  observed: ExecutableObservedDeviceState,
+  forceAgainstReleasedOpposing: boolean,
+): Promise<boolean> => {
+  if (isBinaryControlled(observed.snapshot)) {
+    emitShedReleaseSkipped(intent, 'binary_handle_not_writable');
+    return false;
+  }
+  if (await applyShedReleaseSteppedLoad(ctx, intent, steppedLoadIntent, observed, forceAgainstReleasedOpposing)) {
+    return true;
+  }
+  emitShedReleaseSkipped(intent, 'no_binary_handle_for_set_step');
+  return false;
+};
+
+const buildShedReleaseSteppedAction = (
+  intent: ExecutableReleaseIntent,
+  steppedLoadIntent: ExecutableSteppedLoadIntent,
+  observed: ExecutableObservedDeviceState | undefined,
+  targetStep: SteppedLoadStep,
+  currentStepId: string,
+): ExecutableSteppedLoadDevice => {
   const profile = steppedLoadIntent.steppedLoadProfile;
-  const currentStep = currentStepId ? getSteppedLoadStep(profile, currentStepId) : null;
+  const currentStep = getSteppedLoadStep(profile, currentStepId);
   // Provenance mirrors `toExecutableSteppedStepState`: only real telemetry
   // (`reportedStepId`) is `reported` evidence; the effective `stepId` is a
   // planning fallback, not a confirmed report. (This release path always requests
@@ -216,7 +195,7 @@ const buildShedReleaseSteppedAction = (params: {
       fallbackStepId: observed?.steppedLoad?.stepId,
     },
   });
-  return {
+  const releaseIntent: ExecutableSteppedLoadIntent & DesiredBinaryKind = {
     id: intent.deviceId,
     name: intent.name,
     steppedLoadProfile: profile,
@@ -226,17 +205,6 @@ const buildShedReleaseSteppedAction = (params: {
     // shed decision. Lifecycle release deliberately keeps its own target — see
     // `notes/state-management/deferred-objective-lifecycle-carveout.md`.
     plannedShedTarget: { kind: 'step', stepId: targetStep.id },
-    current: {
-      // `observed` is always present here: the caller (`applyShedReleaseSteppedLoad`)
-      // gates on `observed.steppedLoad.stepId` before building this action, so the
-      // current state is fully observation-derived — no planning fallback.
-      on: observed?.steppedLoad?.on ?? isBinaryOnOrUnknown(observed),
-      stepId: currentStepId,
-      stepForShed: currentStep
-        ? { stepId: currentStep.id, planningPowerW: currentStep.planningPowerW }
-        : undefined,
-      stepIsOffStep: currentStepId ? isSteppedLoadOffStep(profile, currentStepId) : false,
-    },
     // Drives the binary axis ON so `applySteppedLoadCommand` does not early-return
     // on its `observed off + plan wants off` guard — this path dispatches a STEP
     // command via the step capability, not a binary off.
@@ -247,12 +215,24 @@ const buildShedReleaseSteppedAction = (params: {
     },
     previousStepId: currentStepId,
     transition: null,
-    stepActuation,
-    commandStepActuation: stepActuation,
-    matchingRestoreAttempt: null,
     matchingCommandAttempt: null,
-    stepNeedsAdjustment: true,
     stepCommandRetryCount: 0,
+  };
+  return {
+    intent: releaseIntent,
+    current: {
+      // `observed` is always present here: the caller (`applyShedReleaseSteppedLoad`)
+      // gates on `observed.steppedLoad.reportedStepId` before building this action, so
+      // the current state is fully observation-derived — no planning fallback.
+      on: observed?.steppedLoad?.on ?? isBinaryOnOrUnknown(observed),
+      stepId: currentStepId,
+      stepForShed: currentStep
+        ? { stepId: currentStep.id, planningPowerW: currentStep.planningPowerW }
+        : undefined,
+      stepIsOffStep: isSteppedLoadOffStep(profile, currentStepId),
+    },
+    stepActuation,
+    stepNeedsAdjustment: true,
   };
 };
 
@@ -281,16 +261,13 @@ const resolveProducerShedReleaseStep = (
   return targetStep;
 };
 
-const applyShedReleaseSteppedLoad = async (params: {
-  intent: ExecutableReleaseIntent;
-  steppedLoadIntent: ExecutableSteppedLoadIntent;
-  observed: ExecutableObservedDeviceState | undefined;
-  forceAgainstReleasedOpposing: boolean;
-  deps: ShedReleaseActuationDeps;
-}): Promise<boolean> => {
-  const {
-    intent, steppedLoadIntent, observed, forceAgainstReleasedOpposing, deps,
-  } = params;
+const applyShedReleaseSteppedLoad = async (
+  ctx: ExecutorCommandContext,
+  intent: ExecutableReleaseIntent,
+  steppedLoadIntent: ExecutableSteppedLoadIntent,
+  observed: ExecutableObservedDeviceState | undefined,
+  forceAgainstReleasedOpposing: boolean,
+): Promise<boolean> => {
   const profile = steppedLoadIntent.steppedLoadProfile;
   const targetStep = resolveProducerShedReleaseStep(intent, profile);
   if (!targetStep) return false;
@@ -298,11 +275,10 @@ const applyShedReleaseSteppedLoad = async (params: {
   // require an observed step id from a real snapshot. The effective current step can carry a
   // planning fallback (`reportedStepId ?? planning`) that may be stale from before a Homey
   // restart; firing a step command against it would race against an SDK that hasn't yet
-  // reported the device's true state. The dispatch-path observed state carries an observed
-  // step only from a decorated source — a raw `getSnapshot()` snapshot has none — so this
-  // stays a no-op until real evidence arrives.
-  const observedStepId = observed?.steppedLoad?.reportedStepId;
-  if (!observedStepId) {
+  // reported the device's true state. Only a reported step counts, so this stays a no-op
+  // until real evidence arrives.
+  const currentStepId = observed?.steppedLoad?.reportedStepId;
+  if (!currentStepId) {
     emitExecutorDebug({
       event: 'shed_release_skipped',
       reasonCode: 'no_trusted_step_observation',
@@ -311,7 +287,6 @@ const applyShedReleaseSteppedLoad = async (params: {
     });
     return false;
   }
-  const currentStepId = observedStepId;
   // Already at the shed target — done.
   if (!forceAgainstReleasedOpposing && currentStepId === targetStep.id) return false;
   // Look up the observed step in the current profile. If it is missing (driver swap remapped
@@ -337,21 +312,13 @@ const applyShedReleaseSteppedLoad = async (params: {
   // `awaiting_confirmation` / `retry_backoff` short-circuits and re-dispatch every cycle while
   // the device has not reported back.
   if (!forceAgainstReleasedOpposing && steppedLoadIntent.matchingCommandAttempt !== null) return false;
-  const action = buildShedReleaseSteppedAction({
-    intent,
-    steppedLoadIntent,
-    observed,
-    targetStep,
-    currentStepId,
-  });
-  const wrote = await applySteppedLoadCommand(deps.buildSteppedExecutorContext(), action, undefined, {
-    forceAgainstReleasedOpposing,
-  });
+  const action = buildShedReleaseSteppedAction(intent, steppedLoadIntent, observed, targetStep, currentStepId);
+  const wrote = await applySteppedLoadCommand(ctx, action, undefined, { force: forceAgainstReleasedOpposing });
   if (wrote) {
     // applySteppedLoadCommand only records `pels_shed` when the transition is
     // `step_down_while_on`; the synthesized release action carries `transition: null` so
     // we record explicitly here.
-    deps.recordReleaseShedActuation(intent.deviceId, intent.name, Date.now());
+    ctx.recordReleaseShedActuation(intent.deviceId, intent.name, Date.now());
   }
   return wrote;
 };

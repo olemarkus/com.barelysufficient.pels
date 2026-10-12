@@ -19,7 +19,8 @@
  */
 import { getLogger } from '../../logging/logger';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { ObservationCursor, ObservedDeviceStateEvent, PlanRealtimeUpdateEvent } from './managerRealtimeHandlers';
+import type { ObservationCursor } from './managerRealtimeHandlers';
+import type { ObservedControlStateChangedEvent, ObservedStateChangedEvent } from '../../ports/observedStateEvents';
 
 export const THERMOSTAT_MODE_CAPABILITY_ID = 'thermostat_mode';
 
@@ -46,8 +47,8 @@ export function normalizeReportedThermostatMode(value: string): string {
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function handleThermostatModeCapabilityUpdate(
     nextObservationCursor: (deviceId: string) => ObservationCursor,
-    dispatchObservedStateChanged: (event: ObservedDeviceStateEvent) => void,
-    dispatchObservedControlStateChanged: (event: PlanRealtimeUpdateEvent) => void,
+    dispatchObservedStateChanged: (event: ObservedStateChangedEvent) => void,
+    dispatchObservedControlStateChanged: (event: ObservedControlStateChangedEvent) => void,
     snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,

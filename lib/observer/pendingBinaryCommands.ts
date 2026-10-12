@@ -29,12 +29,13 @@ import {
   type PendingObservationSource,
   isPendingBinaryCommandActive,
 } from './pendingBinaryCommandTypes';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
+import { CONTROL_COMMAND_CONFIRMATION_MS, type PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 import { getLogger } from '../logging/logger';
 
 export type {
   PendingBinaryCommand,
 } from './pendingBinaryCommandTypes';
+export type { PendingBinaryLiveDevice };
 
 const logger = getLogger('observer/pending-binary-commands');
 export const RECENT_CONFIRMED_BINARY_OFF_MS = 5 * 60 * 1000;
@@ -156,14 +157,7 @@ export class PendingBinaryCommandStore {
    * pending window, an unconfirmed OFF is indistinguishable from a user's
    * manual action and must remain eligible to start an external-off hold.
    */
-  recordConfirmedBinaryCommand(params: {
-    deviceId: string;
-    desired: boolean;
-    confirmedAtMs?: number;
-  }): void {
-    const {
-      deviceId, desired, confirmedAtMs = Date.now(),
-    } = params;
+  recordConfirmedBinaryCommand(deviceId: string, desired: boolean, confirmedAtMs = Date.now()): void {
     const current = this.recentConfirmedOffByDevice.get(deviceId);
     if (desired) {
       if (
@@ -334,6 +328,15 @@ export function createPendingBinaryCommandStore(
   return new PendingBinaryCommandStore(backing, lifecycle);
 }
 
+/** A pending binary command telemetry just confirmed. */
+export type PendingBinaryConfirmation = {
+  deviceId: string;
+  liveDevice: PendingBinaryLiveDevice;
+  pending: PendingBinaryCommand;
+  source: PendingObservationSource;
+  confirmedAtMs: number;
+};
+
 /**
  * Per-cycle reconciliation sweep. For every pending entry, either:
  *
@@ -351,13 +354,7 @@ export function syncPendingBinaryCommands(params: {
   store: PendingBinaryCommandStore;
   liveDevices: PendingBinaryLiveDevice[];
   source: PendingObservationSource;
-  onConfirmed?: (params: {
-    deviceId: string;
-    liveDevice: PendingBinaryLiveDevice;
-    pending: PendingBinaryCommand;
-    source: PendingObservationSource;
-    confirmedAtMs: number;
-  }) => void;
+  onConfirmed?: (confirmation: PendingBinaryConfirmation) => void;
 }): boolean {
   const { store, liveDevices, source, onConfirmed } = params;
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
@@ -366,9 +363,7 @@ export function syncPendingBinaryCommands(params: {
 
   for (const [deviceId, pending] of store.entries()) {
     const liveDevice = liveById.get(deviceId);
-    if (reconcilePendingEntry({
-      store, deviceId, pending, liveDevice, source, nowMs, onConfirmed,
-    })) {
+    if (reconcilePendingEntry(store, deviceId, pending, liveDevice, source, nowMs, onConfirmed)) {
       changed = true;
     }
   }
@@ -376,22 +371,15 @@ export function syncPendingBinaryCommands(params: {
   return changed;
 }
 
-function reconcilePendingEntry(params: {
-  store: PendingBinaryCommandStore;
-  deviceId: string;
-  pending: PendingBinaryCommand;
-  liveDevice: PendingBinaryLiveDevice | undefined;
-  source: PendingObservationSource;
-  nowMs: number;
-  onConfirmed?: (params: {
-    deviceId: string;
-    liveDevice: PendingBinaryLiveDevice;
-    pending: PendingBinaryCommand;
-    source: PendingObservationSource;
-    confirmedAtMs: number;
-  }) => void;
-}): boolean {
-  const { store, deviceId, pending, liveDevice, source, nowMs, onConfirmed } = params;
+function reconcilePendingEntry(
+  store: PendingBinaryCommandStore,
+  deviceId: string,
+  pending: PendingBinaryCommand,
+  liveDevice: PendingBinaryLiveDevice | undefined,
+  source: PendingObservationSource,
+  nowMs: number,
+  onConfirmed: ((confirmation: PendingBinaryConfirmation) => void) | undefined,
+): boolean {
   if (!isPendingBinaryCommandActive({
     pending,
     nowMs,
@@ -424,9 +412,7 @@ function reconcilePendingEntry(params: {
     // arriving first simply falls through below and supersedes it, with no
     // parked evidence to cancel.
     if (!store.isDispatchAccepted(deviceId)) return false;
-    confirmPendingBinaryCommand({
-      store, deviceId, pending, liveDevice, source, observation, onConfirmed,
-    });
+    confirmPendingBinaryCommand(store, pending, liveDevice, source, observation, onConfirmed);
     return true;
   }
 
@@ -440,13 +426,13 @@ function reconcilePendingEntry(params: {
   // Persist the latest disagreeing observation as a diagnostic breadcrumb;
   // the entry itself is the canonical observer-owned record so in-place
   // updates keep the live-plan refresh on the same identity.
-  /* eslint-disable functional/immutable-data --
+  /* eslint-disable functional/immutable-data, no-param-reassign --
      observer-owned pending entry: in-place breadcrumb update preserved
      for diagnostic continuity (pre-PR-4 behaviour). */
   pending.lastObservedValue = observedValue;
   pending.lastObservedSource = source;
   pending.lastObservedAtMs = observation.observedAtMs;
-  /* eslint-enable functional/immutable-data */
+  /* eslint-enable functional/immutable-data, no-param-reassign */
   logger.debug({
     event: 'pending_binary_command_waiting',
     deviceId,
@@ -459,29 +445,16 @@ function reconcilePendingEntry(params: {
   return true;
 }
 
-function confirmPendingBinaryCommand(params: {
-  store: PendingBinaryCommandStore;
-  deviceId: string;
-  pending: PendingBinaryCommand;
-  liveDevice: PendingBinaryLiveDevice;
-  source: PendingObservationSource;
-  observation: ObservedBinaryCommandConfirmation;
-  onConfirmed?: (params: {
-    deviceId: string;
-    liveDevice: PendingBinaryLiveDevice;
-    pending: PendingBinaryCommand;
-    source: PendingObservationSource;
-    confirmedAtMs: number;
-  }) => void;
-}): void {
-  const {
-    store, deviceId, pending, liveDevice, source, observation, onConfirmed,
-  } = params;
-  store.recordConfirmedBinaryCommand({
-    deviceId,
-    desired: pending.desired,
-    confirmedAtMs: observation.observedAtMs,
-  });
+function confirmPendingBinaryCommand(
+  store: PendingBinaryCommandStore,
+  pending: PendingBinaryCommand,
+  liveDevice: PendingBinaryLiveDevice,
+  source: PendingObservationSource,
+  observation: ObservedBinaryCommandConfirmation,
+  onConfirmed: ((confirmation: PendingBinaryConfirmation) => void) | undefined,
+): void {
+  const deviceId = liveDevice.id;
+  store.recordConfirmedBinaryCommand(deviceId, pending.desired, observation.observedAtMs);
   onConfirmed?.({
     deviceId,
     liveDevice,
@@ -500,26 +473,6 @@ function confirmPendingBinaryCommand(params: {
     source,
   });
 }
-
-/**
- * The structural shape `syncPendingBinaryCommands` needs from a live
- * device. Mirrors `PlanInputDevice` fields without dragging the plan
- * layer into observer's import graph.
- *
- * The producer explicitly projects only these confirmation facts; raw transport
- * capability and Flow bindings never enter this observer/planner handoff.
- */
-export type PendingBinaryLiveDevice = {
-  id: string;
-  name: string;
-  binaryCommandConfirmation:
-    | { state: 'unavailable' }
-    | {
-      state: 'observed';
-      observedValue: boolean;
-      observedAtMs: number;
-    };
-};
 
 type ObservedBinaryCommandConfirmation = Extract<
   PendingBinaryLiveDevice['binaryCommandConfirmation'],
