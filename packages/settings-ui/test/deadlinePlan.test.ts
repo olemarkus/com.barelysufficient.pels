@@ -10,6 +10,7 @@ import type {
   DeferredObjectiveActivePlanV1,
   ResolvedDeferredObjectiveActivePlansV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
+import type { DeferredObjectiveSettingsV1 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import {
   deadlineLabels,
   resolveSmartTaskLiveCause,
@@ -231,37 +232,83 @@ const heatingProgress = (currentValue: number): DeadlineProgress => ({
   unit: '°C',
 });
 
+// The saved `deferred_objectives` setting for one soft smart task on the heater.
+const heaterObjectiveSettings = (deadline: Date, targetTemperatureC: number): DeferredObjectiveSettingsV1 => ({
+  version: 1,
+  objectivesByDeviceId: {
+    heater: {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC,
+      deadlineAtMs: deadline.getTime(),
+    },
+  },
+});
+
+// The saved `deferred_objectives` setting for one soft smart task on the EV.
+const evObjectiveSettings = (deadline: Date, targetPercent: number): DeferredObjectiveSettingsV1 => ({
+  version: 1,
+  objectivesByDeviceId: {
+    ev: {
+      enabled: true,
+      kind: 'ev_soc',
+      enforcement: 'soft',
+      targetPercent,
+      deadlineAtMs: deadline.getTime(),
+    },
+  },
+});
+
+type PlanPageDevice = DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe;
+
+// The heater's temperature reading against its setpoint, both in °C.
+const heaterTemperature = (currentTemperature: number, setpointC: number): PlanPageDevice['temperature'] => ({
+  currentTemperature,
+  target: { id: 'target_temperature', unit: 'C', value: setpointC },
+});
+
+// A water heater's setpoint range, wider than the 5–30 °C a room heater offers.
+const waterHeaterTargets = (): PlanPageDevice['targets'] => [
+  { id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 },
+];
+
+// The device list holding the smart task's heater: an off Connected 300 with a
+// 5–30 °C setpoint. A case states its reading and planning power.
+const heaterDevices = (fields: Partial<PlanPageDevice>): PlanPageDevice[] => withDescriptorIdentities<PlanPageDevice>([{
+  available: true,
+  expectedPowerKw: 1,
+  expectedPowerSource: 'default',
+  id: 'heater',
+  name: 'Connected 300',
+  binaryControl: { on: false },
+  targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+  ...fields,
+}]);
+
+// The device list holding the smart task's EV: an off Garage EV with a 0–100 %
+// charge target. A case states its battery level and planning power.
+const evDevices = (fields: Partial<PlanPageDevice>): PlanPageDevice[] => withDescriptorIdentities<PlanPageDevice>([{
+  available: true,
+  expectedPowerKw: 1,
+  expectedPowerSource: 'default',
+  id: 'ev',
+  name: 'Garage EV',
+  binaryControl: { on: false },
+  targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
+  ...fields,
+}]);
+
 describe('deadline plan page payload', () => {
   it('resolves cooling progress and draws the planned trajectory downward', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{
-      available: true,
-      expectedPowerKw: 1,
-      expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 26, target: { id: 'target_temperature', unit: 'C', value: 22 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(26, 22), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -291,14 +338,7 @@ describe('deadline plan page payload', () => {
   it('builds a device plan from saved objective settings and stops at the deadline', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({
       prices: Array.from({ length: 10 }, (_, offset) => ({
         startsAt: atLocalHour(now, offset).toISOString(),
@@ -309,18 +349,7 @@ describe('deadline plan page payload', () => {
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -359,14 +388,7 @@ describe('deadline plan page payload', () => {
   it('accepts legacy combined prices stored as a plain array', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(Array.from({ length: 6 }, (_, offset) => ({
       startsAt: atLocalHour(now, offset).toISOString(),
       totalPrice: 100 + offset,
@@ -375,18 +397,7 @@ describe('deadline plan page payload', () => {
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -406,14 +417,7 @@ describe('deadline plan page payload', () => {
   it('returns a pending render input when an active plan is marked pending', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -425,18 +429,7 @@ describe('deadline plan page payload', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, pendingPlan),
       deviceId: 'heater',
       devices,
@@ -459,30 +452,12 @@ describe('deadline plan page payload', () => {
   it('returns a pending render input when no active plan record exists yet', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, null),
       deviceId: 'heater',
       devices,
@@ -496,30 +471,12 @@ describe('deadline plan page payload', () => {
   it('carries original and current plan allocations for changed chart hours', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -545,29 +502,11 @@ describe('deadline plan page payload', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 4);
     const actualHour = atLocalHour(now, 1).toISOString();
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -600,30 +539,12 @@ describe('deadline plan page payload', () => {
   it('surfaces planInputs for a temperature device using the learned rate and the lowest step', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -642,11 +563,8 @@ describe('deadline plan page payload', () => {
   it('planInputs maxPowerLabel uses the lowest non-zero stepped-load step', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
+    const devices = heaterDevices({
+      temperature: heaterTemperature(18, 20),
       // Stepped profile; the lowest non-zero step is 1.5 kW. getSteppedLoadHighestStep
       // (used elsewhere) would return the highest step — we deliberately want the lowest.
       steppedLoadProfile: {
@@ -656,24 +574,12 @@ describe('deadline plan page payload', () => {
           { id: 'high', planningPowerW: 3000 },
         ],
       },
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -691,30 +597,12 @@ describe('deadline plan page payload', () => {
   it('planInputs maxPowerLabel uses the plan-level learned speed with sub-2 kW precision', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 1.3,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 1.3 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -733,14 +621,7 @@ describe('deadline plan page payload', () => {
   it('surfaces smart-task extra permissions in the learned inputs card', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
@@ -785,29 +666,11 @@ describe('deadline plan page payload', () => {
     // allocation.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -833,14 +696,11 @@ describe('deadline plan page payload', () => {
     // both a warning chip and the shortfall to the user.
     const now = new Date(2026, 0, 1, 4, 0, 0, 0);
     const deadline = atLocalHour(now, 2);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 40, target: { id: 'target_temperature', unit: 'C', value: 20 } }, // far from target 65 with only 2 h horizon
+    const devices = heaterDevices({
+      temperature: heaterTemperature(40, 20), // far from target 65 with only 2 h horizon
       planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
-    }]);
+      targets: waterHeaterTargets(),
+    });
     const prices = pricesPayload(hourlyPrices(now, [100, 101]));
     const activePlan = buildHeaterActivePlan({
       now,
@@ -861,18 +721,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 65,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 65),
     }, activePlan);
 
     const payload = expectReady(resolveRenderInput({
@@ -924,29 +773,11 @@ describe('deadline plan page payload', () => {
     // misdirect the user at the moment they most need the right lever.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -991,29 +822,11 @@ describe('deadline plan page payload', () => {
     // not regress to device-blaming shortfall copy.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -1056,29 +869,11 @@ describe('deadline plan page payload', () => {
     // device-side `Adjust device` button.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -1113,29 +908,11 @@ describe('deadline plan page payload', () => {
     // risk, so it reads the widget's hedged line with no button.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -1181,29 +958,11 @@ describe('deadline plan page payload', () => {
     // Deadline at 16:00 local; first planned hour at 14:00 (offset 2) — the
     // live headline reads `Heating from 14:00` per `resolveHeroHeadline`.
     const deadline = atLocalHour(now, 4);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52, 53]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 65,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 65),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -1246,30 +1005,12 @@ describe('deadline plan page payload', () => {
   it('routes a passed deadline to the completed state on the History tab', () => {
     const now = new Date(2026, 0, 1, 7, 0, 0, 0);
     const deadline = atLocalHour(now, -1); // already passed
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 21, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(21, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, null),
       deviceId: 'heater',
       devices,
@@ -1289,28 +1030,11 @@ describe('deadline plan page payload', () => {
     // running.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -1339,14 +1063,7 @@ describe('deadline plan page payload', () => {
     // than rendering NaN% — this pins that contract end-to-end.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: stateOfChargeFixture({ percent: Number.NaN }),
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ stateOfCharge: stateOfChargeFixture({ percent: Number.NaN }), planningPowerKw: 7 });
     const prices = pricesPayload({ prices: [] });
     const evRevision = {
       revision: 1,
@@ -1373,18 +1090,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 60,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: evObjectiveSettings(deadline, 60),
     }, activePlan);
 
     const result = resolveRenderInput({
@@ -1405,28 +1111,11 @@ describe('deadline plan page payload', () => {
     // null so the row is omitted.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20) });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -1447,29 +1136,11 @@ describe('deadline plan page payload', () => {
   it('falls back to the pending hero when prices do not cover the deadline window', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -1492,14 +1163,7 @@ describe('deadline plan page payload', () => {
   it('renders the price-feature-disabled pending hero when the active plan carries that reason', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -1511,18 +1175,7 @@ describe('deadline plan page payload', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, pendingPlan),
       deviceId: 'heater',
       devices,
@@ -1540,29 +1193,11 @@ describe('deadline plan page payload', () => {
     // "no energy estimate".
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 23, target: { id: 'target_temperature', unit: 'C', value: 20 } }, // > target 22
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(23, 20), planningPowerKw: 2 }); // > target 22
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -1585,14 +1220,8 @@ describe('deadline plan page payload', () => {
   it('renders the device_data_missing pending hero when the recorder flagged a progress-side failure', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      // Intentionally no currentTemperature — mirrors the live failure mode.
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    // Intentionally no currentTemperature — mirrors the live failure mode.
+    const devices = heaterDevices({ planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -1604,18 +1233,7 @@ describe('deadline plan page payload', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, pendingPlan),
       deviceId: 'heater',
       devices,
@@ -1630,13 +1248,7 @@ describe('deadline plan page payload', () => {
   it('renders the EV device_data_missing pending hero', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ planningPowerKw: 7 });
     const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
@@ -1655,18 +1267,7 @@ describe('deadline plan page payload', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            ev: {
-              enabled: true,
-              kind: 'ev_soc',
-              enforcement: 'soft',
-              targetPercent: 80,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: evObjectiveSettings(deadline, 80),
       }, pendingPlan),
       deviceId: 'ev',
       devices,
@@ -1681,14 +1282,7 @@ describe('deadline plan page payload', () => {
   it('falls back to the pending hero for EVs when prices do not cover the deadline window', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ stateOfCharge: stateOfChargeFixture({ percent: 40 }), planningPowerKw: 7 });
     const prices = pricesPayload({ prices: [] });
     const activePlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
@@ -1722,18 +1316,7 @@ describe('deadline plan page payload', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            ev: {
-              enabled: true,
-              kind: 'ev_soc',
-              enforcement: 'soft',
-              targetPercent: 80,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: evObjectiveSettings(deadline, 80),
       }, activePlan),
       deviceId: 'ev',
       devices,
@@ -1748,14 +1331,7 @@ describe('deadline plan page payload', () => {
   it('shows the bootstrap kWh-per-percent value and refining note when the latest revision was sourced from bootstrap', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ stateOfCharge: stateOfChargeFixture({ percent: 40 }), planningPowerKw: 7 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrapRevision = {
       revision: 1,
@@ -1788,18 +1364,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 60,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: evObjectiveSettings(deadline, 60),
     }, activePlan);
 
     const payload = expectReady(resolveRenderInput({
@@ -1823,14 +1388,10 @@ describe('deadline plan page payload', () => {
   ) => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
+    const devices = evDevices({
       ...(percent === null ? {} : { stateOfCharge: stateOfChargeFixture({ percent }) }),
       planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrapRevision = {
       revision: 1,
@@ -1865,18 +1426,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 80,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: evObjectiveSettings(deadline, 80),
     }, activePlan);
 
     return { bootstrap, deviceId: 'ev', devices, prices, nowMs: now.getTime() };
@@ -1996,14 +1546,7 @@ describe('deadline plan page payload', () => {
   it('omits the bootstrap note once the revision has been refined to learned data', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ stateOfCharge: stateOfChargeFixture({ percent: 40 }), planningPowerKw: 7 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const learnedRevision = {
       revision: 2,
@@ -2039,18 +1582,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 60,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: evObjectiveSettings(deadline, 60),
     }, activePlan);
 
     const payload = expectReady(resolveRenderInput({
@@ -2071,14 +1603,7 @@ describe('deadline plan page payload', () => {
     // the recorded rate (0.22) to prove the revision's figure wins.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ stateOfCharge: stateOfChargeFixture({ percent: 40 }), planningPowerKw: 7 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const revision = {
       revision: 2,
@@ -2118,18 +1643,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 60,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: evObjectiveSettings(deadline, 60),
     }, activePlan);
 
     const payload = expectReady(resolveRenderInput({
@@ -2150,14 +1664,7 @@ describe('deadline plan page payload', () => {
     // the flat fields.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ stateOfCharge: stateOfChargeFixture({ percent: 40 }), planningPowerKw: 7 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const revision = {
       revision: 1,
@@ -2188,18 +1695,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 60,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: evObjectiveSettings(deadline, 60),
     }, activePlan);
 
     const payload = expectReady(resolveRenderInput({
@@ -2218,14 +1714,7 @@ describe('deadline plan page payload', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const lastAccepted = new Date(2026, 0, 1, 11, 0, 0, 0);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ stateOfCharge: stateOfChargeFixture({ percent: 40 }), planningPowerKw: 7 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const learnedRevision = {
       revision: 2,
@@ -2259,18 +1748,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 60,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: evObjectiveSettings(deadline, 60),
     }, activePlan);
 
     const payload = expectReady(resolveRenderInput({
@@ -2296,14 +1774,7 @@ describe('deadline plan page payload', () => {
   it('surfaces a single "Starting estimate" provenance row when the plan still uses bootstrap', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ stateOfCharge: stateOfChargeFixture({ percent: 40 }), planningPowerKw: 7 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const bootstrapRevision = {
       revision: 1,
@@ -2337,18 +1808,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 60,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: evObjectiveSettings(deadline, 60),
     }, activePlan);
 
     const payload = expectReady(resolveRenderInput({
@@ -2367,14 +1827,7 @@ describe('deadline plan page payload', () => {
   it('returns an empty provenance row list when the plan has no provenance snapshot', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: stateOfChargeFixture({ percent: 40 }),
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ stateOfCharge: stateOfChargeFixture({ percent: 40 }), planningPowerKw: 7 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const learnedRevision = {
       revision: 2,
@@ -2402,18 +1855,7 @@ describe('deadline plan page payload', () => {
     };
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 60,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: evObjectiveSettings(deadline, 60),
     }, activePlan);
 
     const payload = expectReady(resolveRenderInput({
@@ -2433,14 +1875,7 @@ describe('deadline plan page payload', () => {
     const planStart = new Date(2026, 0, 1, 10, 0, 0, 0);
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 21, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(21, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const allocatedRevision = {
       revision: 1,
@@ -2472,18 +1907,7 @@ describe('deadline plan page payload', () => {
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, activePlan),
       deviceId: 'heater',
       devices,
@@ -2497,29 +1921,11 @@ describe('deadline plan page payload', () => {
   it('surfaces flow-scheme actionable copy when the missing horizon is on the user’s Flow', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [], priceScheme: 'flow', lastFetched: now.toISOString() });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -2544,29 +1950,11 @@ describe('deadline plan page payload', () => {
   it('keeps managed-scheme copy neutral and surfaces last-update time when present', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [], priceScheme: 'norway', lastFetched: now.toISOString() });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -2591,29 +1979,11 @@ describe('deadline plan page payload', () => {
   it('omits the last-update hint when combinedPrices has no lastFetched', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [], priceScheme: 'norway' });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     }, buildHeaterActivePlan({
       now,
       deadline,
@@ -2642,30 +2012,12 @@ describe('deadline plan page payload', () => {
   it('orders live hero chips as [kind, ?cannotMeet, ?confidence]', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -2689,30 +2041,12 @@ describe('deadline plan page payload', () => {
     // 15:00" instead of the bare "Waiting until 15:00".
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -2739,31 +2073,13 @@ describe('deadline plan page payload', () => {
     // projection landed at-or-above target (smart-task hero walk).
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 2);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 21.999, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(21.999, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 100]));
 
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -2786,14 +2102,7 @@ describe('deadline plan page payload', () => {
   it('shows planning speed and estimated duration when the latest revision carries them', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     // Recorder-style revision with a learned rate + energy need. The hero's
     // "Needs" stat pair carries the energy figure as a bold payoff value (the
@@ -2828,18 +2137,7 @@ describe('deadline plan page payload', () => {
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, activePlan),
       deviceId: 'heater',
       devices,
@@ -2853,13 +2151,7 @@ describe('deadline plan page payload', () => {
   it('renders the Paused — unplugged pending hero when the active plan reports invalid_session', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ planningPowerKw: 7 });
     const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
@@ -2878,18 +2170,7 @@ describe('deadline plan page payload', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            ev: {
-              enabled: true,
-              kind: 'ev_soc',
-              enforcement: 'soft',
-              targetPercent: 80,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: evObjectiveSettings(deadline, 80),
       }, pendingPlan),
       deviceId: 'ev',
       devices,
@@ -2906,14 +2187,7 @@ describe('deadline plan page payload', () => {
   it('renders the Learning energy use pending hero when the active plan reports missing_capacity', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Bathroom heater',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ name: 'Bathroom heater', temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -2926,18 +2200,7 @@ describe('deadline plan page payload', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, pendingPlan),
       deviceId: 'heater',
       devices,
@@ -2955,30 +2218,12 @@ describe('deadline plan page payload', () => {
   it('omits the revision-reason readout line on hours that have not changed', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 4);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -2999,30 +2244,12 @@ describe('deadline plan page payload', () => {
   it('sets the revision-reason readout line on changed hours and null on unchanged hours', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -3049,30 +2276,12 @@ describe('deadline plan page payload', () => {
   it('builds the trajectory payload: staircase to target, run bands, ready stateline', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -3128,30 +2337,12 @@ describe('deadline plan page payload', () => {
   it('flags the trajectory shortfall when booked energy cannot reach the target', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 4);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -3188,30 +2379,12 @@ describe('deadline plan page payload', () => {
     const now = new Date(2026, 0, 1, 13, 30, 0, 0);
     const hourStart = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(hourStart, 4);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(hourStart, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now: hourStart,
         deadline,
@@ -3495,30 +2668,12 @@ describe('deadline plan page payload', () => {
         )),
       },
     };
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(hourStart, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, plan),
       deviceId: 'heater',
       devices,
@@ -3545,14 +2700,7 @@ describe('deadline plan page payload', () => {
   it('treats a zero-kWh hour as unplanned on every surface', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const plan = buildHeaterActivePlan({
       now,
@@ -3565,18 +2713,7 @@ describe('deadline plan page payload', () => {
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, plan),
       deviceId: 'heater',
       devices,
@@ -3602,30 +2739,12 @@ describe('deadline plan page payload', () => {
   it('omits the stateline status word when the plan status is invalid', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, buildHeaterActivePlan({
         now,
         deadline,
@@ -3650,14 +2769,7 @@ describe('deadline plan page payload', () => {
   it('verifies the "Cheaper than now" claim against the actual prices', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const buildPrices = (totalsByOffset: (offset: number) => number): SettingsUiPricesPayload => pricesPayload({
       prices: Array.from({ length: 6 }, (_, offset) => ({
         startsAt: atLocalHour(now, offset).toISOString(),
@@ -3666,18 +2778,7 @@ describe('deadline plan page payload', () => {
     });
     const settings = {
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature' as const,
-            enforcement: 'soft' as const,
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 22),
     };
     const buildPayload = (prices: SettingsUiPricesPayload) => expectReady(resolveRenderInput({
       bootstrap: buildBootstrap(settings, buildHeaterActivePlan({
@@ -3851,14 +2952,7 @@ describe('energy estimate range (expected…planned, end-to-end through resolveR
     const { energyExpectedKWh, planStatus = 'on_track', coldStartProvenance = false } = options;
     const now = new Date(2026, 0, 1, 12, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105, 106, 107, 108, 109]));
     const activePlan = buildHeaterActivePlan({
       now,
@@ -3885,15 +2979,7 @@ describe('energy estimate range (expected…planned, end-to-end through resolveR
     }
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true, kind: 'temperature', enforcement: 'soft',
-            targetTemperatureC: 65, deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, 65),
     }, activePlan);
     return expectReady(resolveRenderInput({
       bootstrap, deviceId: 'heater', devices, prices, nowMs: now.getTime(),
@@ -4618,18 +3704,7 @@ describe('cost + delivered-so-far hero lines', () => {
   ): SettingsUiBootstrap => {
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
+      deferred_objectives: heaterObjectiveSettings(deadline, targetTemperatureC),
     }, plan);
     if (deviceBuckets) {
       bootstrap.power.tracker = { ...bootstrap.power.tracker, deviceBuckets: { heater: deviceBuckets } };
@@ -4637,14 +3712,9 @@ describe('cost + delivered-so-far hero lines', () => {
     return bootstrap;
   };
 
-  const buildHeaterDevice = (currentTemperature: number): (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] => (withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-    id: 'heater',
-    name: 'Connected 300',
-    binaryControl: { on: false },
-    temperature: { currentTemperature, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-    planningPowerKw: 2,
-    targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
-  }]));
+  const buildHeaterDevice = (currentTemperature: number): PlanPageDevice[] => heaterDevices({
+    temperature: heaterTemperature(currentTemperature, 20), planningPowerKw: 2, targets: waterHeaterTargets(),
+  });
 
   it('queued: no delivery yet — cost line shows planned-only, delivered-so-far shows now/target', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
@@ -5283,14 +4353,7 @@ describe('pending hero producer wiring', () => {
   it('lets a separate-meter diagnostic override a committed cached revision', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const relocatedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
@@ -5304,18 +4367,7 @@ describe('pending hero producer wiring', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, relocatedPlan),
       deviceId: 'heater',
       devices,
@@ -5339,14 +4391,7 @@ describe('pending hero producer wiring', () => {
     // "Paused — not managed" and tapping it opens a green on-track hero.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      temperature: { currentTemperature: 18, target: { id: 'target_temperature', unit: 'C', value: 20 } },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const unmanagedPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({
@@ -5360,18 +4405,7 @@ describe('pending hero producer wiring', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, unmanagedPlan),
       deviceId: 'heater',
       devices,
@@ -5392,13 +4426,7 @@ describe('pending hero producer wiring', () => {
   it('threads deviceName + deadlineTime into the pending hero so headlineReason resolves', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }]);
+    const devices = heaterDevices({ planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
@@ -5410,18 +4438,7 @@ describe('pending hero producer wiring', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
       }, pendingPlan),
       deviceId: 'heater',
       devices,
@@ -5439,13 +4456,7 @@ describe('pending hero producer wiring', () => {
   it('emits no recourse on the EV unplugged pending hero — plugging in is a physical action', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & ObservedStateOfChargeProbe)[] = withDescriptorIdentities([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }]);
+    const devices = evDevices({ planningPowerKw: 7 });
     const prices = pricesPayload({ prices: [] });
     const pendingPlan: DeferredObjectiveActivePlanV1 = {
       liveCompletion: { kind: 'unavailable' as const },
@@ -5464,18 +4475,7 @@ describe('pending hero producer wiring', () => {
     const renderInput = resolveRenderInput({
       bootstrap: buildBootstrap({
         capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            ev: {
-              enabled: true,
-              kind: 'ev_soc',
-              enforcement: 'soft',
-              targetPercent: 80,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
+        deferred_objectives: evObjectiveSettings(deadline, 80),
       }, pendingPlan),
       deviceId: 'ev',
       devices,
