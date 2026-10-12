@@ -48,8 +48,11 @@ const makeSettings = (initial: Record<string, unknown>) => {
   };
 };
 
-const buildUnsupportedThermostat = (): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+// `managed` is the stamp the producer reads from the same `managed_devices`
+// entry each spec seeds.
+const buildUnsupportedThermostat = (managed: boolean): TargetDeviceSnapshot => ({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
   id: 'vt-1',
+  managed,
   name: 'VThermo',
   deviceClass: 'thermostat',
   deviceType: 'temperature',
@@ -72,7 +75,7 @@ describe('seedTemperatureShedFloorDefaults', () => {
     const debugStructured = vi.fn();
 
     seedTemperatureShedFloorDefaults({
-      snapshot: [buildUnsupportedThermostat()],
+      snapshot: [buildUnsupportedThermostat(false)],
       settings: asAppSettings(settings),
       debugStructured,
       resolveOperatingModeForDevice: mainHomeMode(null),
@@ -101,6 +104,7 @@ describe('seedTemperatureShedFloorDefaults', () => {
         expectedPowerSource: 'default',
         id: 'panel-1',
         name: 'Panel heater',
+        managed: true,
         deviceType: 'temperature',
         deviceClass: 'heater',
         isEvCharger: false,
@@ -131,7 +135,7 @@ describe('seedTemperatureShedFloorDefaults', () => {
     const debugStructured = vi.fn();
 
     seedTemperatureShedFloorDefaults({
-      snapshot: [buildUnsupportedThermostat()],
+      snapshot: [buildUnsupportedThermostat(true)],
       settings: asAppSettings(settings),
       debugStructured,
       resolveOperatingModeForDevice: mainHomeMode(null),
@@ -152,7 +156,7 @@ describe('seedTemperatureShedFloorDefaults', () => {
     const debugStructured = vi.fn();
 
     seedTemperatureShedFloorDefaults({
-      snapshot: [buildUnsupportedThermostat()],
+      snapshot: [buildUnsupportedThermostat(true)],
       settings: asAppSettings(settings),
       debugStructured,
       resolveOperatingModeForDevice: mainHomeMode(null),

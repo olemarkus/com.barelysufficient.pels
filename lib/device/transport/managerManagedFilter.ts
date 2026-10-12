@@ -2,7 +2,6 @@ import type { DeviceTransportParseProviders, ParseDevicePurpose } from './manage
 import { isBatteryOrSolarClassKey } from './managerHelpers';
 
 export type ManagedFilterDecision = {
-  hasOracle: boolean;
   filterActive: boolean;
   isManaged: boolean;
 };
@@ -12,13 +11,9 @@ export function resolveManagedFilterDecision(params: {
   deviceId: string;
 }): ManagedFilterDecision {
   const { providers, deviceId } = params;
-  if (providers.getManaged === undefined) {
-    return { hasOracle: false, filterActive: false, isManaged: false };
-  }
   return {
-    hasOracle: true,
     filterActive: providers.isManagedFilterActive?.() ?? true,
-    isManaged: providers.getManaged(deviceId) === true,
+    isManaged: providers.getManaged(deviceId),
   };
 }
 
@@ -32,7 +27,7 @@ export function resolveManagedFilterDecision(params: {
  * (`DeviceSnapshotReader.shouldTrackRealtimeDevice`) answer with.
  */
 export function isRuntimeTrackedDevice(decision: ManagedFilterDecision, isHomeBattery: boolean): boolean {
-  return !decision.hasOracle || decision.isManaged || isHomeBattery;
+  return decision.isManaged || isHomeBattery;
 }
 
 export function shouldDropEarly(
@@ -48,7 +43,7 @@ export function shouldDropEarly(
   // managed/unmanaged split to the late gate (after control-state parse),
   // which is where `currentOn` is known. (A malformed `onoff` never gets this
   // far: the device-read contract ignores that read before any parse.)
-  return !decision.hasOracle || !decision.filterActive;
+  return !decision.filterActive;
 }
 
 export function shouldDropAfterControlState(params: {

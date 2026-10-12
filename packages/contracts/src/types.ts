@@ -411,7 +411,13 @@ export type DeviceDescriptor = {
     canSetControl?: boolean;
     powerCapable?: boolean;
     controllable?: boolean;
-    managed?: boolean;
+    /**
+     * Whether PELS manages this device. REQUIRED: the device layer resolves it
+     * for every device at parse (`resolveManagedState`: an ordinary load from its
+     * `managed_devices` entry, a battery from its Managed toggle, a solar panel
+     * always), so "unset" is not a state a reader can observe or interpret.
+     */
+    managed: boolean;
     budgetExempt?: boolean;
     priority?: number;
     /**

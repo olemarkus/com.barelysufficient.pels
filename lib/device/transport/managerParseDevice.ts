@@ -68,7 +68,7 @@ export type DeviceTransportParseProviders = {
      */
     onAdditionalMeterReadings?: (readings: Record<string, number>, nowMs: number) => void;
     getControllable?: (deviceId: string) => boolean;
-    getManaged?: (deviceId: string) => boolean;
+    getManaged: (deviceId: string) => boolean;
     isManagedFilterActive?: () => boolean;
     getBudgetExempt?: (deviceId: string) => boolean;
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;

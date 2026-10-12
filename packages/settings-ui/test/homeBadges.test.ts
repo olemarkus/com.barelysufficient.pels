@@ -498,8 +498,9 @@ describe('devices list home badges', () => {
   });
 
   // The resolved identity is REQUIRED on the wire: the charger, on/off and
-  // observe-only checks read these fields straight, so a device without them
-  // must be refused at this boundary rather than read as "no".
+  // observe-only checks and Overview membership read these fields straight, so
+  // a device without them must be refused at this boundary rather than read as
+  // "no".
   const omitField = (field: string): SettingsUiDeviceSnapshot => Object.fromEntries(
     Object.entries(buildDevice()).filter(([key]) => key !== field),
   ) as unknown as SettingsUiDeviceSnapshot;
@@ -515,6 +516,7 @@ describe('devices list home badges', () => {
       isEvCharger: false,
       binaryControllable: false,
       isBatteryOrSolar: false,
+      managed: true,
     });
     const homey = createHomeyMock({ uiState: { devices: [device] } });
     const homeyModule = await import('../src/ui/homey.ts');
@@ -531,6 +533,8 @@ describe('devices list home badges', () => {
     ['binaryControllable', 'non-boolean', () => withField('binaryControllable', 1)],
     ['isBatteryOrSolar', 'missing', () => omitField('isBatteryOrSolar')],
     ['isBatteryOrSolar', 'non-boolean', () => withField('isBatteryOrSolar', 'false')],
+    ['managed', 'missing', () => omitField('managed')],
+    ['managed', 'non-boolean', () => withField('managed', 'true')],
     ['deviceClass', 'missing', () => omitField('deviceClass')],
     ['deviceClass', 'non-string', () => withField('deviceClass', 42)],
     ['deviceType', 'missing', () => omitField('deviceType')],

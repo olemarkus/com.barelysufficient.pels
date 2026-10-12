@@ -44,6 +44,8 @@ it('does not persist a new EV Managed opt-in while charger wiring is unavailable
     deviceType: 'onoff',
     isEvCharger: true,
     isBatteryOrSolar: false,
+    // The opt-in under test: the charger is not managed yet.
+    managed: false,
     binaryControllable: false,
     expectedPowerKw: 7.36,
     expectedPowerSource: 'default',
@@ -89,6 +91,8 @@ it('drops a delayed EV opt-in after a newer opt-out intent', async () => {
     deviceType: 'onoff',
     isEvCharger: true,
     isBatteryOrSolar: false,
+    // The opt-in under test: the charger is not managed yet.
+    managed: false,
     binaryControllable: false,
     expectedPowerKw: 7.36,
     expectedPowerSource: 'default',

@@ -7,9 +7,10 @@ import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { isBatteryOrSolarClassKey } from '../../packages/shared-domain/src/batteryOrSolarRole';
 
-type DescriptorIdentityKey = 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar';
+type DescriptorIdentityKey =
+  | 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar' | 'managed';
 
-/** The identity facts the parse producer resolves for every inventory device. */
+/** The identity facts the parse producer resolves for every inventory device, and whether PELS manages it. */
 export type DescriptorIdentity = Pick<DeviceDescriptor, DescriptorIdentityKey>;
 
 /** A snapshot fixture that may leave the identity facts for the helper to resolve. */
@@ -30,6 +31,10 @@ type DescriptorIdentityFixture<T extends DescriptorIdentity> = Omit<T, Descripto
  *   that implies no further fact: not a charger, not observe-only, and not one
  *   PELS reports starvation for. The class used to be optional, so such a fixture
  *   already planned as exactly that, and it keeps the meaning it was written with.
+ * - `managed`: `true` unless stated. The producer asks `getManaged` for every
+ *   device; the flag used to be optional, and the readers that decide on it (the
+ *   planned-device filter, a battery's control posture) read an unset one as
+ *   managed, so such a fixture keeps the meaning it was written with.
  */
 export const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIdentity> & {
   temperature?: unknown;
@@ -40,6 +45,7 @@ export const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIden
   isEvCharger: fixture.isEvCharger ?? fixture.deviceClass === 'evcharger',
   isBatteryOrSolar: fixture.isBatteryOrSolar ?? isBatteryOrSolarClassKey(fixture.deviceClass ?? 'socket'),
   binaryControllable: fixture.binaryControllable ?? fixture.binaryControl !== undefined,
+  managed: fixture.managed ?? true,
 });
 
 const withDescriptorIdentity = <T extends DescriptorIdentity>(

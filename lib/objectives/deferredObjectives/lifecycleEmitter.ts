@@ -54,7 +54,7 @@ import { PriorityAllocationTracker } from './priorityAllocation';
  * "Owns its own evaluation" means the CLOCK and the resulting diagnostics, not
  * the device set: `getDevices` is still wired to `getPlanDevices()`, so the
  * device list is the planner's. That is correct rather than provisional —
- * `managed !== false` is both the plan-list filter and the smart-task
+ * the device's `managed` flag is both the plan-list filter and the smart-task
  * eligibility gate (`isRuntimePlannedDevice`, enforced at task creation in
  * `setup/appSmartTaskApi.ts`), so the two sets are the same set by definition.
  * What this layer must NOT do is read raw observed fields off those devices:

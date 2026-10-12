@@ -64,6 +64,7 @@ export function projectDeviceDescriptor(source: DeviceDescriptorRead): DeviceDes
         isEvCharger: source.isEvCharger,
         isBatteryOrSolar: source.isBatteryOrSolar,
         binaryControllable: source.binaryControllable,
+        managed: source.managed,
         expectedPowerKw: source.expectedPowerKw,
         expectedPowerSource: source.expectedPowerSource,
     };

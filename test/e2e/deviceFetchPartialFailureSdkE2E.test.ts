@@ -32,7 +32,7 @@ const FAILING_ID = 'dev-e';
 
 type Structured = { event?: string; failed?: number; succeeded?: number; deviceId?: string };
 
-type IdedSnapshot = { id: string; managed?: boolean };
+type IdedSnapshot = { id: string; managed: boolean };
 
 const buildDevice = async (id: string): Promise<MockDevice> => {
   const device = new MockDevice(id, id.toUpperCase(), ['onoff', 'measure_power'], 'socket');
@@ -128,7 +128,7 @@ describe('Targeted refresh with a single failing device id (SDK-boundary e2e)', 
     // plan state survives the transient miss (not evicted).
     const missedPlanDevice = planDevice(app, FAILING_ID);
     expect(missedPlanDevice).toBeDefined();
-    expect(missedPlanDevice!.managed).not.toBe(false);
+    expect(missedPlanDevice!.managed).toBe(true);
     // Observed state retained too.
     expect(app['observedDeviceStateProjection'].getObservedState(FAILING_ID)).toBeDefined();
     // No cascade to the bulk full fetch on the targeted cycle.

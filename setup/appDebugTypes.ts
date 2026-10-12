@@ -100,7 +100,7 @@ export type PelsTargetSnapshotSummary = {
   measuredPowerKw?: number;
   reportedStepId?: string;
   controllable?: boolean;
-  managed?: boolean;
+  managed: boolean;
   available?: boolean;
   lastUpdated?: number;
 };

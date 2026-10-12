@@ -8,7 +8,7 @@ import {
 // `currentOn` is undefined). It must be KEPT in the runtime snapshot but DROPPED from
 // the settings-UI device picker, so it renders exactly once in the settings UI (the
 // managed list), never twice.
-const managedDecision: ManagedFilterDecision = { hasOracle: true, filterActive: true, isManaged: true };
+const managedDecision: ManagedFilterDecision = { filterActive: true, isManaged: true };
 
 describe('shouldDropAfterControlState — home battery', () => {
   it('KEEPS a battery on the runtime path despite undefined currentOn', () => {
@@ -32,7 +32,7 @@ describe('shouldDropAfterControlState — home battery', () => {
   it('still drops a NON-battery with undefined currentOn on the runtime path (unchanged)', () => {
     expect(shouldDropAfterControlState({
       purpose: 'runtime',
-      decision: { hasOracle: true, filterActive: true, isManaged: true },
+      decision: { filterActive: true, isManaged: true },
       currentOn: undefined,
       deviceClassKey: 'heater',
     })).toBe(true);

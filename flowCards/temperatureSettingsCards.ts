@@ -35,7 +35,7 @@ type DeviceGate = (device: DeviceDescriptorRead) => boolean;
 
 const isTemperatureDevice: DeviceGate = (device) => !device.isBatteryOrSolar && device.deviceType === 'temperature';
 
-const isManagedTemperatureDevice: DeviceGate = (device) => isTemperatureDevice(device) && device.managed === true;
+const isManagedTemperatureDevice: DeviceGate = (device) => isTemperatureDevice(device) && device.managed;
 
 const ACTIVE_MODE_OPTION = {
   id: 'active-mode',

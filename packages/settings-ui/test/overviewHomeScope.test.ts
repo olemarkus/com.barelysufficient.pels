@@ -138,6 +138,8 @@ const installClient = async ({ api, settings = {}, holdUris = [] }: InstallOptio
         isEvCharger: device.isEvCharger === true,
         binaryControllable: false,
         isBatteryOrSolar: false,
+        // A device in the plan is one PELS manages.
+        managed: true,
       })),
       // The scoped device read discriminates the producer's `homeScope` before
       // any flat field, exactly as the plan read does — so a scoped stub must
@@ -419,7 +421,7 @@ describe('Overview under a selected meter area', () => {
     // which is the whole point of the assertions that follow.
     const { state } = await import('../src/ui/state.ts');
     state.latestDevices = [{
-      id: 'dev_main_heater', name: 'Main Heater', targets: [], available: true,
+      id: 'dev_main_heater', name: 'Main Heater', targets: [], available: true, managed: true,
     }] as unknown as typeof state.latestDevices;
     state.devicesLoaded = true;
 

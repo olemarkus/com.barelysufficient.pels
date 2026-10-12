@@ -33,7 +33,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   & Pick<DeviceDescriptor,
     | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
     | 'powerCapable' | 'expectedPowerKw' | 'expectedPowerSource'
-    | 'controlAdapter' | 'binaryControllable' | 'isEvCharger' | 'isBatteryOrSolar'
+    | 'controlAdapter' | 'binaryControllable' | 'isEvCharger' | 'isBatteryOrSolar' | 'managed'
   >
   // Whether PELS can drive a home battery and whether the owner took it over,
   // resolved by the runtime for every listed device (`not_battery` / false

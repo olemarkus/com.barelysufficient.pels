@@ -83,7 +83,6 @@ filenames + `device/manager-*` logger tags with the `DeviceTransport` rename.
 
 Remaining work:
 
-- remove redundant downstream `managed !== false` filters after the parse-time invariant has soaked
 - only extract more `DeviceTransport` code when a new subsystem boundary is clear
 
 ### Persisted settings state

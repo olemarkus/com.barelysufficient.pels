@@ -2,9 +2,10 @@ import type { DeviceDescriptor } from '../../../contracts/src/types.ts';
 import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
 import { isBatteryOrSolarClassKey, isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 
-type DescriptorIdentityKey = 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar';
+type DescriptorIdentityKey =
+  | 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar' | 'managed';
 
-/** The identity facts the parse producer resolves for every inventory device. */
+/** The identity facts the parse producer resolves for every inventory device, and whether PELS manages it. */
 type DescriptorIdentity = Pick<DeviceDescriptor, DescriptorIdentityKey>;
 
 /** A snapshot fixture that may leave the identity facts, and its battery facts, for the helper to resolve. */
@@ -37,6 +38,9 @@ type DescriptorIdentityFixture<T extends DescriptorIdentity> = Omit<T, Descripto
  *   already read as exactly that, and it keeps the meaning it was written with.
  *   (The runtime helper picks `'socket'` instead: the runtime only admits
  *   supported classes, while the settings UI groups and labels by the raw key.)
+ * - `managed`: `true` unless stated. `/ui_devices` carries the runtime's answer
+ *   for every device; the flag used to be optional, and the one reader of it
+ *   here (Overview membership) read an unset one as managed.
  */
 const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIdentity> & {
   targets?: readonly unknown[];
@@ -46,6 +50,7 @@ const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIdentity> &
   isEvCharger: fixture.isEvCharger ?? fixture.deviceClass === 'evcharger',
   isBatteryOrSolar: fixture.isBatteryOrSolar ?? isBatteryOrSolarClassKey(fixture.deviceClass ?? 'other'),
   binaryControllable: fixture.binaryControllable ?? false,
+  managed: fixture.managed ?? true,
 });
 
 /**

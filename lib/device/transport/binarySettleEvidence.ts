@@ -132,7 +132,7 @@ export class BinarySettleEvidenceService {
     private shouldClearBinarySettleEvidenceForSnapshot(
     snapshot: TransportDeviceSnapshot,
 ): boolean {
-    return !this.shouldTrackRealtimeDevice(snapshot.id) || snapshot.managed === false;
+    return !this.shouldTrackRealtimeDevice(snapshot.id) || !snapshot.managed;
 }
 
     reconcileWithSnapshot(

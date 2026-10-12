@@ -91,7 +91,7 @@ export type FlowBackedDeviceStateDeps = {
   setFlowReportedCapabilities: (state: FlowReportedCapabilitiesByDevice) => void;
   getDeviceManager: () => DeviceTransport | undefined;
   getDeviceConfiguration: () => DeviceConfigurationRead[];
-  resolveManagedState: (deviceId: string) => boolean | undefined;
+  resolveManagedState: (deviceId: string) => boolean;
   getSteppedLoadProfile: (deviceId: string) => unknown;
   getExpectedPowerKwOverrides: () => ExpectedPowerOverridesByDeviceId;
   getLearnedPowerPeaks: () => LearnedPeaksByDeviceId;
@@ -439,7 +439,7 @@ export class FlowBackedDeviceState {
             device.controlAdapter.activationEnabled === true
             || (
             device.controlAdapter.activationRequired !== true
-            || this.deps.resolveManagedState(device.id) !== true
+            || !this.deps.resolveManagedState(device.id)
             )
           )
         ))

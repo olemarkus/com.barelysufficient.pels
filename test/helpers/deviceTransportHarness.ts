@@ -39,6 +39,7 @@ import type {
 import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import type { SnapshotRefreshOptions } from '../../lib/device/transport/transportTypes';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import { connectLiveFeed, settleLiveFeed } from './liveFeedSocketHarness';
@@ -46,6 +47,27 @@ import { connectLiveFeed, settleLiveFeed } from './liveFeedSocketHarness';
 type TransportArgs = ConstructorParameters<typeof DeviceTransport>;
 
 const emitterByTransport = new WeakMap<DeviceTransport, ObservedStateEmitter>();
+
+/**
+ * The parse providers a spec hands the harness. Production wires every device's
+ * managed state (`buildDeviceParseProviders` → `resolveManagedState`), so the
+ * transport requires `getManaged`; a spec that is not about managed state may
+ * leave it for {@link resolveTestParseProviders}.
+ */
+type TestParseProviders = Omit<DeviceTransportParseProviders, 'getManaged'>
+  & Partial<Pick<DeviceTransportParseProviders, 'getManaged'>>;
+
+/**
+ * Complete a spec's providers the way such a spec has always read: every device
+ * managed, so the transport tracks and parses all of them and each snapshot
+ * reads as planned. A spec that passes no providers also selects no Main meter.
+ * A provider the spec states wins.
+ */
+const resolveTestParseProviders = (providers: TestParseProviders | undefined): DeviceTransportParseProviders => (
+  providers === undefined
+    ? { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }), getManaged: () => true }
+    : { ...providers, getManaged: providers.getManaged ?? (() => true) }
+);
 
 /**
  * A fully-populated dispatcher of spies, for the specs that assert on the
@@ -81,7 +103,7 @@ export const createTestObservedStateDispatcher = (
 export function createTestDeviceTransport(
   homey: TransportArgs[0],
   logger: TransportArgs[1],
-  providers?: TransportArgs[2],
+  providers?: TestParseProviders,
   powerState?: TransportArgs[3],
   options?: Partial<TransportArgs[4]>,
 ): DeviceTransport {
@@ -95,8 +117,9 @@ export function createTestDeviceTransport(
   // A fresh in-memory store per transport unless the spec passes one: a spec
   // that restarts a transport on the same store is how a restart is modelled.
   const store = retainedPowerStore ?? createRetainedPowerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+  const parseProviders = resolveTestParseProviders(providers);
   if (injected) {
-    return new DeviceTransport(homey, logger, providers, powerState, {
+    return new DeviceTransport(homey, logger, parseProviders, powerState, {
       ...rest,
       onSnapshotMutated,
       observedStateDispatcher: injected,
@@ -104,7 +127,7 @@ export function createTestDeviceTransport(
     });
   }
   const emitter = new ObservedStateEmitter();
-  const transport = new DeviceTransport(homey, logger, providers, powerState, {
+  const transport = new DeviceTransport(homey, logger, parseProviders, powerState, {
     ...rest,
     onSnapshotMutated,
     observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),

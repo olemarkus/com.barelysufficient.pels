@@ -6,7 +6,7 @@ import type { HomeyDeviceLike } from '../../lib/utils/types';
 
 // A solar device is MANAGED OBSERVE-ONLY, exactly like a battery: PELS never controls
 // it. These lock the four shared parse seams for the solar role.
-const managedDecision: ManagedFilterDecision = { hasOracle: true, filterActive: true, isManaged: true };
+const managedDecision: ManagedFilterDecision = { filterActive: true, isManaged: true };
 
 describe('resolveDeviceClassKey — solar normalization (detection == survival)', () => {
   it('normalizes a class:solarpanel device to the "solarpanel" class-key', () => {

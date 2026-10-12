@@ -128,7 +128,7 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
 export function registerManagedDeviceCondition(deps: FlowCardDeps): void {
   registerDeviceSnapshotCondition({
     cardId: 'is_device_managed',
-    predicate: (device) => device.managed === true,
+    predicate: (device) => device.managed,
     deps,
   });
 }
@@ -142,7 +142,7 @@ export function registerCapacityControlCondition(deps: FlowCardDeps): void {
     // is managed, and only while PELS can drive it at all.
     predicate: (device) => (
       isHomeBattery(device)
-        ? device.managed === true
+        ? device.managed
           && deps.readBatteryControl(device.id) === 'drivable'
           && isBatteryPowerLimitEnabled(deps.getControllableDevices(), device.id)
         : device.controllable === true

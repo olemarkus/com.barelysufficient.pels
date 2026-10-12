@@ -43,6 +43,7 @@ const evDevice = (
   isEvCharger: true,
   isBatteryOrSolar: false,
   binaryControllable: true,
+  managed: true,
   binaryControl: { on: true },
   measuredPowerKw: 7,
   stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs }),

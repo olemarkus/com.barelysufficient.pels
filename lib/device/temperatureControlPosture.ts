@@ -75,7 +75,7 @@ export function resolveDeviceControlPosture(
     // whatever the settings say (a battery only through the storage stage).
     // `managed` reads the snapshot's own stamp: always on for a panel, the
     // owner's Managed toggle for a battery.
-    return { managed: device.managed !== false, commandAuthority: false };
+    return { managed: device.managed, commandAuthority: false };
   }
   return {
     managed,

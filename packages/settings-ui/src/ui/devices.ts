@@ -88,6 +88,7 @@ const hasResolvedAvailability = (value: unknown): value is SettingsUiDeviceListI
   && typeof (value as { isEvCharger?: unknown }).isEvCharger === 'boolean'
   && typeof (value as { binaryControllable?: unknown }).binaryControllable === 'boolean'
   && typeof (value as { isBatteryOrSolar?: unknown }).isBatteryOrSolar === 'boolean'
+  && typeof (value as { managed?: unknown }).managed === 'boolean'
   && typeof (value as { deviceClass?: unknown }).deviceClass === 'string'
   && isDeviceType((value as { deviceType?: unknown }).deviceType)
   && hasValidFlowConflict((value as { flowConflict?: unknown }).flowConflict)

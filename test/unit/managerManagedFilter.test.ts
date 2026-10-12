@@ -4,7 +4,7 @@ import { shouldDropEarly } from '../../lib/device/transport/managerManagedFilter
 // The runtime managed filter keeps a home battery whatever its Managed setting:
 // a battery PELS still holds must stay readable to be handed back.
 describe('shouldDropEarly', () => {
-  const unmanaged = { hasOracle: true, filterActive: true, isManaged: false };
+  const unmanaged = { filterActive: true, isManaged: false };
 
   it('drops an ordinary unmanaged device from the runtime snapshot while the filter is active', () => {
     expect(shouldDropEarly('runtime', unmanaged, false)).toBe(true);

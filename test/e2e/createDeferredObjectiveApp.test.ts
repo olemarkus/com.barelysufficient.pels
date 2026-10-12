@@ -181,7 +181,7 @@ describe('createDeferredObjective (app)', () => {
   it('rejects a managed:false device that IS in the runtime snapshot but the planner drops', async () => {
     // When the managed filter is inactive, the runtime snapshot can carry a
     // `managed: false` device that the plan service's `isRuntimePlannedDevice`
-    // (`managed !== false`) filter drops. Offering/persisting it would create a
+    // (`managed`) filter drops. Offering/persisting it would create a
     // task that never plans or controls anything — reject `device_not_planned`,
     // sharing the exact predicate the candidate listing and planner use.
     const app = await initApp({ managed: false });

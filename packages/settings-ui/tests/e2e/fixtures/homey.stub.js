@@ -1817,11 +1817,14 @@
   // and the list parser requires them: default them the way it does, so a spec's
   // seeded device needs to state them only to say something else. The battery
   // facts (`readSettingsUiBatteryStateFromApp`) likewise: a battery is one PELS can
-  // drive and nobody took over, every other device `not_battery`.
+  // drive and nobody took over, every other device `not_battery`. `managed` is
+  // required too; a seeded device is a managed one unless the spec says
+  // otherwise, which is how the Overview read a device that left it unset.
   const withResolvedIdentity = (device) => ({
     isEvCharger: device.deviceClass === 'evcharger',
     binaryControllable: false,
     isBatteryOrSolar: BATTERY_OR_SOLAR_CLASS_KEYS.has(device.deviceClass),
+    managed: true,
     deviceClass: 'other',
     deviceType: (device.targets?.length ?? 0) > 0 ? 'temperature' : 'onoff',
     batteryControl: device.deviceClass === 'battery' ? 'drivable' : 'not_battery',

@@ -49,7 +49,8 @@ describe('Redesign plan UI', () => {
     // The Overview renders the DEVICE list joined to the plan, so a plan
     // fixture alone no longer draws cards. Seed the device payload these
     // fixtures imply: in production the device list is a superset of the plan's
-    // devices, so mirroring the plan's ids is the faithful minimum.
+    // devices, so mirroring the plan's ids is the faithful minimum. A device in
+    // the plan is one PELS manages.
     const { state } = await import('../src/ui/state.ts');
     state.latestDevices = (normalized.devices ?? []).map((device: Record<string, unknown>) => ({
       id: device.id,
@@ -57,6 +58,7 @@ describe('Redesign plan UI', () => {
       priority: device.priority,
       targets: [],
       available: true,
+      managed: true,
     })) as unknown as typeof state.latestDevices;
     state.devicesLoaded = true;
     const { renderPlan } = await import('../src/ui/plan.ts');
@@ -1202,7 +1204,7 @@ describe('Redesign plan UI', () => {
       await admitMainHomeMembership();
       const { state } = await import('../src/ui/state.ts');
       state.latestDevices = [
-        { id: 'dev-1', name: 'Heater', targets: [], available: true },
+        { id: 'dev-1', name: 'Heater', targets: [], available: true, managed: true },
       ] as unknown as typeof state.latestDevices;
       state.devicesLoaded = true;
       const { renderPlan } = await import('../src/ui/plan.ts');
@@ -1222,7 +1224,9 @@ describe('Redesign plan UI', () => {
       // The Overview's cards are device rows, so seed the device list this
       // fixture implies.
       const { state } = await import('../src/ui/state.ts');
-      state.latestDevices = [{ id: 'dev-clear', name: 'Device to clear', targets: [], available: true }] as unknown as typeof state.latestDevices;
+      state.latestDevices = [{
+        id: 'dev-clear', name: 'Device to clear', targets: [], available: true, managed: true,
+      }] as unknown as typeof state.latestDevices;
       state.devicesLoaded = true;
       const { renderPlan } = await import('../src/ui/plan.ts');
 
@@ -1315,7 +1319,9 @@ describe('Redesign plan UI', () => {
       // The Overview's cards are device rows, so seed the device list this
       // fixture implies.
       const { state } = await import('../src/ui/state.ts');
-      state.latestDevices = [{ id: 'dev-refresh', name: 'Refreshed device', targets: [], available: true }] as unknown as typeof state.latestDevices;
+      state.latestDevices = [{
+        id: 'dev-refresh', name: 'Refreshed device', targets: [], available: true, managed: true,
+      }] as unknown as typeof state.latestDevices;
       state.devicesLoaded = true;
       const homey = installHomeyMock({
         uiState: {

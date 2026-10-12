@@ -356,6 +356,7 @@ describe('transport Main-meter authority', () => {
     const providers: DeviceTransportParseProviders = {
       getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
       getAdditionalMeterDeviceIds: () => ['sub-meter'],
+      getManaged: () => true,
     };
     const report = await fetchTransportLivePowerReport(logger, providers, { state: 'unavailable' });
 
@@ -374,6 +375,7 @@ describe('transport Main-meter authority', () => {
     const dispatcher = createTestObservedStateDispatcher();
     const providers: DeviceTransportParseProviders = {
       getHomeyEnergyMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'meter-main' }),
+      getManaged: () => true,
     };
 
     await expect(pollHomePowerWithMeterFanOut(
@@ -401,6 +403,7 @@ describe('transport Main-meter authority', () => {
       getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
       getAdditionalMeterDeviceIds: () => ['meter-area'],
       onAdditionalMeterReadings,
+      getManaged: () => true,
     };
 
     await expect(pollHomePowerWithMeterFanOut(

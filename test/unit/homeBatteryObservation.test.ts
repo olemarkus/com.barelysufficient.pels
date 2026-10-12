@@ -12,6 +12,7 @@ const battery = (fields: Partial<TransportDeviceSnapshot>): TransportDeviceSnaps
   deviceType: 'onoff',
   targets: [],
   binaryControllable: false,
+  managed: true,
   isEvCharger: false,
   isBatteryOrSolar: true,
   available: true,

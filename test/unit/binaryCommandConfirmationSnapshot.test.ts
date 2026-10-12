@@ -10,6 +10,7 @@ const chargerSnapshot = (observedCapabilityIds: string[]): TransportDeviceSnapsh
   isEvCharger: true,
   isBatteryOrSolar: false,
   binaryControllable: true,
+  managed: true,
   available: true,
   targets: [],
   expectedPowerKw: 1.38,

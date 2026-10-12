@@ -49,6 +49,8 @@ it('drops a delayed list opt-in after the owner switches the charger back off', 
     deviceClass: 'evcharger',
     isEvCharger: true,
     isBatteryOrSolar: false,
+    // The opt-in under test: the charger is not managed yet.
+    managed: false,
     deviceType: 'onoff',
     binaryControllable: false,
     expectedPowerKw: 7.36,

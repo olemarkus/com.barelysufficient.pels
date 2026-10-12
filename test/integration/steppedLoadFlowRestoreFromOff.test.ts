@@ -91,6 +91,7 @@ const buildParseDeps = (logger: Logger, profile: SteppedLoadProfile): DeviceTran
   logger,
   providers: {
     getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
+    getManaged: () => true,
     getNativeEvWiringEnabled: () => true,
     getDeviceControlProfile: () => profile,
   },

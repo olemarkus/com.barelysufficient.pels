@@ -3,14 +3,14 @@ import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
 
 /**
- * The device-list carrier the Overview joins on. Widens the shared list item
- * with the two descriptor fields this surface needs and no others: `managed`
- * decides membership, `priority` decides order. Both are settings-owned facts
- * about the device, which is why they come from the device payload rather than
- * from the plan.
+ * The device-list carrier the Overview joins on. The shared list item already
+ * carries `managed`, which decides membership; this widens it with the one more
+ * descriptor field the surface needs, `priority`, which decides order. Both are
+ * settings-owned facts about the device, which is why they come from the device
+ * payload rather than from the plan.
  */
 export type SettingsUiOverviewDevice = SettingsUiDeviceListItem
-  & Pick<DeviceDescriptor, 'managed' | 'priority'>;
+  & Pick<DeviceDescriptor, 'priority'>;
 
 /**
  * One Overview card's inputs.
@@ -31,15 +31,12 @@ export type OverviewDeviceRowsRead =
 
 /**
  * Membership mirrors the runtime's own planned-device filter
- * (`isRuntimePlannedDevice`, `setup/appDeviceSupport.ts`): `managed !== false`.
- *
- * The runtime always resolves `managed` to a boolean before the device list
- * reaches the UI (`resolveManagedState` answers for every device), so this and
- * `managed === true` agree on every real payload; only a fixture leaves the flag
- * unset. Keying on the runtime's own expression keeps the Overview listing
- * exactly the devices PELS plans.
+ * (`isRuntimePlannedDevice`, `setup/appDeviceSupport.ts`): the device's
+ * `managed` flag. The runtime resolves it to a boolean for every device before
+ * the list reaches the UI (`resolveManagedState`), so keying on the flag keeps
+ * the Overview listing exactly the devices PELS plans.
  */
-const isOverviewMember = (device: SettingsUiOverviewDevice): boolean => device.managed !== false;
+const isOverviewMember = (device: SettingsUiOverviewDevice): boolean => device.managed;
 
 const byPriority = (a: SettingsUiOverviewDevice, b: SettingsUiOverviewDevice): number => (
   (a.priority ?? 999) - (b.priority ?? 999)

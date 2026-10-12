@@ -504,6 +504,7 @@ export const withDeviceConfiguration = <T extends {
     isBatteryOrSolar: configuration.isBatteryOrSolar,
     isEvCharger: configuration.isEvCharger,
     starvationSupported: configuration.starvationSupported,
+    managed: configuration.managed,
     expectedPowerKw: configuration.expectedPowerKw,
     expectedPowerSource: configuration.expectedPowerSource,
   };

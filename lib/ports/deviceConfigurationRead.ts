@@ -17,7 +17,7 @@ type DeviceConfigurationFields = {
   canSetControl?: DeviceDescriptorRead['canSetControl'];
   powerCapable?: DeviceDescriptorRead['powerCapable'];
   controllable?: DeviceDescriptorRead['controllable'];
-  managed?: DeviceDescriptorRead['managed'];
+  managed: DeviceDescriptorRead['managed'];
   budgetExempt?: DeviceDescriptorRead['budgetExempt'];
   priority?: DeviceDescriptorRead['priority'];
   expectedPowerKw: number;

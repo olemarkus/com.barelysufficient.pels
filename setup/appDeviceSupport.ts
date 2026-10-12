@@ -43,27 +43,20 @@ export function isManagedFilterActive(managedDevices: BooleanMap): boolean {
 // filter is inactive (no device explicitly opted-in) yet be dropped by the
 // planner — it would be offered/persisted but never planned or controlled.
 //
-// TWO SHAPES, ONE RULE. A raw snapshot carries an optional `managed`; a plan
-// device carries the producer-resolved `control.managed`. Both ask the same
-// question, so both go through `plannedFromManagedFlag` below rather than
-// spelling the comparison twice — the header above demands the consumers stay in
-// step, and two expressions of one rule is how that stops being true.
-//
-// In production `managed` is always resolved: the transport asks
-// `resolveManagedState`, which answers a boolean for every device (an ordinary
-// load with no `managed_devices` entry reads as not managed, a battery follows
-// its Managed toggle, a panel is always managed). So `!== false` and `=== true`
-// agree there; `undefined` only reaches this from a parse with no managed source
-// (a fixture), which it treats as planned.
-const plannedFromManagedFlag = (managed: boolean | undefined): boolean => managed !== false;
-
-export function isRuntimePlannedDevice(device: { managed?: boolean }): boolean {
-  return plannedFromManagedFlag(device.managed);
+// TWO SHAPES, ONE RULE. A raw snapshot carries `managed`; a plan device carries
+// the same producer-resolved answer as `control.managed`. The rule is the flag
+// itself: the transport asks `resolveManagedState` at parse, which answers a
+// boolean for every device (an ordinary load with no `managed_devices` entry
+// reads as not managed, a battery follows its Managed toggle, a panel is always
+// managed), and the descriptor declares it required, so there is no unset case
+// to interpret.
+export function isRuntimePlannedDevice(device: { managed: boolean }): boolean {
+  return device.managed;
 }
 
 /** Plan-device form of {@link isRuntimePlannedDevice}; same rule, resolved shape. */
 export function isRuntimePlannedPlanDevice(device: { control: { managed: boolean } }): boolean {
-  return plannedFromManagedFlag(device.control.managed);
+  return device.control.managed;
 }
 
 export function seedTemperatureShedFloorDefaults(params: {

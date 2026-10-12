@@ -93,6 +93,7 @@ const buildDeviceReading = (
   isEvCharger: false,
   isBatteryOrSolar: false,
   binaryControllable: true,
+  managed: true,
   controlModel: 'stepped_load',
   temperature: {
     currentTemperature: tempC,

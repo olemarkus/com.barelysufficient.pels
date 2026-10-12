@@ -523,7 +523,7 @@ function resolveParsedDeviceSettings(
 ): ParsedDeviceSettings {
     const base = {
         controllable: providers.getControllable?.(deviceId),
-        managed: providers.getManaged?.(deviceId),
+        managed: providers.getManaged(deviceId),
         budgetExempt: providers.getBudgetExempt?.(deviceId),
         flowConflict: providers.getFlowConflict?.(deviceId),
     };

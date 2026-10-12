@@ -126,12 +126,7 @@ export class DeviceTransport {
     private readonly retainedPower: RetainedPowerPersistence;
     private readonly observationBridge: ObservationBridge;
     private readonly binaryEvidence: BinarySettleEvidenceService;
-    // Pre-wiring boot placeholder only: `initializeDeviceApi` wiring always
-    // replaces it. `unavailable` is the honest pre-wiring answer — never a
-    // fabricated selection.
-    private providers: DeviceTransportParseProviders = {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-    };
+    private readonly providers: DeviceTransportParseProviders;
     private readonly getFlowTriggerCard: DeviceTransportOptions['getFlowTriggerCard'];
     // Read-only home-battery awareness producer. Holds the detected battery-id set
     // (the authoritative role-membership set the app's managed/controllable
@@ -172,13 +167,13 @@ export class DeviceTransport {
     constructor(
         homey: Homey.App,
         logger: Logger,
-        providers: DeviceTransportParseProviders | undefined,
+        providers: DeviceTransportParseProviders,
         powerState: DeviceTransportPowerState | undefined,
         options: DeviceTransportOptions,
     ) {
         this.logger = logger;
         this.getFlowTriggerCard = options.getFlowTriggerCard;
-        if (providers) this.providers = providers;
+        this.providers = providers;
         this.notifications = new TransportNotifications(options.onSnapshotMutated);
         this.deviceSdk = new DeviceHomeySdk(
             homey,

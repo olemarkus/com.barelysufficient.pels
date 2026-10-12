@@ -34,6 +34,7 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
   isEvCharger: false,
   isBatteryOrSolar: false,
   binaryControllable: true,
+  managed: true,
   binaryControl: { on: true },
   temperature: { currentTemperature, target },
   lastFreshDataMs: startMs,

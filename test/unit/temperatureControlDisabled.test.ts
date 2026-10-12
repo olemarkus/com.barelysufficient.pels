@@ -50,6 +50,7 @@ const thermostat = (): TargetDeviceSnapshot & TemperatureObservedProbe => ({
   targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
   capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
   binaryControllable: true,
+  managed: true,
   binaryControl: { on: true },
 });
 
