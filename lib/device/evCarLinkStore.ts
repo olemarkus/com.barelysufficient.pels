@@ -18,7 +18,12 @@ import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { createJsonRowTable } from '../store/jsonRowTable';
-import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
+import {
+    hasLegacyImportMark,
+    importLegacySettingsKey,
+    isLegacySettingsKeyListed,
+    writeLegacyImportMark,
+} from '../store/legacySettingsImport';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
 import { EV_CAR_LINK_STATE } from '../utils/settingsKeys';
@@ -27,6 +32,7 @@ import {
     createEmptyEvCarLinkSnapshot,
     EV_CAR_LINK_VERSION,
     normalizeEvCarLinkSnapshot,
+    normalizeLegacyEvCarLinkSnapshot,
     pruneEvCarLinkSnapshot,
     withLegacyEvCarLinkUnder,
 } from './evCarLinkSnapshot';
@@ -43,6 +49,10 @@ export type EvCarLinkRepository = {
     read(nowMs: number): EvCarLinkSnapshot | null;
     /** Persist `snapshot`, touching only the families that differ from what the store holds. */
     write(snapshot: EvCarLinkSnapshot): void;
+    /** Whether the legacy `ev_car_link_state` blob was imported into the store. Throws only on I/O. */
+    hasImportedLegacy(): boolean;
+    /** {@link write} the snapshot the legacy import made and mark the import, in one transaction. */
+    writeLegacyImport(snapshot: EvCarLinkSnapshot): void;
 };
 
 export const createEvCarLinkRepository = (db: UserdataDatabase): EvCarLinkRepository => {
@@ -51,6 +61,11 @@ export const createEvCarLinkRepository = (db: UserdataDatabase): EvCarLinkReposi
     const families = createJsonRowTable(db, 'ev_car_link_state', ['family', 'value_json'], (value, key) => (
         FAMILIES.has(key) && typeof value === 'object' && value !== null && !Array.isArray(value) ? value : undefined
     ));
+    const writeFamilies = (snapshot: EvCarLinkSnapshot): void => families.write(new Map<string, object>([
+        ['pairs', snapshot.pairs],
+        ['cars', snapshot.cars],
+        ['sessions', snapshot.sessions],
+    ]));
     return {
         read: (nowMs) => {
             const rows = db.transaction(() => families.read());
@@ -66,11 +81,12 @@ export const createEvCarLinkRepository = (db: UserdataDatabase): EvCarLinkReposi
             // ones appear. The pruned families are written at the next change.
             return snapshot === null ? null : pruneEvCarLinkSnapshot(snapshot, nowMs);
         },
-        write: (snapshot) => db.transaction(() => families.write(new Map<string, object>([
-            ['pairs', snapshot.pairs],
-            ['cars', snapshot.cars],
-            ['sessions', snapshot.sessions],
-        ]))),
+        write: (snapshot) => db.transaction(() => writeFamilies(snapshot)),
+        hasImportedLegacy: () => hasLegacyImportMark(db, EV_CAR_LINK_STATE),
+        writeLegacyImport: (snapshot) => db.transaction(() => {
+            writeFamilies(snapshot);
+            writeLegacyImportMark(db, EV_CAR_LINK_STATE);
+        }),
     };
 };
 
@@ -79,11 +95,15 @@ export const createEvCarLinkRepository = (db: UserdataDatabase): EvCarLinkReposi
  * store, run at boot before the store is read. Rules and their reasons:
  * `lib/store/legacySettingsImport.ts`. The probe writes from an empty boot (a
  * deferred import still lets it vote), so "the store holds rows" never retires
- * the key: the blob goes under what the store holds instead.
+ * the key: the blob goes under what the store holds instead. Only the import's
+ * own mark retires it: an import whose unset failed must not merge the blob
+ * again, which would bring back the stops of a charge limit disproven since
+ * (`clearEvCarObservedStops`).
  *
  * Answers whether the store holds the probe's whole history: not while a
- * suspect read left the blob for the next boot. A blob with no snapshot in it
- * holds no history, so it does not count.
+ * suspect read, or a key list that could not be read, leaves the blob unread,
+ * unless an import already completed. A blob with no snapshot in it, or whose
+ * every entry is malformed, holds no history, so it does not count.
  */
 export const importLegacyEvCarLinkState = (
     settings: SettingsPort,
@@ -91,18 +111,18 @@ export const importLegacyEvCarLinkState = (
     nowMs: number,
 ): boolean => {
     const listed = isLegacySettingsKeyListed(settings, EV_CAR_LINK_STATE);
+    if (listed === false) return true;
     // An unreadable key list says nothing about the blob: retried next boot,
-    // and the history is not complete until then.
-    if (listed === null) return false;
-    if (!listed) return true;
+    // and only a completed import says the store holds it.
+    if (listed === null) return hasImported(repository);
     const result = importLegacySettingsKey(settings, EV_CAR_LINK_STATE, {
-        holds: () => false,
+        holds: () => repository.hasImportedLegacy(),
         adopt: (raw) => {
-            const normalized = normalizeEvCarLinkSnapshot(raw, nowMs);
+            const normalized = normalizeLegacyEvCarLinkSnapshot(raw, nowMs);
             if (normalized === null) return false;
             const legacy = pruneEvCarLinkSnapshot(normalized, nowMs);
             const stored = repository.read(nowMs);
-            repository.write(stored === null ? legacy : withLegacyEvCarLinkUnder(stored, legacy));
+            repository.writeLegacyImport(stored === null ? legacy : withLegacyEvCarLinkUnder(stored, legacy));
             return true;
         },
     });
@@ -117,7 +137,17 @@ export const importLegacyEvCarLinkState = (
             ...(result.error === undefined ? {} : { err: normalizeError(result.error) }),
         });
     }
-    return result.outcome !== 'deferred' || result.reason === 'not_a_value' || result.reason === 'unset_threw';
+    return result.outcome !== 'deferred' || result.reason === 'not_a_value' || result.reason === 'unset_threw'
+        || hasImported(repository);
+};
+
+/** Whether an import completed on an earlier boot; a store that cannot say has not shown one. */
+const hasImported = (repository: EvCarLinkRepository): boolean => {
+    try {
+        return repository.hasImportedLegacy();
+    } catch {
+        return false;
+    }
 };
 
 /**

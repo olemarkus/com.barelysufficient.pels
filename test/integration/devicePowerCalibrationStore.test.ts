@@ -301,6 +301,57 @@ describe('importLegacyPowerCalibration', () => {
     expect(settings.get(POWER_CALIBRATION)).toBeNull();
   });
 
+  // Pruning drops a device on purpose. Merging the blob again on the next boot
+  // would bring it back; the import's mark retires the key instead.
+  it('retires the key of an import whose unset threw, so a device pruned since stays gone', () => {
+    const { settings, db, repository } = rig();
+    settings.set(POWER_CALIBRATION, markedBlob);
+    const unset = vi.spyOn(settings, 'unset').mockImplementationOnce(() => { throw new Error('sdk unavailable'); });
+    importLegacyPowerCalibration(settings, repository);
+    unset.mockRestore();
+    expect(settings.get(POWER_CALIBRATION)).toEqual(markedBlob);
+    const store = memoryStore(db);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot({ lastFreshDataMs: 100_000 }), 100_000);
+    store.prune(100_000, 50_000);
+    expect(Object.keys(store.getSnapshot().devices)).toEqual(['hoiax-1']);
+
+    const capture = captureLogger();
+    try {
+      importLegacyPowerCalibration(settings, repository);
+      expect(capture.findEvent('legacy_power_calibration_key_retired')).toMatchObject({ reason: 'store_already_holds' });
+    } finally {
+      capture.restore();
+    }
+    expect(settings.get(POWER_CALIBRATION)).toBeNull();
+    expect(Object.keys(memoryStore(db).getSnapshot().devices)).toEqual(['hoiax-1']);
+  });
+
+  // A blob whose every device is malformed is a failed read, not an empty
+  // calibration: importing it would unset the key with nothing taken. A device
+  // whose every step is malformed holds nothing either.
+  it('keeps the key of a blob whose every device is malformed', () => {
+    const { settings, db, repository } = rig();
+    const malformed = {
+      ...markedBlob,
+      devices: {
+        broken: { steps: 'oops', lastTouchedMs: 1_000 },
+        partial: { steps: { max: { observedKw: 'oops' } }, lastTouchedMs: 1_000 },
+      },
+    };
+    settings.set(POWER_CALIBRATION, malformed);
+    importLegacyPowerCalibration(settings, repository);
+    expect(settings.get(POWER_CALIBRATION)).toEqual(malformed);
+    expect(rowCount(db)).toBe(0);
+  });
+
+  it('imports an empty blob', () => {
+    const { settings, repository } = rig();
+    settings.set(POWER_CALIBRATION, { ...markedBlob, devices: {} });
+    importLegacyPowerCalibration(settings, repository);
+    expect(settings.get(POWER_CALIBRATION)).toBeNull();
+    expect(repository.hasImportedLegacy()).toBe(true);
+  });
+
   // One transient must never cost the calibration: a suspect read leaves the
   // key where it is for the next boot.
   it('defers on a suspect read, a value with no calibration in it, or a store that cannot answer', () => {
@@ -313,7 +364,7 @@ describe('importLegacyPowerCalibration', () => {
     const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === POWER_CALIBRATION ? undefined : originalGet(key)));
     importLegacyPowerCalibration(settings, repository);
     get.mockRestore();
-    const write = vi.spyOn(repository, 'write').mockImplementation(() => { throw new Error('disk full'); });
+    const write = vi.spyOn(repository, 'writeLegacyImport').mockImplementation(() => { throw new Error('disk full'); });
     importLegacyPowerCalibration(settings, repository);
     write.mockRestore();
     expect(memoryStore(db).getSnapshot().devices).toEqual({});

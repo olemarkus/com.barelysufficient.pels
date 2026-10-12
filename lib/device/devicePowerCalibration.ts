@@ -135,8 +135,13 @@ export type PersistedPowerCalibration =
 /**
  * Read a legacy settings value defensively: partial device and step records
  * are dropped, and a value without the step-floor mark comes back `upgraded`,
- * with the step reset applied. `null` for a value that is not a calibration of
- * this version at all.
+ * with the step reset applied. `null` for a value that holds nothing usable:
+ * not a calibration of this version at all, or one that carried devices every
+ * one of which is malformed. That is a malformed read rather than an empty
+ * calibration, so the import leaves the key (`lib/store/legacySettingsImport.ts`).
+ * A device whose every step is malformed counts as malformed; one that
+ * carried no steps does not. Steps the step-floor reset drops are dropped by
+ * rule, so they are counted before it.
  */
 export function normalizePersistedPowerCalibration(value: unknown): PersistedPowerCalibration | null {
   if (!isRecord(value)) return null;
@@ -150,6 +155,10 @@ export function normalizePersistedPowerCalibration(value: unknown): PersistedPow
     const normalized = normalizeDeviceCalibration(deviceRaw);
     return normalized ? [[deviceId, normalized] as const] : [];
   });
+  const usable = entries.some(([deviceId, device]) => (
+    Object.keys(device.steps).length > 0 || stepCount(devicesRaw[deviceId]) === 0
+  ));
+  if (Object.keys(devicesRaw).length > 0 && !usable) return null;
   const snapshot: PowerCalibrationSnapshot = {
     version: POWER_CALIBRATION_VERSION,
     devices: Object.fromEntries(entries),
@@ -502,6 +511,11 @@ export function normalizeDeviceCalibration(value: unknown): DeviceCalibration | 
     return normalized ? [[stepId, normalized] as const] : [];
   });
   return { steps: Object.fromEntries(stepEntries), lastTouchedMs: lastTouchedRaw };
+}
+
+/** How many step records a raw device record carried, malformed ones included. */
+function stepCount(deviceRaw: unknown): number {
+  return isRecord(deviceRaw) && isRecord(deviceRaw.steps) ? Object.keys(deviceRaw.steps).length : 0;
 }
 
 /** `value` carries every field of a `StepCalibration` in a usable range; fields beyond them are dropped. */

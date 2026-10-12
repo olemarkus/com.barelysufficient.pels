@@ -22,7 +22,12 @@ import {
   withLegacyCalibrationUnder,
 } from './devicePowerCalibration';
 import type { SettingsPort } from '../ports/homeyRuntime';
-import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
+import {
+  hasLegacyImportMark,
+  importLegacySettingsKey,
+  isLegacySettingsKeyListed,
+  writeLegacyImportMark,
+} from '../store/legacySettingsImport';
 import { createJsonRowTable } from '../store/jsonRowTable';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { POWER_CALIBRATION } from '../utils/settingsKeys';
@@ -55,6 +60,10 @@ export type PowerCalibrationRepository = {
   read(): PowerCalibrationSnapshot;
   /** Persist `snapshot`, touching only the devices that differ from what the store holds. */
   write(snapshot: PowerCalibrationSnapshot): void;
+  /** Whether the legacy `power_calibration` blob was imported into the store. Throws only on I/O. */
+  hasImportedLegacy(): boolean;
+  /** {@link write} the snapshot the legacy import made and mark the import, in one transaction. */
+  writeLegacyImport(snapshot: PowerCalibrationSnapshot): void;
 };
 
 export const createPowerCalibrationRepository = (db: UserdataDatabase): PowerCalibrationRepository => {
@@ -62,12 +71,20 @@ export const createPowerCalibrationRepository = (db: UserdataDatabase): PowerCal
     db, 'power_calibration_devices', ['device_id', 'calibration_json'],
     (value) => normalizeDeviceCalibration(value) ?? undefined,
   );
+  const writeDevices = (snapshot: PowerCalibrationSnapshot): void => (
+    devices.write(new Map(Object.entries(snapshot.devices)))
+  );
   return {
     read: () => ({
       version: POWER_CALIBRATION_VERSION,
       devices: Object.fromEntries(db.transaction(() => devices.read())),
     }),
-    write: (snapshot) => db.transaction(() => devices.write(new Map(Object.entries(snapshot.devices)))),
+    write: (snapshot) => db.transaction(() => writeDevices(snapshot)),
+    hasImportedLegacy: () => hasLegacyImportMark(db, POWER_CALIBRATION),
+    writeLegacyImport: (snapshot) => db.transaction(() => {
+      writeDevices(snapshot);
+      writeLegacyImportMark(db, POWER_CALIBRATION);
+    }),
   };
 };
 
@@ -76,18 +93,21 @@ export const createPowerCalibrationRepository = (db: UserdataDatabase): PowerCal
  * store, run at boot before the store is read. Rules and their reasons:
  * `lib/store/legacySettingsImport.ts`. Samples are written from an empty boot
  * (a deferred import still calibrates), so "the store holds rows" never
- * retires the key: the blob goes under what the store holds instead. A blob a
+ * retires the key: the blob goes under what the store holds instead. Only the
+ * import's own mark retires it: an import whose unset failed must not merge
+ * the blob again, which would bring back a device pruned since. A blob a
  * build without the step floor wrote has its under-learned steps reset on the
- * way in, each named once.
+ * way in, each named once; one whose every device is malformed holds nothing
+ * usable and keeps its key (`normalizePersistedPowerCalibration`).
  */
 export const importLegacyPowerCalibration = (settings: SettingsPort, repository: PowerCalibrationRepository): void => {
   if (isLegacySettingsKeyListed(settings, POWER_CALIBRATION) !== true) return;
   const result = importLegacySettingsKey(settings, POWER_CALIBRATION, {
-    holds: () => false,
+    holds: () => repository.hasImportedLegacy(),
     adopt: (raw) => {
       const legacy = normalizePersistedPowerCalibration(raw);
       if (legacy === null) return false;
-      repository.write(withLegacyCalibrationUnder(repository.read(), legacy.snapshot));
+      repository.writeLegacyImport(withLegacyCalibrationUnder(repository.read(), legacy.snapshot));
       if (legacy.kind === 'upgraded') logLegacyStepReset(legacy.resetSteps);
       return true;
     },

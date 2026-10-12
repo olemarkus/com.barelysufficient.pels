@@ -5,11 +5,14 @@ import {
   importLegacyEvCarLinkState,
 } from '../../lib/device/evCarLinkStore';
 import {
+  clearEvCarObservedStops,
+  createEmptyEvCarLinkSnapshot,
   EV_CAR_LINK_PRUNE_MAX_AGE_MS,
   EV_CAR_LINK_VERSION,
   recordEvCarLinkSession,
   recordEvCarLinkVote,
   recordEvCarSelfStopSoc,
+  resolveEvCarChargeLimit,
 } from '../../lib/device/evCarLinkSnapshot';
 import { createEvCarLinkProducer } from '../../lib/device/evCarLinkWiring';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -162,7 +165,8 @@ describe('importLegacyEvCarLinkState', () => {
 
   // A boot whose import deferred still lets the probe vote; the next boot's
   // import keeps both, the store's records winning where both have one, and
-  // never brings back a session the store may have seen end.
+  // never brings back a session the store may have seen end, or the stops of
+  // a car the store has linked since.
   it('imports the blob under what the store already holds', () => {
     const { settings, repository } = rig();
     repository.write({
@@ -171,18 +175,125 @@ describe('importLegacyEvCarLinkState', () => {
       cars: {},
       sessions: {},
     });
+    const guest = { stopSocPct: [70, 70], lastObservedAtMs: NOW - 3_000 };
     settings.set(EV_CAR_LINK_STATE, {
       ...HISTORY,
-      pairs: { ...HISTORY.pairs, 'car|other': { votes: 2, lastVotedAtMs: NOW - 3_000 } },
+      pairs: { ...HISTORY.pairs, 'guest|other': { votes: 2, lastVotedAtMs: NOW - 3_000 } },
+      cars: { ...HISTORY.cars, guest },
     });
     importLegacyEvCarLinkState(settings, repository, NOW);
     expect(repository.read(NOW)).toEqual({
       version: EV_CAR_LINK_VERSION,
-      pairs: { 'car|charger': { votes: 1, lastVotedAtMs: NOW }, 'car|other': { votes: 2, lastVotedAtMs: NOW - 3_000 } },
-      cars: HISTORY.cars,
+      pairs: { 'car|charger': { votes: 1, lastVotedAtMs: NOW }, 'guest|other': { votes: 2, lastVotedAtMs: NOW - 3_000 } },
+      cars: { guest },
       sessions: {},
     });
     expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
+  });
+
+  // The deferred boot linked the car, learned its limit and saw it charge past
+  // it, which clears the car's stops. The blob's older stops agree on the same
+  // limit: refilling them would qualify the disproven limit again.
+  it('never refills the stops of a car the store linked while the import was deferred', () => {
+    const { settings, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, HISTORY);
+    const originalGet = settings.get.bind(settings);
+    const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === EV_CAR_LINK_STATE ? undefined : originalGet(key)));
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(false);
+    get.mockRestore();
+    const access = createPersistedEvCarLinkAccess(repository, NOW, false);
+    access.set(recordEvCarLinkVote(access.get(), 'car', 'charger', NOW));
+    access.set(recordEvCarSelfStopSoc(access.get(), 'car', 80, NOW));
+    access.set(recordEvCarSelfStopSoc(access.get(), 'car', 80, NOW));
+    expect(resolveEvCarChargeLimit(access.get(), 'car')).toBe(80);
+    access.set(clearEvCarObservedStops(access.get(), 'car'));
+
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+    expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
+    const merged = repository.read(NOW) ?? createEmptyEvCarLinkSnapshot();
+    expect(merged.cars).toEqual({});
+    expect(resolveEvCarChargeLimit(merged, 'car')).toBeNull();
+  });
+
+  // A disproven limit clears the car's stops (`evCarLinkSelfStop.ts`). Merging
+  // the blob again on the next boot would bring them back; the import's mark
+  // retires the key instead.
+  it('retires the key of an import whose unset threw, so a limit disproven since stays gone', () => {
+    const { settings, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, HISTORY);
+    const unset = vi.spyOn(settings, 'unset').mockImplementationOnce(() => { throw new Error('sdk unavailable'); });
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+    unset.mockRestore();
+    expect(settings.get(EV_CAR_LINK_STATE)).toEqual(HISTORY);
+    const access = createPersistedEvCarLinkAccess(repository, NOW, true);
+    expect(resolveEvCarChargeLimit(access.get(), 'car')).toBe(80);
+    access.set(clearEvCarObservedStops(access.get(), 'car'));
+
+    const capture = captureLogger();
+    try {
+      expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+      expect(capture.findEvent('legacy_ev_car_link_state_key_retired')).toMatchObject({ reason: 'store_already_holds' });
+      expect(capture.findEvent('legacy_ev_car_link_state_imported')).toBeUndefined();
+    } finally {
+      capture.restore();
+    }
+    expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
+    const reloaded = createPersistedEvCarLinkAccess(repository, NOW, true).get();
+    expect(reloaded.cars).toEqual({});
+    expect(resolveEvCarChargeLimit(reloaded, 'car')).toBeNull();
+  });
+
+  // An empty key list is the SDK's flake, not an install without the blob: the
+  // store may not hold the history yet, so a car must not read as never
+  // matched. Once an import has completed, the store holds it either way.
+  it('reports the history unresolved when the key list comes back empty, until an import completed', () => {
+    const { settings, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, HISTORY);
+    const keys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const historyResolved = importLegacyEvCarLinkState(settings, repository, NOW);
+    keys.mockRestore();
+    expect(historyResolved).toBe(false);
+    expect(settings.get(EV_CAR_LINK_STATE)).toEqual(HISTORY);
+    const producer = createEvCarLinkProducer(
+      () => {}, () => [], createPersistedEvCarLinkAccess(repository, NOW, historyResolved), undefined, undefined,
+    );
+    expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
+
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+  });
+
+  // A blob whose every entry is malformed is a failed read, not an empty
+  // snapshot: importing it would unset the key with nothing taken.
+  it('keeps the key of a blob whose every entry is malformed', () => {
+    const { settings, repository } = rig();
+    const malformed = {
+      version: EV_CAR_LINK_VERSION,
+      pairs: { 'not-a-pair': { votes: 1, lastVotedAtMs: NOW }, 'car|charger': { votes: 'five' } },
+      cars: { car: { stopSocPct: 'eighty', lastObservedAtMs: NOW } },
+      sessions: { charger: { carId: '', sinceMs: NOW } },
+    };
+    settings.set(EV_CAR_LINK_STATE, malformed);
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+    expect(settings.get(EV_CAR_LINK_STATE)).toEqual(malformed);
+    expect(repository.read(NOW)).toBeNull();
+  });
+
+  // Nothing malformed in either: an empty snapshot is one, and a version-1
+  // blob's stops are dropped by rule.
+  it('imports an empty blob, and a version-1 blob holding only stops', () => {
+    for (const blob of [
+      { version: EV_CAR_LINK_VERSION, pairs: {}, cars: {}, sessions: {} },
+      { version: 1, pairs: {}, cars: HISTORY.cars },
+    ]) {
+      const { settings, repository } = rig();
+      settings.set(EV_CAR_LINK_STATE, blob);
+      expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+      expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
+      expect(repository.read(NOW)).toEqual(createEmptyEvCarLinkSnapshot());
+      expect(repository.hasImportedLegacy()).toBe(true);
+    }
   });
 
   // One transient must never cost the probe's evidence: a suspect read leaves
@@ -197,7 +308,7 @@ describe('importLegacyEvCarLinkState', () => {
     const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === EV_CAR_LINK_STATE ? undefined : originalGet(key)));
     importLegacyEvCarLinkState(settings, repository, NOW);
     get.mockRestore();
-    const write = vi.spyOn(repository, 'write').mockImplementation(() => { throw new Error('disk full'); });
+    const write = vi.spyOn(repository, 'writeLegacyImport').mockImplementation(() => { throw new Error('disk full'); });
     importLegacyEvCarLinkState(settings, repository, NOW);
     write.mockRestore();
     expect(repository.read(NOW)).toBeNull();

@@ -97,7 +97,7 @@ export const importLegacyPowerTrackers = (
   const result: LegacyTrackerImport = { imported: [], retired: [], deferred: [] };
   const keys = listLegacySettingsKeys(settings, (candidate) => legacyHomeId(candidate) !== null);
   if (keys === null) {
-    importLogger.warn({ event: 'legacy_power_tracker_import_deferred', reason: 'key_list_threw' });
+    importLogger.warn({ event: 'legacy_power_tracker_import_deferred', reason: 'key_list_unreadable' });
     return result;
   }
   for (const key of keys) {

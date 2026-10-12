@@ -380,28 +380,34 @@ describe('normalizePersistedPowerCalibration', () => {
     expect(result.devices.bad).toBeUndefined();
   });
 
-  it('preserves a device entry with all-invalid steps so recovery can refill it', () => {
+  it('preserves a device entry with all-invalid steps next to a usable device', () => {
     // A partial corruption (every step record malformed but the device-level
     // fields intact) must not wipe the entire device — otherwise a single
     // bad step would drop all of the device's calibration history. The
     // entry survives with an empty `steps` map; subsequent samples rebuild
     // the EMA in place.
+    const partial = {
+      lastTouchedMs: 12345,
+      steps: {
+        badA: { observedKw: 'oops' },
+        badB: { samples: -1, observedKw: 1, nameplateAtSampleKw: 2, sustainedSeconds: 0, lastSampleMs: 0 },
+      },
+    };
     const { snapshot: result } = read({
       version: POWER_CALIBRATION_VERSION,
       stepFloorApplied: true,
-      devices: {
-        partial: {
-          lastTouchedMs: 12345,
-          steps: {
-            badA: { observedKw: 'oops' },
-            badB: { samples: -1, observedKw: 1, nameplateAtSampleKw: 2, sustainedSeconds: 0, lastSampleMs: 0 },
-          },
-        },
-      },
+      devices: { partial, empty: { lastTouchedMs: 1, steps: {} } },
     });
     expect(result.devices.partial).toBeDefined();
     expect(result.devices.partial.steps).toEqual({});
     expect(result.devices.partial.lastTouchedMs).toBe(12345);
+    // With no usable device beside it, the value holds nothing: a malformed
+    // read the import leaves for the next boot, not an empty calibration.
+    expect(normalizePersistedPowerCalibration({
+      version: POWER_CALIBRATION_VERSION,
+      stepFloorApplied: true,
+      devices: { partial },
+    })).toBeNull();
   });
 
   const persistedStep = (observedKw: number, nameplateAtSampleKw: number) => ({

@@ -13,8 +13,11 @@
  *   window writes after five minutes, the tracker's prune after ten seconds)
  *   must not answer `holds` from "the store has rows": a deferred import
  *   followed by one such write would retire the blob unread on the next
- *   boot. Those families answer `false` and merge the blob UNDER what the
- *   store holds in `adopt` instead;
+ *   boot. Those families merge the blob UNDER what the store holds in `adopt`
+ *   instead, and answer `holds` either `false` or, where importing the same
+ *   blob twice would bring back what the store has since dropped on purpose,
+ *   from the import mark (`hasLegacyImportMark`) that `adopt` writes in the
+ *   same transaction as the rows, so only a completed import retires the key;
  * - the store is empty and the value adopts → the key is unset;
  * - a suspect read — a listed key answering empty, a value the family finds
  *   nothing usable in, a throwing SDK, a store that cannot be read or
@@ -24,6 +27,7 @@
  *   history, and a blob that is truly garbage costs its bytes, never the key.
  */
 import type { SettingsPort } from '../ports/homeyRuntime';
+import type { UserdataDatabase } from './userdataDatabase';
 
 export type LegacyImportTarget = {
   /** Whether the store already holds this key's family. Throws on I/O. */
@@ -82,29 +86,59 @@ export const importLegacySettingsKey = (
   try {
     return attempt(settings, key, target);
   } catch (error) {
-    // The unset threw: the store holds the family now, and the next boot
-    // finds it there and retires the key.
+    // The unset threw after the store took the value (or already held it).
+    // A family whose `holds` answers from the import mark retires the key on
+    // the next boot; one whose `holds` answers `false` imports the blob again,
+    // under what the store holds by then.
     return { outcome: 'deferred', reason: 'unset_threw', error };
   }
+};
+
+const importMarkKey = (key: string): string => `legacy_import:${key}`;
+
+/**
+ * Whether the legacy `key` was imported into `db`: the row
+ * {@link writeLegacyImportMark} leaves in the database's `meta` table. Throws
+ * only on I/O.
+ */
+export const hasLegacyImportMark = (db: UserdataDatabase, key: string): boolean => (
+  db.prepare('SELECT 1 AS marked FROM meta WHERE key = ?').get(importMarkKey(key)) !== undefined
+);
+
+/**
+ * Record that the legacy `key` was imported into `db`. Call it inside the
+ * transaction that writes the imported rows, so the mark and the rows commit
+ * together or not at all. Throws only on I/O.
+ */
+export const writeLegacyImportMark = (db: UserdataDatabase, key: string): void => {
+  db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING')
+    .run(importMarkKey(key), 'imported');
 };
 
 /**
  * Whether the settings still list `key`: the question every import asks
  * first, so an install that has imported (or never had the key) does not
- * report a deferral on every boot. `null` when the list cannot be read.
+ * report a deferral on every boot. `null` when the list cannot be read
+ * ({@link listLegacySettingsKeys}).
  */
 export const isLegacySettingsKeyListed = (settings: SettingsPort, key: string): boolean | null => {
   const keys = listLegacySettingsKeys(settings, (candidate) => candidate === key);
   return keys === null ? null : keys.length > 0;
 };
 
-/** The keys a legacy family still has in settings; `null` when the list itself cannot be read (retried next boot). */
+/**
+ * The keys a legacy family still has in settings; `null` when the list itself
+ * cannot be read, retried next boot. An empty list is one that was not read:
+ * PELS always has settings keys, so an empty `getKeys()` is the SDK's flake,
+ * never an empty store (`notes/persisted-settings-state.md`).
+ */
 export const listLegacySettingsKeys = (
   settings: SettingsPort,
   matches: (key: string) => boolean,
 ): string[] | null => {
   try {
-    return settings.getKeys().filter(matches);
+    const keys = settings.getKeys();
+    return keys.length === 0 ? null : keys.filter(matches);
   } catch {
     return null;
   }

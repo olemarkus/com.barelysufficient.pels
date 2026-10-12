@@ -158,6 +158,25 @@ export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs: number): EvCar
     };
 };
 
+/**
+ * A legacy settings value as its import reads it: {@link normalizeEvCarLinkSnapshot},
+ * and `null` as well when the value carried entries none of which hold. That
+ * is a malformed read rather than an empty snapshot, so the import leaves the
+ * key (`lib/store/legacySettingsImport.ts`). A version-1 value's stop samples
+ * are dropped by rule, not as malformed, so they do not count: such a value
+ * carrying only stops is empty, and adopts.
+ */
+export const normalizeLegacyEvCarLinkSnapshot = (value: unknown, nowMs: number): EvCarLinkSnapshot | null => {
+    const snapshot = normalizeEvCarLinkSnapshot(value, nowMs);
+    if (snapshot === null || !isRecord(value)) return null;
+    const carried = entryCount(value.pairs) + entryCount(value.sessions)
+        + (value.version === EV_CAR_LINK_VERSION_WITH_UNSOUND_STOPS ? 0 : entryCount(value.cars));
+    const held = entryCount(snapshot.pairs) + entryCount(snapshot.cars) + entryCount(snapshot.sessions);
+    return carried > 0 && held === 0 ? null : snapshot;
+};
+
+const entryCount = (value: unknown): number => (isRecord(value) ? Object.keys(value).length : 0);
+
 /** Records the session a charger is in, so a restart can offer to resume it. */
 export const recordEvCarLinkSession = (
     snapshot: EvCarLinkSnapshot,
@@ -361,7 +380,9 @@ export const pruneEvCarLinkSnapshot = (
  * A legacy settings value under what the store already holds. The store fills
  * from an empty boot (a deferred import still lets the probe vote), and
  * writing the legacy value alone would overwrite the multi-session evidence
- * gathered since.
+ * gathered since. A completed import is marked and never merges again
+ * (`evCarLinkStore.ts`), so this runs after a deferred import, or after one
+ * that completed before imports were marked and whose unset failed.
  *
  * Stored entries win per key (pair and car records observed since the upgrade
  * reflect current reality); the legacy value fills everything else, with cars
@@ -372,6 +393,14 @@ export const pruneEvCarLinkSnapshot = (
  * upgrade can be counted on both sides, so summing would inflate exactly the
  * affinity evidence the votes exist to accumulate, while calibration's step
  * EMAs are independent keyed observations with no such overlap.
+ *
+ * A car the store holds a pair for is the store's to answer for, stops or
+ * none: the probe has linked it since, and a limit its stops qualified and a
+ * later charge disproved was cleared (`clearEvCarObservedStops`), which
+ * absence cannot tell from "never stopped". Refilling it would qualify the
+ * disproven limit again. A car with no stored pair was never linked, so it
+ * can neither have banked a stop nor lost one, and takes the legacy stops.
+ *
  * Sessions are deliberately NOT filled from the legacy side: the store's
  * absence cannot distinguish "never seen" from "cleared by an observed session
  * end since the upgrade", and re-injecting a cleared session re-arms the
@@ -382,12 +411,15 @@ export const pruneEvCarLinkSnapshot = (
 export const withLegacyEvCarLinkUnder = (
     stored: EvCarLinkSnapshot,
     legacy: EvCarLinkSnapshot,
-): EvCarLinkSnapshot => ({
-    version: EV_CAR_LINK_VERSION,
-    pairs: { ...legacy.pairs, ...stored.pairs },
-    cars: Object.fromEntries([
-        ...Object.entries(stored.cars),
-        ...Object.entries(legacy.cars).filter(([carId]) => !(carId in stored.cars)),
-    ].slice(0, EV_CAR_LINK_MAX_TRACKED_CARS)),
-    sessions: { ...stored.sessions },
-});
+): EvCarLinkSnapshot => {
+    const linkedCarIds = new Set(Object.keys(stored.pairs).map((key) => parseEvCarLinkPairKey(key)?.carId));
+    return {
+        version: EV_CAR_LINK_VERSION,
+        pairs: { ...legacy.pairs, ...stored.pairs },
+        cars: Object.fromEntries([
+            ...Object.entries(stored.cars),
+            ...Object.entries(legacy.cars).filter(([carId]) => !(carId in stored.cars) && !linkedCarIds.has(carId)),
+        ].slice(0, EV_CAR_LINK_MAX_TRACKED_CARS)),
+        sessions: { ...stored.sessions },
+    };
+};
