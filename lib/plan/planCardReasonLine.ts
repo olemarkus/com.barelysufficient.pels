@@ -158,8 +158,6 @@ export type HeldCardStepView = {
  * Callers already holding a narrowed profile skip this and pass it directly.
  */
 export const resolveHeldCardStepView = (device: {
-  reportedStepId?: string;
-  selectedStepId?: string;
   steppedLoadProfile?: SteppedLoadProfile;
   steppedLoad?: { profile: SteppedLoadProfile; reportedStepId: string | null };
 }): HeldCardStepView => ({
@@ -217,12 +215,11 @@ const resolveStarvedForMs = (
 // waiting stem. Single home so the generic, temperature, and stepped cards
 // cannot drift — the stepped card carried its own competing starvation override
 // until 2026-08-04, and the two disagreed about which fact won.
-const formatHeldNeedLine = (params: {
-  need: string;
-  verb: HeldCardReasonVerb;
-  starvation?: SettingsUiPlanDeviceStarvation | null;
-}): string => {
-  const { need, verb, starvation } = params;
+const formatHeldNeedLine = (
+  need: string,
+  verb: HeldCardReasonVerb,
+  starvation: SettingsUiPlanDeviceStarvation | null | undefined,
+): string => {
   const starvedForMs = resolveStarvedForMs(starvation);
   return starvedForMs === null
     ? `Waiting to ${verb} — ${need}`
@@ -233,7 +230,7 @@ export const formatShortfallLine = (
   shortfallKw: number,
   verb: HeldCardReasonVerb,
   starvation?: SettingsUiPlanDeviceStarvation | null,
-): string => formatHeldNeedLine({ need: formatShortfallNeed(shortfallKw), verb, starvation });
+): string => formatHeldNeedLine(formatShortfallNeed(shortfallKw), verb, starvation);
 
 // Verb-adjusted form of `PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS` (the
 // constant is the `resume` form and stays the log formatter's string).
@@ -243,7 +240,7 @@ export const formatHourlyExhaustedLine = (
 ): string => (
   verb === 'resume' && resolveStarvedForMs(starvation) === null
     ? PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS
-    : formatHeldNeedLine({ need: HOURLY_EXHAUSTED_NEED, verb, starvation })
+    : formatHeldNeedLine(HOURLY_EXHAUSTED_NEED, verb, starvation)
 );
 
 
@@ -269,12 +266,11 @@ const resolveCeilingHoldLine = (
   return shortfallKw === null ? null : formatShortfallLine(shortfallKw, verb, starvation);
 };
 
-export const resolveHeldCardReasonLine = (params: {
-  reason: unknown;
-  starvation?: SettingsUiPlanDeviceStarvation | null;
-  verb?: HeldCardReasonVerb;
-}): string => {
-  const { reason, starvation, verb = 'resume' } = params;
+export const resolveHeldCardReasonLine = (
+  reason: unknown,
+  starvation?: SettingsUiPlanDeviceStarvation | null,
+  verb: HeldCardReasonVerb = 'resume',
+): string => {
 
   // Starvation DECORATES a ceiling hold; it never preempts the ladder. Until
   // 2026-08-04 a budget-caused starvation returned its own line from the top of

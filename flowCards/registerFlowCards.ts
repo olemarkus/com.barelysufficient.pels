@@ -58,12 +58,12 @@ import type {
 // un-confirmable migration or untrustworthy absence read, so the wrappers
 // forward the `ObjectiveWriteOutcome`; the Flow cards throw on a refusal so
 // Homey surfaces a retryable failure rather than a silent (false) success.
-export type UpsertDeferredObjectiveForDevice = (params: {
-  deviceId: string;
-  deviceName: string | null;
-  entry: DeferredObjectiveSettingsEntry;
-  rescue?: 'preserve' | 'replace';
-}) => ObjectiveWriteOutcome;
+export type UpsertDeferredObjectiveForDevice = (
+  deviceId: string,
+  deviceName: string | null,
+  entry: DeferredObjectiveSettingsEntry,
+  rescue?: 'preserve' | 'replace',
+) => ObjectiveWriteOutcome;
 export type ClearDeferredObjectiveForDevice = (params: {
   deviceId: string;
   deviceName: string | null;
@@ -121,11 +121,11 @@ export type FlowCardDeps = {
   normalizeTemperatureTarget: (deviceId: string, temperatureC: number) => number;
   refreshSnapshot: (options?: { emitFlowBackedRefresh?: boolean }) => Promise<void>;
   getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
-  reportFlowBackedCapability: (params: {
-    deviceId: string;
-    capabilityId: FlowReportedCapabilityId;
-    value: boolean | number | string;
-  }) => FlowBackedCapabilityReportOutcome;
+  reportFlowBackedCapability: (
+    deviceId: string,
+    capabilityId: FlowReportedCapabilityId,
+    value: boolean | number | string,
+  ) => FlowBackedCapabilityReportOutcome;
   reportSteppedLoadActualStep: (
     deviceId: string,
     stepId: string,
@@ -171,14 +171,8 @@ export type FlowCardDeps = {
 
 export function registerFlowCards(deps: FlowCardDeps): void {
   const stopSpan = startRuntimeSpan('flow_cards_register');
-  const { homey } = deps;
   try {
-    registerExpectedPowerCard(homey, {
-      getDeviceDescriptors: () => deps.getDeviceDescriptors(),
-      setExpectedOverride: (deviceId, kw) => deps.setExpectedOverride(deviceId, kw),
-      refreshSnapshot: () => deps.refreshSnapshot(),
-      getStructuredLogger: (component: string) => deps.getStructuredLogger(component),
-    });
+    registerExpectedPowerCard(deps);
 
     registerOperatingModeChangedTrigger(deps);
     registerPriceLevelCards(deps);

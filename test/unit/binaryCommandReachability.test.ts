@@ -6,11 +6,11 @@ const buildReachability = () => {
   const scheduleRebuild = vi.fn();
   const clearScheduledRebuild = vi.fn();
   return {
-    reachability: createBinaryCommandReachability({
+    reachability: createBinaryCommandReachability(
       requestRebuild,
       scheduleRebuild,
       clearScheduledRebuild,
-    }),
+    ),
     requestRebuild,
     scheduleRebuild,
     clearScheduledRebuild,

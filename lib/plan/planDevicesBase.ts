@@ -113,12 +113,9 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
   // parked at 6 A under a switch promising PELS turns it off.
   const shedBehavior = resolveEffectiveShedBehavior(dev, shouldShed, inputs.shedBehavior, shedReasons);
   const runtimeDesiredStepId = dev.desiredStepId ?? resolveSteppedLoadInitialDesiredStepId(dev);
-  const shedDesiredStepId = resolveSteppedLoadDirectShedStepId({
-    dev,
-    shedBehavior,
-    shouldShed,
-    plannedShedStepId: shedStepTargets.get(dev.id),
-  });
+  const shedDesiredStepId = resolveSteppedLoadDirectShedStepId(
+    dev, shedBehavior, shouldShed, shedStepTargets.get(dev.id),
+  );
   const isSteppedShed = isSteppedLoadDevice(dev)
     && shedDesiredStepId !== undefined
     && shedDesiredStepId !== dev.selectedStepId;

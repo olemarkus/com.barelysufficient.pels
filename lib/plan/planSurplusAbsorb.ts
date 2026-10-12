@@ -241,38 +241,37 @@ type SurplusPool = { poolKw: number; deviceAddBackKw: number; addedBackIds: Read
  * only place the inferred term is distinguishable from measured export
  * (downstream sees only the flat pool).
  */
-function composeSurplusPool(params: {
-  willing: MeteredPlanInputDevice[];
-  state: PlanEngineState;
-  signedNetKw: number;
-  storage: StorageSurplus;
-  inferredSurplusKw: number;
-  debugStructured?: StructuredDebugEmitter;
-}): SurplusPool {
+function composeSurplusPool(
+  willing: MeteredPlanInputDevice[],
+  state: PlanEngineState,
+  signedNetKw: number,
+  storage: StorageSurplus,
+  inferredSurplusKw: number,
+  debugStructured: StructuredDebugEmitter | undefined,
+): SurplusPool {
   let deviceAddBackKw = 0;
   const addedBackIds = new Set<string>();
-  for (const dev of params.willing) {
-    if (!addsBackOwnDraw(params.state, dev)) continue;
+  for (const dev of willing) {
+    if (!addsBackOwnDraw(state, dev)) continue;
     deviceAddBackKw += positiveOrZero(dev.currentDrawKw);
     addedBackIds.add(dev.id);
   }
-  const measuredExportKw = -params.signedNetKw;
-  const storageChargeW = params.storage.claimants.reduce((totalW, claimant) => totalW + claimant.chargeW, 0);
+  const measuredExportKw = -signedNetKw;
+  const storageChargeW = storage.claimants.reduce((totalW, claimant) => totalW + claimant.chargeW, 0);
   // No clamp: the producers already answer a finite kW >= 0 for every state
   // they can be in, so re-guarding them here would be the hedging consumer
   // AGENTS.md rules out. The components therefore sum to poolKw by construction.
-  const storageTermKw = (storageChargeW - params.storage.dischargeW) / 1000;
-  const { inferredSurplusKw } = params;
+  const storageTermKw = (storageChargeW - storage.dischargeW) / 1000;
   const poolKw = measuredExportKw + deviceAddBackKw + storageTermKw + inferredSurplusKw;
   // Only when there is something to allocate it to: a willing device, or a
   // battery whose charge is in it.
-  if (params.willing.length > 0 || storageChargeW > 0) {
-    params.debugStructured?.({
+  if (willing.length > 0 || storageChargeW > 0) {
+    debugStructured?.({
       event: 'surplus_pool',
       measuredExportKw,
       addBackKw: deviceAddBackKw,
       storageChargeKw: storageChargeW / 1000,
-      storageDischargeKw: params.storage.dischargeW / 1000,
+      storageDischargeKw: storage.dischargeW / 1000,
       inferredSurplusKw,
       poolKw,
     });
@@ -454,14 +453,14 @@ function pruneNonCandidateSurplusState(
  * self-consumption, while waiting to give it back means importing against
  * surplus that is already gone.
  */
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function paceCeilingClimb(params: {
-  dev: MeteredPlanInputDevice;
-  state: PlanEngineState;
-  target: SteppedLoadStep;
-  nowTs: number;
-}): SteppedLoadStep {
-  const { dev, state, target, nowTs } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+function paceCeilingClimb(
+  dev: MeteredPlanInputDevice,
+  state: PlanEngineState,
+  target: SteppedLoadStep,
+  nowTs: number,
+): SteppedLoadStep {
   const currentId = resolveSurplusCeilingStepId(state, dev.id);
   if (currentId === undefined || currentId === target.id) {
     state.surplusTrackingRaisedMs[dev.id] = nowTs;
@@ -483,7 +482,7 @@ function paceCeilingClimb(params: {
   state.surplusTrackingRaisedMs[dev.id] = nowTs;
   return target;
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 /**
  * The VARIABLE claimant. A fixed claimant (temperature lift, binary dump load)
@@ -498,8 +497,8 @@ function paceCeilingClimb(params: {
  *    an unplugged charger (or an unavailable device). Reserving for it would
  *    starve the lower-priority devices behind it on surplus that will never be
  *    consumed — the exact failure `hasStandingDemand` guards the binary posture
- *    against. Releasing rather than deleting-and-forgetting keeps the settle
- *    clock honest when the car comes back.
+ *    against. Its eligibility is dropped, so when the car comes back it
+ *    re-engages through the full settle window.
  * 2. **The on↔off gate runs against the ladder FLOOR**, not against the rung
  *    finally chosen. The floor is what it costs to run at all, so it is the
  *    right `expectedDrawKw` for a settle/dwell/hard-off decision that is about
@@ -524,14 +523,14 @@ function paceCeilingClimb(params: {
  * Reserving that keeps the pool honest for lower-priority devices, and pairs
  * with the add-back in {@link addsBackOwnDraw} so the draw is counted once.
  */
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function claimForTrackingDevice(params: {
-  dev: MeteredPlanInputDevice;
-  state: PlanEngineState;
-  poolKw: number;
-  nowTs: number;
-}): SurplusClaim {
-  const { dev, state, poolKw, nowTs } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+function claimForTrackingDevice(
+  dev: MeteredPlanInputDevice,
+  state: PlanEngineState,
+  poolKw: number,
+  nowTs: number,
+): SurplusClaim {
   // A tracking device gets its OWN hard-off test, and it must: the shared one
   // (`isHardOffCondition`) reads raw net import, which for a fixed-draw absorber
   // is honest evidence that surplus is gone. For a modulating one it is not —
@@ -549,10 +548,7 @@ function claimForTrackingDevice(params: {
     return NO_CLAIM;
   }
   if (dev.commandableNow !== true) {
-    syncSurplusEligibilityState({
-      state, deviceId: dev.id, willing: false, availableSurplusKw: null,
-      expectedDrawKw: 0, hardOff, nowTs,
-    });
+    clearSurplusEligibility(state, dev.id);
     clearSurplusTracking(state, dev.id);
     return NO_CLAIM;
   }
@@ -562,10 +558,7 @@ function claimForTrackingDevice(params: {
   // what is holding it up; and no claim, because its draw was never added back
   // (`addsBackOwnDraw`) and the meter already carries it as ordinary load.
   if (resolveBoostActive(dev)) {
-    syncSurplusEligibilityState({
-      state, deviceId: dev.id, willing: false, availableSurplusKw: null,
-      expectedDrawKw: 0, hardOff, nowTs,
-    });
+    clearSurplusEligibility(state, dev.id);
     clearSurplusTracking(state, dev.id);
     return NO_CLAIM;
   }
@@ -582,20 +575,10 @@ function claimForTrackingDevice(params: {
   // figure that can only be lower.
   const floorKw = floorStep.planningPowerW / 1000;
 
-  const { eligible } = syncSurplusEligibilityState({
-    state,
-    deviceId: dev.id,
-    willing: true,
-    availableSurplusKw: poolKw,
-    expectedDrawKw: floorKw,
-    hardOff,
-    nowTs,
-  });
+  const { eligible } = syncSurplusEligibilityState(state, dev.id, poolKw, floorKw, hardOff, nowTs);
 
   if (eligible) {
-    const paced = paceCeilingClimb({
-      dev, state, target: resolveTrackingRung({ dev, state, poolKw, floorStep }), nowTs,
-    });
+    const paced = paceCeilingClimb(dev, state, resolveTrackingRung(dev, state, poolKw, floorStep), nowTs);
     const rungKw = paced.planningPowerW / 1000;
     state.surplusTrackingByDevice[dev.id] = {
       kind: 'rung', stepId: paced.id, funded: rungKw <= poolKw,
@@ -611,7 +594,7 @@ function claimForTrackingDevice(params: {
   state.surplusTrackingByDevice[dev.id] = { kind: 'stopped' };
   return { claimKw: positiveOrZero(dev.currentDrawKw), want: waitingWant(poolKw, floorKw) };
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 /**
  * The rung an ELIGIBLE tracking device holds this build. Never null: eligibility
@@ -625,13 +608,12 @@ function claimForTrackingDevice(params: {
  * keep arm, a pool wandering across the reserve band would re-price the device
  * every build.
  */
-function resolveTrackingRung(params: {
-  dev: MeteredPlanInputDevice;
-  state: PlanEngineState;
-  poolKw: number;
-  floorStep: SteppedLoadStep;
-}): SteppedLoadStep {
-  const { dev, state, poolKw, floorStep } = params;
+function resolveTrackingRung(
+  dev: MeteredPlanInputDevice,
+  state: PlanEngineState,
+  poolKw: number,
+  floorStep: SteppedLoadStep,
+): SteppedLoadStep {
   // What the pool would buy from scratch, reserve included.
   const affordable = resolveHighestStepWithinKw(dev, poolKw - SURPLUS_ABSORB_RESERVE_KW);
   const held = resolveHeldStep(dev, state);
@@ -657,6 +639,56 @@ const resolveHeldStep = (
   if (heldId === undefined || !isSteppedLoadDevice(dev)) return undefined;
   return getSteppedLoadStep(dev.steppedLoadProfile, heldId) ?? undefined;
 };
+
+/**
+ * The silent-meter pass's half of eligibility: with no measurement there is no
+ * surplus to allocate, so every willing device is released — the same
+ * hard-off release a sustained import produces, without waiting out a dwell.
+ * (Owner ruling 2026-09-02: this used to be an `!powerIsMeasured` branch inside
+ * `resolveSurplusEligibility`; it is the unmeasured path's own call now.)
+ */
+export function withdrawSurplusEligibility(
+  devices: PlanInputDevice[],
+  state: PlanEngineState,
+  getConfig: (deviceId: string) => SurplusConfig | undefined,
+  excludeIds: ReadonlySet<string>,
+  nowTs: number,
+): void {
+  for (const dev of selectSurplusCandidates(devices, state, getConfig, excludeIds)) {
+    syncSurplusEligibilityState(state, dev.id, null, getHighestKnownPowerKw(dev).kw, true, nowTs);
+  }
+}
+
+/**
+ * The willing devices this cycle, across all three modalities, and the
+ * surplus state of every other device dropped (`pruneNonCandidateSurplusState`).
+ * Absorbing surplus is spending measured export, so only a device with a power
+ * reading can take part; a temperature device without one keeps its setpoint
+ * logic and never claims from the pool.
+ */
+export function selectSurplusCandidates(
+  devices: PlanInputDevice[],
+  state: PlanEngineState,
+  getConfig: (deviceId: string) => SurplusConfig | undefined,
+  // Smart-task precedence at the ALLOCATION stage (mirrors the hold exclusion):
+  // a device an active deferred objective currently governs must never be
+  // eligible for surplus and must never RESERVE the shared pool ahead of a
+  // lower-priority willing device. Excluded devices are dropped from the willing
+  // set, and the lockstep cleanup then clears any latched eligibility so a
+  // newly-governed device stops reserving immediately. Empty in the common
+  // case (no smart tasks) — byte-identical there.
+  excludeIds: ReadonlySet<string>,
+): MeteredPlanInputDevice[] {
+  const willing = devices.filter(
+    (dev): dev is MeteredPlanInputDevice => isMeteredPlanDevice(dev)
+      && !excludeIds.has(dev.id)
+      && (dev.surplusOnly === true
+        || dev.surplusTracking
+        || (willingWithLift(getConfig(dev.id)) && supportsTemperatureLift(dev))),
+  );
+  pruneNonCandidateSurplusState(state, new Set(willing.map((dev) => dev.id)));
+  return willing;
+}
 
 /**
  * Priority-greedy surplus allocator — the *producer* of surplus-absorb
@@ -709,94 +741,30 @@ const resolveHeldStep = (
  * with no willing device, so a battery PELS already holds keeps storing the
  * export until it is handed back.
  */
-/**
- * The silent-meter pass's half of eligibility: with no measurement there is no
- * surplus to allocate, so every willing device is released — the same
- * hard-off release a sustained import produces, without waiting out a dwell.
- * (Owner ruling 2026-09-02: this used to be an `!powerIsMeasured` branch inside
- * `resolveSurplusEligibility`; it is the unmeasured path's own call now.)
- */
-export function withdrawSurplusEligibility(
-  devices: PlanInputDevice[],
+export function resolveSurplusEligibility(
+  /** This cycle's candidates (`selectSurplusCandidates`). */
+  willing: MeteredPlanInputDevice[],
   state: PlanEngineState,
-  getConfig: (deviceId: string) => SurplusConfig | undefined,
-  excludeIds: ReadonlySet<string>,
-  nowTs: number,
-): void {
-  // Absorbing surplus is spending measured export, so only a device with a power
-  // reading can take part; a temperature device without one keeps its setpoint
-  // logic and never claims from the pool.
-  const willing = devices.filter(
-    (dev): dev is MeteredPlanInputDevice => isMeteredPlanDevice(dev) && !excludeIds.has(dev.id)
-      && (dev.surplusOnly === true
-        || dev.surplusTracking
-        || (willingWithLift(getConfig(dev.id)) && supportsTemperatureLift(dev))),
-  );
-  pruneNonCandidateSurplusState(state, new Set(willing.map((dev) => dev.id)));
-  for (const dev of willing) {
-    syncSurplusEligibilityState({
-      state,
-      deviceId: dev.id,
-      willing: true,
-      availableSurplusKw: null,
-      expectedDrawKw: getHighestKnownPowerKw(dev).kw,
-      hardOff: true,
-      nowTs,
-    });
-  }
-}
-
-export function resolveSurplusEligibility(params: {
-  devices: PlanInputDevice[];
-  state: PlanEngineState;
   /** The measured whole-home draw, signed (`MeasuredPower.drawKw`). */
-  signedNetKw: number;
+  signedNetKw: number,
   // Producer-resolved inferred curtailed-surplus term (kW, >= 0; producer:
   // `lib/solar/curtailmentSurplus.ts`), 0 when it has nothing to claim or is
   // suppressed. `composeSurplusPool` sums it with measured export and the
   // add-back, so on a zero-export home — where the meter is pinned near zero
   // and reports no export — a positive inferred term is precisely what opens
   // the pool. It only ever adds.
-  inferredSurplusKw: number;
+  inferredSurplusKw: number,
   // The home batteries (`resolveStorageSurplus`): resolved by the builder, so
   // this allocator never reads a battery.
-  storage: StorageSurplus;
-  getConfig: (deviceId: string) => SurplusConfig | undefined;
-  // Smart-task precedence at the ALLOCATION stage (mirrors the hold exclusion):
-  // a device an active deferred objective currently governs must never be
-  // eligible for surplus and must never RESERVE the shared pool ahead of a
-  // lower-priority willing device. Excluded devices are dropped from the willing
-  // set below, and the lockstep cleanup then clears any latched eligibility so a
-  // newly-governed device stops reserving immediately. Empty in the common
-  // case (no smart tasks) — byte-identical there.
-  excludeIds: ReadonlySet<string>;
-  debugStructured?: StructuredDebugEmitter;
+  storage: StorageSurplus,
   // One timestamp for the whole admission pass, so a single plan build cannot
   // flip devices on different milliseconds at the settle/dwell threshold.
-  nowTs: number;
-}): ReadonlyMap<string, StorageSurplusOffer> {
-  const { state, getConfig, excludeIds, nowTs, storage } = params;
-  // See the twin filter above: the pool is measured power, so only metered devices take part.
-  const willing = params.devices.filter(
-    (dev): dev is MeteredPlanInputDevice => isMeteredPlanDevice(dev)
-      && !excludeIds.has(dev.id)
-      && (dev.surplusOnly === true
-        || dev.surplusTracking
-        || (willingWithLift(getConfig(dev.id)) && supportsTemperatureLift(dev))),
-  );
+  nowTs: number,
+  debugStructured?: StructuredDebugEmitter,
+): ReadonlyMap<string, StorageSurplusOffer> {
+  const hardOff = isHardOffCondition(signedNetKw, storage.dischargeW / 1000);
 
-  pruneNonCandidateSurplusState(state, new Set(willing.map((dev) => dev.id)));
-
-  const hardOff = isHardOffCondition(params.signedNetKw, storage.dischargeW / 1000);
-
-  const pool = composeSurplusPool({
-    willing,
-    state,
-    signedNetKw: params.signedNetKw,
-    storage,
-    inferredSurplusKw: params.inferredSurplusKw,
-    debugStructured: params.debugStructured,
-  });
+  const pool = composeSurplusPool(willing, state, signedNetKw, storage, inferredSurplusKw, debugStructured);
   let { poolKw } = pool;
   // A battery's share starts without the devices' own add-back: a running
   // device's measured draw is already out of the export.
@@ -827,7 +795,7 @@ export function resolveSurplusEligibility(params: {
     }
     const { dev } = consumer;
     const claim = dev.surplusTracking
-      ? claimForTrackingDevice({ dev, state, poolKw, nowTs })
+      ? claimForTrackingDevice(dev, state, poolKw, nowTs)
       : claimForFixedDevice(dev, state, poolKw, hardOff, nowTs);
     poolKw -= claim.claimKw;
     if (claim.want.kind === 'waiting') storageKw -= claim.want.runKw;
@@ -856,15 +824,7 @@ function claimForFixedDevice(
   nowTs: number,
 ): SurplusClaim {
   const expectedDrawKw = getHighestKnownPowerKw(dev).kw;
-  const { eligible } = syncSurplusEligibilityState({
-    state,
-    deviceId: dev.id,
-    willing: true,
-    availableSurplusKw: poolKw,
-    expectedDrawKw,
-    hardOff,
-    nowTs,
-  });
+  const { eligible } = syncSurplusEligibilityState(state, dev.id, poolKw, expectedDrawKw, hardOff, nowTs);
   if (eligible) return { claimKw: expectedDrawKw, want: runningWant(dev, poolKw) };
   const want = waitingWant(poolKw, expectedDrawKw);
   return { claimKw: want.kind === 'waiting' ? expectedDrawKw : 0, want };

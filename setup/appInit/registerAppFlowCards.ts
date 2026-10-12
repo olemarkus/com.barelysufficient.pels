@@ -86,7 +86,9 @@ export function registerAppFlowCards(
     ),
     refreshSnapshot: (options) => ctx.refreshTargetDevicesSnapshot(options),
     getHomeyDevicesForFlow: () => ctx.flowBacked.getHomeyDevicesForFlow(),
-    reportFlowBackedCapability: (params) => ctx.flowBacked.reportFlowBackedCapability(params),
+    reportFlowBackedCapability: (deviceId, capabilityId, value) => (
+      ctx.flowBacked.reportFlowBackedCapability(deviceId, capabilityId, value)
+    ),
     reportSteppedLoadActualStep: (deviceId, stepId, planningPowerW) => (
       ctx.deviceControlHelpers.reportSteppedLoadActualStep(deviceId, stepId, planningPowerW)
     ),
@@ -104,9 +106,9 @@ export function registerAppFlowCards(
     // settings-mutation primitive (see buildDeferredObjectiveDeviceWriteDeps),
     // so the Flow cards and the create-smart-task widget share one
     // read-modify-write + notify/flush path.
-    upsertDeferredObjectiveForDevice: (params) => upsertObjectiveForDevice(
+    upsertDeferredObjectiveForDevice: (deviceId, deviceName, entry, rescue) => upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),
-      params.deviceId, params.deviceName, params.entry, params.rescue,
+      deviceId, deviceName, entry, rescue,
     ),
     clearDeferredObjectiveForDevice: (params) => clearObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),

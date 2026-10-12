@@ -28,85 +28,57 @@ export function resolveFlowBackedBinaryTriggerCardId(
 }
 
 export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
-  registerFlowBackedRequestTrigger({
-    deps,
-    cardId: 'flow_backed_device_refresh_requested',
-    target: 'binary_or_evcharger',
-  });
-  registerFlowBackedRequestTrigger({
-    deps,
-    cardId: 'flow_backed_device_turn_on_requested',
-    target: 'binary',
-    requiredMissingCapabilityId: 'onoff',
-  });
-  registerFlowBackedRequestTrigger({
-    deps,
-    cardId: 'flow_backed_device_turn_off_requested',
-    target: 'binary',
-    requiredMissingCapabilityId: 'onoff',
-  });
-  registerFlowBackedRequestTrigger({
-    deps,
-    cardId: 'flow_backed_device_start_charging_requested',
-    target: 'evcharger',
-    requiredMissingCapabilityId: 'evcharger_charging',
-  });
-  registerFlowBackedRequestTrigger({
-    deps,
-    cardId: 'flow_backed_device_stop_charging_requested',
-    target: 'evcharger',
-    requiredMissingCapabilityId: 'evcharger_charging',
-  });
+  registerFlowBackedRequestTrigger(deps, 'flow_backed_device_refresh_requested', 'binary_or_evcharger');
+  registerFlowBackedRequestTrigger(deps, 'flow_backed_device_turn_on_requested', 'binary', 'onoff');
+  registerFlowBackedRequestTrigger(deps, 'flow_backed_device_turn_off_requested', 'binary', 'onoff');
+  registerFlowBackedRequestTrigger(
+    deps, 'flow_backed_device_start_charging_requested', 'evcharger', 'evcharger_charging',
+  );
+  registerFlowBackedRequestTrigger(
+    deps, 'flow_backed_device_stop_charging_requested', 'evcharger', 'evcharger_charging',
+  );
 
-  registerBooleanCapabilityCard({
+  registerBooleanCapabilityCard(
     deps,
-    cardId: 'report_flow_backed_device_onoff',
-    capabilityId: 'onoff',
-    target: 'binary',
-    errorMessage: 'On/off state must be on, off, true, or false.',
-  });
+    'report_flow_backed_device_onoff',
+    'onoff',
+    'binary',
+    'On/off state must be on, off, true, or false.',
+  );
 
-  registerBooleanCapabilityCard({
+  registerBooleanCapabilityCard(
     deps,
-    cardId: 'report_flow_backed_device_evcharger_charging',
-    capabilityId: 'evcharger_charging',
-    target: 'evcharger',
-    errorMessage: 'Charging state must be on, off, true, or false.',
-  });
+    'report_flow_backed_device_evcharger_charging',
+    'evcharger_charging',
+    'evcharger',
+    'Charging state must be on, off, true, or false.',
+  );
 
-  registerBooleanCapabilityCard({
+  registerBooleanCapabilityCard(
     deps,
-    cardId: 'report_flow_backed_device_evcharger_car_connected',
-    capabilityId: 'alarm_generic.car_connected',
-    target: 'evcharger',
-    errorMessage: 'Car connection state must be connected, disconnected, true, or false.',
-    autocompleteArg: 'state',
-    getAutocompleteOptions: getConnectionAutocompleteOptions,
-  });
+    'report_flow_backed_device_evcharger_car_connected',
+    'alarm_generic.car_connected',
+    'evcharger',
+    'Car connection state must be connected, disconnected, true, or false.',
+    getConnectionAutocompleteOptions,
+  );
 
-  registerBooleanCapabilityCard({
+  registerBooleanCapabilityCard(
     deps,
-    cardId: 'report_flow_backed_device_evcharger_resumable',
-    capabilityId: 'pels_evcharger_resumable',
-    target: 'evcharger',
-    errorMessage: 'Resumable state must be yes, no, true, or false.',
-    autocompleteArg: 'state',
-    getAutocompleteOptions: getYesNoAutocompleteOptions,
-  });
+    'report_flow_backed_device_evcharger_resumable',
+    'pels_evcharger_resumable',
+    'evcharger',
+    'Resumable state must be yes, no, true, or false.',
+    getYesNoAutocompleteOptions,
+  );
 }
 
-function registerFlowBackedRequestTrigger(params: {
-  deps: FlowCardDeps;
-  cardId: string;
-  target: FlowBackedCardTarget;
-  requiredMissingCapabilityId?: Extract<FlowReportedCapabilityId, 'onoff' | 'evcharger_charging'>;
-}): void {
-  const {
-    deps,
-    cardId,
-    target,
-    requiredMissingCapabilityId,
-  } = params;
+function registerFlowBackedRequestTrigger(
+  deps: FlowCardDeps,
+  cardId: string,
+  target: FlowBackedCardTarget,
+  requiredMissingCapabilityId?: Extract<FlowReportedCapabilityId, 'onoff' | 'evcharger_charging'>,
+): void {
   const trigger = deps.homey.flow.getTriggerCard(cardId);
   trigger.registerRunListener(async (args: unknown, state?: unknown) => {
     const chosenDeviceId = readFlowDeviceArg(args);
@@ -127,77 +99,32 @@ function readStateDeviceId(state: unknown): string {
   return typeof id === 'string' ? id.trim() : '';
 }
 
-function registerBooleanCapabilityCard(params: {
-  deps: FlowCardDeps;
-  cardId: string;
+function registerBooleanCapabilityCard(
+  deps: FlowCardDeps,
+  cardId: string,
   capabilityId: Extract<
     FlowReportedCapabilityId,
     'onoff' | 'evcharger_charging' | 'alarm_generic.car_connected' | 'pels_evcharger_resumable'
-  >;
-  target: FlowBackedCardTarget;
-  errorMessage: string;
-  autocompleteArg?: string;
-  getAutocompleteOptions?: (query: string) => Array<{ id: string; name: string }>;
-}): void {
-  const {
-    deps,
-    cardId,
-    capabilityId,
-    target,
-    errorMessage,
-    autocompleteArg = 'state',
-    getAutocompleteOptions = getBooleanAutocompleteOptions,
-  } = params;
-  registerFlowBackedCapabilityCard({
-    deps,
-    cardId,
-    capabilityId,
-    target,
-    parseValue: (rawValue) => parseBooleanFlowValue(rawValue, errorMessage),
-    autocompleteArg,
-    getAutocompleteOptions,
-  });
-}
-
-function registerFlowBackedCapabilityCard(params: {
-  deps: FlowCardDeps;
-  cardId: string;
-  capabilityId: FlowReportedCapabilityId;
-  target: FlowBackedCardTarget;
-  parseValue: (rawValue: unknown) => boolean | number | string;
-  autocompleteArg?: string;
-  getAutocompleteOptions?: (query: string) => Array<{ id: string; name: string }>;
-}): void {
-  const {
-    deps,
-    cardId,
-    capabilityId,
-    target,
-    parseValue,
-    autocompleteArg,
-    getAutocompleteOptions,
-  } = params;
+  >,
+  target: FlowBackedCardTarget,
+  errorMessage: string,
+  getStateOptions: (query: string) => Array<{ id: string; name: string }> = getBooleanAutocompleteOptions,
+): void {
   const card = deps.homey.flow.getActionCard(cardId);
   card.registerRunListener(async (args: unknown) => {
     const deviceId = readFlowDeviceArg(args);
     if (!deviceId) throw new Error('Device must be provided.');
     const device = await requireSupportedFlowBackedDevice(deps, deviceId, target);
 
-    const value = parseValue(readFlowRawArg(args, 'state'));
+    const value = parseBooleanFlowValue(readFlowRawArg(args, 'state'), errorMessage);
     const nativeCapabilityPresent = isCapabilityProvidedNatively({
       device,
       capabilityId,
     });
-    const reportOutcome = deps.reportFlowBackedCapability({ deviceId, capabilityId, value });
-    emitFlowBackedCapabilityReportLog({
-      deps,
-      cardId,
-      device,
-      capabilityId,
-      value,
-      reportOutcome,
-      nativeCapabilityPresent,
-    });
+    const reportOutcome = deps.reportFlowBackedCapability(deviceId, capabilityId, value);
+    emitFlowBackedCapabilityReportLog(
+      deps, cardId, device, capabilityId, value, reportOutcome, nativeCapabilityPresent,
+    );
 
     if (!reportOutcome.refreshSnapshot) {
       incPerfCounter('refresh_skipped_noop');
@@ -210,11 +137,7 @@ function registerFlowBackedCapabilityCard(params: {
   card.registerArgumentAutocompleteListener('device', async (query: string) => (
     getFlowBackedDeviceOptions(deps, query, target)
   ));
-  if (autocompleteArg && getAutocompleteOptions) {
-    card.registerArgumentAutocompleteListener(autocompleteArg, async (query: string) => (
-      getAutocompleteOptions(query)
-    ));
-  }
+  card.registerArgumentAutocompleteListener('state', async (query: string) => getStateOptions(query));
 }
 
 async function getFlowBackedDeviceOptions(
@@ -250,24 +173,15 @@ function parseAutocompleteStringValue(rawValue: unknown): string {
   return String(rawValue ?? '').trim();
 }
 
-function emitFlowBackedCapabilityReportLog(params: {
-  deps: FlowCardDeps;
-  cardId: string;
-  device: HomeyDeviceLike;
-  capabilityId: FlowReportedCapabilityId;
-  value: boolean | number | string;
-  reportOutcome: FlowBackedCapabilityReportOutcome;
-  nativeCapabilityPresent: boolean;
-}): void {
-  const {
-    deps,
-    cardId,
-    device,
-    capabilityId,
-    value,
-    reportOutcome,
-    nativeCapabilityPresent,
-  } = params;
+function emitFlowBackedCapabilityReportLog(
+  deps: FlowCardDeps,
+  cardId: string,
+  device: HomeyDeviceLike,
+  capabilityId: FlowReportedCapabilityId,
+  value: boolean,
+  reportOutcome: FlowBackedCapabilityReportOutcome,
+  nativeCapabilityPresent: boolean,
+): void {
   let event = 'flow_backed_capability_report_unchanged';
   if (nativeCapabilityPresent) {
     event = 'flow_backed_capability_report_native_overlap';

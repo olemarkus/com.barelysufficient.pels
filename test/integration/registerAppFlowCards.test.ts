@@ -155,29 +155,29 @@ describe('registerAppFlowCards', () => {
       homeModeCatalog.setDeviceModeTarget,
     );
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
-      upsertDeferredObjectiveForDevice: (params: {
-        deviceId: string;
-        deviceName: string | null;
+      upsertDeferredObjectiveForDevice: (
+        deviceId: string,
+        deviceName: string | null,
         entry: {
           enabled: true;
           kind: 'temperature';
           enforcement: 'soft';
           targetTemperatureC: number;
           deadlineAtMs: number;
-        };
-      }) => unknown;
+        },
+      ) => unknown;
     };
-    const outcome = deps.upsertDeferredObjectiveForDevice({
-      deviceId: 'heater-main',
-      deviceName: 'Hall heater',
-      entry: {
+    const outcome = deps.upsertDeferredObjectiveForDevice(
+      'heater-main',
+      'Hall heater',
+      {
         enabled: true,
         kind: 'temperature',
         enforcement: 'soft',
         targetTemperatureC: 60,
         deadlineAtMs: Date.now() + 60 * 60 * 1000,
       },
-    });
+    );
 
     expect(outcome).toEqual({ persisted: false, reason: 'ownership_unavailable' });
     expect(ctx.homey.settings.set).not.toHaveBeenCalled();

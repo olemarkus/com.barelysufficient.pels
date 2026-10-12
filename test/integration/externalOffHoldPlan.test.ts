@@ -30,8 +30,8 @@ import {
 } from '../../lib/planContract/planDecisionSemantics';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withBinaryDiscriminant, type DevicePlanDevice } from '../../lib/plan/planTypes';
-import { buildPlanDevice, buildPlanInputDevice, sheddingPlanFixture } from '../utils/planTestUtils';
-import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/planDevices';
+import { buildPlanDevice, buildPlanInputDevice, buildInitialPlanDevicesForSpec } from '../utils/planTestUtils';
+import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../../lib/plan/planContext';
@@ -161,7 +161,7 @@ describe('external-off hold — plan-device propagation', () => {
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
   };
 
-  const buildFor = (externalOffHoldActive?: true): DevicePlanDevice => buildInitialPlanDevices({
+  const buildFor = (externalOffHoldActive?: true): DevicePlanDevice => buildInitialPlanDevicesForSpec({
     context: buildContext([buildPlanInputDevice({
       id: 'heater-1',
       name: 'Water heater',
@@ -171,9 +171,6 @@ describe('external-off hold — plan-device propagation', () => {
       currentState: 'off',
       ...(externalOffHoldActive ? { externalOffHoldActive } : {}),
     })]),
-    state: createPlanEngineState(),
-    sheddingPlan: sheddingPlanFixture(),
-    shortfall: { inShortfall: false },
     deps,
   })[0];
 

@@ -9,7 +9,7 @@ import {
   resolveSteppedLoadSheddingTarget,
 } from '../../lib/plan/planSteppedLoad';
 import { resolveObservedSteppedLoadCurrentState } from '../../lib/observer/observedState';
-import { steppedInputDevice, steppedPlanDevice, steppedProfile } from '../utils/planTestUtils';
+import { keepDesiredStepIdUnder, steppedInputDevice, steppedPlanDevice, steppedProfile } from '../utils/planTestUtils';
 
 // This fixture feeds the OBSERVER resolver `resolveObservedSteppedLoadCurrentState`,
 // which reads the raw observed `binaryControl` + stepped step (NOT the plan-side
@@ -161,15 +161,15 @@ describe('planSteppedLoad', () => {
     });
 
     expect(resolveSteppedKeepDesiredStepId(baseDevice)).toBe('medium');
-    expect(resolveSteppedKeepDesiredStepId(baseDevice, { anyOtherDeviceLimited: false })).toBe('medium');
-    expect(resolveSteppedKeepDesiredStepId(baseDevice, { anyOtherDeviceLimited: true })).toBe('low');
+    expect(keepDesiredStepIdUnder(baseDevice, false)).toBe('medium');
+    expect(keepDesiredStepIdUnder(baseDevice, true)).toBe('low');
 
-    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+    expect(keepDesiredStepIdUnder(steppedPlanDevice({
       currentState: 'on',
       plannedState: 'keep',
       selectedStepId: 'max',
       desiredStepId: 'max',
-    }), { anyOtherDeviceLimited: true })).toBe('low');
+    }), true)).toBe('low');
   });
 
   it('holds an admitted boosted step across rebuilds and releases it when boost ends', () => {
@@ -179,81 +179,75 @@ describe('planSteppedLoad', () => {
       selectedStepId: 'medium',
       desiredStepId: 'low',
     });
-    expect(resolveSteppedKeepDesiredStepId(
+    expect(keepDesiredStepIdUnder(
       boostedAtMedium,
-      { anyOtherDeviceLimited: true, boostActive: true },
+      true, true,
     )).toBe('medium');
 
-    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+    expect(keepDesiredStepIdUnder(steppedPlanDevice({
       currentState: 'on',
       plannedState: 'keep',
       selectedStepId: 'max',
       desiredStepId: 'low',
-    }), { anyOtherDeviceLimited: true, boostActive: true })).toBe('max');
+    }), true, true)).toBe('max');
 
-    expect(resolveSteppedKeepDesiredStepId(
+    expect(keepDesiredStepIdUnder(
       boostedAtMedium,
-      { anyOtherDeviceLimited: true },
+      true,
     )).toBe('low');
   });
 
   it('leaves keep desired step unchanged when device is already at lowest non-zero step', () => {
-    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+    expect(keepDesiredStepIdUnder(steppedPlanDevice({
       currentState: 'on',
       plannedState: 'keep',
       selectedStepId: 'low',
       desiredStepId: 'low',
-    }), { anyOtherDeviceLimited: true })).toBe('low');
+    }), true)).toBe('low');
   });
 
   it('preserves off→low normalization when other devices are limited', () => {
-    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+    expect(keepDesiredStepIdUnder(steppedPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
       selectedStepId: 'medium',
       desiredStepId: 'off',
-    }), { anyOtherDeviceLimited: true })).toBe('low');
+    }), true)).toBe('low');
   });
 
   it('does not apply the shed-invariant clamp for shed-intent devices', () => {
-    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+    expect(keepDesiredStepIdUnder(steppedPlanDevice({
       currentState: 'on',
       plannedState: 'shed',
       selectedStepId: 'medium',
       desiredStepId: 'medium',
-    }), { anyOtherDeviceLimited: true })).toBe('medium');
+    }), true)).toBe('medium');
   });
 
   it('resolves shed targets conservatively for turn-off and set-step behavior', () => {
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedInputDevice({ selectedStepId: 'max' }),
-      shedAction: 'set_step',
-    })?.id).toBe('medium');
+    expect(getSteppedLoadShedTargetStep(
+      steppedInputDevice({ selectedStepId: 'max' }), 'set_step',
+    )?.id).toBe('medium');
 
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedInputDevice({ selectedStepId: 'medium' }),
-      shedAction: 'set_step',
-    })?.id).toBe('low');
+    expect(getSteppedLoadShedTargetStep(
+      steppedInputDevice({ selectedStepId: 'medium' }), 'set_step',
+    )?.id).toBe('low');
 
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedInputDevice({ selectedStepId: 'low' }),
-      shedAction: 'set_step',
-    })?.id).toBe('low');
+    expect(getSteppedLoadShedTargetStep(
+      steppedInputDevice({ selectedStepId: 'low' }), 'set_step',
+    )?.id).toBe('low');
 
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedInputDevice({ selectedStepId: 'max' }),
-      shedAction: 'turn_off',
-    })?.id).toBe('medium');
+    expect(getSteppedLoadShedTargetStep(
+      steppedInputDevice({ selectedStepId: 'max' }), 'turn_off',
+    )?.id).toBe('medium');
 
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedPlanDevice({ selectedStepId: 'max', currentState: 'off' }),
-      shedAction: 'turn_off',
-    })?.id).toBe('off');
+    expect(getSteppedLoadShedTargetStep(
+      steppedPlanDevice({ selectedStepId: 'max', currentState: 'off' }), 'turn_off',
+    )?.id).toBe('off');
 
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedInputDevice({ selectedStepId: 'low' }),
-      shedAction: 'turn_off',
-    })?.id).toBe('off');
+    expect(getSteppedLoadShedTargetStep(
+      steppedInputDevice({ selectedStepId: 'low' }), 'turn_off',
+    )?.id).toBe('off');
 
     const noOffProfile = {
       steps: [
@@ -261,20 +255,17 @@ describe('planSteppedLoad', () => {
         { id: 'max', planningPowerW: 2000 },
       ],
     };
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedInputDevice({ steppedLoadProfile: noOffProfile, selectedStepId: 'max' }),
-      shedAction: 'turn_off',
-    })?.id).toBe('low');
+    expect(getSteppedLoadShedTargetStep(
+      steppedInputDevice({ steppedLoadProfile: noOffProfile, selectedStepId: 'max' }), 'turn_off',
+    )?.id).toBe('low');
 
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedInputDevice({ selectedStepId: 'max' }),
-      shedAction: 'set_step',
-    })?.id).toBe('medium');
+    expect(getSteppedLoadShedTargetStep(
+      steppedInputDevice({ selectedStepId: 'max' }), 'set_step',
+    )?.id).toBe('medium');
 
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedInputDevice({ selectedStepId: 'low' }),
-      shedAction: 'set_step',
-    })?.id).toBe('low');
+    expect(getSteppedLoadShedTargetStep(
+      steppedInputDevice({ selectedStepId: 'low' }), 'set_step',
+    )?.id).toBe('low');
   });
 
   it('resolves keep desired step idempotently', () => {
@@ -341,13 +332,13 @@ describe('planSteppedLoad', () => {
         { id: 'idle', planningPowerW: 0 },
       ],
     };
-    expect(getSteppedLoadShedTargetStep({
-      device: {
+    expect(getSteppedLoadShedTargetStep(
+      {
         steppedLoadProfile: zeroOnlyProfile,
         selectedStepId: 'idle',
       },
-      shedAction: 'set_step',
-    })).toBeNull();
+      'set_step',
+    )).toBeNull();
   });
 
   it('resolves current state from binary onoff or stepped profile', () => {

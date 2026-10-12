@@ -148,13 +148,9 @@ export class PlanStatusWriter {
   ): PelsStatusComputation {
     const lastPowerUpdate = normalizeLastPowerUpdate(this.deps.getLastPowerUpdate(), STATUS_POWER_BUCKET_MS);
     const dryRunEffective = this.deps.getCapacityDryRun();
-    const inputKey = buildPelsStatusInputKey({
-      changes,
-      priceLevel,
-      lastPowerUpdate,
-      powerIsMeasured: plan.meta.powerIsMeasured,
-      dryRunEffective,
-    });
+    const inputKey = buildPelsStatusInputKey(
+      changes, priceLevel, lastPowerUpdate, plan.meta.powerIsMeasured, dryRunEffective,
+    );
     const status = this.resolveStatusResult(inputKey, plan, priceLevel, lastPowerUpdate, dryRunEffective);
 
     return {

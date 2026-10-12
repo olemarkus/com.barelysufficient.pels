@@ -14,7 +14,6 @@
  *
  * `lib/plan` is hot-path: no spread/Array.from in loops, no Array#forEach.
  */
-import type { PowerTrackerState } from '../power/tracker';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isCooldownBlockedReason } from '../planContract/planDecisionSemantics';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
@@ -23,8 +22,7 @@ import { planStillWantsPendingTarget } from './planTargetControl';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
-import type { MeasuredPower, PlanContext } from './planContext';
-import type { PowerCycleDisplay } from '../power/powerCycleReading';
+import type { MeasuredPower } from './planContext';
 import { buildPlanCapacityStateSummary } from './planLogging';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger } from '../logging/logger';
@@ -35,7 +33,11 @@ import {
 } from './planConstants';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { SoftOvershootDecision } from './planOvershoot';
-import { buildPlanContextHeadroomLogFields, resolveMeasuredMetaFields } from './planBuilderMeta';
+import {
+  buildPlanContextHeadroomLogFields,
+  resolveMeasuredMetaFields,
+  type PlanMetaCycleFacts,
+} from './planBuilderMeta';
 
 const OVERSHOOT_DELTA_EPSILON_KW = 0.05;
 const OVERSHOOT_TOP_CONTRIBUTOR_LIMIT = 3;
@@ -71,30 +73,20 @@ export class OvershootTracker {
     private readonly deps: OvershootTrackerDeps,
   ) { }
 
-  public updateOvershootState(params: {
-    context: PlanContext;
-    power: MeasuredPower;
-    reading: PowerCycleDisplay;
-    capacityLimitKw: number;
-    powerTracker: PowerTrackerState;
-    deviceNameById: ReadonlyMap<string, string>;
-    planDevices: DevicePlanDevice[];
-    overshootDecision: SoftOvershootDecision;
-    nowTs: number;
-    /** Producer-resolved `computeShortfallThreshold` for this build. */
-    shortfallBudgetThresholdKw: number | null;
-  }): void {
+  public updateOvershootState(
+    /** The facts this build's meta is written from; the entry log summarizes the same meta. */
+    facts: PlanMetaCycleFacts,
+    power: MeasuredPower,
+    overshootDecision: SoftOvershootDecision,
+    nowTs: number,
+  ): void {
     const {
       context,
-      power,
       reading,
       capacityLimitKw,
       shortfallBudgetThresholdKw,
-      deviceNameById,
       planDevices,
-      overshootDecision,
-      nowTs,
-    } = params;
+    } = facts;
     const overshootActive = overshootDecision.actionable;
     const incident = this.state.overshoot;
     const prevOvershoot = incident.isActive();
@@ -147,7 +139,7 @@ export class OvershootTracker {
         }, { summarySource: 'plan_build', summarySourceAtMs: nowTs }),
         ...overshootDiagnostics.logFields,
       });
-      this.attributeOvershootToRecentRestores(deviceNameById, nowTs, overshootDiagnostics);
+      this.attributeOvershootToRecentRestores(nowTs, overshootDiagnostics);
     } else if (!overshootActive && prevOvershoot) {
       const durationMs = incident.clear(nowTs);
       // The pending-relief latch belongs to the incident that just
@@ -167,7 +159,6 @@ export class OvershootTracker {
   }
 
   private attributeOvershootToRecentRestores(
-    deviceNameById: ReadonlyMap<string, string>,
     nowTs: number,
     overshootDiagnostics: OvershootEntryDiagnostics,
   ): void {
@@ -190,7 +181,7 @@ export class OvershootTracker {
         && contributor.deltaKw > 0
       ));
       if (!contributingRestore) continue;
-      const deviceName = deviceNameById.get(deviceId);
+      const { deviceName } = contributingRestore;
       const result = recordActivationSetback(this.state, deviceId, nowTs);
       if (!result.transition) continue;
 
@@ -206,7 +197,7 @@ export class OvershootTracker {
         restoreAgeMs: nowTs - restoreMs,
         penaltyLevel: result.penaltyLevel,
       };
-      if (typeof deviceName === 'string' && deviceName.length > 0) {
+      if (deviceName.length > 0) {
         logEntry.deviceName = deviceName;
       }
       this.deps.structuredLog?.info(logEntry);

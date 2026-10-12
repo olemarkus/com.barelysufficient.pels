@@ -35,16 +35,16 @@ export type BinaryCommandReachability = {
   dispose: () => void;
 };
 
-export function createBinaryCommandReachability(params: {
-  requestRebuild: () => void;
-  scheduleRebuild: (deviceId: string, dueAtMs: number) => void;
-  clearScheduledRebuild: (deviceId: string) => void;
-}): BinaryCommandReachability {
+export function createBinaryCommandReachability(
+  requestRebuild: () => void,
+  scheduleRebuild: (deviceId: string, dueAtMs: number) => void,
+  clearScheduledRebuild: (deviceId: string) => void,
+): BinaryCommandReachability {
   const stateByDevice = new Map<string, ReachabilityState>();
   let disposed = false;
 
   const clear = (deviceId: string): void => {
-    params.clearScheduledRebuild(deviceId);
+    clearScheduledRebuild(deviceId);
     stateByDevice.delete(deviceId);
   };
 
@@ -66,7 +66,7 @@ export function createBinaryCommandReachability(params: {
     const retryDelayMs = RETRY_DELAYS_MS[failures - 1] ?? RETRY_DELAYS_MS.at(-1) ?? 0;
     const retryAtMs = Date.now() + retryDelayMs;
     stateByDevice.set(event.deviceId, { failures, retryAtMs, scheduledKind: 'retry' });
-    params.scheduleRebuild(event.deviceId, retryAtMs);
+    scheduleRebuild(event.deviceId, retryAtMs);
     // The arming is the fact worth logging, and it is logged HERE rather than at
     // either call site so both lanes report it identically. The sweep lane asks
     // for no rebuild, so without this it would arm a 15/30/60-minute backoff with
@@ -99,14 +99,14 @@ export function createBinaryCommandReachability(params: {
           retryAtMs: current?.retryAtMs,
           scheduledKind: 'confirmation',
         });
-        params.scheduleRebuild(event.deviceId, dueAtMs);
+        scheduleRebuild(event.deviceId, dueAtMs);
       },
       // The DISPATCH lane. A definite answer from the transport — a rejection,
       // a 4xx/5xx, an actuator that declined — delivered on the same call stack
       // as the write PELS itself issued. Asking for a rebuild here reports a
       // command outcome, not a device observation, so it stays.
       onDispatchFailed: (event) => {
-        if (recordFailure(event, 'dispatch')) params.requestRebuild();
+        if (recordFailure(event, 'dispatch')) requestRebuild();
       },
       // The SWEEP lane, and the reason the two are no longer the same function.
       // `onTimedOut` fires from `reconcilePendingEntry`, which runs on whichever
@@ -189,7 +189,7 @@ export function createBinaryCommandReachability(params: {
     },
     dispose: () => {
       disposed = true;
-      for (const deviceId of stateByDevice.keys()) params.clearScheduledRebuild(deviceId);
+      for (const deviceId of stateByDevice.keys()) clearScheduledRebuild(deviceId);
       stateByDevice.clear();
     },
   };

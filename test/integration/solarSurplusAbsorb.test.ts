@@ -19,13 +19,12 @@
 // gone past the min dwell; (4) a non-willing device never lifts.
 import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
-import { resolveSurplusEligibility, type StorageSurplus } from '../../lib/plan/planSurplusAbsorb';
+import type { StorageSurplus } from '../../lib/plan/planSurplusAbsorb';
 import { type PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { buildPlanInputDevice, sheddingPlanFixture, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
+import { buildPlanInputDevice, NO_STORAGE_SURPLUS, buildInitialPlanDevicesForSpec, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import {
   SURPLUS_ABSORB_MIN_DWELL_MS,
@@ -112,7 +111,7 @@ const buildDevices = (params: {
   deps: PlanDevicesDeps;
   storage?: StorageSurplus;
 }) => {
-  resolveSurplusEligibility({
+  resolveSurplusEligibilityForSpec({
     devices: params.context.devices,
     state: params.state,
     signedNetKw: params.context.drawKw,
@@ -122,11 +121,9 @@ const buildDevices = (params: {
     getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
     nowTs: Date.now(),
   });
-  return buildInitialPlanDevices({
+  return buildInitialPlanDevicesForSpec({
     context: params.context,
     state: params.state,
-    sheddingPlan: sheddingPlanFixture(),
-    shortfall: { inShortfall: false },
     deps: params.deps,
   });
 };
@@ -359,7 +356,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       // Mirror the PR-7 hoist: the builder resolves surplus eligibility (with the
       // producer-injected inferred term + debug seam) BEFORE materialization;
       // `buildInitialPlanDevices` only reads the resulting state.
-      resolveSurplusEligibility({
+      resolveSurplusEligibilityForSpec({
         devices: context.devices,
         state,
         signedNetKw: context.drawKw,
@@ -370,11 +367,9 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         debugStructured: options.debugStructured,
         nowTs: Date.now(),
       });
-      const device = buildInitialPlanDevices({
+      const device = buildInitialPlanDevicesForSpec({
         context,
         state,
-        sheddingPlan: sheddingPlanFixture(),
-        shortfall: { inShortfall: false },
         deps: deps(true),
       })[0];
       return device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;

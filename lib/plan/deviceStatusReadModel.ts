@@ -65,10 +65,11 @@ function resolveBinaryReason(
   const surplus = resolveBinarySurplusReasonLine(device, kind);
   if (surplus) return surplus;
   if (device.reason.code === PLAN_REASON_CODES.externalOffHold && device.currentState !== 'off') return null;
-  if (held || device.starvation?.isStarved) return resolveHeldCardReasonLine({
-    reason: device.reason, starvation: device.starvation,
-    verb: resolveHeldCardReasonVerb({ ...resolveHeldCardStepView(device), currentState: device.currentState }),
-  });
+  if (held || device.starvation?.isStarved) return resolveHeldCardReasonLine(
+    device.reason,
+    device.starvation,
+    resolveHeldCardReasonVerb({ ...resolveHeldCardStepView(device), currentState: device.currentState }),
+  );
   return device.reason.code === PLAN_REASON_CODES.keep
     ? null : formatDeviceReasonUserFacing(device.reason);
 }
@@ -85,10 +86,11 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | nul
     return resolveBinarySurplusReasonLine(device, kind)
       ?? resolveSteppedStatusLine(resolved, stepped.profile, 0, dryRun)
       // Settling at a reduced rung does not end the hold or change its cause.
-      ?? (held ? resolveHeldCardReasonLine({
-        reason: device.reason, starvation: device.starvation,
-        verb: resolveHeldCardReasonVerb({ steppedLoadProfile: stepped.profile, currentState: device.currentState }),
-      }) : null);
+      ?? (held ? resolveHeldCardReasonLine(
+        device.reason,
+        device.starvation,
+        resolveHeldCardReasonVerb({ steppedLoadProfile: stepped.profile, currentState: device.currentState }),
+      ) : null);
   }
   if (device.temperature) return resolveTemperatureReasonLine(resolved, dryRun);
   return resolveBinaryReason(device, kind, held, dryRun);

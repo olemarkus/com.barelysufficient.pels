@@ -47,9 +47,11 @@ const buildLane = () => {
   const requestRebuild = vi.fn();
   const scheduleRebuild = vi.fn();
   const clearScheduledRebuild = vi.fn();
-  const reachability = createBinaryCommandReachability({
-    requestRebuild, scheduleRebuild, clearScheduledRebuild,
-  });
+  const reachability = createBinaryCommandReachability(
+    requestRebuild,
+    scheduleRebuild,
+    clearScheduledRebuild,
+  );
   const backing: Record<string, PendingBinaryCommand> = {};
   const store = createPendingBinaryCommandStore(backing, reachability.lifecycle);
   return {

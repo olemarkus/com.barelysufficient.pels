@@ -40,20 +40,16 @@ export function applySteppedDeviceGates(
     setRestorePlanDevice(deviceMap, dev.id,
       deviceIsActive ? { reason } : buildOffSteppedRestoreHoldUpdate(dev, reason),
     );
-    emitRestoreDebugEventOnChange({
-      state,
-      key: `stepped:${dev.id}`,
-      payload: {
-        event: 'restore_stepped_rejected',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        currentStepId: dev.selectedStepId,
-        requestedStepId: requestedStepId ?? undefined,
-        availableKw: availableHeadroom,
-        decision: 'rejected',
-        rejectionReason,
-      },
+    emitRestoreDebugEventOnChange(state, `stepped:${dev.id}`, {
+      event: 'restore_stepped_rejected',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      currentStepId: dev.selectedStepId,
+      requestedStepId: requestedStepId ?? undefined,
+      availableKw: availableHeadroom,
+      decision: 'rejected',
+      rejectionReason,
     });
     return true;
   };

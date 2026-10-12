@@ -29,11 +29,7 @@ const run = (devices: DevicePlanDevice[], over?: {
   nowTs?: number;
 }) => {
   const state = { headroomReserveArmedMs: over?.armed ?? {} };
-  const reserves = resolveHeadroomReserves({
-    devices,
-    state,
-    nowTs: over?.nowTs ?? NOW,
-  });
+  const reserves = resolveHeadroomReserves(devices, state, over?.nowTs ?? NOW);
   return { reserves, armed: state.headroomReserveArmedMs };
 };
 
@@ -332,20 +328,18 @@ describe('resolveReserveAdmission', () => {
   // A headroom figure always constrains: only a `null` one is `unconstrained` (the case below), so
   // the numeric cases read the constrained variants' figures directly.
   const admit = (availableHeadroom: number, neededKw: number, reserves: ReturnType<typeof reserve>[]) => {
-    const result = resolveReserveAdmission({
-      dev: { id: 'thermostat', priority: 10 }, availableHeadroom, neededKw, reserves,
-    });
+    const result = resolveReserveAdmission({ id: 'thermostat', priority: 10 }, availableHeadroom, neededKw, reserves);
     if (result.kind === 'unconstrained') throw new Error('a numeric headroom resolved unconstrained');
     return result;
   };
 
   it('is unconstrained when there is no headroom figure, whatever the reservations', () => {
-    expect(resolveReserveAdmission({
-      dev: { id: 'thermostat', priority: 10 },
-      availableHeadroom: null,
-      neededKw: 0.8,
-      reserves: [reserve('heater', 1, 1.25)],
-    })).toEqual({ kind: 'unconstrained' });
+    expect(resolveReserveAdmission(
+      { id: 'thermostat', priority: 10 },
+      null,
+      0.8,
+      [reserve('heater', 1, 1.25)],
+    )).toEqual({ kind: 'unconstrained' });
   });
 
   it('admits when there is room even after the reservation', () => {
@@ -403,12 +397,12 @@ describe('resolveReserveAdmission', () => {
     // Regression: deciding "did a reserve apply?" by comparing the two headroom figures misread
     // this case — `max(0, 0 - claimed)` equals the raw 0, so the reservation went unnamed and the
     // device fell through to the swap path with a plain shortfall reason.
-    const result = resolveReserveAdmission({
-      dev: { id: 'thermostat', priority: 10 },
-      availableHeadroom: 0.5,
-      neededKw: 0,
-      reserves: [reserve('heater', 1, 10)],
-    });
+    const result = resolveReserveAdmission(
+      { id: 'thermostat', priority: 10 },
+      0.5,
+      0,
+      [reserve('heater', 1, 10)],
+    );
     expect(result.kind).toBe('blocked_by_reserve');
   });
 });
@@ -419,12 +413,12 @@ describe('buildReservedForStartReason', () => {
   // exists — so the "names nobody" case it used to cover is gone with the
   // nullable `targetName`.
   it('names the most important device holding power ahead of this one', () => {
-    const result = resolveReserveAdmission({
-      dev: { id: 'thermostat', priority: 10 },
-      availableHeadroom: 0.5,
-      neededKw: 0,
-      reserves: [reserve('charger', 3, 1.4), reserve('heater', 1, 1.25)],
-    });
+    const result = resolveReserveAdmission(
+      { id: 'thermostat', priority: 10 },
+      0.5,
+      0,
+      [reserve('charger', 3, 1.4), reserve('heater', 1, 1.25)],
+    );
     expect(result.kind).toBe('blocked_by_reserve');
     const holderName = result.kind === 'blocked_by_reserve' ? result.holderName : null;
     expect(buildReservedForStartReason(holderName ?? ''))

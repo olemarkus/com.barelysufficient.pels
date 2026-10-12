@@ -12,18 +12,19 @@ import type { RestorePowerSource } from '../../../packages/contracts/src/types';
 // lives in `packages/contracts/src/types.ts`.
 export type { RestorePowerSource };
 
-export function buildInsufficientHeadroomUpdate(params: {
-  neededKw: number;
-  availableKw: number;
-  marginKw: number;
-  penaltyExtraKw?: number;
-  swapReserveKw?: number;
-  effectiveAvailableKw?: number;
-  swapTargetName?: string;
-}): Partial<DevicePlanDevice> {
+export function buildInsufficientHeadroomUpdate(
+  neededKw: number,
+  availableKw: number,
+  marginKw: number,
+  penaltyExtraKw: number | null,
+  swapReserveKw: number | null,
+  effectiveAvailableKw: number | null,
+): Partial<DevicePlanDevice> {
   return {
     plannedState: 'shed',
-    reason: buildRestoreHeadroomReason(params),
+    reason: buildRestoreHeadroomReason(
+      neededKw, availableKw, marginKw, penaltyExtraKw, swapReserveKw, effectiveAvailableKw,
+    ),
   };
 }
 
@@ -83,12 +84,11 @@ export function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: n
  * two against different needs is how the card came to claim a device would be
  * admitted while the gate had just rejected it on a larger number.
  */
-export function applyRecentShedInflation(params: {
-  baseNeededKw: number;
-  lastDeviceShedMs: number | undefined;
-  nowMs: number;
-}): number {
-  const { baseNeededKw, lastDeviceShedMs, nowMs } = params;
+export function applyRecentShedInflation(
+  baseNeededKw: number,
+  lastDeviceShedMs: number | undefined,
+  nowMs: number,
+): number {
   // The clock is injected (two callers, two stages of the same cycle), so the
   // window is bounded at BOTH ends: a `nowMs` before the shed stamp is not
   // "recently shed", it is a nonsense elapsed time, and inflating on it would

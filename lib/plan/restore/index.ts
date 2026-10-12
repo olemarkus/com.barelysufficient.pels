@@ -1,6 +1,7 @@
 import type { DevicePlanDevice } from '../planTypes';
 import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
+import type { SheddingPlan } from '../shedding/types';
 import {
   getOnDevices,
   getRestoreCandidates,
@@ -38,21 +39,18 @@ import type {
 
 export type { RestoreDeps, RestorePlanResult } from './types';
 
-export function applyRestorePlan(params: {
-  planDevices: DevicePlanDevice[];
-  context: PlanContext;
-  power: MeasuredPower;
-  state: PlanEngineState;
+export function applyRestorePlan(
+  planDevices: DevicePlanDevice[],
+  context: PlanContext,
+  power: MeasuredPower,
+  state: PlanEngineState,
   /** The holds PELS keeps on home batteries after this build's limit step (`StorageRelief.levers`). */
-  storageLevers: Readonly<Record<string, StorageLeverState>>;
-  sheddingActive: boolean;
-  /** The capacity guard is in shortfall this cycle (`SheddingPlan.guardInShortfall`). */
-  guardInShortfall: boolean;
-  deps: RestoreDeps;
-}): RestorePlanResult {
-  const {
-    planDevices, context, power, state, storageLevers, sheddingActive, guardInShortfall, deps,
-  } = params;
+  storageLevers: Readonly<Record<string, StorageLeverState>>,
+  /** This cycle's shedding decision: its latch and whether the capacity guard is in shortfall. */
+  sheddingPlan: SheddingPlan,
+  deps: RestoreDeps,
+): RestorePlanResult {
+  const { sheddingActive, guardInShortfall } = sheddingPlan;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapLedger = state.swapLedger;
   const headroomReserves = resolveCycleHeadroomReserves(planDevices, state);
@@ -76,7 +74,7 @@ export function applyRestorePlan(params: {
   // serviceable for a NON-exempt reservation would burn that reservation's
   // window against a lane that could never consider its target.
   const laneServes = (target: DevicePlanDevice): boolean => (
-    restoresPlannable || (exemptRestoresPlannable && target.budgetExempt === true)
+    restoresPlannable || (exemptRestoresPlannable && target.budgetExempt)
   );
   swapLedger.reconcile(deviceMap, timing.nowTs, laneServes, deps.structuredLog);
 
@@ -181,11 +179,7 @@ function resolveCycleHeadroomReserves(
   planDevices: DevicePlanDevice[],
   state: PlanEngineState,
 ): HeadroomReserve[] {
-  return resolveHeadroomReserves({
-    devices: planDevices,
-    state,
-    nowTs: Date.now(),
-  });
+  return resolveHeadroomReserves(planDevices, state, Date.now());
 }
 
 // The ordinary unrestricted restore pass (the shouldPlanRestores branch of

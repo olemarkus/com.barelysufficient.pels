@@ -16,11 +16,7 @@ describe('plan daily budget current-hour usage split', () => {
   });
 
   it('uses both gross split buckets directly when present (managed+background reflect actual consumption)', () => {
-    const result = resolveHourlyUsageSplit({
-      totalRaw: 1.8,
-      controlledRaw: 0.6,
-      uncontrolledRaw: 0.15,
-    });
+    const result = resolveHourlyUsageSplit(1.8, 0.6, 0.15);
 
     // Gross attribution: managed (0.6) + background (0.15) are used as-is and are NOT
     // re-derived from the net total (so they may sum to less/more than the net under solar).
@@ -30,11 +26,7 @@ describe('plan daily budget current-hour usage split', () => {
   });
 
   it('uses raw uncontrolled only when controlled data is missing', () => {
-    const result = resolveHourlyUsageSplit({
-      totalRaw: 1.8,
-      controlledRaw: undefined,
-      uncontrolledRaw: 0.15,
-    });
+    const result = resolveHourlyUsageSplit(1.8, undefined, 0.15);
 
     expect(result.totalKWh).toBe(1.8);
     expect(result.controlledKWh).toBeCloseTo(1.65, 6);
@@ -42,29 +34,17 @@ describe('plan daily budget current-hour usage split', () => {
   });
 
   it('preserves legacy split display when total usage is missing but split buckets exist', () => {
-    expect(resolveHourlyUsageSplit({
-      totalRaw: undefined,
-      controlledRaw: 0.6,
-      uncontrolledRaw: 0.15,
-    })).toEqual({
+    expect(resolveHourlyUsageSplit(undefined, 0.6, 0.15)).toEqual({
       controlledKWh: 0.6,
       uncontrolledKWh: 0.15,
     });
 
-    expect(resolveHourlyUsageSplit({
-      totalRaw: undefined,
-      controlledRaw: 0.6,
-      uncontrolledRaw: undefined,
-    })).toEqual({
+    expect(resolveHourlyUsageSplit(undefined, 0.6, undefined)).toEqual({
       controlledKWh: 0.6,
       uncontrolledKWh: undefined,
     });
 
-    expect(resolveHourlyUsageSplit({
-      totalRaw: undefined,
-      controlledRaw: undefined,
-      uncontrolledRaw: 0.15,
-    })).toEqual({
+    expect(resolveHourlyUsageSplit(undefined, undefined, 0.15)).toEqual({
       controlledKWh: undefined,
       uncontrolledKWh: 0.15,
     });

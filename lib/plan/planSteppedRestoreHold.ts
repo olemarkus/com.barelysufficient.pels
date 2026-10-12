@@ -31,13 +31,7 @@ export function applySteppedRestoreAttemptHold(
   const restoreDebugKey = `stepped:${dev.id}`;
   const nowMs = Date.now();
   const steppedRestoreAttempt = resolveSteppedRestoreAttemptState(
-    dev,
-    nextStepId,
-    nowMs,
-    {
-      lastRestoreMs: state.actuation.lastDeviceRestoreMs[dev.id],
-      measurementTs: timing.measurementTs,
-    },
+    dev, nextStepId, nowMs, state.actuation.lastDeviceRestoreMs[dev.id], timing.measurementTs,
   );
   const pendingRestoreHold = buildPendingSteppedRestoreHold(steppedRestoreAttempt);
   if (pendingRestoreHold) {
@@ -55,30 +49,25 @@ export function applySteppedRestoreAttemptHold(
       expectedPowerKw: nextStepPowerKw,
       reason: pendingRestoreHold.reason,
     });
-    emitRestoreDebugEventOnChange({
-      state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_stepped_deferred',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        currentStepId: dev.selectedStepId,
-        requestedStepId: nextStepId,
-        decision: 'deferred',
-        reasonCode: pendingRestoreHold.reasonCode,
-        remainingSec: pendingRestoreHold.remainingSec,
-      },
-      signaturePayload: {
-        event: 'restore_stepped_deferred',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        currentStepId: dev.selectedStepId,
-        requestedStepId: nextStepId,
-        decision: 'deferred',
-        reasonCode: pendingRestoreHold.reasonCode,
-      },
+    emitRestoreDebugEventOnChange(state, restoreDebugKey, {
+      event: 'restore_stepped_deferred',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      currentStepId: dev.selectedStepId,
+      requestedStepId: nextStepId,
+      decision: 'deferred',
+      reasonCode: pendingRestoreHold.reasonCode,
+      remainingSec: pendingRestoreHold.remainingSec,
+    }, {
+      event: 'restore_stepped_deferred',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      currentStepId: dev.selectedStepId,
+      requestedStepId: nextStepId,
+      decision: 'deferred',
+      reasonCode: pendingRestoreHold.reasonCode,
     });
     return {
       kind: 'pending',

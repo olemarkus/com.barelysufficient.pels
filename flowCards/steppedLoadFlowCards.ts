@@ -10,6 +10,7 @@ import {
 import {
   createSteppedLoadReportError,
   emitSteppedLoadClampDeviationLog,
+  emitSteppedLoadReportNativeIgnoredLog,
   emitSteppedLoadReportReceivedLog,
   emitSteppedLoadReportRejectedLog,
   emitSteppedLoadReportResolvedLog,
@@ -41,27 +42,14 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
     const deviceId = readFlowDeviceArg(args);
     const stepId = readFlowStringArg(args, 'step');
     const sourceCardId = 'report_stepped_load_actual_step';
-    emitSteppedLoadReportReceivedLog({
-      deps,
-      sourceCardId,
-      deviceId,
-      reportedStepId: stepId || null,
-    });
+    emitSteppedLoadReportReceivedLog(deps, sourceCardId, deviceId, stepId || null, null);
     try {
       if (!deviceId) {
         throw createSteppedLoadReportError('device_missing', 'Device must be provided.');
       }
       const nativeIgnored = await resolveNativeSteppedLoadFlowReportIgnore(deps, deviceId);
       if (nativeIgnored) {
-        emitSteppedLoadReportResolvedLog({
-          deps,
-          sourceCardId,
-          deviceId,
-          deviceName: nativeIgnored.deviceName,
-          resolvedStepId: stepId || null,
-          outcome: 'unchanged',
-          reasonCode: 'native_wiring_enabled',
-        });
+        emitSteppedLoadReportNativeIgnoredLog(deps, sourceCardId, deviceId, nativeIgnored.deviceName, stepId || null);
         return true;
       }
       if (!stepId) {
@@ -69,23 +57,10 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
       }
       const result = await deps.reportSteppedLoadActualStep(deviceId, stepId);
       const deviceName = await getBestEffortSteppedLoadDeviceName(deps, deviceId);
-      await handleSteppedLoadReportResult({
-        deps,
-        result,
-        source: sourceCardId,
-        deviceId,
-        deviceName,
-        resolvedStepId: stepId,
-      });
+      await handleSteppedLoadReportResult(deps, result, sourceCardId, deviceId, deviceName, stepId, undefined);
       return true;
     } catch (error) {
-      emitSteppedLoadReportRejectedLog({
-        deps,
-        sourceCardId,
-        deviceId,
-        reportedStepId: stepId || null,
-        error,
-      });
+      emitSteppedLoadReportRejectedLog(deps, sourceCardId, deviceId, stepId || null, null, error);
       throw error;
     }
   });
@@ -116,53 +91,24 @@ function registerReportActualPowerCard(deps: FlowCardDeps): void {
     const deviceId = readFlowDeviceArg(args);
     const rawPower = readFlowRawArg(args, 'power_w');
     const sourceCardId = 'report_stepped_load_power';
-    emitSteppedLoadReportReceivedLog({
-      deps,
-      sourceCardId,
-      deviceId,
-      rawPowerInput: formatFlowValueForLog(rawPower),
-    });
+    emitSteppedLoadReportReceivedLog(deps, sourceCardId, deviceId, null, formatFlowValueForLog(rawPower));
     try {
       if (!deviceId) {
         throw createSteppedLoadReportError('device_missing', 'Device must be provided.');
       }
       const nativeIgnored = await resolveNativeSteppedLoadFlowReportIgnore(deps, deviceId);
       if (nativeIgnored) {
-        emitSteppedLoadReportResolvedLog({
-          deps,
-          sourceCardId,
-          deviceId,
-          deviceName: nativeIgnored.deviceName,
-          resolvedStepId: null,
-          outcome: 'unchanged',
-          reasonCode: 'native_wiring_enabled',
-        });
+        emitSteppedLoadReportNativeIgnoredLog(deps, sourceCardId, deviceId, nativeIgnored.deviceName, null);
         return true;
       }
-      const { stepId, deviceName, parsedPowerW } = await resolveSteppedLoadStepIdFromPowerInput({
-        deps,
-        deviceId,
-        rawPower,
-      });
+      const { stepId, deviceName, parsedPowerW } = await resolveSteppedLoadStepIdFromPowerInput(
+        deps, deviceId, rawPower,
+      );
       const result = await deps.reportSteppedLoadActualStep(deviceId, stepId, parsedPowerW);
-      await handleSteppedLoadReportResult({
-        deps,
-        result,
-        source: sourceCardId,
-        deviceId,
-        deviceName,
-        resolvedStepId: stepId,
-        parsedPowerW,
-      });
+      await handleSteppedLoadReportResult(deps, result, sourceCardId, deviceId, deviceName, stepId, parsedPowerW);
       return true;
     } catch (error) {
-      emitSteppedLoadReportRejectedLog({
-        deps,
-        sourceCardId,
-        deviceId,
-        rawPowerInput: formatFlowValueForLog(rawPower),
-        error,
-      });
+      emitSteppedLoadReportRejectedLog(deps, sourceCardId, deviceId, null, formatFlowValueForLog(rawPower), error);
       throw error;
     }
   });
@@ -171,58 +117,27 @@ function registerReportActualPowerCard(deps: FlowCardDeps): void {
   ));
 }
 
-async function handleSteppedLoadReportResult(params: {
-  deps: FlowCardDeps;
-  result: ReportSteppedLoadActualStepResult;
-  source: string;
-  deviceId: string;
-  deviceName: string;
-  resolvedStepId: string;
-  parsedPowerW?: number;
-}): Promise<void> {
-  const {
-    deps,
-    result,
-    source,
-    deviceId,
-    deviceName,
-    resolvedStepId,
-    parsedPowerW,
-  } = params;
+async function handleSteppedLoadReportResult(
+  deps: FlowCardDeps,
+  result: ReportSteppedLoadActualStepResult,
+  sourceCardId: string,
+  deviceId: string,
+  deviceName: string,
+  resolvedStepId: string,
+  parsedPowerW: number | undefined,
+): Promise<void> {
   if (result === 'invalid') {
     throw createSteppedLoadReportError(
       'invalid_step',
       'Device is not configured as a stepped load, or the reported step is invalid.',
     );
   }
-  if (result === 'unchanged') {
-    emitSteppedLoadReportResolvedLog({
-      deps,
-      sourceCardId: source,
-      deviceId,
-      deviceName,
-      resolvedStepId,
-      parsedPowerW,
-      outcome: 'unchanged',
-    });
-    await emitSteppedLoadClampDeviationLog({
-      deps, sourceCardId: source, deviceId, reportedStepId: resolvedStepId, parsedPowerW, now: deps.getNow().getTime(),
-    });
-    return;
-  }
-  await deps.refreshSnapshot();
-  emitSteppedLoadReportResolvedLog({
-    deps,
-    sourceCardId: source,
-    deviceId,
-    deviceName,
-    resolvedStepId,
-    parsedPowerW,
-    outcome: 'accepted',
-  });
-  await emitSteppedLoadClampDeviationLog({
-    deps, sourceCardId: source, deviceId, reportedStepId: resolvedStepId, parsedPowerW, now: deps.getNow().getTime(),
-  });
+  const outcome = result === 'unchanged' ? 'unchanged' : 'accepted';
+  if (outcome === 'accepted') await deps.refreshSnapshot();
+  emitSteppedLoadReportResolvedLog(deps, sourceCardId, deviceId, deviceName, resolvedStepId, outcome, parsedPowerW);
+  await emitSteppedLoadClampDeviationLog(
+    deps, sourceCardId, deviceId, resolvedStepId, parsedPowerW, deps.getNow().getTime(),
+  );
 }
 
 async function resolveNativeSteppedLoadFlowReportIgnore(

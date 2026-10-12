@@ -2,7 +2,7 @@
 // bought a device becomes a CEILING on its keep step and on its restore climb,
 // while capacity shedding, boost and an active smart task all still outrank it.
 //
-// Driven through the real `resolveSteppedKeepDesiredStepId` / `resolveSurplusHold`
+// Driven through the real `resolveSteppedKeepDesiredStepIdFor` / `resolveSurplusHold`
 // rather than a mocked planner, so what is pinned is the composition — which
 // clamp wins — not a restatement of each helper's own unit contract.
 import { describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import { resolveSurplusHold } from '../../lib/plan/shedding/surplusHold';
 import { type SurplusTrackingDecision } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
+import { buildPlanInputDevice, keepDesiredStepIdUnder, steppedProfile } from '../utils/planTestUtils';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
 const CHARGER = 'charger';
@@ -41,36 +41,28 @@ const buildTracker = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice
 
 describe('surplus tracking ceiling — keep path', () => {
   it('lowers a device sitting above its allocation to the allocated rung', () => {
-    expect(resolveSteppedKeepDesiredStepId(keepDevice(), {
-      surplusCeilingStepId: 'low',
-    })).toBe('low');
+    expect(keepDesiredStepIdUnder(keepDevice(), false, false, 'low')).toBe('low');
   });
 
   it('leaves a device already below its allocation alone — the ceiling never raises', () => {
-    expect(resolveSteppedKeepDesiredStepId(keepDevice({
+    expect(keepDesiredStepIdUnder(keepDevice({
       selectedStepId: 'low', reportedStepId: 'low', desiredStepId: 'low',
-    }), { surplusCeilingStepId: 'max' })).toBe('low');
+    }), false, false, 'max')).toBe('low');
   });
 
   it('is a no-op for a device with no allocation', () => {
-    expect(resolveSteppedKeepDesiredStepId(keepDevice(), {})).toBe('max');
+    expect(resolveSteppedKeepDesiredStepId(keepDevice())).toBe('max');
   });
 
   it('yields to boost — a live demand outranks "use only your own sun"', () => {
-    expect(resolveSteppedKeepDesiredStepId(keepDevice(), {
-      surplusCeilingStepId: 'low',
-      boostActive: true,
-    })).toBe('max');
+    expect(keepDesiredStepIdUnder(keepDevice(), false, true, 'low')).toBe('max');
   });
 
   it('composes with the fairness clamp, and the LOWER of the two wins', () => {
     // Another device is limited, so the fairness clamp wants `low`; the surplus
     // allocation would have allowed `medium`. The device must end up at `low` —
     // capacity pressure is not something a solar allocation can overrule.
-    expect(resolveSteppedKeepDesiredStepId(keepDevice(), {
-      surplusCeilingStepId: 'medium',
-      anyOtherDeviceLimited: true,
-    })).toBe('low');
+    expect(keepDesiredStepIdUnder(keepDevice(), true, false, 'medium')).toBe('low');
   });
 });
 

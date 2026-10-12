@@ -81,11 +81,9 @@ const misnamedOffHeater = (): MeteredPlanInputDevice => steppedInputDevice({
 const initialTargetFor = (
   device: MeteredPlanInputDevice,
   shedAction: 'turn_off' | 'set_step',
-) => getSteppedLoadShedTargetStep({
-  device,
-  shedAction,
-  currentDesiredStepId: isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
-});
+) => getSteppedLoadShedTargetStep(
+  device, shedAction, isSteppedLoadDevice(device) ? device.selectedStepId : undefined,
+);
 
 const ladderFor = (
   device: MeteredPlanInputDevice,

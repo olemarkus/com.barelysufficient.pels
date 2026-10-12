@@ -91,12 +91,9 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
     // kind/deadline/target, so the recorder notification no-ops; the next plan
     // rebuild applies the new permission. A per-key write touches only this
     // device's key, so it cannot clobber a sibling task.
-    const outcome = deps.upsertDeferredObjectiveForDevice({
-      deviceId,
-      deviceName: null,
-      entry: withRescuePermission(prevEntry, key, mode),
-      rescue: 'replace',
-    });
+    const outcome = deps.upsertDeferredObjectiveForDevice(
+      deviceId, null, withRescuePermission(prevEntry, key, mode), 'replace',
+    );
     // A refused write must surface as a failure, not a silent success that
     // leaves the rescue permission unchanged. Transient refusals (un-confirmable
     // migration / untrustworthy settings read) get the retry framing; the

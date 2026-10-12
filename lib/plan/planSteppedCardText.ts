@@ -1,12 +1,9 @@
 import type {
   ObservedStateOfCharge,
-  EvChargingState,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
-import type {
-  DeviceOverviewSnapshot, DeviceOverviewSteppedLoad,
-} from '../../packages/shared-domain/src/deviceOverview';
+import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
 import {
   isHoldReasonCode,
   resolveDisplayStateKind,
@@ -212,7 +209,7 @@ const resolveOffStatusLine = (
   // switch PELS cannot currently observe — the `showExternalOffReason` gate
   // above owns the case where that guidance IS honest.
   if (!isHoldReasonCode(device.reason.code) && device.starvation?.isStarved !== true) return null;
-  return resolveHeldCardReasonLine({ reason: device.reason, starvation: device.starvation });
+  return resolveHeldCardReasonLine(device.reason, device.starvation);
 };
 
 export const resolveSteppedStatusLine = (
@@ -248,7 +245,7 @@ export const resolveSteppedStatusLine = (
   }
   if (device.reason.code === PLAN_REASON_CODES.waitingForOtherDevices) {
     const verb = resolveSteppedWaitVerb(device, profile);
-    return resolveHeldCardReasonLine({ reason: device.reason, verb });
+    return resolveHeldCardReasonLine(device.reason, undefined, verb);
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
@@ -291,13 +288,12 @@ export const resolveSteppedTemperatureText = (device: {
 // device is on with no reported step (real-evidence-only — never inferred
 // from another field); null when the device is off (the bold state word
 // already covers "off").
-export const resolveSteppedLevelFact = (device: {
-  currentState?: string;
-  steppedLoad?: Pick<DeviceOverviewSteppedLoad, 'profile' | 'reportedStepId'>;
-  evChargingState?: EvChargingState;
-  isEvCharger: boolean;
-  stateOfCharge?: ObservedStateOfCharge;
-}, stateWordNamesLevel = false): string | null => {
+export const resolveSteppedLevelFact = (
+  device: Pick<
+    DeviceOverviewSnapshot, 'currentState' | 'steppedLoad' | 'evChargingState' | 'isEvCharger' | 'stateOfCharge'
+  >,
+  stateWordNamesLevel = false,
+): string | null => {
   if (isSteppedCardOffLikeState(device.currentState)) return null;
   const { steppedLoad } = device;
   const stepId = steppedLoad?.reportedStepId ?? null;

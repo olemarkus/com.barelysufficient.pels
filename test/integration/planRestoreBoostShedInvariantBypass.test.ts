@@ -14,12 +14,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { applyRestorePlan } from '../../lib/plan/restore';
 import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   buildPlanDevice,
   steppedPlanDevice,
+  applyRestorePlanForSpec,
 } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 
@@ -56,8 +56,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
 
   const runScenario = () => {
     const state = createPlanEngineState();
-    return applyRestorePlan({
-      storageLevers: {},
+    return applyRestorePlanForSpec({
       planDevices: [
         steppedPlanDevice({
           id: 'water-heater',
@@ -87,7 +86,6 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       ...cycleArgsFor(buildContext()),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -112,8 +110,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
     // device is subject to fairness like any other. Pinning it means a future
     // reader can see the reversal was chosen, not lost in a deletion.
     const state = createPlanEngineState();
-    const result = applyRestorePlan({
-      storageLevers: {},
+    const result = applyRestorePlanForSpec({
       planDevices: [
         steppedPlanDevice({
           id: 'water-heater',
@@ -139,7 +136,6 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       ...cycleArgsFor(buildContext()),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -153,8 +149,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
 
   it('still holds an unboosted device at its step while others are limited', () => {
     const state = createPlanEngineState();
-    const result = applyRestorePlan({
-      storageLevers: {},
+    const result = applyRestorePlanForSpec({
       planDevices: [
         steppedPlanDevice({
           id: 'water-heater',
@@ -180,7 +175,6 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       ...cycleArgsFor(buildContext()),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),

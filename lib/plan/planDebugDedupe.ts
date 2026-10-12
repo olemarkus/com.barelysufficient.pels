@@ -5,13 +5,12 @@ import type { PlanEngineState } from './planState';
 const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function emitRestoreDebugEventOnChange(params: {
-  state: PlanEngineState;
-  key: string;
-  payload: Record<string, unknown>;
-  signaturePayload?: Record<string, unknown>;
-}): void {
-  const { state, key, payload, signaturePayload } = params;
+export function emitRestoreDebugEventOnChange(
+  state: PlanEngineState,
+  key: string,
+  payload: Record<string, unknown>,
+  signaturePayload?: Record<string, unknown>,
+): void {
   // Skip the recursive normalization + JSON.stringify when the topic is off.
   // The gate and the sink now name one topic, so they cannot disagree about
   // which events this function may emit — while callers threaded their own

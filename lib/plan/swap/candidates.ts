@@ -61,7 +61,7 @@ function isViableSwapCandidate(
   // Cost of the blanket rule: in a purely capacity-bound home a non-exempt
   // target can no longer swap out a lower-priority exempt source — a rare,
   // conservative narrowing that matches the exemption's intent.
-  if (onDev.budgetExempt === true && dev.budgetExempt !== true) return false;
+  if (onDev.budgetExempt && !dev.budgetExempt) return false;
   return true;
 }
 

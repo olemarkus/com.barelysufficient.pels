@@ -23,21 +23,21 @@ export function createHomeCommandReachability(
   rebuild: (trigger: PlanRebuildTrigger) => void,
 ): BinaryCommandReachability {
   const timerKey = (deviceId: string) => `binaryCommandReachability:${homeId}:${deviceId}`;
-  return createBinaryCommandReachability({
+  return createBinaryCommandReachability(
     // Off the current turn: the lane is driven from an observation, and the
     // rebuild must not re-enter the caller that is still recording it.
-    requestRebuild: () => {
+    () => {
       queueMicrotask(() => rebuild('binary_command_reachability_changed'));
     },
-    scheduleRebuild: (deviceId, dueAtMs) => {
+    (deviceId, dueAtMs) => {
       const key = timerKey(deviceId);
       ctx.timers.registerTimeout(key, setTimeout(() => {
         ctx.timers.clear(key);
         rebuild('binary_command_reachability_deadline');
       }, Math.max(0, dueAtMs - Date.now())));
     },
-    clearScheduledRebuild: (deviceId) => {
+    (deviceId) => {
       ctx.timers.clear(timerKey(deviceId));
     },
-  });
+  );
 }

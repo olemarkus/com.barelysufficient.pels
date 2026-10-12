@@ -23,7 +23,7 @@ import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { toPlanDevice } from '../../setup/appInit';
-import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/planDevices';
+import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';
 import { buildSettingsOverviewReadModel } from '../../lib/plan/settingsOverviewReadModel';
 import type { RestorePlanResult } from '../../lib/plan/restore';
@@ -31,7 +31,7 @@ import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { buildPlanMeta, restoreTimingFixture, sheddingPlanFixture } from '../utils/planTestUtils';
+import { buildPlanMeta, restoreTimingFixture, buildInitialPlanDevicesForSpec } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 
@@ -207,11 +207,9 @@ const planFromRawDevices = async (): Promise<{ context: PlanCycle; planDevices: 
     headroomRaw: 8,
     headroom: 8,
   });
-  const planDevices = buildInitialPlanDevices({
+  const planDevices = buildInitialPlanDevicesForSpec({
     context,
     state: createPlanEngineState(FIXTURE_NOW_MS),
-    sheddingPlan: sheddingPlanFixture(),
-    shortfall: { inShortfall: false },
     deps: planDevicesDeps,
   });
   return { context, planDevices };

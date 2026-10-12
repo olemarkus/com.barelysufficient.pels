@@ -34,9 +34,9 @@ export type PlanDevicesDeps = Pick<PlanBuilderDeps,
 // guarantees a finite current target, so every seed lane produces a number and
 // there is no skip/grace state left to model.
 type ResolvedPlannedTarget = number | undefined;
-export function buildInitialPlanDevices(params: {
-  context: PlanContext;
-  state: PlanEngineState;
+export function buildInitialPlanDevices(
+  context: PlanContext,
+  state: PlanEngineState,
   /**
    * This cycle's shedding decision, WHOLE. Its `shedSet`, `shedReasons` and
    * the rungs each stepped shed was priced at used to arrive here as three
@@ -44,17 +44,10 @@ export function buildInitialPlanDevices(params: {
    * was taken apart to be listed again. Copied onto the device, never
    * re-derived — see `resolveSteppedLoadDirectShedStepId`.
    */
-  sheddingPlan: SheddingPlan;
-  shortfall: ShortfallOffState;
-  deps: PlanDevicesDeps;
-}): DevicePlanDevice[] {
-  const {
-    context,
-    state,
-    sheddingPlan,
-    shortfall,
-    deps,
-  } = params;
+  sheddingPlan: SheddingPlan,
+  shortfall: ShortfallOffState,
+  deps: PlanDevicesDeps,
+): DevicePlanDevice[] {
   const { shedSet, shedReasons } = sheddingPlan;
   // Drop entries that must NOT count as capacity-shed posture, so the keep-invariant
   // stepped clamp (docs/technical.md:222) is symmetric with the executor's
@@ -66,14 +59,14 @@ export function buildInitialPlanDevices(params: {
   // The executor (`hasExecutableShedDevices`) and the restore side
   // (`countShedDevices`) answer alike through `nonCapacityHoldShed`, stamped from
   // these same predicates.
-  const effectiveShedSet = buildEffectiveShedPosture({
-    devices: context.devices,
+  const effectiveShedSet = buildEffectiveShedPosture(
+    context.devices,
     shedSet,
-    isExcluded: (dev) => isPhantomSetStepShed(dev, context.devices, state, deps)
+    (dev) => isPhantomSetStepShed(dev, context.devices, state, deps)
       || isSurplusOnlyHoldShed(dev, state, shedReasons)
       || isStartPolicyHoldShed(dev, shedReasons)
       || isDeferredHoldShed(dev, shedReasons),
-  });
+  );
   // Per-stage accumulators (split inside the per-device loop). Emitted once
   // after the loop so the perf log shows where plan_devices_ms is going
   // without per-iteration log spam. Added during 2026-05-18 memory-regression
@@ -86,7 +79,8 @@ export function buildInitialPlanDevices(params: {
   // `planBuilder.buildPlanSnapshotWithTimings` (hoisted so the standing dump-load
   // hold can read it when the shed set is assembled). This module only READS
   // `state.surplusEligibilityByDevice` — it never advances the allocator.
-  /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
+  /* eslint-disable functional/immutable-data, no-param-reassign --
+     In-place update avoids another state or accumulator copy. */
   const result = context.devices.map((dev) => {
     const t0 = Date.now();
     const plannedTarget = resolvePlannedTarget(dev, context.temperatureSetpoints, state, deps);
@@ -125,7 +119,7 @@ export function buildInitialPlanDevices(params: {
       : { action: 'turn_off' };
     const previousBoostActive = state.boostActiveByDevice[dev.id] === true;
     const boostActive = resolveBoostActive(dev);
-    emitBoostStateChange({ dev, previousActive: previousBoostActive, active: boostActive });
+    emitBoostStateChange(dev, previousBoostActive, boostActive);
     setupMs += Date.now() - t0;
     const t1 = Date.now();
     const base = buildBasePlanDevice({
@@ -148,7 +142,7 @@ export function buildInitialPlanDevices(params: {
     offStateMs += Date.now() - t2;
     return withOffStateReason;
   });
-  /* eslint-enable functional/immutable-data */
+  /* eslint-enable functional/immutable-data, no-param-reassign */
   addPerfDuration('plan_devices_setup_ms', setupMs);
   addPerfDuration('plan_devices_base_ms', baseMs);
   addPerfDuration('plan_devices_offstate_ms', offStateMs);
@@ -207,10 +201,9 @@ function isPhantomSetStepShed(
   if (!isSteppedLoadDevice(dev)) return false;
   const behavior = deps.getShedBehavior(dev.id);
   if (behavior.action !== 'set_step') return false;
-  const directStepId = resolveSteppedShedHypotheticalStepId({
-    dev, devices, state, shedBehavior: behavior,
-    currentDesiredStepId: resolveSteppedShedCurrentDesiredStepId(dev),
-  });
+  const directStepId = resolveSteppedShedHypotheticalStepId(
+    dev, devices, state, behavior, resolveSteppedShedCurrentDesiredStepId(dev),
+  );
   return directStepId === undefined || directStepId === dev.selectedStepId;
 }
 // A "Run on solar surplus" hold is an opt-in posture (baseline off), not capacity

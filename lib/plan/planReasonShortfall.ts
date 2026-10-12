@@ -1,4 +1,3 @@
-import type { RestoreHeadroomAxes } from './restore/headroomLedger';
 /**
  * Per-cycle admission shortfall for ceiling-held devices, computed at the
  * reason-normalization stage (`normalizeShedReasons`).
@@ -54,7 +53,6 @@ import type { RestoreHeadroomAxes } from './restore/headroomLedger';
  */
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
-import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { isReserveAdmitted, resolveReserveAdmission, type HeadroomReserve } from './admission';
 import { applyRecentShedInflation, computeBaseRestoreNeed } from './restore/accounting';
 import { buildSwapCandidates, type SwapLedger } from './swap';
@@ -86,26 +84,6 @@ export type CeilingShortfallInputs = {
   lastDeviceShedMsById: Readonly<Record<string, number>>;
   nowMs: number;
 };
-
-export function buildCeilingShortfallInputs(params: {
-  ledgerAxes: RestoreHeadroomAxes;
-  headroomReserves: readonly HeadroomReserve[];
-  onDevices: readonly MeteredDevicePlanDevice[];
-  swapLedger: SwapLedger;
-  restoredThisCycle: ReadonlySet<string>;
-  lastDeviceShedMsById: Readonly<Record<string, number>>;
-  nowMs: number;
-}): CeilingShortfallInputs {
-  return {
-    ledger: buildRestoreHeadroomLedger(params.ledgerAxes),
-    headroomReserves: params.headroomReserves,
-    onDevices: params.onDevices,
-    swapLedger: params.swapLedger,
-    restoredThisCycle: params.restoredThisCycle,
-    lastDeviceShedMsById: params.lastDeviceShedMsById,
-    nowMs: params.nowMs,
-  };
-}
 
 // The kW that, if it became available, would let PELS run this device right
 // now — including by swapping. Two gates, mirroring the restore lane exactly:
@@ -152,17 +130,10 @@ export function resolveCeilingShortfall(params: {
   inputs: CeilingShortfallInputs;
 }): CeilingShortfallResolution {
   const { dev, inputs } = params;
-  const neededKw = applyRecentShedInflation({
-    baseNeededKw: computeBaseRestoreNeed(dev).needed,
-    lastDeviceShedMs: inputs.lastDeviceShedMsById[dev.id],
-    nowMs: inputs.nowMs,
-  });
-  const reserved = resolveReserveAdmission({
-    dev,
-    availableHeadroom: inputs.ledger.availableFor(dev),
-    neededKw,
-    reserves: inputs.headroomReserves,
-  });
+  const neededKw = applyRecentShedInflation(
+    computeBaseRestoreNeed(dev).needed, inputs.lastDeviceShedMsById[dev.id], inputs.nowMs,
+  );
+  const reserved = resolveReserveAdmission(dev, inputs.ledger.availableFor(dev), neededKw, inputs.headroomReserves);
   if (reserved.kind === 'blocked_by_reserve') {
     return { kind: 'blocked_by_reserve', holderName: reserved.holderName };
   }

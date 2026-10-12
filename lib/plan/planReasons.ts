@@ -51,7 +51,7 @@ function buildBaseReason(ctx: ReasonContext, dev: DevicePlanDevice): DeviceReaso
     resolved.code,
     resolveRestoreShortfallKw(resolved),
     shedReasons.has(dev.id),
-    dev.budgetExempt === true,
+    dev.budgetExempt,
   );
   return reattributed ?? resolved;
 }
@@ -304,7 +304,7 @@ function resolveHourlyFold(
   if (dev.reason.code !== PLAN_REASON_CODES.hourlyBudget) return dev.reason;
   if (shedReasonFresh) return dev.reason;
   if (softLimitSource === 'grid') return { code: PLAN_REASON_CODES.gridImport };
-  const daily = softLimitSource === 'daily' && !physicalLimitBreached && dev.budgetExempt !== true;
+  const daily = softLimitSource === 'daily' && !physicalLimitBreached && !dev.budgetExempt;
   return daily
     ? { code: PLAN_REASON_CODES.dailyBudget }
     : { code: PLAN_REASON_CODES.capacity };
@@ -390,7 +390,7 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
     currentReason.code,
     resolveRestoreShortfallKw(currentReason.reason),
     shedReasons.has(dev.id),
-    dev.budgetExempt === true,
+    dev.budgetExempt,
   );
   if (dailyReattribution) return { ...dev, reason: dailyReattribution };
 

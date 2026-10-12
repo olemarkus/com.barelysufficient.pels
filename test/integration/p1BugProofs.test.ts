@@ -1,4 +1,4 @@
-import { withDeviceConfiguration } from '../utils/planTestUtils';
+import { withDeviceConfiguration, buildInitialPlanDevicesForSpec } from '../utils/planTestUtils';
 import { NO_STORAGE_RELIEF } from '../../lib/plan/battery/storageRelief';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
@@ -7,7 +7,6 @@ import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExec
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import { getHighestKnownPowerKw } from '../../lib/observer/observedPower';
 import { getOffDevices, getSteppedRestoreCandidates } from '../../lib/plan/restore/devices';
 import { estimateRestorePower } from '../../lib/plan/restore/accounting';
@@ -29,7 +28,6 @@ import {
   steppedPlanDevice,
   withFixtureResidualKw,
   fixtureControlPosture,
-  sheddingPlanFixture,
 } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
@@ -306,11 +304,9 @@ describe('P1 bug proofs', () => {
     }) as MeteredPlanInputDevice;
 
     const planState = createPlanEngineState();
-    const [planDevice] = buildInitialPlanDevices({
+    const [planDevice] = buildInitialPlanDevicesForSpec({
       context: buildPlanningContext([rawDevice]),
       state: planState,
-      sheddingPlan: sheddingPlanFixture(),
-      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),

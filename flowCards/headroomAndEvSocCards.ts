@@ -60,45 +60,29 @@ async function checkHeadroomForDevice(
     headroom,
     requiredKw,
   });
-  logHeadroomCheck({
-    deps,
-    deviceSnap,
-    deviceId,
-    requiredKw,
-    headroom,
-    decision,
-  });
+  logHeadroomCheck(deps, deviceSnap, requiredKw, headroom, decision);
 
   return decision.allowed;
 }
 
-function logHeadroomCheck(params: {
-  deps: FlowCardDeps;
-  deviceSnap: TargetDeviceSnapshot | undefined;
-  deviceId: string;
-  requiredKw: number;
+function logHeadroomCheck(
+  deps: FlowCardDeps,
+  deviceSnap: TargetDeviceSnapshot,
+  requiredKw: number,
   /** The reading the decision was made on; the line logs its figures, not a second read. */
-  headroom: HeadroomWithReading;
-  decision: HeadroomForDeviceDecision;
-}): void {
-  const {
-    deps,
-    deviceSnap,
-    deviceId,
-    requiredKw,
-    headroom,
-    decision,
-  } = params;
+  headroom: HeadroomWithReading,
+  decision: HeadroomForDeviceDecision,
+): void {
   deps.debugStructured({
     event: 'headroom_for_device_checked',
-    deviceId,
-    deviceName: deviceSnap?.name,
+    deviceId: deviceSnap.id,
+    deviceName: deviceSnap.name,
     // `null`: no power limit enabled (`unlimited`), the log's spelling of no ceiling.
     powerLimitKw: headroom.kind === 'measured' ? headroom.limitKw : null,
     currentPowerKw: headroom.totalKw,
     deviceConsumptionKw: decision.observedKw,
-    expectedPowerKw: deviceSnap?.expectedPowerKw ?? null,
-    expectedPowerSource: deviceSnap?.expectedPowerSource ?? null,
+    expectedPowerKw: deviceSnap.expectedPowerKw,
+    expectedPowerSource: deviceSnap.expectedPowerSource,
     requiredKw,
     effectiveRequiredKw: decision.requiredKwWithPenalty,
     headroomForDeviceKw: decision.calculatedHeadroomForDeviceKw,
@@ -122,24 +106,14 @@ async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<bo
   const { chargerDeviceId, percent } = parseEvSocCardArgs(args);
   const charger = await requireEvChargerSnapshot(deps, chargerDeviceId);
   const observedAtMs = Date.now();
-  const reportOutcome = deps.reportFlowBackedCapability({
-    deviceId: chargerDeviceId,
-    capabilityId: 'measure_battery',
-    value: percent,
-  });
+  const reportOutcome = deps.reportFlowBackedCapability(chargerDeviceId, 'measure_battery', percent);
 
   if (reportOutcome.refreshSnapshot) {
     await deps.refreshSnapshot({ emitFlowBackedRefresh: false });
   }
 
   const updatedCharger = await getBestEffortEvChargerSnapshot(deps, chargerDeviceId);
-  deps.getStructuredLogger('devices')?.info(buildEvSocLogPayload({
-    charger,
-    chargerDeviceId,
-    updatedCharger,
-    percent,
-    observedAtMs,
-  }));
+  deps.getStructuredLogger('devices')?.info(buildEvSocLogPayload(charger, updatedCharger, percent, observedAtMs));
 
   return true;
 }
@@ -175,17 +149,15 @@ function parseEvSocCardArgs(args: unknown): {
   };
 }
 
-function buildEvSocLogPayload(params: {
-  charger: TargetDeviceSnapshot;
-  chargerDeviceId: string;
-  updatedCharger: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined;
-  percent: number;
-  observedAtMs: number;
-}) {
-  const { charger, chargerDeviceId, updatedCharger, percent, observedAtMs } = params;
+function buildEvSocLogPayload(
+  charger: TargetDeviceSnapshot,
+  updatedCharger: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined,
+  percent: number,
+  observedAtMs: number,
+) {
   return {
     event: 'ev_soc_reported',
-    chargerDeviceId,
+    chargerDeviceId: charger.id,
     chargerName: updatedCharger?.name ?? charger.name,
     percent,
     observedAtMs: updatedCharger?.stateOfCharge?.report.observedAtMs ?? observedAtMs,

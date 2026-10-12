@@ -22,10 +22,9 @@ import {
   SHED_COOLDOWN_MS,
 } from '../../lib/plan/planConstants';
 import type { MeteredDevicePlanDevice } from '../../lib/plan/planTypes';
-import { buildPlanDevice as baseBuildPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice as baseBuildPlanDevice, applyRestorePlanForSpec } from '../utils/planTestUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { HeadroomWithReading } from '../../lib/power/lastTotalPower';
-import { applyRestorePlan } from '../../lib/plan/restore';
 import {
   evaluateHeadroomForDevice,
   syncHeadroomCardSnapshot,
@@ -472,8 +471,7 @@ describe('activation backoff', () => {
     // An old setback: the level stays, the restore block it imposed has lapsed.
     state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: Date.now() - ACTIVATION_SETBACK_RESTORE_BLOCK_MS };
 
-    const result = applyRestorePlan({
-      storageLevers: {},
+    const result = applyRestorePlanForSpec({
       planDevices: [
         buildPlanDevice({
           id: 'dev-1',
@@ -489,7 +487,6 @@ describe('activation backoff', () => {
       })),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -510,8 +507,7 @@ describe('activation backoff', () => {
     recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - 30_000);
     recordActivationSetback(state, 'dev-1', now - 5_000);
 
-    const result = applyRestorePlan({
-      storageLevers: {},
+    const result = applyRestorePlanForSpec({
       planDevices: [
         buildPlanDevice({
           id: 'dev-1',
@@ -527,7 +523,6 @@ describe('activation backoff', () => {
       })),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -606,8 +601,7 @@ describe('activation backoff', () => {
     recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 60_000);
     recordActivationSetback(state, 'dev-1', now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1_000);
 
-    const result = applyRestorePlan({
-      storageLevers: {},
+    const result = applyRestorePlanForSpec({
       planDevices: [
         buildPlanDevice({
           id: 'dev-1',
@@ -623,7 +617,6 @@ describe('activation backoff', () => {
       })),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),

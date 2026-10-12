@@ -101,9 +101,9 @@ export const registerSetDeadlineCard = <Target extends object>(
     if (!supports(device)) throw new Error(unsupportedMessage(device.name.trim() || deviceId));
     const buildEntry = readTarget(payload, device);
     const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, validateReadyBy(payload?.ready_by));
-    throwIfWriteRefused(deps.upsertDeferredObjectiveForDevice({
-      deviceId, deviceName: device.name ?? null, entry: buildEntry(deadlineAtMs),
-    }));
+    throwIfWriteRefused(deps.upsertDeferredObjectiveForDevice(
+      deviceId, device.name ?? null, buildEntry(deadlineAtMs),
+    ));
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {

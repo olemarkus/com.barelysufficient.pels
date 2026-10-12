@@ -11,13 +11,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
-import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
-import { applyRestorePlan } from '../../lib/plan/restore';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
-import { steppedInputDevice, steppedPlanDevice, sheddingPlanFixture } from '../utils/planTestUtils';
+import { steppedInputDevice, steppedPlanDevice, sheddingPlanFixture, buildInitialPlanDevicesForSpec, applyRestorePlanForSpec } from '../utils/planTestUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { capacityGuardSpy } from '../helpers/sheddingWiring';
 
@@ -103,7 +101,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
 
     expect(sheddingPlan.shedStepTargets.get('charger')).toBe('10a');
 
-    const [planDevice] = buildInitialPlanDevices({
+    const [planDevice] = buildInitialPlanDevicesForSpec({
       context,
       state,
       sheddingPlan: sheddingPlanFixture({
@@ -111,7 +109,6 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
         shedReasons: sheddingPlan.shedReasons,
         shedStepTargets: sheddingPlan.shedStepTargets,
       }),
-      shortfall: { inShortfall: false },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior,
@@ -135,8 +132,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     // rather than the binary one) and climbs a rung at a time.
     const state = createPlanEngineState();
 
-    const result = applyRestorePlan({
-      storageLevers: {},
+    const result = applyRestorePlanForSpec({
       planDevices: [
         steppedPlanDevice({
           id: 'charger',
@@ -164,7 +160,6 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       })),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
         temperatureSetpoints: new Map(),

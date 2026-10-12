@@ -22,23 +22,15 @@ export type PendingSteppedRestoreHold = {
   reasonCode: 'waiting_confirmation' | 'meter_settling';
 };
 
-type SteppedRestoreAttemptOptions = {
-  lastRestoreMs?: number;
-  measurementTs?: number | null;
-  powerSettleWindowMs?: number;
-};
-
 export function resolveSteppedRestoreAttemptState(
   dev: DevicePlanDevice,
   requestedStepId: string,
-  nowMs: number = Date.now(),
-  options: SteppedRestoreAttemptOptions = {},
+  nowMs: number,
+  /** When PELS last restored this device; `undefined` while it never has. */
+  lastRestoreMs: number | undefined,
+  /** The latest power reading's timestamp (`RestoreTiming.measurementTs`). */
+  measurementTs: number | null,
 ): SteppedRestoreAttemptState | null {
-  const {
-    lastRestoreMs,
-    measurementTs = null,
-    powerSettleWindowMs = RESTORE_COOLDOWN_MS,
-  } = options;
   const baseAttempt = resolveSteppedRestoreBaseAttempt(dev, requestedStepId);
   if (!baseAttempt) return null;
   const pendingAttempt = resolvePendingOrBackoffAttempt(dev, baseAttempt, nowMs);
@@ -46,13 +38,9 @@ export function resolveSteppedRestoreAttemptState(
 
   if (!baseAttempt.reservation) return null;
 
-  const powerSettleRemainingSec = resolveSteppedRestorePowerSettleRemainingSec({
-    dev,
-    lastRestoreMs,
-    measurementTs,
-    nowMs,
-    powerSettleWindowMs,
-  });
+  const powerSettleRemainingSec = resolveSteppedRestorePowerSettleRemainingSec(
+    dev, lastRestoreMs, measurementTs, nowMs,
+  );
   if (powerSettleRemainingSec !== null) {
     return {
       status: 'awaiting_power_settle',
@@ -62,7 +50,7 @@ export function resolveSteppedRestoreAttemptState(
       deltaKw: baseAttempt.reservation.deltaKw,
       remainingSec: powerSettleRemainingSec,
       countdownStartedAtMs: lastRestoreMs,
-      countdownTotalSec: Math.ceil(powerSettleWindowMs / 1000),
+      countdownTotalSec: Math.ceil(RESTORE_COOLDOWN_MS / 1000),
     };
   }
 
@@ -149,12 +137,7 @@ function resolveSteppedRestoreBaseAttempt(
 
 function resolvePendingOrBackoffAttempt(
   dev: DevicePlanDevice,
-  baseAttempt: {
-    requestedStepId: string;
-    requestedPowerKw: number;
-    baselinePowerKw: number;
-    deltaKw: number;
-  },
+  baseAttempt: Pick<SteppedRestoreAttemptState, 'requestedStepId' | 'requestedPowerKw' | 'baselinePowerKw' | 'deltaKw'>,
   nowMs: number,
 ): SteppedRestoreAttemptState | null {
   if (dev.stepCommandPending === true) {
@@ -187,24 +170,16 @@ function resolvePendingOrBackoffAttempt(
   };
 }
 
-function resolveSteppedRestorePowerSettleRemainingSec(params: {
-  dev: DevicePlanDevice;
-  lastRestoreMs?: number;
-  measurementTs: number | null;
-  nowMs: number;
-  powerSettleWindowMs: number;
-}): number | null {
-  const {
-    dev,
-    lastRestoreMs,
-    measurementTs,
-    nowMs,
-    powerSettleWindowMs,
-  } = params;
+function resolveSteppedRestorePowerSettleRemainingSec(
+  dev: DevicePlanDevice,
+  lastRestoreMs: number | undefined,
+  measurementTs: number | null,
+  nowMs: number,
+): number | null {
   if (dev.stepCommandStatus !== 'success') return null;
   if (typeof lastRestoreMs !== 'number') return null;
   if (measurementTs !== null && measurementTs > lastRestoreMs) return null;
-  const remainingMs = (lastRestoreMs + powerSettleWindowMs) - nowMs;
+  const remainingMs = (lastRestoreMs + RESTORE_COOLDOWN_MS) - nowMs;
   if (remainingMs <= 0) return null;
   return Math.ceil(remainingMs / 1000);
 }

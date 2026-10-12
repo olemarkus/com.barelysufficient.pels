@@ -27,7 +27,9 @@ import {
  * frame, the reading's display projection, the materialized devices, and the
  * builder's per-cycle inputs. Held by both meta writers, which is what makes
  * it a concept rather than an argument bag — the measured writer adds the
- * `MeasuredPower` beside it, the unmeasured writer has nothing to add.
+ * `MeasuredPower` beside it, the unmeasured writer has nothing to add. The
+ * overshoot tracker reads the same facts, so its entry log summarizes the meta
+ * this build publishes.
  */
 export type PlanMetaCycleFacts = {
   context: PlanContext;

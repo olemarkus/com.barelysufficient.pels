@@ -29,9 +29,9 @@ const logger = getLogger('plan/surplus-absorb');
  *   current state to have held the minimum dwell: the chatter / passing-cloud
  *   guard, reusing the observer settle's timestamp-window shape rather than a
  *   bespoke tick counter.
- * - `availableSurplusKw === null` (not a willing absorber, or the silent-meter pass
- *   withdrawing eligibility) yields "no surplus", which can only release or block
- *   engage — never raise blind.
+ * - `availableSurplusKw === null` (the silent-meter pass withdrawing
+ *   eligibility) yields "no surplus", which can only release or block engage —
+ *   never raise blind.
  * - Hard-off (release direction only): when the caller flags the release
  *   condition as unambiguous (`hardOff` — the silent-meter pass withdrawing
  *   eligibility, or sustained whole-home import beyond
@@ -114,15 +114,15 @@ type ReleaseCause = 'dwell_elapsed' | 'hard_off' | null;
 // has persisted past the settle window AND either the current state has held the
 // min dwell or — release direction only — the hard-off condition has been
 // sustained for a full settle window. Mutates `working` in place.
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-const advanceFlip = (params: {
-  working: SurplusEligibilityState;
-  entry: SurplusEligibilityState | undefined;
-  flipCondition: boolean;
-  currentEligible: boolean;
-  nowTs: number;
-}): ReleaseCause => {
-  const { working, entry, flipCondition, currentEligible, nowTs } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+const advanceFlip = (
+  working: SurplusEligibilityState,
+  entry: SurplusEligibilityState | undefined,
+  flipCondition: boolean,
+  currentEligible: boolean,
+  nowTs: number,
+): ReleaseCause => {
   if (!flipCondition) {
     delete working.pendingSinceMs;
     return null;
@@ -160,7 +160,7 @@ const advanceFlip = (params: {
   }
   return null;
 };
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 // A settled-off entry with nothing pending is idle and droppable — UNLESS it
 // came from a hard_off release and its dwell floor is still running: dropping
@@ -177,33 +177,32 @@ const isDroppableIdleEntry = (working: SurplusEligibilityState, nowTs: number): 
 // too, in `advanceFlip`). Only a hard-off held at every observation across a
 // settle window can bypass the dwell — a brief import blip between plan builds
 // cannot.
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-const trackHardOffClock = (params: {
-  working: SurplusEligibilityState;
-  currentEligible: boolean;
-  hardOff: boolean;
-  nowTs: number;
-}): void => {
-  const { working } = params;
-  if (params.currentEligible && params.hardOff) {
-    working.hardOffSinceMs ??= params.nowTs;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+const trackHardOffClock = (
+  working: SurplusEligibilityState,
+  currentEligible: boolean,
+  hardOff: boolean,
+  nowTs: number,
+): void => {
+  if (currentEligible && hardOff) {
+    working.hardOffSinceMs ??= nowTs;
   } else {
     delete working.hardOffSinceMs;
   }
 };
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 // Structured release record. 'hard_off' = the sustained hard-off condition
 // drove the release (entry retained, dwell owed — whether or not the dwell had
 // also elapsed); 'dwell_elapsed' = the normal dip-release path with no
 // sustained hard-off. No-op when this cycle did not release.
-const emitReleaseLog = (params: {
-  deviceId: string;
-  releaseCause: ReleaseCause;
-  engagedSinceMs: number | undefined;
-  nowTs: number;
-}): void => {
-  const { deviceId, releaseCause, engagedSinceMs, nowTs } = params;
+const emitReleaseLog = (
+  deviceId: string,
+  releaseCause: ReleaseCause,
+  engagedSinceMs: number | undefined,
+  nowTs: number,
+): void => {
   if (releaseCause === null) return;
   logger.debug({
     event: 'surplus_absorb_released',
@@ -215,58 +214,51 @@ const emitReleaseLog = (params: {
 
 /**
  * Resolve and advance a device's surplus-absorb eligibility for this cycle
- * against the surplus the allocator has reserved for it. Pure over
- * `(state, inputs)` apart from the in-place `PlanEngineState` update.
+ * against the surplus the allocator has reserved for it. Pure over its
+ * arguments apart from the in-place `PlanEngineState` update.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function syncSurplusEligibilityState(params: {
-  state: PlanEngineState;
-  deviceId: string;
-  willing: boolean;
-  // Surplus the allocator has reserved for this device, in kW; null when the device
-  // is not a willing absorber, or the unmeasured pass withdrew it (treated as no
-  // surplus).
-  availableSurplusKw: number | null;
-  expectedDrawKw: number;
+export function syncSurplusEligibilityState(
+  state: PlanEngineState,
+  deviceId: string,
+  // Surplus the allocator has reserved for this device, in kW; null when the
+  // unmeasured pass withdrew it (treated as no surplus).
+  availableSurplusKw: number | null,
+  rawExpectedDrawKw: number,
   // True when the release condition is unambiguous (the silent-meter pass
   // withdrawing eligibility, or sustained whole-home import beyond
   // SURPLUS_ABSORB_HARD_OFF_IMPORT_KW): sustained for a settle window it lets a
   // release skip the min dwell. Must
   // stay false for the ordinary passing-cloud dip, which keeps the dwell.
-  hardOff: boolean;
-  nowTs?: number;
-}): SurplusEligibilityInfo {
-  const { deviceId, willing } = params;
-  const map = params.state.surplusEligibilityByDevice;
-  const nowTs = params.nowTs ?? Date.now();
-  const expectedDrawKw = isFiniteNumber(params.expectedDrawKw) && params.expectedDrawKw > 0
-    ? params.expectedDrawKw
+  hardOff: boolean,
+  nowTs: number,
+): SurplusEligibilityInfo {
+  const map = state.surplusEligibilityByDevice;
+  const expectedDrawKw = isFiniteNumber(rawExpectedDrawKw) && rawExpectedDrawKw > 0
+    ? rawExpectedDrawKw
     : 0;
 
-  // Not a candidate → force off and drop any state, so toggling `willing` off
-  // (or losing the expected-draw estimate) releases the raise immediately.
-  if (!willing || expectedDrawKw <= 0) {
+  // Not a candidate → force off and drop any state, so losing the expected-draw
+  // estimate releases the raise immediately. A device that stops being willing
+  // is released by `clearSurplusEligibility`.
+  if (expectedDrawKw <= 0) {
     delete map[deviceId];
     return { eligible: false };
   }
 
   const entry = map[deviceId];
   const currentEligible = entry?.eligible === true;
-  const surplus = isFiniteNumber(params.availableSurplusKw)
-    ? params.availableSurplusKw
+  const surplus = isFiniteNumber(availableSurplusKw)
+    ? availableSurplusKw
     : Number.NEGATIVE_INFINITY;
 
   const working: SurplusEligibilityState = entry ?? {};
-  trackHardOffClock({ working, currentEligible, hardOff: params.hardOff, nowTs });
+  trackHardOffClock(working, currentEligible, hardOff, nowTs);
   const engagedSinceMs = entry?.sinceMs;
-  const releaseCause = advanceFlip({
-    working,
-    entry,
-    flipCondition: flipConditionMet(currentEligible, surplus, expectedDrawKw),
-    currentEligible,
-    nowTs,
-  });
-  emitReleaseLog({ deviceId, releaseCause, engagedSinceMs, nowTs });
+  const releaseCause = advanceFlip(
+    working, entry, flipConditionMet(currentEligible, surplus, expectedDrawKw), currentEligible, nowTs,
+  );
+  emitReleaseLog(deviceId, releaseCause, engagedSinceMs, nowTs);
 
   if (isDroppableIdleEntry(working, nowTs)) {
     // Idle (settled-off, nothing pending, no live hard-off dwell floor): drop

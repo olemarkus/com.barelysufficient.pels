@@ -10,7 +10,7 @@ import {
 } from './candidateLoop';
 import type { RestoreCycle, RestoreLane } from './types';
 
-const isBudgetExempt = (dev: DevicePlanDevice): boolean => dev.budgetExempt === true;
+const isBudgetExempt = (dev: DevicePlanDevice): boolean => dev.budgetExempt;
 
 /**
  * Restricted restore pass for budget-exempt candidates while shedding is

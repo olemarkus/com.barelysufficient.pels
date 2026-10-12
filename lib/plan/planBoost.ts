@@ -48,12 +48,7 @@ const logger = getLogger('plan/boost');
  * would re-import the fork this replaced. They belong to the producer that
  * resolves the floor comparison.
  */
-export function emitBoostStateChange(params: {
-  dev: PlanInputDevice;
-  previousActive: boolean;
-  active: boolean;
-}): void {
-  const { dev, previousActive, active } = params;
+export function emitBoostStateChange(dev: PlanInputDevice, previousActive: boolean, active: boolean): void {
   if (previousActive === active) return;
   logger.debug({
     event: 'boost_state_changed',

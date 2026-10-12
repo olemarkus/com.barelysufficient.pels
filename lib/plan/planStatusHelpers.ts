@@ -145,19 +145,16 @@ export const normalizeLastPowerUpdate = (
 
 const resolveDryRunKey = (dryRunEffective: boolean): string => (dryRunEffective ? 'sim' : 'live');
 
-export const buildPelsStatusInputKey = (params: {
-  changes?: PlanStatusInputChanges;
+export const buildPelsStatusInputKey = (
+  changes: PlanStatusInputChanges | undefined,
   // The RESOLVED level, which is what the status actually depends on. Keying on
   // the two raw flags plus a shape check of the price blob re-derived it here,
   // in a second copy of the precedence the status itself applied.
-  priceLevel: PriceLevel;
-  lastPowerUpdate: number;
-  powerIsMeasured: boolean;
-  dryRunEffective: boolean;
-}): string => {
-  const {
-    changes, priceLevel, lastPowerUpdate, powerIsMeasured, dryRunEffective,
-  } = params;
+  priceLevel: PriceLevel,
+  lastPowerUpdate: number,
+  powerIsMeasured: boolean,
+  dryRunEffective: boolean,
+): string => {
   const actionSignature = changes?.actionSignature ?? '';
   const detailSignature = changes?.detailSignature ?? '';
   const metaSignature = changes?.metaSignature ?? '';

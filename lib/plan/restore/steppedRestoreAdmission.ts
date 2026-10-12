@@ -56,9 +56,7 @@ export function admitSteppedRestore(
   // See the binary twin in `gating.ts`: admit against the power this device may actually claim
   // (raw minus any higher-priority startup reservation), while the running headroom total keeps
   // tracking the raw figure.
-  const reserved = resolveReserveAdmission({
-    dev, availableHeadroom, neededKw: needed, reserves: headroomReserves,
-  });
+  const reserved = resolveReserveAdmission(dev, availableHeadroom, needed, headroomReserves);
   const shedDeviceCount = countShedDevices(deviceMap, dev.id, state.shedDecisions);
   if (!isReserveAdmitted(reserved)) {
     // Only the reservation is in the way — there is enough raw power, it is just promised to a
@@ -109,25 +107,21 @@ export function admitSteppedRestore(
     expectedPowerKw: nextStep.planningPowerW / 1000,
     reason: buildSteppedRestoreNeedReason(dev, nextStep.id, needed),
   });
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_stepped_admitted',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      currentStepId: dev.selectedStepId,
-      toStepId: nextStep.id,
-      lowestNonZeroStepId: lowestNonZeroStep?.id,
-      blockedByShedInvariant: false,
-      shedDeviceCount,
-      deltaKw,
-      neededKw: needed,
-      availableKw: admittedLog.effectiveHeadroomKw,
-      marginKw: admittedLog.marginKw,
-      decision: 'admitted',
-    },
+  emitRestoreDebugEventOnChange(state, restoreDebugKey, {
+    event: 'restore_stepped_admitted',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    currentStepId: dev.selectedStepId,
+    toStepId: nextStep.id,
+    lowestNonZeroStepId: lowestNonZeroStep?.id,
+    blockedByShedInvariant: false,
+    shedDeviceCount,
+    deltaKw,
+    neededKw: needed,
+    availableKw: admittedLog.effectiveHeadroomKw,
+    marginKw: admittedLog.marginKw,
+    decision: 'admitted',
   });
   recordShedPostureRestoreBatchAdmission(
     batchState,
@@ -171,23 +165,19 @@ export function blockSteppedRestoreForShedInvariant(
     && prev.lowestNonZeroStepId === lowestNonZeroStep.id
     && prev.shedDeviceCount === shedDeviceCount;
   if (!unchanged) {
-    emitRestoreDebugEventOnChange({
-      state,
-      key: `stepped:${dev.id}`,
-      payload: {
-        event: 'restore_stepped_rejected',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        currentStepId: dev.selectedStepId,
-        requestedStepId: nextStep.id,
-        lowestNonZeroStepId: lowestNonZeroStep.id,
-        allowedMaxStepId: lowestNonZeroStep.id,
-        blockedByShedInvariant: true,
-        shedDeviceCount,
-        decision: 'rejected',
-        rejectionReason: 'shed_invariant',
-      },
+    emitRestoreDebugEventOnChange(state, `stepped:${dev.id}`, {
+      event: 'restore_stepped_rejected',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      currentStepId: dev.selectedStepId,
+      requestedStepId: nextStep.id,
+      lowestNonZeroStepId: lowestNonZeroStep.id,
+      allowedMaxStepId: lowestNonZeroStep.id,
+      blockedByShedInvariant: true,
+      shedDeviceCount,
+      decision: 'rejected',
+      rejectionReason: 'shed_invariant',
     });
     state.steppedRestoreRejectedByDevice[dev.id] = {
       requestedStepId: nextStep.id,
@@ -225,31 +215,23 @@ function rejectSteppedRestoreForInsufficientHeadroom(
 ): RestoreLoopState {
   const { deviceMap, state, phase } = cycle;
   const { admission, availableKw: availableHeadroom } = reserved;
-  const reason = buildRestoreHeadroomReason({
+  const reason = buildRestoreHeadroomReason(need.neededKw, availableHeadroom, admission.marginKw, null, null, null);
+  setRestorePlanDevice(deviceMap, dev.id, buildSteppedRestoreHoldUpdate(dev, reason));
+  emitRestoreDebugEventOnChange(state, `stepped:${dev.id}`, {
+    event: 'restore_stepped_rejected',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    currentStepId: dev.selectedStepId,
+    requestedStepId: nextStep.id,
+    lowestNonZeroStepId: getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id,
+    blockedByShedInvariant: false,
+    shedDeviceCount,
     neededKw: need.neededKw,
     availableKw: availableHeadroom,
     marginKw: admission.marginKw,
-  });
-  setRestorePlanDevice(deviceMap, dev.id, buildSteppedRestoreHoldUpdate(dev, reason));
-  emitRestoreDebugEventOnChange({
-    state,
-    key: `stepped:${dev.id}`,
-    payload: {
-      event: 'restore_stepped_rejected',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      currentStepId: dev.selectedStepId,
-      requestedStepId: nextStep.id,
-      lowestNonZeroStepId: getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id,
-      blockedByShedInvariant: false,
-      shedDeviceCount,
-      neededKw: need.neededKw,
-      availableKw: availableHeadroom,
-      marginKw: admission.marginKw,
-      decision: 'rejected',
-      rejectionReason: 'insufficient_headroom',
-    },
+    decision: 'rejected',
+    rejectionReason: 'insufficient_headroom',
   });
   return loop;
 }

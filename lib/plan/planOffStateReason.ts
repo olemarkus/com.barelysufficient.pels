@@ -32,11 +32,9 @@ export function applyOffStateReason(planDevice: DevicePlanDevice, shortfall: Sho
   }
   const shouldForceOffStep = shortfall.inShortfall && isSteppedLoadDevice(planDevice);
   const desiredStepId = shouldForceOffStep
-    ? getSteppedLoadShedTargetStep({
-      device: planDevice,
-      shedAction: 'turn_off',
-      currentDesiredStepId: planDevice.desiredStepId,
-    })?.id ?? planDevice.desiredStepId
+    ? getSteppedLoadShedTargetStep(
+      planDevice, 'turn_off', planDevice.desiredStepId,
+    )?.id ?? planDevice.desiredStepId
     : planDevice.desiredStepId;
   if (planDevice.plannedState === 'shed') {
     return desiredStepId === planDevice.desiredStepId ? planDevice : {

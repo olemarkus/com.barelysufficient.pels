@@ -939,11 +939,7 @@ describe('registerFlowCards', () => {
       battery_percent: 42,
     })).resolves.toBe(true);
 
-    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 42,
-    });
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith('ev-1', 'measure_battery', 42);
     expect(deps.refreshSnapshot).toHaveBeenCalledWith({ emitFlowBackedRefresh: false });
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
       event: 'ev_soc_reported',
@@ -982,11 +978,7 @@ describe('registerFlowCards', () => {
       battery_percent: 42,
     })).resolves.toBe(true);
 
-    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 42,
-    });
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith('ev-1', 'measure_battery', 42);
   });
 
   it('records an EV charger battery report and refreshes the snapshot', async () => {
@@ -1016,11 +1008,7 @@ describe('registerFlowCards', () => {
       battery_percent: 39,
     })).resolves.toBe(true);
 
-    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 39,
-    });
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith('ev-1', 'measure_battery', 39);
     expect(deps.refreshSnapshot).toHaveBeenCalled();
   });
 
@@ -1873,11 +1861,7 @@ describe('registerFlowCards', () => {
       state: 'on',
     })).resolves.toBe(true);
 
-    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-    });
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
     expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_backed_capability_report_native_overlap',
@@ -1907,11 +1891,7 @@ describe('registerFlowCards', () => {
       state: { id: 'connected', name: 'Connected' },
     })).resolves.toBe(true);
 
-    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'alarm_generic.car_connected',
-      value: true,
-    });
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith('dev-1', 'alarm_generic.car_connected', true);
     expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_backed_capability_reported',
       sourceCardId: 'report_flow_backed_device_evcharger_car_connected',
@@ -1937,11 +1917,7 @@ describe('registerFlowCards', () => {
       state: { id: 'yes', name: 'Yes' },
     })).resolves.toBe(true);
 
-    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'pels_evcharger_resumable',
-      value: true,
-    });
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith('dev-1', 'pels_evcharger_resumable', true);
     expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_backed_capability_reported',
       sourceCardId: 'report_flow_backed_device_evcharger_resumable',

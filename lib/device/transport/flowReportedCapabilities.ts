@@ -114,21 +114,15 @@ export function readFlowReportedCapabilitiesForDevice(
   return state?.[deviceId] ?? {};
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function upsertFlowReportedCapability(params: {
-  state: FlowReportedCapabilitiesByDevice;
-  deviceId: string;
-  capabilityId: FlowReportedCapabilityId;
-  value: boolean | number | string;
-  reportedAt?: number;
-}): FlowReportedCapabilityUpdateResult {
-  const {
-    state,
-    deviceId,
-    capabilityId,
-    value,
-    reportedAt = Date.now(),
-  } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+export function upsertFlowReportedCapability(
+  state: FlowReportedCapabilitiesByDevice,
+  deviceId: string,
+  capabilityId: FlowReportedCapabilityId,
+  value: boolean | number | string,
+  reportedAt: number,
+): FlowReportedCapabilityUpdateResult {
   const current = state[deviceId]?.[capabilityId];
   if (!current) {
     const entry: FlowReportedCapabilityEntry = {
@@ -178,28 +172,20 @@ export function upsertFlowReportedCapability(params: {
     entry,
   };
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 export function getFlowReportedDeviceIds(state: FlowReportedCapabilitiesByDevice | undefined): string[] {
   return Object.keys(state ?? {});
 }
 
-export function getFlowRefreshRequestedDeviceIds(params: {
-  state: FlowReportedCapabilitiesByDevice | undefined;
-  devices: HomeyDeviceLike[];
-  candidateDeviceIds?: readonly string[];
-}): string[] {
-  const {
-    state,
-    devices,
-    candidateDeviceIds,
-  } = params;
-  if (!state) return [];
-
+export function getFlowRefreshRequestedDeviceIds(
+  state: FlowReportedCapabilitiesByDevice,
+  devices: HomeyDeviceLike[],
+  candidateDeviceIds: readonly string[],
+): string[] {
   const deviceById = new Map(devices.map((device) => [device.id, device]));
-  const deviceIds = candidateDeviceIds ?? Object.keys(state);
 
-  return deviceIds.filter((deviceId) => {
+  return candidateDeviceIds.filter((deviceId) => {
     const reportedCapabilities = state[deviceId];
     if (!reportedCapabilities) return false;
 
@@ -302,12 +288,9 @@ export function augmentCapabilitiesWithFlowReports(params: {
     flowBackedCapabilityIds.push(capabilityId);
 
     const rawCapability = capabilityObj[capabilityId];
-    nextCapabilityObj[capabilityId] = buildFlowBackedCapabilityValue({
-      capabilityId,
-      reportedEntry,
-      rawCapability,
-      rawCapabilityPresent,
-    });
+    nextCapabilityObj[capabilityId] = buildFlowBackedCapabilityValue(
+      capabilityId, reportedEntry, rawCapability, rawCapabilityPresent,
+    );
   }
 
   if (deviceType === 'evcharger' && !capabilities.includes('evcharger_charging_state')) {
@@ -334,19 +317,12 @@ export function augmentCapabilitiesWithFlowReports(params: {
 /* eslint-enable functional/immutable-data */
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function buildFlowBackedCapabilityValue(params: {
-  capabilityId: FlowReportedCapabilityId;
-  reportedEntry: FlowReportedCapabilityEntry;
-  rawCapability: CapabilityValue<unknown> | undefined;
-  rawCapabilityPresent: boolean;
-}): CapabilityValue<unknown> {
-  const {
-    capabilityId,
-    reportedEntry,
-    rawCapability,
-    rawCapabilityPresent,
-  } = params;
-
+function buildFlowBackedCapabilityValue(
+  capabilityId: FlowReportedCapabilityId,
+  reportedEntry: FlowReportedCapabilityEntry,
+  rawCapability: CapabilityValue<unknown> | undefined,
+  rawCapabilityPresent: boolean,
+): CapabilityValue<unknown> {
   if (rawCapabilityPresent && rawCapability) {
     return { ...rawCapability };
   }
@@ -377,11 +353,7 @@ function buildDerivedEvChargingStateEntry(params: {
   }
 
   const resumableValue = reportedCapabilities.pels_evcharger_resumable?.value;
-  const value = resolveDerivedEvChargingStateValue({
-    connected: connectedValue,
-    charging: chargingValue,
-    resumable: resumableValue,
-  });
+  const value = resolveDerivedEvChargingStateValue(connectedValue, chargingValue, resumableValue);
 
   const connectedReportedAt = reportedCapabilities['alarm_generic.car_connected']?.reportedAt;
   const chargingReportedAt = resolveCapabilityLastUpdatedMs(
@@ -389,12 +361,9 @@ function buildDerivedEvChargingStateEntry(params: {
     reportedCapabilities.evcharger_charging?.reportedAt,
   );
   const resumableReportedAt = reportedCapabilities.pels_evcharger_resumable?.reportedAt;
-  const reportedAt = resolveDerivedEvChargingStateReportedAt({
-    value,
-    connectedReportedAt,
-    chargingReportedAt,
-    resumableReportedAt,
-  });
+  const reportedAt = resolveDerivedEvChargingStateReportedAt(
+    value, connectedReportedAt, chargingReportedAt, resumableReportedAt,
+  );
   if (reportedAt <= 0) return null;
 
   return {
@@ -404,29 +373,18 @@ function buildDerivedEvChargingStateEntry(params: {
   };
 }
 
-function resolveDerivedEvChargingStateValue(params: {
-  connected: boolean;
-  charging: boolean;
-  resumable: unknown;
-}): string {
-  const { connected, charging, resumable } = params;
+function resolveDerivedEvChargingStateValue(connected: boolean, charging: boolean, resumable: unknown): string {
   if (!connected) return 'plugged_out';
   if (charging) return 'plugged_in_charging';
   return typeof resumable === 'boolean' && resumable ? 'plugged_in_paused' : 'plugged_in';
 }
 
-function resolveDerivedEvChargingStateReportedAt(params: {
-  value: string;
-  connectedReportedAt?: number;
-  chargingReportedAt?: number;
-  resumableReportedAt?: number;
-}): number {
-  const {
-    value,
-    connectedReportedAt,
-    chargingReportedAt,
-    resumableReportedAt,
-  } = params;
+function resolveDerivedEvChargingStateReportedAt(
+  value: string,
+  connectedReportedAt: number | undefined,
+  chargingReportedAt: number | undefined,
+  resumableReportedAt: number | undefined,
+): number {
   const resumableRelevant = value === 'plugged_in_paused' || value === 'plugged_in';
   return Math.max(
     connectedReportedAt ?? 0,

@@ -18,41 +18,31 @@ describe('planDebugDedupe', () => {
   it('suppresses repeated cooldown/backoff chatter while the block reason is unchanged', () => {
     const state = createPlanEngineState();
 
-    emitRestoreDebugEventOnChange({
-      state,
-      key: 'setback:binary:dev-1',
-      payload: {
-        event: 'restore_blocked_setback',
-        deviceId: 'dev-1',
-        reason: 'activation backoff (10s remaining)',
-        remainingMs: 10_000,
-      },
-      signaturePayload: {
-        event: 'restore_blocked_setback',
-        deviceId: 'dev-1',
-        reason: buildComparableDeviceReason({
-          code: PLAN_REASON_CODES.activationBackoff,
-          remainingSec: 10,
-        }),
-      },
+    emitRestoreDebugEventOnChange(state, 'setback:binary:dev-1', {
+      event: 'restore_blocked_setback',
+      deviceId: 'dev-1',
+      reason: 'activation backoff (10s remaining)',
+      remainingMs: 10_000,
+    }, {
+      event: 'restore_blocked_setback',
+      deviceId: 'dev-1',
+      reason: buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.activationBackoff,
+        remainingSec: 10,
+      }),
     });
-    emitRestoreDebugEventOnChange({
-      state,
-      key: 'setback:binary:dev-1',
-      payload: {
-        event: 'restore_blocked_setback',
-        deviceId: 'dev-1',
-        reason: 'activation backoff (9s remaining)',
-        remainingMs: 9_000,
-      },
-      signaturePayload: {
-        event: 'restore_blocked_setback',
-        deviceId: 'dev-1',
-        reason: buildComparableDeviceReason({
-          code: PLAN_REASON_CODES.activationBackoff,
-          remainingSec: 9,
-        }),
-      },
+    emitRestoreDebugEventOnChange(state, 'setback:binary:dev-1', {
+      event: 'restore_blocked_setback',
+      deviceId: 'dev-1',
+      reason: 'activation backoff (9s remaining)',
+      remainingMs: 9_000,
+    }, {
+      event: 'restore_blocked_setback',
+      deviceId: 'dev-1',
+      reason: buildComparableDeviceReason({
+        code: PLAN_REASON_CODES.activationBackoff,
+        remainingSec: 9,
+      }),
     });
 
     expect(capture.findEvents('restore_blocked_setback')).toHaveLength(1);
@@ -61,38 +51,26 @@ describe('planDebugDedupe', () => {
   it('emits again when the restore decision materially changes', () => {
     const state = createPlanEngineState();
 
-    emitRestoreDebugEventOnChange({
-      state,
-      key: 'stepped:dev-1',
-      payload: {
-        event: 'restore_stepped_admitted',
-        deviceId: 'dev-1',
-        currentStepId: 'step-1',
-        toStepId: 'step-2',
-        availableKw: 1.24,
-      },
+    emitRestoreDebugEventOnChange(state, 'stepped:dev-1', {
+      event: 'restore_stepped_admitted',
+      deviceId: 'dev-1',
+      currentStepId: 'step-1',
+      toStepId: 'step-2',
+      availableKw: 1.24,
     });
-    emitRestoreDebugEventOnChange({
-      state,
-      key: 'stepped:dev-1',
-      payload: {
-        event: 'restore_stepped_admitted',
-        deviceId: 'dev-1',
-        currentStepId: 'step-1',
-        toStepId: 'step-2',
-        availableKw: 1.241,
-      },
+    emitRestoreDebugEventOnChange(state, 'stepped:dev-1', {
+      event: 'restore_stepped_admitted',
+      deviceId: 'dev-1',
+      currentStepId: 'step-1',
+      toStepId: 'step-2',
+      availableKw: 1.241,
     });
-    emitRestoreDebugEventOnChange({
-      state,
-      key: 'stepped:dev-1',
-      payload: {
-        event: 'restore_stepped_admitted',
-        deviceId: 'dev-1',
-        currentStepId: 'step-1',
-        toStepId: 'step-3',
-        availableKw: 1.24,
-      },
+    emitRestoreDebugEventOnChange(state, 'stepped:dev-1', {
+      event: 'restore_stepped_admitted',
+      deviceId: 'dev-1',
+      currentStepId: 'step-1',
+      toStepId: 'step-3',
+      availableKw: 1.24,
     });
 
     expect(capture.findEvents('restore_stepped_admitted')).toHaveLength(2);
@@ -106,14 +84,10 @@ describe('planDebugDedupe', () => {
     setDebugTopics(new Set());
     const state = createPlanEngineState();
 
-    emitRestoreDebugEventOnChange({
-      state,
-      key: 'stepped:dev-1',
-      payload: {
-        event: 'restore_stepped_admitted',
-        deviceId: 'dev-1',
-        toStepId: 'step-2',
-      },
+    emitRestoreDebugEventOnChange(state, 'stepped:dev-1', {
+      event: 'restore_stepped_admitted',
+      deviceId: 'dev-1',
+      toStepId: 'step-2',
     });
 
     expect(capture.events).toHaveLength(0);

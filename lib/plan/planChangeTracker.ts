@@ -42,12 +42,7 @@ export class PlanChangeTracker {
     const actionChanged = actionSignature !== this.lastActionPlanSignature;
     const detailChanged = detailSignature !== this.lastDetailPlanSignature;
     const metaChanged = metaSignature !== this.lastPlanMetaSignature;
-    const debugSummaryState = this.resolveDebugSummaryState({
-      plan,
-      actionChanged,
-      detailChanged,
-      metaChanged,
-    });
+    const debugSummaryState = this.resolveDebugSummaryState(plan, actionChanged || detailChanged || metaChanged);
 
     if (actionChanged) {
       incPerfCounter('plan_rebuild_action_signature_changed_total');
@@ -84,15 +79,8 @@ export class PlanChangeTracker {
     };
   }
 
-  private resolveDebugSummaryState(params: {
-    plan: DevicePlan;
-    actionChanged: boolean;
-    detailChanged: boolean;
-    metaChanged: boolean;
-  }): DebugSummaryState {
-    const { plan, actionChanged, detailChanged, metaChanged } = params;
-    const shouldCheck = (actionChanged || detailChanged || metaChanged)
-      && this.deps.isPlanDebugEnabled();
+  private resolveDebugSummaryState(plan: DevicePlan, anySignatureChanged: boolean): DebugSummaryState {
+    const shouldCheck = anySignatureChanged && this.deps.isPlanDebugEnabled();
     if (!shouldCheck) {
       return { event: null, signature: null, changed: false, emitted: false };
     }

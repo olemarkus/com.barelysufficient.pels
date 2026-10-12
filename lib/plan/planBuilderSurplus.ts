@@ -74,41 +74,37 @@ export function resolvePostureExcludeIds(
  * Returns the dump-load `reasonById` for the downstream reason normalization.
  * `shedSet` is mutated in place.
  */
-export function runStandingPostureHolds(params: {
-  state: PlanEngineState;
-  admittedDevices: PlanInputDevice[];
-  shedSet: Set<string>;
-  /** The shedding plan's decided rungs; a solar stop clears its own. */
-  shedStepTargets: Map<string, string>;
-  decoration: Pick<DeferredDecorationBundle, 'forceShedSet'>;
+export function runStandingPostureHolds(
+  state: PlanEngineState,
+  /** Its shed set takes the holds; a solar stop clears its own decided rung. */
+  sheddingPlan: SheddingPlan,
+  decoration: Pick<DeferredDecorationBundle, 'admittedDevices' | 'forceShedSet'>,
   // Smart-task precedence set (`resolvePostureExcludeIds`), applied at BOTH the
   // allocation stage (`resolveSurplusEligibility` — so a governed device never
   // reserves the pool) AND the hold stage (`resolveSurplusHold`). Resolved once
   // by the builder and shared, so the two stages can never disagree about
   // which devices a deferred objective governs.
-  excludeIds: ReadonlySet<string>;
-  getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
+  excludeIds: ReadonlySet<string>,
+  getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined,
   // "Leave off until turned on again" at the moment a standing posture is
   // released (`PlanBuilderDeps.leaveOffOnRelease`).
-  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome;
-}): StandingPostureHolds {
-  const { state, admittedDevices, decoration, excludeIds } = params;
+  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
+): StandingPostureHolds {
+  const { admittedDevices } = decoration;
   const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
   // The second standing posture. It reads each device's own `startPolicyHoldLifted`
   // rather than `excludeIds`: a device its own task left idle this hour must stay
   // held, which is the difference between "only PELS starts it" and "any governing
   // task starts it". See `resolveStartPolicyHold`.
   const startPolicyHold = resolveStartPolicyHold(admittedDevices);
-  const heldOffOnReleaseIds = applyPostSheddingHolds({
-    shedSet: params.shedSet,
-    shedStepTargets: params.shedStepTargets,
-    forceShedSet: decoration.forceShedSet,
-    surplusHoldIds: new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
-    admittedDevices,
-    shedDecisions: state.shedDecisions,
-    getConfig: params.getConfig,
-    leaveOffOnRelease: params.leaveOffOnRelease,
-  });
+  const heldOffOnReleaseIds = applyPostSheddingHolds(
+    sheddingPlan,
+    decoration,
+    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
+    state.shedDecisions,
+    getConfig,
+    leaveOffOnRelease,
+  );
   // Merged into one map because reason normalization asks one question of it:
   // "did a standing posture hold this device this cycle?".
   //
@@ -196,7 +192,6 @@ export function runSilentMeterSurplusHold(
   leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
 ): Map<string, DeviceReason> {
   const { admittedDevices } = decoration;
-  const { shedSet, shedStepTargets } = sheddingPlan;
   const excludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
   withdrawSurplusEligibility(context.devices, state, cycle.getConfig, excludeIds, cycle.nowTs);
   const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
@@ -207,16 +202,14 @@ export function runSilentMeterSurplusHold(
   // configured rung, and the composed gate then blocks every rebuild until a
   // sample returns, so it kept drawing there for the whole outage.
   const startPolicyHold = resolveStartPolicyHold(admittedDevices);
-  applyPostSheddingHolds({
-    shedSet,
-    shedStepTargets,
-    forceShedSet: decoration.forceShedSet,
-    surplusHoldIds: new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
-    admittedDevices,
-    shedDecisions: state.shedDecisions,
-    getConfig: cycle.getConfig,
+  applyPostSheddingHolds(
+    sheddingPlan,
+    decoration,
+    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
+    state.shedDecisions,
+    cycle.getConfig,
     leaveOffOnRelease,
-  });
+  );
   // Start policy written second, so it wins the card — the same precedence the
   // measured pass applies. A hold recorded on release needs no marking here:
   // this pass restores nothing, and the next build reads the stored hold.
@@ -242,24 +235,17 @@ function clearShedStepTargets(
  * `lib/plan/admission/headroomReserve.ts` holds power back from lower-priority
  * devices' admission without shedding anyone.
  */
-export function applyPostSheddingHolds(params: {
-  shedSet: Set<string>;
-  shedStepTargets: Map<string, string>;
-  forceShedSet: Iterable<string>;
-  surplusHoldIds: Iterable<string>;
-  admittedDevices: PlanInputDevice[];
-  shedDecisions: ShedDecisions;
-  getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined;
-  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome;
-}): ReadonlySet<string> {
-  mergeHoldsIntoShedSet(params.shedSet, [params.forceShedSet, params.surplusHoldIds]);
-  clearShedStepTargets(params.shedStepTargets, params.surplusHoldIds);
-  return releaseAbandonedSurplusPosture(
-    params.shedDecisions,
-    params.admittedDevices,
-    params.getConfig,
-    params.leaveOffOnRelease,
-  );
+export function applyPostSheddingHolds(
+  sheddingPlan: Pick<SheddingPlan, 'shedSet' | 'shedStepTargets'>,
+  decoration: Pick<DeferredDecorationBundle, 'admittedDevices' | 'forceShedSet'>,
+  surplusHoldIds: Iterable<string>,
+  shedDecisions: ShedDecisions,
+  getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined,
+  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
+): ReadonlySet<string> {
+  mergeHoldsIntoShedSet(sheddingPlan.shedSet, [decoration.forceShedSet, surplusHoldIds]);
+  clearShedStepTargets(sheddingPlan.shedStepTargets, surplusHoldIds);
+  return releaseAbandonedSurplusPosture(shedDecisions, decoration.admittedDevices, getConfig, leaveOffOnRelease);
 }
 
 /**

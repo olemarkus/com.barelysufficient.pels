@@ -3444,12 +3444,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-      reportedAt,
-    });
+    const result = app.flowBacked.reportFlowBackedCapability('dev-1', 'onoff', true, reportedAt);
 
     expect(result).toEqual({
       kind: 'noop',
@@ -3470,12 +3465,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
     app['flowReportedCapabilities'] = {};
 
-    const result = app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-      reportedAt,
-    });
+    const result = app.flowBacked.reportFlowBackedCapability('dev-1', 'onoff', true, reportedAt);
 
     expect(result).toEqual({
       kind: 'state_changed',
@@ -3494,12 +3484,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 63,
-      reportedAt,
-    });
+    const result = app.flowBacked.reportFlowBackedCapability('ev-1', 'measure_battery', 63, reportedAt);
 
     expect(result).toEqual({
       kind: 'state_changed',
@@ -3514,12 +3499,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
     app['flowReportedCapabilities'] = {};
 
-    app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 62.04,
-      reportedAt,
-    });
+    app.flowBacked.reportFlowBackedCapability('ev-1', 'measure_battery', 62.04, reportedAt);
 
     expect(app['flowReportedCapabilities']).toEqual({
       'ev-1': {
@@ -3539,12 +3519,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 62,
-      reportedAt: nextReportedAt,
-    });
+    const result = app.flowBacked.reportFlowBackedCapability('ev-1', 'measure_battery', 62, nextReportedAt);
 
     expect(result).toEqual({
       kind: 'freshness_only',
@@ -3586,12 +3561,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 32,
-      reportedAt: nextReportedAt,
-    });
+    const result = app.flowBacked.reportFlowBackedCapability('ev-1', 'measure_battery', 32, nextReportedAt);
 
     expect(result).toEqual({
       kind: 'freshness_only',
@@ -3629,12 +3599,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 32,
-      reportedAt: nextReportedAt,
-    });
+    const result = app.flowBacked.reportFlowBackedCapability('ev-1', 'measure_battery', 32, nextReportedAt);
 
     expect(result).toEqual({
       kind: 'freshness_only',
@@ -3673,12 +3638,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-      reportedAt: nextReportedAt,
-    });
+    const result = app.flowBacked.reportFlowBackedCapability('dev-1', 'onoff', true, nextReportedAt);
 
     expect(result).toEqual({
       kind: 'freshness_only',
@@ -3726,12 +3686,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-      reportedAt: nextReportedAt,
-    });
+    app.flowBacked.reportFlowBackedCapability('dev-1', 'onoff', true, nextReportedAt);
 
     expect(dispatchObservedStateForDevice).toHaveBeenCalledWith('dev-1', 'onoff');
   });
@@ -3773,12 +3728,7 @@ describe('periodic snapshot refresh scheduling', () => {
         measure_battery: { value: 80, reportedAt: initialReportedAt, source: 'flow' },
       },
     };
-    app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'ev-1',
-      capabilityId: 'measure_battery',
-      value: 80,
-      reportedAt: nextReportedAt,
-    });
+    app.flowBacked.reportFlowBackedCapability('ev-1', 'measure_battery', 80, nextReportedAt);
 
     expect(dispatchObservedStateForDevice).toHaveBeenCalledWith('ev-1', 'measure_battery');
   });
@@ -3809,12 +3759,9 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.flowBacked.reportFlowBackedCapability({
-      deviceId: 'ev-1',
-      capabilityId: 'pels_evcharger_resumable',
-      value: true,
-      reportedAt: nextReportedAt,
-    });
+    const result = app.flowBacked.reportFlowBackedCapability(
+      'ev-1', 'pels_evcharger_resumable', true, nextReportedAt,
+    );
 
     expect(result).toEqual({
       kind: 'freshness_only',

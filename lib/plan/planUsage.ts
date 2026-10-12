@@ -5,7 +5,7 @@ import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { MeteredKind } from './planTypes';
 
 type UsageDevice = {
-  budgetExempt?: boolean;
+  budgetExempt: boolean;
   // Producer-resolved on/off truth, present iff the device is binary
   // (`binaryCapabilityId` set). A step-only stepper carries no `currentOn`; its
   // off-state is read from the step axis, so the stepped fields travel too.
@@ -36,7 +36,7 @@ export const sumBudgetExemptProjectedUsageKw = <T extends UsageDevice>(
 ): number => {
   let totalKw = 0;
   for (const dev of devices) {
-    if (dev.budgetExempt !== true || !countsAsManaged(dev)) continue;
+    if (!dev.budgetExempt || !countsAsManaged(dev)) continue;
     totalKw += resolveBudgetExemptProjectedKw(dev);
   }
   return totalKw;

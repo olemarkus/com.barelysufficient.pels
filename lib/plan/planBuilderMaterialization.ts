@@ -1,4 +1,4 @@
-import type { RestoreHeadroomAxes } from './restore/headroomLedger';
+import { buildRestoreHeadroomLedger, type RestoreHeadroomAxes } from './restore/headroomLedger';
 /**
  * Post-shedding materialization stages of the plan pipeline, sliced out of
  * `planBuilder.ts` to keep that entry point under the line budget (and under
@@ -36,7 +36,6 @@ import {
 import { rankRestoreCooldownCohort } from './planRestoreCooldownCohort';
 import { syncHeadroomCardState } from './planHeadroomDevice';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
-import { buildCeilingShortfallInputs } from './planReasonShortfall';
 import { getOnDevices } from './restore/devices';
 import { trackPlanStage } from './planStageTiming';
 
@@ -63,13 +62,9 @@ export class PlanMaterializationStages {
     sheddingPlan: SheddingPlan,
     shortfall: ShortfallOffState,
   ): DevicePlanDevice[] {
-    return trackPlanStage('plan_devices_ms', () => buildInitialPlanDevices({
-      context,
-      state: this.state,
-      sheddingPlan,
-      shortfall,
-      deps: this.deps,
-    }));
+    return trackPlanStage('plan_devices_ms', () => buildInitialPlanDevices(
+      context, this.state, sheddingPlan, shortfall, this.deps,
+    ));
   }
 
   applyRestorePlan(
@@ -81,21 +76,12 @@ export class PlanMaterializationStages {
     storageLevers: Readonly<Record<string, StorageLeverState>>,
   ): RestorePlanResult {
     return trackPlanStage('plan_restore_ms', () => {
-      const restoreResult = applyRestorePlan({
-        planDevices,
-        context,
-        power,
-        state: this.state,
-        storageLevers,
-        sheddingActive: sheddingPlan.sheddingActive,
-        guardInShortfall: sheddingPlan.guardInShortfall,
-        deps: {
-          powerTracker: this.deps.getPowerTracker(),
-          getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-          temperatureSetpoints: context.temperatureSetpoints,
-          deviceDiagnostics: this.deps.deviceDiagnostics,
-          structuredLog: this.deps.structuredLog,
-        },
+      const restoreResult = applyRestorePlan(planDevices, context, power, this.state, storageLevers, sheddingPlan, {
+        powerTracker: this.deps.getPowerTracker(),
+        getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
+        temperatureSetpoints: context.temperatureSetpoints,
+        deviceDiagnostics: this.deps.deviceDiagnostics,
+        structuredLog: this.deps.structuredLog,
       });
       this.state.restoreBackoff.commitCooldown(restoreResult.timing);
       return restoreResult;
@@ -150,8 +136,8 @@ export class PlanMaterializationStages {
       physicalLimitBreached: power.physicalLimitBreached,
       budgetReleasableHeadroomHold: power.budgetReleasableHeadroomHold,
       // Use the availability left after temperature restores in this cycle.
-      admissionInputs: buildCeilingShortfallInputs({
-        ledgerAxes: holdResult.ledgerAxes,
+      admissionInputs: {
+        ledger: buildRestoreHeadroomLedger(holdResult.ledgerAxes),
         headroomReserves: restoreResult.headroomReserves,
         // The SAME victim filter the swap lane uses (`getOnDevices`), not
         // raw plan devices — the raw list would fold "relief" from devices
@@ -175,7 +161,7 @@ export class PlanMaterializationStages {
         // on, so card and gate agree by construction.
         lastDeviceShedMsById: this.state.actuation.lastDeviceShedMs,
         nowMs: restoreResult.timing.nowTs,
-      }),
+      },
       hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
     })));
   }

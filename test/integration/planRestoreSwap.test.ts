@@ -169,22 +169,13 @@ describe('buildSwapCandidates', () => {
 
 describe('restore swap helpers', () => {
   it('returns a shed update when headroom is insufficient', () => {
-    const update = buildInsufficientHeadroomUpdate({
-      neededKw: 2,
-      availableKw: 1,
-      marginKw: -1.25,
-    });
+    const update = buildInsufficientHeadroomUpdate(2, 1, -1.25, null, null, null);
     expect(update.plannedState).toBe('shed');
     expect(reasonText(update.reason)).toContain('need 2.00kW');
   });
 
   it('mentions effective need when activation penalties increase the restore requirement', () => {
-    const update = buildInsufficientHeadroomUpdate({
-      neededKw: 4.6,
-      availableKw: 3,
-      marginKw: -1.85,
-      penaltyExtraKw: 2.3,
-    });
+    const update = buildInsufficientHeadroomUpdate(4.6, 3, -1.85, 2.3, null, null);
 
     expect(reasonText(update.reason)).toContain('effective need 4.60kW');
     expect(reasonText(update.reason)).toContain('base 2.30kW + penalty 2.30kW');

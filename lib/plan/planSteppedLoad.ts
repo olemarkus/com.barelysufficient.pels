@@ -308,18 +308,11 @@ export const resolveSteppedKeepDesiredStepIdFor = (
     // the lowest-active fairness clamp: a boost is a live demand the owner (or a
     // smart task) asked for, and "use only your own sun" must not outrank it.
     if (boostActive) {
-      return resolveHigherSteppedLoadStepId({
-        profile,
-        firstStepId: baseStepId,
-        secondStepId: device.selectedStepId,
-      }) ?? lowestActiveStepId;
+      return resolveHigherSteppedLoadStepId(profile, baseStepId, device.selectedStepId) ?? lowestActiveStepId;
     }
-    return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited({
-      profile,
-      stepId: baseStepId,
-      lowestActiveStep,
-      anyOtherDeviceLimited,
-    }), surplusCeilingStepId);
+    return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited(
+      profile, baseStepId, lowestActiveStep, anyOtherDeviceLimited,
+    ), surplusCeilingStepId);
   }
 
   if (isPlanDeviceObservedOff(device)) {
@@ -330,28 +323,20 @@ export const resolveSteppedKeepDesiredStepIdFor = (
   if (!selectedStep || selectedStep.planningPowerW <= 0) {
     return clampToSurplusCeiling(profile, lowestActiveStepId, surplusCeilingStepId);
   }
-  return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited({
-    profile,
-    stepId: selectedStep.id,
-    lowestActiveStep,
-    anyOtherDeviceLimited,
-  }), surplusCeilingStepId);
+  return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited(
+    profile, selectedStep.id, lowestActiveStep, anyOtherDeviceLimited,
+  ), surplusCeilingStepId);
 };
 
 export const resolveSteppedKeepDesiredStepId = (
   device: SteppedKeepDevice,
-  options: {
-    anyOtherDeviceLimited?: boolean;
-    boostActive?: boolean;
-    surplusCeilingStepId?: string;
-  } = {},
 ): string | undefined => resolveSteppedKeepDesiredStepIdFor(
   device,
   device.plannedState,
   device.desiredStepId,
-  options.anyOtherDeviceLimited === true,
-  options.boostActive === true,
-  options.surplusCeilingStepId,
+  false,
+  false,
+  undefined,
 );
 
 /**
@@ -375,12 +360,11 @@ const clampToSurplusCeiling = (
   return step.planningPowerW > ceilingStep.planningPowerW ? ceilingStep.id : stepId;
 };
 
-const resolveHigherSteppedLoadStepId = (params: {
-  profile: SteppedLoadProfile;
-  firstStepId: string | undefined;
-  secondStepId: string | undefined;
-}): string | undefined => {
-  const { profile, firstStepId, secondStepId } = params;
+const resolveHigherSteppedLoadStepId = (
+  profile: SteppedLoadProfile,
+  firstStepId: string | undefined,
+  secondStepId: string | undefined,
+): string | undefined => {
   const firstStep = getSteppedLoadStep(profile, firstStepId);
   const secondStep = getSteppedLoadStep(profile, secondStepId);
   if (!firstStep) return secondStep?.id;
@@ -393,13 +377,12 @@ const resolveHigherSteppedLoadStepId = (params: {
 // restore path: if a stepped device is currently above lowest-non-zero and any other device
 // is being limited this cycle, clamp the keep desired step down so the executor issues a
 // step-down command (e.g. medium -> low) instead of holding the higher step.
-const clampToLowestActiveWhenOtherDevicesLimited = (params: {
-  profile: SteppedLoadProfile;
-  stepId: string | undefined;
-  lowestActiveStep: SteppedLoadStep;
-  anyOtherDeviceLimited: boolean;
-}): string | undefined => {
-  const { profile, stepId, lowestActiveStep, anyOtherDeviceLimited } = params;
+const clampToLowestActiveWhenOtherDevicesLimited = (
+  profile: SteppedLoadProfile,
+  stepId: string | undefined,
+  lowestActiveStep: SteppedLoadStep,
+  anyOtherDeviceLimited: boolean,
+): string | undefined => {
   if (!anyOtherDeviceLimited || !stepId) return stepId;
   if (stepId === lowestActiveStep.id) return stepId;
   const step = getSteppedLoadStep(profile, stepId);
@@ -457,17 +440,12 @@ export const getSteppedLoadNextRestoreStep = (
   return getSteppedLoadNextHigherStep(profile, device.selectedStepId, highestStepId);
 };
 
-export const getSteppedLoadShedTargetStep = (params: {
+export const getSteppedLoadShedTargetStep = (
   device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields
-  & { currentState?: string; currentOn?: boolean };
-  shedAction: 'turn_off' | 'set_step';
-  currentDesiredStepId?: string;
-}): ReturnType<typeof getSteppedLoadStep> => {
-  const {
-    device,
-    shedAction,
-    currentDesiredStepId,
-  } = params;
+  & { currentState?: string; currentOn?: boolean },
+  shedAction: 'turn_off' | 'set_step',
+  currentDesiredStepId?: string,
+): ReturnType<typeof getSteppedLoadStep> => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
   const currentStep = getSteppedLoadStep(profile, currentDesiredStepId ?? device.selectedStepId);
@@ -505,8 +483,8 @@ export const resolveSteppedLoadSheddingTarget = (params: {
   if (!steppedProfile) return null;
   const selectedStep = getSteppedLoadStep(steppedProfile, device.selectedStepId);
   if (!selectedStep) return null;
-  const desiredStep = resolveUnconfirmedLowerDesiredStep({ device, steppedProfile, selectedStep });
-  const staleLowerDesiredStep = hasStaleLowerDesiredStep({ device, steppedProfile, selectedStep });
+  const desiredStep = resolveUnconfirmedLowerDesiredStep(device, steppedProfile, selectedStep);
+  const staleLowerDesiredStep = hasStaleLowerDesiredStep(device, steppedProfile, selectedStep);
   const clampedTargetStep = clampSteppedShedTarget(targetStep, desiredStep);
   if (!clampedTargetStep || clampedTargetStep.id === selectedStep.id) return null;
   return {
@@ -679,12 +657,11 @@ export function isSteppedLoadStepBelow(
   return resolveStepIndex(device, stepId) < resolveStepIndex(device, referenceStepId);
 }
 
-function resolveUnconfirmedLowerDesiredStep(params: {
-  device: StepSheddingCapableDevice;
-  steppedProfile: SteppedLoadProfile;
-  selectedStep: SteppedLoadStep;
-}): SteppedLoadStep | null {
-  const { device, steppedProfile, selectedStep } = params;
+function resolveUnconfirmedLowerDesiredStep(
+  device: StepSheddingCapableDevice,
+  steppedProfile: SteppedLoadProfile,
+  selectedStep: SteppedLoadStep,
+): SteppedLoadStep | null {
   const desiredStep = getSteppedLoadStep(steppedProfile, device.desiredStepId);
   if (!desiredStep) return null;
   if (desiredStep.id === selectedStep.id) return null;
@@ -693,12 +670,11 @@ function resolveUnconfirmedLowerDesiredStep(params: {
   return desiredStep;
 }
 
-function hasStaleLowerDesiredStep(params: {
-  device: StepSheddingCapableDevice;
-  steppedProfile: SteppedLoadProfile;
-  selectedStep: SteppedLoadStep;
-}): boolean {
-  const { device, steppedProfile, selectedStep } = params;
+function hasStaleLowerDesiredStep(
+  device: StepSheddingCapableDevice,
+  steppedProfile: SteppedLoadProfile,
+  selectedStep: SteppedLoadStep,
+): boolean {
   if (device.stepCommandPending || device.stepCommandStatus !== 'stale') return false;
   const desiredStep = getSteppedLoadStep(steppedProfile, device.desiredStepId);
   if (!desiredStep) return false;

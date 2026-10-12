@@ -141,12 +141,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
       // still shed via the binary capability.
       withFixtureResidualKw({ ...steppedAtLowestActive, residualKw: { shed: 1.2 } }),
     ].map(toInputRemainingSheddableDevice);
-    const producerTotal = sumRemainingSheddableLoadKw({
-      devices: producerDevices,
-      isAlreadyShed: () => false,
-      limitSource: 'capacity',
-      breachOverridesExemption: true,
-    });
+    const producerTotal = sumRemainingSheddableLoadKw(producerDevices, () => false, 'capacity', true);
 
     expect(producerTotal).toBeCloseTo(1.4 + 2.9 + 1.2, 6);
   });
@@ -260,12 +255,7 @@ describe('sumRemainingSheddableLoadKw — producer-resolved residual', () => {
       });
       return { ...device, residualKw: { ...device.residualKw, shed } };
     }).map(toInputRemainingSheddableDevice);
-    const producerTotal = sumRemainingSheddableLoadKw({
-      devices: producerDevices,
-      isAlreadyShed: () => false,
-      limitSource: 'capacity',
-      breachOverridesExemption: true,
-    });
+    const producerTotal = sumRemainingSheddableLoadKw(producerDevices, () => false, 'capacity', true);
 
     // Baseline 2.9 + (a) 1.2 + (d) 0. Case (d) contributing 0 is the point:
     // the producer resolved a no-op setpoint shed to zero relief.

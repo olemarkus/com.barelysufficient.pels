@@ -6,7 +6,6 @@
 // Pure over (state, params) — `nowTs` is passed explicitly, so no clock is faked.
 import { describe, expect, it } from 'vitest';
 import {
-  resolveSurplusEligibility,
   resolveSurplusTrackingPosture,
 } from '../../lib/plan/planSurplusAbsorb';
 import { resolveHighestStepWithinKw } from '../../lib/plan/planSteppedLoad';
@@ -17,7 +16,7 @@ import {
 } from '../../lib/plan/admission/surplusAbsorb';
 import { type PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { buildPlanInputDevice, steppedProfile, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
+import { buildPlanInputDevice, steppedProfile, NO_STORAGE_SURPLUS, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 
 const CHARGER_ID = 'charger';
@@ -54,7 +53,7 @@ const resolve = (params: {
   devices: PlanInputDevice[];
   debugStructured?: (payload: Record<string, unknown>) => void;
 }): void => {
-  resolveSurplusEligibility({
+  resolveSurplusEligibilityForSpec({
     devices: params.devices,
     state: params.state,
     signedNetKw: params.signedNetKw,
@@ -506,16 +505,14 @@ describe('a solar stop that lands on a device capacity already priced', () => {
     const shedSet = new Set<string>([CHARGER_ID]);
     const shedStepTargets = new Map<string, string>([[CHARGER_ID, 'medium']]);
 
-    applyPostSheddingHolds({
-      getConfig: () => undefined,
-      leaveOffOnRelease: () => 'released',
-      shedSet,
-      shedStepTargets,
-      forceShedSet: [],
-      surplusHoldIds: [CHARGER_ID],
-      admittedDevices: [buildTracker()],
-      shedDecisions: state.shedDecisions,
-    });
+    applyPostSheddingHolds(
+      { shedSet, shedStepTargets },
+      { admittedDevices: [buildTracker()], forceShedSet: new Set() },
+      [CHARGER_ID],
+      state.shedDecisions,
+      () => undefined,
+      () => 'released',
+    );
 
     expect(shedSet.has(CHARGER_ID)).toBe(true);
     expect(shedStepTargets.has(CHARGER_ID)).toBe(false);
@@ -525,16 +522,14 @@ describe('a solar stop that lands on a device capacity already priced', () => {
     const state = createPlanEngineState();
     const shedStepTargets = new Map<string, string>([[CHARGER_ID, 'medium']]);
 
-    applyPostSheddingHolds({
-      getConfig: () => undefined,
-      leaveOffOnRelease: () => 'released',
-      shedSet: new Set<string>([CHARGER_ID]),
-      shedStepTargets,
-      forceShedSet: [],
-      surplusHoldIds: [],
-      admittedDevices: [buildTracker()],
-      shedDecisions: state.shedDecisions,
-    });
+    applyPostSheddingHolds(
+      { shedSet: new Set<string>([CHARGER_ID]), shedStepTargets },
+      { admittedDevices: [buildTracker()], forceShedSet: new Set() },
+      [],
+      state.shedDecisions,
+      () => undefined,
+      () => 'released',
+    );
 
     expect(shedStepTargets.get(CHARGER_ID)).toBe('medium');
   });

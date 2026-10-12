@@ -1,14 +1,9 @@
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
-import type { FlowCard, FlowHomeyLike } from '../lib/utils/types';
-import type { Logger as PinoLogger } from '../lib/logging/logger';
 import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
+import type { FlowCardDeps } from './registerFlowCards';
 
 type DeviceRef = RawFlowDeviceArg;
-
-type ActionCardHomey = Pick<FlowHomeyLike, 'flow'> & {
-  flow: { getActionCard: (id: string) => FlowCard };
-};
 
 function extractDeviceId(payload: { device?: DeviceRef } | null): string {
   const deviceId = getDeviceIdFromFlowArg(payload?.device);
@@ -43,16 +38,8 @@ function assertOverrideSupported(device: DeviceDescriptorRead | undefined): void
   }
 }
 
-export function registerExpectedPowerCard(
-  homey: ActionCardHomey,
-  deps: {
-    getDeviceDescriptors: () => Promise<DeviceDescriptorRead[]>;
-    setExpectedOverride: (deviceId: string, kw: number) => boolean;
-    refreshSnapshot: () => Promise<void>;
-    getStructuredLogger: (component: string) => PinoLogger | undefined;
-  },
-): void {
-  const card = homey.flow.getActionCard('set_expected_power_usage');
+export function registerExpectedPowerCard(deps: FlowCardDeps): void {
+  const card = deps.homey.flow.getActionCard('set_expected_power_usage');
 
   card.registerRunListener(async (args: unknown) => {
     const payload = args as { device?: DeviceRef; power_w?: number } | null;

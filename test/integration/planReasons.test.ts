@@ -1,7 +1,7 @@
 import { SwapLedger } from '../../lib/plan/swap';
 import { fixtureLimitedSetpoints, fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
 import { finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
-import { buildCeilingShortfallInputs, resolveCeilingShortfall } from '../../lib/plan/planReasonShortfall';
+import { resolveCeilingShortfall, type CeilingShortfallInputs } from '../../lib/plan/planReasonShortfall';
 import { computeBaseRestoreNeed } from '../../lib/plan/restore/accounting';
 import { getRestoreNeed } from '../../lib/plan/restore/support';
 import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
@@ -294,11 +294,7 @@ describe('normalizeShedReasons', () => {
     const build = (budgetReleasableHeadroomHold: boolean) => normalizeShedReasons([buildPlanDevice({
         id: 'dev-budget-hold',
         plannedState: 'shed',
-        reason: buildRestoreHeadroomReason({
-          neededKw: 1.2,
-          availableKw: 0.7,
-          marginKw: -0.75,
-        }),
+        reason: buildRestoreHeadroomReason(1.2, 0.7, -0.75, null, null, null),
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -321,11 +317,7 @@ describe('normalizeShedReasons', () => {
     const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-breach-hold',
         plannedState: 'shed',
-        reason: buildRestoreHeadroomReason({
-          neededKw: 1.2,
-          availableKw: 0.7,
-          marginKw: -0.75,
-        }),
+        reason: buildRestoreHeadroomReason(1.2, 0.7, -0.75, null, null, null),
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -349,11 +341,7 @@ describe('normalizeShedReasons', () => {
         id: 'dev-exempt-hold',
         plannedState: 'shed',
         budgetExempt: true,
-        reason: buildRestoreHeadroomReason({
-          neededKw: 1.4,
-          availableKw: 1.7,
-          marginKw: -0.28,
-        }),
+        reason: buildRestoreHeadroomReason(1.4, 1.7, -0.28, null, null, null),
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -372,11 +360,7 @@ describe('normalizeShedReasons', () => {
     const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-capacity-hold',
         plannedState: 'shed',
-        reason: buildRestoreHeadroomReason({
-          neededKw: 1.2,
-          availableKw: 0.7,
-          marginKw: -0.75,
-        }),
+        reason: buildRestoreHeadroomReason(1.2, 0.7, -0.75, null, null, null),
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -554,19 +538,19 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       shedCooldownRemainingSec: null,
       softLimitSource: params.softLimitSource ?? null,
       physicalLimitBreached: params.physicalLimitBreached ?? false,
-      admissionInputs: buildCeilingShortfallInputs({
-      ledgerAxes: {
-        gridAvailableKw: null,
-        capacityAvailableKw: params.capacityAvailableKw,
-        budgetAvailableKw: params.budgetAvailableKw ?? null,
+      admissionInputs: {
+        ledger: buildRestoreHeadroomLedger({
+          gridAvailableKw: null,
+          capacityAvailableKw: params.capacityAvailableKw,
+          budgetAvailableKw: params.budgetAvailableKw ?? null,
+        }),
+        headroomReserves: params.headroomReserves ?? [],
+        onDevices: params.devices,
+        swapLedger: new SwapLedger(),
+        restoredThisCycle: new Set(),
+        lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
+        nowMs: SHORTFALL_NOW_MS,
       },
-      headroomReserves: params.headroomReserves ?? [],
-      onDevices: params.devices,
-      swapLedger: new SwapLedger(),
-      restoredThisCycle: new Set(),
-      lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
-      nowMs: SHORTFALL_NOW_MS,
-    }),
       hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
     }));
 
@@ -651,8 +635,8 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       const state = createPlanEngineState();
       state.actuation.lastDeviceShedMs[dev.id] = SHORTFALL_NOW_MS - 60_000;
       const gateNeededKw = getRestoreNeed(dev, state, SHORTFALL_NOW_MS, undefined).needed;
-      const shortfallInputs = (capacityAvailableKw: number) => buildCeilingShortfallInputs({
-        ledgerAxes: { gridAvailableKw: null, capacityAvailableKw, budgetAvailableKw: null },
+      const shortfallInputs = (capacityAvailableKw: number): CeilingShortfallInputs => ({
+        ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw, budgetAvailableKw: null }),
         headroomReserves: [],
         onDevices: [],
         swapLedger: new SwapLedger(),

@@ -23,17 +23,13 @@ const EV_CHARGER_NOMINAL_VOLTAGE = 230;
 const STEPPED_LOAD_CLAMP_HEARTBEAT_MS = 10 * 60 * 1000;
 const steppedLoadClampDedupe = new Map<string, LogDedupeEntry>();
 
-export async function resolveSteppedLoadStepIdFromPowerInput(params: {
-  deps: FlowCardDeps;
-  deviceId: string;
-  rawPower: unknown;
-}): Promise<{ stepId: string; deviceName: string; parsedPowerW: number }> {
-  const { deps, deviceId, rawPower } = params;
+export async function resolveSteppedLoadStepIdFromPowerInput(
+  deps: FlowCardDeps,
+  deviceId: string,
+  rawPower: unknown,
+): Promise<{ stepId: string; deviceName: string; parsedPowerW: number }> {
   const device = await getSteppedLoadDeviceSnapshot(deps, deviceId);
-  const powerW = parseSteppedLoadPowerInput({
-    rawPower,
-    device,
-  });
+  const powerW = parseSteppedLoadPowerInput(rawPower, device);
   if (powerW === null) {
     throw createSteppedLoadReportError(
       'invalid_power_input',
@@ -63,11 +59,10 @@ export async function resolveSteppedLoadStepIdFromPowerInput(params: {
   };
 }
 
-function parseSteppedLoadPowerInput(params: {
-  rawPower: unknown;
-  device: TargetDeviceSnapshot & SteppedLoadDescriptorFields;
-}): number | null {
-  const { rawPower, device } = params;
+function parseSteppedLoadPowerInput(
+  rawPower: unknown,
+  device: TargetDeviceSnapshot & SteppedLoadDescriptorFields,
+): number | null {
   if (typeof rawPower === 'number' && Number.isFinite(rawPower)) {
     return Math.round(rawPower);
   }
@@ -221,65 +216,91 @@ async function getSteppedLoadDeviceSnapshot(
   return device;
 }
 
-export function emitSteppedLoadReportReceivedLog(params: {
-  deps: FlowCardDeps;
-  sourceCardId: string;
-  deviceId?: string;
-  reportedStepId?: string | null;
-  rawPowerInput?: string | number | null;
-}): void {
-  params.deps.getStructuredLogger('devices')?.info({
+export function emitSteppedLoadReportReceivedLog(
+  deps: FlowCardDeps,
+  sourceCardId: string,
+  deviceId: string,
+  reportedStepId: string | null,
+  rawPowerInput: string | number | null,
+): void {
+  deps.getStructuredLogger('devices')?.info({
     event: 'stepped_load_report_received',
-    sourceCardId: params.sourceCardId,
-    deviceId: params.deviceId ?? null,
+    sourceCardId,
+    deviceId,
     capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-    reportedStepId: params.reportedStepId ?? null,
-    rawPowerInput: params.rawPowerInput ?? null,
+    reportedStepId,
+    rawPowerInput,
   });
 }
 
-export function emitSteppedLoadReportResolvedLog(params: {
-  deps: FlowCardDeps;
-  sourceCardId: string;
-  deviceId: string;
-  deviceName: string;
-  resolvedStepId: string | null;
-  parsedPowerW?: number;
-  outcome: 'accepted' | 'unchanged' | 'rejected';
-  reasonCode?: string;
-}): void {
-  params.deps.getStructuredLogger('devices')?.info({
+export function emitSteppedLoadReportResolvedLog(
+  deps: FlowCardDeps,
+  sourceCardId: string,
+  deviceId: string,
+  deviceName: string,
+  resolvedStepId: string,
+  outcome: 'accepted' | 'unchanged',
+  parsedPowerW: number | undefined,
+): void {
+  deps.getStructuredLogger('devices')?.info(buildReportResolvedPayload(
+    sourceCardId, deviceId, deviceName, resolvedStepId, parsedPowerW ?? null, outcome, null,
+  ));
+}
+
+/** A report left unchanged because the device's native wiring reports its own step. */
+export function emitSteppedLoadReportNativeIgnoredLog(
+  deps: FlowCardDeps,
+  sourceCardId: string,
+  deviceId: string,
+  deviceName: string,
+  reportedStepId: string | null,
+): void {
+  deps.getStructuredLogger('devices')?.info(buildReportResolvedPayload(
+    sourceCardId, deviceId, deviceName, reportedStepId, null, 'unchanged', 'native_wiring_enabled',
+  ));
+}
+
+function buildReportResolvedPayload(
+  sourceCardId: string,
+  deviceId: string,
+  deviceName: string,
+  resolvedStepId: string | null,
+  parsedPowerW: number | null,
+  outcome: 'accepted' | 'unchanged',
+  reasonCode: 'native_wiring_enabled' | null,
+): Record<string, unknown> {
+  return {
     event: 'stepped_load_report_resolved',
-    sourceCardId: params.sourceCardId,
-    deviceId: params.deviceId,
-    deviceName: params.deviceName,
+    sourceCardId,
+    deviceId,
+    deviceName,
     capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-    resolvedStepId: params.resolvedStepId,
-    parsedPowerW: params.parsedPowerW ?? null,
-    outcome: params.outcome,
-    reasonCode: params.reasonCode ?? null,
-  });
+    resolvedStepId,
+    parsedPowerW,
+    outcome,
+    reasonCode,
+  };
 }
 
-export function emitSteppedLoadReportRejectedLog(params: {
-  deps: FlowCardDeps;
-  sourceCardId: string;
-  deviceId?: string;
-  reportedStepId?: string | null;
-  rawPowerInput?: string | number | null;
-  error: unknown;
-}): void {
-  const normalizedError = normalizeError(params.error);
-  const reasonCode = params.error instanceof SteppedLoadReportError
-    ? params.error.code
+export function emitSteppedLoadReportRejectedLog(
+  deps: FlowCardDeps,
+  sourceCardId: string,
+  deviceId: string,
+  reportedStepId: string | null,
+  rawPowerInput: string | number | null,
+  error: unknown,
+): void {
+  const normalizedError = normalizeError(error);
+  const reasonCode = error instanceof SteppedLoadReportError
+    ? error.code
     : 'unexpected_error';
-  params.deps.getStructuredLogger('devices')?.warn({
+  deps.getStructuredLogger('devices')?.warn({
     event: 'stepped_load_report_rejected',
-    sourceCardId: params.sourceCardId,
-    deviceId: params.deviceId ?? null,
+    sourceCardId,
+    deviceId,
     capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-    reportedStepId: params.reportedStepId ?? null,
-    rawPowerInput: params.rawPowerInput ?? null,
+    reportedStepId,
+    rawPowerInput,
     reasonCode,
     errorMessage: normalizedError.message,
   });
@@ -302,17 +323,14 @@ export function formatFlowValueForLog(value: unknown): string | number | null {
  * A downward shortfall beyond the configured ceiling margin is the signal;
  * upward reports and within-margin wobble route to nothing extra.
  */
-export async function emitSteppedLoadClampDeviationLog(params: {
-  deps: FlowCardDeps;
-  sourceCardId: string;
-  deviceId: string;
-  reportedStepId: string;
-  parsedPowerW?: number;
-  now: number;
-}): Promise<void> {
-  const {
-    deps, sourceCardId, deviceId, reportedStepId, parsedPowerW, now,
-  } = params;
+export async function emitSteppedLoadClampDeviationLog(
+  deps: FlowCardDeps,
+  sourceCardId: string,
+  deviceId: string,
+  reportedStepId: string,
+  parsedPowerW: number | undefined,
+  now: number,
+): Promise<void> {
   // Best-effort diagnostic: a failure here (e.g. a transient snapshot read)
   // must never turn an accepted report into a rejected one.
   let snapshot: DecoratedDeviceSnapshot[];

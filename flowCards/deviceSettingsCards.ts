@@ -84,103 +84,91 @@ const buildMayGrantCapacityControl = (deps: FlowCardDeps): DeviceWriteGate => (d
 );
 
 export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
-  registerDeviceBooleanActionCard({
-    cardId: 'enable_device_capacity_control',
-    enabled: true,
-    settingKey: CONTROLLABLE_DEVICES,
-    label: 'power-limit control',
-    settingKind: 'capacity_control',
-    deviceFilter: buildMayGrantCapacityControl(deps),
+  registerDeviceBooleanActionCard(
     deps,
-  });
-  registerDeviceBooleanActionCard({
-    cardId: 'disable_device_capacity_control',
-    enabled: false,
-    settingKey: CONTROLLABLE_DEVICES,
-    label: 'power-limit control',
-    settingKind: 'capacity_control',
-    deviceFilter: mayRevokeCapacityControl,
+    'enable_device_capacity_control',
+    true,
+    CONTROLLABLE_DEVICES,
+    'power-limit control',
+    'capacity_control',
+    buildMayGrantCapacityControl(deps),
+  );
+  registerDeviceBooleanActionCard(
     deps,
-  });
+    'disable_device_capacity_control',
+    false,
+    CONTROLLABLE_DEVICES,
+    'power-limit control',
+    'capacity_control',
+    mayRevokeCapacityControl,
+  );
 }
 
 export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
-  registerDeviceBooleanActionCard({
-    cardId: 'add_budget_exemption',
-    enabled: true,
-    settingKey: BUDGET_EXEMPT_DEVICES,
-    label: 'budget exemption',
-    settingKind: 'budget_exemption',
-    deviceFilter: recordsForUntrackedDevice,
+  registerDeviceBooleanActionCard(
     deps,
-  });
-  registerDeviceBooleanActionCard({
-    cardId: 'remove_budget_exemption',
-    enabled: false,
-    settingKey: BUDGET_EXEMPT_DEVICES,
-    label: 'budget exemption',
-    settingKind: 'budget_exemption',
-    deviceFilter: recordsForUntrackedDevice,
+    'add_budget_exemption',
+    true,
+    BUDGET_EXEMPT_DEVICES,
+    'budget exemption',
+    'budget_exemption',
+    recordsForUntrackedDevice,
+  );
+  registerDeviceBooleanActionCard(
     deps,
-  });
+    'remove_budget_exemption',
+    false,
+    BUDGET_EXEMPT_DEVICES,
+    'budget exemption',
+    'budget_exemption',
+    recordsForUntrackedDevice,
+  );
 }
 
 export function registerManagedDeviceCondition(deps: FlowCardDeps): void {
-  registerDeviceSnapshotCondition({
-    cardId: 'is_device_managed',
-    predicate: (device) => device.managed,
-    deps,
-  });
+  registerDeviceSnapshotCondition(deps, 'is_device_managed', (device) => device.managed);
 }
 
 export function registerCapacityControlCondition(deps: FlowCardDeps): void {
-  registerDeviceSnapshotCondition({
-    cardId: 'is_device_capacity_controlled',
+  registerDeviceSnapshotCondition(
+    deps,
+    'is_device_capacity_controlled',
     // A home battery's descriptor never reads controllable (the generic gate
     // vetoes it): its Power-limit control is its own gate on the runtime-held
     // map the planner reads, and like a load's it counts only while the battery
     // is managed, and only while PELS can drive it at all.
-    predicate: (device) => (
+    (device) => (
       isHomeBattery(device)
         ? device.managed
           && deps.readBatteryControl(device.id) === 'drivable'
           && isBatteryPowerLimitEnabled(deps.getControllableDevices(), device.id)
         : device.controllable === true
     ),
-    offers: isCapacityControlDevice,
-    deps,
-  });
+    isCapacityControlDevice,
+  );
 }
 
 export function registerBudgetExemptionCondition(deps: FlowCardDeps): void {
-  registerDeviceSnapshotCondition({
-    cardId: 'is_device_budget_exempt',
-    predicate: (device) => device.budgetExempt === true,
-    deps,
-  });
+  registerDeviceSnapshotCondition(deps, 'is_device_budget_exempt', (device) => device.budgetExempt === true);
 }
 
-function registerDeviceBooleanActionCard(params: {
-  cardId: string;
-  enabled: boolean;
-  settingKey: DeviceFlagSettingKey;
-  label: string;
-  settingKind: string;
-  // Optional eligibility gate. When present, the autocomplete only offers — and the
-  // write only acts on — devices that pass it. Used by the capacity-control cards to keep
-  // solar devices, and devices PELS cannot limit, out of the picker.
-  deviceFilter?: DeviceWriteGate;
-  deps: FlowCardDeps;
-}): void {
-  const { cardId, deps, deviceFilter, ...settingParams } = params;
+function registerDeviceBooleanActionCard(
+  deps: FlowCardDeps,
+  cardId: string,
+  enabled: boolean,
+  settingKey: DeviceFlagSettingKey,
+  label: string,
+  settingKind: string,
+  // The eligibility gate: the autocomplete only offers — and the write only acts
+  // on — devices that pass it. It keeps solar devices, and devices PELS cannot
+  // limit, out of the capacity-control pickers.
+  deviceFilter: DeviceWriteGate,
+): void {
   const card = deps.homey.flow.getActionCard(cardId);
   card.registerRunListener(async (args: unknown) => {
-    await setDeviceBooleanSetting({
-      deviceId: readFlowDeviceArg(args),
-      deps,
-      deviceFilter,
-      ...settingParams,
-    });
+    await setDeviceBooleanSetting(
+      deps, readFlowDeviceArg(args), enabled, settingKey, label, settingKind, deviceFilter,
+    );
     return true;
   });
   card.registerArgumentAutocompleteListener(
@@ -189,14 +177,13 @@ function registerDeviceBooleanActionCard(params: {
   );
 }
 
-function registerDeviceSnapshotCondition(params: {
-  cardId: string;
-  predicate: (device: DeviceDescriptorRead) => boolean;
+function registerDeviceSnapshotCondition(
+  deps: FlowCardDeps,
+  cardId: string,
+  predicate: (device: DeviceDescriptorRead) => boolean,
   /** The devices the autocomplete offers; every user-selectable device unless a card says otherwise. */
-  offers?: (device: DeviceDescriptorRead) => boolean;
-  deps: FlowCardDeps;
-}): void {
-  const { cardId, predicate, offers = isUserSelectableDevice, deps } = params;
+  offers: (device: DeviceDescriptorRead) => boolean = isUserSelectableDevice,
+): void {
   const card = deps.homey.flow.getConditionCard(cardId);
   // The run listener answers truthfully for whatever device the flow references — a
   // battery's `managed` is its Managed toggle, so an existing flow that already
@@ -229,31 +216,21 @@ async function resolveDeviceFromArgs(
 async function getDeviceOptions(
   deps: FlowCardDeps,
   query: string,
-  deviceFilter?: (device: DeviceDescriptorRead) => boolean,
+  deviceFilter: (device: DeviceDescriptorRead) => boolean,
 ): Promise<Array<{ id: string; name: string }>> {
   const descriptors = await deps.getDeviceDescriptors();
-  const eligible = deviceFilter ? descriptors.filter(deviceFilter) : descriptors;
-  return buildDeviceAutocompleteOptions(eligible, query);
+  return buildDeviceAutocompleteOptions(descriptors.filter(deviceFilter), query);
 }
 
-async function setDeviceBooleanSetting(params: {
-  deviceId: string;
-  enabled: boolean;
-  settingKey: DeviceFlagSettingKey;
-  label: string;
-  settingKind: string;
-  deviceFilter?: DeviceWriteGate;
-  deps: FlowCardDeps;
-}): Promise<void> {
-  const {
-    deviceId,
-    enabled,
-    settingKey,
-    label,
-    settingKind,
-    deviceFilter,
-    deps,
-  } = params;
+async function setDeviceBooleanSetting(
+  deps: FlowCardDeps,
+  deviceId: string,
+  enabled: boolean,
+  settingKey: DeviceFlagSettingKey,
+  label: string,
+  settingKind: string,
+  deviceFilter: DeviceWriteGate,
+): Promise<void> {
   if (!deviceId) throw new Error(formatDeviceMustBeProvidedMessage(label));
   const descriptors = await deps.getDeviceDescriptors();
   const device = descriptors.find((entry) => entry.id === deviceId);
@@ -262,7 +239,7 @@ async function setDeviceBooleanSetting(params: {
   // device hand-picked via a stale flow arg, or a device PELS cannot limit). The gate
   // also sees an untracked device and decides for itself what that means. Log the skip
   // so the user-facing flow still has a trace, naming which of the two it was.
-  if (deviceFilter && !deviceFilter(device)) {
+  if (!deviceFilter(device)) {
     deps.getStructuredLogger('devices')?.info({
       event: 'device_setting_toggle_skipped',
       setting: settingKind,

@@ -26,13 +26,13 @@ export function planStillWantsPendingTarget(
     && device.plannedTarget === pending.desired;
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function prunePendingTargetCommandsForPlan(params: {
-  state: PlanEngineState;
-  plan: DevicePlan;
-  debugStructured?: StructuredDebugEmitter;
-}): boolean {
-  const { state, plan, debugStructured } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+export function prunePendingTargetCommandsForPlan(
+  state: PlanEngineState,
+  plan: DevicePlan,
+  debugStructured?: StructuredDebugEmitter,
+): boolean {
   const planById = new Map<string, DevicePlan['devices'][number]>();
   for (const device of plan.devices) planById.set(device.id, device);
   let changed = false;
@@ -52,22 +52,15 @@ export function prunePendingTargetCommandsForPlan(params: {
   }
   return changed;
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
-export function syncPendingTargetCommands(params: {
-  state: PlanEngineState;
-  liveDevices: PlanInputDevice[];
-  source: PendingTargetObservationSource;
-  structuredInfo?: StructuredDebugEmitter;
-  debugStructured?: StructuredDebugEmitter;
-}): boolean {
-  const {
-    state,
-    liveDevices,
-    source,
-    structuredInfo,
-    debugStructured,
-  } = params;
+export function syncPendingTargetCommands(
+  state: PlanEngineState,
+  liveDevices: PlanInputDevice[],
+  source: PendingTargetObservationSource,
+  structuredInfo: StructuredDebugEmitter,
+  debugStructured: StructuredDebugEmitter | undefined,
+): boolean {
   const liveById = new Map<string, PlanInputDevice>();
   for (const device of liveDevices) liveById.set(device.id, device);
   let changed = false;

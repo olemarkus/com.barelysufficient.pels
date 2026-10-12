@@ -23,12 +23,11 @@ type DailySoftLimitInput = {
   nextBucketStartIso?: string;
 };
 
-export function resolveHourlyUsageSplit(params: {
-  totalRaw: unknown;
-  controlledRaw: unknown;
-  uncontrolledRaw: unknown;
-}): CurrentHourUsageSplit {
-  const { totalRaw, controlledRaw, uncontrolledRaw } = params;
+export function resolveHourlyUsageSplit(
+  totalRaw: unknown,
+  controlledRaw: unknown,
+  uncontrolledRaw: unknown,
+): CurrentHourUsageSplit {
   const hasTotal = isFiniteNumber(totalRaw);
   const hasControlled = isFiniteNumber(controlledRaw);
   const hasUncontrolled = isFiniteNumber(uncontrolledRaw);
@@ -60,11 +59,11 @@ export function resolveHourlyUsageSplit(params: {
 }
 
 export function getHourUsageSplit(powerTracker: PowerTrackerState, bucketKey: string): CurrentHourUsageSplit {
-  return resolveHourlyUsageSplit({
-    totalRaw: powerTracker.buckets?.[bucketKey],
-    controlledRaw: powerTracker.controlledBuckets?.[bucketKey],
-    uncontrolledRaw: powerTracker.uncontrolledBuckets?.[bucketKey],
-  });
+  return resolveHourlyUsageSplit(
+    powerTracker.buckets?.[bucketKey],
+    powerTracker.controlledBuckets?.[bucketKey],
+    powerTracker.uncontrolledBuckets?.[bucketKey],
+  );
 }
 
 /**

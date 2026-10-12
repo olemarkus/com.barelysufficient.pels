@@ -7,12 +7,11 @@ import type { PlanInputDevice } from './planTypes';
 // stepped shed resolver (phantom set_step drops) AND the surplus-hold state (a "Run on solar
 // surplus" hold is an opt-in posture, not capacity pressure — it must not clamp unrelated
 // stepped loads to their lowest step).
-export function buildEffectiveShedPosture(params: {
-  devices: PlanInputDevice[];
-  shedSet: Set<string>;
-  isExcluded: (dev: PlanInputDevice) => boolean;
-}): Set<string> {
-  const { devices, shedSet, isExcluded } = params;
+export function buildEffectiveShedPosture(
+  devices: PlanInputDevice[],
+  shedSet: Set<string>,
+  isExcluded: (dev: PlanInputDevice) => boolean,
+): Set<string> {
   if (shedSet.size === 0) return shedSet;
   const result = new Set<string>();
   const byId = new Map(devices.map((d) => [d.id, d]));

@@ -14,9 +14,7 @@
 import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it, vi } from 'vitest';
-import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
-import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
 import { sumControlledUsageKw, splitControlledUsageKw } from '../../lib/power/usageAttribution';
 import { buildSheddingCandidates } from '../../lib/plan/shedding/candidates';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -27,7 +25,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
-import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
+import { buildPlanInputDevice, restoreTimingFixture, NO_STORAGE_SURPLUS, buildInitialPlanDevicesForSpec, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -119,11 +117,8 @@ const defaultDeps: PlanDevicesDeps = {
 
 describe('solar device as managed observe-only — control-path exclusion lock', () => {
   it('rides the planner device set but plans only "keep" with NO target', () => {
-    const planDevices = buildInitialPlanDevices({
+    const planDevices = buildInitialPlanDevicesForSpec({
       context: buildContext([solarInputDevice()]),
-      state: createPlanEngineState(),
-      sheddingPlan: sheddingPlanFixture(),
-      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -162,7 +157,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
 
   it('is never surplus-absorb eligible (no temperature-boost target) even with export available', () => {
     const state = createPlanEngineState();
-    resolveSurplusEligibility({
+    resolveSurplusEligibilityForSpec({
       devices: [solarInputDevice()],
       state,
       signedNetKw: -3,
@@ -199,11 +194,8 @@ describe('solar device as managed observe-only — control-path exclusion lock',
 
   it('is never starvation-eligible (fails the controllable:true + temperature requirement)', () => {
     const context = buildContext([solarInputDevice({ currentDrawKw: 3.0 })]);
-    const planDevices = buildInitialPlanDevices({
+    const planDevices = buildInitialPlanDevicesForSpec({
       context,
-      state: createPlanEngineState(),
-      sheddingPlan: sheddingPlanFixture(),
-      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
     const observations = buildDeviceDiagnosticsObservations(

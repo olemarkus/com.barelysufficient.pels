@@ -14,13 +14,6 @@
 # and never with a second script.
 #
 # Seeded 2026-10-11: 340 files, 819 bundles.
-flowCards/deviceSettingsCards.ts 3
-flowCards/expectedPower.ts 1
-flowCards/flowBackedDeviceCards.ts 4
-flowCards/headroomAndEvSocCards.ts 2
-flowCards/registerFlowCards.ts 2
-flowCards/steppedLoadFlowCards.ts 1
-flowCards/steppedLoadReport.ts 5
 lib/dailyBudget/dailyBudgetBreakdown.ts 1
 lib/dailyBudget/dailyBudgetConfidence.ts 4
 lib/dailyBudget/dailyBudgetHistory.ts 1
@@ -40,7 +33,6 @@ lib/device/evCarLink.ts 3
 lib/device/evCarLinkObservation.ts 2
 lib/device/evCarLinkReadModel.ts 1
 lib/device/expectedPowerOverrideState.ts 1
-lib/device/flowBackedDeviceState.ts 3
 lib/device/learnedPowerPeakState.ts 1
 lib/device/liveFeed.ts 2
 lib/device/managerFlowSupport.ts 3
@@ -56,7 +48,7 @@ lib/device/targetPowerProbeScheduler.ts 1
 lib/device/targetPowerReachability.ts 2
 lib/device/transport/binarySettleEvidence.ts 1
 lib/device/transport/deviceUpdateHandling.ts 1
-lib/device/transport/flowReportedCapabilities.ts 6
+lib/device/transport/flowReportedCapabilities.ts 1
 lib/device/transport/managerFetch.ts 1
 lib/device/transport/managerHomeyApi.ts 2
 lib/device/transport/managerManagedFilter.ts 1
@@ -81,32 +73,7 @@ lib/logging/logDedupe.ts 1
 lib/observer/generationFreshness.ts 1
 lib/observer/idleClassifier.ts 2
 lib/observer/steppedReportedStep.ts 2
-lib/plan/admission/binaryCommandReachability.ts 1
-lib/plan/admission/headroomReserve.ts 3
-lib/plan/admission/surplusAbsorb.ts 4
-lib/plan/keepInvariantPosture.ts 1
-lib/plan/planActionMaterialization.ts 1
-lib/plan/planBinaryControlHelpers.ts 4
-lib/plan/planBoost.ts 1
-lib/plan/planBuilderOvershoot.ts 1
-lib/plan/planBuilderSurplus.ts 2
-lib/plan/planCardReasonLine.ts 3
-lib/plan/planChangeTracker.ts 1
-lib/plan/planDailyBudgetWindow.ts 1
-lib/plan/planDebugDedupe.ts 1
-lib/plan/planDevices.ts 1
-lib/plan/planReasonShortfall.ts 1
-lib/plan/planReasonStrings.ts 1
-lib/plan/planRemainingSheddableLoad.ts 1
-lib/plan/planStatusHelpers.ts 1
-lib/plan/planSteppedCardText.ts 1
-lib/plan/planSteppedLoad.ts 6
-lib/plan/planSteppedRestorePending.ts 2
-lib/plan/planSteppedShedResolution.ts 3
-lib/plan/planSurplusAbsorb.ts 7
-lib/plan/planTargetControl.ts 2
-lib/plan/restore/accounting.ts 2
-lib/plan/restore/index.ts 1
+lib/plan/planSurplusAbsorb.ts 2
 lib/planInput/calibrationViews.ts 1
 lib/planInput/residualKwForPlanDevice.ts 1
 lib/ports/homeyRuntime.ts 1

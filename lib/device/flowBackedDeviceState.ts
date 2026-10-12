@@ -18,6 +18,7 @@ import {
   type FlowReportedCapabilityId,
   type FlowReportedCapabilitiesByDevice,
   type FlowReportedCapabilitiesForDevice,
+  type FlowReportedCapabilityUpdateResult,
 } from './transport/flowReportedCapabilities';
 import {
   EV_SOC_CAPABILITY_ID,
@@ -39,11 +40,9 @@ import type { FlowBackedCapabilityReportOutcome } from './flowBackedCapabilityRe
 
 const FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS = 15 * 1000;
 
-function resolveFlowBackedCapabilityReportOutcome(update: {
-  stateChanged: boolean;
-  valueChanged: boolean;
-  freshnessAdvanced: boolean;
-}): FlowBackedCapabilityReportOutcome {
+function resolveFlowBackedCapabilityReportOutcome(
+  update: FlowReportedCapabilityUpdateResult,
+): FlowBackedCapabilityReportOutcome {
   if (update.stateChanged) {
     return {
       kind: 'state_changed',
@@ -314,13 +313,13 @@ export class FlowBackedDeviceState {
     });
   }
 
-  reportFlowBackedCapability(params: {
-    deviceId: string;
-    capabilityId: FlowReportedCapabilityId;
-    value: boolean | number | string;
-    reportedAt?: number;
-  }): FlowBackedCapabilityReportOutcome {
-    if (!this.isFlowReportedCapabilityAvailable(params.capabilityId)) {
+  reportFlowBackedCapability(
+    deviceId: string,
+    capabilityId: FlowReportedCapabilityId,
+    value: boolean | number | string,
+    reportedAt?: number,
+  ): FlowBackedCapabilityReportOutcome {
+    if (!this.isFlowReportedCapabilityAvailable(capabilityId)) {
       return {
         kind: 'noop',
         valueChanged: false,
@@ -328,31 +327,23 @@ export class FlowBackedDeviceState {
         refreshSnapshot: false,
       };
     }
-    const update = upsertFlowReportedCapability({
-      state: this.deps.getFlowReportedCapabilities(),
-      deviceId: params.deviceId,
-      capabilityId: params.capabilityId,
-      value: params.value,
-      reportedAt: params.reportedAt,
-    });
-    if (update.stateChanged || (params.capabilityId === EV_SOC_CAPABILITY_ID && update.freshnessAdvanced)) {
+    const update = upsertFlowReportedCapability(
+      this.deps.getFlowReportedCapabilities(), deviceId, capabilityId, value, reportedAt ?? Date.now(),
+    );
+    if (update.stateChanged || (capabilityId === EV_SOC_CAPABILITY_ID && update.freshnessAdvanced)) {
       this.deps.persistence.saveFlowReportedCapabilities(this.deps.getFlowReportedCapabilities());
     }
     if (!update.stateChanged && update.freshnessAdvanced) {
-      this.syncFlowBackedObservationFreshness({
-        deviceId: params.deviceId,
-        capabilityId: params.capabilityId,
-        reportedAt: update.entry.reportedAt,
-      });
+      this.syncFlowBackedObservationFreshness(deviceId, capabilityId, update.entry.reportedAt);
     }
     return resolveFlowBackedCapabilityReportOutcome(update);
   }
 
-  private syncFlowBackedObservationFreshness(params: {
-    deviceId: string;
-    capabilityId: FlowReportedCapabilityId;
-    reportedAt: number;
-  }): void {
+  private syncFlowBackedObservationFreshness(
+    deviceId: string,
+    capabilityId: FlowReportedCapabilityId,
+    reportedAt: number,
+  ): void {
     // Resolved once. Every use below was `getDeviceManager()?.…`, and each of
     // those optional chains is a branch this method is charged for.
     const transport = this.deps.getDeviceManager();
@@ -361,20 +352,20 @@ export class FlowBackedDeviceState {
     // Probe-widened: the stored snapshot physically carries the observed SoC bag
     // the base type omits, and this seam mutates its freshness in place.
     const device: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined = snapshot
-      .find((entry) => entry.id === params.deviceId);
+      .find((entry) => entry.id === deviceId);
     if (!device || device.flowBacked !== true) return;
-    if (!isFlowReportedObservationCapabilityId(params.capabilityId)) {
+    if (!isFlowReportedObservationCapabilityId(capabilityId)) {
       return;
     }
-    if (params.capabilityId === EV_SOC_CAPABILITY_ID) {
-      if (transport.isFlowBackedCapability(params.deviceId, params.capabilityId) !== true) return;
+    if (capabilityId === EV_SOC_CAPABILITY_ID) {
+      if (transport.isFlowBackedCapability(deviceId, capabilityId) !== true) return;
       // A car-sourced level is NOT the flow card's to keep alive. This helper
       // spreads the previous reading forward, so without this guard a flow card
       // that keeps firing would re-stamp the CAR's percentage as this charger's
       // own observation — laundering one device's reading into another's, and
       // outliving the association that justified adopting it.
       if (hasObservedStateOfCharge(device) && device.stateOfCharge.source.kind === 'car') return;
-      updateStateOfChargeObservationFreshness(device, params.reportedAt);
+      updateStateOfChargeObservationFreshness(device, reportedAt);
       // Dispatched since stage 6 of the snapshot decomposition. This branch
       // advances `stateOfCharge` freshness AND re-resolves `level`
       // (`withLevel`), so a heartbeat can give a charger a level it did
@@ -387,17 +378,17 @@ export class FlowBackedDeviceState {
       // The plan rebuild that non-dispatch avoided is no longer reachable: an
       // observation never rebuilds the plan (root `AGENTS.md` § Control Flow),
       // and the realtime EV-SoC rebuild gate it named is gone.
-      transport.dispatchObservedStateForDevice(params.deviceId, params.capabilityId);
+      transport.dispatchObservedStateForDevice(deviceId, capabilityId);
       return;
     }
-    const nextFreshDataMs = Math.max(device.lastFreshDataMs ?? 0, params.reportedAt);
+    const nextFreshDataMs = Math.max(device.lastFreshDataMs ?? 0, reportedAt);
     if (nextFreshDataMs <= (device.lastFreshDataMs ?? 0)) return;
     device.lastFreshDataMs = nextFreshDataMs;
     device.lastUpdated = nextFreshDataMs;
     // Steady (no value change) flow-backed reports only advance freshness in
     // place; dispatch so the projection-fed freshness reader stays faithful
     // instead of marking the device stale until the next value change/refresh.
-    transport.dispatchObservedStateForDevice(params.deviceId, params.capabilityId);
+    transport.dispatchObservedStateForDevice(deviceId, capabilityId);
   }
 
   async getHomeyDevicesForFlow(): Promise<HomeyDeviceLike[]> {
@@ -445,11 +436,8 @@ export class FlowBackedDeviceState {
         ))
         .map((device) => device.id),
     );
-    const eligibleDeviceIds = getFlowRefreshRequestedDeviceIds({
-      state: flowReportedCapabilities,
-      devices,
-      candidateDeviceIds: deviceIds,
-    }).filter((deviceId) => !ignoredNativeEvFlowIds.has(deviceId));
+    const eligibleDeviceIds = getFlowRefreshRequestedDeviceIds(flowReportedCapabilities, devices, deviceIds)
+      .filter((deviceId) => !ignoredNativeEvFlowIds.has(deviceId));
     if (eligibleDeviceIds.length === 0) return;
     const seen = new Set<string>();
     const triggers: Array<{ deviceId: string; trigger: Promise<unknown> }> = [];

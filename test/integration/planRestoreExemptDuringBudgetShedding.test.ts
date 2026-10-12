@@ -16,9 +16,8 @@ import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { applyRestorePlan } from '../../lib/plan/restore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { fixtureControlPosture, buildPlanDevice, steppedPlanDevice, withFixtureResidualKw } from '../utils/planTestUtils';
+import { fixtureControlPosture, buildPlanDevice, steppedPlanDevice, withFixtureResidualKw, applyRestorePlanForSpec } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
@@ -91,13 +90,11 @@ const runLane = (params: {
   state?: ReturnType<typeof createPlanEngineState>;
 }) => {
   const state = params.state ?? createPlanEngineState();
-  return applyRestorePlan({
-    storageLevers: {},
+  return applyRestorePlanForSpec({
     planDevices: params.devices,
     ...cycleArgsFor(buildContext(params.context)),
     state,
     sheddingActive: true,
-    guardInShortfall: false,
     deps: {
       powerTracker: { lastTimestamp: Date.now() } as PowerTrackerState,
       temperatureSetpoints: new Map(),

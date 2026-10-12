@@ -1,9 +1,7 @@
 import { SwapLedger } from '../../lib/plan/swap';
 import { describe, it, expect } from 'vitest';
-import {
-  buildCeilingShortfallInputs,
-  resolveCeilingShortfall,
-} from '../../lib/plan/planReasonShortfall';
+import { resolveCeilingShortfall, type CeilingShortfallInputs } from '../../lib/plan/planReasonShortfall';
+import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildPlanDevice } from '../utils/planTestUtils';
 
 // The uniform per-cycle admission gap for ceiling-held cards. The arithmetic
@@ -35,12 +33,12 @@ const inputs = (params: {
   restoredThisCycle?: ReadonlySet<string>;
   lastDeviceShedMsById?: Readonly<Record<string, number>>;
   nowMs?: number;
-}) => buildCeilingShortfallInputs({
-  ledgerAxes: {
+}): CeilingShortfallInputs => ({
+  ledger: buildRestoreHeadroomLedger({
     gridAvailableKw: null,
     capacityAvailableKw: params.capacityAvailableKw,
     budgetAvailableKw: params.budgetAvailableKw ?? null,
-  },
+  }),
   headroomReserves: params.headroomReserves ?? [],
   onDevices: params.onDevices ?? [],
   swapLedger: params.swapLedger ?? new SwapLedger(),

@@ -69,9 +69,7 @@ type RemainingSheddableSourceDevice = RemainingSheddableResidualFields & {
   id: string;
   control: DeviceControlPosture;
   currentOn?: boolean;
-  // Optional here and required on the view: the producer's own `budgetExempt` is
-  // optional, and this projection is where absence becomes the explicit `false`.
-  budgetExempt?: boolean;
+  budgetExempt: boolean;
 };
 
 export function isCapacityBreached(totalKw: number, capacitySoftLimitKw: number | null): boolean {
@@ -166,18 +164,12 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
   return Math.max(0, device.residualKw.shed);
 }
 
-export function sumRemainingSheddableLoadKw(params: {
-  devices: RemainingSheddableDevice[];
-  isAlreadyShed: (device: RemainingSheddableDevice) => boolean;
-  limitSource: SoftLimitSource;
-  breachOverridesExemption: boolean;
-}): number {
-  const {
-    devices,
-    isAlreadyShed,
-    limitSource,
-    breachOverridesExemption,
-  } = params;
+export function sumRemainingSheddableLoadKw(
+  devices: RemainingSheddableDevice[],
+  isAlreadyShed: (device: RemainingSheddableDevice) => boolean,
+  limitSource: SoftLimitSource,
+  breachOverridesExemption: boolean,
+): number {
   let totalKw = 0;
   for (const device of devices) {
     totalKw += resolveRemainingSheddableLoadKw({
@@ -197,7 +189,7 @@ function toRemainingSheddableDevice(device: RemainingSheddableSourceDevice): Rem
     // Written unconditionally: `isBinaryPlanDevice` is a key-presence test, so
     // dropping the key for a non-binary device would change the narrowing.
     currentOn: device.currentOn,
-    budgetExempt: device.budgetExempt === true,
+    budgetExempt: device.budgetExempt,
     residualKw: device.residualKw,
   };
 }

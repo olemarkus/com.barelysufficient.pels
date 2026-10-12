@@ -107,7 +107,7 @@ const resolveTemperatureIntentKind = (device: TemperatureDevice, reasonCode: str
 
 const resolveHeldLine = (
   device: TemperatureDevice,
-): string => resolveHeldCardReasonLine({ reason: device.reason, starvation: device.starvation });
+): string => resolveHeldCardReasonLine(device.reason, device.starvation);
 
 const resolveTemperaturePlanReasonLine = (device: TemperatureDevice): string | null => {
   const reasonCode = (device.reason as { code?: string } | undefined)?.code ?? '';

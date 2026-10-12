@@ -3,11 +3,10 @@ import { buildPlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFix
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
-import { applyRestorePlan } from '../../lib/plan/restore';
 import { SWAP_TIMEOUT_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { buildPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, applyRestorePlanForSpec } from '../utils/planTestUtils';
 import { hasReservation, swappedOutFor } from '../utils/swapLedgerFixture';
 import { partialDouble } from '../helpers/partialDouble';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
@@ -95,13 +94,11 @@ describe('swap reservation lifetime', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-off']);
 
     // Cycle 1 — no headroom of its own, so only a swap can fund the restore.
-    const first = applyRestorePlan({
-      storageLevers: {},
+    const first = applyRestorePlanForSpec({
       planDevices: [beneficiary(), donorOn()],
       ...buildContext({ headroomRaw: 0, headroom: 0 }),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: buildDeps(1_000),
     });
     expect(reasonText(first.planDevices.find((d) => d.id === 'dev-off')?.reason)).toBe('swap pending');
@@ -115,13 +112,11 @@ describe('swap reservation lifetime', () => {
     // that the swap had already paid for.
     for (let elapsed = 10_000; elapsed <= SWAP_TIMEOUT_MS + 20_000; elapsed += 10_000) {
       vi.setSystemTime(t0 + elapsed);
-      applyRestorePlan({
-        storageLevers: {},
+      applyRestorePlanForSpec({
         planDevices: [beneficiary(), donorOff()],
         ...buildContext({ headroomRaw: -1, headroom: -1 }),
         state,
         sheddingActive: true,
-        guardInShortfall: false,
         deps: buildDeps(1_000 + elapsed),
       });
     }
@@ -134,13 +129,11 @@ describe('swap reservation lifetime', () => {
     // it must get a serviceable window here — not be expired on arrival
     // against a deadline set before the lane ever shut.
     vi.setSystemTime(t0 + SWAP_TIMEOUT_MS + 30_000);
-    applyRestorePlan({
-      storageLevers: {},
+    applyRestorePlanForSpec({
       planDevices: [beneficiary(), donorOff()],
       ...buildContext({ headroomRaw: 2, headroom: 2 }),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: buildDeps(1_000 + SWAP_TIMEOUT_MS + 30_000),
     });
 
@@ -159,26 +152,22 @@ describe('swap reservation lifetime', () => {
     const state = createPlanEngineState();
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-off']);
 
-    applyRestorePlan({
-      storageLevers: {},
+    applyRestorePlanForSpec({
       planDevices: [beneficiary(), donorOn()],
       ...buildContext({ headroomRaw: 0, headroom: 0 }),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: buildDeps(1_000),
     });
     expect(hasReservation(state, 'dev-off')).toBe(true);
 
     // One rebuild, well past the timeout, and it is the first since approval.
     vi.setSystemTime(t0 + SWAP_TIMEOUT_MS + 30_000);
-    applyRestorePlan({
-      storageLevers: {},
+    applyRestorePlanForSpec({
       planDevices: [beneficiary(), donorOff()],
       ...buildContext({ headroomRaw: 2, headroom: 2 }),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: buildDeps(1_000 + SWAP_TIMEOUT_MS + 30_000),
     });
 

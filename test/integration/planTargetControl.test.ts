@@ -75,13 +75,9 @@ describe('syncPendingTargetCommands', () => {
     const structuredInfo = vi.fn();
     const debugStructured = vi.fn();
 
-    const changed = syncPendingTargetCommands({
-      state,
-      liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
-      source: 'realtime_capability',
-      structuredInfo,
-      debugStructured,
-    });
+    const changed = syncPendingTargetCommands(
+      state, [buildLiveDevice('dev-1', 'Heater', 27)], 'realtime_capability', structuredInfo, debugStructured,
+    );
 
     expect(changed).toBe(true);
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -112,13 +108,9 @@ describe('syncPendingTargetCommands', () => {
     const structuredInfo = vi.fn();
     const debugStructured = vi.fn();
 
-    const changed = syncPendingTargetCommands({
-      state,
-      liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
-      source: 'realtime_capability',
-      structuredInfo,
-      debugStructured,
-    });
+    const changed = syncPendingTargetCommands(
+      state, [buildLiveDevice('dev-1', 'Heater', 27)], 'realtime_capability', structuredInfo, debugStructured,
+    );
 
     expect(changed).toBe(true);
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -150,13 +142,9 @@ describe('syncPendingTargetCommands', () => {
     const structuredInfo = vi.fn();
     const debugStructured = vi.fn();
 
-    const changed = syncPendingTargetCommands({
-      state,
-      liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
-      source: 'snapshot_refresh',
-      structuredInfo,
-      debugStructured,
-    });
+    const changed = syncPendingTargetCommands(
+      state, [buildLiveDevice('dev-1', 'Heater', 27)], 'snapshot_refresh', structuredInfo, debugStructured,
+    );
 
     expect(changed).toBe(true);
     expect(structuredInfo).not.toHaveBeenCalled();
@@ -184,13 +172,9 @@ describe('syncPendingTargetCommands', () => {
       const structuredInfo = vi.fn();
       const debugStructured = vi.fn();
 
-      const changed = syncPendingTargetCommands({
-        state,
-        liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
-        source: 'snapshot_refresh',
-        structuredInfo,
-        debugStructured,
-      });
+      const changed = syncPendingTargetCommands(
+        state, [buildLiveDevice('dev-1', 'Heater', 27)], 'snapshot_refresh', structuredInfo, debugStructured,
+      );
 
       expect(changed).toBe(false);
       expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -230,16 +214,16 @@ describe('syncPendingTargetCommands', () => {
     const structuredInfo = vi.fn();
     const debugStructured = vi.fn();
 
-    const changed = syncPendingTargetCommands({
+    const changed = syncPendingTargetCommands(
       state,
-      liveDevices: [
+      [
         buildLiveDevice('dev-1', 'Heater A', 23),
         buildLiveDevice('dev-2', 'Heater B', 25),
       ],
-      source: 'realtime_capability',
+      'realtime_capability',
       structuredInfo,
       debugStructured,
-    });
+    );
 
     expect(changed).toBe(true);
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
@@ -273,13 +257,7 @@ describe('syncPendingTargetCommands', () => {
     const structuredInfo = vi.fn();
     const debugStructured = vi.fn();
 
-    const changed = syncPendingTargetCommands({
-      state,
-      liveDevices: [],
-      source: 'snapshot_refresh',
-      structuredInfo,
-      debugStructured,
-    });
+    const changed = syncPendingTargetCommands(state, [], 'snapshot_refresh', structuredInfo, debugStructured);
 
     expect(changed).toBe(true);
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
@@ -307,13 +285,9 @@ describe('syncPendingTargetCommands', () => {
     const structuredInfo = vi.fn();
     const debugStructured = vi.fn();
 
-    const changed = syncPendingTargetCommands({
-      state,
-      liveDevices: [],
-      source: 'realtime_capability',
-      structuredInfo,
-      debugStructured,
-    });
+    const changed = syncPendingTargetCommands(
+      state, [], 'realtime_capability', structuredInfo, debugStructured,
+    );
 
     expect(changed).toBe(false);
     expect(state.pendingTargetCommands['dev-1']).toMatchObject({
@@ -340,13 +314,9 @@ describe('syncPendingTargetCommands', () => {
     const structuredInfo = vi.fn();
     const debugStructured = vi.fn();
 
-    const changed = syncPendingTargetCommands({
-      state,
-      liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
-      source: 'snapshot_refresh',
-      structuredInfo,
-      debugStructured,
-    });
+    const changed = syncPendingTargetCommands(
+      state, [buildLiveDevice('dev-1', 'Heater', 27)], 'snapshot_refresh', structuredInfo, debugStructured,
+    );
 
     expect(changed).toBe(true);
     expect(structuredInfo).not.toHaveBeenCalled();
@@ -373,9 +343,9 @@ describe('prunePendingTargetCommandsForPlan', () => {
     };
     const debugStructured = vi.fn();
 
-    const changed = prunePendingTargetCommandsForPlan({
+    const changed = prunePendingTargetCommandsForPlan(
       state,
-      plan: {
+      {
         meta: buildPlanMeta({
           totalKw: 1,
           softLimitKw: 5,
@@ -384,7 +354,7 @@ describe('prunePendingTargetCommandsForPlan', () => {
         storageReleases: [],
       },
       debugStructured,
-    });
+    );
 
     expect(changed).toBe(true);
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();

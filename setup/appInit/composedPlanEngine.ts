@@ -142,21 +142,13 @@ export class ComposedPlanEngine implements PlanEngine {
     devices: PlanInputDevice[],
     source: PendingTargetObservationSource,
   ): boolean {
-    return syncPendingTargetCommands({
-      state: this.state,
-      liveDevices: devices,
-      source,
-      structuredInfo: (payload) => this.structuredLog.info(payload),
-      debugStructured: this.debugStructuredFn,
-    });
+    return syncPendingTargetCommands(
+      this.state, devices, source, (payload) => this.structuredLog.info(payload), this.debugStructuredFn,
+    );
   }
 
   public prunePendingTargetCommands(plan: DevicePlan): boolean {
-    return prunePendingTargetCommandsForPlan({
-      state: this.state,
-      plan,
-      debugStructured: this.debugStructuredFn,
-    });
+    return prunePendingTargetCommandsForPlan(this.state, plan, this.debugStructuredFn);
   }
 
   public syncSteppedCommands(getDevices: () => readonly SteppedSettleDevice[]): boolean {

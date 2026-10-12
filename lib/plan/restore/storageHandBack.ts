@@ -55,20 +55,16 @@ export function planStorageHandBack(
   const handBackChargeKw = resolveOwnModeChargeAboveHoldW(lever) / 1000;
   const debugKey = `storage:${dev.id}`;
   const reject = (rejectionReason: string): RestoreLoopState => {
-    emitRestoreDebugEventOnChange({
-      state,
-      key: debugKey,
-      payload: {
-        event: 'restore_rejected',
-        restoreType: 'storage',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        neededKw: handBackChargeKw,
-        availableKw: availableHeadroom,
-        decision: 'rejected',
-        rejectionReason,
-      },
+    emitRestoreDebugEventOnChange(state, debugKey, {
+      event: 'restore_rejected',
+      restoreType: 'storage',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      neededKw: handBackChargeKw,
+      availableKw: availableHeadroom,
+      decision: 'rejected',
+      rejectionReason,
     });
     return loop;
   };
@@ -89,9 +85,7 @@ export function planStorageHandBack(
 
   const neededKw = handBackChargeKw + computeRestoreBufferKw(handBackChargeKw);
   if (batchContinuation && !canAdmitWithinBatch(batchState, neededKw)) return reject('batch_full');
-  const reserved = resolveReserveAdmission({
-    dev, availableHeadroom, neededKw, reserves: headroomReserves,
-  });
+  const reserved = resolveReserveAdmission(dev, availableHeadroom, neededKw, headroomReserves);
   if (reserved.kind === 'blocked_by_reserve') return reject('reserved_for_start');
   if (reserved.kind === 'insufficient') {
     // Waiting for room: the restores ranked below it wait behind it, as they
@@ -100,19 +94,15 @@ export function planStorageHandBack(
     cycle.storageHandBackWaitingAt = Math.min(cycle.storageHandBackWaitingAt, dev.priority);
     return reject('insufficient_headroom');
   }
-  emitRestoreDebugEventOnChange({
-    state,
-    key: debugKey,
-    payload: {
-      event: 'restore_admitted',
-      restoreType: 'storage',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      neededKw,
-      availableKw: buildReserveAdmittedLogFields(reserved).effectiveHeadroomKw,
-      decision: 'admitted',
-    },
+  emitRestoreDebugEventOnChange(state, debugKey, {
+    event: 'restore_admitted',
+    restoreType: 'storage',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    neededKw,
+    availableKw: buildReserveAdmittedLogFields(reserved).effectiveHeadroomKw,
+    decision: 'admitted',
   });
   cycle.storageHandedBack.add(dev.id);
   recordBatchAdmission(batchState, neededKw);

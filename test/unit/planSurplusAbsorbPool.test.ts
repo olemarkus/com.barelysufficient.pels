@@ -7,14 +7,13 @@
 // devices ranked below it are left). Pure over (state, params) — `nowTs` is
 // passed explicitly, so no clock is faked.
 import { describe, expect, it, vi } from 'vitest';
-import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
 import {
   SURPLUS_ABSORB_MIN_DWELL_MS,
   SURPLUS_ABSORB_SETTLE_MS,
 } from '../../lib/plan/admission/surplusAbsorb';
 import { type PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { buildPlanInputDevice, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
+import { buildPlanInputDevice, NO_STORAGE_SURPLUS, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { StorageSurplus, StorageSurplusOffer } from '../../lib/plan/planSurplusAbsorb';
 
@@ -46,7 +45,7 @@ const resolve = (params: {
   debugStructured?: (payload: Record<string, unknown>) => void;
   storage?: StorageSurplus;
 }): ReadonlyMap<string, StorageSurplusOffer> => (
-  resolveSurplusEligibility({
+  resolveSurplusEligibilityForSpec({
     devices: params.devices ?? [buildDevice()],
     state: params.state,
     signedNetKw: params.signedNetKw,

@@ -1,9 +1,8 @@
-import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
   type BinaryControlDecision,
   type BinaryControlDecisionSnapshot,
+  type BinaryControlDeps,
   type BinaryControlLogContext,
-  type ObservedBinaryControlRead,
   shouldSkipBinaryControl,
 } from './planBinaryControlHelpers';
 // `getBinaryControlPlan` moved to `lib/device/deviceActionProjection.ts` as
@@ -14,11 +13,6 @@ import { getBinaryControlPlan } from '../device/deviceActionProjection';
 export { getBinaryControlPlan } from '../device/deviceActionProjection';
 
 export { type BinaryControlDecision } from './planBinaryControlHelpers';
-
-type BinaryControlDeps = {
-  pendingBinaryCommandStore: PendingBinaryCommandStore;
-  getObservedBinaryControl: ObservedBinaryControlRead;
-};
 
 /**
  * Decide whether the device should actuate this cycle.
@@ -40,35 +34,23 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   forceAgainstReleasedOpposing?: boolean;
 }): BinaryControlDecision | null {
   const {
-    pendingBinaryCommandStore, getObservedBinaryControl,
     deviceId, name, desired, snapshot, logContext,
     lifecycleRelease,
     forceAgainstReleasedOpposing,
   } = params;
   const controlPlan = getBinaryControlPlan(snapshot);
-  if (shouldSkipBinaryControl({
-    controlPlan,
-    getObservedBinaryControl,
-    deviceId,
-    desired,
-    logContext,
-    name,
-    snapshot,
-    pendingBinaryCommandStore,
-    preferProvidedSnapshot: lifecycleRelease === true,
-    forceAgainstReleasedOpposing,
-  })) {
-    return null;
-  }
-  if (!controlPlan) return null;
-
-  return {
+  const decision: BinaryControlDecision = {
     deviceId,
     name,
     desired,
     logContext,
     ...(lifecycleRelease ? { lifecycleRelease: true } : {}),
   };
+  if (shouldSkipBinaryControl(params, controlPlan, decision, snapshot, forceAgainstReleasedOpposing)) {
+    return null;
+  }
+  if (!controlPlan) return null;
+  return decision;
 }
 
 // `getBinaryControlPlan` moved to `lib/device/deviceActionProjection.ts`, where

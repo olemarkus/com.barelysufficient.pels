@@ -214,27 +214,23 @@ function rejectSwapRestoreWithCandidates(
   // that wrote unconditionally, so a house pinned under its budget re-announced
   // the same rejection for every shed device on every rebuild: 39.8k of these
   // lines, 36.8 MB, in a single production log.
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_rejected',
-      restoreType: 'swap',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      estimatedPowerKw: restoreNeed.devPower,
-      powerSource: resolveRestorePowerSource(dev),
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      effectiveAvailableKw: swap.effectiveHeadroom,
-      marginKw: swap.admission.marginKw,
-      swapReserveKw: swap.reserveKw,
-      decision: 'rejected',
-      rejectionReason: 'insufficient_headroom',
-      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-    },
+  emitRestoreDebugEventOnChange(state, restoreDebugKey, {
+    event: 'restore_rejected',
+    restoreType: 'swap',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    estimatedPowerKw: restoreNeed.devPower,
+    powerSource: resolveRestorePowerSource(dev),
+    neededKw: restoreNeed.needed,
+    availableKw: availableHeadroom,
+    effectiveAvailableKw: swap.effectiveHeadroom,
+    marginKw: swap.admission.marginKw,
+    swapReserveKw: swap.reserveKw,
+    decision: 'rejected',
+    rejectionReason: 'insufficient_headroom',
+    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
   });
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
@@ -298,22 +294,18 @@ function rejectSwapRestoreForMeasurement(
   setDevice(deviceMap, dev.id, buildRejectedSwapUpdate(
     availableHeadroom, restoreNeed, rejectedDeviceUpdate, null,
   ));
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_rejected',
-      restoreType: 'swap',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      estimatedPowerKw: restoreNeed.devPower,
-      powerSource: resolveRestorePowerSource(dev),
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      rejectionReason,
-    },
+  emitRestoreDebugEventOnChange(state, restoreDebugKey, {
+    event: 'restore_rejected',
+    restoreType: 'swap',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    estimatedPowerKw: restoreNeed.devPower,
+    powerSource: resolveRestorePowerSource(dev),
+    neededKw: restoreNeed.needed,
+    availableKw: availableHeadroom,
+    decision: 'rejected',
+    rejectionReason,
   });
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
@@ -348,18 +340,18 @@ function buildRejectedSwapUpdate(
   });
   const shouldDescribeSwapReserve = swap !== null && swap.toShed.length > 0;
   return {
-    ...buildInsufficientHeadroomUpdate({
-      neededKw: restoreNeed.needed,
-      availableKw: shouldDescribeSwapReserve ? swap?.potentialHeadroom ?? availableHeadroom : availableHeadroom,
+    ...buildInsufficientHeadroomUpdate(
+      restoreNeed.needed,
+      shouldDescribeSwapReserve ? swap?.potentialHeadroom ?? availableHeadroom : availableHeadroom,
       // Display margin from the UNCLAMPED swap headroom (see buildSwapCandidates):
       // the clamped admission margin flattens the shortfall in deep over-pace.
-      marginKw: shouldDescribeSwapReserve
+      shouldDescribeSwapReserve
         ? swap?.displayMarginKw ?? directAdmission.marginKw
         : directAdmission.marginKw,
-      penaltyExtraKw: restoreNeed.penaltyExtraKw,
-      swapReserveKw: shouldDescribeSwapReserve ? swap?.reserveKw : undefined,
-      effectiveAvailableKw: shouldDescribeSwapReserve ? swap?.displayEffectiveHeadroomKw : undefined,
-    }),
+      restoreNeed.penaltyExtraKw,
+      shouldDescribeSwapReserve ? swap.reserveKw : null,
+      shouldDescribeSwapReserve ? swap.displayEffectiveHeadroomKw : null,
+    ),
     ...rejectedDeviceUpdate,
   };
 }

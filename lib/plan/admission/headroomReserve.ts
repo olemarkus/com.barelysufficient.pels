@@ -82,13 +82,13 @@ const RELEASED = -1;
  * behind. A reserve that expires keeps its stamp (it must stay expired, not re-arm and flap); one
  * that is satisfied or withdrawn drops its stamp, so a later start gets a fresh window.
  */
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function resolveHeadroomReserves(params: {
-  devices: readonly DevicePlanDevice[];
-  state: Pick<PlanEngineState, 'headroomReserveArmedMs'>;
-  nowTs: number;
-}): HeadroomReserve[] {
-  const { devices, state, nowTs } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+export function resolveHeadroomReserves(
+  devices: readonly DevicePlanDevice[],
+  state: Pick<PlanEngineState, 'headroomReserveArmedMs'>,
+  nowTs: number,
+): HeadroomReserve[] {
   const previousArmedMs = state.headroomReserveArmedMs;
   const nextArmedMs: Record<string, number> = {};
   const reserves: HeadroomReserve[] = [];
@@ -97,9 +97,7 @@ export function resolveHeadroomReserves(params: {
     // A reserve is a block of available power held for a start, which only a
     // device with a power reading can be priced for or seen to satisfy.
     if (device.reservesStartupPower !== true || !isMeteredPlanDevice(device)) continue;
-    const decision = resolveReserveForDevice({
-      device, armedMs: previousArmedMs[device.id] ?? null, nowTs,
-    });
+    const decision = resolveReserveForDevice(device, previousArmedMs[device.id] ?? null, nowTs);
     if (decision.armedMs !== null) nextArmedMs[device.id] = decision.armedMs;
     if (decision.reserve) reserves.push(decision.reserve);
     logger.debug({
@@ -116,7 +114,7 @@ export function resolveHeadroomReserves(params: {
   state.headroomReserveArmedMs = nextArmedMs;
   return reserves;
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 type ReserveDecision = {
   outcome: ReserveOutcome;
@@ -126,13 +124,11 @@ type ReserveDecision = {
   reserve: HeadroomReserve | null;
 };
 
-function resolveReserveForDevice(params: {
-  device: MeteredDevicePlanDevice;
-  armedMs: number | null;
-  nowTs: number;
-}): ReserveDecision {
-  const { device, armedMs, nowTs } = params;
-
+function resolveReserveForDevice(
+  device: MeteredDevicePlanDevice,
+  armedMs: number | null,
+  nowTs: number,
+): ReserveDecision {
   // Already started once under this grant — stay released, whatever the meter says right now.
   if (armedMs === RELEASED) return { outcome: 'satisfied', armedMs: RELEASED, reserve: null };
 
@@ -259,13 +255,12 @@ export function buildReserveAdmittedLogFields(
   return { effectiveHeadroomKw: reserved.effectiveHeadroomKw, marginKw: reserved.admission.marginKw };
 }
 
-export function resolveReserveAdmission(params: {
-  dev: Pick<DevicePlanDevice, 'id' | 'priority'>;
-  availableHeadroom: number | null;
-  neededKw: number;
-  reserves: readonly HeadroomReserve[];
-}): ReserveAdmission {
-  const { dev, availableHeadroom, neededKw, reserves } = params;
+export function resolveReserveAdmission(
+  dev: Pick<DevicePlanDevice, 'id' | 'priority'>,
+  availableHeadroom: number | null,
+  neededKw: number,
+  reserves: readonly HeadroomReserve[],
+): ReserveAdmission {
   if (availableHeadroom === null) return { kind: 'unconstrained' };
   const claimedKw = resolveClaimedReserveKw({ dev, reserves });
 

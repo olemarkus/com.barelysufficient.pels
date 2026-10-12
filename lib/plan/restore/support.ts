@@ -30,11 +30,9 @@ export function getRestoreNeed(
   diagnostics: DeviceDiagnosticsRecorder | undefined,
 ): RestoreNeed {
   const { power: devPower, needed: baseNeeded } = computeBaseRestoreNeed(dev);
-  const recentShedNeeded = applyRecentShedInflation({
-    baseNeededKw: baseNeeded,
-    lastDeviceShedMs: state.actuation.lastDeviceShedMs[dev.id],
-    nowMs: nowTs,
-  });
+  const recentShedNeeded = applyRecentShedInflation(
+    baseNeeded, state.actuation.lastDeviceShedMs[dev.id], nowTs,
+  );
   const penaltyInfo = syncActivationPenaltyState(state, dev.id, nowTs, dev);
   if (penaltyInfo.transition) {
     diagnostics?.recordActivationTransition(penaltyInfo.transition, { name: dev.name });

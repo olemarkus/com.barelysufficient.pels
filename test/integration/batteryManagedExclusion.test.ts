@@ -17,9 +17,7 @@
 import { buildPlanCycleObject, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it } from 'vitest';
-import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
-import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
 import { sumControlledUsageKw, splitControlledUsageKw } from '../../lib/power/usageAttribution';
 import { buildSheddingCandidates } from '../../lib/plan/shedding/candidates';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -29,7 +27,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
-import { buildPlanInputDevice, restoreTimingFixture, sheddingPlanFixture, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
+import { buildPlanInputDevice, restoreTimingFixture, NO_STORAGE_SURPLUS, buildInitialPlanDevicesForSpec, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
@@ -131,11 +129,8 @@ const defaultDeps: PlanDevicesDeps = {
 
 describe('home battery as managed observe-only — control-path exclusion lock', () => {
   it('rides the planner device set but plans only "keep" with NO target (resolvePlannedTarget undefined)', () => {
-    const planDevices = buildInitialPlanDevices({
+    const planDevices = buildInitialPlanDevicesForSpec({
       context: buildContext([batteryInputDevice()]),
-      state: createPlanEngineState(),
-      sheddingPlan: sheddingPlanFixture(),
-      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
 
@@ -163,7 +158,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       }),
     };
     for (const currentHourPriceLevel of [PriceLevel.CHEAP, PriceLevel.EXPENSIVE] as const) {
-      const [battery] = buildInitialPlanDevices({
+      const [battery] = buildInitialPlanDevicesForSpec({
         context: buildContext([batteryInputDevice()], {
           intent: {
             getPriceOptimizationEnabled: () => true,
@@ -175,9 +170,6 @@ describe('home battery as managed observe-only — control-path exclusion lock',
             getCurrentHourPriceLevel: () => currentHourPriceLevel,
           },
         }),
-        state: createPlanEngineState(),
-        sheddingPlan: sheddingPlanFixture(),
-        shortfall: { inShortfall: false },
         deps: priceDeps,
       });
       expect(battery.plannedState).toBe('keep');
@@ -218,7 +210,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
 
   it('is never surplus-absorb eligible (no temperature-boost target) even with export available', () => {
     const state = createPlanEngineState();
-    resolveSurplusEligibility({
+    resolveSurplusEligibilityForSpec({
       devices: [batteryInputDevice()],
       state,
       signedNetKw: -3, // 3 kW export available
@@ -254,11 +246,8 @@ describe('home battery as managed observe-only — control-path exclusion lock',
 
   it('is never starvation-eligible (fails the controllable:true + temperature requirement)', () => {
     const context = buildContext([batteryInputDevice({ currentDrawKw: 0 })]);
-    const planDevices = buildInitialPlanDevices({
+    const planDevices = buildInitialPlanDevicesForSpec({
       context,
-      state: createPlanEngineState(),
-      sheddingPlan: sheddingPlanFixture(),
-      shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
     const observations = buildDeviceDiagnosticsObservations(

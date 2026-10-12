@@ -2,11 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildPlanCycle } from '../utils/planContextPowerFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
-import { applyRestorePlan } from '../../lib/plan/restore';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { steppedPlanDevice } from '../utils/planTestUtils';
+import { steppedPlanDevice, applyRestorePlanForSpec } from '../utils/planTestUtils';
 import { hasReservation, swappedOutFor } from '../utils/swapLedgerFixture';
 
 /**
@@ -102,13 +101,11 @@ describe('stepped swap donor hold', () => {
 
     // Cycle 1: 0.3 kW available; the heater's +1 kW step is funded by pausing the charger.
     vi.setSystemTime(T0);
-    const approved = applyRestorePlan({
-      storageLevers: {},
+    const approved = applyRestorePlanForSpec({
       planDevices: [heater('medium'), chargerOn()],
       ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: deps(T0),
     });
     expect(swappedOutFor(state, 'charger')).toBe('heater');
@@ -123,13 +120,11 @@ describe('stepped swap donor hold', () => {
     // Enough for either device, not both — and the power was freed for the heater.
     state.shedDecisions.lastPlannedShedIds = new Set(['charger']);
     vi.setSystemTime(T0 + 90_000);
-    const served = applyRestorePlan({
-      storageLevers: {},
+    const served = applyRestorePlanForSpec({
       planDevices: [heater('medium'), chargerOff()],
       ...buildPlanCycle({ headroomRaw: 2.1, headroom: 2.1 }),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: deps(T0 + 90_000),
     });
     expect(byId(served.planDevices, 'charger')).toMatchObject({
@@ -145,13 +140,11 @@ describe('stepped swap donor hold', () => {
     // Cycle 3: the heater reports `max`, which keeps the swap's promise, so the
     // charger is released to resume on its own merits.
     vi.setSystemTime(T0 + 120_000);
-    const released = applyRestorePlan({
-      storageLevers: {},
+    const released = applyRestorePlanForSpec({
       planDevices: [heater('max'), chargerOff()],
       ...buildPlanCycle({ headroomRaw: 2.1, headroom: 2.1 }),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: deps(T0 + 120_000),
     });
     expect(hasReservation(state, 'heater')).toBe(false);
@@ -164,26 +157,22 @@ describe('stepped swap donor hold', () => {
     // base plan keeps it; only the swap's hold keeps the pause.
     const state = createPlanEngineState();
     vi.setSystemTime(T0);
-    applyRestorePlan({
-      storageLevers: {},
+    applyRestorePlanForSpec({
       planDevices: [heater('medium'), chargerOn()],
       ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: deps(T0),
     });
     expect(swappedOutFor(state, 'charger')).toBe('heater');
 
     state.shedDecisions.lastPlannedShedIds = new Set(['charger']);
     vi.setSystemTime(T0 + 10_000);
-    const lagging = applyRestorePlan({
-      storageLevers: {},
+    const lagging = applyRestorePlanForSpec({
       planDevices: [heater('medium'), chargerOn()],
       ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: deps(T0 + 10_000),
     });
     expect(byId(lagging.planDevices, 'charger')).toMatchObject({

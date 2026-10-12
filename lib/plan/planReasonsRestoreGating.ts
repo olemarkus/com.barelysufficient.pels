@@ -15,9 +15,7 @@ import {
 } from './admission';
 import { resolveRestorePowerSource } from './restore/accounting';
 import { getRestoreNeed } from './restore/support';
-import {
-  type PlanReasonDecision,
-} from './planReasonStrings';
+import { buildRestoreHeadroomReason, type PlanReasonDecision } from './planReasonStrings';
 import {
   resolveRestoreDecisionPhase,
 } from './admission';
@@ -87,18 +85,14 @@ function emitRestoreRejectedDebug(
 ): void {
   const { state } = pass;
   const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_rejected',
-      restoreType: 'target',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      rejectionReason,
-      ...payload,
-    },
+  emitRestoreDebugEventOnChange(state, restoreDebugKey, {
+    event: 'restore_rejected',
+    restoreType: 'target',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    rejectionReason,
+    ...payload,
   });
 }
 
@@ -136,13 +130,10 @@ export function resolveInsufficientHeadroomHold(
   const { admission, availableKw: availableHeadroom } = reserved;
 
   const reason: PlanReasonDecision = {
-    code: 'restore_headroom',
-    params: {
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      marginKw: admission.marginKw,
-      penaltyExtraKw: restoreNeed.penaltyExtraKw,
-    },
+    code: 'existing',
+    reason: buildRestoreHeadroomReason(
+      restoreNeed.needed, availableHeadroom, admission.marginKw, restoreNeed.penaltyExtraKw, null, null,
+    ),
   };
   emitRestoreRejectedDebug(pass, dev, restoreDebugKey, PLAN_REASON_CODES.insufficientHeadroom, {
       estimatedPowerKw: restoreNeed.devPower,
@@ -211,9 +202,7 @@ export function resolveRestoreDecision(
   // minus any startup reservation held by a strictly higher-priority device that
   // (`restore/gating.ts`). Without it, a setpoint raise was the one restore that
   // could take a reserved block: PELS itself giving the promised power away.
-  const reserved = resolveReserveAdmission({
-    dev, availableHeadroom, neededKw: restoreNeed.needed, reserves: headroomReserves,
-  });
+  const reserved = resolveReserveAdmission(dev, availableHeadroom, restoreNeed.needed, headroomReserves);
   if (reserved.kind === 'blocked_by_reserve') {
     // Enough raw power — it is just promised to a device about to start. Name
     // the holder on the card; this lane has no swap fallback to defeat.
@@ -243,24 +232,20 @@ export function resolveRestoreDecision(
   if (gateHold) return gateHold;
   restoredThisCycle.add(dev.id);
   const powerSource = resolveRestorePowerSource(dev);
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_admitted',
-      restoreType: 'target',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      estimatedPowerKw: restoreNeed.devPower,
-      powerSource,
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      marginKw: buildReserveAdmittedLogFields(reserved).marginKw,
-      decision: 'admitted',
-      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-    },
+  emitRestoreDebugEventOnChange(state, restoreDebugKey, {
+    event: 'restore_admitted',
+    restoreType: 'target',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    estimatedPowerKw: restoreNeed.devPower,
+    powerSource,
+    neededKw: restoreNeed.needed,
+    availableKw: availableHeadroom,
+    marginKw: buildReserveAdmittedLogFields(reserved).marginKw,
+    decision: 'admitted',
+    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
   });
   return {
     type: 'restore',

@@ -72,14 +72,14 @@ function buildShortfallCapacityStateSummary(
     devices: toMeteredUsageDevices(devices),
     totalKw: power.drawKw,
   }, (device) => device.control.commandAuthority);
-  const remainingReducibleControlledLoadW = roundPowerW(sumRemainingSheddableLoadKw({
+  const remainingReducibleControlledLoadW = roundPowerW(sumRemainingSheddableLoadKw(
     // Only a device with a power axis has reducible load to count.
-    devices: devices.filter(isMeteredPlanDevice).map(toInputRemainingSheddableDevice),
-    isAlreadyShed: (device) => shedSet.has(device.id),
-    limitSource: state.capacityPeriodSpentFor(context) ? 'daily' : context.softLimitSource,
+    devices.filter(isMeteredPlanDevice).map(toInputRemainingSheddableDevice),
+    (device) => shedSet.has(device.id),
+    state.capacityPeriodSpentFor(context) ? 'daily' : context.softLimitSource,
     // Capacity only: the hard-cap incident is a capacity question.
-    breachOverridesExemption: power.capacityBreached,
-  }));
+    power.capacityBreached,
+  ));
   const candidates = walkShedCandidates(context, power, state, deps, storage);
   const remainingActionableControlledLoadW = roundPowerW(
     candidates.reduce((sumKw, candidate) => sumKw + resolveReliefLeftKw(candidate, selection), 0),

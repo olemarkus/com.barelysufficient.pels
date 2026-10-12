@@ -108,17 +108,13 @@ export function blockRestoreForRecentActivationSetback(
       reason,
     });
   }
-  emitRestoreDebugEventOnChange({
-    state,
-    key: `setback:${stepped ? 'stepped' : 'binary'}:${deviceId}`,
-    payload: {
-      event: 'restore_blocked_setback',
-      deviceId,
-      deviceName: dev.name,
-      penaltyLevel: getActivationPenaltyLevel(state, deviceId),
-      remainingMs,
-      stepped,
-    },
+  emitRestoreDebugEventOnChange(state, `setback:${stepped ? 'stepped' : 'binary'}:${deviceId}`, {
+    event: 'restore_blocked_setback',
+    deviceId,
+    deviceName: dev.name,
+    penaltyLevel: getActivationPenaltyLevel(state, deviceId),
+    remainingMs,
+    stepped,
   });
   return true;
 }

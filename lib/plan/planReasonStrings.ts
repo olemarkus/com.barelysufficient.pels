@@ -14,14 +14,6 @@ export type ClassifiedPlanReason = {
 export type PlanReasonDecision =
   | { code: 'existing'; reason: DeviceReason }
   | { code: 'activation_backoff'; remainingMs: number; countdownTiming?: CountdownReasonTiming }
-  | { code: 'restore_headroom'; params: {
-    neededKw: number;
-    availableKw: number;
-    marginKw: number;
-    penaltyExtraKw?: number;
-    swapReserveKw?: number;
-    effectiveAvailableKw?: number;
-  } }
   | { code: 'restore_pending'; remainingSec: number; countdownTiming?: CountdownReasonTiming };
 
 function assertNever(value: never): never {
@@ -75,22 +67,24 @@ export function buildMeterSettlingReason(
   );
 }
 
-export function buildRestoreHeadroomReason(params: {
-  neededKw: number;
-  availableKw: number;
-  marginKw: number;
-  penaltyExtraKw?: number;
-  swapReserveKw?: number;
-  effectiveAvailableKw?: number;
-}): DeviceReason {
+export function buildRestoreHeadroomReason(
+  neededKw: number,
+  availableKw: number,
+  marginKw: number,
+  /** The activation-penalty share of `neededKw`; `null` for a need priced without one. */
+  penaltyExtraKw: number | null,
+  /** The swap path's reserve and effective headroom; `null` unless a swap was priced. */
+  swapReserveKw: number | null,
+  effectiveAvailableKw: number | null,
+): DeviceReason {
   return {
     code: PLAN_REASON_CODES.insufficientHeadroom,
-    needKw: params.neededKw,
-    availableKw: params.availableKw,
-    marginKw: params.marginKw,
-    penaltyExtraKw: params.penaltyExtraKw ?? null,
-    swapReserveKw: params.swapReserveKw ?? null,
-    effectiveAvailableKw: params.effectiveAvailableKw ?? null,
+    needKw: neededKw,
+    availableKw,
+    marginKw,
+    penaltyExtraKw,
+    swapReserveKw,
+    effectiveAvailableKw,
   };
 }
 
@@ -114,8 +108,6 @@ export function renderPlanReasonDecision(reason: PlanReasonDecision): DeviceReas
       return reason.reason;
     case 'activation_backoff':
       return buildActivationBackoffReason(reason.remainingMs, reason.countdownTiming);
-    case 'restore_headroom':
-      return buildRestoreHeadroomReason(reason.params);
     case 'restore_pending':
       return buildRestorePendingReason(reason.remainingSec, reason.countdownTiming);
     default:

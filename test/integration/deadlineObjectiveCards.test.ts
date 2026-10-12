@@ -311,9 +311,9 @@ const buildDeps = (overrides: {
     reportSteppedLoadActualStep: () => 'unchanged' as never,
     setExpectedOverride: () => false,
     storeFlowPriceData: () => ({ dateKey: '', storedCount: 0, missingHours: [] }),
-    upsertDeferredObjectiveForDevice: (params: Parameters<FlowCardDeps['upsertDeferredObjectiveForDevice']>[0]) => (
-      upsertObjectiveForDevice(buildWriteDeps(), params.deviceId, params.deviceName, params.entry, params.rescue)
-    ),
+    upsertDeferredObjectiveForDevice: ((deviceId, deviceName, entry, rescue) => (
+      upsertObjectiveForDevice(buildWriteDeps(), deviceId, deviceName, entry, rescue)
+    )) satisfies FlowCardDeps['upsertDeferredObjectiveForDevice'],
     clearDeferredObjectiveForDevice: (params: Parameters<typeof clearObjectiveForDevice>[1]) => (
       clearObjectiveForDevice(buildWriteDeps(), params)
     ),

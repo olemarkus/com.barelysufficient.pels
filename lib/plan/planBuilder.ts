@@ -65,7 +65,7 @@ import {
   withHeldOffOnRelease,
   type PriceOptDeviceConfig,
 } from './planBuilderSurplus';
-import { resolveSurplusEligibility, type StorageSurplusOffer } from './planSurplusAbsorb';
+import { resolveSurplusEligibility, selectSurplusCandidates, type StorageSurplusOffer } from './planSurplusAbsorb';
 import { sumBudgetExemptProjectedUsageKw, toMeteredUsageDevices } from './planUsage';
 import { PlanMaterializationStages } from './planBuilderMaterialization';
 import type { RestorePlanResult } from './restore';
@@ -80,7 +80,7 @@ import {
 } from './admission';
 import type { SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
-import { buildPlanMeta } from './planBuilderMeta';
+import { buildPlanMeta, type PlanMetaCycleFacts } from './planBuilderMeta';
 import { attachDeferredReleaseIntents } from './planBuilderDecoration';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
@@ -322,16 +322,14 @@ export class PlanBuilder {
     } = await this.decideShedding(context, power, surplusOffers, shortfallBudgetThresholdKw, nowTs);
     // The "Run on solar surplus" dump-load hold + the post-shedding hold
     // merges; returns the dump-load reason map for reason normalization.
-    const postureHolds = trackPlanStage('plan_posture_holds_ms', () => runStandingPostureHolds({
-      state: this.state,
-      admittedDevices,
-      shedSet: sheddingPlan.shedSet,
-      shedStepTargets: sheddingPlan.shedStepTargets,
+    const postureHolds = trackPlanStage('plan_posture_holds_ms', () => runStandingPostureHolds(
+      this.state,
+      sheddingPlan,
       decoration,
-      excludeIds: postureExcludeIds,
-      getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
-      leaveOffOnRelease: this.deps.leaveOffOnRelease,
-    }));
+      postureExcludeIds,
+      (deviceId) => this.priceOptimizationSettings[deviceId],
+      this.deps.leaveOffOnRelease,
+    ));
     // A hold the posture pass just recorded is part of this build's input from
     // here on, exactly as the producer will report it next build: without it
     // the restore lane below would resume the device the hold exists to keep off.
@@ -366,20 +364,7 @@ export class PlanBuilder {
     this.state.shedDecisions.recordPlannedShed(
       decidedDevices, decoration, this.deps.pendingBinaryCommandStore, !this.deps.getCapacityDryRun(),
     );
-    trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
-      context: heldContext,
-      power,
-      reading,
-      capacityLimitKw: settings.limitKw,
-      shortfallBudgetThresholdKw,
-      powerTracker: this.powerTracker,
-      deviceNameById: new Map(admittedDevices.map((d) => [d.id, d.name])),
-      planDevices: decidedDevices,
-      overshootDecision,
-      nowTs,
-    }));
-
-    const meta = trackPlanStage('plan_meta_ms', () => buildPlanMeta({
+    const metaFacts: PlanMetaCycleFacts = {
       context: heldContext,
       reading,
       planDevices: decidedDevices,
@@ -389,7 +374,12 @@ export class PlanBuilder {
       capacityLimitKw: settings.limitKw,
       shortfallBudgetThresholdKw,
       hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(heldContext),
-    }, power));
+    };
+    trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState(
+      metaFacts, power, overshootDecision, nowTs,
+    ));
+
+    const meta = trackPlanStage('plan_meta_ms', () => buildPlanMeta(metaFacts, power));
     this.stages.observeDiagnostics(
       heldContext,
       power,
@@ -422,18 +412,18 @@ export class PlanBuilder {
     nowTs: number,
   ): ReadonlyMap<string, StorageSurplusOffer> {
     const storage = resolveStorageSurplus(context.devices, this.state.storageLeverByDevice, power.drawKw * 1000);
-    return trackPlanStage('plan_surplus_eligibility_ms', () => resolveSurplusEligibility({
-      devices: context.devices,
-      state: this.state,
+    return trackPlanStage('plan_surplus_eligibility_ms', () => resolveSurplusEligibility(
+      selectSurplusCandidates(
+        context.devices, this.state, (deviceId) => this.priceOptimizationSettings[deviceId], excludeIds,
+      ),
+      this.state,
       // Producer-resolved: the signed net is always a number (the carried reading).
-      signedNetKw: power.drawKw,
-      inferredSurplusKw: this.deps.getInferredSurplusKw(),
+      power.drawKw,
+      this.deps.getInferredSurplusKw(),
       storage,
-      excludeIds,
-      getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
-      debugStructured: this.deps.debugStructured,
       nowTs,
-    }));
+      this.deps.debugStructured,
+    ));
   }
 
   private async decideShedding(

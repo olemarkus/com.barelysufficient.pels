@@ -23,17 +23,29 @@ import {
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
+import { resolveSteppedKeepDesiredStepIdFor } from '../../lib/plan/planSteppedLoad';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
 import type { RestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import type { HeadroomReserve } from '../../lib/plan/admission';
-import type { PlanEngineState } from '../../lib/plan/planState';
-import type { RestoreCycle } from '../../lib/plan/restore/types';
+import type { PlanEngineState, StorageLeverState } from '../../lib/plan/planState';
+import type { RestoreCycle, RestoreDeps, RestorePlanResult } from '../../lib/plan/restore/types';
+import { applyRestorePlan } from '../../lib/plan/restore';
+import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/planDevices';
+import type { ShortfallOffState } from '../../lib/plan/planOffStateReason';
+import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
+import { createPlanEngineState } from './planEngineStateFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildDisabledRestoreBatchState } from '../../lib/plan/restore/batch';
 import { resolveRestoreDecisionPhase } from '../../lib/plan/admission';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import { applyShedTemperatureHold } from '../../lib/plan/planReasons';
-import type { StorageSurplus } from '../../lib/plan/planSurplusAbsorb';
+import {
+  resolveSurplusEligibility,
+  selectSurplusCandidates,
+  type StorageSurplus,
+  type StorageSurplusOffer,
+} from '../../lib/plan/planSurplusAbsorb';
+import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import type {
   DeviceDescriptorRead,
   DeviceStateOfChargeSnapshot,
@@ -1491,3 +1503,84 @@ export const sheddingPlanFixture = (overrides: Partial<SheddingPlan> = {}): Shed
   recoveredAtMs: null,
   ...overrides,
 });
+
+/**
+ * The keep step a stepped device resolves to under this cycle's posture: the
+ * fairness clamp, a live boost, and a surplus ceiling, as the plan-device
+ * builder asks `resolveSteppedKeepDesiredStepIdFor`.
+ */
+export const keepDesiredStepIdUnder = (
+  device: Parameters<typeof resolveSteppedKeepDesiredStepIdFor>[0],
+  anyOtherDeviceLimited: boolean,
+  boostActive = false,
+  surplusCeilingStepId?: string,
+): string | undefined => resolveSteppedKeepDesiredStepIdFor(
+  device, device.plannedState, device.desiredStepId, anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
+);
+
+/**
+ * The surplus allocator as the builder drives it, by name: the candidates are
+ * selected from `devices` first, exactly as `PlanBuilder.allocateSurplus` does.
+ */
+export const resolveSurplusEligibilityForSpec = (spec: {
+  devices: PlanInputDevice[];
+  state: PlanEngineState;
+  signedNetKw: number;
+  inferredSurplusKw: number;
+  storage: StorageSurplus;
+  getConfig: Parameters<typeof selectSurplusCandidates>[2];
+  excludeIds: ReadonlySet<string>;
+  debugStructured?: StructuredDebugEmitter;
+  nowTs: number;
+}): ReadonlyMap<string, StorageSurplusOffer> => resolveSurplusEligibility(
+  selectSurplusCandidates(spec.devices, spec.state, spec.getConfig, spec.excludeIds),
+  spec.state,
+  spec.signedNetKw,
+  spec.inferredSurplusKw,
+  spec.storage,
+  spec.nowTs,
+  spec.debugStructured,
+);
+
+/**
+ * `buildInitialPlanDevices` as a spec drives it, by name: the inputs a spec
+ * leaves out default to a fresh engine state, the empty shedding decision, and
+ * no shortfall.
+ */
+export const buildInitialPlanDevicesForSpec = (spec: {
+  context: PlanContext;
+  state?: PlanEngineState;
+  sheddingPlan?: SheddingPlan;
+  shortfall?: ShortfallOffState;
+  deps: PlanDevicesDeps;
+}): DevicePlanDevice[] => buildInitialPlanDevices(
+  spec.context,
+  spec.state ?? createPlanEngineState(),
+  spec.sheddingPlan ?? sheddingPlanFixture(),
+  spec.shortfall ?? { inShortfall: false },
+  spec.deps,
+);
+
+/**
+ * The restore pass as a spec drives it, by name: no battery holds unless the
+ * spec gives some, and the shedding decision built from the two flags the pass
+ * reads off it, out of shortfall unless the spec says otherwise.
+ */
+export const applyRestorePlanForSpec = (spec: {
+  planDevices: DevicePlanDevice[];
+  context: PlanContext;
+  power: MeasuredPower;
+  state: PlanEngineState;
+  storageLevers?: Readonly<Record<string, StorageLeverState>>;
+  sheddingActive: boolean;
+  guardInShortfall?: boolean;
+  deps: RestoreDeps;
+}): RestorePlanResult => applyRestorePlan(
+  spec.planDevices,
+  spec.context,
+  spec.power,
+  spec.state,
+  spec.storageLevers ?? {},
+  sheddingPlanFixture({ sheddingActive: spec.sheddingActive, guardInShortfall: spec.guardInShortfall ?? false }),
+  spec.deps,
+);

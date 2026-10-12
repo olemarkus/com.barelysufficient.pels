@@ -73,30 +73,23 @@ export type BinaryControlDecision = {
   lifecycleRelease?: boolean;
 };
 
-export function shouldSkipBinaryControl(params: {
-  controlPlan: BinaryControlPlan | null;
-  getObservedBinaryControl: ObservedBinaryControlRead;
-  deviceId: string;
-  desired: boolean;
-  logContext: BinaryControlLogContext;
-  name: string;
-  snapshot?: BinaryControlDecisionSnapshot;
+/** The two live reads the binary-control decision makes. */
+export type BinaryControlDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
-  preferProvidedSnapshot?: boolean;
-  forceAgainstReleasedOpposing?: boolean;
-}): boolean {
+  getObservedBinaryControl: ObservedBinaryControlRead;
+};
+
+export function shouldSkipBinaryControl(
+  deps: BinaryControlDeps,
+  controlPlan: BinaryControlPlan | null,
+  /** The decision this cycle would hand the executor if nothing skips it. */
+  decision: BinaryControlDecision,
+  snapshot: BinaryControlDecisionSnapshot | undefined,
+  forceAgainstReleasedOpposing: boolean | undefined,
+): boolean {
   const {
-    controlPlan,
-    getObservedBinaryControl,
-    deviceId,
-    desired,
-    logContext,
-    name,
-    snapshot,
-    pendingBinaryCommandStore,
-    preferProvidedSnapshot,
-    forceAgainstReleasedOpposing,
-  } = params;
+    deviceId, name, desired, logContext,
+  } = decision;
   if (!controlPlan) {
     const hasTargets = Array.isArray(snapshot?.targets) && snapshot.targets.length > 0;
     emitExecutorDebug({
@@ -123,11 +116,7 @@ export function shouldSkipBinaryControl(params: {
     });
     return true;
   }
-  if (shouldSkipAlreadyMatched({
-    getObservedBinaryControl, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore,
-    preferProvidedSnapshot,
-    forceAgainstReleasedOpposing,
-  })) {
+  if (shouldSkipAlreadyMatched(deps, decision, snapshot, forceAgainstReleasedOpposing)) {
     emitExecutorDebug({
       event: 'binary_command_skipped',
       reasonCode: 'already_matched',
@@ -139,7 +128,7 @@ export function shouldSkipBinaryControl(params: {
     });
     return true;
   }
-  if (hasPendingMatchingBinaryCommand({ pendingBinaryCommandStore, deviceId, controlPlan, desired })) {
+  if (hasPendingMatchingBinaryCommand(deps.pendingBinaryCommandStore, deviceId, desired)) {
     emitExecutorDebug({
       event: 'binary_command_skipped',
       reasonCode: 'already_pending',
@@ -154,30 +143,23 @@ export function shouldSkipBinaryControl(params: {
   return false;
 }
 
-export function shouldSkipAlreadyMatched(params: {
-  getObservedBinaryControl: ObservedBinaryControlRead;
-  controlPlan: BinaryControlPlan;
-  deviceId: string;
-  desired: boolean;
-  snapshot?: BinaryControlDecisionSnapshot;
-  pendingBinaryCommandStore: PendingBinaryCommandStore;
-  preferProvidedSnapshot?: boolean;
-  forceAgainstReleasedOpposing?: boolean;
-}): boolean {
-  const {
-    getObservedBinaryControl, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore,
-    preferProvidedSnapshot,
-    forceAgainstReleasedOpposing,
-  } = params;
-  const latestObservedSnapshot = preferProvidedSnapshot
+export function shouldSkipAlreadyMatched(
+  deps: BinaryControlDeps,
+  decision: BinaryControlDecision,
+  snapshot: BinaryControlDecisionSnapshot | undefined,
+  forceAgainstReleasedOpposing: boolean | undefined,
+): boolean {
+  const { deviceId, desired } = decision;
+  // A lifecycle release judges against the snapshot it was handed, not the live read.
+  const latestObservedSnapshot = decision.lifecycleRelease === true
     ? snapshot
-    : getObservedBinaryControl(deviceId) ?? snapshot;
+    : deps.getObservedBinaryControl(deviceId) ?? snapshot;
   // An opposite pending command must be superseded even when the current
   // observation already matches the new intent: the older command may still
   // materialize after this decision.
   if (
     forceAgainstReleasedOpposing === true
-    || hasOppositePendingBinaryCommand({ pendingBinaryCommandStore, deviceId, controlPlan, desired })
+    || hasOppositePendingBinaryCommand(deps.pendingBinaryCommandStore, deviceId, desired)
   ) {
     return false;
   }
@@ -185,13 +167,11 @@ export function shouldSkipAlreadyMatched(params: {
   return resolveBinaryCommandCurrentOn(latestObservedSnapshot) === desired;
 }
 
-function hasOppositePendingBinaryCommand(params: {
-  pendingBinaryCommandStore: PendingBinaryCommandStore;
-  deviceId: string;
-  controlPlan: BinaryControlPlan;
-  desired: boolean;
-}): boolean {
-  const { pendingBinaryCommandStore, deviceId, desired } = params;
+function hasOppositePendingBinaryCommand(
+  pendingBinaryCommandStore: PendingBinaryCommandStore,
+  deviceId: string,
+  desired: boolean,
+): boolean {
   // `peek` (not `get`): freshness-eviction stays owned by the matching-pending
   // guard below; this read only asks whether an un-superseded opposite intent
   // exists right now.
@@ -200,13 +180,11 @@ function hasOppositePendingBinaryCommand(params: {
   return pending.desired !== desired;
 }
 
-export function hasPendingMatchingBinaryCommand(params: {
-  pendingBinaryCommandStore: PendingBinaryCommandStore;
-  deviceId: string;
-  controlPlan: BinaryControlPlan;
-  desired: boolean;
-}): boolean {
-  const { pendingBinaryCommandStore, deviceId, desired } = params;
+export function hasPendingMatchingBinaryCommand(
+  pendingBinaryCommandStore: PendingBinaryCommandStore,
+  deviceId: string,
+  desired: boolean,
+): boolean {
   // `get` (not `peek`): this read owns freshness-eviction — a stale
   // in-flight entry must not suppress a fresh actuation. Eviction is
   // performed once, inside the store.

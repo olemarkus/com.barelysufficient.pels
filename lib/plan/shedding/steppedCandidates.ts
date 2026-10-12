@@ -445,9 +445,7 @@ function resolveSteppedShedTargetStep(
     if (!isSteppedLoadDevice(device)) return null;
     return getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
   }
-  return getSteppedLoadShedTargetStep({
-    device,
-    shedAction: shedBehaviorAction === 'set_step' ? 'set_step' : 'turn_off',
-    currentDesiredStepId: effectiveCurrentStepId,
-  });
+  return getSteppedLoadShedTargetStep(
+    device, shedBehaviorAction === 'set_step' ? 'set_step' : 'turn_off', effectiveCurrentStepId,
+  );
 }

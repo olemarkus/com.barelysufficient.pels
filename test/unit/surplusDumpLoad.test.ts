@@ -7,7 +7,6 @@
 // starving). Pure functions only — every clock is an injected `nowTs`.
 import { describe, expect, it } from 'vitest';
 import {
-  resolveSurplusEligibility,
   resolveSurplusOnlyPosture,
 } from '../../lib/plan/planSurplusAbsorb';
 import { resolveSurplusHold } from '../../lib/plan/shedding/surplusHold';
@@ -26,7 +25,7 @@ import {
   formatDeviceReasonUserFacing,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildPlanDevice, buildPlanInputDevice, steppedProfile, NO_STORAGE_SURPLUS } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanInputDevice, steppedProfile, NO_STORAGE_SURPLUS, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
 import { reasonContext } from '../helpers/reasonContext';
 
 const AWAITING: DeviceReason = { code: PLAN_REASON_CODES.awaitingSolarSurplus };
@@ -194,7 +193,7 @@ const allocatorPass = (params: {
   priorities?: Record<string, number>;
   configs?: Record<string, { surplusWilling: boolean; surplusDelta: number }>;
   excludeIds?: ReadonlySet<string>;
-}) => resolveSurplusEligibility({
+}) => resolveSurplusEligibilityForSpec({
   // The rank rides on the device: the producer ranks the whole planned set
   // before the allocator sees it, so a spec that cares about order stamps the
   // devices rather than stubbing a lookup.

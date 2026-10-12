@@ -100,32 +100,26 @@ export function planRestoreForDevice(
   // reservation held by a strictly higher-priority device that has not started yet. The running
   // `availableHeadroom` total is still decremented by the raw need on admission — the reserve
   // shapes who may take the power, not how much taking it costs.
-  const reserved = resolveReserveAdmission({
-    dev, availableHeadroom, neededKw: restoreNeed.needed, reserves: headroomReserves,
-  });
+  const reserved = resolveReserveAdmission(dev, availableHeadroom, restoreNeed.needed, headroomReserves);
   const powerSource = resolveRestorePowerSource(dev);
   if (isReserveAdmitted(reserved)) {
     const penaltyFields = restoreNeed.penaltyLevel > 0
       ? { penaltyLevel: restoreNeed.penaltyLevel, penaltyExtraKw: restoreNeed.penaltyExtraKw }
       : {};
     const admittedLog = buildReserveAdmittedLogFields(reserved);
-    emitRestoreDebugEventOnChange({
-      state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_admitted',
-        restoreType: 'binary',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        estimatedPowerKw: restoreNeed.devPower,
-        powerSource,
-        neededKw: restoreNeed.needed,
-        availableKw: admittedLog.effectiveHeadroomKw,
-        marginKw: admittedLog.marginKw,
-        decision: 'admitted',
-        ...penaltyFields,
-      },
+    emitRestoreDebugEventOnChange(state, restoreDebugKey, {
+      event: 'restore_admitted',
+      restoreType: 'binary',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource,
+      neededKw: restoreNeed.needed,
+      availableKw: admittedLog.effectiveHeadroomKw,
+      marginKw: admittedLog.marginKw,
+      decision: 'admitted',
+      ...penaltyFields,
     });
     restoredThisCycle.add(dev.id);
     recordBatchAdmission(batchState, restoreNeed.needed);
@@ -159,19 +153,15 @@ function rejectBinaryRestore(
     plannedState: 'shed',
     reason,
   });
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_rejected',
-      restoreType: 'binary',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      rejectionReason: reason.code,
-    },
+  emitRestoreDebugEventOnChange(state, restoreDebugKey, {
+    event: 'restore_rejected',
+    restoreType: 'binary',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    availableKw: availableHeadroom,
+    decision: 'rejected',
+    rejectionReason: reason.code,
   });
   return loop;
 }
@@ -196,28 +186,21 @@ function rejectBinaryRestoreForInsufficientHeadroom(
   const { admission, availableKw: availableHeadroom } = reserved;
   const powerSource = resolveRestorePowerSource(dev);
   const restoreDebugKey = `binary:${dev.id}`;
-  setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate({
+  setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate(
+    restoreNeed.needed, availableHeadroom, admission.marginKw, restoreNeed.penaltyExtraKw, null, null,
+  ));
+  emitRestoreDebugEventOnChange(state, restoreDebugKey, {
+    event: 'restore_rejected',
+    restoreType: 'binary',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    powerSource,
     neededKw: restoreNeed.needed,
     availableKw: availableHeadroom,
     marginKw: admission.marginKw,
-    penaltyExtraKw: restoreNeed.penaltyExtraKw,
-  }));
-  emitRestoreDebugEventOnChange({
-    state,
-    key: restoreDebugKey,
-    payload: {
-      event: 'restore_rejected',
-      restoreType: 'binary',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      powerSource,
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      marginKw: admission.marginKw,
-      decision: 'rejected',
-      rejectionReason: 'insufficient_headroom',
-    },
+    decision: 'rejected',
+    rejectionReason: 'insufficient_headroom',
   });
   return loop;
 }

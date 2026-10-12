@@ -177,7 +177,7 @@ function walkDevice(
   const { limitSource, physicalLimitBreached } = params;
   return {
     candidate,
-    allowedByLimitPolicy: limitSource !== 'daily' || physicalLimitBreached || device.budgetExempt !== true,
+    allowedByLimitPolicy: limitSource !== 'daily' || physicalLimitBreached || !device.budgetExempt,
   };
 }
 

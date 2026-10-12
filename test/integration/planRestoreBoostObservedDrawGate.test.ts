@@ -15,12 +15,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { applyRestorePlan } from '../../lib/plan/restore';
 import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   buildPlanDevice,
   steppedPlanDevice,
+  applyRestorePlanForSpec,
 } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 
@@ -57,8 +57,7 @@ describe('boost-driven escalation swaps on the boost decision alone', () => {
 
   const buildScenario = (boostActive: boolean) => {
     const state = createPlanEngineState();
-    return applyRestorePlan({
-      storageLevers: {},
+    return applyRestorePlanForSpec({
       planDevices: [
         steppedPlanDevice({
           id: 'dev-step',
@@ -88,7 +87,6 @@ describe('boost-driven escalation swaps on the boost decision alone', () => {
       ...cycleArgsFor(buildContext({ headroomRaw: 0.8, headroom: 0.8 })),
       state,
       sheddingActive: false,
-      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),

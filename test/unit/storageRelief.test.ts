@@ -11,7 +11,6 @@ import {
   type StorageRelief,
 } from '../../lib/plan/battery/storageRelief';
 import {
-  resolveSurplusEligibility,
   type StorageSurplusOffer,
   type SurplusDemand,
 } from '../../lib/plan/planSurplusAbsorb';
@@ -26,7 +25,7 @@ import type {
 } from '../../packages/planner-types/src/planInputDevice';
 import { STORAGE_RELIEF_SETTLE_WINDOW_MS } from '../../lib/plan/battery/storageLadder';
 import { buildMeasuredPower } from '../utils/planContextPowerFixture';
-import { buildPlanDevice, buildPlanInputDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanInputDevice, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
 
 const NOW = 10_000_000;
 
@@ -563,7 +562,7 @@ describe('a raise past the own mode\'s charge, ranked against the consumers belo
     levers: Record<string, StorageLeverState>,
     signedNetW: number,
   ): Record<string, number> => {
-    const offers = resolveSurplusEligibility({
+    const offers = resolveSurplusEligibilityForSpec({
       devices,
       state: createPlanEngineState(),
       signedNetKw: signedNetW / 1000,

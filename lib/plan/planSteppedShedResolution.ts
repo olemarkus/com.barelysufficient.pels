@@ -38,16 +38,13 @@ import {
  * answer. `resolveSteppedShedHypotheticalStepId` below keeps them for the one
  * caller that has no decision to honour.
  */
-export function resolveSteppedLoadDirectShedStepId(params: {
-  dev: PlanInputDevice;
-  shedBehavior: ShedBehavior;
-  shouldShed: boolean;
+export function resolveSteppedLoadDirectShedStepId(
+  dev: PlanInputDevice,
+  shedBehavior: ShedBehavior,
+  shouldShed: boolean,
   /** The rung the shedding planner priced this shed at, when it chose one. */
-  plannedShedStepId: string | undefined;
-}): string | undefined {
-  const {
-    dev, shedBehavior, shouldShed, plannedShedStepId,
-  } = params;
+  plannedShedStepId: string | undefined,
+): string | undefined {
   if (!shouldShed || !isSteppedLoadDevice(dev)) return undefined;
   if (plannedShedStepId !== undefined) return plannedShedStepId;
   return resolveShedBehaviorFloorStepId(dev, shedBehavior.action);
@@ -96,26 +93,19 @@ function resolveShedBehaviorFloorStepId(
  * including the forced-lowest-active clamp and the pending-lower-step clamp,
  * which the candidate builder applies on the real path.
  */
-export function resolveSteppedShedHypotheticalStepId(params: {
-  dev: PlanInputDevice;
-  devices: PlanInputDevice[];
-  state: PlanEngineState;
-  shedBehavior: ShedBehavior;
-  currentDesiredStepId?: string;
-}): string | undefined {
-  const {
-    dev, devices, state, shedBehavior, currentDesiredStepId,
-  } = params;
+export function resolveSteppedShedHypotheticalStepId(
+  dev: PlanInputDevice,
+  devices: PlanInputDevice[],
+  state: PlanEngineState,
+  shedBehavior: ShedBehavior,
+  currentDesiredStepId: string | undefined,
+): string | undefined {
   if (!isSteppedLoadDevice(dev)) return undefined;
   if (shedBehavior.action !== 'set_step') return undefined;
-  if (shouldForceLowestActiveStep({ dev, devices, state, shedBehaviorAction: shedBehavior.action })) {
+  if (shouldForceLowestActiveStep(dev, devices, state)) {
     return getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id;
   }
-  const targetStep = getSteppedLoadShedTargetStep({
-    device: dev,
-    shedAction: 'set_step',
-    currentDesiredStepId,
-  });
+  const targetStep = getSteppedLoadShedTargetStep(dev, 'set_step', currentDesiredStepId);
   return targetStep?.id;
 }
 
@@ -127,13 +117,12 @@ export function resolveSteppedShedCurrentDesiredStepId(dev: PlanInputDevice): st
   return desiredKw < selectedKw ? dev.desiredStepId : dev.selectedStepId;
 }
 
-function shouldForceLowestActiveStep(params: {
-  dev: PlanInputDevice;
-  devices: PlanInputDevice[];
-  state: PlanEngineState;
-  shedBehaviorAction: ShedAction;
-}): boolean {
-  const { dev, devices, state, shedBehaviorAction } = params;
-  return shedBehaviorAction === 'set_step'
-    && devices.some((candidate) => candidate.id !== dev.id && isNonSteppedDeviceRecovering(candidate, state));
+// Only a `set_step` shed reaches here (`resolveSteppedShedHypotheticalStepId`
+// returns before it for any other behaviour).
+function shouldForceLowestActiveStep(
+  dev: PlanInputDevice,
+  devices: PlanInputDevice[],
+  state: PlanEngineState,
+): boolean {
+  return devices.some((candidate) => candidate.id !== dev.id && isNonSteppedDeviceRecovering(candidate, state));
 }

@@ -1,6 +1,8 @@
 import type { ShedActionIntent } from '../device/deviceActionProjection';
-import type { PlannedDeviceState, SteppedLoadProfile } from '../../packages/contracts/src/types';
-import type { PlannedShedTargetKind, ShedAction } from './planTypes';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type {
+  DevicePlanDevice, PlannedShedTargetKind, ShedAction, SteppedDiscriminantProbe,
+} from './planTypes';
 import { isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 
 /**
@@ -94,12 +96,10 @@ export function materializeShedSnapshotFields(input: ShedSnapshotMaterialization
  * lower. Reading the behaviour alone would answer `binary_off` for that device
  * and cut the whole load the rung was chosen to preserve.
  */
-export function resolvePlannedShedTargetKind(device: {
-  plannedState: PlannedDeviceState;
-  shedAction?: ShedAction;
-  steppedLoadProfile?: SteppedLoadProfile;
-  plannedShedStepId?: string;
-}): PlannedShedTargetKind | undefined {
+export function resolvePlannedShedTargetKind(
+  device: Pick<DevicePlanDevice, 'plannedState' | 'shedAction' | 'plannedShedStepId'>
+    & Pick<SteppedDiscriminantProbe, 'steppedLoadProfile'>,
+): PlannedShedTargetKind | undefined {
   if (device.plannedState !== 'shed') return undefined;
   // A device whose triple was never materialized falls back to the same binary
   // posture `materializeShedSnapshotFields` gives it.
