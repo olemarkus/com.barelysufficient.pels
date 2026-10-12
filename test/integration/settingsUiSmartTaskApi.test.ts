@@ -1,6 +1,7 @@
 /**
  * @vitest-environment node
  */
+import { pelsHostDouble } from '../helpers/pelsHostDouble';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockSettings } from '../mocks/homey';
 import {
@@ -82,10 +83,10 @@ const buildContext = (app: Record<string, unknown>, withTask = true): HandlerCon
   if (withTask) settings.set(OBJECTIVE_KEY, storedEntry());
   return {
     homey: {
-      app: {
+      app: pelsHostDouble({
         resolveSmartTaskHomeScope: () => 'main',
         ...app,
-      },
+      }),
       clock: { getTimezone: () => TIME_ZONE },
       settings,
     } as never,
@@ -431,8 +432,9 @@ describe('updateSettingsUiSmartTask', () => {
     expect(result).toEqual({ ok: false, reason: 'write_conflict' });
   });
 
-  it('reports unavailable when the app method is not wired', () => {
+  it('reports unavailable while the app is not wired', () => {
     const { homey } = buildContext({});
+    (homey as { app?: unknown }).app = undefined;
     const result = updateSettingsUiSmartTask({ homey, body: updateBody() });
     expect(result).toEqual({ ok: false, reason: 'unavailable' });
   });

@@ -88,9 +88,9 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   /** Complete priority order from the current mode's catalog owner. */
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   getDeferredObjectiveDebugStructured?: () => StructuredDebugEmitter | undefined;
-  getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
-  getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
-  getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
+  deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
+  deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus;
+  deferredObjectiveHoursRemainingTracker: DeferredObjectiveHoursRemainingTracker;
   /**
    * Fired on every pre-deadline tick whose task is satisfied. App wiring returns
    * cap-off devices to their fallback posture but deliberately keeps the task
@@ -243,12 +243,11 @@ export class DeferredObjectiveLifecycleEmitter {
         announced: this.announced,
       })
       : new Map();
-    const statusBus = this.deps.getDeferredObjectiveStatusBus?.();
-    if (statusBus) emitDeferredObjectiveStatusTransitions({ diagnostics: liveDiagnostics, statusBus, nowMs });
-    const hoursRemainingBus = this.deps.getDeferredObjectiveHoursRemainingBus?.();
-    const hoursRemainingTracker = this.deps.getDeferredObjectiveHoursRemainingTracker?.();
-    if (hoursRemainingBus && hoursRemainingTracker) {
-      hoursRemainingTracker.observe({ diagnostics: liveDiagnostics, nowMs, bus: hoursRemainingBus });
-    }
+    emitDeferredObjectiveStatusTransitions({
+      diagnostics: liveDiagnostics, statusBus: this.deps.deferredObjectiveStatusBus, nowMs,
+    });
+    this.deps.deferredObjectiveHoursRemainingTracker.observe({
+      diagnostics: liveDiagnostics, nowMs, bus: this.deps.deferredObjectiveHoursRemainingBus,
+    });
   }
 }

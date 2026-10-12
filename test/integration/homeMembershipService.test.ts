@@ -548,7 +548,7 @@ describe('settings-change recompute triggers', () => {
       logger,
     });
     const handler = createSettingsHandler(buildHandlerDeps(() => service.recompute()));
-    // Mirror `initSettingsHandlerForApp`: dispatch every settings `set`.
+    // Mirror `registerSettingsHandler`: dispatch every settings `set`.
     mockHomeyInstance.settings.on('set', (key: string) => { void handler(key); });
 
     service.recompute();

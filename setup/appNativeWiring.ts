@@ -4,6 +4,7 @@ import { getRawFromHomeyApi } from '../lib/device/transport/managerHomeyApi';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
+import type { ShutdownLatch } from '../lib/utils/shutdownLatch';
 import type { PlanService } from '../lib/plan/planService';
 import type {
   FlowConflictRefreshCoordinator,
@@ -42,7 +43,8 @@ function flowConflictKey(conflicts: FlowConflictMap): string {
  */
 export type AppNativeWiringDeps = {
   flowConflictRefreshCoordinator: FlowConflictRefreshCoordinator;
-  getNativeWiringUninitializing: () => boolean;
+  /** The app's teardown signal: once stopped, the probe drops every side effect. */
+  shutdown: ShutdownLatch;
   getAutoNativeWiringDecisions: () => Record<string, boolean>;
   setAutoNativeWiringDecisions: (decisions: Record<string, boolean>) => void;
   getFlowConflictsByDevice: () => FlowConflictMap;
@@ -68,14 +70,14 @@ export class AppNativeWiring {
   constructor(private readonly deps: AppNativeWiringDeps) {}
 
   runNativeWiringDetectionBestEffort(): void {
-    if (this.deps.getNativeWiringUninitializing()) return;
+    if (this.deps.shutdown.isStopped()) return;
     void this.deps.applyNativeWiringAutoDecisions()
       .catch((error) => {
         // Best-effort: a failed detection/refresh never blocks startup, and
         // the next normal plan cycle re-reads the provider so any applied
         // decision self-heals. Log so prod audits can see the miss — unless we
         // are tearing down, where logging would hit a closing worker rpc.
-        if (this.deps.getNativeWiringUninitializing()) return;
+        if (this.deps.shutdown.isStopped()) return;
         this.deps.getStructuredLogger('flow_conflict')?.error({
           event: 'flow_conflict_detection_failed',
           err: normalizeError(error),
@@ -97,7 +99,7 @@ export class AppNativeWiring {
   // auto-enable, so we lose nothing by not emitting an empty `ok`.
   async detectNativeWiringConflictsWithSnapshotRetry(): Promise<NativeWiringConflictDetection> {
     for (let attempt = 1; attempt <= NATIVE_WIRING_DETECTION_MAX_ATTEMPTS; attempt += 1) {
-      if (this.deps.getNativeWiringUninitializing()) return { status: 'unknown' };
+      if (this.deps.shutdown.isStopped()) return { status: 'unknown' };
       const descriptors = this.deps.getDeviceDescriptors();
       const lastAttempt = attempt === NATIVE_WIRING_DETECTION_MAX_ATTEMPTS;
       if (descriptors.length === 0) {
@@ -114,7 +116,7 @@ export class AppNativeWiring {
         // outcome line once uninitializing rather than log into a closing rpc.
         structuredLog: {
           info: (obj) => {
-            if (this.deps.getNativeWiringUninitializing()) return;
+            if (this.deps.shutdown.isStopped()) return;
             this.deps.getStructuredLogger('flow_conflict')?.info(obj);
           },
         },
@@ -126,8 +128,13 @@ export class AppNativeWiring {
   delayMs(ms: number): Promise<void> {
     // A detection retry can be pending when the app tears down; resolve at once
     // so the fire-and-forget probe settles promptly instead of holding a timer.
-    if (this.deps.getNativeWiringUninitializing()) return Promise.resolve();
+    if (this.deps.shutdown.isStopped()) return Promise.resolve();
     return new Promise((resolve) => { setTimeout(resolve, ms); });
+  }
+
+  /** The native-write capabilities a user Flow drives on this device, for the device-detail banner. */
+  getFlowConflict(deviceId: string): FlowConflictMap[string] | undefined {
+    return this.deps.getFlowConflictsByDevice()[deviceId];
   }
 
   // Explicit user choice (true or false in `nativeEvWiringDevices`) always wins;
@@ -165,7 +172,7 @@ export class AppNativeWiring {
     const detection = await this.detectNativeWiringConflictsWithSnapshotRetry();
     // The read above can resolve after teardown began; never refresh the
     // snapshot or rebuild the plan against a half-torn-down app.
-    if (this.deps.getNativeWiringUninitializing() || detection.status !== 'ok') {
+    if (this.deps.shutdown.isStopped() || detection.status !== 'ok') {
       return { state: 'unavailable' };
     }
 

@@ -30,11 +30,9 @@
 # --- Entry points and wiring ------------------------------------------------
 # `api.ts` is NOT here: its console.error runs before a root logger exists and is
 # exempted by name in the guard, so this list can reach zero and be deleted.
-app.ts 2
 setup/appInit/createDailyBudgetService.ts 1
 setup/appInit/createPlanEngine.ts 1
 setup/appInit/priceServices.ts 2
-setup/appRuntimeApi.ts 1
 setup/appServiceWiring.ts 1
 setup/appSnapshotHelpers.ts 1
 setup/backgroundTasksController.ts 1

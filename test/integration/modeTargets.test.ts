@@ -8,7 +8,8 @@ import {
 } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 
-vi.mock('../../setup/appLifecycleHelpers', () => ({
+vi.mock('../../setup/appLifecycleHelpers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../setup/appLifecycleHelpers')>()),
   runStartupStep: async (_label: string, work: () => unknown | Promise<unknown>) => work(),
   // Mirrors production's signature: `startAppServices` runs immediately after
   // `requireInitializedAppContext`, so both services are present by contract.

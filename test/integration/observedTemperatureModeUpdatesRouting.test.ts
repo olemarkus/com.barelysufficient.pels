@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ShutdownLatch } from '../../lib/utils/shutdownLatch';
 import { AppServiceWiring, type AppServiceWiringDeps } from '../../setup/appServiceWiring';
 import type { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { getHomeModeCatalogForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
@@ -52,8 +53,8 @@ describe('observed temperature mode updates ask the owning home whether a device
       getModeDeviceTargets: () => getHomeModeCatalogForTest(ctx).getModeDeviceTargets(),
       resolveOperatingModeForDevice: (id) => getHomeModeCatalogForTest(ctx).resolveOperatingModeForDevice(id),
       createHomeRuntimeRegistry: () => registry,
-      isMainActuationStopped: () => false,
-      getHomeRuntimeRegistry: () => registry,
+      handles: { homeRuntimeRegistry: registry },
+      shutdown: new ShutdownLatch(),
     }));
     return { ctx, service: wiring.createObservedTemperatureModeUpdates() };
   };

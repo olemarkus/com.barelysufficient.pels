@@ -51,7 +51,7 @@ export const isSmartTaskDeviceInMainHome = (ctx: AppContext, deviceId: string): 
  * both must read as un-managed — testing only for `=== false` would leave the
  * never-toggled case reporting the missing-device lie this seam exists to kill.
  *
- * The only fence is EMPTINESS, and the distinction matters. `ctx.managedDevices`
+ * The only fence is EMPTINESS, and the distinction matters. The managed map
  * is `{}` until `loadCapacitySettings` runs, and an empty map is the one state
  * that carries no owner answer about any device. A fence on "some device is
  * opted in" (`isManagedFilterActive`) would instead silence the whole pause in
@@ -75,7 +75,7 @@ export const resolveSmartTaskDeviceExclusion = (
 ): ObjectiveDeviceExclusion | null => {
   if (!isSmartTaskDeviceInMainHome(ctx, deviceId)) return 'sub_home';
   if (ctx.resolveManagedState(deviceId)) return null;
-  return Object.keys(ctx.managedDevices).length === 0 ? null : 'unmanaged';
+  return Object.keys(ctx.deviceControlSettings.managedDevices).length === 0 ? null : 'unmanaged';
 };
 
 /**

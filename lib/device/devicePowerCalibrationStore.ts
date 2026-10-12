@@ -352,8 +352,8 @@ export function createCalibrationSnapshotMutationHook(
     }
     if (!outcome) return;
     // Memory back-pressure: bounded. The `power_calibration` topic is off by
-    // default, and `getStructuredDebugEmitter` (app.ts) returns a no-op when
-    // the topic is disabled. When enabled, each call hits the pino root logger
+    // default, and `getDebugEmitter` (`lib/logging`) returns a no-op when the
+    // topic is disabled. When enabled, each call hits the pino root logger
     // whose destination (`lib/logging/homeyDestination.ts`) is a sync Writable
     // that invokes `callback()` immediately and dispatches the JSON line to
     // Homey SDK `this.log()` / `this.error()` — no in-memory queue, no

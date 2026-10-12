@@ -1,7 +1,7 @@
 import type { BinaryControlCapabilityId } from '../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
-import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
+import type { FlowBackedCapabilityReportOutcome } from '../lib/device/flowBackedCapabilityReport';
 import { resolveFlowAugmentedDeviceType } from '../lib/device/transport/flowReportedCapabilities';
 import { getCapabilities, resolveDeviceClassKey } from '../lib/device/transport/managerHelpers';
 import { incPerfCounter } from '../lib/utils/perfCounters';

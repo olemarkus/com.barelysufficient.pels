@@ -1,4 +1,5 @@
 import { withDeviceConfiguration } from '../utils/planTestUtils';
+import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 import { toPlanDevice } from '../../setup/appInit';
 import {
   buildTargetPowerReachabilityState,
@@ -42,7 +43,7 @@ describe('toPlanDevice target-power reachability boundary', () => {
       binaryControl: { on: true },
     });
     const ctx = createAppContextMock({
-      deviceTargetPowerConfigs: { charger: runtimeConfig },
+      deviceControlSettings: deviceControlSettingsFixture({ deviceTargetPowerConfigs: { charger: runtimeConfig } }),
       getNow: () => new Date(1_999),
     });
 
@@ -85,7 +86,9 @@ describe('toPlanDevice target-power reachability boundary', () => {
       selectedStepId: '99a',
       planningPowerKw: Number.NaN,
     });
-    const ctx = createAppContextMock({ deviceTargetPowerConfigs: { charger: config } });
+    const ctx = createAppContextMock({
+      deviceControlSettings: deviceControlSettingsFixture({ deviceTargetPowerConfigs: { charger: config } }),
+    });
 
     const planDevice = ranked(toPlanDevice(ctx, withDeviceConfiguration(device)));
 

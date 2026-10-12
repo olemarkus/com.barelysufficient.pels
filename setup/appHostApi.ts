@@ -1,8 +1,8 @@
+import { getDebugEmitter } from '../lib/logging/logger';
 import type { BudgetDailyHistory, BudgetDecisionHistory } from '../packages/contracts/src/budgetDiagnostics';
 import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureControlPosture';
 import type Homey from 'homey';
 import type { AppContext } from '../lib/app/appContext';
-import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import {
   readRuntimeDevice,
   readRuntimeDevices,
@@ -19,7 +19,6 @@ import type {
   DailyBudgetSettingsInput,
   DailyBudgetUiRead,
 } from '../lib/dailyBudget/dailyBudgetTypes';
-import { resolveShedBehavior } from '../packages/shared-domain/src/settings/shedBehaviors';
 import type {
   DecoratedDeviceSnapshot,
   DeviceDescriptorRead,
@@ -53,10 +52,16 @@ import {
 } from './appInit/smartTaskHomeScope';
 import { requireConfiguredPowerSource } from './powerSourceSettings';
 import { assembleWeatherAdvisorReadout } from './appInit/weatherAdvisorReadoutAssembler';
-import { requirePlanService as requireInitializedPlanService } from './appInit/contextGuards';
+import {
+  requireDailyBudgetService,
+  requireDeviceDiagnosticsService,
+  requirePlanService,
+  requirePriceCoordinator,
+} from './appInit/contextGuards';
 import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
 import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
+import type { AppRuntimeHandles } from './appRuntimeHandles';
 import { resolveCurrentMonthQuarterPeakKw } from '../lib/power/capacityPeak';
 import {
   isBatteryOrSolarDeviceId,
@@ -64,7 +69,6 @@ import {
   resolveDeviceManagedState,
 } from '../lib/device/deviceRoleReads';
 import type { HomeBatteryDevicesRead } from '../lib/ports/homeBatteryDevices';
-import { isManagedFilterActive } from './appDeviceSupport';
 import type { CapacityScalarSettings } from '../packages/contracts/src/capacitySettings';
 import type { PriceOptimizationSetupRead } from '../packages/contracts/src/priceOptimizationSettings';
 
@@ -89,7 +93,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly setDeviceModeTarget: FlowCardDeps['setDeviceModeTarget'];
   protected abstract readonly smartTaskApi: AppSmartTaskApi;
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
-  protected abstract weatherCollector?: WeatherCollector;
+  protected abstract readonly runtime: AppRuntimeHandles;
   // The price wiring replaces PelsApp's default once the coordinator exists.
   public abstract getCombinedPricesForUi: () => unknown;
 
@@ -114,9 +118,8 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   );
 
   // The read answers `unavailable` when the service is not wired yet, because
-  // that IS the boot window the member is for — `hasDailyBudgetSeam` can only
-  // see the prototype method, which exists from construction, so the honest
-  // answer has to come from here. Preview and apply below keep throwing: they
+  // that IS the boot window the member is for — the method itself exists from
+  // construction, so the honest answer has to come from here. Preview and apply below keep throwing: they
   // are commands, and a command that cannot run must fail loudly rather than
   // report a state.
   public getDailyBudgetUiPayload(): DailyBudgetUiRead {
@@ -125,15 +128,15 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   }
 
   public previewDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetModelPreviewResponse {
-    return this.requireDailyBudgetService().previewModelSettings(settings);
+    return requireDailyBudgetService(this.context).previewModelSettings(settings);
   }
 
   public applyDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetUiRead {
-    return this.requireDailyBudgetService().applyModelSettings(settings);
+    return requireDailyBudgetService(this.context).applyModelSettings(settings);
   }
 
   public getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
-    return this.requirePlanService().getLatestPlanSnapshotForUi();
+    return requirePlanService(this.context).getLatestPlanSnapshotForUi();
   }
 
   public registerFlowCards(): void {
@@ -145,14 +148,14 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public async handleOperatingModeChange(rawMode: string): Promise<void> {
     const { previous: previousMode, resolved } = this.setHomeOperatingMode(rawMode);
     if (resolved !== rawMode) {
-      this.context.getStructuredDebugEmitter('settings', 'settings')({
+      getDebugEmitter('settings', 'settings')({
         event: 'mode_resolved_via_alias', requestedMode: rawMode, resolvedMode: resolved,
       });
     }
     const aliasUsed = rawMode !== resolved ? rawMode : null;
     if (this.homey.settings.get('mode_alias_used') !== aliasUsed) this.homey.settings.set('mode_alias_used', aliasUsed);
     if (previousMode?.toLowerCase() === resolved.toLowerCase()) {
-      this.context.getStructuredDebugEmitter('settings', 'settings')({ event: 'mode_already_active', mode: resolved });
+      getDebugEmitter('settings', 'settings')({ event: 'mode_already_active', mode: resolved });
     }
     this.context.notifyOperatingModeChanged(resolved);
   }
@@ -250,46 +253,38 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   }
 
   public getCombinedHourlyPrices = (): CombinedHourlyPrice[] => (
-    this.requirePriceCoordinator().getCombinedHourlyPrices()
+    requirePriceCoordinator(this.context).getCombinedHourlyPrices()
   );
   public getTimeZone = (): string => this.homey.clock.getTimezone();
   public getPowerSource = (): PowerSource => requireConfiguredPowerSource(this.homey.settings);
   public getNow = (): Date => new Date();
   public getCurrentHourPriceLevel = (): PriceLevel => (
-    this.requirePriceCoordinator().getCurrentHourPriceLevel()
+    requirePriceCoordinator(this.context).getCurrentHourPriceLevel()
   );
   public getPriceLevelChangesWithin = (window: PriceLevelLookahead): PriceLevelChangesRead => (
-    this.requirePriceCoordinator().getPriceLevelChangesWithin(window)
+    requirePriceCoordinator(this.context).getPriceLevelChangesWithin(window)
   );
 
   public storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {
     dateKey: string; storedCount: number; missingHours: number[];
   } {
-    return this.requirePriceCoordinator().storeFlowPriceData(kind, raw);
+    return requirePriceCoordinator(this.context).storeFlowPriceData(kind, raw);
   }
 
   public readHomeBatteryDevices = (): HomeBatteryDevicesRead => readHomeBatteryDevices(this.context.deviceManager);
   public resolveManagedState = (deviceId: string): boolean => resolveDeviceManagedState(
     this.context.deviceManager,
     this.context.batteryManaged,
-    this.context.managedDevices,
+    this.context.deviceControlSettings.managedDevices,
     deviceId,
   );
-  protected isManagedFilterActive = (): boolean => isManagedFilterActive(this.context.managedDevices);
-  protected getDeviceDriverIdOverride = (deviceId: string): string | undefined => {
-    const override = this.context.deviceDriverOverrides[deviceId]?.trim();
-    return override || undefined;
-  };
   public isCapacityControlEnabled = (deviceId: string): boolean => (
     !isBatteryOrSolarDeviceId(this.context.deviceManager, deviceId)
-    && this.context.managedDevices[deviceId] === true
-    && this.context.controllableDevices[deviceId] === true
+    && this.context.deviceControlSettings.managedDevices[deviceId] === true
+    && this.context.deviceControlSettings.controllableDevices[deviceId] === true
   );
-  public isBudgetExempt = (deviceId: string): boolean => this.context.budgetExemptDevices[deviceId] === true;
-  public getTemperatureBoostConfig = (deviceId: string) => this.context.temperatureBoostSettings[deviceId];
-  public getEvBoostConfig = (deviceId: string) => this.context.evBoostSettings[deviceId];
   public getShedBehavior = (deviceId: string) => resolveTemperaturePolicyShedBehavior(
-    resolveShedBehavior(this.context.shedBehaviors, deviceId),
+    this.context.deviceControlSettings.getConfiguredShedBehavior(deviceId),
     // Lazy and single-device: this runs several times per device per plan build,
     // and `getPlanInputSnapshot` rebuilds the whole list on every access.
     () => this.getRuntimeDevice(deviceId),
@@ -300,15 +295,14 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     this.context.getThermalDirection(deviceId),
   );
 
-  public computeDynamicSoftLimit = (): number | null => this.requirePlanService().computePhysicalPowerLimit();
-  protected computeShortfallThreshold = (): number | null => this.requirePlanService().computeShortfallThreshold();
+  public computeDynamicSoftLimit = (): number | null => requirePlanService(this.context).computePhysicalPowerLimit();
 
   public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
-    return this.requireDeviceDiagnosticsService().getUiPayload();
+    return requireDeviceDiagnosticsService(this.context).getUiPayload();
   }
 
   public getDeviceLogUiPayload(): SettingsUiDeviceLogPayload {
-    return this.requirePlanService().getDeviceLogUiPayload();
+    return requirePlanService(this.context).getDeviceLogUiPayload();
   }
 
   // Read through the weather collector, the history stores' only holder. It is
@@ -323,9 +317,9 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   }
 
   public async getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadout> {
-    const collector = this.weatherCollector;
+    const collector = this.runtime.backgroundCollectors?.weatherCollector;
     if (!collector) return { kind: 'inactive' };
-    const dailyBudget = this.requireDailyBudgetService();
+    const dailyBudget = requireDailyBudgetService(this.context);
     return assembleWeatherAdvisorReadout(this.context, collector, dailyBudget);
   }
 
@@ -368,30 +362,10 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   ): SettingsUiDeferredObjectivePlanHistoryPayload {
     return this.smartTaskPayloads.getDeferredObjectivePlanHistoryRecentUiPayload(sinceMs);
   }
-  protected requirePriceCoordinator() {
-    if (!this.context.priceCoordinator) throw new Error('PriceCoordinator must be initialized');
-    return this.context.priceCoordinator;
-  }
-  protected requirePlanService() {
-    return requireInitializedPlanService(this.context);
-  }
-  protected requireDeviceManager(): DeviceTransportPort {
-    if (!this.context.deviceManager) throw new Error('DeviceTransport must be initialized');
-    return this.context.deviceManager;
-  }
-  protected requireDeviceDiagnosticsService() {
-    if (!this.context.deviceDiagnosticsService) {
-      throw new Error('DeviceDiagnosticsService must be initialized');
-    }
-    return this.context.deviceDiagnosticsService;
-  }
-  protected requireDailyBudgetService() {
-    if (!this.context.dailyBudgetService) throw new Error('DailyBudgetService must be initialized');
-    return this.context.dailyBudgetService;
-  }
   protected requireWeatherCollector(): WeatherCollector {
-    if (!this.weatherCollector) throw new Error('Budget history is unavailable during startup');
-    return this.weatherCollector;
+    const collectors = this.runtime.backgroundCollectors;
+    if (!collectors) throw new Error('Budget history is unavailable during startup');
+    return collectors.weatherCollector;
   }
 }
 

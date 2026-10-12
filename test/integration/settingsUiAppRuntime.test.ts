@@ -1,10 +1,8 @@
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
-import {
-  getLatestDevicesForUiFromApp,
-  refreshSettingsUiDevicesForApp,
-  resetSettingsUiPowerStatsForApp,
-} from '../../setup/settingsUiAppRuntime';
+import { resetPowerStatsForUi } from '../../setup/settingsUiAppRuntime';
+import { refreshSettingsUiDevices } from '../../setup/settingsUiApi';
+import { readPelsHost } from '../../lib/app/pelsHost';
 import { SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX } from '../../packages/contracts/src/settingsUiApi';
 import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 
@@ -14,32 +12,18 @@ describe('settings UI app runtime helpers', () => {
     // so `settingsUiAppRuntime.ts` duplicates the literal. This test pins both
     // copies together so a future rename of the canonical constant cannot
     // silently break the settings UI retry contract.
-    await expect(refreshSettingsUiDevicesForApp({} as never)).rejects.toThrow(
+    await expect(refreshSettingsUiDevices({ homey: {} as never })).rejects.toThrow(
       new RegExp(`^${SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX} `),
     );
   });
 
-  it('reads the settings UI managed-device surface exactly once per call', () => {
-    let getterCallCount = 0;
-    const devices = [{ id: 'dev-1', name: 'Heater' }];
-    const mockHomey = {
-      app: {
-        getSettingsUiManagedDevices() {
-          getterCallCount++;
-          return devices;
-        },
-      },
-    };
+  it('reads the app as the host while it is wired, and nothing while it is not', () => {
+    const app = { getSettingsUiManagedDevices: () => [] };
 
-    const result = getLatestDevicesForUiFromApp(mockHomey as never);
-
-    expect(getterCallCount).toBe(1);
-    expect(result).toBe(devices);
-  });
-
-  it('returns null without evaluating the getter when app is unavailable', () => {
-    expect(getLatestDevicesForUiFromApp(null as never)).toBeNull();
-    expect(getLatestDevicesForUiFromApp({} as never)).toBeNull();
+    expect(readPelsHost({ app })).toBe(app);
+    expect(readPelsHost({})).toBeNull();
+    expect(readPelsHost({ app: undefined })).toBeNull();
+    expect(readPelsHost({ app: null })).toBeNull();
   });
 
 
@@ -115,7 +99,7 @@ describe('settings UI app runtime helpers', () => {
       unreliablePeriods: [{ start: nowMs - 3_600_000, end: nowMs - 3_000_000 }],
     };
 
-    const result = await resetSettingsUiPowerStatsForApp(app.homey);
+    const result = resetPowerStatsForUi(app);
 
     expect(result.buckets).toEqual({ [currentHourKey]: 0.5 });
     // Solar history is cleared like every other family (current hour preserved,

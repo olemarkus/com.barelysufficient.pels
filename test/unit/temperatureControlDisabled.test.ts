@@ -1,11 +1,13 @@
-import { resolveTemperatureControlDisabled } from '../../lib/device/temperatureControlSettings';
+import {
+  readTemperatureControlDisabledDevicesSetting,
+  resolveTemperatureControlDisabled,
+} from '../../lib/device/temperatureControlSettings';
 import { describe, expect, it, vi } from 'vitest';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import { decorateSnapshotWithDeviceControl } from '../../lib/planInput/deviceControlProjection';
 import { createTemperatureControlFencedActuator } from '../../setup/appInit/buildDeviceActuator';
-import { readTemperatureControlDisabledDevicesSetting } from '../../setup/appSettingsHelpers';
 
 /**
  * Settings double for the reader's structural port. No cast: a wrong shape is a
@@ -54,7 +56,7 @@ const thermostat = (): TargetDeviceSnapshot & TemperatureObservedProbe => ({
 describe('temperature-control policy read', () => {
   // The absence classification itself (fresh install, listed-but-empty, empty
   // key list, malformed-value retention) is covered end-to-end through
-  // `buildCapacitySettingsSnapshot` in test/integration/appSettingsHelpers.test.ts.
+  // `DeviceControlSettings` in test/unit/deviceControlSettings.test.ts.
   // These cases pin only what that tier does not reach: both absence shapes,
   // and the guards that fire when the key list itself cannot be trusted.
 

@@ -1,6 +1,7 @@
 import { createTemperatureSetpointResolver } from '../../lib/thermostat/temperatureSetpoints';
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { PlanEngineWiring } from './planEngineWiring';
+import type { AppContext } from '../../lib/app/appContext';
+import type { HomeScope } from '../homeRuntime/homeScope';
 
 /**
  * Bind `lib/thermostat`'s setpoint resolver to one home's reads, for that home's
@@ -11,14 +12,14 @@ import type { PlanEngineWiring } from './planEngineWiring';
  * domain peers each wiring file names, and `createPlanEngine.ts` is at its
  * budget. Naming `lib/thermostat` here keeps that file's count where it was.
  */
-export const bindTemperatureSetpoints = (wiring: PlanEngineWiring): ResolveTemperatureSetpoints => (
+export const bindTemperatureSetpoints = (scope: HomeScope, ctx: AppContext): ResolveTemperatureSetpoints => (
   createTemperatureSetpointResolver({
-    getOperatingMode: wiring.getOperatingMode,
-    getModeDeviceTargets: wiring.getModeDeviceTargets,
-    getPriceOptimizationEnabled: wiring.getPriceOptimizationEnabled,
-    getPriceOptimizationSettings: wiring.getPriceOptimizationSettings,
-    getCurrentHourPriceLevel: wiring.getCurrentHourPriceLevel,
-    getThermalDirection: wiring.getThermalDirection,
-    getShedBehavior: wiring.getShedBehavior,
+    getOperatingMode: scope.getOperatingMode,
+    getModeDeviceTargets: scope.getModeDeviceTargets,
+    getPriceOptimizationEnabled: scope.getPriceOptimizationEnabled,
+    getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
+    getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
+    getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
+    getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
   })
 );

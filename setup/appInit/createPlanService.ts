@@ -1,3 +1,4 @@
+import { getDebugEmitter } from '../../lib/logging/logger';
 import { requireDeviceManager, requireSnapshotWarmupGate } from './contextGuards';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { readHomeBatteryCard } from '../../lib/observer/observedDeviceStateProjection';
@@ -85,7 +86,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     readSimulationSetting: scope.readSimulationSetting,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),
-      debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
+      debugStructured: getDebugEmitter('plan', 'plan'),
     },
     // Policy closure from the scope (main: the live ctx read; sub-home bundles:
     // constant UNKNOWN — capacity-only status, no price level driving plan
@@ -93,7 +94,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
     getLastPowerUpdate: () => requireDisplayedPowerUpdateMs(scope.getPowerTracker()),
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
-    overviewDebugStructured: ctx.getStructuredDebugEmitter('overview', 'overview'),
+    overviewDebugStructured: getDebugEmitter('overview', 'overview'),
     isOverviewDebugEnabled: () => ctx.debugLoggingTopics.has('overview'),
     deviceOverviewLogRecorder: new DeviceOverviewLogRecorder(),
     isPlanDebugEnabled: () => ctx.debugLoggingTopics.has('plan'),

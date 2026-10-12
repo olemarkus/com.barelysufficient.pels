@@ -9,8 +9,7 @@ Companion to `notes/logging/README.md`.
 A Homey diagnostics report is a ring buffer of only ~100 log lines, captured by a
 non-technical user with **no debug topics enabled**. Only ungated info/warn/error
 structured lines reach it (`getStructuredLogger(component)` is ungated, `app.ts`;
-`getStructuredDebugEmitter`/`getDebugEmitter` are topic-gated; `logDebug` prose is
-topic-gated). `logger.debug(...)` is a third case and not a gate at all — the pino
+`getDebugEmitter` is topic-gated). `logger.debug(...)` is a third case and not a gate at all — the pino
 root runs at `info` and that child inherits it, so those lines are absent from every
 report, debug topics or not, and are banned for new code (`notes/logging/README.md`
 § "Legacy logging is banned"). Every routine info line evicts an older line that

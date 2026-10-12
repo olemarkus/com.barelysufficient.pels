@@ -11,17 +11,17 @@ export function createPlanInputProjectionSource(ctx: AppContext): PlanInputProje
   return {
     getNow: () => ctx.getNow(),
     getPowerCalibrationSnapshot: () => ctx.getPowerCalibrationSnapshot(),
-    getTargetPowerConfig: (deviceId) => ctx.deviceTargetPowerConfigs[deviceId],
+    getTargetPowerConfig: (deviceId) => ctx.deviceControlSettings.getDeviceTargetPowerConfig(deviceId),
     getPriceOptimizationSettings: (deviceId) => ctx.priceOptimizationSettings[deviceId],
     isSurplusPoolReachable: () => ctx.isSurplusPoolReachable(),
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
-    getTemperatureBoostConfig: (deviceId) => ctx.getTemperatureBoostConfig(deviceId),
-    getEvBoostConfig: (deviceId) => ctx.getEvBoostConfig(deviceId),
-    getDeviceStartPolicies: () => ctx.deviceStartPolicies,
+    getTemperatureBoostConfig: (deviceId) => ctx.deviceControlSettings.getTemperatureBoostConfig(deviceId),
+    getEvBoostConfig: (deviceId) => ctx.deviceControlSettings.getEvBoostConfig(deviceId),
+    getDeviceStartPolicies: () => ctx.deviceControlSettings.deviceStartPolicies,
     isCapacityControlEnabled: (deviceId) => ctx.isCapacityControlEnabled(deviceId),
-    getControllableDevices: () => ctx.controllableDevices,
+    getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,
     resolveManagedState: (deviceId) => ctx.resolveManagedState(deviceId),
-    isBudgetExempt: (deviceId) => ctx.isBudgetExempt(deviceId),
+    isBudgetExempt: (deviceId) => ctx.deviceControlSettings.isBudgetExempt(deviceId),
     isExternalOffHoldActive: (deviceId, device) => (
       resolveExternalOffHoldActive(ctx.externalOffHold?.isHeld(deviceId) === true, device)
     ),

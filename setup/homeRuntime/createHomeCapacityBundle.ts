@@ -55,7 +55,7 @@ import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/sched
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { createHomeRebuildRuntime } from '../../lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { createCapacitySettingsStore } from '../../lib/power/capacitySettingsStore';
-import type { createPlanEngine } from '../appInit/createPlanEngine';
+import type { PlanEngine } from '../../lib/plan/planEngine';
 import { buildHomePlanDevices } from './planDevicePrePass';
 import { createHomePowerPipeline, createUnobservedHomeProduction } from './createHomePowerPipeline';
 import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
@@ -261,7 +261,7 @@ function buildSubHomeScope(params: {
   /** Late-bound: the bundle's own service (created after the engine). */
   getServiceForSync: () => PlanService | undefined;
   /** Late-bound: the bundle's OWN engine, for the sub-home PELS-OFF provenance cleanup. */
-  getPlanEngineForCommandProvenance: () => ReturnType<typeof createPlanEngine> | undefined;
+  getPlanEngineForCommandProvenance: () => PlanEngine | undefined;
   modeCatalog: HomeModeCatalog;
   meterSilenceMonitor: MeterSilenceMonitor;
 }): HomeScope {
@@ -365,7 +365,7 @@ function createBundleSamplePipeline(params: {
   ctx: AppContext;
   homeId: HomeId;
   timerKey: (suffix: string) => string;
-  getPlanEngine: () => ReturnType<typeof createPlanEngine>;
+  getPlanEngine: () => PlanEngine;
   getPlanService: () => PlanService;
   getCapacityGuard: () => CapacityGuard;
   getCapacitySettings: () => PowerLimitSettings;
@@ -514,7 +514,6 @@ function createAreaTrackerDeps(
     getStore: () => ctx.getTrackerStore(),
     timers: ctx.timers,
     getLogger: () => ctx.getStructuredLogger('homes'),
-    getPruneDebugEmitter: () => ctx.getStructuredDebugEmitter('perf', 'perf'),
     reportError: (message, error) => ctx.error(message, error),
     getTimeZone: () => ctx.getTimeZone(),
     isTornDown,
@@ -553,7 +552,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     homeId,
     ctx.homey.settings,
     () => deps.mainModeCatalog.getSnapshot(),
-    () => ctx.managedDevices,
+    () => ctx.deviceControlSettings.managedDevices,
     () => ctx.homeMembership,
     () => ctx.getStructuredLogger('homes'),
     () => ctx.readHomeBatteryDevices(),

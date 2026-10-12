@@ -11,6 +11,7 @@
 // resolver. This boundary projects the home's current planned set to unique
 // relative ranks before either the planner or smart-task clock reads it.
 
+import { getDebugEmitter } from '../../lib/logging/logger';
 import { createPlanInputProjectionSource } from '../appInit/planInputDeviceProjection';
 import { projectPlanInputDevice } from '../../lib/planInput/projectPlanInputDevice';
 import { pruneMissingLearnedPowerPeaks } from '../appInit/devicePowerPeakPrePass';
@@ -76,7 +77,7 @@ const runSnapshotPrePass = (
         observation.binaryAxisObservedAtMs,
       );
     },
-    debugStructured: ctx.getStructuredDebugEmitter('reconcile', 'devices'),
+    debugStructured: getDebugEmitter('reconcile', 'devices'),
   });
   // Pruning uses all configured devices, even when this observer join or the
   // per-home projection omitted one temporarily.

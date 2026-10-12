@@ -2,10 +2,10 @@ import api from '../../api';
 import { partialDouble } from '../helpers/partialDouble';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { createWeatherHistoryStore } from '../../lib/weather/weatherHistoryStore';
-// The boot window at the host-API façade. `hasDailyBudgetSeam` (settings/widget
-// side) can only see that the prototype methods exist — they do, from
-// construction — so whether the daily budget is READABLE has to be answered
-// here, by the one object that can see whether the service was wired.
+// The boot window at the host-API façade. The settings/widget side sees the
+// app's methods, which exist from construction, so whether the daily budget is
+// READABLE has to be answered here, by the one object that can see whether the
+// service was wired.
 //
 // The split under test: the read degrades to its named `unavailable` member,
 // because that member exists precisely for this window; the two writes throw,
@@ -18,6 +18,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { createWeatherCollector } from '../../setup/appInit/createWeatherCollector';
+import type { BackgroundCollectors } from '../../setup/appInit/startBackgroundCollectors';
 import { MockSettings } from '../mocks/homey';
 
 const createHostApi = (
@@ -40,7 +41,9 @@ const createHostApi = (
 
     protected readonly smartTaskPayloads = {} as never;
 
-    protected weatherCollector = weatherCollector;
+    protected readonly runtime = {
+      backgroundCollectors: weatherCollector ? partialDouble<BackgroundCollectors>({ weatherCollector }) : undefined,
+    };
 
     public getCombinedPricesForUi = (): unknown => null;
 

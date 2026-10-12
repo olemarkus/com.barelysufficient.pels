@@ -50,7 +50,7 @@ vi.mock('../../flowCards/registerFlowCards', () => ({
 import {
   createDeferredObjectiveLifecycleEmitter,
   createDeferredObjectivePlanHistoryRecorder,
-  createPlanEngine,
+  createPlanEngineComposition,
   createPlanService,
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
@@ -74,8 +74,8 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanEngine(ctx, buildMainHomeScopeForTest(ctx, () => false, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' } })).toThrow(
-      'DeviceTransport must be initialized before plan engine setup.',
+    expect(() => createPlanEngineComposition(ctx, buildMainHomeScopeForTest(ctx, () => false, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' } })).toThrow(
+      'DeviceTransport must be initialized before use.',
     );
   });
 
@@ -108,7 +108,7 @@ describe('app init plan service wiring', () => {
     vi.mocked(engineCtx.homey.settings.get).mockImplementation((key) => (
       key === 'temperature_control_modes' ? {} : null
     ));
-    createPlanEngine(engineCtx, buildMainHomeScopeForTest(engineCtx, () => false, () => false), {
+    createPlanEngineComposition(engineCtx, buildMainHomeScopeForTest(engineCtx, () => false, () => false), {
       capacityGuard: engineCtx.capacityGuard,
       isActuationFenced: () => fenced,
       storageLane: { kind: 'none' },
@@ -179,9 +179,7 @@ describe('app init plan service wiring', () => {
       ]),
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
-      isBudgetExempt: () => false,
       debugLoggingTopics: new Set(),
-      getStructuredDebugEmitter: () => vi.fn(),
     });
     serviceCtx.deviceManager = {
       getAssociatedCar: () => undefined,
@@ -209,7 +207,7 @@ describe('app init plan service wiring', () => {
     });
 
     expect(() => createPlanService(ctx, buildMainHomeScopeForTest(ctx, () => false, () => false), planEngine)).toThrow(
-      'DeviceTransport must be initialized before plan engine setup.',
+      'DeviceTransport must be initialized before use.',
     );
   });
 
@@ -231,7 +229,7 @@ describe('app init plan service wiring', () => {
     expect(
       () => (capturedFlowCardDeps.current as { loadDailyBudgetSettings: () => void }).loadDailyBudgetSettings(),
     ).toThrow(
-      'DailyBudgetService must be initialized before flow card registration.',
+      'DailyBudgetService must be initialized before use.',
     );
   });
 

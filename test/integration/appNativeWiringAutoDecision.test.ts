@@ -124,7 +124,7 @@ describe('applyNativeWiringAutoDecisions', () => {
     await vi.waitFor(() => { expect(getCalls).toBe(2); });
 
     // Simulate onUninit racing the in-flight read.
-    app['nativeWiringUninitializing'] = true;
+    app['shutdown'].stop();
     releaseGet();
     await run;
 

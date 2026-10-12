@@ -30,14 +30,11 @@
  * homes' payloads are assembled from the same kind of source. Nothing here rebuilds a plan,
  * refreshes a snapshot, arms a timer or actuates.
  */
-import type Homey from 'homey';
-import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../lib/home/homeRuntimeRead';
-import type { HomeMembershipPort } from '../lib/home/membership';
+import type { HomeRuntimeReading } from '../lib/home/homeRuntimeRead';
 import { isValidSubHomeId } from '../lib/home/homeConfig';
 import type { HomeId } from '../lib/utils/settingsKeys';
 import { isListedWholeHomeDevice } from '../lib/home/wholeHomeDeviceListing';
-import type { AppContext } from '../lib/app/appContext';
-import type { SettingsUiPowerStatus } from '../packages/contracts/src/settingsUiApi';
+import type { PelsHost } from '../lib/app/pelsHost';
 import { SETTINGS_UI_HOME_ID_QUERY_PARAM } from '../packages/shared-domain/src/settingsUiHomeIdQuery';
 
 /**
@@ -58,48 +55,21 @@ export type SettingsUiRequestedHomeScope =
  */
 export type ResolvedSubHomeScope = Extract<SettingsUiRequestedHomeScope, { state: 'sub_home' }>;
 
-/**
- * One sub-home's own status read, discriminated at this adapter boundary.
- * `resolved` carries the status its plan service published; `absent` is
- * genuine absence (the home has not published a status this run, or was torn
- * down). `unavailable` is an app shell that cannot answer (the boot/uninit
- * window, `HomeScopeHomey`): not absence, and must neither escape as an
- * untyped error nor be dressed up as "no status yet".
- */
-export type SubHomeStatusRead =
-  | { readonly state: 'resolved'; readonly status: SettingsUiPowerStatus }
-  | { readonly state: 'absent' }
-  | { readonly state: 'unavailable' };
-
 const asQueryRecord = (value: unknown): Record<string, unknown> | null => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null
 );
 
-type HomeScopeApp = Homey.App & {
-  homeRuntimeRead?: HomeRuntimeReadPort;
-  homeMembership?: HomeMembershipPort;
-  planStatuses?: AppContext['planStatuses'];
-};
-
-/**
- * The SDK types `homey.app` as always present. It is not: during the boot and
- * uninit windows the handle exists and `app` is undefined. The seam states
- * that here rather than carrying it in a cast at the read, so `app()`'s
- * `?? null` stays a branch the compiler can see instead of a line that only
- * a comment claims is load-bearing.
- */
-type HomeScopeHomey = Omit<Homey.App['homey'], 'app'> & { app?: HomeScopeApp };
-
 /**
  * The one wiring surface of this module (setup convention: a file exposes a
  * class or a single factory, never a bag of standalone utilities). Constructed
- * per request by the `settingsUiApi` composers; holds no state beyond the
- * Homey handle, so construction is free and nothing can go stale.
+ * per request by the `settingsUiApi` composers over the running app
+ * (`readPelsHost`); holds no state beyond that handle, so construction is free
+ * and nothing can go stale.
  */
 export class SettingsUiHomeScopeAdapter {
-  public constructor(private readonly homey: HomeScopeHomey) {}
+  public constructor(private readonly host: PelsHost) {}
 
   /**
    * Classify the untrusted `query` bag of an inbound settings-UI GET. Static:
@@ -134,30 +104,13 @@ export class SettingsUiHomeScopeAdapter {
    * One sub-home's already-committed reading, or `null` when it cannot be
    * served.
    *
-   * `null` folds an unreadable `homey.app` (the SDK types it without this
-   * port, and it is absent during boot) into the port's own `unavailable` (no
-   * registry before `initHomeRuntimeRegistry` or after `runUninit`) — both
-   * mean "this producer has no committed state for that home", and neither is
-   * a value a consumer may reinterpret.
+   * `null` is the port's own `unavailable` (no registry before
+   * `initHomeRuntimeRegistry` or after `runUninit`): this producer has no
+   * committed state for that home, which no consumer may reinterpret.
    */
   public readRuntime(scope: ResolvedSubHomeScope): HomeRuntimeReading | null {
-    const read = this.app()?.homeRuntimeRead?.readHome(scope.homeId);
-    return read?.state === 'resolved' ? read.reading : null;
-  }
-
-  /**
-   * That home's own live status, out of the app's registry — the same read
-   * main's unsuffixed path makes (`getPlanStatusForUiFromApp`). Callers run it
-   * only after {@link readRuntime} proved the runtime owns the home. An app
-   * shell that is not there is classified HERE as `unavailable`, so the
-   * endpoint answers `homeScope: unavailable` instead of caching a fabricated
-   * "no status yet" for the session.
-   */
-  public readStatus(scope: ResolvedSubHomeScope): SubHomeStatusRead {
-    const registry = this.app()?.planStatuses;
-    if (!registry) return { state: 'unavailable' };
-    const read = registry.read(scope.homeId);
-    return read.state === 'resolved' ? { state: 'resolved', status: read.status } : { state: 'absent' };
+    const read = this.host.homeRuntimeRead.readHome(scope.homeId);
+    return read.state === 'resolved' ? read.reading : null;
   }
 
   /**
@@ -177,7 +130,7 @@ export class SettingsUiHomeScopeAdapter {
     scope: ResolvedSubHomeScope,
     devices: readonly T[],
   ): T[] | null {
-    const membership = this.app()?.homeMembership;
+    const membership = this.host.homeMembership;
     if (!membership) return null;
     if (!membership.isOwnershipReady() || membership.hasPendingOwnershipGeneration()) return null;
     return devices.filter((device) => membership.getHomeIdForDevice(device.id) === scope.homeId);
@@ -185,15 +138,7 @@ export class SettingsUiHomeScopeAdapter {
 
   /** The devices the whole-home list offers (`lib/home/wholeHomeDeviceListing.ts`). */
   public filterWholeHomeDevices<T extends Parameters<typeof isListedWholeHomeDevice>[1]>(devices: readonly T[]): T[] {
-    const membership = this.app()?.homeMembership;
+    const membership = this.host.homeMembership;
     return devices.filter((device) => isListedWholeHomeDevice(membership, device));
-  }
-
-  private app(): HomeScopeApp | null {
-    if (!this.homey || typeof this.homey !== 'object') return null;
-    // `homey.app` is undefined during the boot/uninit window (see
-    // `HomeScopeHomey`); collapse that to the declared `null` so a caller
-    // cannot type-check against a value that is actually undefined.
-    return this.homey.app ?? null;
   }
 }

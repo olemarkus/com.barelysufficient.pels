@@ -1,9 +1,7 @@
 import { temperaturePolicyPriceSettings } from '../packages/shared-domain/src/settings/temperatureControl';
 import { emitPowerTrackerPersistedForApp, emitSettingsUiDevicesUpdatedForApp } from './settingsUiAppRuntime';
 import { openAppUserdataDatabase, type UserdataDatabase } from '../lib/store/userdataDatabase';
-import { retireLegacyPlanStatusKeys } from '../lib/plan/planStatusRegistry';
-import { unsetRetiredSettingsKeys } from '../lib/store/retiredSettingsKeys';
-import type { AppContext, FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
+import type { AppContext } from '../lib/app/appContext';
 import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
@@ -22,10 +20,9 @@ import type {
   ObservedStateOfChargeRead,
   ObservedTemperatureRead,
 } from '../lib/observer/observedDeviceStateProjection';
-import type { HomeyDeviceLike } from '../lib/utils/types';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
-import { getDebugEmitter, getDebugTopics, setDebugTopics } from '../lib/logging/logger';
-import type { StructuredDebugEmitter, Logger as PinoLogger } from '../lib/logging/logger';
+import { getDebugTopics, setDebugTopics } from '../lib/logging/logger';
+import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { PendingTargetObservationSource } from '../lib/plan/planTypes';
 import type { PlanService } from '../lib/plan/planService';
 import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudgetTypes';
@@ -37,32 +34,17 @@ import {
   type CapacityScalarSettingsRead,
   type CapacitySettingsReloader,
 } from '../lib/power/capacitySettingsStore';
-import type {
-  FlowReportedCapabilityId,
-  FlowReportedCapabilitiesByDevice,
-  FlowReportedCapabilitiesForDevice,
-} from '../lib/device/transport/flowReportedCapabilities';
-import {
-  getFlowReportedDeviceIds,
-  readFlowReportedCapabilitiesForDevice,
-} from '../lib/device/transport/flowReportedCapabilities';
 import { buildDebugLoggingTopics } from '../lib/utils/debugLoggingSettings';
-import {
-  normalizeDeviceControlProfiles as normalizeStoredDeviceControlProfiles,
-} from '../packages/shared-domain/src/deviceControlProfiles';
-import { logHomeyDeviceComparisonForDebugFromApp } from './appDebugHelpers';
 import { normalizeError } from '../lib/utils/errorUtils';
-import {
-  isTemperatureControlDisabledForApp,
-  loadCapacitySettingsFromHomey,
-  loadTemperatureControlPolicySettingsForApp,
-} from './appSettingsHelpers';
-import { migrateManagedDevices } from './appManagedDeviceMigration';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
-import { runBootMigrations } from './appBootMigrations';
 import { registerAppFlowCards } from './appInit';
+import {
+  requireDailyBudgetService,
+  requireDeviceManager,
+  requirePlanService,
+  requirePriceCoordinator,
+} from './appInit/contextGuards';
 import { buildPeriodicStatusLogFields } from '../lib/diagnostics/periodicStatus';
-import type { FlowBackedDeviceState } from '../lib/device/flowBackedDeviceState';
 import type { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
 import type { AppPowerTracker } from './appPowerTracker';
@@ -78,48 +60,25 @@ import { withAppHostApi } from './appHostApi';
 // eslint-disable-next-line max-lines-per-function
 export const withAppRuntimeApi = (Base: ReturnType<typeof withAppHostApi>) => {
 abstract class AppRuntimeApi extends Base {
-  protected abstract readonly flowBacked: FlowBackedDeviceState;
   protected abstract readonly timers: TimerRegistry;
-  protected abstract flowReportedCapabilities: FlowReportedCapabilitiesByDevice;
   protected abstract readonly backgroundTasks: BackgroundTasksController;
   protected abstract readonly powerSamplePipeline: PowerSamplePipeline;
-  protected abstract observedDeviceStateProjection: ObservedDeviceStateProjection;
+  protected abstract readonly observedDeviceStateProjection: ObservedDeviceStateProjection;
   public abstract getPowerCalibrationStore(): PowerCalibrationStore;
   protected abstract readonly serviceWiring: AppServiceWiring;
   protected abstract readonly nativeWiring: AppNativeWiring;
   protected abstract readonly powerTrackerHelpers: AppPowerTracker;
-  protected abstract structuredLogger?: PinoLogger;
   protected abstract overheadToken?: Homey.FlowToken;
-  protected abstract nativeEvWiringDevices: Record<string, boolean>;
   protected abstract readonly capacitySettingsReloader: CapacitySettingsReloader;
 
-  public setExpectedOverride(deviceId: string, kw: number): boolean {
-    return this.flowBacked.setExpectedOverride(deviceId, kw);
-  }
-  public reloadExpectedPowerOverrides = (): void => this.flowBacked.reloadExpectedPowerOverrides();
-  public getFlowReportedCapabilitiesForDevice = (deviceId: string): FlowReportedCapabilitiesForDevice => (
-    readFlowReportedCapabilitiesForDevice(this.flowReportedCapabilities, deviceId)
-  );
-  public getFlowReportedDeviceIds = (): string[] => getFlowReportedDeviceIds(this.flowReportedCapabilities);
-  public reportFlowBackedCapability(params: {
-    deviceId: string; capabilityId: FlowReportedCapabilityId; value: boolean | number | string; reportedAt?: number;
-  }): FlowBackedCapabilityReportOutcome {
-    return this.flowBacked.reportFlowBackedCapability(params);
-  }
-  public async getHomeyDevicesForFlow(): Promise<HomeyDeviceLike[]> {
-    return this.flowBacked.getHomeyDevicesForFlow();
-  }
-  public async emitFlowBackedRefreshRequests(deviceIds: string[]): Promise<void> {
-    return this.flowBacked.emitFlowBackedRefreshRequests(deviceIds);
-  }
   public reloadWeatherCollector(): void {
-    this.backgroundTasks.startWeatherCollector(this.weatherCollector);
+    this.backgroundTasks.startWeatherCollector(this.runtime.backgroundCollectors?.weatherCollector);
   }
   public recordPowerSample(powerW: number, nowMs?: number): ReturnType<AppContext['recordPowerSample']> {
     return this.powerSamplePipeline.recordPowerSample(powerW, nowMs);
   }
   public loadDailyBudgetSettings(): void {
-    this.requireDailyBudgetService().loadSettings();
+    requireDailyBudgetService(this.context).loadSettings();
   }
   public updateDailyBudgetState(options?: DailyBudgetUpdateStateOptions): void {
     this.updateDailyBudgetAndRecordCap(options);
@@ -210,70 +169,30 @@ abstract class AppRuntimeApi extends Base {
   public isLiveMeasuredDraw(deviceId: string): boolean {
     return this.observedDeviceStateProjection.isLiveMeasuredDraw(deviceId);
   }
-  public async logTargetRetryComparison(params: {
-    deviceId: string; name: string; target: 'temperature'; desired: number; observedValue?: unknown;
-    observedSource?: string; retryCount: number; skipContext: 'plan' | 'shedding' | 'overshoot';
-  }): Promise<void> {
-    await logHomeyDeviceComparisonForDebugFromApp(
-      this,
-      params.deviceId,
-      `target_retry:${params.skipContext}:${params.target}`,
-      params.desired,
-      params.observedValue,
-      params.observedSource,
-    );
-  }
   public syncLivePlanStateAfterTargetActuation(source: PendingTargetObservationSource): boolean | void {
-    return this.requirePlanService().syncLivePlanStateInline(source);
+    return requirePlanService(this.context).syncLivePlanStateInline(source);
   }
   public evaluateHeadroomForDevice(
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
   ) {
-    return this.requirePlanService().evaluateHeadroomForDevice(params);
+    return requirePlanService(this.context).evaluateHeadroomForDevice(params);
   }
   public getPowerCalibrationSnapshot(): PowerCalibrationSnapshot {
     return this.getPowerCalibrationStore().getSnapshot();
   }
   public async onInit(): Promise<void> { await this.serviceWiring.runInit(); }
-  protected runNativeWiringDetectionBestEffort(): void { this.nativeWiring.runNativeWiringDetectionBestEffort(); }
   protected delayMs(ms: number): Promise<void> { return this.nativeWiring.delayMs(ms); }
-  protected resolveNativeWiringEnabled(deviceId: string): boolean {
-    return this.nativeWiring.resolveNativeWiringEnabled(deviceId);
-  }
   protected applyNativeWiringAutoDecisions(): Promise<void> {
     return this.nativeWiring.applyNativeWiringAutoDecisions();
   }
   public refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult> {
     return this.nativeWiring.refreshFlowConflictsForUi();
   }
-  protected initPriceCoordinator(): Promise<void> { return this.serviceWiring.initPriceCoordinator(); }
-  protected initDailyBudgetService(): void { this.serviceWiring.initDailyBudgetService(); }
-  protected initDeviceManager(): Promise<void> { return this.serviceWiring.initDeviceManager(); }
-  protected initBatteryControl(): void { this.serviceWiring.initBatteryControl(); }
-  protected initCapacityGuard(): void { this.serviceWiring.initCapacityGuard(); }
-  protected initPlanRuntime(): void { this.serviceWiring.initPlanRuntime(); }
-  protected initDeviceDiagnosticsService(): void { this.serviceWiring.initDeviceDiagnosticsService(); }
-  protected subscribePlanObservedState(): void { this.serviceWiring.subscribePlanObservedState(); }
-  protected captureDefaultDynamicSoftLimit(): void { this.serviceWiring.captureDefaultDynamicSoftLimit(); }
-  protected initSettingsHandler(): void { this.serviceWiring.initSettingsHandler(); }
   public async onUninit(): Promise<void> { await this.serviceWiring.runUninit(); }
-  public logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
-    if (this.context.debugLoggingTopics.has(topic)) this.log(...args);
-  }
   public getStructuredLogger(component: string): PinoLogger | undefined {
-    return this.structuredLogger?.child({ component });
+    return this.runtime.structuredLogger?.child({ component });
   }
   public getApiStructuredLogger(): PinoLogger | undefined { return this.getStructuredLogger('api'); }
-  /**
-   * The wiring-side name for {@link getDebugEmitter}. Callers that still take a
-   * threaded `debugStructured` are handed one from here; a caller that resolves
-   * its own emitter should reach for `getDebugEmitter` directly. Both are the
-   * same emitter, so a file migrating off the parameter changes nothing about
-   * what it emits.
-   */
-  public getStructuredDebugEmitter(component: string, debugTopic: DebugLoggingTopic): StructuredDebugEmitter {
-    return getDebugEmitter(component, debugTopic);
-  }
   public getDynamicSoftLimitOverride(): number | null {
     if (
       !this.context.defaultComputeDynamicSoftLimit
@@ -285,14 +204,14 @@ abstract class AppRuntimeApi extends Base {
     return Number.isFinite(value) ? value : null;
   }
   public updatePriceOptimizationEnabled = (logChange = false): void => {
-    this.requirePriceCoordinator().updatePriceOptimizationEnabled(logChange);
+    requirePriceCoordinator(this.context).updatePriceOptimizationEnabled(logChange);
   };
   public get priceOptimizationEnabled(): boolean {
-    return this.requirePriceCoordinator().getPriceOptimizationEnabled();
+    return requirePriceCoordinator(this.context).getPriceOptimizationEnabled();
   }
   public get priceOptimizationSettings() {
     return temperaturePolicyPriceSettings(
-      this.requirePriceCoordinator().getPriceOptimizationSettings(),
+      requirePriceCoordinator(this.context).getPriceOptimizationSettings(),
       this.context.observedTemperatureModeUpdates.allowsAutomaticAdjustments
         .bind(this.context.observedTemperatureModeUpdates),
     );
@@ -343,14 +262,6 @@ abstract class AppRuntimeApi extends Base {
   public emitSettingsUiDevicesUpdated(): void {
     emitSettingsUiDevicesUpdatedForApp(this.homey, (message, error) => this.error(message, error));
   }
-  protected runStartupSettingsMigrations(): void {
-    migrateManagedDevices({ homey: this.homey });
-    runBootMigrations({ homey: this.homey });
-    // Nothing to import: a status is a fact of the run that publishes it.
-    retireLegacyPlanStatusKeys(this.homey.settings);
-    unsetRetiredSettingsKeys(this.homey.settings);
-  }
-  public areFlowBackedCardsAvailable(): boolean { return this.flowBacked.areFlowBackedCardsAvailable(); }
   public loadCapacitySettings = (): void => { this.capacitySettingsReloader.reload(); };
   public noteCapacitySettingWritten = (key: string): void => { this.capacitySettingsReloader.noteWritten(key); };
   public recoverCapacitySettingsAfterSkippedWrite = (key: string): void => {
@@ -365,34 +276,13 @@ abstract class AppRuntimeApi extends Base {
    * persisted settings reload with it either way.
    */
   protected installCapacitySettingsRead(capacityRead: CapacityScalarSettingsRead): void {
-    const { dryRun: capacityDryRun, ...capacitySettings } = resolveInstalledCapacityScalars(
+    const { dryRun, ...capacitySettings } = resolveInstalledCapacityScalars(
       capacityRead,
       { ...this.context.capacitySettings, dryRun: this.context.capacityDryRun },
     );
-    const next = loadCapacitySettingsFromHomey({
-      settings: this.homey.settings,
-      current: {
-        capacitySettings,
-        capacityDryRun,
-        controllableDevices: this.context.controllableDevices,
-        managedDevices: this.context.managedDevices,
-        budgetExemptDevices: this.context.budgetExemptDevices,
-        deviceStartPolicies: this.context.deviceStartPolicies,
-        temperatureControlDisabledDevices: this.context.temperatureControlDisabledDevices,
-        temperatureControlPolicyState: this.context.temperatureControlPolicyState,
-        temperatureBoostSettings: this.context.temperatureBoostSettings,
-        evBoostSettings: this.context.evBoostSettings,
-        evCarAssociations: this.context.evCarAssociations,
-        nativeEvWiringDevices: this.nativeEvWiringDevices,
-        deviceDriverOverrides: this.context.deviceDriverOverrides,
-        deviceControlProfiles: this.context.deviceControlProfiles,
-        deviceTargetPowerConfigs: this.context.deviceTargetPowerConfigs,
-        shedBehaviors: this.context.shedBehaviors,
-      },
-    });
-    Object.assign(this.context, next, {
-      deviceControlProfiles: normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {},
-    });
+    this.context.deviceControlSettings.reload();
+    this.context.capacitySettings = capacitySettings;
+    this.context.capacityDryRun = dryRun;
     this.reloadHomeModeCatalog();
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.context.capacitySettings.marginKw);
@@ -404,11 +294,8 @@ abstract class AppRuntimeApi extends Base {
       detail: 'capacity_settings_read_recovered',
     });
   }
-  public loadTemperatureControlPolicySettings = (): void => (
-    loadTemperatureControlPolicySettingsForApp(this.context)
-  );
   public loadPriceOptimizationSettings = (): void => {
-    this.requirePriceCoordinator().loadPriceOptimizationSettings();
+    requirePriceCoordinator(this.context).loadPriceOptimizationSettings();
   };
   public updateOverheadToken = async (value?: number): Promise<void> => {
     const overhead = Number.isFinite(value) ? Number(value) : this.context.capacitySettings.marginKw;
@@ -425,8 +312,6 @@ abstract class AppRuntimeApi extends Base {
       });
     }
   };
-  protected stopPowerTracker(): void { this.powerTrackerHelpers.stopPowerTracker(); }
-  protected startPowerTrackerPruning(): void { this.powerTrackerHelpers.startPowerTrackerPruning(); }
   protected savePowerTracker(nextState: AppContext['powerTracker']): void {
     this.powerTrackerHelpers.savePowerTracker(nextState);
   }
@@ -434,7 +319,7 @@ abstract class AppRuntimeApi extends Base {
     this.powerTrackerHelpers.replacePowerTrackerForUi(nextState);
   }
   protected updateDailyBudgetAndRecordCap(options?: DailyBudgetUpdateStateOptions): void {
-    const dailyBudgetService = this.requireDailyBudgetService();
+    const dailyBudgetService = requireDailyBudgetService(this.context);
     this.context.powerTracker = updateDailyBudgetAndRecordCapForApp({
       powerTracker: this.context.powerTracker,
       dailyBudgetService,
@@ -452,7 +337,9 @@ abstract class AppRuntimeApi extends Base {
     );
   }
   public isTemperatureControlDisabled = (deviceId: string): boolean => (
-    isTemperatureControlDisabledForApp(this.context, deviceId)
+    this.context.deviceControlSettings.isTemperatureControlDisabled(
+      deviceId, this.context.deviceReads.descriptor(deviceId),
+    )
   );
   protected logPeriodicStatus(options: { includeDeviceHealth?: boolean } = {}): void {
     if (!this.context.capacityGuard) throw new Error('CapacityGuard must be initialized');
@@ -468,12 +355,12 @@ abstract class AppRuntimeApi extends Base {
       sheddingActive: this.context.planEngine.state.sheddingActive,
     }));
     if (options.includeDeviceHealth === true) {
-      const deviceStatus = this.requireDeviceManager().getPeriodicStatusMetrics();
+      const deviceStatus = requireDeviceManager(this.context).getPeriodicStatusMetrics();
       if (deviceStatus) {
         this.getStructuredLogger('devices')?.info({ event: 'periodic_device_health_summary', ...deviceStatus });
       }
     }
-    const dailyBudgetStatus = this.requireDailyBudgetService().getPeriodicStatusFields();
+    const dailyBudgetStatus = requireDailyBudgetService(this.context).getPeriodicStatusFields();
     if (dailyBudgetStatus) this.getStructuredLogger('daily_budget')?.info(dailyBudgetStatus);
   }
 }

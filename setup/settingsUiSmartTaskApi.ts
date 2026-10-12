@@ -1,15 +1,10 @@
 import type Homey from 'homey';
 import type {
-  DeferredObjectivePlanPreviewCandidate,
-  DeferredObjectivePlanPreviewEstimate,
-} from '../packages/contracts/src/deferredObjectivePlanPreview';
-import type {
   SettingsUiSmartTaskCancelResponse,
   SettingsUiSmartTaskPreviewResponse,
   SettingsUiSmartTaskRejectReason,
   SettingsUiSmartTaskUpdateResponse,
 } from '../packages/contracts/src/smartTaskEdit';
-import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
 import type { SmartTaskHomeScope } from '../packages/contracts/src/smartTaskHomeScope';
 import {
   formatScheduledHoursWindow,
@@ -27,7 +22,7 @@ import {
 } from '../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveSettingsEntry } from '../packages/contracts/src/deferredObjectiveSettings';
 import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjectives/objectiveStore';
-import type { CancelDeferredObjectiveOutcome } from './appInit/deferredObjectiveCancel';
+import { readPelsHost } from '../lib/app/pelsHost';
 
 // Settings-UI smart-task edit lane (detail-page edit + clear). Editing routes
 // through the SAME validated app method the create_smart_task widget uses
@@ -38,27 +33,8 @@ import type { CancelDeferredObjectiveOutcome } from './appInit/deferredObjective
 // task-must-exist guard: an edit/clear against a device whose task just ended
 // answers `task_not_found` instead of silently creating a fresh task.
 
-type SmartTaskEditApp = Homey.App & {
-  resolveSmartTaskHomeScope?: (deviceId: string) => SmartTaskHomeScope;
-  previewDeferredObjectivePlan?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ) => DeferredObjectivePlanPreviewEstimate;
-  createDeferredObjective?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-    rescuePolicy?: 'preserve' | 'replace',
-  ) => WidgetObjectiveWriteResult;
-  cancelDeferredObjective?: (deviceId: string) => CancelDeferredObjectiveOutcome;
-};
-
 type ApiContext = {
   homey: Homey.App['homey'];
-};
-
-const getApp = (homey: Homey.App['homey']): SmartTaskEditApp | null => {
-  if (!homey || typeof homey !== 'object') return null;
-  return homey.app;
 };
 
 const previewReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartTaskPreviewResponse => ({
@@ -135,16 +111,15 @@ export const previewSettingsUiSmartTask = (
 ): SettingsUiSmartTaskPreviewResponse => {
   const request = parseSmartTaskCandidateRequest(body);
   if (!request) return previewReject('invalid_request');
-  const app = getApp(homey);
-  // Call app methods on `homey.app` (not via an extracted const): they rely on
-  // their `this` (`this.getPlanInputSnapshot()`, …).
-  if (typeof app?.previewDeferredObjectivePlan !== 'function') return previewReject('unavailable');
+  const host = readPelsHost(homey);
+  // Call the app's methods on the host (never a detached reference): they rely
+  // on their `this` (`this.getPlanInputSnapshot()`, …).
+  if (!host) return previewReject('unavailable');
   // Preview is read-only all the way to the public handler. In particular it
   // does not opportunistically migrate settings or write the migration marker.
   const gate = gateEditableTask(homey, request.deviceId, false);
   if (!gate.editable) return previewReject(gate.reason);
-  if (typeof app.resolveSmartTaskHomeScope !== 'function') return previewReject('unavailable');
-  const scopeReject = rejectForHomeScope(app.resolveSmartTaskHomeScope(request.deviceId));
+  const scopeReject = rejectForHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
   if (scopeReject !== null) return previewReject(scopeReject);
 
   const timeZone = homey.clock.getTimezone();
@@ -163,7 +138,7 @@ export const previewSettingsUiSmartTask = (
   // did, made the two disagree the moment a toggle changed.)
   const candidate = buildValidSmartTaskCandidate(request, deadlineAtMs, gate.entry.rescue);
   if (!candidate) return previewReject('invalid_candidate');
-  const estimate = app.previewDeferredObjectivePlan(request.deviceId, candidate);
+  const estimate = host.previewDeferredObjectivePlan(request.deviceId, candidate);
   return {
     ok: true,
     deadlineAtMs,
@@ -180,12 +155,11 @@ export const updateSettingsUiSmartTask = (
 ): SettingsUiSmartTaskUpdateResponse => {
   const request = parseSmartTaskCandidateRequest(body);
   if (!request) return updateReject('invalid_request');
-  const app = getApp(homey);
-  if (typeof app?.createDeferredObjective !== 'function') return updateReject('unavailable');
+  const host = readPelsHost(homey);
+  if (!host) return updateReject('unavailable');
   const gate = gateEditableTask(homey, request.deviceId, true);
   if (!gate.editable) return updateReject(gate.reason);
-  if (typeof app.resolveSmartTaskHomeScope !== 'function') return updateReject('unavailable');
-  const scopeReject = rejectForHomeScope(app.resolveSmartTaskHomeScope(request.deviceId));
+  const scopeReject = rejectForHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
   if (scopeReject !== null) return updateReject(scopeReject);
 
   const timeZone = homey.clock.getTimezone();
@@ -206,7 +180,7 @@ export const updateSettingsUiSmartTask = (
   // `'preserve'` is a WHOLE-OBJECT fallback — it only fires when the entry
   // carries no rescue at all — so leaving it on would drop every standing
   // permission the moment the request granted any one of them.
-  const result = app.createDeferredObjective(
+  const result = host.createDeferredObjective(
     request.deviceId,
     candidate,
     'replace',
@@ -223,9 +197,9 @@ export const cancelSettingsUiSmartTask = (
     ? (body as { deviceId: string }).deviceId.trim()
     : '';
   if (!deviceId) return { ok: false, reason: 'invalid_request' };
-  const app = getApp(homey);
-  if (typeof app?.cancelDeferredObjective !== 'function') return { ok: false, reason: 'unavailable' };
-  const result = app.cancelDeferredObjective(deviceId);
+  const host = readPelsHost(homey);
+  if (!host) return { ok: false, reason: 'unavailable' };
+  const result = host.cancelDeferredObjective(deviceId);
   if (result.ok) return { ok: true };
   return { ok: false, reason: result.reason === 'task_not_found' ? 'task_not_found' : 'write_conflict' };
 };

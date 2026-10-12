@@ -1,3 +1,4 @@
+import { getDebugEmitter } from '../../lib/logging/logger';
 import {
   requireBatteryControl,
   requireDailyBudgetService,
@@ -41,7 +42,7 @@ export function registerAppFlowCards(
     handleOperatingModeChange: (rawMode) => ctx.handleOperatingModeChange(rawMode),
     getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     getPriceLevelChangesWithin: (window) => ctx.getPriceLevelChangesWithin(window),
-    areFlowBackedCardsAvailable: () => ctx.areFlowBackedCardsAvailable(),
+    areFlowBackedCardsAvailable: () => ctx.flowBacked.areFlowBackedCardsAvailable(),
     recordPowerSample: async (powerW) => {
       const source = readConfiguredPowerSource(ctx.homey.settings);
       if (source.state === 'suspect') {
@@ -73,7 +74,7 @@ export function registerAppFlowCards(
     getHeadroom: () => resolveObservedHeadroom(ctx.powerTracker, ctx.computeDynamicSoftLimit()),
     getSnapshot: () => ctx.getFlowSnapshot(),
     getDeviceDescriptors: () => ctx.getFlowDeviceDescriptors(),
-    getControllableDevices: () => ctx.controllableDevices,
+    getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,
     readBatteryControl: (deviceId) => requireBatteryControl(ctx).readControlCapability(deviceId),
     listDeviceTargetModes,
     setDeviceModeTarget,
@@ -84,12 +85,12 @@ export function registerAppFlowCards(
       requireDeviceManager(ctx).resolveTemperatureTarget(deviceId, temperatureC)
     ),
     refreshSnapshot: (options) => ctx.refreshTargetDevicesSnapshot(options),
-    getHomeyDevicesForFlow: () => ctx.getHomeyDevicesForFlow(),
-    reportFlowBackedCapability: (params) => ctx.reportFlowBackedCapability(params),
+    getHomeyDevicesForFlow: () => ctx.flowBacked.getHomeyDevicesForFlow(),
+    reportFlowBackedCapability: (params) => ctx.flowBacked.reportFlowBackedCapability(params),
     reportSteppedLoadActualStep: (deviceId, stepId, planningPowerW) => (
       ctx.deviceControlHelpers.reportSteppedLoadActualStep(deviceId, stepId, planningPowerW)
     ),
-    setExpectedOverride: (deviceId, kw) => ctx.setExpectedOverride(deviceId, kw),
+    setExpectedOverride: (deviceId, kw) => ctx.flowBacked.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => ctx.storeFlowPriceData(kind, raw),
     getDeferredObjectiveSettings: () => {
       // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
@@ -119,11 +120,11 @@ export function registerAppFlowCards(
     getDeferredObjectiveActivePlans: () => (
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
-    getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
-    getDeferredObjectivePlanRevisionBus: () => ctx.deferredObjectivePlanRevisionBus,
-    getDeferredObjectiveEndedBus: () => ctx.deferredObjectiveEndedBus,
-    getDeferredObjectiveHoursRemainingBus: () => ctx.deferredObjectiveHoursRemainingBus,
-    getDeferredObjectiveHoursRemainingTracker: () => ctx.deferredObjectiveHoursRemainingTracker,
+    deferredObjectiveStatusBus: ctx.deferredObjectiveStatusBus,
+    deferredObjectivePlanRevisionBus: ctx.deferredObjectivePlanRevisionBus,
+    deferredObjectiveEndedBus: ctx.deferredObjectiveEndedBus,
+    deferredObjectiveHoursRemainingBus: ctx.deferredObjectiveHoursRemainingBus,
+    deferredObjectiveHoursRemainingTracker: ctx.deferredObjectiveHoursRemainingTracker,
     evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),
     loadDailyBudgetSettings: () => requireDailyBudgetService(ctx).loadSettings(),
     updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
@@ -131,6 +132,6 @@ export function registerAppFlowCards(
     getTimeZone: () => ctx.getTimeZone(),
     getNow: () => ctx.getNow(),
     getStructuredLogger: (component) => ctx.getStructuredLogger(component),
-    debugStructured: ctx.getStructuredDebugEmitter('flow', 'settings'),
+    debugStructured: getDebugEmitter('flow', 'settings'),
   });
 }

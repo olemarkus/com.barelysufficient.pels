@@ -1,7 +1,9 @@
 import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
-import type { Logger } from '../../lib/logging/logger';
+import { getDebugEmitter, type Logger } from '../../lib/logging/logger';
 import type { PvForecastController } from '../../setup/appInit/createPvForecastService';
+import type { BackgroundCollectors } from '../../setup/appInit/startBackgroundCollectors';
+import type { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { partialDouble } from '../helpers/partialDouble';
 import type MyApp from '../../app.ts';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
@@ -33,6 +35,8 @@ import {
   DEVICE_LAST_CONTROLLED_MS,
   EV_BOOST_SETTINGS,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
+  MANAGED_DEVICES,
+  NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
   MAIN_HOME_ID,
 } from '../../lib/utils/settingsKeys';
@@ -45,6 +49,7 @@ import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { STEPPED_LOAD_COMMAND_STALE_MS } from '../../lib/executor/steppedCommandState';
 import { getCurrentContext, runWithContext } from '../../lib/logging/alsContext';
+import { runStartupSettingsMigrations } from '../../setup/appLifecycleHelpers';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
@@ -118,24 +123,25 @@ const rebuildAtFirstReading = async (
 
 const initApp = async (app: MyApp) => {
   app['updateDebugLoggingEnabled']();
+  const wiring = app['serviceWiring'];
   app['openUserdata']();
-  app['initPriceCoordinator']();
-  app['runStartupSettingsMigrations']();
+  void wiring.initPriceCoordinator();
+  runStartupSettingsMigrations(app.homey);
   app['loadCapacitySettings']();
-  app['initDailyBudgetService']();
+  wiring.initDailyBudgetService();
   app['hydratePowerTracker']();
   // The removed settings-reload hook used to refresh the daily budget's
   // snapshot here; keep that side effect for the specs that read it.
   app.dailyBudgetService.updateState({ refreshObservedStats: false });
   app['loadPriceOptimizationSettings']();
-  await app['initDeviceManager']();
-  app['serviceWiring'].initHomeMembership();
-  app['initBatteryControl']();
-  app['initCapacityGuard']();
-  app['initPlanRuntime']();
-  app['subscribePlanObservedState']();
-  app['captureDefaultDynamicSoftLimit']();
-  app['initSettingsHandler']();
+  await wiring.initDeviceManager();
+  wiring.initHomeMembership();
+  wiring.initBatteryControl();
+  wiring.initCapacityGuard();
+  wiring.initPlanRuntime();
+  wiring.subscribePlanObservedState();
+  wiring.captureDefaultDynamicSoftLimit();
+  wiring.initSettingsHandler();
   app['registerFlowCards']();
   await app.refreshTargetDevicesSnapshot();
   await app.planService.rebuildPlanFromCache('unknown');
@@ -173,10 +179,11 @@ describe('MyApp initialization', () => {
 
   it('resolves native wiring: explicit user choice wins, else conflict-gated auto-decision', () => {
     const app = createApp();
-    app['nativeEvWiringDevices'] = { 'user-on': true, 'user-off': false };
+    mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, { 'user-on': true, 'user-off': false });
+    app.deviceControlSettings.reload();
     app['autoNativeWiringDecisions'] = { 'auto-on': true };
 
-    const resolve = (id: string) => app['resolveNativeWiringEnabled'](id);
+    const resolve = (id: string) => app['nativeWiring'].resolveNativeWiringEnabled(id);
 
     // Explicit user entries always win, even against an auto-decision.
     expect(resolve('user-on')).toBe(true);
@@ -305,7 +312,7 @@ describe('MyApp initialization', () => {
 
       expect(app['flowReportedCapabilities']).toEqual({});
       expect(mockHomeyInstance.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES)).toEqual({});
-      expect(app.getFlowReportedDeviceIds()).toEqual([]);
+      expect(app.flowBacked.getFlowReportedDeviceIds()).toEqual([]);
     } finally {
       mockHomeyInstance.flow.getActionCard = originalGetActionCard;
       mockHomeyInstance.flow.getTriggerCard = originalGetTriggerCard;
@@ -391,7 +398,7 @@ describe('MyApp initialization', () => {
     const childLogger = { info: vi.fn() };
     const child = vi.fn().mockReturnValue(childLogger);
 
-    app['structuredLogger'] = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
+    app['runtime'].structuredLogger = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
 
     const logger = app.getStructuredLogger('reconcile');
 
@@ -410,7 +417,7 @@ describe('MyApp initialization', () => {
       mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['diagnostics']);
       app.updateDebugLoggingEnabled();
 
-      app.getStructuredDebugEmitter('reconcile', 'diagnostics')({
+      getDebugEmitter('reconcile', 'diagnostics')({
         event: 'device_update_processed',
         deviceId: 'dev-1',
       });
@@ -432,7 +439,7 @@ describe('MyApp initialization', () => {
       mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['plan']);
       app.updateDebugLoggingEnabled();
 
-      app.getStructuredDebugEmitter('reconcile', 'diagnostics')({
+      getDebugEmitter('reconcile', 'diagnostics')({
         event: 'device_update_processed',
         deviceId: 'dev-1',
       });
@@ -474,9 +481,9 @@ describe('MyApp initialization', () => {
 
     const profiles = buildSteppedLoadProfiles('dev-1');
     mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, profiles);
-    await waitFor(() => app.deviceControlProfiles['dev-1'] !== undefined);
+    await waitFor(() => app.deviceControlSettings.getDeviceControlProfile('dev-1') !== undefined);
 
-    expect(app.deviceControlProfiles).toEqual(profiles);
+    expect(app.deviceControlSettings.getDeviceControlProfile('dev-1')).toEqual(profiles['dev-1']);
     expect(app.capacitySettings).toEqual({
       capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60,
     });
@@ -1056,7 +1063,10 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
     const recordSample = vi.fn();
-    app['pvForecast'] = partialDouble<PvForecastController>({ recordSample });
+    app['runtime'].backgroundCollectors = partialDouble<BackgroundCollectors>({
+      pvForecast: partialDouble<PvForecastController>({ recordSample }),
+      weatherCollector: partialDouble<WeatherCollector>({ getCurrentOutdoorTemperatureC: () => undefined }),
+    });
 
     const now = new Date('2026-03-03T11:20:00.000Z').getTime();
     // Net is negative while exporting — it must reach the recorder unfloored,
@@ -3065,23 +3075,23 @@ describe('periodic snapshot refresh scheduling', () => {
   });
 
   it('does not arm multiple concurrent post-actuation refresh timers', async () => {
-    const app = createApp();
-    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
-    const debugEmit = vi.fn();
-    vi.spyOn(app, 'getStructuredDebugEmitter').mockReturnValue(debugEmit);
+    const capture = captureLogger();
+    try {
+      const app = createApp();
+      const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
-    app.snapshotHelpers.schedulePostActuationRefresh();
-    expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
-    app.snapshotHelpers.schedulePostActuationRefresh();
+      app.snapshotHelpers.schedulePostActuationRefresh();
+      expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
+      app.snapshotHelpers.schedulePostActuationRefresh();
 
-    // Still exactly one armed: the second call took the skip branch below rather
-    // than re-arming, which is what `post_actuation_refresh_skipped` proves.
-    expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
-    expect(refreshSpy).not.toHaveBeenCalled();
-    expect(debugEmit).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'post_actuation_refresh_skipped',
-      reason: 'already_scheduled',
-    }));
+      // Still exactly one armed: the second call took the skip branch below rather
+      // than re-arming, which is what `post_actuation_refresh_skipped` proves.
+      expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
+      expect(refreshSpy).not.toHaveBeenCalled();
+      expect(capture.findEvent('post_actuation_refresh_skipped')).toMatchObject({ reason: 'already_scheduled' });
+    } finally {
+      capture.restore();
+    }
   });
 
   it('clears post-actuation timer state on stop so it can be armed again', () => {
@@ -3109,26 +3119,31 @@ describe('periodic snapshot refresh scheduling', () => {
   });
 
   it('detaches the global post-actuation refresh from the scheduling home context', async () => {
-    const app = createApp();
-    const refreshContexts: Array<Record<string, unknown>> = [];
-    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot')
-      .mockImplementation(async () => { refreshContexts.push(getCurrentContext()); });
-    const emitted: Array<{ event: string; context: Record<string, unknown> }> = [];
-    vi.spyOn(app, 'getStructuredDebugEmitter').mockImplementation(() => (
-      (payload: Record<string, unknown>) => { emitted.push({ event: String(payload.event), context: getCurrentContext() }); }
-    ));
+    // The root logger mixes the async context into every line, so each event
+    // carries the context it was emitted in.
+    const capture = captureLogger();
+    try {
+      const app = createApp();
+      const refreshContexts: Array<Record<string, unknown>> = [];
+      const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot')
+        .mockImplementation(async () => { refreshContexts.push(getCurrentContext()); });
 
-    runWithContext({ homeId: 'h_area', rebuildId: 'rb_test' }, () => {
-      app.snapshotHelpers.schedulePostActuationRefresh();
-    });
-    await vi.advanceTimersByTimeAsync(5_000);
+      runWithContext({ homeId: 'h_area', rebuildId: 'rb_test' }, () => {
+        app.snapshotHelpers.schedulePostActuationRefresh();
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
 
-    expect(emitted.find(({ event }) => event === 'post_actuation_refresh_scheduled')?.context)
-      .toMatchObject({ homeId: 'h_area', rebuildId: 'rb_test' });
-    expect(emitted.find(({ event }) => event === 'post_actuation_refresh_running')?.context)
-      .toEqual({});
-    expect(refreshContexts).toEqual([{}]);
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(capture.findEvent('post_actuation_refresh_scheduled'))
+        .toMatchObject({ homeId: 'h_area', rebuildId: 'rb_test' });
+      const running = capture.findEvent('post_actuation_refresh_running');
+      expect(running).toBeDefined();
+      expect(running?.homeId).toBeUndefined();
+      expect(running?.rebuildId).toBeUndefined();
+      expect(refreshContexts).toEqual([{}]);
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      capture.restore();
+    }
   });
 
   it('clears stale Homey Energy interval state when polling is disabled', () => {
@@ -3152,8 +3167,8 @@ describe('periodic snapshot refresh scheduling', () => {
     ]);
     app.deviceManager = partialDouble<MyApp['deviceManager']>({ getDevicesForDebug });
 
-    const first = await app.getHomeyDevicesForFlow();
-    const second = await app.getHomeyDevicesForFlow();
+    const first = await app.flowBacked.getHomeyDevicesForFlow();
+    const second = await app.flowBacked.getHomeyDevicesForFlow();
 
     expect(first).toEqual(second);
     expect(getDevicesForDebug).toHaveBeenCalledTimes(1);
@@ -3163,7 +3178,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const info = vi.fn();
     const warn = vi.fn();
-    app['structuredLogger'] = partialDouble<Logger>({
+    app['runtime'].structuredLogger = partialDouble<Logger>({
       child: vi.fn(() => ({ info, warn })) as unknown as Logger['child'],
     });
     app['flowReportedCapabilities'] = {
@@ -3191,7 +3206,7 @@ describe('periodic snapshot refresh scheduling', () => {
       registerArgumentAutocompleteListener: vi.fn(),
     }));
 
-    await expect(app.emitFlowBackedRefreshRequests(['dev-1', 'dev-2'])).resolves.toBeUndefined();
+    await expect(app.flowBacked.emitFlowBackedRefreshRequests(['dev-1', 'dev-2'])).resolves.toBeUndefined();
 
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_backed_refresh_request_failed',
@@ -3212,7 +3227,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('does not emit flow-backed refresh requests for unmanaged Zaptec native-wiring candidates', async () => {
     const app = createApp();
-    app.managedDevices = {};
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, {});
+    app.deviceControlSettings.reload();
     app['flowReportedCapabilities'] = {
       'zaptec-1': {
         evcharger_charging: { value: true, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
@@ -3271,16 +3287,17 @@ describe('periodic snapshot refresh scheduling', () => {
       registerArgumentAutocompleteListener: vi.fn(),
     }));
 
-    await expect(app.emitFlowBackedRefreshRequests(['zaptec-1'])).resolves.toBeUndefined();
+    await expect(app.flowBacked.emitFlowBackedRefreshRequests(['zaptec-1'])).resolves.toBeUndefined();
 
     expect(trigger).not.toHaveBeenCalled();
   });
 
   it('does not emit flow-backed refresh requests when Zaptec already has native evcharger support', async () => {
     const app = createApp();
-    app.managedDevices = {
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, {
       'zaptec-native-1': true,
-    };
+    });
+    app.deviceControlSettings.reload();
     app['flowReportedCapabilities'] = {
       'zaptec-native-1': {
         evcharger_charging: { value: false, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
@@ -3342,16 +3359,17 @@ describe('periodic snapshot refresh scheduling', () => {
       registerArgumentAutocompleteListener: vi.fn(),
     }));
 
-    await expect(app.emitFlowBackedRefreshRequests(['zaptec-native-1'])).resolves.toBeUndefined();
+    await expect(app.flowBacked.emitFlowBackedRefreshRequests(['zaptec-native-1'])).resolves.toBeUndefined();
 
     expect(trigger).not.toHaveBeenCalled();
   });
 
   it('does not emit flow-backed refresh requests when Zaptec shim wiring is active', async () => {
     const app = createApp();
-    app.managedDevices = {
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, {
       'zaptec-active-1': true,
-    };
+    });
+    app.deviceControlSettings.reload();
     app['flowReportedCapabilities'] = {
       'zaptec-active-1': {
         evcharger_charging: { value: false, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
@@ -3411,7 +3429,7 @@ describe('periodic snapshot refresh scheduling', () => {
       registerArgumentAutocompleteListener: vi.fn(),
     }));
 
-    await expect(app.emitFlowBackedRefreshRequests(['zaptec-active-1'])).resolves.toBeUndefined();
+    await expect(app.flowBacked.emitFlowBackedRefreshRequests(['zaptec-active-1'])).resolves.toBeUndefined();
 
     expect(trigger).not.toHaveBeenCalled();
   });
@@ -3426,7 +3444,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.reportFlowBackedCapability({
+    const result = app.flowBacked.reportFlowBackedCapability({
       deviceId: 'dev-1',
       capabilityId: 'onoff',
       value: true,
@@ -3452,7 +3470,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
     app['flowReportedCapabilities'] = {};
 
-    const result = app.reportFlowBackedCapability({
+    const result = app.flowBacked.reportFlowBackedCapability({
       deviceId: 'dev-1',
       capabilityId: 'onoff',
       value: true,
@@ -3476,7 +3494,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.reportFlowBackedCapability({
+    const result = app.flowBacked.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 63,
@@ -3496,7 +3514,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
     app['flowReportedCapabilities'] = {};
 
-    app.reportFlowBackedCapability({
+    app.flowBacked.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 62.04,
@@ -3521,7 +3539,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.reportFlowBackedCapability({
+    const result = app.flowBacked.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 62,
@@ -3568,7 +3586,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.reportFlowBackedCapability({
+    const result = app.flowBacked.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 32,
@@ -3611,7 +3629,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.reportFlowBackedCapability({
+    const result = app.flowBacked.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 32,
@@ -3655,7 +3673,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.reportFlowBackedCapability({
+    const result = app.flowBacked.reportFlowBackedCapability({
       deviceId: 'dev-1',
       capabilityId: 'onoff',
       value: true,
@@ -3708,7 +3726,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    app.reportFlowBackedCapability({
+    app.flowBacked.reportFlowBackedCapability({
       deviceId: 'dev-1',
       capabilityId: 'onoff',
       value: true,
@@ -3755,7 +3773,7 @@ describe('periodic snapshot refresh scheduling', () => {
         measure_battery: { value: 80, reportedAt: initialReportedAt, source: 'flow' },
       },
     };
-    app.reportFlowBackedCapability({
+    app.flowBacked.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 80,
@@ -3791,7 +3809,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
 
-    const result = app.reportFlowBackedCapability({
+    const result = app.flowBacked.reportFlowBackedCapability({
       deviceId: 'ev-1',
       capabilityId: 'pels_evcharger_resumable',
       value: true,
@@ -3832,7 +3850,7 @@ describe('periodic snapshot refresh scheduling', () => {
       'disposeBinaryCommandReachability',
     );
 
-    app['startPowerTrackerPruning']();
+    app['powerTrackerHelpers'].startPowerTrackerPruning();
     app.snapshotHelpers.startPeriodicSnapshotRefresh();
     app.snapshotHelpers.schedulePostActuationRefresh();
     app.homeyEnergyHelpers.start();
@@ -3882,7 +3900,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const pruneSpy = vi.spyOn(app.mainTracker, 'prune').mockImplementation(() => {});
 
     try {
-      app['startPowerTrackerPruning']();
+      app['powerTrackerHelpers'].startPowerTrackerPruning();
 
       expect(app.timers.has('trackerPruneInitial')).toBe(true);
 

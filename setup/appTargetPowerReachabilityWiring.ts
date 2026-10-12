@@ -77,7 +77,7 @@ export const createTargetPowerReachabilityAppWiring = (
       getNextTargetPowerProbe: () => {
       // This probe is scoped by resolved configuration and per-device settings;
       // it does not need a DeviceReads inventory scan.
-        const targetPowerConfigs = Object.entries(ctx.deviceTargetPowerConfigs);
+        const targetPowerConfigs = Object.entries(ctx.deviceControlSettings.deviceTargetPowerConfigs);
         if (targetPowerConfigs.length === 0) return undefined;
         const eligibleDeviceIds = new Set(ctx.deviceConfiguration.ids()
           .filter((deviceId) => ctx.resolveManagedState(deviceId) && ctx.isCapacityControlEnabled(deviceId)));

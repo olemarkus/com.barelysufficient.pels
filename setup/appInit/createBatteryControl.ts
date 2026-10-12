@@ -41,13 +41,9 @@ export const createMainBatteryControl = (
 /** Held in the teardown registry; `runUninit` clears it to detach the snapshot feed. */
 export const BATTERY_CONTROL_TEARDOWN_KEY = 'batteryControl';
 
-/** The app-wiring handles the battery control step connects; `AppServiceWiring` hands its own deps. */
-export type BatteryControlWiringDeps = {
-  ctx: AppContext;
-  teardown: TeardownRegistry;
-  getObservedStateEmitter: () => {
-    onObservedStateRefresh(listener: (refresh: ObservedDeviceStateRefreshPayload) => void): () => void;
-  };
+/** The committed-snapshot feed the battery control step subscribes the owner to. */
+type ObservedStateRefreshFeed = {
+  onObservedStateRefresh(listener: (refresh: ObservedDeviceStateRefreshPayload) => void): () => void;
 };
 
 /**
@@ -57,14 +53,15 @@ export type BatteryControlWiringDeps = {
  * is no hand-back at app stop (the owner's header says why).
  */
 export const initMainBatteryControl = (
-  deps: BatteryControlWiringDeps,
+  ctx: AppContext,
+  teardown: TeardownRegistry,
+  observedState: ObservedStateRefreshFeed,
   isActuationFenced: () => boolean,
 ): void => {
-  const { ctx } = deps;
   const owner = createMainBatteryControl(ctx, isActuationFenced);
-  // eslint-disable-next-line functional/immutable-data -- shared AppContext write
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign -- shared AppContext write
   ctx.batteryControl = owner;
-  deps.teardown.register(BATTERY_CONTROL_TEARDOWN_KEY, deps.getObservedStateEmitter().onObservedStateRefresh(
+  teardown.register(BATTERY_CONTROL_TEARDOWN_KEY, observedState.onObservedStateRefresh(
     (refresh) => owner.onSnapshotCommitted(refresh),
   ));
 };

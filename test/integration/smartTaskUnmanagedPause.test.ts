@@ -1,4 +1,5 @@
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
+import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 // Integration coverage for the "device is no longer managed" smart-task pause
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 // (`unmanaged` exclusion → `objective_device_unmanaged`):
@@ -234,7 +235,7 @@ describe('resolveSmartTaskDeviceExclusion', () => {
   // Its observe-only-role arm is irrelevant here: a battery or PV device cannot
   // carry a smart task.
   const buildCtx = (managedDevices: Record<string, boolean>) => createAppContextMock({
-    managedDevices,
+    deviceControlSettings: deviceControlSettingsFixture({ managedDevices }),
     resolveManagedState: (deviceId: string) => managedDevices[deviceId] === true,
   });
 
@@ -261,7 +262,7 @@ describe('resolveSmartTaskDeviceExclusion', () => {
   });
 
   it('stays silent on an EMPTY map, the one state that carries no owner answer', () => {
-    // `ctx.managedDevices` is `{}` until `loadCapacitySettings` runs. Startup
+    // The managed map is `{}` until `loadCapacitySettings` runs. Startup
     // ordering already puts that before any diagnostic; the guard is here so a
     // future reordering cannot turn the boot window into a flash of "paused".
     expect(resolveSmartTaskDeviceExclusion(buildCtx({}), 'heater-1')).toBeNull();
@@ -269,7 +270,7 @@ describe('resolveSmartTaskDeviceExclusion', () => {
 
   it('reports the sub-home scope first when both apply', () => {
     const ctx = createAppContextMock({
-      managedDevices: { 'heater-1': false, other: true },
+      deviceControlSettings: deviceControlSettingsFixture({ managedDevices: { 'heater-1': false, other: true } }),
       resolveManagedState: () => false,
       homeMembership: {
         isOwnershipReady: () => true,
@@ -319,7 +320,7 @@ const buildTerminalFallbackCtx = (managedDevices: Record<string, boolean>) => {
   } as unknown as AppContext['homey'];
   const ctx = createAppContextMock({
     homey,
-    managedDevices,
+    deviceControlSettings: deviceControlSettingsFixture({ managedDevices }),
     resolveManagedState: (deviceId: string) => managedDevices[deviceId] === true,
     // False for an un-managed device AND for a managed-but-not-capacity-
     // controlled one; only the exclusion tells the two apart.

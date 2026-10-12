@@ -90,11 +90,11 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
       canDeviceChangeActionableLoad: () => false,
     };
 
-    syncExternalOffHoldForObservation({
+    syncExternalOffHoldForObservation(
       ctx,
-      event: { deviceId: 'sub-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
-      getHomeRuntimeRegistry: () => routerFor({ 'sub-dev': { homeId: 'h_sub', hooks } }),
-    });
+      { deviceId: 'sub-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
+      routerFor({ 'sub-dev': { homeId: 'h_sub', hooks } }),
+    );
 
     // Main's engine would have called this PELS's own write and held nothing.
     expect(subPending).toHaveBeenCalledWith('sub-dev');
@@ -110,11 +110,11 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
       clearRecentBinaryOffCommand: vi.fn(),
     } as unknown as AppContext['planEngine'];
 
-    syncExternalOffHoldForObservation({
+    syncExternalOffHoldForObservation(
       ctx,
-      event: { deviceId: 'main-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
-      getHomeRuntimeRegistry: () => routerFor({}),
-    });
+      { deviceId: 'main-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
+      routerFor({}),
+    );
 
     expect(mainPending).toHaveBeenCalledWith('main-dev');
     expect(ctx.externalOffHold?.isHeld('main-dev')).toBe(true);
@@ -136,11 +136,11 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
         clearRecentBinaryOffCommand: vi.fn(),
       } as unknown as AppContext['planEngine'];
 
-      syncExternalOffHoldForObservation({
+      syncExternalOffHoldForObservation(
         ctx,
-        event: { deviceId: 'main-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
-        getHomeRuntimeRegistry: () => routerFor({}),
-      });
+        { deviceId: 'main-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
+        routerFor({}),
+      );
 
       expect(ctx.externalOffHold?.isHeld('main-dev')).toBe(true);
     },
@@ -156,10 +156,10 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
     } as unknown as AppContext['planEngine'];
     const rebuildPlan = vi.fn(() => Promise.resolve());
 
-    syncExternalOffHoldForObservation({
+    syncExternalOffHoldForObservation(
       ctx,
-      event: { deviceId: 'sub-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
-      getHomeRuntimeRegistry: () => routerFor({
+      { deviceId: 'sub-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
+      routerFor({
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
@@ -173,7 +173,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
           },
         },
       }),
-    });
+    );
 
     expect(ctx.externalOffHold?.isHeld('sub-dev')).toBe(true);
     expect(rebuildPlan).not.toHaveBeenCalled();
@@ -194,10 +194,10 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
     const mainObservation = vi.spyOn(ctx.planRebuildThrottle, 'onObservation');
     const invalidateSubHome = vi.fn();
 
-    invalidateOwningHomeRebuildSuppression({
+    invalidateOwningHomeRebuildSuppression(
       ctx,
-      deviceId: 'sub-dev',
-      getHomeRuntimeRegistry: () => routerFor({
+      'sub-dev',
+      routerFor({
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
@@ -211,7 +211,7 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
           },
         },
       }),
-    });
+    );
 
     expect(invalidateSubHome).toHaveBeenCalledTimes(1);
     // Main's state is a different house and must not move.
@@ -222,11 +222,7 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
     const ctx = createAppContextMock({});
     const mainObservation = vi.spyOn(ctx.planRebuildThrottle, 'onObservation');
 
-    invalidateOwningHomeRebuildSuppression({
-      ctx,
-      deviceId: 'main-dev',
-      getHomeRuntimeRegistry: () => routerFor({}),
-    });
+    invalidateOwningHomeRebuildSuppression(ctx, 'main-dev', routerFor({}));
 
     expect(mainObservation).toHaveBeenCalledTimes(1);
   });

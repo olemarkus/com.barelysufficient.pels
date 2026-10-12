@@ -8,6 +8,11 @@ import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
 // history recorders. No allocator milestone or internal status is supplied.
 import { describe, expect, it } from 'vitest';
 import { DeferredObjectiveLifecycleEmitter } from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
+import {
+  createDeferredObjectiveHoursRemainingBus,
+  createDeferredObjectiveHoursRemainingTracker,
+  createDeferredObjectiveStatusBus,
+} from '../../lib/objectives/deferredObjectives';
 import { DeferredObjectivePlanHistoryRecorder, type PlanHistoryLoadResult } from '../../lib/objectives/deferredObjectives/planHistory';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
@@ -196,6 +201,9 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
         reported = diagnostics;
         active.observe(diagnostics, nowMs);
       },
+      deferredObjectiveStatusBus: createDeferredObjectiveStatusBus(),
+      deferredObjectiveHoursRemainingBus: createDeferredObjectiveHoursRemainingBus(),
+      deferredObjectiveHoursRemainingTracker: createDeferredObjectiveHoursRemainingTracker(),
     });
   };
   restart();

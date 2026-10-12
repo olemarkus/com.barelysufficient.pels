@@ -641,10 +641,11 @@ describe('external-off hold — real configuration and Observer reads', () => {
 
   it('does not start a hold when an unplugged charger folds its charging switch to OFF', async () => {
     const ctx = await buildParsedCtx();
-    syncExternalOffHoldForObservation({
+    syncExternalOffHoldForObservation(
       ctx,
-      event: { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_STATE_OFF_TRANSITION },
-    });
+      { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_STATE_OFF_TRANSITION },
+      undefined,
+    );
     expect(ctx.externalOffHold?.isHeld(CHARGER_ID)).toBe(false);
   });
 
@@ -652,19 +653,21 @@ describe('external-off hold — real configuration and Observer reads', () => {
     // The control: same device, same plug state, but an explicit ON->OFF on the
     // switch itself. The only thing the case above relies on is the session gate.
     const ctx = await buildParsedCtx();
-    syncExternalOffHoldForObservation({
+    syncExternalOffHoldForObservation(
       ctx,
-      event: { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_OFF_TRANSITION },
-    });
+      { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_OFF_TRANSITION },
+      undefined,
+    );
     expect(ctx.externalOffHold?.isHeld(CHARGER_ID)).toBe(true);
   });
 
   it('starts a hold when a plain on/off device is turned off', async () => {
     const ctx = await buildParsedCtx();
-    syncExternalOffHoldForObservation({
+    syncExternalOffHoldForObservation(
       ctx,
-      event: { deviceId: SOCKET_ID, capabilityId: 'onoff', changes: OFF_TRANSITION },
-    });
+      { deviceId: SOCKET_ID, capabilityId: 'onoff', changes: OFF_TRANSITION },
+      undefined,
+    );
     expect(ctx.externalOffHold?.isHeld(SOCKET_ID)).toBe(true);
   });
 });

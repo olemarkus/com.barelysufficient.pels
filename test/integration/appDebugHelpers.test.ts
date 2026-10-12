@@ -504,32 +504,27 @@ describe('appDebugHelpers', () => {
           ],
         }),
       },
-      powerCalibrationStore: {
-        getSnapshot: vi.fn().mockReturnValue({
-          version: 1,
-          devices: {
-            'dev-1': {
-              lastTouchedMs: Date.parse('2026-03-12T10:04:00.000Z'),
-              steps: {
-                low: {
-                  observedKw: 1.1,
-                  nameplateAtSampleKw: 1.25,
-                  samples: 6,
-                  sustainedSeconds: 300,
-                  lastSampleMs: Date.parse('2026-03-12T10:04:00.000Z'),
-                },
+      getPowerCalibrationSnapshot: vi.fn().mockReturnValue({
+        version: 1,
+        devices: {
+          'dev-1': {
+            lastTouchedMs: Date.parse('2026-03-12T10:04:00.000Z'),
+            steps: {
+              low: {
+                observedKw: 1.1,
+                nameplateAtSampleKw: 1.25,
+                samples: 6,
+                sustainedSeconds: 300,
+                lastSampleMs: Date.parse('2026-03-12T10:04:00.000Z'),
               },
             },
           },
-        }),
-      },
+        },
+      }),
       error: vi.fn(),
     };
 
-    const ok = await logHomeyDeviceForDebugFromApp({
-      app: app as never,
-      deviceId: 'dev-1',
-    });
+    const ok = await logHomeyDeviceForDebugFromApp(app as never, 'dev-1');
 
     expect(ok).toBe(true);
     expect(app.error).not.toHaveBeenCalled();

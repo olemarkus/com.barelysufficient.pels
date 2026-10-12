@@ -33,17 +33,6 @@ export type HomeySolarForecastLogger = {
   warn: (obj: Record<string, unknown>) => void;
 };
 
-/**
- * Whether the Homey solar-forecast controller exists yet. It is constructed in
- * the post-startup background step, while the settings-change hook and the
- * uninit sweep are wired earlier — so "not started yet" is a real lifecycle
- * state of the app, named here rather than left as an absent field for every
- * reader to null-check.
- */
-export type HomeySolarForecastLifecycle =
-  | { kind: 'not_started' }
-  | { kind: 'started'; controller: HomeySolarForecastController };
-
 export class HomeySolarForecastController {
   readonly source: HomeyEnergySolarForecastSource;
   private timer?: ReturnType<typeof setInterval>;

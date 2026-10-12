@@ -1,4 +1,5 @@
 import type Homey from 'homey';
+import { readPelsHost } from '../lib/app/pelsHost';
 import type { TrackerStore } from '../lib/power/trackerStore';
 import type {
   SettingsUiHomesPayload,
@@ -40,18 +41,11 @@ type HomesApiContext = {
 // as the lib/home PORT (control surface only); this setup-internal narrowing
 // re-narrows to the concrete service the wiring assigned, because the read-only
 // `ui_homes` endpoint is the ONE sanctioned consumer of the diagnostics view
-// (per-device `source`). Optional: unassigned during the boot window before
+// (per-device `source`). Absent during the boot window before
 // `initHomeMembership` runs.
-type HomesApiApp = Homey.App & {
-  homeMembership?: HomeMembershipService;
-  /** `AppContext`'s member: the app's tracker store, throwing before the boot step that opens it. */
-  getTrackerStore: () => TrackerStore;
-};
-
-const getHomeMembership = (homey: Homey.App['homey']): HomeMembershipService | undefined => {
-  if (!homey || typeof homey !== 'object') return undefined;
-  return (homey.app as HomesApiApp | undefined)?.homeMembership;
-};
+const getHomeMembership = (homey: Homey.App['homey']): HomeMembershipService | undefined => (
+  readPelsHost(homey)?.homeMembership as HomeMembershipService | undefined
+);
 
 // The tracker store is opened at the app's first boot step; a save that
 // reaches here before it cannot reset the areas' freshness, so the pre-boot
@@ -59,7 +53,7 @@ const getHomeMembership = (homey: Homey.App['homey']): HomeMembershipService | u
 // same footing as one over an unreadable config.
 const getTrackerStore = (homey: Homey.App['homey']): TrackerStore | undefined => {
   try {
-    return (homey.app as HomesApiApp).getTrackerStore();
+    return readPelsHost(homey)?.getTrackerStore();
   } catch {
     return undefined;
   }

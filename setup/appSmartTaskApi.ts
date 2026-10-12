@@ -26,8 +26,8 @@ import {
   buildDeferredObjectiveDeviceWriteDeps,
   cancelDeferredObjectiveForContext,
   toPlanDevice,
-  type CancelDeferredObjectiveOutcome,
 } from './appInit';
+import type { CancelDeferredObjectiveOutcome } from '../lib/app/pelsHost';
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
 import { requirePlanService } from './appInit/contextGuards';
 import { requireDeferredObjectiveEnergyDelivery } from './appInit/deferredRecorders';

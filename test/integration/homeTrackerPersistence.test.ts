@@ -30,7 +30,6 @@ const build = (
       getStore: () => trackerStore,
       timers,
       getLogger: () => logger,
-      getPruneDebugEmitter: () => () => {},
       reportError: () => {},
       getTimeZone: () => 'Europe/Oslo',
       isTornDown: () => false,

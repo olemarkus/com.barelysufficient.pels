@@ -1,4 +1,5 @@
 import { withDeviceConfiguration } from '../utils/planTestUtils';
+import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 /**
  * `toPlanDevice` resolves the start policy IN FORCE from the owner's stored
  * policy and Power-limit control (owner ruling, 2026-09-25): with power limiting
@@ -26,8 +27,9 @@ const charger = (): DecoratedDeviceSnapshot & MeasuredPowerObservedProbe => (
 );
 
 const planDeviceWith = (powerLimitOn: boolean) => {
-  const ctx = createAppContextMock();
-  ctx.deviceStartPolicies = { charger: 'pels_only' };
+  const ctx = createAppContextMock({
+    deviceControlSettings: deviceControlSettingsFixture({ deviceStartPolicies: { charger: 'pels_only' } }),
+  });
   vi.mocked(ctx.resolveManagedState).mockReturnValue(true);
   vi.mocked(ctx.isCapacityControlEnabled).mockReturnValue(powerLimitOn);
   return toPlanDevice(ctx, withDeviceConfiguration(charger()));

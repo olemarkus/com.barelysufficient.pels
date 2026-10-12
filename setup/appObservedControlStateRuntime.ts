@@ -7,7 +7,7 @@ import type { AppContext } from '../lib/app/appContext';
 import type { ObservedStateChangedEvent } from '../lib/observer/observedStateEvents';
 import type { HomeId } from '../lib/utils/settingsKeys';
 import type { OwningHomeHooks } from './homeRuntime/createHomeCapacityBundle';
-import type { StructuredDebugEmitter } from '../lib/logging/logger';
+import { getDebugEmitter, type StructuredDebugEmitter } from '../lib/logging/logger';
 import { requirePlanService } from './appInit/contextGuards';
 import type { ObservedControlStateChangedEvent } from '../lib/observer/observedStateEvents';
 
@@ -43,21 +43,18 @@ export type OwningHomeRouter = {
  * old code rebuilt immediately was to pre-empt the queued reconcile's stale ON
  * command — a command that no longer exists to pre-empt.
  */
-export function syncExternalOffHoldForObservation(params: {
-  ctx: AppContext;
-  event: ObservedControlStateChangedEvent;
-  /**
-   * Owning-home router (R7b P1#1). Main and each sub-home keep their own plan
-   * engine, so asking main's about a sub-home device reports "no pending
-   * command" for PELS's own write and fabricates a hold.
-   */
-  getHomeRuntimeRegistry?: () => OwningHomeRouter | undefined;
-}): void {
-  const { ctx, event } = params;
+export function syncExternalOffHoldForObservation(
+  ctx: AppContext,
+  event: ObservedControlStateChangedEvent,
+  // Owning-home router (R7b P1#1). Main and each sub-home keep their own plan
+  // engine, so asking main's about a sub-home device reports "no pending
+  // command" for PELS's own write and fabricates a hold. Undefined before the
+  // registry is built, and with no sub-homes: main answers.
+  router: OwningHomeRouter | undefined,
+): void {
   if (!ctx.externalOffHold) return;
-  const subHomeHooks = params.getHomeRuntimeRegistry?.()
-    ?.getOwningHomeRouteForDevice(event.deviceId)?.hooks;
-  const debugStructured = ctx.getStructuredDebugEmitter('reconcile', 'devices');
+  const subHomeHooks = router?.getOwningHomeRouteForDevice(event.deviceId)?.hooks;
+  const debugStructured = getDebugEmitter('reconcile', 'devices');
   syncExternalOffHoldForDevice({
     deps: {
       policy: ctx.externalOffHold,
@@ -104,14 +101,12 @@ function buildExternalOffHoldHooks(
  * The invalidation itself is not a rebuild request: see
  * `PlanRebuildThrottle.onObservation` for what it may and may not change.
  */
-export function invalidateOwningHomeRebuildSuppression(params: {
-  ctx: AppContext;
-  deviceId: string;
-  getHomeRuntimeRegistry?: () => OwningHomeRouter | undefined;
-}): void {
-  const { ctx, deviceId } = params;
-  const subHomeHooks = params.getHomeRuntimeRegistry?.()
-    ?.getOwningHomeRouteForDevice(deviceId)?.hooks;
+export function invalidateOwningHomeRebuildSuppression(
+  ctx: AppContext,
+  deviceId: string,
+  router: OwningHomeRouter | undefined,
+): void {
+  const subHomeHooks = router?.getOwningHomeRouteForDevice(deviceId)?.hooks;
   if (subHomeHooks) {
     subHomeHooks.invalidateRebuildSuppression();
     return;

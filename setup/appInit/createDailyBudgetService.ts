@@ -1,3 +1,4 @@
+import { getDebugEmitter } from '../../lib/logging/logger';
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import { createDailyBudgetSettingsStore } from '../dailyBudgetSettingsAdapter';
 import {
@@ -38,6 +39,6 @@ export function createDailyBudgetService(ctx: AppContext): DailyBudgetService {
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(ctx.homey),
     dailyBudgetStateStore: createDailyBudgetStateStoreForApp(ctx),
     structuredLog: ctx.getStructuredLogger('daily_budget'),
-    debugStructured: ctx.getStructuredDebugEmitter('daily_budget', 'daily_budget'),
+    debugStructured: getDebugEmitter('daily_budget', 'daily_budget'),
   });
 }

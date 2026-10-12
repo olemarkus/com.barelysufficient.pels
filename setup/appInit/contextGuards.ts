@@ -12,7 +12,7 @@ import type { FlowHomeyLike } from '../../lib/utils/types';
 
 export function requireDeviceManager(ctx: AppContext) {
   if (!ctx.deviceManager) {
-    throw new Error('DeviceTransport must be initialized before plan engine setup.');
+    throw new Error('DeviceTransport must be initialized before use.');
   }
   return ctx.deviceManager;
 }
@@ -95,9 +95,16 @@ export function requirePriceCoordinator(ctx: AppContext): NonNullable<AppContext
   return ctx.priceCoordinator;
 }
 
+export function requireDeviceDiagnosticsService(ctx: AppContext): NonNullable<AppContext['deviceDiagnosticsService']> {
+  if (!ctx.deviceDiagnosticsService) {
+    throw new Error('DeviceDiagnosticsService must be initialized before use.');
+  }
+  return ctx.deviceDiagnosticsService;
+}
+
 export function requireDailyBudgetService(ctx: AppContext) {
   if (!ctx.dailyBudgetService) {
-    throw new Error('DailyBudgetService must be initialized before flow card registration.');
+    throw new Error('DailyBudgetService must be initialized before use.');
   }
   return ctx.dailyBudgetService;
 }

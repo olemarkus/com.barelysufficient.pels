@@ -2,7 +2,7 @@ import type { DeviceTransportPort } from '../../lib/device/deviceTransport';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import type { PowerSamplePipeline } from '../powerSamplePipeline';
-import type { StructuredDebugEmitter } from '../../lib/logging/logger';
+import { getDebugEmitter } from '../../lib/logging/logger';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 
 /**
@@ -13,7 +13,6 @@ export type HomeyEnergyPollSourceHost = {
   readonly timers: TimerRegistry;
   getPowerSource(): PowerSource;
   readonly deviceManager?: Pick<DeviceTransportPort, 'pollHomePowerW'>;
-  getStructuredDebugEmitter(component: 'devices', debugTopic: 'devices'): StructuredDebugEmitter;
   error(...args: unknown[]): void;
 };
 
@@ -38,6 +37,6 @@ export const createHomeyEnergyPollSource = (
   recordPowerSample: async (sample) => {
     await pipeline.recordPowerSample(sample.powerW, undefined, sample);
   },
-  debugStructured: host.getStructuredDebugEmitter('devices', 'devices'),
+  debugStructured: getDebugEmitter('devices', 'devices'),
   error: (...args) => host.error(...args),
 });

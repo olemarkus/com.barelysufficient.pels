@@ -1,5 +1,6 @@
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
+import { pelsHostDouble } from '../helpers/pelsHostDouble';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   buildSettingsUiBootstrap,
@@ -223,7 +224,8 @@ describe('settingsUiApi', () => {
       readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
       getUiPickerDevices: () => [],
     });
-    const app = {
+    const capacitySettings = options.capacitySettings ?? { limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
+    const app = pelsHostDouble({
       getModePrioritiesForUi: createFixturePriorityQuery(),
       // The price caches live in the userdata store, which the app serves;
       // they are not settings keys.
@@ -238,19 +240,11 @@ describe('settingsUiApi', () => {
         powerhourToday: null,
         powerhourTomorrow: null,
       }),
-          // A fixture that configures neither seam leaves the boot-window shape.
-      ...(options.capacitySettings && typeof options.capacityDryRun === 'boolean'
-        ? {
-          getCapacityScalars: () => ({
-            ...options.capacitySettings,
-            dryRun: options.capacityDryRun,
-          }),
-          readHardCapConfiguration: () => ({
-            state: 'resolved' as const,
-            configured: store.has('capacity_limit_kw'),
-          }),
-        }
-        : {}),
+      getCapacityScalars: () => ({ ...capacitySettings, dryRun: options.capacityDryRun ?? false }),
+      readHardCapConfiguration: () => ({
+        state: 'resolved' as const,
+        configured: store.has('capacity_limit_kw'),
+      }),
       planStatuses,
       // The Main home's battery control owner: every battery drivable and
       // none taken over unless a test says otherwise; like the real owner it
@@ -290,12 +284,12 @@ describe('settingsUiApi', () => {
       set powerTracker(value: Record<string, unknown>) {
         powerTracker = value;
       },
-    };
-    (app as typeof app & { getLatestPlanSnapshotForUi?: () => Record<string, unknown> | null }).getLatestPlanSnapshotForUi = () => (
-      Object.prototype.hasOwnProperty.call(options, 'latestPlanSnapshot')
-        ? options.latestPlanSnapshot ?? null
-        : defaultPlanSnapshot
-    );
+      getLatestPlanSnapshotForUi: () => (
+        Object.prototype.hasOwnProperty.call(options, 'latestPlanSnapshot')
+          ? options.latestPlanSnapshot ?? null
+          : defaultPlanSnapshot
+      ),
+    });
     return {
       settings: {
         get: (key: string) => store.get(key),
@@ -339,11 +333,13 @@ describe('settingsUiApi', () => {
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
-      // The fixture app exposes no capacity-peak seam, and its capacity
-      // scalars are not the resolved shape.
-      capacityPeak: { state: 'unavailable' },
-      capacityScalars: { state: 'unavailable' },
-      hardCapConfiguration: { state: 'unavailable' },
+      // The fixture app has recorded no completed quarter this month.
+      capacityPeak: { state: 'no_completed_quarter' },
+      capacityScalars: {
+        state: 'resolved',
+        scalars: { limitKw: 12, marginKw: 0.5, periodMinutes: 60, dryRun: false },
+      },
+      hardCapConfiguration: { state: 'resolved', configured: false },
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });
@@ -563,10 +559,10 @@ describe('settingsUiApi', () => {
   });
 
   it('answers the named absence — and refuses budget writes — while the app is unwired', async () => {
-    // The restart window: `homey.app` is present but carries none of the host
-    // API. Reads degrade to their named member; the two user-initiated writes
-    // fail loudly rather than reporting a success they did not perform.
-    const homey = { ...createHomey(), app: {} };
+    // The restart window: the Homey handle exists and `homey.app` is undefined.
+    // Reads degrade to their named member; the two user-initiated writes fail
+    // loudly rather than reporting a success they did not perform.
+    const homey = { ...createHomey(), app: undefined };
 
     const bootstrap = await buildSettingsUiBootstrap({ homey: homey as never });
     expect(bootstrap.dailyBudget).toEqual({ kind: 'unavailable' });
@@ -643,11 +639,13 @@ describe('settingsUiApi', () => {
       tracker: { lastPowerW: 5200, lastTimestamp: 123, buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
-      // The fixture app exposes no capacity-peak seam, and its capacity
-      // scalars are not the resolved shape.
-      capacityPeak: { state: 'unavailable' },
-      capacityScalars: { state: 'unavailable' },
-      hardCapConfiguration: { state: 'unavailable' },
+      // The fixture app has recorded no completed quarter this month.
+      capacityPeak: { state: 'no_completed_quarter' },
+      capacityScalars: {
+        state: 'resolved',
+        scalars: { limitKw: 12, marginKw: 0.5, periodMinutes: 60, dryRun: false },
+      },
+      hardCapConfiguration: { state: 'resolved', configured: false },
       // No solarpanel-class device in the fixture candidates.
       hasManagedSolarDevice: false,
     });
@@ -1116,9 +1114,9 @@ describe('settingsUiApi', () => {
     expect(getSettingsUiDevicesPayload({ homey: flowHomey as never }).hasExhibitedExport).toBe(true);
   });
 
-  it('returns an empty diagnostics payload when the app has no diagnostics API yet', () => {
+  it('returns an empty diagnostics payload while the app is not wired', () => {
     const homey = createHomey();
-    delete (homey.app as { getDeviceDiagnosticsUiPayload?: unknown }).getDeviceDiagnosticsUiPayload;
+    homey.app = undefined as never;
 
     expect(getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toEqual({
       generatedAt: expect.any(Number),
@@ -1140,9 +1138,9 @@ describe('settingsUiApi', () => {
     });
   });
 
-  it('returns an empty device-log payload when the app has no device-log API yet', () => {
+  it('returns an empty device-log payload while the app is not wired', () => {
     const homey = createHomey();
-    delete (homey.app as { getDeviceLogUiPayload?: unknown }).getDeviceLogUiPayload;
+    homey.app = undefined as never;
 
     expect(getSettingsUiDeviceLogPayload({ homey: homey as never })).toEqual({
       version: 1,
@@ -1221,22 +1219,23 @@ describe('settingsUiApi', () => {
 
   it('throws a PELS_APP_NOT_READY-prefixed error when refresh or reset hits the boot window', async () => {
     const homey = createHomey();
-    delete (homey.app as Partial<typeof homey.app>).refreshTargetDevicesSnapshot;
-    delete (homey.app as Partial<typeof homey.app>).refreshFlowConflictsForUi;
+    // The price coordinator is built at its own boot step, after the app exists.
     delete (homey.app as Partial<typeof homey.app>).priceCoordinator;
-    delete (homey.app as Partial<typeof homey.app>).replacePowerTrackerForUi;
 
-    await expect(refreshSettingsUiDevices({ homey: homey as never })).rejects.toThrow(
-      /^PELS_APP_NOT_READY: Refresh devices unavailable/,
-    );
-    await expect(refreshSettingsUiFlowConflicts({ homey: homey as never })).rejects.toThrow(
-      /^PELS_APP_NOT_READY: Refresh Flow conflicts unavailable/,
-    );
     await expect(refreshSettingsUiPrices({ homey: homey as never })).rejects.toThrow(
       /^PELS_APP_NOT_READY: Refresh prices unavailable/,
     );
     await expect(refreshSettingsUiGridTariff({ homey: homey as never })).rejects.toThrow(
       /^PELS_APP_NOT_READY: Refresh grid tariff unavailable/,
+    );
+
+    // The app itself is not wired yet.
+    homey.app = undefined as never;
+    await expect(refreshSettingsUiDevices({ homey: homey as never })).rejects.toThrow(
+      /^PELS_APP_NOT_READY: Refresh devices unavailable/,
+    );
+    await expect(refreshSettingsUiFlowConflicts({ homey: homey as never })).rejects.toThrow(
+      /^PELS_APP_NOT_READY: Refresh Flow conflicts unavailable/,
     );
     await expect(resetSettingsUiPowerStats({ homey: homey as never })).rejects.toThrow(
       /^PELS_APP_NOT_READY: Reset power stats unavailable/,

@@ -1,15 +1,20 @@
+import { readPelsHost } from '../lib/app/pelsHost';
 import { refreshSettingsUiFlowConflictPayload } from '../lib/flowApi/settingsUiFlowConflictRefresh';
 import { getSettingsUiDevicesPayload } from './settingsUiApi';
-import { requestSettingsUiFlowConflictRefreshForApp } from './settingsUiAppRuntime';
+import { appNotReadyError } from './settingsUiAppRuntime';
 
 type ApiContext = {
-  homey: Parameters<typeof requestSettingsUiFlowConflictRefreshForApp>[0];
+  homey: Parameters<typeof getSettingsUiDevicesPayload>[0]['homey'];
 };
 
 /** Wire the settings endpoint to the Flow-conflict refresh use case. */
 export const refreshSettingsUiFlowConflicts = (
   { homey }: ApiContext,
 ) => refreshSettingsUiFlowConflictPayload({
-  requestRefresh: () => requestSettingsUiFlowConflictRefreshForApp(homey),
+  requestRefresh: () => {
+    const host = readPelsHost(homey);
+    if (!host) throw appNotReadyError('Refresh Flow conflicts');
+    return host.refreshFlowConflictsForUi();
+  },
   readDevices: () => getSettingsUiDevicesPayload({ homey }).devices,
 });

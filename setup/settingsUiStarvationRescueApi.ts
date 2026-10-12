@@ -1,15 +1,10 @@
 import type Homey from 'homey';
 import type {
-  DeferredObjectivePlanPreviewCandidate,
-  DeferredObjectivePlanPreviewEstimate,
-} from '../packages/contracts/src/deferredObjectivePlanPreview';
-import type {
   SettingsUiStarvationRescueCreateResponse,
   SettingsUiStarvationRescueDevicesPayload,
   SettingsUiStarvationRescuePreviewResponse,
   StarvationRescueRejectReason,
 } from '../packages/contracts/src/starvationRescue';
-import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
 import {
   buildRescueCandidate,
   mapAppRescueReason,
@@ -19,10 +14,8 @@ import {
 } from '../packages/shared-domain/src/starvationRescueShared';
 import { formatSmartTaskDeadlineLong } from '../packages/shared-domain/src/smartTaskDeadlineFormat';
 import { scheduledHoursIncludeCurrentHour } from '../packages/shared-domain/src/planStarvation';
-import {
-  resolveRescuableSettingsDevice,
-  type SettingsUiStarvationRescueScope,
-} from './settingsUiStarvationRescueScope';
+import { resolveRescuableSettingsDevice } from './settingsUiStarvationRescueScope';
+import { readPelsHost } from '../lib/app/pelsHost';
 
 // ─── Overview device-card budget-exempt rescue ("Let it run now") ────────────
 //
@@ -37,24 +30,6 @@ import {
 
 type RescueApiContext = {
   homey: Homey.App['homey'];
-};
-
-// Budget-exempt rescue surface — the same app methods the starvation_rescue
-// widget calls. Optional like the rest (the app may be unwired during restart).
-type RescueApiApp = Homey.App & SettingsUiStarvationRescueScope & {
-  previewStarvationRescuePlan?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ) => { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean };
-  rescueDeviceWithBudgetExemption?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ) => WidgetObjectiveWriteResult;
-};
-
-const getApp = (homey: Homey.App['homey']): RescueApiApp | null => {
-  if (!homey || typeof homey !== 'object') return null;
-  return homey.app;
 };
 
 const previewRescueReject = (
@@ -72,9 +47,8 @@ const createRescueReject = (
 export const getSettingsUiStarvationRescueDevices = (
   { homey }: RescueApiContext,
 ): SettingsUiStarvationRescueDevicesPayload => {
-  const app = getApp(homey);
-  const devices = typeof app?.getStarvedRescueDevices === 'function' ? app.getStarvedRescueDevices() : null;
-  const rescuableDeviceIds = (devices ?? [])
+  const devices = readPelsHost(homey)?.getStarvedRescueDevices() ?? [];
+  const rescuableDeviceIds = devices
     .filter((device) => resolveRescuableDeviceFromList([device], device.deviceId).ok)
     .map((device) => device.deviceId);
   return { rescuableDeviceIds };
@@ -85,10 +59,10 @@ export const previewSettingsUiStarvationRescue = (
 ): SettingsUiStarvationRescuePreviewResponse => {
   const request = parseRescueRequest(body);
   if (!request) return previewRescueReject('invalid_request');
-  const app = getApp(homey);
-  if (typeof app?.previewStarvationRescuePlan !== 'function') return previewRescueReject('unavailable');
+  const host = readPelsHost(homey);
+  if (!host) return previewRescueReject('unavailable');
 
-  const rescuable = resolveRescuableSettingsDevice(app, request.deviceId);
+  const rescuable = resolveRescuableSettingsDevice(host, request.deviceId);
   if (!rescuable.ok) return previewRescueReject(rescuable.reason);
 
   const nowMs = Date.now();
@@ -97,7 +71,7 @@ export const previewSettingsUiStarvationRescue = (
   // deadline is simply the now+3h rescue horizon — the fresh candidate IS what
   // persists (preview ≡ persist).
   const candidate = buildRescueCandidate(rescuable.targetTemperatureC, nowMs + RESCUE_DEADLINE_HORIZON_MS);
-  const { estimate, deadlineAtMs } = app.previewStarvationRescuePlan(request.deviceId, candidate);
+  const { estimate, deadlineAtMs } = host.previewStarvationRescuePlan(request.deviceId, candidate);
   return {
     ok: true,
     deadlineAtMs,
@@ -111,13 +85,13 @@ export const createSettingsUiStarvationRescue = (
 ): SettingsUiStarvationRescueCreateResponse => {
   const request = parseRescueRequest(body);
   if (!request) return createRescueReject('invalid_request');
-  const app = getApp(homey);
-  if (typeof app?.rescueDeviceWithBudgetExemption !== 'function') return createRescueReject('unavailable');
+  const host = readPelsHost(homey);
+  if (!host) return createRescueReject('unavailable');
 
   // Re-check the guardrail at create time against the LIVE list: a row that
   // recovered (or whose cause changed) between preview and confirm is rejected
   // rather than silently granted a budget exemption.
-  const rescuable = resolveRescuableSettingsDevice(app, request.deviceId);
+  const rescuable = resolveRescuableSettingsDevice(host, request.deviceId);
   if (!rescuable.ok) return createRescueReject(rescuable.reason);
 
   // Persist the EXACT deadline the preview resolved (echoed back), or a fresh
@@ -129,14 +103,13 @@ export const createSettingsUiStarvationRescue = (
     return createRescueReject('deadline_passed');
   }
   const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
-  const result = app.rescueDeviceWithBudgetExemption(request.deviceId, candidate);
+  const result = host.rescueDeviceWithBudgetExemption(request.deviceId, candidate);
   if (!result.ok) return createRescueReject(mapAppRescueReason(result.reason));
   // Resolve the success flash against the JUST-PERSISTED plan at THIS moment
-  // (a pure re-derivation, no persist); absent the preview method, fall back to
-  // the honest-conservative "not running now".
-  const post = app.previewStarvationRescuePlan?.(request.deviceId, candidate);
+  // (a pure re-derivation, no persist).
+  const post = host.previewStarvationRescuePlan(request.deviceId, candidate);
   return {
     ok: true,
-    runsCurrentHour: post ? scheduledHoursIncludeCurrentHour(post.estimate.scheduledHours, nowMs) : false,
+    runsCurrentHour: scheduledHoursIncludeCurrentHour(post.estimate.scheduledHours, nowMs),
   };
 };

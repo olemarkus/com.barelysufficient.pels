@@ -5,6 +5,19 @@ import {
   type AppContext,
   type InitializedAppContext,
 } from '../lib/app/appContext';
+import { retireLegacyPlanStatusKeys } from '../lib/plan/planStatusRegistry';
+import { unsetRetiredSettingsKeys } from '../lib/store/retiredSettingsKeys';
+import { migrateManagedDevices } from './appManagedDeviceMigration';
+import { runBootMigrations } from './appBootMigrations';
+
+/** The boot's settings migrations, in order, before any step reads the keys they move. */
+export function runStartupSettingsMigrations(homey: AppContext['homey']): void {
+  migrateManagedDevices({ homey });
+  runBootMigrations({ homey });
+  // Nothing to import: a status is a fact of the run that publishes it.
+  retireLegacyPlanStatusKeys(homey.settings);
+  unsetRetiredSettingsKeys(homey.settings);
+}
 
 /** Shutdown flush for the daily-budget state blob; never throws into `onUninit`. */
 export function flushDailyBudgetStateOnUninit(ctx: AppContext): void {

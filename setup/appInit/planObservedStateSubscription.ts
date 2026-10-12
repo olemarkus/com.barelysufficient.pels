@@ -9,14 +9,14 @@ import { canDeviceChangeOwningHomeActionableLoad, type OwningHomeRouter } from '
 
 /**
  * The slice of the transport wiring the PLAN-side subscription needs. Narrower
- * than `DeviceTransportWiringDeps` on purpose: this subscription is registered
+ * than the transport wiring's deps on purpose: this subscription is registered
  * by its own startup step, after the plan service exists, and must not grow a
  * reason to run any earlier.
  */
 export type PlanObservedStateSubscriptionDeps = {
   ctx: AppContext;
   syncLivePlanState: (event: ObservedStateChangedEvent) => Promise<boolean>;
-  getObservedStateEmitter: () => ObservedStateEmitter;
+  observedStateEmitter: ObservedStateEmitter;
   /**
    * Update "leave it off until turned on again" for a device whose observed
    * control state moved, routed to its owning home. No rebuild: the hold is
@@ -85,7 +85,7 @@ const canFalsifyUnactionableVerdict = (deps: PlanObservedStateSubscriptionDeps, 
  * distrusted.
  */
 export function subscribePlanObservedState(deps: PlanObservedStateSubscriptionDeps): void {
-  const emitter = deps.getObservedStateEmitter();
+  const emitter = deps.observedStateEmitter;
   emitter.onObservedControlStateChanged((event: ObservedControlStateChangedEvent) => {
     deps.syncExternalOffHold(event);
     if (!canFalsifyUnactionableVerdict(deps, event.deviceId)) return;

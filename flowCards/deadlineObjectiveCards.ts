@@ -1,7 +1,4 @@
-import type {
-  DeferredObjectivePlanRevisionEvent,
-  DeferredObjectiveSettingsEntry,
-} from '../lib/objectives/deferredObjectives';
+import type { DeferredObjectivePlanRevisionEvent } from '../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,
@@ -23,13 +20,7 @@ import {
   type SmartTaskStatusId,
 } from './smartTaskTokens';
 import type { FlowCardDeps } from './registerFlowCards';
-import {
-  isOfferedDevice,
-  resolveReadyByToDeadlineAtMs,
-  throwIfWriteRefused,
-  validateNumberInRange,
-  validateReadyBy,
-} from './deadlineCardWrites';
+import { registerSetDeadlineCard, throwIfWriteRefused, validateNumberInRange } from './deadlineCardWrites';
 
 type SmartTaskActiveFlowStatus = SmartTaskStatusId;
 
@@ -183,48 +174,19 @@ export function registerDeadlineObjectiveCards(deps: FlowCardDeps): void {
 }
 
 function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
-  const card = deps.homey.flow.getActionCard('set_temperature_deadline');
-  card.registerRunListener(async (args: unknown) => {
-    const payload = args as {
-      device?: RawFlowDeviceArg;
-      target_c?: unknown;
-      ready_by?: unknown;
-    } | null;
-    const deviceId = getDeviceIdFromFlowArg(payload?.device);
-    if (!deviceId) throw new Error('Device must be provided.');
-    const snapshot = await deps.getSnapshot();
-    const device = snapshot.find((entry) => entry.id === deviceId);
-    if (!device) throw new Error(`Device '${deviceId}' was not found.`);
-    if (!supportsTemperatureObjective(device)) {
-      throw new Error(`Device '${device.name.trim() || deviceId}' does not support temperature deadlines.`);
-    }
-    const targetTemperatureC = validateTargetTemperature(payload?.target_c, device);
-    const deadlineLocalTime = validateReadyBy(payload?.ready_by);
-    const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, deadlineLocalTime);
-    const entry: DeferredObjectiveSettingsEntry = {
-      enabled: true,
-      kind: 'temperature',
-      enforcement: 'soft',
-      targetTemperatureC,
-      deadlineAtMs,
-    };
-    // Device-scoped op writes this device's own settings key + runs the shared
-    // notify/flush chokepoint. It preserves any standing rescue
-    // permission across this update by default (the rescue card promises it
-    // sticks until changed/cleared). A per-key write touches only this device,
-    // so it cannot clobber a sibling task.
-    throwIfWriteRefused(
-      deps.upsertDeferredObjectiveForDevice({ deviceId, deviceName: device.name ?? null, entry }),
-    );
-    return true;
-  });
-  card.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(
-      snapshot.filter(supportsTemperatureObjective).filter(isOfferedDevice(deps)),
-      query,
-    );
-  });
+  registerSetDeadlineCard(
+    deps,
+    'set_temperature_deadline',
+    'Device must be provided.',
+    supportsTemperatureObjective,
+    (label) => `Device '${label}' does not support temperature deadlines.`,
+    (args: { target_c?: unknown } | null, device) => {
+      const targetTemperatureC = validateTargetTemperature(args?.target_c, device);
+      return (deadlineAtMs) => ({
+        enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC, deadlineAtMs,
+      });
+    },
+  );
 }
 
 const validateTargetTemperature = (raw: unknown, device: TargetDeviceSnapshot): number => {
@@ -235,47 +197,17 @@ const validateTargetTemperature = (raw: unknown, device: TargetDeviceSnapshot): 
 };
 
 function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
-  const card = deps.homey.flow.getActionCard('set_ev_charge_deadline');
-  card.registerRunListener(async (args: unknown) => {
-    const payload = args as {
-      device?: RawFlowDeviceArg;
-      target_percent?: unknown;
-      ready_by?: unknown;
-    } | null;
-    const deviceId = getDeviceIdFromFlowArg(payload?.device);
-    if (!deviceId) throw new Error('EV charger must be provided.');
-    const snapshot = await deps.getSnapshot();
-    const device = snapshot.find((entry) => entry.id === deviceId);
-    if (!device) throw new Error(`Device '${deviceId}' was not found.`);
-    if (!isEvCharger(device)) {
-      throw new Error(`Device '${device.name.trim() || deviceId}' is not an EV charger.`);
-    }
-    const targetPercent = validateNumberInRange(payload?.target_percent, 'Target battery (%)', 1, 100);
-    const deadlineLocalTime = validateReadyBy(payload?.ready_by);
-    const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, deadlineLocalTime);
-    const entry: DeferredObjectiveSettingsEntry = {
-      enabled: true,
-      kind: 'ev_soc',
-      enforcement: 'soft',
-      targetPercent,
-      deadlineAtMs,
-    };
-    // Device-scoped op writes this device's own settings key + runs the shared
-    // notify/flush chokepoint, preserving any standing rescue permission
-    // by default. A per-key write touches only this device, so it cannot clobber
-    // a sibling task.
-    throwIfWriteRefused(
-      deps.upsertDeferredObjectiveForDevice({ deviceId, deviceName: device.name ?? null, entry }),
-    );
-    return true;
-  });
-  card.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(
-      snapshot.filter(isEvCharger).filter(isOfferedDevice(deps)),
-      query,
-    );
-  });
+  registerSetDeadlineCard(
+    deps,
+    'set_ev_charge_deadline',
+    'EV charger must be provided.',
+    isEvCharger,
+    (label) => `Device '${label}' is not an EV charger.`,
+    (args: { target_percent?: unknown } | null) => {
+      const targetPercent = validateNumberInRange(args?.target_percent, 'Target battery (%)', 1, 100);
+      return (deadlineAtMs) => ({ enabled: true, kind: 'ev_soc', enforcement: 'soft', targetPercent, deadlineAtMs });
+    },
+  );
 }
 
 const resolveDeviceName = async (deps: FlowCardDeps, deviceId: string): Promise<string | null> => {
@@ -308,8 +240,8 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
     // / hours-tracker memory so lifecycle-only surfaces do not keep stale state.
     // The public status-change trigger is active-plan-revision backed, so it no
     // longer needs a separate suppression cache here.
-    deps.getDeferredObjectiveStatusBus?.()?.forgetDevice(deviceId);
-    deps.getDeferredObjectiveHoursRemainingTracker?.()?.forgetDevice(deviceId);
+    deps.deferredObjectiveStatusBus.forgetDevice(deviceId);
+    deps.deferredObjectiveHoursRemainingTracker.forgetDevice(deviceId);
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
@@ -336,9 +268,7 @@ function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
     return buildDeviceAutocompleteOptions(snapshot, query);
   });
 
-  const bus = deps.getDeferredObjectivePlanRevisionBus?.();
-  if (!bus) return;
-  bus.onRevision((event) => {
+  deps.deferredObjectivePlanRevisionBus.onRevision((event) => {
     let tokens: Record<string, unknown>;
     try {
       const previousStatus = mapPreviousPlanStatusToFlowStatus(event);
@@ -377,9 +307,7 @@ function registerDeadlineEndedTrigger(deps: FlowCardDeps): void {
     return buildDeviceAutocompleteOptions(snapshot, query);
   });
 
-  const bus = deps.getDeferredObjectiveEndedBus?.();
-  if (!bus) return;
-  bus.onEnded((event) => {
+  deps.deferredObjectiveEndedBus.onEnded((event) => {
     let tokens: Record<string, unknown>;
     try {
       tokens = buildSmartTaskEndedTokens(event);
@@ -415,9 +343,7 @@ function registerDeadlinePlanChangedTrigger(deps: FlowCardDeps): void {
     return buildDeviceAutocompleteOptions(snapshot, query);
   });
 
-  const bus = deps.getDeferredObjectivePlanRevisionBus?.();
-  if (!bus) return;
-  bus.onRevision((event) => {
+  deps.deferredObjectivePlanRevisionBus.onRevision((event) => {
     if (event.eventType !== 'revision_written') return;
     if (!event.allocationChanged) return;
     let tokens: Record<string, unknown>;
@@ -479,9 +405,7 @@ function registerSmartTaskHoursRemainingTrigger(deps: FlowCardDeps): void {
     return buildDeviceAutocompleteOptions(snapshot, query);
   });
 
-  const bus = deps.getDeferredObjectiveHoursRemainingBus?.();
-  if (!bus) return;
-  bus.onCrossing((event) => {
+  deps.deferredObjectiveHoursRemainingBus.onCrossing((event) => {
     let tokens: Record<string, unknown>;
     try {
       tokens = buildSmartTaskHoursRemainingTokens(event);

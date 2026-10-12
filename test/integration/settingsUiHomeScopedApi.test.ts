@@ -13,6 +13,8 @@
 //  2. a REFUSED `homeId` performs no settings read and no scoped-key build.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
+import { pelsHostDouble } from '../helpers/pelsHostDouble';
+import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import {
@@ -98,10 +100,11 @@ type ScopedApiApp = {
   getSettingsUiManagedDevices: () => Record<string, unknown>[];
   getUiPickerDevices: () => Record<string, unknown>[];
   getLatestPlanSnapshotForUi: () => Record<string, unknown> | null;
+  getCapacityScalars: () => CapacityScalarSettings;
   powerTracker: Record<string, unknown>;
   homeRuntimeRead?: HomeRuntimeReadPort;
   homeMembership?: HomeMembershipPort;
-  planStatuses?: PlanStatusRegistry;
+  planStatuses: PlanStatusRegistry;
   batteryControl: {
     readControlCapability: (deviceId: string) => 'not_battery';
     wasTakenOver: (deviceId: string) => boolean;
@@ -117,8 +120,8 @@ const installBoundary = (options: {
   areaTracker?: Record<string, unknown>;
   /** Statuses published this run; the default has both the whole home and the area published. */
   planStatuses?: PlanStatusRegistry;
-  /** `false` models the boot/uninit window: an app shell with no registry on it. */
-  hasRegistry?: boolean;
+  /** `false` models the boot/uninit window: the Homey handle exists and `app` is undefined. */
+  wired?: boolean;
 } = {}) => {
   const seeded: Record<string, unknown> = {
     power_source: 'homey_energy',
@@ -150,7 +153,7 @@ const installBoundary = (options: {
     readCarAssociationCandidates: () => ({ state: 'resolved', cars: [] }),
     getUiPickerDevices: () => [],
   });
-  const app: ScopedApiApp = {
+  const app: ScopedApiApp = pelsHostDouble<ScopedApiApp>({
     getModePrioritiesForUi: createFixturePriorityQuery(),
     settingsUiDeviceReads,
     latestTargetSnapshot: [
@@ -161,15 +164,18 @@ const installBoundary = (options: {
     getSettingsUiManagedDevices: () => app.latestTargetSnapshot,
     getUiPickerDevices: () => [],
     getLatestPlanSnapshotForUi: () => null,
+    getCapacityScalars: () => ({
+      limitKw: 10, marginKw: 0.2, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null, dryRun: false,
+    }),
     powerTracker: { lastPowerW: 5200, lastTimestamp: 4242, buckets: {} },
     // The battery control owner is built before any device can be listed; this
     // home has no battery, so it answers `not_battery` for every device.
     batteryControl: { readControlCapability: () => 'not_battery', wasTakenOver: () => false },
-    ...(options.hasRegistry === false ? {} : { planStatuses }),
+    planStatuses,
     ...(options.hasReadPort === false ? {} : { homeRuntimeRead }),
     ...(options.hasMembership === false ? {} : { homeMembership }),
-  };
-  mockHomeyInstance.app = app;
+  });
+  mockHomeyInstance.app = options.wired === false ? undefined : app;
   // The one mock→SDK-type conversion, at the same seam every other
   // shared-mock consumer performs it (e.g. `homeRegistryStore.test.ts`).
   const homey = mockHomeyInstance as unknown as Homey.App['homey'];
@@ -300,7 +306,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       expect(getSettingsUiDevicesPayload({ homey, query }).devices).toEqual([]);
     });
 
-    it('refuses every home when homey.app carries no read port', () => {
+    it('refuses every home before the home-runtime registry answers', () => {
       const { homey } = installBoundary({ hasReadPort: false });
       const query = { homeId: AREA_ID };
       expect(getSettingsUiPlanPayload({ homey, query })).toEqual({
@@ -374,11 +380,11 @@ describe('settings-UI `?homeId=` endpoints', () => {
       expect(power.homeScope).toEqual({ state: 'resolved', homeId: AREA_ID });
     });
 
-    it('classifies an app shell without the registry as unavailable, not as "no status yet"', () => {
-      // The boot/uninit window: the shell is there but carries no registry.
+    it('classifies an app that is not wired as unavailable, not as "no status yet"', () => {
+      // The boot/uninit window: the Homey handle is there, the app is not.
       // That must become `homeScope: unavailable` — never a resolved payload
       // with a fabricated "no status yet" that the client could cache.
-      const { homey } = installBoundary({ hasRegistry: false });
+      const { homey } = installBoundary({ wired: false });
 
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
         tracker: {},

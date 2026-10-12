@@ -7,6 +7,7 @@
  * and that is not something the composition root should be doing beside a
  * settings handle.
  */
+import { getDebugEmitter } from '../../lib/logging/logger';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import { ModeDeviceTargetFill } from '../../lib/home/modeDeviceTargetFill';
@@ -29,7 +30,7 @@ export const createTemperatureShedFloorDefaults = (ctx: AppContext, homeModeCata
   // Overshoot defaults follow the OWNING home's effective mode.
   resolveOperatingModeForDevice: operatingModeResolver
     ?? ((deviceId) => resolveOperatingModeForDevice(homeModeCatalog, deviceId)),
-  debugStructured: ctx.getStructuredDebugEmitter('devices', 'devices'),
+  debugStructured: getDebugEmitter('devices', 'devices'),
 });
 
 /**

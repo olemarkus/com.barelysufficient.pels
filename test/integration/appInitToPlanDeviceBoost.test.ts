@@ -20,7 +20,7 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * the planner's half (runnable gate, draw release, forced request) in
  * `test/unit/planBoost.test.ts`.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
@@ -69,7 +69,7 @@ const ctxWith = (
   const ctx = createAppContextMock();
   const loose = ctx as unknown as Record<string, unknown>;
   loose.getNow = () => new Date(FIXED_NOW);
-  loose.getTemperatureBoostConfig = () => temperatureBoost;
+  vi.spyOn(ctx.deviceControlSettings, 'getTemperatureBoostConfig').mockReturnValue(temperatureBoost);
   Object.assign(loose, extra);
   return ctx;
 };

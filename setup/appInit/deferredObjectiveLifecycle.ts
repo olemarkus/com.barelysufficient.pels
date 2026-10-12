@@ -1,3 +1,4 @@
+import { getDebugEmitter } from '../../lib/logging/logger';
 import type { AppContext } from '../../lib/app/appContext';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
@@ -243,11 +244,11 @@ export function createDeferredObjectiveLifecycleEmitter(
     // excludes it (see the dep's doc on the emitter).
     resolveDeviceExclusion: (deviceId) => resolveSmartTaskDeviceExclusion(ctx, deviceId),
     getDeferredObjectiveDebugStructured: () => (
-      ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives')
+      getDebugEmitter('deferred_objectives', 'deferred_objectives')
     ),
-    getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
-    getDeferredObjectiveHoursRemainingBus: () => ctx.deferredObjectiveHoursRemainingBus,
-    getDeferredObjectiveHoursRemainingTracker: () => ctx.deferredObjectiveHoursRemainingTracker,
+    deferredObjectiveStatusBus: ctx.deferredObjectiveStatusBus,
+    deferredObjectiveHoursRemainingBus: ctx.deferredObjectiveHoursRemainingBus,
+    deferredObjectiveHoursRemainingTracker: ctx.deferredObjectiveHoursRemainingTracker,
     onSatisfied: (deviceId) => (
       handleDeferredSatisfied(ctx, deviceId)
     ),

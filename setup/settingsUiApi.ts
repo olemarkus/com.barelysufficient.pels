@@ -4,9 +4,6 @@ import type {
   DailyBudgetModelSettings,
   DailyBudgetUiRead,
 } from '../packages/contracts/src/dailyBudgetTypes';
-import type {
-  ResolvedDeferredObjectiveActivePlansV1,
-} from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
@@ -17,18 +14,7 @@ import {
 } from './settingsUiHomeScope';
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveSettingsV1 } from '../packages/contracts/src/deferredObjectiveSettings';
-import {
-  hasHardCapConfigurationSeam,
-  hasCapacityPeakSeam,
-  hasCapacityScalarsSeam,
-  hasHomeyPriceFormulaSeam,
-  hasPowerhourSourceSeam,
-  hasPriceOptimizationSetupSeam,
-  hasPriceSourcePayloadsSeam,
-  hasCombinedPricesSeam,
-  NO_PRICE_SOURCE_PAYLOADS,
-  hasPvForecastSourceSeam,
-} from '../lib/ports/settingsUiStatusSeams';
+import { readPelsHost, type PelsHost } from '../lib/app/pelsHost';
 import type {
   SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,
@@ -40,9 +26,11 @@ import type {
   SettingsUiPlanSnapshot,
   SettingsUiPowerPayload,
   SettingsUiPowerStatusRead,
+  SettingsUiPriceSourcePayloads,
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
   SettingsUiDeviceSnapshot,
+  SettingsUiBatteryState,
 } from '../packages/contracts/src/settingsUiApi';
 import { readObservedStateOfCharge } from '../lib/observer/observedDeviceStateProjection';
 import type { ObservedStateOfChargeRead } from '../lib/observer/observedDeviceStateProjection';
@@ -62,74 +50,48 @@ import {
 } from '../lib/power/trackerUiProjection';
 import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
+  appNotReadyError,
   classifyPowerStatusRead,
+  readPlanStatusForUi,
+  resetPowerStatsForUi,
   type PowerMeasurementEvidence,
-  getAssociatedCarForUiFromApp,
-  getPlanStatusForUiFromApp,
-  getLatestDevicesForUiFromApp,
-  getPrioritiesForUiFromApp,
-  getObservedStateForUiFromApp,
-  readSettingsUiBatteryStateFromApp,
-  getPlanSnapshotForUiFromHomey,
-  getSurplusPoolReachableForUiFromApp,
-  getPowerTrackerForUiFromApp,
-  getUiPickerDevicesFromApp,
-  refreshSettingsUiDevicesForApp,
-  refreshSettingsUiGridTariffForApp,
-  refreshSettingsUiPricesForApp,
-  resetSettingsUiPowerStatsForApp,
 } from './settingsUiAppRuntime';
 
-type SettingsUiApiApp = Homey.App & {
-  getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
-  getDeviceLogUiPayload?: () => SettingsUiDeviceLogPayload;
-  getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
-  getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
+/**
+ * What the settings UI is told before the price coordinator is wired, or while
+ * the app is: nothing stored.
+ */
+export const NO_PRICE_SOURCE_PAYLOADS: SettingsUiPriceSourcePayloads = {
+  flowToday: null,
+  flowTomorrow: null,
+  homeyCurrency: null,
+  homeyToday: null,
+  homeyTomorrow: null,
+  powerhourCurrency: null,
+  powerhourToday: null,
+  powerhourTomorrow: null,
 };
 
 /**
- * The daily-budget seam the running app exposes (`AppContext` and
- * `PelsWidgetHostApi` both declare these required, so the real app always has
- * all three). Same boundary role as `PvForecastSourceSeam` above: `homey.app`
- * is the SDK's base `App`, so presence is a runtime question HERE — guarded
- * once, answering the typed read every caller inward can trust.
+ * The daily budget while the app is not wired — the same "nothing computed" the
+ * service reports, so callers get one member to render rather than two
+ * spellings of nothing.
  */
-type DailyBudgetSeam = {
-  getDailyBudgetUiPayload: () => DailyBudgetUiRead;
-  previewDailyBudgetModel: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
-  applyDailyBudgetModel: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetUiRead;
-};
-
-const hasDailyBudgetSeam = (app: unknown): app is DailyBudgetSeam => (
-  typeof app === 'object'
-  && app !== null
-  && 'getDailyBudgetUiPayload' in app
-  && typeof app.getDailyBudgetUiPayload === 'function'
-  && 'previewDailyBudgetModel' in app
-  && typeof app.previewDailyBudgetModel === 'function'
-  && 'applyDailyBudgetModel' in app
-  && typeof app.applyDailyBudgetModel === 'function'
-);
-
-/** The weather-insight readout seam; same boundary role as the two above. */
-type WeatherAdvisorReadoutSeam = { getWeatherAdvisorReadout: () => Promise<WeatherAdvisorReadout> };
-
-const hasWeatherAdvisorReadoutSeam = (app: unknown): app is WeatherAdvisorReadoutSeam => (
-  typeof app === 'object'
-  && app !== null
-  && 'getWeatherAdvisorReadout' in app
-  && typeof app.getWeatherAdvisorReadout === 'function'
-);
+const NOT_READY_DAILY_BUDGET: DailyBudgetUiRead = { kind: 'unavailable' };
 
 /**
- * The one place the daily-budget seam's absence is named. `unavailable` here
- * is the restart window in which `homey.app` is not wired yet — the same
- * "nothing computed" the service reports, so callers get one member to render
- * rather than two spellings of nothing.
+ * The whole-home power payload while the app is not wired: no history, no
+ * measurement, and every capacity read unavailable.
  */
-const readDailyBudget = (app: unknown): DailyBudgetUiRead => (
-  hasDailyBudgetSeam(app) ? app.getDailyBudgetUiPayload() : { kind: 'unavailable' }
-);
+const NOT_READY_POWER_PAYLOAD: SettingsUiPowerPayload = {
+  tracker: {},
+  readings: { state: 'never' },
+  status: { state: 'unavailable', reason: 'no_measurement' },
+  capacityPeak: { state: 'unavailable' },
+  capacityScalars: { state: 'unavailable' },
+  hardCapConfiguration: { state: 'unavailable' },
+  hasManagedSolarDevice: false,
+};
 
 type ApiContext = {
   homey: Homey.App['homey'];
@@ -142,11 +104,6 @@ type ApiContext = {
  * keeps the whole-home behaviour without naming it.
  */
 type HomeScopedApiContext = ApiContext & { query?: unknown };
-
-const getApp = (homey: Homey.App['homey']): SettingsUiApiApp | null => {
-  if (!homey || typeof homey !== 'object') return null;
-  return homey.app;
-};
 
 const pickSettings = (
   homey: Homey.App['homey'],
@@ -290,14 +247,18 @@ const resolveStateOfCharge = (
  * home".
  */
 const buildSettingsUiDeviceList = (
-  homey: ApiContext['homey'],
+  host: PelsHost,
   devices: readonly (DecoratedDeviceSnapshot & StateOfChargeObservedProbe)[],
 ): SettingsUiDeviceSnapshot[] => {
   if (devices.length === 0) return [];
-  const priorities = getPrioritiesForUiFromApp(homey, devices.map((device) => device.id));
+  const priorities = host.getModePrioritiesForUi(devices.map((device) => device.id));
   return devices.map((device) => {
-    const observed = getObservedStateForUiFromApp(homey, device.id);
-    const associatedCar = getAssociatedCarForUiFromApp(homey, device.id);
+    // The live observed record and car association, never the stored copy: the
+    // stored device snapshot is rebuilt on the device poll, so its observed half
+    // is up to one poll interval behind, and the car association is resolved per
+    // call by the transport so a plug-in shows within the probe's settle.
+    const observed = host.getObservedRecord(device.id);
+    const associatedCar = host.deviceManager?.getAssociatedCar(device.id);
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
     return {
       ...device,
@@ -309,19 +270,33 @@ const buildSettingsUiDeviceList = (
       ...(observed ? pickLiveObservedFields(observed, resolveLiveObservedFields(device)) : {}),
       ...(associatedCar ? { associatedCar } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
-      ...readSettingsUiBatteryStateFromApp(homey, device),
+      ...readSettingsUiBatteryState(host, device),
       priority: priorities.getPriority(device.id),
     };
   });
 };
 
-const getRawSettingsUiDeviceCandidates = (
-  { homey }: ApiContext,
-): SettingsUiDeviceSnapshot[] => {
-  const managed = getLatestDevicesForUiFromApp(homey) ?? [];
-  const unmanagedEligible = getUiPickerDevicesFromApp(homey);
-  return buildSettingsUiDeviceList(homey, [...managed, ...unmanagedEligible]);
+/**
+ * A listed device's home-battery facts, as the battery control owner answers
+ * them; the owner answers `not_battery` for every other device. Devices are
+ * listed only after the owner is built, so a missing owner is a not-ready read,
+ * never a guess.
+ */
+const readSettingsUiBatteryState = (
+  host: PelsHost,
+  device: Pick<DecoratedDeviceSnapshot, 'id'>,
+): SettingsUiBatteryState => {
+  const owner = host.batteryControl;
+  if (!owner) throw appNotReadyError('Battery control');
+  return {
+    batteryControl: owner.readControlCapability(device.id),
+    batteryTakenOver: owner.wasTakenOver(device.id),
+  };
 };
+
+const getRawSettingsUiDeviceCandidates = (host: PelsHost): SettingsUiDeviceSnapshot[] => (
+  buildSettingsUiDeviceList(host, [...host.getSettingsUiManagedDevices(), ...host.getUiPickerDevices()])
+);
 
 // The stepped branch of the decorator is the only one that resolves
 // `binaryControl`, and it is the only branch that stamps this control model —
@@ -330,8 +305,9 @@ const getRawSettingsUiDeviceCandidates = (
 // The listed fields the projection actually carries, as a patch. A field the
 // projection omits is left out rather than written as `undefined`, so the
 // stored value carries forward instead of being blanked.
-const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null => (
-  getPlanSnapshotForUiFromHomey(homey)
+/** The whole-home plan, or none while the app is not wired. */
+const getSettingsUiPlan = (homey: ApiContext['homey']): SettingsUiPlanSnapshot | null => (
+  readPelsHost(homey)?.getLatestPlanSnapshotForUi() ?? null
 );
 
 /**
@@ -359,37 +335,24 @@ const latchEvidence = (measured: boolean): PowerMeasurementEvidence => (
  * post-meter-swap, or a corrupt tracker restore, where no status of this run
  * exists to serve.
  */
-const classifyMainPowerStatus = (homey: ApiContext['homey']): SettingsUiPowerStatusRead => {
-  const liveTracker = getPowerTrackerForUiFromApp(homey);
-  return classifyPowerStatusRead(
-    latchEvidence(liveTracker !== null && hasPowerMeasurement(liveTracker)),
-    getPlanStatusForUiFromApp(homey, MAIN_HOME_ID),
-  );
-};
+const classifyMainPowerStatus = (host: PelsHost): SettingsUiPowerStatusRead => classifyPowerStatusRead(
+  latchEvidence(hasPowerMeasurement(host.powerTracker)),
+  readPlanStatusForUi(host, MAIN_HOME_ID),
+);
 
-const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
-  const app = getApp(homey);
+const getSettingsUiPower = (host: PelsHost): SettingsUiPowerPayload => {
   // The tracker keeps the persisted fallback: it carries usage HISTORY
   // (buckets, daily totals, solar families) whose consumers age it themselves
   // (stale-data banner, solar-now staleness gate). Liveness claims ride the
   // classified `status` read only.
-  const rawTracker = getPowerTrackerForUiFromApp(homey);
-  const tracker: PowerTrackerState = rawTracker && typeof rawTracker === 'object' && !Array.isArray(rawTracker)
-    ? rawTracker
-    : {};
+  const tracker: PowerTrackerState = host.powerTracker;
   return {
     tracker: projectPowerTrackerForUi(tracker, Date.now()),
     readings: resolvePowerReadingsForUi(tracker),
-    status: classifyMainPowerStatus(homey),
-    capacityScalars: hasCapacityScalarsSeam(app)
-      ? { state: 'resolved', scalars: app.getCapacityScalars() }
-      : { state: 'unavailable' },
-    hardCapConfiguration: hasHardCapConfigurationSeam(app)
-      ? app.readHardCapConfiguration()
-      : { state: 'unavailable' },
-    capacityPeak: hasCapacityPeakSeam(app)
-      ? projectCapacityPeakForUi(app.getCurrentMonthCapacityPeakKw())
-      : { state: 'unavailable' },
+    status: classifyMainPowerStatus(host),
+    capacityScalars: { state: 'resolved', scalars: host.getCapacityScalars() },
+    hardCapConfiguration: host.readHardCapConfiguration(),
+    capacityPeak: projectCapacityPeakForUi(host.getCurrentMonthCapacityPeakKw()),
     // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
     // Solar card (the device list is lazy-loaded, so the card can't read the
     // ui_devices flag). A role-detected PV device is now the whole condition:
@@ -403,7 +366,7 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     // this flag can never promise a card whose buckets nothing will fill. The
     // ui_devices flag below keeps the wider picker-inclusive set — it unlocks
     // the export-price section, which needs no production reading at all.
-    hasManagedSolarDevice: hasSolarProductionCandidate(getLatestDevicesForUiFromApp(homey) ?? []),
+    hasManagedSolarDevice: hasSolarProductionCandidate(host.getSettingsUiManagedDevices()),
   };
 };
 
@@ -411,28 +374,32 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
 const stringOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => {
-  const app = getApp(homey);
+  const host = readPelsHost(homey);
+  const priceArea = stringOrNull(homey.settings.get('price_area'));
+  if (!host) {
+    return {
+      combinedPrices: null,
+      priceArea,
+      ...NO_PRICE_SOURCE_PAYLOADS,
+      pvForecastSource: { kind: 'unknown' },
+      homeyPriceFormula: { kind: 'unknown' },
+      powerhourSource: { kind: 'unknown' },
+      priceOptimizationSetup: { state: 'unavailable' },
+    };
+  }
   // The settings-UI client (`normalizeCombinedPrices`, `ui/combinedPrices.ts`) accepts
   // both the legacy V1 `{ prices: [...] }` and V2 `{ days: {...} }` shapes,
   // so the stored value is forwarded as-is. A first read through the
   // combined-prices reader (daily-budget service, plan service) migrates V1 to
   // V2 in place; later bootstrap calls then see V2 here.
   return {
-    combinedPrices: hasCombinedPricesSeam(app) ? app.getCombinedPricesForUi() : null,
-    priceArea: stringOrNull(homey.settings.get('price_area')),
-    ...(hasPriceSourcePayloadsSeam(app) ? app.getPriceSourcePayloadsForUi() : NO_PRICE_SOURCE_PAYLOADS),
-    pvForecastSource: hasPvForecastSourceSeam(app)
-      ? app.getPvForecastSourceUiStatus()
-      : { kind: 'unknown' },
-    homeyPriceFormula: hasHomeyPriceFormulaSeam(app)
-      ? app.getHomeyPriceFormulaUiStatus()
-      : { kind: 'unknown' },
-    powerhourSource: hasPowerhourSourceSeam(app)
-      ? app.getPowerhourSourceUiStatus()
-      : { kind: 'unknown' },
-    priceOptimizationSetup: hasPriceOptimizationSetupSeam(app)
-      ? app.readPriceOptimizationSetup()
-      : { state: 'unavailable' },
+    combinedPrices: host.getCombinedPricesForUi(),
+    priceArea,
+    ...host.getPriceSourcePayloadsForUi(),
+    pvForecastSource: host.getPvForecastSourceUiStatus(),
+    homeyPriceFormula: host.getHomeyPriceFormulaUiStatus(),
+    powerhourSource: host.getPowerhourSourceUiStatus(),
+    priceOptimizationSetup: host.readPriceOptimizationSetup(),
   };
 };
 
@@ -443,7 +410,7 @@ const buildEmptyDeviceDiagnosticsPayload = (): SettingsUiDeviceDiagnosticsRespon
 });
 
 export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<SettingsUiBootstrap> => {
-  const app = getApp(homey);
+  const host = readPelsHost(homey);
   return {
     settings: {
       ...pickSettings(homey, SETTINGS_UI_BOOTSTRAP_KEYS),
@@ -456,10 +423,10 @@ export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<S
       // override fixes both UI read paths without a separate endpoint.
       [DEFERRED_OBJECTIVES_SETTINGS]: readAllObjectives(homey.settings),
     },
-    dailyBudget: readDailyBudget(app),
-    deferredObjectiveActivePlans: app?.getDeferredObjectiveActivePlansUiPayload?.() ?? null,
-    plan: getSettingsUiPlan({ homey }),
-    power: getSettingsUiPower({ homey }),
+    dailyBudget: host ? host.getDailyBudgetUiPayload() : NOT_READY_DAILY_BUDGET,
+    deferredObjectiveActivePlans: host ? host.getDeferredObjectiveActivePlansUiPayload() : null,
+    plan: getSettingsUiPlan(homey),
+    power: host ? getSettingsUiPower(host) : NOT_READY_POWER_PAYLOAD,
     prices: getSettingsUiPrices({ homey }),
   };
 };
@@ -493,19 +460,19 @@ const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
 };
 
 const planPayloadForHome = (
-  homey: Homey.App['homey'],
+  host: PelsHost,
   scope: ResolvedSubHomeScope,
 ): SettingsUiPlanPayload => {
-  const reading = new SettingsUiHomeScopeAdapter(homey).readRuntime(scope);
+  const reading = new SettingsUiHomeScopeAdapter(host).readRuntime(scope);
   if (!reading) return UNAVAILABLE_PLAN_PAYLOAD;
   return { plan: reading.plan, homeScope: { state: 'resolved', homeId: scope.homeId } };
 };
 
 const powerPayloadForHome = (
-  homey: Homey.App['homey'],
+  host: PelsHost,
   scope: ResolvedSubHomeScope,
 ): SettingsUiPowerPayload => {
-  const homeScope = new SettingsUiHomeScopeAdapter(homey);
+  const homeScope = new SettingsUiHomeScopeAdapter(host);
   const reading = homeScope.readRuntime(scope);
   if (!reading) return UNAVAILABLE_POWER_PAYLOAD;
   // Unwired or provisional membership refuses the WHOLE payload, exactly as
@@ -513,13 +480,11 @@ const powerPayloadForHome = (
   // field is this home's truth — an absent solar flag never has to carry a
   // second meaning (the contract's documented absence case is the realtime
   // status-only push).
-  const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
+  const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates(host));
   if (members === null) return UNAVAILABLE_POWER_PAYLOAD;
-  // A status read the app shell cannot answer (the boot/uninit window) is
-  // unavailable too: it is not "no status published yet", and a resolved
-  // payload built from it could be cached for the session.
-  const statusRead = homeScope.readStatus(scope);
-  if (statusRead.state === 'unavailable') return UNAVAILABLE_POWER_PAYLOAD;
+  // That home's own live status, out of the app's registry — the same read
+  // main's unsuffixed path makes.
+  const statusRead = readPlanStatusForUi(host, scope.homeId);
   // No `power_source` read here any more: with production reaching both sources,
   // nothing in this payload depends on which one is configured, so reading it
   // purely to classify its failure would fence a home out of its own payload
@@ -554,15 +519,16 @@ const powerPayloadForHome = (
 
 const devicesPayloadForHome = (
   homey: Homey.App['homey'],
+  host: PelsHost,
   scope: ResolvedSubHomeScope,
 ): SettingsUiDevicesPayload => {
-  const homeScope = new SettingsUiHomeScopeAdapter(homey);
+  const homeScope = new SettingsUiHomeScopeAdapter(host);
   const reading = homeScope.readRuntime(scope);
   if (reading === null) return UNAVAILABLE_DEVICES_PAYLOAD;
   // Device→home attribution is what makes a per-home list true; without a
   // wired, non-provisional membership service there is no honest list, only an
   // unfiltered, empty or previous-generation one.
-  const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
+  const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates(host));
   if (members === null) return UNAVAILABLE_DEVICES_PAYLOAD;
   return {
     // A meter area's battery and solar devices are telemetry only: PELS does
@@ -595,17 +561,28 @@ export const getSettingsUiDevicesPayload = (
   const scope = SettingsUiHomeScopeAdapter.parseRequestedScope(query);
   if (scope.state === 'whole_home') return getWholeHomeDevicesPayload({ homey });
   if (scope.state === 'rejected') return UNAVAILABLE_DEVICES_PAYLOAD;
-  return devicesPayloadForHome(homey, scope);
+  // An app that is not wired serves no home's list.
+  const host = readPelsHost(homey);
+  return host ? devicesPayloadForHome(homey, host, scope) : UNAVAILABLE_DEVICES_PAYLOAD;
 };
 
 const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => {
-  const candidates = getRawSettingsUiDeviceCandidates({ homey });
-  const tracker = getPowerTrackerForUiFromApp(homey);
+  const host = readPelsHost(homey);
+  if (!host) {
+    return {
+      devices: [],
+      chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
+      hasManagedSolarDevice: false,
+      hasExhibitedExport: false,
+      surplusPoolReachable: false,
+    };
+  }
+  const candidates = getRawSettingsUiDeviceCandidates(host);
   return {
     // A Main-home battery is an ordinary managed device the owner can see and
     // switch; a solar device and a meter area's battery ride the backend
     // snapshot for telemetry only.
-    devices: new SettingsUiHomeScopeAdapter(homey).filterWholeHomeDevices(candidates),
+    devices: new SettingsUiHomeScopeAdapter(host).filterWholeHomeDevices(candidates),
     chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
     // A solar/PV device is always read and excluded from `devices`, so its presence
     // is the only home-level signal the settings UI gets that the home has solar. The
@@ -620,13 +597,13 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // export, which they DO exhibit. Broaden the "Use solar surplus" toggle gate to them via a
     // stable, accumulated export-kWh signal. Source-blind: both sources report signed net, so
     // a flow home exhibits export on exactly the same evidence as a Homey Energy one.
-    hasExhibitedExport: hasMaterialExhibitedExport(tracker && typeof tracker === 'object' ? tracker : null),
+    hasExhibitedExport: hasMaterialExhibitedExport(host.powerTracker),
     // Whether the surplus ENGINE can act, which the two flags above do not
     // answer: both of them also unlock the export-price section, which needs no
     // surplus pool. Same predicate the runtime producer gates the `surplusOnly`
     // stamp on (`lib/planInput/projectPlanInputDevice.ts`), so the toggle is offered
     // exactly where enabling it does something.
-    surplusPoolReachable: getSurplusPoolReachableForUiFromApp(homey),
+    surplusPoolReachable: host.isSurplusPoolReachable(),
   };
 };
 
@@ -642,18 +619,20 @@ export const getSettingsUiPlanPayload = (
   { homey, query }: HomeScopedApiContext,
 ): SettingsUiPlanPayload => {
   const scope = SettingsUiHomeScopeAdapter.parseRequestedScope(query);
-  if (scope.state === 'whole_home') return { plan: getSettingsUiPlan({ homey }) };
+  if (scope.state === 'whole_home') return { plan: getSettingsUiPlan(homey) };
   if (scope.state === 'rejected') return UNAVAILABLE_PLAN_PAYLOAD;
-  return planPayloadForHome(homey, scope);
+  const host = readPelsHost(homey);
+  return host ? planPayloadForHome(host, scope) : UNAVAILABLE_PLAN_PAYLOAD;
 };
 
 export const getSettingsUiPowerPayload = (
   { homey, query }: HomeScopedApiContext,
 ): SettingsUiPowerPayload => {
   const scope = SettingsUiHomeScopeAdapter.parseRequestedScope(query);
-  if (scope.state === 'whole_home') return getSettingsUiPower({ homey });
+  const host = readPelsHost(homey);
+  if (scope.state === 'whole_home') return host ? getSettingsUiPower(host) : NOT_READY_POWER_PAYLOAD;
   if (scope.state === 'rejected') return UNAVAILABLE_POWER_PAYLOAD;
-  return powerPayloadForHome(homey, scope);
+  return host ? powerPayloadForHome(host, scope) : UNAVAILABLE_POWER_PAYLOAD;
 };
 
 export const getSettingsUiPricesPayload = ({ homey }: ApiContext): SettingsUiPricesPayload => (
@@ -661,38 +640,32 @@ export const getSettingsUiPricesPayload = ({ homey }: ApiContext): SettingsUiPri
 );
 
 export const getSettingsUiDeviceDiagnosticsPayload = ({ homey }: ApiContext): SettingsUiDeviceDiagnosticsResponse => {
-  const app = getApp(homey);
-  if (!app?.getDeviceDiagnosticsUiPayload) {
-    return buildEmptyDeviceDiagnosticsPayload();
-  }
+  const host = readPelsHost(homey);
+  if (!host) return buildEmptyDeviceDiagnosticsPayload();
   // No try/catch: let exceptions bubble to the api.ts wrapper so the client
   // sees the real failure and the cause lands in `/tmp/pels` via app.error.
   // Returning an empty payload here would silently strip diagnostics from the
   // device-detail page without any explanation.
-  return app.getDeviceDiagnosticsUiPayload();
+  return host.getDeviceDiagnosticsUiPayload();
 };
 
 export const getSettingsUiDeviceLogPayload = ({ homey }: ApiContext): SettingsUiDeviceLogPayload => {
-  const app = getApp(homey);
-  if (!app?.getDeviceLogUiPayload) {
-    return { version: 1, entriesByDeviceId: {} };
-  }
+  const host = readPelsHost(homey);
+  if (!host) return { version: 1, entriesByDeviceId: {} };
   // No try/catch: let exceptions bubble to the api.ts wrapper so the client
   // sees the real failure and the cause lands in `/tmp/pels` via app.error.
-  return app.getDeviceLogUiPayload();
+  return host.getDeviceLogUiPayload();
 };
 
 export const getSettingsUiDeferredObjectivePlanHistoryPayload = (
   { homey }: ApiContext,
 ): SettingsUiDeferredObjectivePlanHistoryPayload => {
-  const app = getApp(homey);
-  if (!app?.getDeferredObjectivePlanHistoryUiPayload) {
-    return { version: 1, entriesByDeviceId: {} };
-  }
+  const host = readPelsHost(homey);
+  if (!host) return { version: 1, entriesByDeviceId: {} };
   // No try/catch: let exceptions bubble to the api.ts wrapper. Swallowing
   // here used to render the Smart tasks past-tasks list and the deadline-plan
   // history tab as empty when the recorder threw, hiding the failure.
-  return app.getDeferredObjectivePlanHistoryUiPayload();
+  return host.getDeferredObjectivePlanHistoryUiPayload();
 };
 
 // Serve the current objectives assembled from per-device keys. The settings UI's
@@ -704,79 +677,81 @@ export const getSettingsUiDeferredObjectiveSettingsPayload = (
   { homey }: ApiContext,
 ): DeferredObjectiveSettingsV1 => readAllObjectives(homey.settings);
 
-// 1-line delegation to the app's readout assembler; `inactive` when the app
-// method is not wired (restart window) or the feature flag is off.
+// 1-line delegation to the app's readout assembler; `inactive` when the app is
+// not wired (restart window) or the feature flag is off.
 export const getSettingsUiWeatherAdvisorReadout = async (
   { homey }: ApiContext,
 ): Promise<WeatherAdvisorReadout> => {
-  const app = getApp(homey);
-  if (!hasWeatherAdvisorReadoutSeam(app)) return { kind: 'inactive' };
-  return app.getWeatherAdvisorReadout();
+  const host = readPelsHost(homey);
+  return host ? host.getWeatherAdvisorReadout() : { kind: 'inactive' };
 };
 
 export const refreshSettingsUiDevices = async ({ homey }: ApiContext): Promise<SettingsUiDevicesPayload> => {
-  await refreshSettingsUiDevicesForApp(homey);
+  const host = readPelsHost(homey);
+  if (!host) throw appNotReadyError('Refresh devices');
+  await host.refreshTargetDevicesSnapshot();
   return getSettingsUiDevicesPayload({ homey });
 };
 
 export const refreshSettingsUiPrices = async ({ homey }: ApiContext): Promise<SettingsUiPricesPayload> => {
-  await refreshSettingsUiPricesForApp(homey);
+  const coordinator = readPelsHost(homey)?.priceCoordinator;
+  if (!coordinator) throw appNotReadyError('Refresh prices');
+  await coordinator.refreshSpotPrices(true);
   return getSettingsUiPricesPayload({ homey });
 };
 
 export const refreshSettingsUiGridTariff = async ({ homey }: ApiContext): Promise<SettingsUiPricesPayload> => {
-  await refreshSettingsUiGridTariffForApp(homey);
+  const coordinator = readPelsHost(homey)?.priceCoordinator;
+  if (!coordinator) throw appNotReadyError('Refresh grid tariff');
+  await coordinator.refreshGridTariffData(true);
   return getSettingsUiPricesPayload({ homey });
 };
 
 export const resetSettingsUiPowerStats = async ({ homey }: ApiContext): Promise<SettingsUiResetPowerStatsResponse> => {
-  const app = getApp(homey);
-  await resetSettingsUiPowerStatsForApp(homey);
+  const host = readPelsHost(homey);
+  if (!host) throw appNotReadyError('Reset power stats');
+  resetPowerStatsForUi(host);
   return {
-    power: getSettingsUiPower({ homey }),
-    dailyBudget: readDailyBudget(app),
+    power: getSettingsUiPower(host),
+    dailyBudget: host.getDailyBudgetUiPayload(),
   };
 };
 
 /** `GET /daily_budget` — the plain read the Budget surface polls. */
 export const getSettingsUiDailyBudget = ({ homey }: ApiContext): DailyBudgetUiRead => (
-  readDailyBudget(getApp(homey))
+  readPelsHost(homey)?.getDailyBudgetUiPayload() ?? NOT_READY_DAILY_BUDGET
 );
 
 export const previewSettingsUiDailyBudgetModel = (
   { homey, body }: ApiContext & { body?: unknown },
 ): DailyBudgetModelPreviewResponse => {
-  const app = getApp(homey);
-  if (!hasDailyBudgetSeam(app)) {
-    throw new Error('Daily budget preview is unavailable while the app is starting.');
-  }
-  return app.previewDailyBudgetModel(asDailyBudgetModelSettings(body));
+  const host = readPelsHost(homey);
+  if (!host) throw new Error('Daily budget preview is unavailable while the app is starting.');
+  return host.previewDailyBudgetModel(asDailyBudgetModelSettings(body));
 };
 
 export const applySettingsUiDailyBudgetModel = (
   { homey, body }: ApiContext & { body?: unknown },
 ): DailyBudgetUiRead => {
-  const app = getApp(homey);
-  if (!hasDailyBudgetSeam(app)) {
-    throw new Error('Daily budget cannot be applied while the app is starting.');
-  }
-  return app.applyDailyBudgetModel(asDailyBudgetModelSettings(body));
+  const host = readPelsHost(homey);
+  if (!host) throw new Error('Daily budget cannot be applied while the app is starting.');
+  return host.applyDailyBudgetModel(asDailyBudgetModelSettings(body));
 };
 
 export const logSettingsUiMessage = ({ homey, body }: ApiContext & { body?: unknown }): { ok: boolean } => {
-  const app = getApp(homey);
+  const host = readPelsHost(homey);
   if (!isValidLogRequest(body)) {
-    app?.error?.('Settings UI log API called without a valid payload');
+    host?.error('Settings UI log API called without a valid payload');
     return { ok: false };
   }
 
   const message = formatSettingsUiMessage(body);
   if (body.level === 'error') {
-    app?.error?.(message, new Error(body.detail || body.message));
+    host?.error(message, new Error(body.detail || body.message));
   } else if (body.level === 'warn') {
-    app?.log?.(`Warning: ${message}`);
+    host?.log(`Warning: ${message}`);
   } else {
-    app?.log?.(message);
+    host?.log(message);
   }
 
   return { ok: true };

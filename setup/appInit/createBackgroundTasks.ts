@@ -1,8 +1,6 @@
-import {
-  BackgroundTasksController,
-  type BackgroundTaskDeps,
-} from '../backgroundTasksController';
+import { BackgroundTasksController } from '../backgroundTasksController';
 import { TeardownRegistry } from '../../lib/utils/teardownRegistry';
+import type { AppContext } from '../../lib/app/appContext';
 
 /**
  * The background tasks, and the store their stop callbacks live in.
@@ -18,10 +16,10 @@ export type BackgroundTasks = {
   teardown: TeardownRegistry;
 };
 
-export const createBackgroundTasks = (deps: BackgroundTaskDeps): BackgroundTasks => {
+export const createBackgroundTasks = (ctx: AppContext): BackgroundTasks => {
   const teardown = new TeardownRegistry();
   return {
-    controller: new BackgroundTasksController({ ...deps, teardown }),
+    controller: new BackgroundTasksController(ctx, teardown),
     teardown,
   };
 };

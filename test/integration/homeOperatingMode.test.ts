@@ -51,8 +51,7 @@ import {
   createDeviceHomeAssignmentsStore,
   createHomesStore as createRawHomesStore,
 } from '../../lib/home/homeRegistryStore';
-import { initSettingsHandlerForApp } from '../../setup/appSettingsHelpers';
-import { buildHomeRuntimeSettingsHooks } from '../../setup/appInit/wireHomeRuntimeRegistry';
+import { registerSettingsHandler } from '../../setup/appInit/registerSettingsHandler';
 import { PlanService } from '../../lib/plan/planService';
 import { getLogger } from '../../lib/logging/logger';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -93,7 +92,7 @@ const createCatalogFor = (ctx: AppContext, homeId: string) => createHomeModeCata
   homeId,
   ctx.homey.settings,
   () => getHomeModeCatalogForTest(ctx).getSnapshot(),
-  () => ctx.managedDevices,
+  () => ctx.deviceControlSettings.managedDevices,
   () => ctx.homeMembership,
   () => getLogger('homes'),
   () => ({ status: 'resolved', deviceIds: new Set() }),
@@ -388,7 +387,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     const result = transferModeTargetsForOwnershipMoves(
       rig.ctx.homey.settings,
       getHomeModeCatalogForTest(rig.ctx),
-      () => rig.ctx.managedDevices,
+      () => rig.ctx.deviceControlSettings.managedDevices,
       () => rig.ctx.homeMembership,
       [{ deviceId: 'dev-1', fromHomeId: 'h_a', toHomeId: 'h_b' }],
     );
@@ -460,13 +459,13 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     await drainPending();
     const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
 
-    const settingsHandler = initSettingsHandlerForApp(
+    const stopSettingsHandler = registerSettingsHandler(
       rig.ctx,
       () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
-      {
-        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
-        onPvForecastSourceObserved: () => {},
-      },
+      () => rig.registry,
+      () => {},
+      () => {},
+      () => {},
     );
     try {
       mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
@@ -497,7 +496,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
         source: 'per_home',
       });
     } finally {
-      settingsHandler.stop();
+      stopSettingsHandler();
     }
   });
 
@@ -509,13 +508,13 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
     const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
 
-    const settingsHandler = initSettingsHandlerForApp(
+    const stopSettingsHandler = registerSettingsHandler(
       rig.ctx,
       () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
-      {
-        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
-        onPvForecastSourceObserved: () => {},
-      },
+      () => rig.registry,
+      () => {},
+      () => {},
+      () => {},
     );
     try {
       mockHomeyInstance.settings.unset(`${OPERATING_MODE_SETTING}:h_a`);
@@ -529,7 +528,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       expect(rig.ctx.loadCapacitySettings).not.toHaveBeenCalled();
       expect(rig.ctx.notifyOperatingModeChanged).not.toHaveBeenCalled();
     } finally {
-      settingsHandler.stop();
+      stopSettingsHandler();
     }
   });
 
@@ -559,13 +558,13 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     vi.mocked(rig.ctx.loadCapacitySettings)
       .mockImplementation(reloadCapacitySettingsFromStore);
 
-    const settingsHandler = initSettingsHandlerForApp(
+    const stopSettingsHandler = registerSettingsHandler(
       rig.ctx,
       () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
-      {
-        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
-        onPvForecastSourceObserved: () => {},
-      },
+      () => rig.registry,
+      () => {},
+      () => {},
+      () => {},
     );
     try {
       mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
@@ -616,7 +615,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       expect(transitions).toHaveLength(1);
       expect(transitions.at(-1)).toMatchObject({ mode: 'Chill', source: 'per_home' });
       } finally {
-      settingsHandler.stop();
+      stopSettingsHandler();
     }
   });
 
@@ -625,13 +624,13 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     rig.registry.reconcile();
     await drainPending();
 
-    const settingsHandler = initSettingsHandlerForApp(
+    const stopSettingsHandler = registerSettingsHandler(
       rig.ctx,
       () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
-      {
-        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
-        onPvForecastSourceObserved: () => {},
-      },
+      () => rig.registry,
+      () => {},
+      () => {},
+      () => {},
     );
     try {
       mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
@@ -657,7 +656,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       // until an unrelated rebuild.
       expect(countBundleRebuilds()).toBeGreaterThan(0);
       const persisted = readPersistedHomeModeCatalog(
-        rig.ctx.homey.settings, 'h_a', rig.ctx.managedDevices, rig.ctx.homeMembership,
+        rig.ctx.homey.settings, 'h_a', rig.ctx.deviceControlSettings.managedDevices, rig.ctx.homeMembership,
       );
       expect(persisted.state).toBe('resolved');
       if (persisted.state === 'resolved') {
@@ -665,7 +664,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
           .getOrder(persisted.snapshot.operatingMode, ['dev-1', 'dev-2'], () => false).getPriority('dev-1')).toBe(2);
       }
     } finally {
-      settingsHandler.stop();
+      stopSettingsHandler();
     }
   });
 

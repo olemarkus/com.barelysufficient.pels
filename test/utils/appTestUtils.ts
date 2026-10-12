@@ -73,9 +73,10 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
   app['openUserdataDatabase'] = () => openUserdataDatabase(
     options.userdataDatabase ?? testUserdataDatabase(),
   );
+  const wiring = app['serviceWiring'];
   if (!options.preserveStartupRestoreStabilization) {
-    const originalInitPlanRuntime = app['initPlanRuntime'].bind(app);
-    app['initPlanRuntime'] = () => {
+    const originalInitPlanRuntime = wiring.initPlanRuntime.bind(wiring);
+    wiring.initPlanRuntime = () => {
       originalInitPlanRuntime();
       app.planEngine?.clearStartupRestoreStabilization(Date.now());
     };
@@ -84,8 +85,8 @@ export function createApp(options: CreateAppOptions = {}): MyApp {
     // Seed at guard construction, not after `onInit`: rebuilds that run DURING
     // startup (the price-delta-on-startup path) would otherwise still find the
     // build gate shut. Same protected-member seam as the plan-engine wrap above.
-    const originalInitCapacityGuard = app['initCapacityGuard'].bind(app);
-    app['initCapacityGuard'] = () => {
+    const originalInitCapacityGuard = wiring.initCapacityGuard.bind(wiring);
+    wiring.initCapacityGuard = () => {
       originalInitCapacityGuard();
       // BOTH halves of the latch, exactly as production ingest stamps them
       // (`recordPowerSampleForApp`): the reading resolver requires a stamped

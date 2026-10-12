@@ -1,5 +1,5 @@
 import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
-import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
+import type { DeviceControlSettings } from '../device/deviceControlSettings';
 import type { TrackerStore } from '../power/trackerStore';
 import type { CapacitySettingsStore } from '../power/capacitySettingsStore';
 import type { CapacityScalarSettings, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
@@ -24,7 +24,7 @@ import type { DailyBudgetUiRead, DailyBudgetUpdateStateOptions } from '../dailyB
 import type { DeferredObjectiveActivePlanRecorder } from '../objectives/deferredObjectives/activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from '../objectives/deferredObjectives/planHistory';
 import type { DeviceDiagnosticsService } from '../diagnostics/deviceDiagnosticsService';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import type { Logger as PinoLogger } from '../logging/logger';
 import type { HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
 import type {
   DeferredObjectiveEndedBus,
@@ -39,7 +39,6 @@ import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
 import type { MeterSilenceMonitor } from '../power/meterSilence';
 import type { PendingTargetObservationSource, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
-import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatcher';
 import type { BatteryControlOwner } from '../ports/batteryControlOwner';
 import type { BatteryManagedSettings } from '../battery/batteryControlSettings';
@@ -55,19 +54,11 @@ import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contrac
 import type {
   DecoratedDeviceSnapshot,
   DeviceDescriptorRead,
-  DeviceControlProfiles,
-  EvBoostConfig,
-  EvBoostSettings,
-  EvCarAssociations,
   ObservedDeviceState,
   ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
-  TemperatureBoostConfig,
-  TemperatureBoostSettings,
   ThermalDirection,
 } from '../../packages/contracts/src/types';
-import type { DeviceTargetPowerConfigsWithReachability } from '../device/targetPowerReachability';
-import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import type { SteppedCommandStore } from '../executor/steppedCommandStore';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
@@ -79,22 +70,14 @@ import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PlanRebuildThrottle } from '../plan/rebuildScheduler/throttle';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import type { TimerRegistry } from '../utils/timerRegistry';
-import type {
-  FlowReportedCapabilitiesForDevice,
-  FlowReportedCapabilityId,
-} from '../device/transport/flowReportedCapabilities';
+import type { FlowBackedDeviceState } from '../device/flowBackedDeviceState';
 import type {
   HomeyPriceFormulaUiStatus,
   PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPlanSnapshot, SettingsUiPriceSourcePayloads,
 } from '../../packages/contracts/src/settingsUiApi';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
-import type { FlowBackedCapabilityReportOutcome } from '../device/flowBackedCapabilityReport';
 import type { EnergyTaskDeliveryTracker } from '../objectives/deferredObjectives/energyDelivery';
-
-// Declared with the device layer, which produces it; re-exported here so the
-// existing import sites are unchanged.
-export type { FlowBackedCapabilityReportOutcome };
 
 
 /**
@@ -120,9 +103,7 @@ export type AppContext = {
   homey: Homey.App['homey'];
   log: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
-  logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
   getStructuredLogger: (component: string) => PinoLogger | undefined;
-  getStructuredDebugEmitter: (component: string, debugTopic: DebugLoggingTopic) => StructuredDebugEmitter;
   getNow: () => Date;
   getTimeZone: () => string;
   notifyOperatingModeChanged: (mode: string) => void;
@@ -148,8 +129,6 @@ export type AppContext = {
   noteCapacitySettingWritten: (key: string) => void;
   /** The settings handler's dedupe skipped this key (`CapacitySettingsReloader.recoverAfterSkippedWrite`). */
   recoverCapacitySettingsAfterSkippedWrite: (key: string) => void;
-  /** Re-read only the validated live temperature-command authorization map. */
-  loadTemperatureControlPolicySettings: () => void;
   loadPriceOptimizationSettings: () => void;
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
@@ -169,16 +148,6 @@ export type AppContext = {
   getCurrentHourPriceLevel: () => PriceLevel;
   /** The levels the price changes to inside a window — see `PriceService.getPriceLevelChangesWithin`. */
   getPriceLevelChangesWithin: (window: PriceLevelLookahead) => PriceLevelChangesRead;
-  areFlowBackedCardsAvailable: () => boolean;
-  setExpectedOverride: (deviceId: string, kw: number) => boolean;
-  /**
-   * Adopt the persisted manual expected-power figures into the live map after a
-   * write to `DEVICE_EXPECTED_POWER_OVERRIDES` (the settings UI's "Power when
-   * running" field). The runtime resolves expected power from that map, which is
-   * otherwise loaded only at boot, so the settings handler must call this or a
-   * UI write would not take effect until the next restart.
-   */
-  reloadExpectedPowerOverrides: () => void;
   storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
     dateKey: string;
     storedCount: number;
@@ -191,15 +160,12 @@ export type AppContext = {
     deviceId: string,
     trigger: PlanRebuildTrigger,
   ) => Promise<unknown>;
-  getFlowReportedCapabilitiesForDevice: (deviceId: string) => FlowReportedCapabilitiesForDevice;
-  getFlowReportedDeviceIds: () => string[];
-  reportFlowBackedCapability: (params: {
-    deviceId: string;
-    capabilityId: FlowReportedCapabilityId;
-    value: boolean | number | string;
-  }) => FlowBackedCapabilityReportOutcome;
-  getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
-  emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
+  /**
+   * Flow-backed device state (`lib/device/flowBackedDeviceState.ts`): the
+   * capability values Flow cards report, the manual expected-power figures, and
+   * the learned power peaks.
+   */
+  readonly flowBacked: FlowBackedDeviceState;
   resolveManagedState: (deviceId: string) => boolean;
   // The home batteries the device layer knows, `unavailable` before it exists
   // or has settled them (`lib/device/deviceRoleReads.ts`).
@@ -238,9 +204,6 @@ export type AppContext = {
   getObservationRevision: () => number;
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isTemperatureControlDisabled: (deviceId: string) => boolean;
-  isBudgetExempt: (deviceId: string) => boolean;
-  getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
-  getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   /**
    * One member with two meanings, decided by who assigned it:
@@ -277,34 +240,9 @@ export type AppContext = {
   set capacitySettings(value: PowerLimitSettings);
   get capacityDryRun(): boolean;
   set capacityDryRun(value: boolean);
-  get controllableDevices(): Record<string, boolean>;
-  set controllableDevices(value: Record<string, boolean>);
-  get managedDevices(): Record<string, boolean>;
-  set managedDevices(value: Record<string, boolean>);
-  get budgetExemptDevices(): Record<string, boolean>;
-  set budgetExemptDevices(value: Record<string, boolean>);
-  /** Per-device start authority; absence reads as `'unrestricted'`. */
-  get deviceStartPolicies(): Record<string, DeviceStartPolicy>;
-  set deviceStartPolicies(value: Record<string, DeviceStartPolicy>);
+  /** The owner's per-device control configuration (`lib/device/deviceControlSettings.ts`). */
+  readonly deviceControlSettings: DeviceControlSettings;
   readonly observedTemperatureModeUpdates: ObservedTemperatureModeUpdates;
-  get temperatureControlDisabledDevices(): Record<string, boolean>;
-  set temperatureControlDisabledDevices(value: Record<string, boolean>);
-  get temperatureControlPolicyState(): 'unavailable' | 'resolved';
-  set temperatureControlPolicyState(value: 'unavailable' | 'resolved');
-  get temperatureBoostSettings(): TemperatureBoostSettings;
-  set temperatureBoostSettings(value: TemperatureBoostSettings);
-  get evBoostSettings(): EvBoostSettings;
-  set evBoostSettings(value: EvBoostSettings);
-  get evCarAssociations(): EvCarAssociations;
-  set evCarAssociations(value: EvCarAssociations);
-  get deviceDriverOverrides(): Record<string, string>;
-  set deviceDriverOverrides(value: Record<string, string>);
-  get deviceControlProfiles(): DeviceControlProfiles;
-  set deviceControlProfiles(value: DeviceControlProfiles);
-  get deviceTargetPowerConfigs(): DeviceTargetPowerConfigsWithReachability;
-  set deviceTargetPowerConfigs(value: DeviceTargetPowerConfigsWithReachability);
-  get shedBehaviors(): Record<string, ConfiguredShedBehavior>;
-  set shedBehaviors(value: Record<string, ConfiguredShedBehavior>);
   get debugLoggingTopics(): Set<DebugLoggingTopic>;
   set debugLoggingTopics(value: Set<DebugLoggingTopic>);
   get defaultComputeDynamicSoftLimit(): (() => number | null) | undefined;

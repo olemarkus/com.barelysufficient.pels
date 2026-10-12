@@ -18,7 +18,7 @@ import type {
   SampleIngestQueueDeps,
   StableSampleRevision,
 } from '../lib/power/sampleIngestQueue';
-import type { StructuredDebugEmitter } from '../lib/logging/logger';
+import { getDebugEmitter } from '../lib/logging/logger';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
@@ -36,6 +36,9 @@ export type PowerSamplePipelineDeps = {
   createIngestQueue: (
     deps: SampleIngestQueueDeps<PowerSampleRequest>,
   ) => SampleIngestQueue<PowerSampleRequest>;
+  // Per-home capacity state. Required for every home, main included: two homes
+  // never share a tracker, capacity scalars or a guard, so there is no home for
+  // which one of these is the obvious default.
   getPowerTracker: () => PowerTrackerState;
   getCapacitySettings: () => PowerLimitSettings;
   getTimeZone: () => string;
@@ -45,6 +48,9 @@ export type PowerSamplePipelineDeps = {
    * non-optional, so this defers the read without modelling an absent guard.
    */
   getCapacityGuard: () => CapacityGuard;
+  // `AppContext` types `planEngine`/`planService` as optional (they are wired
+  // during startup); the pipeline requires the definite getters the home's own
+  // fields carry.
   getPlanEngine: () => PlanEngine;
   getPlanService: () => PlanService;
   /** This home's rebuild throttle — the admitted sample's one exit into the planner. */
@@ -52,7 +58,6 @@ export type PowerSamplePipelineDeps = {
   getDeviceSurfaces: () => DeviceSurfaces[];
   getThermalDirection: (deviceId: string) => ThermalDirection;
   savePowerTracker: (state: PowerTrackerState) => void;
-  getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
   /**
@@ -90,7 +95,8 @@ export type PowerSamplePipelineDeps = {
    * coalescing drops its identity claim together with its watts; flow and
    * sub-home samples never carry the field and never publish — the guard is the
    * identity itself, so every home wires this and no home has to be asked
-   * whether it owns the whole-home meter.
+   * whether it owns the whole-home meter. Main binds the membership note, a
+   * meter area binds nothing to do.
    */
   noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => void;
 };
@@ -212,7 +218,7 @@ export class PowerSamplePipeline {
         params.devices.map(withHeadroomCurrentOn),
         (deviceId) => this.deps.getThermalDirection(deviceId),
       ),
-      debugStructured: this.deps.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
+      debugStructured: getDebugEmitter('objective_profiles', 'objective_profiles'),
       outdoorTemperatureC: this.deps.getOutdoorTemperatureC?.(),
     })
   );

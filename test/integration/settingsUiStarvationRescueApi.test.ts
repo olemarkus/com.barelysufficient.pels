@@ -1,6 +1,7 @@
 /**
  * @vitest-environment node
  */
+import { pelsHostDouble } from '../helpers/pelsHostDouble';
 import type { DeferredObjectivePlanPreviewCandidate } from '../../lib/objectives/deferredObjectives';
 import type { DeferredObjectivePlanPreviewEstimate } from '../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { StarvationRescueDevice } from '../../packages/contracts/src/starvationRescue';
@@ -69,10 +70,10 @@ const freshPreviewPlan = (estimate = buildEstimate()) => vi.fn(
 
 const buildContext = (app: Record<string, unknown>) => ({
   homey: {
-    app: {
+    app: pelsHostDouble({
       resolveSmartTaskHomeScope: vi.fn(() => 'main'),
       ...app,
-    },
+    }),
     clock: { getTimezone: () => TIME_ZONE },
   } as never,
 });
@@ -97,8 +98,9 @@ describe('getSettingsUiStarvationRescueDevices', () => {
     expect(payload.rescuableDeviceIds).toEqual(['heater-1', 'rad-1']);
   });
 
-  it('returns an empty set when the app getter is missing', () => {
-    expect(getSettingsUiStarvationRescueDevices(buildContext({})).rescuableDeviceIds).toEqual([]);
+  it('returns an empty set while the app is not wired', () => {
+    const homey = { app: undefined, clock: { getTimezone: () => TIME_ZONE } } as never;
+    expect(getSettingsUiStarvationRescueDevices({ homey }).rescuableDeviceIds).toEqual([]);
   });
 });
 

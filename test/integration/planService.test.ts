@@ -1982,11 +1982,11 @@ describe('PlanService', () => {
     const emitter = new ObservedStateEmitter();
     subscribePlanObservedState({
       ctx,
-      getObservedStateEmitter: () => emitter,
+      observedStateEmitter: emitter,
       getHomeRuntimeRegistry: () => undefined,
       syncLivePlanState: () => Promise.resolve(false),
       syncExternalOffHold: vi.fn(),
-      invalidateRebuildSuppression: (deviceId) => invalidateOwningHomeRebuildSuppression({ ctx, deviceId }),
+      invalidateRebuildSuppression: (deviceId) => invalidateOwningHomeRebuildSuppression(ctx, deviceId, undefined),
     });
 
     emitter.emitObservedStateChanged({

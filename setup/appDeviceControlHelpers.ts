@@ -14,7 +14,7 @@ export const createDeviceControlHelpers = (
 ) => {
   const loggers = { structuredLog: getLogger('devices'), debugStructured: getDebugEmitter('devices', 'devices') };
   const reachabilityOwner = new DeviceTargetPowerReachabilityOwner(
-    (deviceId) => ctx.deviceTargetPowerConfigs[deviceId],
+    (deviceId) => ctx.deviceControlSettings.getDeviceTargetPowerConfig(deviceId),
     (deviceId) => ctx.deviceConfiguration.get(deviceId), updateReachability,
   );
   const targetPower = new TargetPowerCommandLifecycle(ctx.steppedCommandStore, reachabilityOwner,

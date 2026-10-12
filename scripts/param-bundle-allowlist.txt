@@ -21,7 +21,6 @@ flowCards/headroomAndEvSocCards.ts 2
 flowCards/registerFlowCards.ts 2
 flowCards/steppedLoadFlowCards.ts 1
 flowCards/steppedLoadReport.ts 5
-lib/app/appContext.ts 1
 lib/dailyBudget/dailyBudgetAllocation.ts 6
 lib/dailyBudget/dailyBudgetBreakdown.ts 1
 lib/dailyBudget/dailyBudgetConfidence.ts 4
@@ -279,15 +278,9 @@ packages/shared-domain/src/weatherInsightCopy.ts 7
 setup/appDebugHelpers.ts 2
 setup/appDeviceSupport.ts 1
 setup/appInit/appHomeMembershipOptions.ts 1
-setup/appInit/buildDeviceParseProviders.ts 1
-setup/appInit/planEngineWiring.ts 1
-setup/appInit/registerSettingsHandler.ts 1
 setup/appInit/wireHomeMembership.ts 5
 setup/appLifecycleHelpers.ts 1
-setup/appObservedControlStateRuntime.ts 2
 setup/appPriceLowestTrigger.ts 1
-setup/appRuntimeApi.ts 2
-setup/appSettingsHelpers.ts 1
 setup/appSnapshotHelpers.ts 1
 setup/capacityShortfallAlertDispatch.ts 2
 setup/capacityShortfallSideEffectGate.ts 1
@@ -300,7 +293,6 @@ setup/homeRuntime/homeModeOwnershipStore.ts 1
 setup/homeRuntime/homeTrackerConfigSafety.ts 4
 setup/homeRuntime/resetPersistedHomeTrackerFreshness.ts 1
 setup/lifecycleFallbackRequest.ts 1
-setup/settingsUiAppRuntime.ts 1
 setup/steppedProfileRepair.ts 1
 setup/targetPowerReachabilitySettings.ts 1
 setup/temperatureShedFloorDefaults.ts 4

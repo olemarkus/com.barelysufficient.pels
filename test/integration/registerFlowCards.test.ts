@@ -1,6 +1,13 @@
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import { readAllObjectives } from '../../lib/objectives/deferredObjectives/objectiveStore';
-import type { FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
+import {
+  createDeferredObjectiveEndedBus,
+  createDeferredObjectiveHoursRemainingBus,
+  createDeferredObjectiveHoursRemainingTracker,
+  createDeferredObjectivePlanRevisionBus,
+  createDeferredObjectiveStatusBus,
+} from '../../lib/objectives/deferredObjectives';
+import type { FlowBackedCapabilityReportOutcome } from '../../lib/device/flowBackedCapabilityReport';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { createEvTargetPowerConfig } from '../../packages/shared-domain/src/evTargetPowerConfig';
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
@@ -141,6 +148,11 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     debugStructured: vi.fn(),
     upsertDeferredObjectiveForDevice: vi.fn(() => ({ persisted: true }) as const),
     clearDeferredObjectiveForDevice: vi.fn(() => ({ persisted: true }) as const),
+    deferredObjectiveStatusBus: createDeferredObjectiveStatusBus(),
+    deferredObjectivePlanRevisionBus: createDeferredObjectivePlanRevisionBus(),
+    deferredObjectiveEndedBus: createDeferredObjectiveEndedBus(),
+    deferredObjectiveHoursRemainingBus: createDeferredObjectiveHoursRemainingBus(),
+    deferredObjectiveHoursRemainingTracker: createDeferredObjectiveHoursRemainingTracker(),
     ...overrides,
   };
   return {

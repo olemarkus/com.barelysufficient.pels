@@ -1,7 +1,7 @@
 import { getBudgetDailyHistoryFromHomey, getBudgetDecisionHistoryFromHomey } from './lib/weather/budgetDiagnosticsApi';
 import type Homey from 'homey';
 import type { DailyBudgetModelPreviewResponse, DailyBudgetUiRead } from './lib/dailyBudget/dailyBudgetTypes';
-import type { Logger as PinoLogger } from 'pino';
+import { readPelsHost } from './lib/app/pelsHost';
 import type { HomeyDeviceLike } from './lib/utils/types';
 import { normalizeError } from './lib/utils/errorUtils';
 import { hasPowerCapability } from './lib/device/transport/managerParse';
@@ -58,19 +58,9 @@ type ApiContext = {
   homey: Homey.App['homey'];
 };
 
-type ApiHostApp = Homey.App & {
-  getApiStructuredLogger?: () => PinoLogger | undefined;
-};
-
 const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id: string } => (
   typeof device.id === 'string'
 );
-
-const getApp = (homey: Homey.App['homey']): ApiHostApp | null => {
-  if (!homey || typeof homey !== 'object') return null;
-  const app = homey.app;
-  return app && typeof app === 'object' ? app : null;
-};
 
 // Wrap an async API handler so any thrown error is logged through the runtime's
 // structured pino logger before the rejection propagates to the Homey API
@@ -88,8 +78,7 @@ const withApiLogging = <Ctx extends ApiContext, R>(
   try {
     return await handler(ctx);
   } catch (error) {
-    const app = getApp(ctx.homey);
-    const logger = app?.getApiStructuredLogger?.();
+    const logger = readPelsHost(ctx.homey)?.getApiStructuredLogger();
     if (logger) {
       logger.error({ event: 'api_handler_failed', handler: name, err: normalizeError(error) });
     } else {
@@ -172,9 +161,9 @@ export = {
     hasTemperature: boolean;
     hasPower: boolean;
   }>> => {
-    const app = getApp(homey);
-    if (!app) return [];
-    const devices = await getHomeyDevicesForDebugFromApp(app);
+    const host = readPelsHost(homey);
+    if (!host) return [];
+    const devices = await getHomeyDevicesForDebugFromApp(host);
     return devices
       .filter(hasDeviceId)
       .map((device) => {
@@ -214,9 +203,9 @@ export = {
   homey_energy_meters: withApiLogging('homey_energy_meters', async (
     { homey }: ApiContext,
   ): Promise<HomeyEnergyMeterEntry[]> => {
-    const app = getApp(homey);
-    if (!app) throw new Error('PELS app not available');
-    return getHomeyEnergyMetersFromApp(app);
+    const host = readPelsHost(homey);
+    if (!host) throw new Error('PELS app not available');
+    return getHomeyEnergyMetersFromApp(host);
   }),
   ui_refresh_devices: withApiLogging('ui_refresh_devices', ({ homey }: ApiContext) => (
     refreshSettingsUiDevices({ homey })
@@ -272,16 +261,16 @@ export = {
   log_homey_device: withApiLogging('log_homey_device', async (
     { homey, body }: ApiContext & { body?: { id?: string } },
   ): Promise<{ ok: boolean; error?: string }> => {
-    const app = getApp(homey);
-    if (!app) {
+    const host = readPelsHost(homey);
+    if (!host) {
       return { ok: false, error: 'LOGGING_NOT_AVAILABLE' };
     }
     const deviceId = typeof body?.id === 'string' ? body.id.trim() : '';
     if (!deviceId) {
-      app?.error?.('Homey device log API called without valid device id');
+      host.error('Homey device log API called without valid device id');
       return { ok: false, error: 'INVALID_DEVICE_ID' };
     }
-    const ok = await logHomeyDeviceForDebugFromApp({ app, deviceId });
+    const ok = await logHomeyDeviceForDebugFromApp(host, deviceId);
     if (!ok) {
       return { ok: false, error: 'DEVICE_NOT_FOUND' };
     }

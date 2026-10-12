@@ -8,28 +8,16 @@ import {
   POWER_TRACKER_PERSISTED_EVENT,
   type HomeId,
 } from '../lib/utils/settingsKeys';
-import type { AppContext } from '../lib/app/appContext';
-import type { BatteryControlOwner } from '../lib/ports/batteryControlOwner';
 import type Homey from 'homey';
+import { readPelsHost, type PelsHost } from '../lib/app/pelsHost';
 import type { PowerTrackerState } from '../lib/power/tracker';
-import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
 import { hasPowerMeasurement, resolveDisplayedPowerUpdateMs } from '../lib/power/lastTotalPower';
 import { resolvePowerReadingsForUi } from '../lib/power/trackerUiProjection';
 import type {
-  SettingsUiBatteryState,
-  SettingsUiPlanSnapshot,
   SettingsUiPowerStatus,
   SettingsUiPowerStatusRead,
 } from '../packages/contracts/src/settingsUiApi';
-import type {
-  AssociatedCarSnapshot,
-  DecoratedDeviceSnapshot,
-  ObservedDeviceState,
-  ProjectedObservedDeviceState,
-  TargetDeviceSnapshot,
-} from '../packages/contracts/src/types';
 import { getHourBucketKey } from '../lib/utils/hourBuckets';
-import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 
 // Sentinel prefix the settings UI matches to detect the PELS boot/restart
 // window and keep the panel in a bounded loading/retry state instead of
@@ -39,35 +27,11 @@ import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/m
 // (`SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX`). Keep both copies in sync.
 const APP_NOT_READY_ERROR_PREFIX = 'PELS_APP_NOT_READY:';
 
-const appNotReadyError = (capability: string): Error => (
+/** The settings UI's boot-window error for a capability the app cannot serve yet. */
+export const appNotReadyError = (capability: string): Error => (
   new Error(`${APP_NOT_READY_ERROR_PREFIX} ${capability} unavailable while PELS is starting`)
 );
 
-type SettingsUiRuntimeApp = Homey.App & {
-  /** Every home's live status (`AppContext.planStatuses`). */
-  planStatuses?: AppContext['planStatuses'];
-  getModePrioritiesForUi?: (deviceIds: readonly string[]) => ModePriorityOrder;
-  getSettingsUiManagedDevices?: () => DecoratedDeviceSnapshot[];
-  getUiPickerDevices?: () => TargetDeviceSnapshot[];
-  deviceManager?: {
-    getAssociatedCar?: (chargerId: string) => AssociatedCarSnapshot | undefined;
-  };
-  getObservedState?: (deviceId: string) => ObservedDeviceState | undefined;
-  getObservedRecord?: (deviceId: string) => ProjectedObservedDeviceState | undefined;
-  batteryControl?: Pick<BatteryControlOwner, 'wasTakenOver' | 'readControlCapability'>;
-  powerTracker?: PowerTrackerState;
-  isSurplusPoolReachable?: () => boolean;
-  getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
-  priceCoordinator?: {
-    refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
-    refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
-  };
-  refreshTargetDevicesSnapshot?: (
-    options?: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean },
-  ) => Promise<void>;
-  refreshFlowConflictsForUi?: () => Promise<FlowConflictRefreshResult>;
-  replacePowerTrackerForUi?: (nextState: PowerTrackerState) => void;
-};
 /** A home's live status, or its absence: nothing published this run, or the app shell is not there. */
 export type PowerStatusBlobRead =
   | { readonly state: 'resolved'; readonly status: SettingsUiPowerStatus }
@@ -75,12 +39,12 @@ export type PowerStatusBlobRead =
 
 /**
  * One home's status out of the running app's registry. `absent` before the
- * home's first plan of this run, after its teardown, and while the app shell
- * is not there (the boot/uninit window) — never a previous run's blob.
+ * home's first plan of this run and after its teardown — never a previous
+ * run's blob.
  */
-export const getPlanStatusForUiFromApp = (homey: Homey.App['homey'], homeId: HomeId): PowerStatusBlobRead => {
-  const read = getRuntimeApp(homey)?.planStatuses?.read(homeId);
-  return read?.state === 'resolved' ? { state: 'resolved', status: read.status } : { state: 'absent' };
+export const readPlanStatusForUi = (host: PelsHost, homeId: HomeId): PowerStatusBlobRead => {
+  const read = host.planStatuses.read(homeId);
+  return read.state === 'resolved' ? { state: 'resolved', status: read.status } : { state: 'absent' };
 };
 
 /**
@@ -154,109 +118,6 @@ const resolveRealtimePowerStatus = (
   status,
 );
 
-const getRuntimeApp = (homey: Homey.App['homey']): SettingsUiRuntimeApp | null => {
-  if (!homey || typeof homey !== 'object') return null;
-  const app = homey.app;
-  return app && typeof app === 'object' ? app : null;
-};
-
-/** The app's priority owner resolves the payload roster before it crosses the UI API. */
-export const getPrioritiesForUiFromApp = (
-  homey: Homey.App['homey'],
-  deviceIds: readonly string[],
-): ModePriorityOrder => {
-  const app = getRuntimeApp(homey);
-  if (!app?.getModePrioritiesForUi) throw appNotReadyError('mode priorities');
-  return app.getModePrioritiesForUi(deviceIds);
-};
-
-export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] | null => {
-  const app = getRuntimeApp(homey);
-  const snapshot = app?.getSettingsUiManagedDevices?.();
-  return Array.isArray(snapshot) ? snapshot : null;
-};
-
-/**
- * The live car-association read. Resolved per call by the transport (never held
- * on a snapshot), so the settings UI sees a plug-in within the probe's ~90 s
- * settle rather than at the next device poll.
- */
-export const getAssociatedCarForUiFromApp = (
-  homey: Homey.App['homey'],
-  chargerId: string,
-): AssociatedCarSnapshot | undefined => (
-  getRuntimeApp(homey)?.deviceManager?.getAssociatedCar?.(chargerId)
-);
-
-/**
- * The live observed-state read, from the observer projection that owns it.
- *
- * Same reason as the car association above: the stored device snapshot is
- * rebuilt on the device poll, so its observed half is up to one poll interval
- * behind by the time the settings UI reads it. The projection is the observer's current
- * answer, so `/ui_devices` overlays it per read rather than serving the stored
- * copy.
- *
- * `undefined` means the projection holds no entry for this device yet (never
- * observed). That is an absence, not a reading — the caller keeps the stored
- * snapshot rather than blanking it.
- */
-export const getObservedStateForUiFromApp = (
-  homey: Homey.App['homey'],
-  deviceId: string,
-): ProjectedObservedDeviceState | undefined => (
-  getRuntimeApp(homey)?.getObservedRecord?.(deviceId)
-);
-
-/**
- * A listed device's home-battery facts, as the battery control owner answers
- * them (`readControlCapability`, `wasTakenOver`); the owner answers
- * `not_battery` for every other device. Devices are listed only after the
- * owner is built, so a missing owner is a not-ready read, never a guess.
- */
-export const readSettingsUiBatteryStateFromApp = (
-  homey: Homey.App['homey'],
-  device: Pick<DecoratedDeviceSnapshot, 'id'>,
-): SettingsUiBatteryState => {
-  const owner = getRuntimeApp(homey)?.batteryControl;
-  if (!owner) throw appNotReadyError('Battery control');
-  return {
-    batteryControl: owner.readControlCapability(device.id),
-    batteryTakenOver: owner.wasTakenOver(device.id),
-  };
-};
-
-export const getUiPickerDevicesFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] => {
-  const app = getRuntimeApp(homey);
-  const picker = app?.getUiPickerDevices?.();
-  return Array.isArray(picker) ? picker : [];
-};
-
-// The plan owner returns a resolved snapshot; consumers trust its current wire contract.
-export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): SettingsUiPlanSnapshot | null => (
-  getRuntimeApp(homey)?.getLatestPlanSnapshotForUi?.() ?? null
-);
-
-export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTrackerState | null => {
-  // The app handle crosses the WebView bridge untrusted: the tracker is a
-  // fact of THIS app, not of any `Homey.App`, so its absence is classified here.
-  const tracker = getRuntimeApp(homey)?.powerTracker;
-  return tracker && typeof tracker === 'object' && !Array.isArray(tracker) ? tracker : null;
-};
-
-/**
- * Whether the home's solar-surplus pool can ever open, which decides whether the
- * "Use solar surplus" toggle is offered at all. The app's one answer
- * (`AppContext.isSurplusPoolReachable`), the same one the plan path stamps the
- * posture from (`lib/planInput/projectPlanInputDevice.ts`), so the toggle and the posture
- * cannot disagree. Optional only because this type describes `homey.app` as it
- * crosses the bridge, where every member is unproven; the app itself always
- * has it. With no answer there is no pool.
- */
-export const getSurplusPoolReachableForUiFromApp = (
-  homey: Homey.App['homey'],
-): boolean => getRuntimeApp(homey)?.isSurplusPoolReachable?.() === true;
-
 export const emitSettingsUiDevicesUpdatedForApp = (
   homey: Homey.App['homey'],
   onError: (message: string, error: Error) => void,
@@ -276,7 +137,10 @@ export const emitSettingsUiPowerUpdatedForApp = (
   const api = homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
   const realtime = api?.realtime;
   if (typeof realtime !== 'function') return;
-  const status = getPlanStatusForUiFromApp(homey, MAIN_HOME_ID);
+  // The push rides a recorded sample, so the app is running; a status the app
+  // shell cannot answer (the boot/uninit window) is pushed as absent.
+  const host = readPelsHost(homey);
+  const status: PowerStatusBlobRead = host ? readPlanStatusForUi(host, MAIN_HOME_ID) : { state: 'absent' };
   // Status-only push: no tracker (the WebView preserves its cached one). The
   // readings fact resolves from the same tracker the status rode in on, by
   // the pull's own resolver; with no measurement latched the field is
@@ -328,48 +192,12 @@ export const emitPlanStatusPublishedForApp = (
     .catch((error: unknown) => onError('Failed to emit plan_status_published event', error as Error));
 };
 
-export const refreshSettingsUiDevicesForApp = async (homey: Homey.App['homey']): Promise<TargetDeviceSnapshot[]> => {
-  const app = getRuntimeApp(homey);
-  if (!app?.refreshTargetDevicesSnapshot) {
-    throw appNotReadyError('Refresh devices');
-  }
-  await app.refreshTargetDevicesSnapshot();
-  return getLatestDevicesForUiFromApp(homey) ?? [];
-};
-
-export const requestSettingsUiFlowConflictRefreshForApp = (
-  homey: Homey.App['homey'],
-): Promise<FlowConflictRefreshResult> => {
-  const app = getRuntimeApp(homey);
-  if (!app?.refreshFlowConflictsForUi) {
-    throw appNotReadyError('Refresh Flow conflicts');
-  }
-  return app.refreshFlowConflictsForUi();
-};
-
-export const refreshSettingsUiPricesForApp = async (homey: Homey.App['homey']): Promise<void> => {
-  const app = getRuntimeApp(homey);
-  if (!app?.priceCoordinator?.refreshSpotPrices) {
-    throw appNotReadyError('Refresh prices');
-  }
-  await app.priceCoordinator.refreshSpotPrices(true);
-};
-
-export const refreshSettingsUiGridTariffForApp = async (homey: Homey.App['homey']): Promise<void> => {
-  const app = getRuntimeApp(homey);
-  if (!app?.priceCoordinator?.refreshGridTariffData) {
-    throw appNotReadyError('Refresh grid tariff');
-  }
-  await app.priceCoordinator.refreshGridTariffData(true);
-};
-
-export const resetSettingsUiPowerStatsForApp = async (homey: Homey.App['homey']): Promise<PowerTrackerState> => {
-  const app = getRuntimeApp(homey);
-  if (!app?.replacePowerTrackerForUi) {
-    throw appNotReadyError('Reset power stats');
-  }
-
-  const currentState = app.powerTracker ?? {};
+/**
+ * "Reset usage history": the tracker with every completed period erased and
+ * the current hour kept, handed to the app, which persists and republishes it.
+ */
+export const resetPowerStatsForUi = (host: PelsHost): PowerTrackerState => {
+  const currentState = host.powerTracker;
   const currentHourKey = getHourBucketKey();
   const preserveCurrentHour = (collection?: Record<string, number>): Record<string, number> => (
     collection && collection[currentHourKey] !== undefined
@@ -407,6 +235,6 @@ export const resetSettingsUiPowerStatsForApp = async (homey: Homey.App['homey'])
     // the current-hour buckets above, so the running control window continues.
     capacityMonthlyPeak: undefined,
   };
-  app.replacePowerTrackerForUi(nextState);
-  return app.powerTracker ?? nextState;
+  host.replacePowerTrackerForUi(nextState);
+  return host.powerTracker;
 };

@@ -1,12 +1,10 @@
-import type Homey from 'homey';
 import type { Logger as PinoLogger } from 'pino';
 import { startPerfLogger } from '../lib/diagnostics/perfLogging';
 import { startResourceWarningListeners as startResourceWarnings } from '../lib/diagnostics/resourceWarnings';
 import { installHeapSnapshotHandler } from '../lib/diagnostics/heapSnapshotHandler';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './appPriceLowestTrigger';
-import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
-import type { StructuredDebugEmitter } from '../lib/logging/logger';
-import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
+import { getDebugEmitter } from '../lib/logging/logger';
+import type { AppContext } from '../lib/app/appContext';
 import { startDeferredObjectiveLifecycleClock } from './deferredObjectiveLifecycleClock';
 import type { DeferredObjectiveLifecycleEmitter } from '../lib/objectives/deferredObjectives/lifecycleEmitter';
 import type { WeatherCollector } from '../lib/weather/weatherCollector';
@@ -28,34 +26,14 @@ const TEARDOWN_ORDER = [
 
 type TeardownKey = (typeof TEARDOWN_ORDER)[number];
 
-/** The app-shaped collaborators each background task needs handing to it. */
-export type BackgroundTaskDeps = {
-  homey: Homey.App['homey'];
-  log: (...args: unknown[]) => void;
-  logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  isDebugTopicEnabled: (topic: DebugLoggingTopic) => boolean;
-  getStructuredDebugEmitter: (component: string, debugTopic: DebugLoggingTopic) => StructuredDebugEmitter;
-  getNow: () => Date;
-  getTimeZone: () => string;
-  getCombinedHourlyPrices: () => CombinedHourlyPrice[];
-};
-
-/**
- * The collaborators plus the store the started tasks' stop callbacks live in.
- * The registry is `app.ts`'s — remembering those callbacks was the only state
- * this wiring held, so it belongs to the composition root and is handed back to
- * it by `createBackgroundTasks`.
- */
-export type BackgroundTasksControllerDeps = BackgroundTaskDeps & {
-  teardown: TeardownRegistry;
-};
-
 /**
  * Lives in `setup/` because it is wiring: it hands each task its app-shaped
  * deps (price coordinator, debug-topic strings, structured-debug emitter) and
- * names the teardown order. The tasks themselves live with their respective
- * concerns (`lib/diagnostics/**`, `setup/appPriceLowestTrigger`).
+ * names the teardown order. The store the started tasks' stop callbacks live in
+ * is `app.ts`'s — remembering those callbacks was the only state this wiring
+ * held, so it belongs to the composition root (`createBackgroundTasks`). The
+ * tasks themselves live with their respective concerns (`lib/diagnostics/**`,
+ * `setup/appPriceLowestTrigger`).
  *
  * It used to hold six `stop*?: () => void` fields, which was the only state it
  * had. Those live in an injected `TeardownRegistry` now
@@ -75,7 +53,10 @@ export type BackgroundTasksControllerDeps = BackgroundTaskDeps & {
  * the shared `TimerRegistry`.
  */
 export class BackgroundTasksController {
-  constructor(private readonly deps: BackgroundTasksControllerDeps) {}
+  constructor(
+    private readonly ctx: AppContext,
+    private readonly teardown: TeardownRegistry,
+  ) {}
 
   /**
    * Stop whatever is held under `key`, THEN start the replacement.
@@ -91,13 +72,13 @@ export class BackgroundTasksController {
    * "hold a no-op", so the key simply stays free.
    */
   private restart(key: TeardownKey, start: () => (() => void) | undefined): void {
-    this.deps.teardown.clear(key);
+    this.teardown.clear(key);
     const stop = start();
-    if (stop !== undefined) this.deps.teardown.register(key, stop);
+    if (stop !== undefined) this.teardown.register(key, stop);
   }
 
   startResourceWarningListeners(): void {
-    this.restart('resourceWarnings', () => startResourceWarnings({ homey: this.deps.homey }));
+    this.restart('resourceWarnings', () => startResourceWarnings({ homey: this.ctx.homey }));
   }
 
   installHeapSnapshotHandler(structuredLogger: PinoLogger): void {
@@ -108,29 +89,29 @@ export class BackgroundTasksController {
 
   startPerfLogging(): void {
     this.restart('perfLog', () => startPerfLogger({
-      isEnabled: () => this.deps.isDebugTopicEnabled('perf'),
-      logStructured: this.deps.getStructuredDebugEmitter('perf', 'perf'),
-      error: (...args: unknown[]) => this.deps.error(...args),
-      logCpuSpike: (...args: unknown[]) => this.deps.log(...args),
+      isEnabled: () => this.ctx.debugLoggingTopics.has('perf'),
+      logStructured: getDebugEmitter('perf', 'perf'),
+      error: (...args: unknown[]) => this.ctx.error(...args),
+      logCpuSpike: (...args: unknown[]) => this.ctx.log(...args),
       intervalMs: 30 * 1000,
     }));
   }
 
   startPriceLowestTriggerChecker(): void {
     this.restart('priceLowestTrigger', () => startPriceLowestTriggers({
-      getNow: () => this.deps.getNow(),
-      getTimeZone: () => this.deps.getTimeZone(),
-      getCombinedHourlyPrices: () => this.deps.getCombinedHourlyPrices(),
-      getTriggerCard: (id) => this.deps.homey.flow.getTriggerCard(id),
-      debugStructured: this.deps.getStructuredDebugEmitter('price', 'price'),
-      error: (message, error) => this.deps.error(message, error),
+      getNow: () => this.ctx.getNow(),
+      getTimeZone: () => this.ctx.getTimeZone(),
+      getCombinedHourlyPrices: () => this.ctx.getCombinedHourlyPrices(),
+      getTriggerCard: (id) => this.ctx.homey.flow.getTriggerCard(id),
+      debugStructured: getDebugEmitter('price', 'price'),
+      error: (message, error) => this.ctx.error(message, error),
     }));
   }
 
   startDeferredObjectiveLifecycleClock(emitter: DeferredObjectiveLifecycleEmitter): void {
     this.restart('deferredObjectiveClock', () => startDeferredObjectiveLifecycleClock({
       emitter,
-      getNowMs: () => this.deps.getNow().getTime(),
+      getNowMs: () => this.ctx.getNow().getTime(),
     }));
   }
 
@@ -140,7 +121,7 @@ export class BackgroundTasksController {
   }
 
   stopAll(): void {
-    for (const key of TEARDOWN_ORDER) this.deps.teardown.clear(key);
+    for (const key of TEARDOWN_ORDER) this.teardown.clear(key);
   }
 }
 

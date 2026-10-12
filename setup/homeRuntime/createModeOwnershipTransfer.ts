@@ -24,7 +24,7 @@ export const createModeOwnershipTransfer = (
     transferModeTargets: (moves) => transferModeTargetsForOwnershipMoves(
       ctx.homey.settings,
       homeModeCatalog,
-      () => ctx.managedDevices,
+      () => ctx.deviceControlSettings.managedDevices,
       () => ctx.homeMembership,
       moves,
     ),

@@ -13,7 +13,7 @@ import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
 import type { HeadroomCardQuery, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import type { ObservedHeadroom } from '../lib/power/lastTotalPower';
 import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
-import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
+import type { FlowBackedCapabilityReportOutcome } from '../lib/device/flowBackedCapabilityReport';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
@@ -154,11 +154,11 @@ export type FlowCardDeps = {
   // while its enforcing write would be refused.
   hasMainHomeSmartTaskAuthority: (deviceId: string) => boolean;
   getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
-  getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
-  getDeferredObjectivePlanRevisionBus?: () => DeferredObjectivePlanRevisionBus | undefined;
-  getDeferredObjectiveEndedBus?: () => DeferredObjectiveEndedBus | undefined;
-  getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
-  getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
+  deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
+  deferredObjectivePlanRevisionBus: DeferredObjectivePlanRevisionBus;
+  deferredObjectiveEndedBus: DeferredObjectiveEndedBus;
+  deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus;
+  deferredObjectiveHoursRemainingTracker: DeferredObjectiveHoursRemainingTracker;
   evaluateHeadroomForDevice: (query: HeadroomCardQuery) => HeadroomForDeviceDecision;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;

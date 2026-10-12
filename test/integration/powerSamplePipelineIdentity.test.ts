@@ -82,7 +82,6 @@ const buildPipeline = (
     savePowerTracker: (state) => { powerTracker = state; savedStates.push(state); },
     getCoSampledGenerationW: () => undefined,
     getObservedGenerationSegments: () => [],
-    getStructuredDebugEmitter: () => vi.fn(),
     noteResolvedHomeMeter,
   });
 };

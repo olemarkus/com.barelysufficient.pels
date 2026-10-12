@@ -11,7 +11,9 @@ import {
 import type { HomeyDeviceLike } from '../utils/types';
 import {
   getFlowRefreshRequestedDeviceIds,
+  getFlowReportedDeviceIds,
   isFlowReportedObservationCapabilityId,
+  readFlowReportedCapabilitiesForDevice,
   upsertFlowReportedCapability,
   type FlowReportedCapabilityId,
   type FlowReportedCapabilitiesByDevice,
@@ -123,6 +125,16 @@ export class FlowBackedDeviceState {
       timers: deps.timers,
       getStructuredLogger: () => deps.getStructuredLogger('devices'),
     });
+  }
+
+  /** The capability values Flow cards reported for one device. */
+  getFlowReportedCapabilitiesForDevice(deviceId: string): FlowReportedCapabilitiesForDevice {
+    return readFlowReportedCapabilitiesForDevice(this.deps.getFlowReportedCapabilities(), deviceId);
+  }
+
+  /** Every device a Flow card has reported a capability for. */
+  getFlowReportedDeviceIds(): string[] {
+    return getFlowReportedDeviceIds(this.deps.getFlowReportedCapabilities());
   }
 
   /** Rate-limited, change-gated write of the learned measured peaks. */

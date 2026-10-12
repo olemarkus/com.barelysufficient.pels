@@ -1,7 +1,6 @@
-import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
-import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
+import { deviceControlSettingsFixture } from './deviceControlSettingsFixture';
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
 import { joinObservedDeviceDescriptors } from '../../lib/device/deviceReadSources';
 import { DeviceConfigurationStore, createDeviceConfiguration } from '../../lib/device/deviceConfiguration';
@@ -11,7 +10,7 @@ import { readRuntimeDevices } from '../../lib/planInput/runtimeDeviceRead';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
-import { NO_PRICE_SOURCE_PAYLOADS } from '../../lib/ports/settingsUiStatusSeams';
+import { NO_PRICE_SOURCE_PAYLOADS } from '../../setup/settingsUiApi';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { steppedStoresForTest } from './steppedStores';
 import { createInertPlanRebuildThrottle } from './powerRebuildScheduler';
@@ -19,9 +18,11 @@ import { vi } from 'vitest';
 import {
   requireInitializedAppContext,
   type AppContext,
-  type FlowBackedCapabilityReportOutcome,
   type InitializedAppContext,
 } from '../../lib/app/appContext';
+import type { FlowBackedCapabilityReportOutcome } from '../../lib/device/flowBackedCapabilityReport';
+import type { FlowBackedDeviceState } from '../../lib/device/flowBackedDeviceState';
+import { partialDouble } from './partialDouble';
 import { createDeviceControlHelpersForTest } from './deviceControlHelpers';
 import { GenerationPollSource } from '../../lib/power/sources/generationPoll';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
@@ -34,23 +35,15 @@ import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createPriceCacheStore } from '../../lib/price/priceCacheStore';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
-import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
-import type {
-  DeviceControlProfiles,
-  EvBoostSettings,
-  EvCarAssociations,
-  TemperatureBoostSettings,
-  ThermalDirection,
-} from '../../packages/contracts/src/types';
+import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
-import type { DeviceTargetPowerConfigsWithReachability } from '../../lib/device/targetPowerReachability';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 import { createHomeModeCatalog } from '../../lib/home/homeModeCatalog';
@@ -165,7 +158,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     snapshotHelpers: snapshotHelpersOverride,
     homeyEnergyHelpers: homeyEnergyHelpersOverride,
     deviceControlHelpers: deviceControlHelpersOverride,
-    getStructuredDebugEmitter: getStructuredDebugEmitterOverride,
     modeCatalog: modeCatalogOverride,
     ...overrides
   } = options;
@@ -173,24 +165,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   const { appHomey } = createHomeyMock();
   const timers = timersOverride ?? new TimerRegistry();
   const homey = homeyOverride ?? appHomey;
-  const structuredDebugEmitter: StructuredDebugEmitter = vi.fn();
 
   let powerTracker: PowerTrackerState = {};
   let capacitySettings: import('../../packages/contracts/src/capacitySettings').PowerLimitSettings = { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
   let capacityDryRun = false;
-  let controllableDevices: Record<string, boolean> = {};
-  let managedDevices: Record<string, boolean> = {};
-  let budgetExemptDevices: Record<string, boolean> = {};
-  let deviceStartPolicies: Record<string, DeviceStartPolicy> = {};
-  let deviceDriverOverrides: Record<string, string> = {};
-  let deviceControlProfiles: DeviceControlProfiles = {};
-  let deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability = {};
-  let temperatureBoostSettings: TemperatureBoostSettings = {};
-  let temperatureControlDisabledDevices: Record<string, boolean> = {};
-  let temperatureControlPolicyState: 'unavailable' | 'resolved' = 'resolved';
-  let evBoostSettings: EvBoostSettings = {};
-  let evCarAssociations: EvCarAssociations = {};
-  let shedBehaviors: Record<string, ConfiguredShedBehavior> = {};
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
   let defaultComputeDynamicSoftLimit: (() => number) | undefined;
   const lastKnownPowerKw: LearnedPeaksByDeviceId = {};
@@ -243,7 +221,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   });
   const steppedStores = steppedStoresForTest();
   const deviceControlHelpers = deviceControlHelpersOverride ?? createDeviceControlHelpersForTest(
-    () => latestTargetSnapshot, steppedStores, (deviceId) => deviceTargetPowerConfigs[deviceId],
+    () => latestTargetSnapshot, steppedStores,
+    (deviceId) => context.deviceControlSettings.getDeviceTargetPowerConfig(deviceId),
     () => false, () => {}, () => null, { debugStructured: vi.fn() },
   );
 
@@ -284,7 +263,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     MAIN_HOME_ID,
     homey.settings,
     () => homeModeCatalog.getSnapshot(),
-    () => managedDevices,
+    () => context.deviceControlSettings.managedDevices,
     () => context.homeMembership,
     () => undefined,
     () => context.readHomeBatteryDevices(),
@@ -317,9 +296,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getCombinedPricesForUi: () => null,
     log: vi.fn(),
     error: vi.fn(),
-    logDebug: vi.fn(),
     getStructuredLogger: vi.fn(() => undefined),
-    getStructuredDebugEmitter: getStructuredDebugEmitterOverride ?? vi.fn(() => structuredDebugEmitter),
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     getTimeZone: () => 'Europe/Oslo',
     capacitySettingsStore: {
@@ -340,7 +317,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     loadCapacitySettings: vi.fn(),
     noteCapacitySettingWritten: vi.fn(),
     recoverCapacitySettingsAfterSkippedWrite: vi.fn(),
-    loadTemperatureControlPolicySettings: vi.fn(),
     loadPriceOptimizationSettings: vi.fn(),
     updatePriceOptimizationEnabled: vi.fn(),
     updateDebugLoggingEnabled: vi.fn(),
@@ -352,17 +328,19 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getFlowSnapshot: vi.fn(async () => []),
     getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
     getPriceLevelChangesWithin: vi.fn(() => ({ state: 'resolved' as const, levels: [] })),
-    areFlowBackedCardsAvailable: vi.fn(() => false),
-    setExpectedOverride: vi.fn(() => false),
-    reloadExpectedPowerOverrides: vi.fn(),
     storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
-    getFlowReportedCapabilitiesForDevice: vi.fn(() => ({})),
-    getFlowReportedDeviceIds: vi.fn(() => []),
-    reportFlowBackedCapability: vi.fn(() => defaultFlowBackedCapabilityReportOutcome),
-    getHomeyDevicesForFlow: vi.fn(async () => []),
-    emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
+    flowBacked: partialDouble<FlowBackedDeviceState>({
+      areFlowBackedCardsAvailable: vi.fn(() => false),
+      setExpectedOverride: vi.fn(() => false),
+      reloadExpectedPowerOverrides: vi.fn(),
+      getFlowReportedCapabilitiesForDevice: vi.fn(() => ({})),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      reportFlowBackedCapability: vi.fn(() => defaultFlowBackedCapabilityReportOutcome),
+      getHomeyDevicesForFlow: vi.fn(async () => []),
+      emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
+    }),
     resolveManagedState: vi.fn(() => false),
     // Tests often swap in a partial device manager without the battery query;
     // that one knows no battery.
@@ -396,9 +374,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getObservationRevision: vi.fn(() => 0),
     isCapacityControlEnabled: vi.fn(() => false),
     isTemperatureControlDisabled: vi.fn(() => false),
-    isBudgetExempt: vi.fn(() => false),
-    getTemperatureBoostConfig: vi.fn(() => undefined),
-    getEvBoostConfig: vi.fn(() => undefined),
     getShedBehavior: vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({ action: 'turn_off' })),
     computeDynamicSoftLimit: vi.fn(() => 0),
     getDynamicSoftLimitOverride: vi.fn(() => null),
@@ -420,32 +395,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     set capacitySettings(value) { capacitySettings = value; },
     get capacityDryRun() { return capacityDryRun; },
     set capacityDryRun(value) { capacityDryRun = value; },
-    get controllableDevices() { return controllableDevices; },
-    set controllableDevices(value) { controllableDevices = value; },
-    get managedDevices() { return managedDevices; },
-    set managedDevices(value) { managedDevices = value; },
-    get budgetExemptDevices() { return budgetExemptDevices; },
-    set budgetExemptDevices(value) { budgetExemptDevices = value; },
-    get deviceStartPolicies() { return deviceStartPolicies; },
-    set deviceStartPolicies(value) { deviceStartPolicies = value; },
-    get temperatureControlDisabledDevices() { return temperatureControlDisabledDevices; },
-    set temperatureControlDisabledDevices(value) { temperatureControlDisabledDevices = value; },
-    get temperatureControlPolicyState() { return temperatureControlPolicyState; },
-    set temperatureControlPolicyState(value) { temperatureControlPolicyState = value; },
-    get deviceDriverOverrides() { return deviceDriverOverrides; },
-    set deviceDriverOverrides(value) { deviceDriverOverrides = value; },
-    get deviceControlProfiles() { return deviceControlProfiles; },
-    set deviceControlProfiles(value) { deviceControlProfiles = value; },
-    get deviceTargetPowerConfigs() { return deviceTargetPowerConfigs; },
-    set deviceTargetPowerConfigs(value) { deviceTargetPowerConfigs = value; },
-    get temperatureBoostSettings() { return temperatureBoostSettings; },
-    set temperatureBoostSettings(value) { temperatureBoostSettings = value; },
-    get evBoostSettings() { return evBoostSettings; },
-    set evBoostSettings(value) { evBoostSettings = value; },
-    get evCarAssociations() { return evCarAssociations; },
-    set evCarAssociations(value) { evCarAssociations = value; },
-    get shedBehaviors() { return shedBehaviors; },
-    set shedBehaviors(value) { shedBehaviors = value; },
+    deviceControlSettings: deviceControlSettingsFixture(),
     get debugLoggingTopics() { return debugLoggingTopics; },
     set debugLoggingTopics(value) { debugLoggingTopics = value; },
     get defaultComputeDynamicSoftLimit() { return defaultComputeDynamicSoftLimit; },

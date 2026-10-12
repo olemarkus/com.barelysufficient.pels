@@ -91,30 +91,15 @@ export const writeTargetPowerReachabilityForApp = (
   deviceId: string,
   reachability: TargetPowerReachabilityState,
 ): TargetPowerReachabilityApplyResult => {
-  const config = ctx.deviceTargetPowerConfigs[deviceId];
-  if (!config) return { applied: false, persistence: 'invalid' };
-  const resolved = resolveValidTargetPowerReachability({ ...config, reachability });
-  if (!resolved) return { applied: false, persistence: 'invalid' };
-  const current = resolveValidTargetPowerReachability(config);
-  const applied = !current
-    || current.profileFingerprint !== resolved.profileFingerprint
-    || current.maxReachedPowerW !== resolved.maxReachedPowerW
-    || current.probeFailureCount !== resolved.probeFailureCount
-    || current.nextProbeAtMs !== resolved.nextProbeAtMs;
-  if (applied) {
-    // Operational convergence is independent of Homey settings availability.
-    // eslint-disable-next-line functional/immutable-data, no-param-reassign
-    ctx.deviceTargetPowerConfigs = {
-      ...ctx.deviceTargetPowerConfigs,
-      [deviceId]: { ...config, reachability: resolved },
-    };
-  }
+  const adoption = ctx.deviceControlSettings.adoptTargetPowerReachability(deviceId, reachability);
+  if (adoption.state === 'invalid') return { applied: false, persistence: 'invalid' };
+  const applied = adoption.state === 'adopted';
   try {
     const persistence = writeTargetPowerReachabilitySetting({
       settings: ctx.homey.settings,
-      config,
+      config: adoption.config,
       deviceId,
-      reachability: resolved,
+      reachability: adoption.reachability,
     });
     return { applied, persistence };
   } catch (error) {

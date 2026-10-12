@@ -33,14 +33,12 @@ import { requireBatteryControl, requirePlanService } from '../appInit/contextGua
 import { mainStorageLane } from '../appInit/createBatteryControl';
 import { requireDeferredObjectiveEnergyDelivery } from '../appInit/deferredRecorders';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
-import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
-import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { PendingTargetObservationSource, PlanInputDevice } from '../../lib/plan/planTypes';
 import type { PriceLevel } from '../../lib/price/priceLevels';
 import type { PelsStatus } from '../../lib/plan/pelsStatus';
-import type { PlanEngineWiring } from '../appInit/planEngineWiring';
+import type { PlanBuilderDeps } from '../../lib/plan/planBuilder';
+import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
@@ -79,15 +77,15 @@ export type HomeScope = {
   // Capacity scalars: for the MAIN home these are live reads of the in-memory
   // snapshot (settings-handler maintained); sub-home scopes (R7b) back them
   // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
-  getCapacitySettings: () => PowerLimitSettings;
-  getCapacityDryRun: () => boolean;
+  getCapacitySettings: PlanBuilderDeps['getCapacitySettings'];
+  getCapacityDryRun: PlanBuilderDeps['getCapacityDryRun'];
   /**
    * The owner's Simulation setting for this home, for presentation: what the
    * cards call simulated is what the owner switched to simulation, the same flag
    * the Overview hero reads. A transient write fence is not a simulation.
    */
   readSimulationSetting: () => boolean;
-  getPowerTracker: () => PowerTrackerState;
+  getPowerTracker: PlanBuilderDeps['getPowerTracker'];
   /**
    * This home's 10-minute meter-silence monitor (`lib/power/meterSilence.ts`):
    * `createPlanService` composes its block into the plan-build gate, and the
@@ -95,7 +93,7 @@ export type HomeScope = {
    * instance; a bundle binds its own over the per-home tracker.
    */
   getMeterSilenceMonitor: () => MeterSilenceMonitor;
-  getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
+  getDailyBudgetSnapshot: PlanBuilderDeps['getDailyBudgetSnapshot'];
   /** Active planned devices with a unique, gap-free relative priority in this home. */
   getPlanDevices: () => PlanInputDevice[];
   /**
@@ -109,7 +107,7 @@ export type HomeScope = {
   // Signal writers. The two settings keys are this home's
   // (`homeScopedSettingsKey(base, homeId)` — the bare key for the main home);
   // the status goes to the in-memory registry under this home's id.
-  setCapacityInShortfall: (inShortfall: boolean) => void;
+  setCapacityInShortfall: PlanBuilderDeps['setCapacityInShortfall'];
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   publishPelsStatus: (status: PelsStatus) => void;
   // ---- Policy block (R7b) ----
@@ -122,20 +120,20 @@ export type HomeScope = {
   /** Inferred curtailed-surplus term (kW, >= 0) for the surplus allocator. 0 is
    *  the whole of "nothing to absorb": a home with no estimator, an estimator
    *  declining to claim, and a measured nothing spare are one answer here. */
-  getInferredSurplusKw: () => number;
+  getInferredSurplusKw: PlanBuilderDeps['getInferredSurplusKw'];
   // Policy stragglers lifted onto the scope so a sub-home's capacity-only engine
   // no longer inherits MAIN's raw ctx reads. Main binds the identical current
   // reads (byte-identical); sub-home scopes bind neutral constants for the
   // PRICE/BUDGET members — but NOT for the two mode members below.
   /** Per-device price-opt config; feeds the surplus allocator + temperature surplus-absorb. Sub-homes bind `{}`. */
-  getPriceOptimizationSettings: PlanEngineWiring['getPriceOptimizationSettings'];
+  getPriceOptimizationSettings: () => Record<string, PriceOptimizationSettings>;
   /** Test/diagnostic soft-limit override; consulted un-gated in the builder. Sub-homes bind `null`. */
-  getDynamicSoftLimitOverride: () => number | null;
+  getDynamicSoftLimitOverride: PlanBuilderDeps['getDynamicSoftLimitOverride'];
   /**
    * Active operating mode driving `mode_device_targets`. EVERY home binds the
    * live read — do NOT neutralize this for a sub-home (see below).
    */
-  getOperatingMode: PlanEngineWiring['getOperatingMode'];
+  getOperatingMode: () => string;
   /**
    * Mode→device desired-target map. EVERY home binds the live read, because the
    * mode target is the **restore anchor**, not a price/budget policy input.
@@ -149,12 +147,7 @@ export type HomeScope = {
    * config entry, and an empty map has none, so binding these live does not
    * widen policy.
    */
-  getModeDeviceTargets: PlanEngineWiring['getModeDeviceTargets'];
-  /**
-   * Device priority under THIS home's active mode. Priorities are ranked per
-   * mode. Main binds the historical app resolver; a meter-area bundle binds
-   * the priority map in its coherent catalog snapshot.
-   */
+  getModeDeviceTargets: () => Record<string, Record<string, number>>;
   // ---- UI / side-effect singletons (R7b Cluster B) ----
   // Three surfaces `createPlanService` used to bind straight to `ctx` for every
   // home. Main binds the live read (byte-identical); a sub-home neutralizes so
@@ -180,14 +173,14 @@ export type HomeScope = {
    * member and letting the builder's own fallback fire, which made "this home
    * has no smart tasks" indistinguishable from "nobody wired this home".
    */
-  decorateDeferredObjectives: PlanEngineWiring['decorateDeferredObjectives'];
+  decorateDeferredObjectives: PlanBuilderDeps['decorateDeferredObjectives'];
   /**
    * Post-actuation live-plan-state sync, targeting THIS home's plan service
    * (main: the app's inline-sync delegator; sub-home bundles: a late-bound
    * closure over the bundle's own service — syncing main's would touch the
    * wrong plan). Every home binds one.
    */
-  syncLivePlanStateAfterTargetActuation: PlanEngineWiring['syncLivePlanStateAfterTargetActuation'];
+  syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
 };
 
 /**

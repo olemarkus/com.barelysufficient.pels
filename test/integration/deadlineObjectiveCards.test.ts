@@ -339,11 +339,12 @@ const buildDeps = (overrides: {
         ? overrides.activePlans
         : recorders.activePlanRecorder.getActivePlansSnapshot()
     ),
-    getDeferredObjectiveStatusBus: () => overrides.bus,
-    getDeferredObjectivePlanRevisionBus: () => overrides.planRevisionBus,
-    getDeferredObjectiveEndedBus: () => overrides.endedBus,
-    getDeferredObjectiveHoursRemainingBus: () => overrides.hoursRemainingBus,
-    getDeferredObjectiveHoursRemainingTracker: () => overrides.hoursRemainingTracker,
+    deferredObjectiveStatusBus: overrides.bus ?? createDeferredObjectiveStatusBus(),
+    deferredObjectivePlanRevisionBus: overrides.planRevisionBus ?? createDeferredObjectivePlanRevisionBus(),
+    deferredObjectiveEndedBus: overrides.endedBus ?? createDeferredObjectiveEndedBus(),
+    deferredObjectiveHoursRemainingBus: overrides.hoursRemainingBus ?? createDeferredObjectiveHoursRemainingBus(),
+    deferredObjectiveHoursRemainingTracker: overrides.hoursRemainingTracker
+      ?? createDeferredObjectiveHoursRemainingTracker(),
   } as unknown as FlowCardDeps;
   return { deps, mock, recorders };
 };
@@ -1744,10 +1745,10 @@ describe('deadline objective flow cards', () => {
     const deadlineAtMs = HH_MM_TO_UTC_MS(7, 0);
     const diagnostics = [buildHoursRemainingDiagnostic({ deviceId: 'ev-1', deadlineAtMs })];
     // Pre-restart cycle: ev-1 crosses the 2h boundary, fires once.
-    before.deps.getDeferredObjectiveHoursRemainingTracker!()!.observe({
+    before.deps.deferredObjectiveHoursRemainingTracker.observe({
       diagnostics,
       nowMs: deadlineAtMs - 2 * 60 * 60 * 1000,
-      bus: before.deps.getDeferredObjectiveHoursRemainingBus!()!,
+      bus: before.deps.deferredObjectiveHoursRemainingBus,
     });
     expect(beforeTrigger.trigger).toHaveBeenCalledTimes(1);
 
@@ -1766,10 +1767,10 @@ describe('deadline objective flow cards', () => {
     });
     registerDeadlineObjectiveCards(after.deps);
     const afterTrigger = after.mock.triggers.get('smart_task_hours_remaining')!;
-    after.deps.getDeferredObjectiveHoursRemainingTracker!()!.observe({
+    after.deps.deferredObjectiveHoursRemainingTracker.observe({
       diagnostics,
       nowMs: deadlineAtMs - (60 * 60 * 1000), // 1h remaining now
-      bus: after.deps.getDeferredObjectiveHoursRemainingBus!()!,
+      bus: after.deps.deferredObjectiveHoursRemainingBus,
     });
     // The 1h boundary IS a fresh crossing (1 < 2), so the bus does publish
     // — what we're checking is the run-listener's gate for a 2h-threshold

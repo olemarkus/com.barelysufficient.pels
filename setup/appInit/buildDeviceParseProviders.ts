@@ -13,28 +13,21 @@ import type { DeviceTransportParseProviders } from '../../lib/device/transport/m
 import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import { buildHomeRuntimeMeterProviders } from './wireHomeRuntimeRegistry';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
+import type { AppNativeWiring } from '../appNativeWiring';
+import { isManagedFilterActive } from '../appDeviceSupport';
 
-export type DeviceParseProviderDeps = {
-  isManagedFilterActive: () => boolean;
-  resolveNativeWiringEnabled: (deviceId: string) => boolean;
-  getDeviceDriverIdOverride: (deviceId: string) => string | undefined;
-  getFlowConflict: (
-    deviceId: string,
-  ) => { conflictingCapabilities: readonly string[]; flowName?: string } | undefined;
-};
-
-export const buildDeviceParseProviders = (params: {
-  ctx: AppContext;
-  deps: DeviceParseProviderDeps;
-  /**
-   * Lazy: the registry is built AFTER the transport and cleared at uninit, so
-   * the meter providers must resolve it per call. Empty/no-op outside that
-   * window, which leaves the single-home path untouched.
-   */
-  getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined;
-  resolveMeterSelection: () => MainMeterSelection;
-}): DeviceTransportParseProviders => {
-  const { ctx, deps, getHomeRuntimeRegistry, resolveMeterSelection } = params;
+/**
+ * `getHomeRuntimeRegistry` is lazy: the registry is built AFTER the transport
+ * and cleared at uninit, so the meter providers must resolve it per call.
+ * Empty/no-op outside that window, which leaves the single-home path untouched.
+ */
+export const buildDeviceParseProviders = (
+  ctx: AppContext,
+  nativeWiring: AppNativeWiring,
+  getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined,
+  resolveMeterSelection: () => MainMeterSelection,
+): DeviceTransportParseProviders => {
+  const settings = ctx.deviceControlSettings;
   return {
     getHomeyEnergyMeterSelection: resolveMeterSelection,
     // (The whole-home meter IDENTITY is not a parse provider: it rides the
@@ -42,14 +35,14 @@ export const buildDeviceParseProviders = (params: {
     ...buildHomeRuntimeMeterProviders(getHomeRuntimeRegistry),
     getControllable: (id) => ctx.isCapacityControlEnabled(id),
     getManaged: (id) => ctx.resolveManagedState(id),
-    isManagedFilterActive: () => deps.isManagedFilterActive(),
-    getBudgetExempt: (id) => ctx.isBudgetExempt(id),
-    getNativeEvWiringEnabled: (id) => deps.resolveNativeWiringEnabled(id),
-    getFlowConflict: (id) => deps.getFlowConflict(id),
-    getDeviceDriverIdOverride: (id) => deps.getDeviceDriverIdOverride(id),
-    getDeviceControlProfile: (id) => ctx.deviceControlProfiles[id],
-    getDeviceTargetPowerConfig: (id) => ctx.deviceTargetPowerConfigs[id],
-    getFlowReportedCapabilities: (deviceId) => ctx.getFlowReportedCapabilitiesForDevice(deviceId),
-    getEvCarAssociationCarIds: (id) => ctx.evCarAssociations[id]?.carIds ?? [],
+    isManagedFilterActive: () => isManagedFilterActive(settings.managedDevices),
+    getBudgetExempt: (id) => settings.isBudgetExempt(id),
+    getNativeEvWiringEnabled: (id) => nativeWiring.resolveNativeWiringEnabled(id),
+    getFlowConflict: (id) => nativeWiring.getFlowConflict(id),
+    getDeviceDriverIdOverride: (id) => settings.getDeviceDriverIdOverride(id),
+    getDeviceControlProfile: (id) => settings.getDeviceControlProfile(id),
+    getDeviceTargetPowerConfig: (id) => settings.getDeviceTargetPowerConfig(id),
+    getFlowReportedCapabilities: (deviceId) => ctx.flowBacked.getFlowReportedCapabilitiesForDevice(deviceId),
+    getEvCarAssociationCarIds: (id) => settings.getEvCarAssociationCarIds(id),
   };
 };

@@ -1,18 +1,17 @@
+import { getDebugEmitter } from '../../lib/logging/logger';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
 import { isExternalOffHeldForObservedDevice } from '../../lib/planInput/externalOffHoldProjection';
 import type CapacityGuard from '../../lib/power/capacityGuard';
-import type { PlanEngine } from '../../lib/plan/planEngine';
-import { PlanBuilder, type PlanBuilderDeps } from '../../lib/plan/planBuilder';
+import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { PlanExecutor } from '../../lib/executor/planExecutor';
-import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import type { StorageLaneBinding } from '../../lib/ports/batteryControlOwner';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { AppContext } from '../../lib/app/appContext';
+import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { HomeScope } from '../homeRuntime/homeScope';
-import type { PlanEngineWiring } from './planEngineWiring';
 import { ComposedPlanEngine } from './composedPlanEngine';
 import { bindTemperatureSetpoints } from './temperatureSetpointsSeam';
 
@@ -65,82 +64,6 @@ export const createFencedActuator = (
   ),
 });
 
-const composePlanEngine = (deps: PlanEngineWiring): PlanEngineCompositionResult => {
-  const state = createPlanEngineState(Date.now(), deps.isExternalOffHeld);
-  const pendingBinaryCommandStore = createPendingBinaryCommandStore(
-    state.pendingBinaryCommands,
-    deps.binaryCommandLifecycle,
-  );
-  const builderDeps: PlanBuilderDeps = {
-    setCapacityInShortfall: deps.setCapacityInShortfall,
-    getCapacityDryRun: deps.getCapacityDryRun,
-    capacityGuard: deps.capacityGuard,
-    getCapacitySettings: deps.getCapacitySettings,
-    getPriceOptimizationSettings: deps.getPriceOptimizationSettings,
-    getInferredSurplusKw: deps.getInferredSurplusKw,
-    leaveOffOnRelease: deps.leaveOffOnRelease,
-    getPowerTracker: deps.getPowerTracker,
-    getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
-    getShedBehavior: deps.getShedBehavior,
-    getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
-    deviceDiagnostics: deps.deviceDiagnostics,
-    structuredLog: deps.structuredLog,
-    debugStructured: deps.debugStructured,
-    decorateDeferredObjectives: deps.decorateDeferredObjectives,
-    resolveTemperatureSetpoints: bindTemperatureSetpoints(deps),
-    pendingBinaryCommandStore,
-    log: deps.log,
-  };
-  const builder = new PlanBuilder(builderDeps, state);
-  const executorDeps: PlanExecutorDeps = {
-    getHomeDisplayName: deps.getHomeDisplayName,
-    homeId: deps.homeId,
-    setCapacityInShortfall: deps.setCapacityInShortfall,
-    persistLastControlledMs: deps.persistLastControlledMs,
-    getDeviceConfiguration: deps.getDeviceConfiguration,
-    getDeviceConfigurations: deps.getDeviceConfigurations,
-    // The RECORD, not the base read: the executor's drift check reads the
-    // reported step, measured power and EV state off it. Supplying
-    // `getObservedState` here compiles — narrow is assignable to wide, since
-    // every cluster field is optional — and would work only for as long as the
-    // object stayed physically wider than its type.
-    getObservedState: deps.getObservedRecord,
-    getObservationRevision: deps.getObservationRevision,
-    actuator: deps.actuator,
-    capacityGuard: deps.capacityGuard,
-    getCapacitySettings: deps.getCapacitySettings,
-    getPowerTracker: deps.getPowerTracker,
-    getCapacityPaceKw: () => builder.computeCapacityPace(),
-    // Planner-owned number, resolved here so the executor does not import
-    // lib/plan to re-derive it for a log line.
-    getShortfallThresholdKw: () => builder.computeShortfallThreshold(),
-    getCapacityDryRun: deps.getCapacityDryRun,
-    getOperatingMode: deps.getOperatingMode,
-    getShedBehavior: deps.getShedBehavior,
-    markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
-    getSteppedLoadCommandSession: deps.getSteppedLoadCommandSession,
-    syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
-    deviceDiagnostics: deps.deviceDiagnostics,
-    pendingBinaryCommandStore,
-    storageLane: deps.storageLane,
-  };
-  const executor = new PlanExecutor(executorDeps, state);
-  return {
-    planEngine: new ComposedPlanEngine({
-      state,
-      pendingBinaryCommandStore,
-      steppedCommandStore: deps.steppedCommandStore,
-      steppedReportedStore: deps.steppedReportedStore,
-      builder,
-      executor,
-      deviceDiagnostics: deps.deviceDiagnostics,
-      debugStructured: deps.debugStructured,
-      structuredLog: deps.structuredLog,
-    }),
-    lifecycleFallbackPort: executor.getLifecycleFallbackPort(),
-  };
-};
-
 export function createPlanEngineComposition(
   ctx: AppContext,
   scope: HomeScope,
@@ -169,87 +92,111 @@ export function createPlanEngineComposition(
   // decides from the new membership (owner ruling 2026-09-08).
   const actuator: Actuator = createFencedActuator(baseActuator, options.isActuationFenced);
 
-  const deps: PlanEngineWiring = {
-    getHomeDisplayName: scope.getHomeDisplayName,
-    // The id is already a plain scope field (a home id cannot change without a
-    // new scope), so log correlation needs no extra getter.
-    homeId: scope.homeId,
+  // "Leave off until turned on again": resolved HERE rather than per caller so
+  // no home can be wired without it — a missing one would silently make the
+  // executor's restore carve-out a no-op for that home's devices. Same
+  // resolution the producer applies, so plan and executor share one definition
+  // of "held".
+  const state = createPlanEngineState(Date.now(), (deviceId) => isExternalOffHeldForObservedDevice(
+    ctx.externalOffHold?.isHeld(deviceId) === true,
+    ctx.getObservedRecord(deviceId),
+  ));
+  const pendingBinaryCommandStore = createPendingBinaryCommandStore(
+    state.pendingBinaryCommands,
+    scope.binaryCommandLifecycle,
+  );
+  // Scope-owned diagnostics recorder, resolved LIVE at engine construction
+  // (after `initDeviceDiagnosticsService`): main binds the shared app recorder;
+  // a sub-home resolves undefined so its plans never pollute main's per-boot epoch.
+  const deviceDiagnostics = scope.getDeviceDiagnostics();
+  const structuredLog = ctx.getStructuredLogger('plan');
+  const debugStructured = getDebugEmitter('plan', 'plan');
+  const getShedBehavior = (deviceId: string) => ctx.getShedBehavior(deviceId);
+  // Policy closures from the scope: the main home binds the live ctx reads; a
+  // sub-home capacity bundle binds disabled constants for the PRICE/BUDGET
+  // members, so its engine is capacity-only without this factory branching on
+  // which home it serves. The two mode members are the exception — every home
+  // binds them live, because the mode target is the restore anchor (see
+  // `homeScope.ts`).
+  const builder = new PlanBuilder({
     setCapacityInShortfall: scope.setCapacityInShortfall,
-    // App-wide, like the profiles they interpret: device ids are globally
-    // unique, so every home's settle pass reads the same two stores.
-    steppedCommandStore: ctx.steppedCommandStore,
-    steppedReportedStore: ctx.steppedReportedStore,
-    persistLastControlledMs: scope.persistLastControlledMs,
-    // Runtime configuration and observed state come from their respective
-    // owners. Device inventory metadata does not enter planner or executor.
-    getDeviceConfiguration: (deviceId: string) => ctx.deviceConfiguration.get(deviceId),
-    getDeviceConfigurations: () => ctx.deviceConfiguration.getAll(),
-    // See the sibling wiring above: the drift check holds the record.
-    getObservedRecord: (deviceId: string) => ctx.getObservedRecord(deviceId),
-    getObservationRevision: () => ctx.getObservationRevision(),
-    // "Leave off until turned on again": resolved HERE rather than per caller so
-    // no home can be wired without it — a missing one would silently make the
-    // executor's restore carve-out a no-op for that home's devices. Same
-    // resolution the producer applies, so plan and executor share one definition
-    // of "held".
-    isExternalOffHeld: (deviceId) => isExternalOffHeldForObservedDevice(
-      ctx.externalOffHold?.isHeld(deviceId) === true,
-      ctx.getObservedRecord(deviceId),
-    ),
-    leaveOffOnRelease: (deviceId) => ctx.externalOffHold?.holdOnRelease(deviceId) ?? 'unavailable',
-    actuator,
-    binaryCommandLifecycle: scope.binaryCommandLifecycle,
+    getCapacityDryRun: scope.getCapacityDryRun,
     capacityGuard: options.capacityGuard,
     getCapacitySettings: scope.getCapacitySettings,
-    getCapacityDryRun: scope.getCapacityDryRun,
-    // Policy closures from the scope: the main home binds the live ctx reads
-    // (byte-identical to the pre-R7b hardwiring); a sub-home capacity bundle
-    // binds disabled constants for the PRICE/BUDGET members, so its engine is
-    // capacity-only without this factory branching on which home it serves.
-    // The two mode members are the exception — every home binds them live,
-    // because the mode target is the restore anchor (see `homeScope.ts`).
-    getOperatingMode: scope.getOperatingMode,
-    getModeDeviceTargets: scope.getModeDeviceTargets,
-    getPriceOptimizationEnabled: scope.getPriceOptimizationEnabled,
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
-    getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
     getInferredSurplusKw: scope.getInferredSurplusKw,
-    storageLane: options.storageLane,
+    // The same hold, recorded at the one moment PELS releases a standing
+    // posture of its own on an observed-off device.
+    leaveOffOnRelease: (deviceId) => ctx.externalOffHold?.holdOnRelease(deviceId) ?? 'unavailable',
     getPowerTracker: scope.getPowerTracker,
     getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,
+    getShedBehavior,
+    getDynamicSoftLimitOverride: scope.getDynamicSoftLimitOverride,
+    deviceDiagnostics,
+    structuredLog,
+    debugStructured,
     // Smart-task decoration seam, owned by the scope (`buildMainHomeScope`
     // constructs the DeferredObjectiveDecorationController; a sub-home bundle
     // binds `decorateWithoutDeferredObjectives`, the identity bundle in the
     // seam's own shape).
     decorateDeferredObjectives: scope.decorateDeferredObjectives,
-    // Scope-owned: priorities are ranked per mode, and only the scope knows
-    // this home's ACTIVE mode (a sub-home may pin its own; see homeScope.ts).
-    getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
-    getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
-    getDynamicSoftLimitOverride: scope.getDynamicSoftLimitOverride,
+    resolveTemperatureSetpoints: bindTemperatureSetpoints(scope, ctx),
+    pendingBinaryCommandStore,
+    log: (...args: unknown[]) => ctx.log(...args),
+  }, state);
+  const executor = new PlanExecutor({
+    getHomeDisplayName: scope.getHomeDisplayName,
+    // The id is already a plain scope field (a home id cannot change without a
+    // new scope), so log correlation needs no extra getter.
+    homeId: scope.homeId,
+    setCapacityInShortfall: scope.setCapacityInShortfall,
+    persistLastControlledMs: scope.persistLastControlledMs,
+    // Runtime configuration and observed state come from their respective
+    // owners. Device inventory metadata does not enter planner or executor.
+    getDeviceConfiguration: (deviceId: string) => ctx.deviceConfiguration.get(deviceId),
+    getDeviceConfigurations: () => ctx.deviceConfiguration.getAll(),
+    // The RECORD, not the base read: the executor's drift check reads the
+    // reported step, measured power and EV state off it. Supplying
+    // `getObservedState` here compiles — narrow is assignable to wide, since
+    // every cluster field is optional — and would work only for as long as the
+    // object stayed physically wider than its type.
+    getObservedState: (deviceId: string) => ctx.getObservedRecord(deviceId),
+    getObservationRevision: () => ctx.getObservationRevision(),
+    actuator,
+    capacityGuard: options.capacityGuard,
+    getCapacitySettings: scope.getCapacitySettings,
+    getPowerTracker: scope.getPowerTracker,
+    getCapacityPaceKw: () => builder.computeCapacityPace(),
+    // Planner-owned number, resolved here so the executor does not import
+    // lib/plan to re-derive it for a log line.
+    getShortfallThresholdKw: () => builder.computeShortfallThreshold(),
+    getCapacityDryRun: scope.getCapacityDryRun,
+    getOperatingMode: scope.getOperatingMode,
+    getShedBehavior,
     markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
     getSteppedLoadCommandSession: (deviceId) => (
       ctx.deviceControlHelpers.getSteppedLoadCommandSession(deviceId)
     ),
     // Scope-owned so the sync targets THIS home's plan service (see HomeScope).
     syncLivePlanStateAfterTargetActuation: scope.syncLivePlanStateAfterTargetActuation,
-    // Scope-owned diagnostics recorder, resolved LIVE at engine construction
-    // (after `initDeviceDiagnosticsService`): main binds the shared app recorder;
-    // a sub-home resolves undefined so its plans never pollute main's per-boot epoch.
-    deviceDiagnostics: scope.getDeviceDiagnostics(),
-    structuredLog: ctx.getStructuredLogger('plan'),
-    debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
-    log: (...args: unknown[]) => ctx.log(...args),
-    error: (...args: unknown[]) => ctx.error(...args),
+    deviceDiagnostics,
+    pendingBinaryCommandStore,
+    storageLane: options.storageLane,
+  }, state);
+  return {
+    planEngine: new ComposedPlanEngine({
+      state,
+      pendingBinaryCommandStore,
+      // App-wide, like the profiles they interpret: device ids are globally
+      // unique, so every home's settle pass reads the same two stores.
+      steppedCommandStore: ctx.steppedCommandStore,
+      steppedReportedStore: ctx.steppedReportedStore,
+      builder,
+      executor,
+      deviceDiagnostics,
+      debugStructured,
+      structuredLog,
+    }),
+    lifecycleFallbackPort: executor.getLifecycleFallbackPort(),
   };
-  return composePlanEngine(deps);
-}
-
-/** Sub-home composition does not own the main smart-task lifecycle clock. */
-export function createPlanEngine(
-  ctx: AppContext,
-  scope: HomeScope,
-  options: CreatePlanEngineOptions,
-): PlanEngine {
-  return createPlanEngineComposition(ctx, scope, options).planEngine;
 }

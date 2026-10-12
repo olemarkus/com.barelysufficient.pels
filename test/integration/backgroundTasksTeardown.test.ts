@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BackgroundTasksController } from '../../setup/backgroundTasksController';
 import { TeardownRegistry } from '../../lib/utils/teardownRegistry';
 import { partialDouble } from '../helpers/partialDouble';
-import type { BackgroundTasksControllerDeps } from '../../setup/backgroundTasksController';
+import type { AppContext } from '../../lib/app/appContext';
 import type { WeatherCollector } from '../../lib/weather/weatherCollector';
 
 /**
@@ -25,7 +25,7 @@ const buildCollectorDouble = (): { collector: WeatherCollector; isRunning: () =>
 };
 
 const buildController = (teardown: TeardownRegistry): BackgroundTasksController => (
-  new BackgroundTasksController(partialDouble<BackgroundTasksControllerDeps>({ teardown }))
+  new BackgroundTasksController(partialDouble<AppContext>({}), teardown)
 );
 
 describe('BackgroundTasksController teardown ordering', () => {

@@ -5,8 +5,9 @@
  * as the set of kinds grows.
  */
 import { resolveDeferredObjectiveDeadline } from '../lib/objectives/deferredObjectives';
-import type { ObjectiveWriteOutcome } from '../lib/objectives/deferredObjectives';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DeferredObjectiveSettingsEntry, ObjectiveWriteOutcome } from '../lib/objectives/deferredObjectives';
+import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { resolveObjectiveWriteRefusalMessage } from '../packages/shared-domain/src/objectiveWriteStrings';
 import type { FlowCardDeps } from './registerFlowCards';
 
@@ -68,4 +69,49 @@ export const resolveReadyByToDeadlineAtMs = (deps: FlowCardDeps, deadlineLocalTi
     throw new Error(`Could not resolve "${deadlineLocalTime}" to a future moment in time.`);
   }
   return resolution.deadlineAtMs;
+};
+
+/**
+ * A task-creating deadline card: resolve the device, check it can carry this
+ * kind of task, read the card's own target and the ready-by time, and write the
+ * task. `readTarget` validates the target before the ready-by time is read, and
+ * returns the entry for the resolved deadline.
+ *
+ * The device-scoped op writes this device's own settings key and runs the
+ * shared notify/flush chokepoint. It preserves any standing rescue permission
+ * across the update by default (the rescue card promises it sticks until
+ * changed or cleared). A per-key write touches only this device, so it cannot
+ * clobber a sibling task.
+ */
+export const registerSetDeadlineCard = <Target extends object>(
+  deps: FlowCardDeps,
+  cardId: string,
+  missingDeviceMessage: string,
+  supports: (device: DecoratedDeviceSnapshot) => boolean,
+  unsupportedMessage: (deviceLabel: string) => string,
+  readTarget: (
+    args: Target | null,
+    device: DecoratedDeviceSnapshot,
+  ) => (deadlineAtMs: number) => DeferredObjectiveSettingsEntry,
+): void => {
+  const card = deps.homey.flow.getActionCard(cardId);
+  card.registerRunListener(async (args: unknown) => {
+    const payload = args as (Target & { device?: RawFlowDeviceArg; ready_by?: unknown }) | null;
+    const deviceId = getDeviceIdFromFlowArg(payload?.device);
+    if (!deviceId) throw new Error(missingDeviceMessage);
+    const snapshot = await deps.getSnapshot();
+    const device = snapshot.find((entry) => entry.id === deviceId);
+    if (!device) throw new Error(`Device '${deviceId}' was not found.`);
+    if (!supports(device)) throw new Error(unsupportedMessage(device.name.trim() || deviceId));
+    const buildEntry = readTarget(payload, device);
+    const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, validateReadyBy(payload?.ready_by));
+    throwIfWriteRefused(deps.upsertDeferredObjectiveForDevice({
+      deviceId, deviceName: device.name ?? null, entry: buildEntry(deadlineAtMs),
+    }));
+    return true;
+  });
+  card.registerArgumentAutocompleteListener('device', async (query: string) => {
+    const snapshot = await deps.getSnapshot();
+    return buildDeviceAutocompleteOptions(snapshot.filter(supports).filter(isOfferedDevice(deps)), query);
+  });
 };

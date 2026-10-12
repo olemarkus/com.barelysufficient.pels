@@ -93,6 +93,9 @@ const buildDeps = (
   getDeliveryEvidence: noDeliveryEvidence,
   observeDeferredObjectivePlanHistory: () => undefined,
   observeDeferredObjectiveActivePlans: () => undefined,
+  deferredObjectiveStatusBus: createDeferredObjectiveStatusBus(),
+  deferredObjectiveHoursRemainingBus: createDeferredObjectiveHoursRemainingBus(),
+  deferredObjectiveHoursRemainingTracker: createDeferredObjectiveHoursRemainingTracker(),
   ...overrides,
 });
 
@@ -288,7 +291,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
       getDeferredObjectiveSettings: () => buildEvSettings(NOW_MS - HOUR_MS),
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
-      getDeferredObjectiveStatusBus: () => statusBus,
+      deferredObjectiveStatusBus: statusBus,
       getDeferredObjectiveDebugStructured: () => debugStructured,
       onDeadlineReached,
     }));
@@ -316,7 +319,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
       getDeferredObjectiveSettings: () => buildEvSettings(deadlineAtMs),
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
-      getDeferredObjectiveStatusBus: () => statusBus,
+      deferredObjectiveStatusBus: statusBus,
       getDeferredObjectiveDebugStructured: () => debugStructured,
       onDeadlineReached,
     }));
@@ -335,13 +338,12 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     expect(debugStructured).not.toHaveBeenCalled();
   });
 
-  it('fires deadline ending without a status bus', () => {
+  it('fires deadline ending', () => {
     const onDeadlineReached = vi.fn();
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       getDeferredObjectiveSettings: () => buildEvSettings(NOW_MS - HOUR_MS),
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
-      getDeferredObjectiveStatusBus: () => undefined,
       onDeadlineReached,
     }));
 
@@ -363,7 +365,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
       getDeferredObjectiveSettings: () => buildEvSettings(NOW_MS + 3 * HOUR_MS),
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
-      getDeferredObjectiveStatusBus: () => statusBus,
+      deferredObjectiveStatusBus: statusBus,
       onSatisfied,
       onDeadlineReached,
     }));
@@ -389,7 +391,6 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       getDeferredObjectiveSettings: () => settings,
       getDevices: () => devices,
-      getDeferredObjectiveStatusBus: () => undefined,
       onSatisfied,
       onFallbackInactive,
     }));
@@ -420,7 +421,6 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
         evChargingState: 'plugged_in_charging',
       })],
       getPriceOptimizationEnabled: () => true,
-      getDeferredObjectiveStatusBus: () => undefined,
       onSatisfied,
       onDeadlineReached,
     }));
@@ -446,8 +446,8 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
       getDeferredObjectiveSettings: () => buildEvSettings(NOW_MS + 3 * HOUR_MS),
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
-      getDeferredObjectiveHoursRemainingBus: () => hoursRemainingBus,
-      getDeferredObjectiveHoursRemainingTracker: () => hoursRemainingTracker,
+      deferredObjectiveHoursRemainingBus: hoursRemainingBus,
+      deferredObjectiveHoursRemainingTracker: hoursRemainingTracker,
     }));
 
     emitter.tick(NOW_MS);

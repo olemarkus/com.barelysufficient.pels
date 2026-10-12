@@ -1,13 +1,11 @@
 /* eslint-disable functional/immutable-data -- debug payload assembly is local and not shared mutable state. */
 import { nextDeviceDumpId } from '../lib/diagnostics/deviceDumpId';
-import type Homey from 'homey';
-import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
+import type { AppContext } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import { fetchLiveMeterItems } from '../lib/device/transport/managerFetch';
 import { isPickableMeterItem } from '../lib/device/transport/managerHelpers';
 import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUiApi';
 import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
-import type { DevicePlan } from '../lib/plan/planTypes';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import { isHomeyDeviceLike } from '../lib/utils/types';
 import { normalizeError } from '../lib/utils/errorUtils';
@@ -63,11 +61,12 @@ export async function getHomeyDevicesForDebug(params: {
   return deviceManager.getDevicesForDebug();
 }
 
-export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<HomeyDeviceLike[]> {
-  const runtimeApp = app as Homey.App & { deviceManager?: DeviceTransportPort };
-  if (!runtimeApp.deviceManager) return [];
-  return getHomeyDevicesForDebug({ deviceManager: runtimeApp.deviceManager }).catch((err) => {
-    runtimeApp.error?.('Failed to get Homey devices for debug', normalizeError(err));
+export async function getHomeyDevicesForDebugFromApp(
+  app: Pick<AppContext, 'deviceManager' | 'error'>,
+): Promise<HomeyDeviceLike[]> {
+  if (!app.deviceManager) return [];
+  return getHomeyDevicesForDebug({ deviceManager: app.deviceManager }).catch((err) => {
+    app.error('Failed to get Homey devices for debug', normalizeError(err));
     return [];
   });
 }
@@ -82,7 +81,9 @@ export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<Ho
  * An id the device list cannot name falls back to itself. Backs the
  * `homey_energy_meters` endpoint for both the main and meter-area pickers.
  */
-export async function getHomeyEnergyMetersFromApp(app: Homey.App): Promise<HomeyEnergyMeterEntry[]> {
+export async function getHomeyEnergyMetersFromApp(
+  app: Pick<AppContext, 'deviceManager' | 'error'>,
+): Promise<HomeyEnergyMeterEntry[]> {
   const items = await fetchLiveMeterItems();
   // Without the device list no `device`-type item can be classed, so an empty
   // list would pass for "no meters"; the device read resolves a failure to [].
@@ -231,112 +232,32 @@ export async function logHomeyDeviceForDebug(params: {
   return true;
 }
 
-// Comparison logging intentionally fans in multiple Homey and PELS state channels.
-// eslint-disable-next-line complexity -- flat fan-in of independent state channels into one comparison payload.
-export async function logHomeyDeviceComparisonForDebugFromApp(
-  app: Homey.App,
+export async function logHomeyDeviceForDebugFromApp(
+  app: Pick<AppContext, 'deviceManager' | 'planService' | 'getPowerCalibrationSnapshot' | 'error'>,
   deviceId: string,
-  reason: string,
-  expectedTarget?: number,
-  observedTarget?: unknown,
-  observedSource?: string,
 ): Promise<boolean> {
-  const runtimeApp = app as Homey.App & {
-    deviceManager?: DeviceTransportPort;
-    planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
-    powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
-  };
-  const deviceManager = runtimeApp.deviceManager;
+  const { deviceManager } = app;
   if (!deviceManager) return false;
-  if (!deviceId) return false;
-
-  let devices: HomeyDeviceLike[];
-  try {
-    devices = await getHomeyDevicesForDebug({ deviceManager });
-  } catch (err) {
-    runtimeApp.error?.('Failed to fetch Homey devices for comparison debug', normalizeError(err));
-    return false;
-  }
-
-  const device = devices.find((entry) => entry.id === deviceId);
-  const safeDeviceId = sanitizeLogValue(deviceId);
-  if (!device) {
-    debugLogger.info({
-      event: 'homey_pels_device_state_comparison_device_not_found',
-      deviceId: safeDeviceId,
-      reason,
-    });
-    return false;
-  }
-
-  const label = device.name;
-  const safeLabel = sanitizeLogValue(label) || safeDeviceId;
-  const rawManagerEntry = await getRawManagerDeviceEntry({ deviceId });
-  const targetSnapshot = compactPelsTargetSnapshot(
-    deviceManager.getSnapshotByDeviceId?.(deviceId) ?? null,
-  );
-  const planDevice = compactPelsPlanDevice(
-    runtimeApp.planService?.getLatestPlanSnapshot?.()?.devices.find((entry) => entry.id === deviceId) ?? null,
-  );
-  const comparisonPayload: DeviceStateComparison = {
-    managerDevices: buildHomeyStateComparisonSource(rawManagerEntry),
-    pelsSnapshot: buildPelsSnapshotComparisonSource(targetSnapshot),
-    pelsPlan: buildPelsPlanComparisonSource(planDevice),
-  };
-  const observedSources = buildObservedSourcesSummary(deviceManager.getDebugObservedSources?.(deviceId));
-
-  debugLogger.info({
-    event: 'homey_pels_device_state_comparison',
-    deviceId: safeDeviceId,
-    label: safeLabel,
-    payload: safeJsonStringify({
-      reason,
-      ...(typeof expectedTarget === 'number' ? { expectedTarget } : {}),
-      ...(observedTarget !== undefined ? { observedTarget } : {}),
-      ...(observedSource ? { observedSource } : {}),
-      ...(observedSources ? { observedSources } : {}),
-      comparison: comparisonPayload,
-    }),
-  });
-  return true;
-}
-
-export async function logHomeyDeviceForDebugFromApp(params: {
-  app: Homey.App;
-  deviceId: string;
-}): Promise<boolean> {
-  const { app, deviceId } = params;
-  const runtimeApp = app as Homey.App & {
-    deviceManager?: DeviceTransportPort;
-    planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
-    powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
-  };
-  if (!runtimeApp.deviceManager) return false;
   return logHomeyDeviceForDebug({
     deviceId,
-    deviceManager: runtimeApp.deviceManager,
+    deviceManager,
     getPelsDeviceState: (targetDeviceId) => {
       const targetSnapshot = compactPelsTargetSnapshot(
-        runtimeApp.deviceManager?.getSnapshotByDeviceId?.(targetDeviceId) ?? null,
+        deviceManager.getSnapshotByDeviceId?.(targetDeviceId) ?? null,
       );
       const planDevice = compactPelsPlanDevice(
-        runtimeApp.planService?.getLatestPlanSnapshot?.()
+        app.planService?.getLatestPlanSnapshot()
           ?.devices.find((entry) => entry.id === targetDeviceId) ?? null,
       );
-      const powerCalibration = getPelsPowerCalibration(
-        runtimeApp.powerCalibrationStore?.getSnapshot?.(),
-        targetDeviceId,
-      );
+      const powerCalibration = getPelsPowerCalibration(app.getPowerCalibrationSnapshot(), targetDeviceId);
       return {
         present: Boolean(targetSnapshot || planDevice || powerCalibration),
         targetSnapshot,
         planDevice,
         powerCalibration,
-        observedSources: buildObservedSourcesSummary(
-          runtimeApp.deviceManager?.getDebugObservedSources?.(targetDeviceId),
-        ),
+        observedSources: buildObservedSourcesSummary(deviceManager.getDebugObservedSources?.(targetDeviceId)),
       };
     },
-    error: (msg, err) => runtimeApp.error?.(msg, err),
+    error: (msg, err) => app.error(msg, err),
   });
 }

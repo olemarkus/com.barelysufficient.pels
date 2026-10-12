@@ -91,7 +91,7 @@ export type SettingsHandlerDeps = {
   recoverCapacitySettingsAfterSkippedWrite: (key: string) => void;
   /**
    * Names the SETTINGS SOURCE that moved, not a rebuild trigger. The wiring that
-   * supplies this (`setup/appSettingsHelpers.ts`) is what turns it into the
+   * supplies this (`setup/appInit/registerSettingsHandler.ts`) is what turns it into the
    * `settings` trigger — this module keeps its own vocabulary and stays off the
    * planner's.
    */

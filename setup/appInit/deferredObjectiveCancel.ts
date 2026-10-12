@@ -1,12 +1,8 @@
 import type { AppContext } from '../../lib/app/appContext';
+import type { CancelDeferredObjectiveOutcome } from '../../lib/app/pelsHost';
 import { clearObjectiveForDevice, migrateBlobToPerKeyIfNeeded } from '../../lib/objectives/deferredObjectives';
 import { objectiveAbsenceIsTrustworthy } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import { buildDeferredObjectiveDeviceWriteDeps } from './deferredRecorders';
-
-export type CancelDeferredObjectiveOutcome = { ok: true } | {
-  ok: false;
-  reason: 'task_not_found' | 'write_refused';
-};
 
 /**
  * Settings-UI clear of a device's smart task — the same device-scoped clear op

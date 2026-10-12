@@ -4,7 +4,7 @@ import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PlanInputSnapshotDevice } from '../lib/planInput/runtimeDeviceRead';
 import type { HomePowerSampleWithIdentity as HomePowerSample } from '../lib/device/transport/resolvedHomeMeterDispatch';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
+import { getDebugEmitter, type Logger as PinoLogger } from '../lib/logging/logger';
 import type { PlanEngine } from '../lib/plan/planEngine';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../lib/plan/planConstants';
 import type { PlanService } from '../lib/plan/planService';
@@ -97,7 +97,7 @@ export class AppSnapshotHelpers {
     mayContinue: () => !this.snapshotRefreshStopped,
     onRequest: ({ join }) => {
       if (join === 'started') return;
-      this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+      getDebugEmitter('snapshot', 'devices')({
         event: 'snapshot_refresh_coalesced',
         mode: join === 'joined' ? 'awaiting_in_flight' : 'queued',
       });
@@ -117,7 +117,6 @@ export class AppSnapshotHelpers {
     resolveManagedState: (deviceId: string) => boolean;
     isCapacityControlEnabled: (deviceId: string) => boolean;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
-    getStructuredDebugEmitter: (component: string, topic: 'devices' | 'plan') => StructuredDebugEmitter;
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
     seedTemperatureShedFloorDefaults: (
@@ -276,7 +275,7 @@ export class AppSnapshotHelpers {
       return;
     }
 
-    this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+    getDebugEmitter('snapshot', 'devices')({
       event: 'stuck_target_confirmation_poll',
       thresholdMs: TARGET_CONFIRMATION_STUCK_POLL_MS,
     });
@@ -285,21 +284,21 @@ export class AppSnapshotHelpers {
 
   schedulePostActuationRefresh(): void {
     if (this.deps.timers.has('postActuationRefresh')) {
-      this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
+      getDebugEmitter('snapshot', 'plan')({
         event: 'post_actuation_refresh_skipped',
         reason: 'already_scheduled',
       });
       return;
     }
 
-    this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
+    getDebugEmitter('snapshot', 'plan')({
       event: 'post_actuation_refresh_scheduled',
       delayMs: POST_ACTUATION_REFRESH_DELAY_MS,
     });
     runWithoutContext(() => (
       this.deps.timers.registerTimeout('postActuationRefresh', setTimeout(async () => {
         this.deps.timers.clear('postActuationRefresh');
-        this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
+        getDebugEmitter('snapshot', 'plan')({
           event: 'post_actuation_refresh_running',
         });
         try {
@@ -329,7 +328,7 @@ export class AppSnapshotHelpers {
     if (options.emitFlowBackedRefresh !== false) {
       await this.deps.emitFlowBackedRefreshRequests(this.deps.getFlowReportedDeviceIds());
     }
-    this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+    getDebugEmitter('snapshot', 'devices')({
       event: 'target_snapshot_refresh_started',
     });
     const meterSelectionAtStart = this.deps.resolveMainMeterSelection();
@@ -437,7 +436,7 @@ export class AppSnapshotHelpers {
       // The whole-home meter selection changed while this refresh cycle was in
       // flight — the sample was read for the previous selection, so recording
       // it now would overwrite the new meter's fresh samples with stale watts.
-      this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+      getDebugEmitter('snapshot', 'devices')({
         event: 'implicit_homey_energy_sample_discarded_stale_meter',
       });
     }

@@ -2,10 +2,9 @@ import type { InitializedAppContext } from '../../lib/app/appContext';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
-import type { WeatherCollector } from '../../lib/weather/weatherCollector';
 import type { BackgroundTasksController } from '../backgroundTasksController';
-import type { PvForecastController } from './createPvForecastService';
-import type { HomeySolarForecastController } from '../../lib/solar/homeySolarForecastController';
+import type { AppNativeWiring } from '../appNativeWiring';
+import type { AppRuntimeHandles } from '../appRuntimeHandles';
 import { createPvForecastSourceSelector } from './createPvForecastSourceSelector';
 import { getLogger } from '../../lib/logging/logger';
 import { createDeferredObjectiveLifecycleEmitter } from './deferredObjectiveLifecycle';
@@ -16,39 +15,34 @@ import { startSoleMeterAdoption } from '../soleMeterAdoption';
 
 const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
 
-export type PostStartupBackgroundDeps = {
-  ctx: InitializedAppContext;
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
-  backgroundTasks: BackgroundTasksController;
-  timers: TimerRegistry;
-  startPowerTrackerPruning: () => void;
-  setWeatherCollector: (collector: WeatherCollector | undefined) => void;
-  setPvForecast: (pvForecast: PvForecastController | undefined) => void;
-  setHomeySolarForecast: (controller: HomeySolarForecastController) => void;
-  subscribeDeviceSnapshotCommitted: (listener: () => void) => void;
-  runNativeWiringDetectionBestEffort: () => void;
-};
-
+/**
+ * The background work that starts once ordered startup has finished. The
+ * collectors it starts are handed to the app's runtime handles, which stop
+ * them at uninit.
+ */
 export const startPostStartupBackgroundTasks = (
-  deps: PostStartupBackgroundDeps,
+  ctx: InitializedAppContext,
+  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
+  backgroundTasks: BackgroundTasksController,
+  timers: TimerRegistry,
+  handles: AppRuntimeHandles,
+  nativeWiring: AppNativeWiring,
+  subscribeDeviceSnapshotCommitted: (listener: () => void) => void,
 ): void => {
-  const { ctx } = deps;
-  deps.startPowerTrackerPruning();
   // Name the whole-home meter for an install that has none chosen, when Homey
   // Energy lists exactly one. Self-delaying, so it runs after the settings
   // handlers are wired and reacts like an owner's pick would.
-  startSoleMeterAdoption(ctx.homey, deps.timers, ctx.getTrackerStore(), () => ctx.powerTracker.lastTimestamp);
+  startSoleMeterAdoption(ctx.homey, timers, ctx.getTrackerStore(), () => ctx.powerTracker.lastTimestamp);
   const collectors = startBackgroundCollectors(
     ctx,
-    (collectorCtx) => deps.backgroundTasks.startWeatherCollector(collectorCtx),
+    (collectorCtx) => backgroundTasks.startWeatherCollector(collectorCtx),
   );
-  deps.setWeatherCollector(collectors.weatherCollector);
-  deps.setPvForecast(collectors.pvForecast);
-  deps.setHomeySolarForecast(collectors.homeySolarForecast);
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign -- the composition root's handles
+  handles.backgroundCollectors = collectors;
   // A committed snapshot can make Homey's solar forecast applicable or
   // inapplicable. The controller owns the transition latch, so routine device
   // polls do not fetch forecasts; wiring only connects the snapshot fact.
-  deps.subscribeDeviceSnapshotCommitted(
+  subscribeDeviceSnapshotCommitted(
     () => { void collectors.homeySolarForecast.refreshEligibility(); },
   );
   // ONE selector closure feeds both forecast consumers, so the budget price and
@@ -69,7 +63,7 @@ export const startPostStartupBackgroundTasks = (
   // hours AHEAD, never whether it merely holds a model: a fit restored from
   // persistence with no forward irradiance forecasts nothing, and the section
   // would have claimed planning was using it.
-  // eslint-disable-next-line functional/immutable-data
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.getPvForecastSourceUiStatus = () => ({
     kind: 'selected',
     activeSource: getSelectedPvForecast().sourceId,
@@ -95,20 +89,20 @@ export const startPostStartupBackgroundTasks = (
   collectors.homeySolarForecast.setOnRefreshed(recomputeCombinedPrices);
   const curtailment = wireCurtailmentSurplus(ctx, getSelectedPvForecast);
   // AppContext exposes these optional late-bound runtime seams by mutation.
-  // eslint-disable-next-line functional/immutable-data
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.recordCurtailmentSample = (netW, generationW, nowMs) => (
     curtailment.recordSample(netW, generationW, nowMs)
   );
-  // eslint-disable-next-line functional/immutable-data
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.getCurtailedSurplusKw = () => curtailment.getCurtailedSurplusKw(Date.now());
-  // eslint-disable-next-line functional/immutable-data
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.canContributeCurtailmentSurplus = () => curtailment.canContributeSurplus();
-  deps.backgroundTasks.startDeferredObjectiveLifecycleClock(
-    createDeferredObjectiveLifecycleEmitter(ctx, deps.getPrioritiesForDevices),
+  backgroundTasks.startDeferredObjectiveLifecycleClock(
+    createDeferredObjectiveLifecycleEmitter(ctx, getPrioritiesForDevices),
   );
-  deps.runNativeWiringDetectionBestEffort();
-  deps.timers.registerInterval('nativeWiringRequery', setInterval(
-    deps.runNativeWiringDetectionBestEffort,
+  nativeWiring.runNativeWiringDetectionBestEffort();
+  timers.registerInterval('nativeWiringRequery', setInterval(
+    () => nativeWiring.runNativeWiringDetectionBestEffort(),
     NATIVE_WIRING_REQUERY_INTERVAL_MS,
   ));
 };

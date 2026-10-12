@@ -18,7 +18,7 @@
  * `hydrate` at its boot step: a stored tracker is adopted, an unwritten one
  * leaves the in-memory state standing.
  */
-import type { StructuredDebugEmitter, Logger as PinoLogger } from '../logging/logger';
+import { getDebugEmitter, type Logger as PinoLogger } from '../logging/logger';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type {
   PowerTrackerMeterIdentity,
@@ -196,7 +196,6 @@ export type HomeTrackerPersistenceDeps = {
   timers: TimerRegistry;
   /** Structured logger; absent before structured logging is wired. */
   getLogger: () => PinoLogger | undefined;
-  getPruneDebugEmitter: () => StructuredDebugEmitter;
   reportError: (message: string, error: Error) => void;
   getTimeZone: () => string;
   /** Teardown fence: a late pipeline continuation must not re-arm persistence. */
@@ -324,7 +323,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
     const { deps } = this.params;
     this.state = prunePowerTrackerHistoryForApp({
       powerTracker: this.state,
-      debugStructured: deps.getPruneDebugEmitter(),
+      debugStructured: getDebugEmitter('perf', 'perf'),
       error: (message, error) => deps.reportError(message, error),
       timeZone: deps.getTimeZone(),
     });

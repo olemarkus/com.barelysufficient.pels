@@ -79,7 +79,7 @@ describe('buildDeviceActuator', () => {
         requestSteppedLoadStep: vi.fn(async () => ({ requested: false })),
       },
       homey: { flow: { getTriggerCard: vi.fn() } },
-      temperatureControlPolicyState: 'unavailable',
+      deviceControlSettings: { temperatureControlPolicyState: 'unavailable' },
       isTemperatureControlDisabled: vi.fn(() => false),
     } as unknown as AppContext;
     const actuator = buildDeviceActuator(ctx);

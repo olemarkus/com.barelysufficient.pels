@@ -19,10 +19,7 @@ export {
   createDeferredObjectivePlanHistoryRecorder,
   persistDeferredObjectiveObservationWatermark,
 } from './appInit/deferredRecorders';
-export {
-  cancelDeferredObjectiveForContext,
-  type CancelDeferredObjectiveOutcome,
-} from './appInit/deferredObjectiveCancel';
+export { cancelDeferredObjectiveForContext } from './appInit/deferredObjectiveCancel';
 export { createDeferredObjectiveLifecycleEmitter } from './appInit/deferredObjectiveLifecycle';
 export { subscribePlanObservedState } from './appInit/planObservedStateSubscription';
 export {
@@ -31,9 +28,8 @@ export {
 export { createDeviceDiagnosticsService } from './appInit/deviceDiagnosticsService';
 export { createDailyBudgetService } from './appInit/createDailyBudgetService';
 export { BATTERY_CONTROL_TEARDOWN_KEY, initMainBatteryControl, mainStorageLane } from './appInit/createBatteryControl';
-export { createPlanEngine, createPlanEngineComposition } from './appInit/createPlanEngine';
+export { createPlanEngineComposition } from './appInit/createPlanEngine';
 export { createPlanService } from './appInit/createPlanService';
 export { createPriceCoordinator, createPriceFlowTagPublisher } from './appInit/priceServices';
 export { registerAppFlowCards } from './appInit/registerAppFlowCards';
 export { toPlanDevice } from './appInit/toPlanDevice';
-export { buildDeviceParseProviders } from './appInit/buildDeviceParseProviders';

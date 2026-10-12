@@ -1,41 +1,34 @@
 /**
  * Construction and event wiring of the app's single `DeviceTransport`, sliced
  * out of `setup/appServiceWiring.ts` to keep that entry point under the line
- * budget. This is the whole former `AppServiceWiring.initDeviceManager` body:
- * the observed-state projection epoch, the boundary-resolved whole-home meter
- * authority, the four transport dep bags, and the observer-emitter
- * subscriptions that feed the projection. Plan-dependent subscriptions are
- * wired later by `planObservedStateSubscription.ts`.
+ * budget: the boundary-resolved whole-home meter authority, the four transport
+ * dep bags, the observer-emitter subscriptions that feed the projection, and
+ * the transport's start. `AppServiceWiring.initDeviceManager` sequences the
+ * three steps. Plan-dependent subscriptions are wired later by
+ * `planObservedStateSubscription.ts`.
  *
  * The projection subscriptions retain their load-bearing registration order.
  */
 import { createRetainedPowerStore } from '../../lib/device/retainedPowerStore';
 import type Homey from 'homey';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
-import type { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
-import type { ObservedHomePower } from '../../lib/observer/observedHomePower';
-import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
-import {
-  createCalibrationSnapshotMutationHook,
-  type PowerCalibrationStore,
-} from '../../lib/device/devicePowerCalibrationStore';
-import type { Logger as PinoLogger } from '../../lib/logging/logger';
+import type { ObservedStateEmitter, ObservedStateEmitterDispatcher } from '../../lib/observer/observedStateEvents';
+import type { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
+import { createCalibrationSnapshotMutationHook } from '../../lib/device/devicePowerCalibrationStore';
+import { getDebugEmitter, type Logger as PinoLogger } from '../../lib/logging/logger';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
-import type { AppContext } from '../../lib/app/appContext';
-import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
-import type { HomeMembershipWiring } from '../homeMembershipWiring';
 import { buildDeviceParseProviders } from './buildDeviceParseProviders';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
-import type { TimerRegistry } from '../../lib/utils/timerRegistry';
-import type { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
+import type { AppContext } from '../../lib/app/appContext';
+import type { PowerCalibrationStore } from '../../lib/device/devicePowerCalibrationStore';
+import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
+import type { AppNativeWiring } from '../appNativeWiring';
 
 // The probe's decisions are time-based; mirrors the pre-extraction constant in
 // `appServiceWiring.ts` (30 s — well inside the shortest 90 s probe deadline).
 const EV_CAR_LINK_TICK_INTERVAL_MS = 30 * 1000;
 import { readMainMeterSelection } from '../mainMeterSettings';
-
-type HomeMembershipService = HomeMembershipWiring['service'];
 
 // Boundary-resolved whole-home meter authority for the homey_energy source.
 // `resolved/null` = Automatic; `unavailable` suppresses Main sampling instead
@@ -43,39 +36,6 @@ type HomeMembershipService = HomeMembershipWiring['service'];
 // 10s poll picks up a changed selection without a transport restart.
 const resolveHomeyEnergyMeterSelection = (homey: Homey.App['homey']): MainMeterSelection => {
   return readMainMeterSelection(homey.settings);
-};
-
-/**
- * The wiring surface this module reads. Declared structurally (like
- * `OvershootTrackerDeps` in the planner) so it never imports
- * `appServiceWiring.ts` back — `AppServiceWiring` passes its own dep bag plus
- * the two lazy getters over its private fields.
- */
-export type DeviceTransportWiringDeps = {
-  ctx: AppContext;
-  homeyApp: Homey.App;
-  getStructuredLogger: () => PinoLogger | undefined;
-  installStructuredLogger: () => PinoLogger;
-  getPowerCalibrationStore: () => PowerCalibrationStore;
-  getObservedStateEmitter: () => ObservedStateEmitter;
-  getObservedHomePower: () => ObservedHomePower;
-  getObservedDeviceStateProjection: () => ObservedDeviceStateProjection;
-  setObservedDeviceStateProjection: (projection: ObservedDeviceStateProjection) => void;
-  isManagedFilterActive: () => boolean;
-  /** Rate-limited, change-gated write of the learned measured peaks. */
-  persistLearnedPowerPeaks: () => void;
-  resolveNativeWiringEnabled: (deviceId: string) => boolean;
-  getDeviceDriverIdOverride: (deviceId: string) => string | undefined;
-  getFlowConflict: (deviceId: string) => { conflictingCapabilities: readonly string[]; flowName?: string } | undefined;
-  /** Owns the `evCarLinkTick` heartbeat registered after transport init. */
-  timers: TimerRegistry;
-  settingsUiDeviceReads: SettingsUiDeviceReads;
-  /** Lazy over `AppServiceWiring`'s private field — the registry is built later. */
-  getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined;
-  /** Lazy for the same reason: the membership service is built after the transport. */
-  getHomeMembershipService: () => HomeMembershipService | undefined;
-  /** Reload Main's mode catalog (`HomeModeCatalog.reload`). */
-  reloadMainModeCatalog: () => void;
 };
 
 /**
@@ -102,26 +62,32 @@ export type DeviceTransportWiringDeps = {
  * refresh into the projection before the warmup gate admits a plan build. No
  * separate snapshot seed path is needed.
  */
-function subscribeObservedStateProjection(deps: DeviceTransportWiringDeps): void {
-  const emitter = deps.getObservedStateEmitter();
-  emitter.onObservedStateChanged((e) => deps.getObservedDeviceStateProjection().applyDelta(e));
-  emitter.onObservedStateRefresh((e) => deps.getObservedDeviceStateProjection().applyRefresh(e));
+export function subscribeObservedStateProjection(
+  emitter: ObservedStateEmitter,
+  projection: ObservedDeviceStateProjection,
+): void {
+  emitter.onObservedStateChanged((e) => projection.applyDelta(e));
+  emitter.onObservedStateRefresh((e) => projection.applyRefresh(e));
 }
 
-export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Promise<void> {
-  const { ctx } = deps;
-  const structuredLogger = deps.getStructuredLogger() ?? deps.installStructuredLogger();
+/**
+ * The app's one transport, built once per run beside its observed-state
+ * projection. The projection's sequence guard is keyed on the transport's
+ * per-device `observationSeq`, which a new transport would reset, so the two
+ * share one lifecycle: there is no in-process transport restart.
+ *
+ * `getHomeRuntimeRegistry` is lazy: the registry is built after the transport.
+ */
+export function buildDeviceTransport(
+  ctx: AppContext,
+  homeyApp: Homey.App,
+  structuredLogger: PinoLogger,
+  nativeWiring: AppNativeWiring,
+  getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined,
+  getPowerCalibrationStore: () => PowerCalibrationStore,
+  observedStateDispatcher: ObservedStateEmitterDispatcher,
+): DeviceTransport {
   const structuredLog = structuredLogger.child({ component: 'devices' });
-  // Co-create the observed-state projection with the transport so their
-  // lifecycles are coupled. The projection's sequence guard is keyed on the
-  // transport's per-device `observationSeq`; a new DeviceTransport resets those
-  // counters, so a long-lived projection would drop a fresh transport's early
-  // deltas (seq <= the previous transport's higher seqs). This runs once today
-  // (no in-process restart path), so it is currently equivalent to the field
-  // initializer — but it documents and enforces the transport/projection epoch
-  // coupling for any future restart. The persistent emitter subscription reads
-  // the projection getter at event time, so reassigning the field is sufficient.
-  deps.setObservedDeviceStateProjection(new ObservedDeviceStateProjection());
   // "Leave off until turned on again". Constructed here so the persisted holds
   // are visible before the first plan cycle can resume anything — a hold that
   // survived a restart must win over the first rebuild, not lose a race with it.
@@ -129,22 +95,22 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   // asserts it on every read, so it cannot be built against an unmigrated store
   // and it heals itself if the SDK was failing at boot. Assigned onto ctx (the
   // wiring-assigns-ctx-members house pattern).
-  // eslint-disable-next-line functional/immutable-data -- shared AppContext write
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign -- shared AppContext write
   ctx.externalOffHold = createExternalOffHoldPolicy(ctx.homey.settings);
   const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook(
-    deps.getPowerCalibrationStore(),
-    ctx.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
+    getPowerCalibrationStore(),
+    getDebugEmitter('power_calibration', 'power_calibration'),
   );
-  const deviceManager = new DeviceTransport(deps.homeyApp, {
+  return new DeviceTransport(homeyApp, {
     log: ctx.log.bind(ctx),
     error: ctx.error.bind(ctx),
     structuredLog,
-  }, buildDeviceParseProviders({
+  }, buildDeviceParseProviders(
     ctx,
-    deps,
-    getHomeRuntimeRegistry: deps.getHomeRuntimeRegistry,
-    resolveMeterSelection: () => resolveHomeyEnergyMeterSelection(ctx.homey),
-  }), {
+    nativeWiring,
+    getHomeRuntimeRegistry,
+    () => resolveHomeyEnergyMeterSelection(ctx.homey),
+  ), {
     expectedPowerKwOverrides: ctx.expectedPowerKwOverrides,
     lastKnownPowerKw: ctx.lastKnownPowerKw,
     // Driven off the learned-peak mutation, NOT the snapshot-mutation seam
@@ -153,40 +119,46 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
     // window — so the peak of the steadiest devices, the ones the estimate most
     // depends on, would have expired in settings while memory said it was fresh.
     // The persist is itself rate-limited and change-gated.
-    onLearnedPeakChanged: () => deps.persistLearnedPowerPeaks(),
+    onLearnedPeakChanged: () => ctx.flowBacked.persistLearnedPeaks(),
   }, {
     getFlowTriggerCard: (cardId) => ctx.homey.flow?.getTriggerCard?.(cardId),
     onSnapshotMutated: (snapshot, nowMs) => {
       observeCalibrationSnapshotMutation(snapshot, nowMs);
       ctx.deviceControlHelpers.reconcileTargetPowerReachability([snapshot], nowMs);
     },
-    observedStateDispatcher: deps.getObservedStateEmitter().asDispatcher(deps.getObservedHomePower()),
+    observedStateDispatcher,
     evCarLinkSnapshotAccess: createEvCarLinkAccessForApp(ctx),
     retainedPowerStore: createRetainedPowerStore(ctx.getUserdataDatabase()),
   });
-  // Subscribe the projection BEFORE the transport is reachable through `ctx`:
-  // past that assignment any consumer can read the composed plan input, which is
-  // the descriptor joined with the projection's record, so a delta dispatched in
-  // between would be one no subscriber received.
-  subscribeObservedStateProjection(deps);
-  // The mode catalogs hold their rank writes until the home batteries are
-  // known (`HomeModeCatalogOwner.persistMissingRanks`); nothing else reloads
-  // them when that happens. Areas not built yet reload when they are.
-  deviceManager.setOnHomeBatteryDevicesResolved(() => {
-    deps.reloadMainModeCatalog();
-    const registry = deps.getHomeRuntimeRegistry();
-    if (registry !== undefined) registry.reloadModeCatalogs();
-  });
-  // eslint-disable-next-line functional/immutable-data -- shared AppContext write
+}
+
+/**
+ * Publish the built transport on `ctx` and start it. Runs after
+ * {@link subscribeObservedStateProjection}: past the `ctx` assignment any
+ * consumer can read the composed plan input, which is the descriptor joined
+ * with the projection's record, so a delta dispatched in between would be one
+ * no subscriber received.
+ *
+ * The mode catalogs hold their rank writes until the home batteries are known
+ * (`HomeModeCatalogOwner.persistMissingRanks`); `onHomeBatteryDevicesResolved`
+ * is what reloads them when that happens.
+ */
+export async function startDeviceTransport(
+  ctx: AppContext,
+  deviceManager: DeviceTransport,
+  onHomeBatteryDevicesResolved: () => void,
+): Promise<void> {
+  deviceManager.setOnHomeBatteryDevicesResolved(onHomeBatteryDevicesResolved);
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign -- shared AppContext write
   ctx.deviceManager = deviceManager;
-  deps.settingsUiDeviceReads.connect(deviceManager);
+  ctx.settingsUiDeviceReads.connect(deviceManager);
   await deviceManager.init();
   // The probe's decisions are time-based — edge settlement, away verdicts, and
   // the self-stop dwell all need 90-180 s to elapse. Without a heartbeat they
   // are only evaluated when unrelated telemetry happens to arrive, so a car
   // sitting quietly at its charge limit (the single most valuable thing the
   // probe records) is never noticed. Well inside the shortest deadline.
-  deps.timers.registerInterval('evCarLinkTick', setInterval(
+  ctx.timers.registerInterval('evCarLinkTick', setInterval(
     () => ctx.deviceManager?.tickEvCarLink(Date.now()),
     EV_CAR_LINK_TICK_INTERVAL_MS,
   ));

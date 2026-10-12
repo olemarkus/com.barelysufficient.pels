@@ -1,3 +1,4 @@
+import { getDebugEmitter } from '../../lib/logging/logger';
 import { createCurrentTaskEvaluationReader } from '../../lib/objectives/deferredObjectives/currentTaskEvaluation';
 import { flattenAllHours } from '../../lib/price/priceStore';
 import {
@@ -165,7 +166,7 @@ export function createDeferredObjectivePlanHistoryRecorder(
     // Missing entries / unloaded payload return `null` so the postmortem
     // skips that hour rather than fabricating a contribution.
     resolveHourPrice: (hourStartMs) => resolveHourPriceFromContext(ctx, hourStartMs),
-    debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
+    debugStructured: getDebugEmitter('deferred_objectives', 'deferred_objectives'),
     // Read lazily on the lifecycle clock, after the plan service exists.
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
     getDeviceConstraint: (deviceId) => requireDeviceManager(ctx).getTaskDeliveryConstraint(deviceId),
@@ -403,7 +404,7 @@ export function createDeferredObjectiveActivePlanRecorder(
         });
       }
     },
-    debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
+    debugStructured: getDebugEmitter('deferred_objectives', 'deferred_objectives'),
     onRevisionWritten: (event) => ctx.deferredObjectivePlanRevisionBus.publish(event),
   });
 }
@@ -448,7 +449,7 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
     // is the retryable `ownership_unavailable` lane. Every write surface builds
     // its deps here, so no caller can accidentally collapse the two states.
     resolveDeviceHomeScope: (deviceId) => resolveSmartTaskHomeScope(ctx, deviceId),
-    debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
+    debugStructured: getDebugEmitter('deferred_objectives', 'deferred_objectives'),
   };
 };
 
@@ -465,10 +466,10 @@ export const disableDeferredObjectiveInSettings = (ctx: AppContext, deviceId: st
   // `deadline_status_is` and the deadline UI agree with the persisted state
   // immediately, instead of seeing the last published snapshot until the
   // next plan cycle's forget-sweep runs.
-  ctx.deferredObjectiveStatusBus?.forgetDevice(deviceId);
+  ctx.deferredObjectiveStatusBus.forgetDevice(deviceId);
   // Re-arm the hours-remaining crossing latch so a later re-enabled task with
   // the same deadline still fires its lead-time trigger rather than treating
   // the stale boundary as already crossed.
-  ctx.deferredObjectiveHoursRemainingTracker?.forgetDevice(deviceId);
+  ctx.deferredObjectiveHoursRemainingTracker.forgetDevice(deviceId);
   ctx.deferredObjectiveActivePlanRecorder?.clearForDevice(deviceId);
 };

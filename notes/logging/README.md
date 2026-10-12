@@ -71,8 +71,8 @@ rather than budgeted, so the list can reach zero and be deleted.
   ambient counterpart to `getLogger`: it resolves a child at `level: 'debug'` against the same
   process-wide root and gates on the topic set the owner toggles, published by
   `setDebugTopics(...)` from `updateDebugLoggingEnabled`. Use it in place of a threaded
-  `debugStructured` parameter — `getStructuredDebugEmitter` on the app is the same emitter under
-  the wiring's name, so a file that drops the parameter changes nothing about what it emits.
+  `debugStructured` parameter: it is the same emitter, so a file that drops the parameter changes
+  nothing about what it emits.
   `component` and `topic` are separate arguments and stay that way: `devices` events are emitted
   under `devices`, `reconcile`, and `snapshot`, and Flow-card settings events are
   `component: 'flow'` on topic `settings`.

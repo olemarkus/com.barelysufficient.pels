@@ -1,3 +1,4 @@
+import { getDebugEmitter } from '../../lib/logging/logger';
 import { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { PriceFlowTagPublisher } from '../../lib/price/priceFlowTags';
 import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptimizationSettingsStore';
@@ -19,7 +20,7 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     homeyWebApiGet: createHomeyWebApiGet(),
     getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     log: (...args: unknown[]) => ctx.log(...args),
-    debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),
+    debugStructured: getDebugEmitter('price', 'price'),
     error: (...args: unknown[]) => ctx.error(...args),
     structuredLog: ctx.getStructuredLogger('price'),
     onCombinedPricesUpdated: (reason) => {
@@ -54,6 +55,6 @@ export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublis
     getTimeZone: () => ctx.getTimeZone(),
     combinedPricesReader: requirePriceCoordinator(ctx).combinedPricesReader,
     log: (...args: unknown[]) => ctx.log(...args),
-    debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),
+    debugStructured: getDebugEmitter('price', 'price'),
   });
 }

@@ -19,45 +19,29 @@
  * it to the PV forecast or the curtailment-surplus estimator would corrupt them.
  */
 import { createSampleIngestQueue } from '../../lib/power/sampleIngestQueue';
-import type CapacityGuard from '../../lib/power/capacityGuard';
 import type { AppContext } from '../../lib/app/appContext';
-import type { PlanEngine } from '../../lib/plan/planEngine';
-import type { PlanService } from '../../lib/plan/planService';
-import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
-import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
-import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { MAIN_HOME_ID, type HomeId } from '../../lib/utils/settingsKeys';
 import { resolveFreshGenerationW, resolveGenerationSegments } from '../../lib/observer/generationFreshness';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
-import { PowerSamplePipeline } from '../powerSamplePipeline';
+import { PowerSamplePipeline, type PowerSamplePipelineDeps } from '../powerSamplePipeline';
 import { MeterSilenceMonitor, type MeterSilenceMonitorDeps } from '../../lib/power/meterSilence';
 
-export type HomePowerPipelineDeps = {
+export type HomePowerPipelineDeps = Pick<PowerSamplePipelineDeps,
+  | 'getPlanEngine'
+  | 'getPlanService'
+  | 'savePowerTracker'
+  | 'planRebuildThrottle'
+  | 'getPowerTracker'
+  | 'getCapacitySettings'
+  | 'getCapacityGuard'
+  | 'getOutdoorTemperatureC'
+  | 'recordPvGenerationSample'
+  | 'recordCurtailmentSample'
+  | 'noteResolvedHomeMeter'
+> & {
   ctx: AppContext;
   /** The home this pipeline samples for; scopes the snapshot view below. */
   homeId: HomeId;
-  // `AppContext` types `planEngine`/`planService` as optional (they are wired
-  // during startup); the pipeline contract requires the definite getters the
-  // app's own fields carry, so the caller supplies them.
-  getPlanEngine: () => PlanEngine;
-  getPlanService: () => PlanService;
-  savePowerTracker: (state: PowerTrackerState) => void;
-  /** This home's rebuild throttle — the sample's one exit into the planner. */
-  planRebuildThrottle: PlanRebuildThrottle;
-  // Per-home capacity state. Required for every home, main included: two homes
-  // never share a tracker, capacity scalars or a guard, so there is no home for
-  // which one of these is the obvious default.
-  getPowerTracker: () => PowerTrackerState;
-  getCapacitySettings: () => PowerLimitSettings;
-  getCapacityGuard: () => CapacityGuard;
-  /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
-  getOutdoorTemperatureC?: () => number | undefined;
-  /** Feed the per-sample gross generation (W) plus the co-sampled SIGNED net home
-   *  power (W, import positive) to the learned PV forecast; no-op when absent. */
-  recordPvGenerationSample?: (generationW: number | undefined, nowMs: number, netPowerW?: number) => void;
-  /** Feed the same co-sampled pair to the curtailment-surplus estimator; no-op
-   *  when absent (sub-home pipelines — see the module doc). */
-  recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   /**
    * Observer's whole-home production holder. The MAIN home passes the one the
    * production readers write; a sub-home passes {@link createUnobservedHomeProduction},
@@ -65,14 +49,6 @@ export type HomePowerPipelineDeps = {
    * Sub-homes are capacity-only and must never adopt the main home's production.
    */
   observedHomePower: ObservedHomePower;
-  /**
-   * Publish the identity of the meter an ingested sample came from, into
-   * membership's sampled-meter ownership fence. Only the home whose meter IS
-   * the whole-home meter has anything to publish, and it is the home that says
-   * so: Main binds the membership note, a meter area binds nothing to do. This
-   * factory used to decide that itself, from `homeId === MAIN_HOME_ID`.
-   */
-  noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => void;
 };
 
 /**
@@ -110,7 +86,6 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
       return deps.homeId === MAIN_HOME_ID ? devices : [];
     },
     savePowerTracker: deps.savePowerTracker,
-    getStructuredDebugEmitter: (component, topic) => ctx.getStructuredDebugEmitter(component, topic),
     getOutdoorTemperatureC: deps.getOutdoorTemperatureC,
     getCoSampledGenerationW: (nowMs) => resolveFreshGenerationW({
       generationW: observedHomePower.getGenerationW(),

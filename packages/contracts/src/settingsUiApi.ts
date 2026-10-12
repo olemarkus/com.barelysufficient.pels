@@ -375,7 +375,7 @@ export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOf
 
 /**
  * A listed device's home-battery facts, resolved from the battery control
- * owner (`readSettingsUiBatteryStateFromApp`) for every device, so the UI
+ * owner (`readSettingsUiBatteryState`) for every device, so the UI
  * never guesses one.
  */
 export type SettingsUiBatteryState = {

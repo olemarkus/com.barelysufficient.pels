@@ -14,7 +14,7 @@ import type { CapacityScalarSettings } from '../../packages/contracts/src/capaci
 import type { PlanService } from '../../lib/plan/planService';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
-import type { createPlanEngine } from '../appInit/createPlanEngine';
+import type { PlanEngine } from '../../lib/plan/planEngine';
 import {
   createCapacitySettingsReloader,
   resolveInstalledCapacityScalars,
@@ -322,7 +322,7 @@ type HomeCapacityBundleApiParams = {
   homeId: HomeId;
   logger: () => ReturnType<AppContext['getStructuredLogger']>;
   timerKey: (suffix: string) => string;
-  planEngine: ReturnType<typeof createPlanEngine>;
+  planEngine: PlanEngine;
   planService: PlanService;
   scope: HomeScope;
   /**

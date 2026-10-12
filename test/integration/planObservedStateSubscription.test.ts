@@ -45,17 +45,11 @@ describe('subscribePlanObservedState', () => {
   it('registers the production subscription only after the plan stack exists', async () => {
     const app = createApp();
     const callOrder: string[] = [];
-    const runtime = app as unknown as {
-      initPlanRuntime: () => void;
-      subscribePlanObservedState: () => void;
-      serviceWiring: {
-        runPlanStackStartupSteps: (onFailure: (label: string, error: Error) => void) => Promise<void>;
-      };
-    };
-    runtime.initPlanRuntime = () => { callOrder.push('runtime'); };
-    runtime.subscribePlanObservedState = () => { callOrder.push('subscription'); };
+    const wiring = app['serviceWiring'];
+    wiring.initPlanRuntime = () => { callOrder.push('runtime'); };
+    wiring.subscribePlanObservedState = () => { callOrder.push('subscription'); };
 
-    await runtime.serviceWiring.runPlanStackStartupSteps(() => undefined);
+    await wiring['runPlanStackStartupSteps'](() => undefined);
 
     expect(callOrder).toEqual(['runtime', 'subscription']);
   });
@@ -63,7 +57,7 @@ describe('subscribePlanObservedState', () => {
   it('syncs live plan state for an observation once the plan service is wired', () => {
     const syncLivePlanState = vi.fn().mockResolvedValue(true);
     const deps = buildDeps({ syncLivePlanState } as unknown as PlanService);
-    subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
+    subscribePlanObservedState({ ...deps, observedStateEmitter: deps.emitter });
 
     deps.emitter.emitObservedStateChanged({ deviceId: 'heater-1', source: 'realtime_capability' });
 
@@ -80,7 +74,7 @@ describe('subscribePlanObservedState', () => {
     deps.ctx.planService = {
       rebuildPlanFromCache, canDeviceChangeActionableLoad: () => false,
     } as unknown as PlanService;
-    subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
+    subscribePlanObservedState({ ...deps, observedStateEmitter: deps.emitter });
 
     deps.emitter.emitObservedControlStateChanged({ deviceId: 'heater-1' });
 
@@ -94,7 +88,7 @@ describe('subscribePlanObservedState', () => {
   it('asks for the suppressions of the moved device\'s home to be cleared', () => {
     const deps = buildDeps({ syncLivePlanState: vi.fn() } as unknown as PlanService);
     deps.canDeviceChangeActionableLoad.mockReturnValue(true);
-    subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
+    subscribePlanObservedState({ ...deps, observedStateEmitter: deps.emitter });
 
     deps.emitter.emitObservedControlStateChanged({ deviceId: 'heater-1' });
 
@@ -104,7 +98,7 @@ describe('subscribePlanObservedState', () => {
 
   it('leaves the suppressions alone for a device whose move cannot change the actionable load', () => {
     const deps = buildDeps({ syncLivePlanState: vi.fn() } as unknown as PlanService);
-    subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
+    subscribePlanObservedState({ ...deps, observedStateEmitter: deps.emitter });
 
     deps.emitter.emitObservedControlStateChanged({ deviceId: 'heater-1' });
     deps.emitter.emitObservedStateChanged({
@@ -120,7 +114,7 @@ describe('subscribePlanObservedState', () => {
     const deps = buildDeps({ syncLivePlanState: vi.fn().mockResolvedValue(false) } as unknown as PlanService);
     deps.ctx.isCapacityControlEnabled = () => false;
     deps.canDeviceChangeActionableLoad.mockReturnValue(true);
-    subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
+    subscribePlanObservedState({ ...deps, observedStateEmitter: deps.emitter });
 
     deps.emitter.emitObservedStateChanged({
       deviceId: 'charger-1', source: 'realtime_capability', measurePowerBecameSignificantlyPositive: true,
@@ -133,7 +127,7 @@ describe('subscribePlanObservedState', () => {
   // observations fail loudly here instead of silently losing their sync.
   it('asserts when an observation arrives before the plan service is wired', () => {
     const deps = buildDeps(undefined);
-    subscribePlanObservedState({ ...deps, getObservedStateEmitter: () => deps.emitter });
+    subscribePlanObservedState({ ...deps, observedStateEmitter: deps.emitter });
 
     expect(() => deps.emitter.emitObservedStateChanged({ deviceId: 'heater-1', source: 'realtime_capability' }))
       .toThrow('PlanService must be initialized before use.');

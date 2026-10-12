@@ -1,4 +1,5 @@
 import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerReachability';
+import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 import { DEVICE_TARGET_POWER_REACHABILITY } from '../../lib/utils/settingsKeys';
 import { writeTargetPowerReachabilitySetting } from '../../setup/targetPowerReachabilitySettings';
 import type { DeviceTargetPowerConfigs } from '../../packages/contracts/src/types';
@@ -142,7 +143,7 @@ describe('targetPowerReachabilitySettings', () => {
     const timers = new TimerRegistry();
     const ctx = {
       homey: { settings },
-      deviceTargetPowerConfigs: { ...baseConfigs },
+      deviceControlSettings: deviceControlSettingsFixture({ deviceTargetPowerConfigs: { ...baseConfigs } }),
       timers,
       snapshotHelpers: {
         scheduleTargetPowerProbe,
@@ -164,7 +165,7 @@ describe('targetPowerReachabilitySettings', () => {
 
     expect(wiring.updateTargetPowerReachability('charger', reachability!))
       .toBe(true);
-    expect(ctx.deviceTargetPowerConfigs.charger.reachability).toEqual(reachability);
+    expect(ctx.deviceControlSettings.getDeviceTargetPowerConfig('charger')?.reachability).toEqual(reachability);
     expect(scheduleTargetPowerProbe).toHaveBeenCalledTimes(1);
     expect(rebuildOwningHomePlanForDevice).toHaveBeenCalledWith(
       'charger',
@@ -191,9 +192,9 @@ describe('targetPowerReachabilitySettings', () => {
     let snapshots: Array<{ id: string }> = [];
     let managed = true;
     const ctx = {
-      deviceTargetPowerConfigs: {
-        charger: { ...baseConfigs.charger, reachability },
-      },
+      deviceControlSettings: deviceControlSettingsFixture({
+        deviceTargetPowerConfigs: { charger: { ...baseConfigs.charger, reachability } },
+      }),
       deviceManager: { getSnapshot: () => snapshots },
       deviceConfiguration: { ids: () => snapshots.map(({ id }) => id) },
       // The probe scheduler asks an identity/config question, so it reads

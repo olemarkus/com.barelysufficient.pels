@@ -1,20 +1,17 @@
 import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
 import Homey from 'homey';
 import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
-import type { DeviceStartPolicy } from './packages/shared-domain/src/settings/deviceStartPolicy';
 import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
 import { SettingsUiDeviceReads } from './lib/device/settingsUiDeviceReads';
+import { DeviceControlSettings } from './lib/device/deviceControlSettings';
 import { createDeviceReadSources, joinObservedDeviceDescriptors } from './lib/device/deviceReadSources';
 import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from './lib/observer/observedDeviceStateProjection';
 import type { PlanEngine } from './lib/plan/planEngine';
-import type { ConfiguredShedBehavior } from './packages/shared-domain/src/settings/shedBehaviors';
 import type { PlanService } from './lib/plan/planService';
 import type { SnapshotWarmupGate } from './lib/plan/snapshotWarmupGate';
-import type { DeviceControlProfiles } from './packages/contracts/src/types';
-import type { DeviceTargetPowerConfigsWithReachability } from './lib/device/targetPowerReachability';
 import type { PriceCoordinator } from './lib/price/priceCoordinator';
 import type { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import type { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
@@ -39,13 +36,11 @@ import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/ut
 import type { PlanRebuildThrottle } from './lib/plan/rebuildScheduler/throttle';
 import { createBackgroundTasks, type BackgroundTasks } from './setup/appInit/createBackgroundTasks';
 import { createHomePowerPipeline, createMeterSilenceMonitor } from './setup/homeRuntime/createHomePowerPipeline';
-import type { PvForecastController } from './setup/appInit/createPvForecastService';
-import type { HomeySolarForecastLifecycle } from './lib/solar/homeySolarForecastController';
-import type { WeatherCollector } from './lib/weather/weatherCollector';
 import { SettingsRepository } from './setup/settingsRepository';
 import type { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
 import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
+import type { PelsHost } from './lib/app/pelsHost';
 import { createCapacitySettingsReloader, createCapacitySettingsStore } from './lib/power/capacitySettingsStore';
 import { BatteryManagedSettings } from './lib/battery/batteryControlSettings';
 import type {
@@ -55,8 +50,6 @@ import {
   createModeDeviceTargetFill,
   createTemperatureShedFloorDefaults,
 } from './setup/appInit/createSnapshotSettingsPasses';
-import * as homeMode from './setup/homeRuntime/homeOperatingMode';
-import type { Logger as PinoLogger } from './lib/logging/logger';
 import { normalizeError } from './lib/utils/errorUtils';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import { createGenerationPollSource } from './setup/appInit/createGenerationPollSource';
@@ -75,11 +68,7 @@ import {
   createHomeRuntimeRegistryForApp,
   createPreparedMainReconcileFence,
   buildHomeRuntimeReadPort,
-  type MainAuthorityRecoveryRequest,
-  type MainShortfallSideEffectGate,
-  type HomeRuntimeRegistry,
 } from './setup/appServiceWiring';
-import type { HomeMembershipService } from './lib/home/homeMembershipService';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
 import {
   AppPowerTracker, createPowerCalibrationStoreForApp, createTrackerStoreForApp,
@@ -87,14 +76,23 @@ import {
 import type { TrackerStore } from './lib/power/trackerStore';
 import type { UserdataDatabase } from './lib/store/userdataDatabase';
 import { TimerRegistry } from './lib/utils/timerRegistry';
+import { ShutdownLatch } from './lib/utils/shutdownLatch';
+import type { AppRuntimeHandles } from './setup/appRuntimeHandles';
 import type { FlowReportedCapabilitiesByDevice } from './lib/device/transport/flowReportedCapabilities';
 import { withAppApi } from './setup/appRuntimeApi';
 import type { EnergyTaskDeliveryTracker } from './lib/objectives/deferredObjectives/energyDelivery';
 
 const PelsAppBase = withAppApi(Homey.App);
 
-class PelsApp extends PelsAppBase implements AppContext {
+class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   protected readonly context: AppContext = this;
+  // Handles to the services ordered startup constructs. They live here — the
+  // composition root — rather than inside `AppServiceWiring`, which builds them
+  // and hands them over.
+  protected readonly runtime: AppRuntimeHandles = {};
+  // Tripped once, as the first edge of uninit; every in-flight continuation
+  // that must not act on a stopping app reads it.
+  private readonly shutdown = new ShutdownLatch();
   public startupBootstrap?: StartupBootstrapConfig;
   // Latched when startup back-fill bailed because the per-key migration marker
   // was not yet set; consumed by the deferred-objective back-fill (see
@@ -139,15 +137,13 @@ class PelsApp extends PelsAppBase implements AppContext {
     MAIN_HOME_ID,
     () => ({ ...this.capacitySettings, dryRun: this.capacityDryRun }),
   );
-  public controllableDevices: Record<string, boolean> = {};
-  public managedDevices: Record<string, boolean> = {};
+  public readonly deviceControlSettings = new DeviceControlSettings(this.homey.settings);
   public readonly batteryManaged = new BatteryManagedSettings(this.homey.settings);
-  public budgetExemptDevices: Record<string, boolean> = {};
   public readonly homeModeCatalog = createHomeModeCatalog(
     MAIN_HOME_ID,
     this.homey.settings,
     () => this.homeModeCatalog.getSnapshot(),
-    () => this.managedDevices,
+    () => this.deviceControlSettings.managedDevices,
     () => this.context.homeMembership,
     () => this.getStructuredLogger('homes'),
     () => this.readHomeBatteryDevices(),
@@ -163,13 +159,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   public getModePrioritiesForUi = (deviceIds: readonly string[]) => (
     this.homeModeCatalog.getPrioritiesForDevices(deviceIds)
   );
-  public deviceStartPolicies: Record<string, DeviceStartPolicy> = {};
-  public temperatureControlDisabledDevices: Record<string, boolean> = {};
-  public temperatureControlPolicyState: 'unavailable' | 'resolved' = 'unavailable';
-  public temperatureBoostSettings: import('./packages/contracts/src/types').TemperatureBoostSettings = {};
-  public evBoostSettings: import('./packages/contracts/src/types').EvBoostSettings = {};
-  public evCarAssociations: import('./packages/contracts/src/types').EvCarAssociations = {};
-  protected nativeEvWiringDevices: Record<string, boolean> = {};
   // Conflict-gated auto-enable decisions for Hoiax native stepped wiring
   // (notes/native-wiring/). In-memory only — recomputed each startup from the
   // flow read + conflict classifier. An explicit user entry in
@@ -178,17 +167,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   // Per-device flow-conflict verdict (the native-write capabilities a user
   // Flow drives), surfaced on the snapshot for the device-detail banner.
   private flowConflictsByDevice: Record<string, { conflictingCapabilities: readonly string[]; flowName?: string }> = {};
-  // Flipped in onUninit. The native-wiring probe is fire-and-forget and can
-  // still be parked on a slow flow read when the app tears down; this flag lets
-  // its continuation drop every side effect (logging, snapshot refresh, plan
-  // rebuild) instead of acting on a half-torn-down app or logging into a
-  // closing worker rpc (the `onUserConsoleLog`-during-teardown error in CI).
-  private nativeWiringUninitializing = false;
-  public deviceDriverOverrides: Record<string, string> = {};
   protected flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
-  public deviceControlProfiles: DeviceControlProfiles = {};
-  public deviceTargetPowerConfigs: DeviceTargetPowerConfigsWithReachability = {};
-  public shedBehaviors: Record<string, ConfiguredShedBehavior> = {};
   public dailyBudgetService!: DailyBudgetService;
   public deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
 
@@ -228,17 +207,18 @@ class PelsApp extends PelsAppBase implements AppContext {
    * constructor options
    * (notes/state-management/observer-transport-split.md).
    */
-  private observedStateEmitter: ObservedStateEmitter = new ObservedStateEmitter();
+  private readonly observedStateEmitter: ObservedStateEmitter = new ObservedStateEmitter();
   // Observer-owned whole-home power scalar (PR2a of the observer/transport
   // split). Transport pushes the Homey-SDK-sourced reading here via the
   // dispatcher; Homey Energy sample paths use the co-temporal transport return.
-  private observedHomePower: ObservedHomePower = new ObservedHomePower();
+  private readonly observedHomePower: ObservedHomePower = new ObservedHomePower();
   // Observer-owned maintained projection of `ObservedDeviceState`, fed by the
   // dispatcher push (per-capability deltas + full-refresh batches). Stage 4a of
   // the snapshot decomposition: stood up + shadow-verified only — NO existing
   // reader is routed through it yet (zero behaviour change). Same lifecycle as
-  // the device manager / emitter (recreated together on a transport restart).
-  protected observedDeviceStateProjection: ObservedDeviceStateProjection = new ObservedDeviceStateProjection();
+  // the device manager and emitter: one per run.
+  protected readonly observedDeviceStateProjection: ObservedDeviceStateProjection
+    = new ObservedDeviceStateProjection();
   public planEngine!: PlanEngine;
   public planService!: PlanService;
   // Created in `onInit` (after the structured logger is wired) and released
@@ -329,11 +309,13 @@ class PelsApp extends PelsAppBase implements AppContext {
     // membership's sampled-meter ownership fence. Lazy: membership is wired
     // after the pipeline.
     noteResolvedHomeMeter: (deviceId, sampleAtMs) => (
-      this.homeMembershipService?.noteResolvedHomeMeter(deviceId, sampleAtMs)
+      this.runtime.homeMembershipService?.noteResolvedHomeMeter(deviceId, sampleAtMs)
     ),
     savePowerTracker: (state) => this.savePowerTracker(state),
-    getOutdoorTemperatureC: () => this.weatherCollector?.getCurrentOutdoorTemperatureC(),
-    recordPvGenerationSample: (genW, nowMs, netW) => this.pvForecast?.recordSample(genW, nowMs, netW),
+    getOutdoorTemperatureC: () => this.runtime.backgroundCollectors?.weatherCollector.getCurrentOutdoorTemperatureC(),
+    recordPvGenerationSample: (genW, nowMs, netW) => (
+      this.runtime.backgroundCollectors?.pvForecast.recordSample(genW, nowMs, netW)
+    ),
     // Optional AppContext member assigned by wireCurtailmentSurplus post-startup;
     // main-home tap only (sub-home pipelines omit it — see the pipeline factory).
     recordCurtailmentSample: (netW, genW, nowMs) => this.recordCurtailmentSample?.(netW, genW, nowMs),
@@ -341,9 +323,6 @@ class PelsApp extends PelsAppBase implements AppContext {
     // freshness. Main home only — a sub-home must not adopt this production.
     observedHomePower: this.observedHomePower,
   });
-  private stopSettingsHandler?: () => void;
-  protected weatherCollector?: WeatherCollector;
-  private pvForecast?: PvForecastController;
   // Replaced by `startPostStartupBackgroundTasks` with a read of the live
   // source selector. Until then the seam still answers — `unknown` is the
   // status union's own member for "no provenance to report yet".
@@ -378,21 +357,7 @@ class PelsApp extends PelsAppBase implements AppContext {
   // Replaced when the price coordinator is wired; nothing stored until then.
   public getCombinedPricesForUi: () => unknown = () => null;
 
-  // "Not started" is a named lifecycle state, not an absent field: the
-  // controller is built by the post-startup background step, while the
-  // settings hook and the uninit sweep are wired before it.
-  private homeySolarForecast: HomeySolarForecastLifecycle = { kind: 'not_started' };
-  private readonly backgroundTaskBundle: BackgroundTasks = createBackgroundTasks({
-    homey: this.homey,
-    log: (...args: unknown[]) => this.log(...args),
-    logDebug: (topic, ...args: unknown[]) => this.logDebug(topic, ...args),
-    error: (...args: unknown[]) => this.error(...args),
-    isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
-    getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
-    getNow: () => this.getNow(),
-    getTimeZone: () => this.getTimeZone(),
-    getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
-  });
+  private readonly backgroundTaskBundle: BackgroundTasks = createBackgroundTasks(this.context);
 
   // The composition root holds both halves — the controller the wiring drives,
   // and (on the bundle) the registry the started tasks' stop callbacks live in,
@@ -400,7 +365,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   // deep inside the class that drives it.
   protected readonly backgroundTasks = this.backgroundTaskBundle.controller;
 
-  protected structuredLogger?: PinoLogger;
   /**
    * The userdata database and the stores on it that later boot steps reach
    * for (the trackers', and the power calibration the device transport feeds
@@ -450,10 +414,9 @@ class PelsApp extends PelsAppBase implements AppContext {
     getStore: () => this.getTrackerStore(),
     timers: this.timers,
     getLogger: () => this.getStructuredLogger('power'),
-    getPruneDebugEmitter: () => this.getStructuredDebugEmitter('perf', 'perf'),
     reportError: (message, error) => this.error(message, error),
     getTimeZone: () => this.getTimeZone(),
-    isTornDown: () => this.mainActuationStopped,
+    isTornDown: () => this.shutdown.isStopped(),
     onPersisted: () => this.emitPowerTrackerPersisted(MAIN_HOME_ID),
     // Main's feed is the whole-home feed the surplus pool is measured on.
     observeExportEvidence: (state) => this.surplusPoolReachability.observeExportEvidence(state),
@@ -471,15 +434,14 @@ class PelsApp extends PelsAppBase implements AppContext {
     resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
     isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
     getStructuredLogger: (component) => this.getStructuredLogger(component),
-    getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
     getNow: () => this.getNow(),
     logPeriodicStatus: (options) => this.logPeriodicStatus(options),
     seedTemperatureShedFloorDefaults: (snapshot, operatingModeResolver) => (
       createTemperatureShedFloorDefaults(this.ctx, this.homeModeCatalog)(snapshot, operatingModeResolver)
     ),
     persistFilledModeTargets: () => this.modeDeviceTargetFill.persist(),
-    getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
-    emitFlowBackedRefreshRequests: async (deviceIds) => this.emitFlowBackedRefreshRequests(deviceIds),
+    getFlowReportedDeviceIds: () => this.flowBacked.getFlowReportedDeviceIds(),
+    emitFlowBackedRefreshRequests: async (deviceIds) => this.flowBacked.emitFlowBackedRefreshRequests(deviceIds),
     emitSettingsUiDevicesUpdated: () => this.emitSettingsUiDevicesUpdated(),
     recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
     resolveMainMeterSelection: () => this.settingsRepository.loadMainMeterSelection(),
@@ -503,7 +465,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     this, this.targetPowerReachabilityWiring.updateTargetPowerReachability,
     (dueAtMs) => this.snapshotHelpers.scheduleTargetPowerProbeSettlement(dueAtMs),
   );
-  protected readonly flowBacked = createFlowBackedDeviceState(this.homey, {
+  public readonly flowBacked = createFlowBackedDeviceState(this.homey, {
     persistence: this.settingsRepository,
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     getFlowReportedCapabilities: () => this.flowReportedCapabilities,
@@ -520,12 +482,12 @@ class PelsApp extends PelsAppBase implements AppContext {
   private readonly flowConflictRefreshCoordinator = new FlowConflictRefreshCoordinator();
   protected readonly nativeWiring = new AppNativeWiring({
     flowConflictRefreshCoordinator: this.flowConflictRefreshCoordinator,
-    getNativeWiringUninitializing: () => this.nativeWiringUninitializing,
+    shutdown: this.shutdown,
     getAutoNativeWiringDecisions: () => this.autoNativeWiringDecisions,
     setAutoNativeWiringDecisions: (decisions) => { this.autoNativeWiringDecisions = decisions; },
     getFlowConflictsByDevice: () => this.flowConflictsByDevice,
     setFlowConflictsByDevice: (conflicts) => { this.flowConflictsByDevice = conflicts; },
-    getNativeEvWiringDevices: () => this.nativeEvWiringDevices,
+    getNativeEvWiringDevices: () => this.deviceControlSettings.nativeEvWiringDevices,
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     getDeviceDescriptors: () => this.getDeviceDescriptors(),
     getSnapshotWarmupGate: () => this.snapshotWarmupGate,
@@ -556,110 +518,49 @@ class PelsApp extends PelsAppBase implements AppContext {
   // `ctx`, which it reads at construction; the snapshot helpers above only call
   // it once the app is running.
   private readonly modeDeviceTargetFill = createModeDeviceTargetFill(this.ctx);
-  // Boot/teardown orchestration + per-service construction. Public lifecycle
-  // and init delegators live on AppRuntimeApi; AppServiceWiring routes through
-  // this instance so integration-test method overrides remain observable.
-  // Handles to the services ordered startup constructs. They live here — the
-  // composition root — rather than inside `AppServiceWiring`, which builds them
-  // and hands them over. Same shape as the native-wiring maps.
-  private homeMembershipService?: HomeMembershipService;
-
-  private homeRuntimeRegistry?: HomeRuntimeRegistry;
-  // The settings UI's per-home read: a closure over the handle above, so the
+  // The settings UI's per-home read: a closure over the registry handle, so the
   // registry itself never reaches the context.
-  public readonly homeRuntimeRead = buildHomeRuntimeReadPort(() => this.homeRuntimeRegistry);
-
-  private mainShortfallSideEffectGate?: MainShortfallSideEffectGate;
-
-  private requestMainAuthorityRecoveryHandle?: MainAuthorityRecoveryRequest;
-
-  // One-way: set before teardown starts, read at the final Main actuator seam.
-  private mainActuationStopped = false;
+  public readonly homeRuntimeRead = buildHomeRuntimeReadPort(() => this.runtime.homeRuntimeRegistry);
 
   private readonly preparedMainReconcileFence = createPreparedMainReconcileFence(
     () => this.powerSamplePipeline.getStableSampleRevision(),
   );
 
+  // Boot/teardown orchestration + per-service construction.
   protected readonly serviceWiring = new AppServiceWiring({
     ctx: this.ctx,
     getHomeOperatingMode: this.getHomeOperatingMode,
     getPrioritiesForDevices: (deviceIds) => this.homeModeCatalog.getPrioritiesForDevices(deviceIds),
     getModeDeviceTargets: () => this.homeModeCatalog.getModeDeviceTargets(),
-    resolveOperatingModeForDevice: (deviceId) => (
-      homeMode.resolveOperatingModeForDevice(this.homeModeCatalog, deviceId)
-    ),
+    resolveOperatingModeForDevice: (deviceId) => this.homeModeCatalog.resolveOperatingModeForDevice(deviceId),
     createHomeRuntimeRegistry: (isMembershipReady, isRuntimeActive) => createHomeRuntimeRegistryForApp(
       this.ctx,
       this.homeModeCatalog,
       isMembershipReady,
       isRuntimeActive,
     ),
-    getHomeMembershipService: () => this.homeMembershipService,
-    setHomeMembershipService: (service) => { this.homeMembershipService = service; },
-    getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
-    setHomeRuntimeRegistry: (registry) => { this.homeRuntimeRegistry = registry; },
-    getMainShortfallSideEffectGate: () => this.mainShortfallSideEffectGate,
-    setMainShortfallSideEffectGate: (gate) => { this.mainShortfallSideEffectGate = gate; },
-    getRequestMainAuthorityRecovery: () => this.requestMainAuthorityRecoveryHandle,
-    setRequestMainAuthorityRecovery: (request) => { this.requestMainAuthorityRecoveryHandle = request; },
-    isMainActuationStopped: () => this.mainActuationStopped,
-    stopMainActuation: () => { this.mainActuationStopped = true; },
+    handles: this.runtime,
+    shutdown: this.shutdown,
     teardown: this.backgroundTaskBundle.teardown,
     preparedMainReconcileFence: this.preparedMainReconcileFence,
     homeyApp: this,
     backgroundTasks: this.backgroundTasks,
     timers: this.timers,
     nativeWiring: this.nativeWiring,
-    settingsUiDeviceReads: this.settingsUiDeviceReads,
+    flowBacked: this.flowBacked,
+    powerTrackerHelpers: this.powerTrackerHelpers,
     planRebuildScheduler: this.planRebuildScheduler,
-    getStructuredLogger: () => this.structuredLogger,
-    setStructuredLogger: (logger) => { this.structuredLogger = logger; },
-    getPlanService: () => this.planService,
     getStablePowerSampleRevision: () => this.powerSamplePipeline.getStableSampleRevision(),
     getPowerCalibrationStore: () => this.getPowerCalibrationStore(),
-    getObservedStateEmitter: () => this.observedStateEmitter,
-    getObservedHomePower: () => this.observedHomePower,
-    getObservedDeviceStateProjection: () => this.observedDeviceStateProjection,
-    setObservedDeviceStateProjection: (projection) => { this.observedDeviceStateProjection = projection; },
-    setStopSettingsHandler: (stop) => { this.stopSettingsHandler = stop; },
-    getStopSettingsHandler: () => this.stopSettingsHandler,
-    setWeatherCollector: (collector) => { this.weatherCollector = collector; },
-    getPvForecast: () => this.pvForecast,
-    setPvForecast: (pvForecast) => { this.pvForecast = pvForecast; },
-    getHomeySolarForecast: () => this.homeySolarForecast,
-    setHomeySolarForecast: (controller) => {
-      this.homeySolarForecast = { kind: 'started', controller };
-    },
-    setNativeWiringUninitializing: (value) => { this.nativeWiringUninitializing = value; },
-    isManagedFilterActive: () => this.isManagedFilterActive(),
-    resolveNativeWiringEnabled: (deviceId) => this.resolveNativeWiringEnabled(deviceId),
-    runNativeWiringDetectionBestEffort: () => this.runNativeWiringDetectionBestEffort(),
-    getDeviceDriverIdOverride: (deviceId) => this.getDeviceDriverIdOverride(deviceId),
-    getFlowConflict: (deviceId) => this.flowConflictsByDevice[deviceId],
-    computeShortfallThreshold: () => this.computeShortfallThreshold(),
+    observedStateEmitter: this.observedStateEmitter,
+    observedHomePower: this.observedHomePower,
+    observedDeviceStateProjection: this.observedDeviceStateProjection,
     retryDeferredOvershootSeed: (membership, allowPending) => this.snapshotHelpers.retryDeferredOvershootSeed(
-      (deviceId) => homeMode.resolveOperatingModeForDevice(
-        this.homeModeCatalog, deviceId, membership, allowPending,
-      ),
+      (deviceId) => this.homeModeCatalog.resolveOperatingModeForDevice(deviceId, membership, allowPending),
     ),
     openUserdataStores: () => this.openUserdata(),
-    loadPersistedState: () => this.flowBacked.loadPersistedState(),
-    persistLearnedPowerPeaks: () => this.flowBacked.persistLearnedPeaks(),
     reloadMainModeCatalog: () => this.homeModeCatalog.reload(),
-    flushLearnedPowerPeaks: () => this.flowBacked.flushLearnedPeaks(),
-    startPowerTrackerPruning: () => this.startPowerTrackerPruning(),
-    stopPowerTracker: () => this.stopPowerTracker(),
     closeUserdataDatabase: () => this.closeUserdataDatabase(),
-    runStartupSettingsMigrations: () => this.runStartupSettingsMigrations(),
-    initPlanRuntime: () => this.initPlanRuntime(),
-    initPriceCoordinator: () => this.initPriceCoordinator(),
-    initDailyBudgetService: () => this.initDailyBudgetService(),
-    initDeviceManager: () => this.initDeviceManager(),
-    initCapacityGuard: () => this.initCapacityGuard(),
-    initDeviceDiagnosticsService: () => this.initDeviceDiagnosticsService(),
-    subscribePlanObservedState: () => this.subscribePlanObservedState(),
-    captureDefaultDynamicSoftLimit: () => this.captureDefaultDynamicSoftLimit(),
-    initSettingsHandler: () => this.initSettingsHandler(),
   });
 
   public readonly observedTemperatureModeUpdates = this.serviceWiring.createObservedTemperatureModeUpdates();

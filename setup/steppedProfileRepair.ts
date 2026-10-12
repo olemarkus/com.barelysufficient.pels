@@ -148,7 +148,7 @@ const readSettingEntries = (settings: RepairSettingsPort, key: string): SettingR
  *
  * The string form is real: writing through the Homey API's app-setting endpoint
  * stores the value JSON-encoded, and both `parseRecordSetting`
- * (`setup/appSettingsHelpers.ts`) and `normalizeDeviceTargetPowerConfigs`
+ * (`lib/device/deviceControlSettings.ts`) and `normalizeDeviceTargetPowerConfigs`
  * accept it. Treating it as an unreadable value here would have deferred the
  * repair on every boot of an install written that way — warning each time and
  * never clearing the entry it exists to clear.

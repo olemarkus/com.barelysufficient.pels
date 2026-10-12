@@ -319,7 +319,6 @@ describe('HomeyEnergyPollSource', () => {
           meterDeviceId: 'meter-main',
         }),
       },
-      getStructuredDebugEmitter: () => vi.fn(),
       error: vi.fn(),
     }, { recordPowerSample });
 

@@ -31,8 +31,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { filterDevicesForHome } from '../../lib/home/homeMembershipService';
 import { createHomesStore as createRawHomesStore } from '../../lib/home/homeRegistryStore';
-import { initSettingsHandlerForApp } from '../../setup/appSettingsHelpers';
-import { buildHomeRuntimeSettingsHooks } from '../../setup/appInit/wireHomeRuntimeRegistry';
+import { registerSettingsHandler } from '../../setup/appInit/registerSettingsHandler';
 import {
   getRestoreCandidates,
   isOffSteppedRestoreCandidate,
@@ -1639,13 +1638,13 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBe(15);
 
-    const settingsHandler = initSettingsHandlerForApp(
+    const stopSettingsHandler = registerSettingsHandler(
       rig.ctx,
       () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
-      {
-        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
-        onPvForecastSourceObserved: () => {},
-      },
+      () => rig.registry,
+      () => {},
+      () => {},
+      () => {},
     );
     try {
       // MockSettings emits synchronously and does not await async listeners:
@@ -1661,7 +1660,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       ));
       expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
     } finally {
-      settingsHandler.stop();
+      stopSettingsHandler();
     }
   });
 
@@ -1676,13 +1675,13 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
 
     const storeWrites = failTrackerStoreWrites(rig.ctx);
-    const settingsHandler = initSettingsHandlerForApp(
+    const stopSettingsHandler = registerSettingsHandler(
       rig.ctx,
       () => getHomeModeCatalogForTest(rig.ctx).getOperatingMode(),
-      {
-        ...buildHomeRuntimeSettingsHooks(() => rig.registry),
-        onPvForecastSourceObserved: () => {},
-      },
+      () => rig.registry,
+      () => {},
+      () => {},
+      () => {},
     );
     try {
       mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
@@ -1703,7 +1702,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
       expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
     } finally {
-      settingsHandler.stop();
+      stopSettingsHandler();
     }
   });
 

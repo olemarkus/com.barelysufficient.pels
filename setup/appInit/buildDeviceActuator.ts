@@ -57,7 +57,7 @@ const shouldFenceTemperatureCommand = (ctx: AppContext, command: DeviceCommand):
   // policy remains unavailable, the command's own temperature target still
   // identifies it as temperature control even if the device has disappeared
   // from the current snapshot.
-  || ctx.temperatureControlPolicyState === 'unavailable'
+  || ctx.deviceControlSettings.temperatureControlPolicyState === 'unavailable'
   || (command.kind === 'target' && !ctx.observedTemperatureModeUpdates.allowsTarget(command.deviceId, command.value))
 );
 
