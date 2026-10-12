@@ -25,6 +25,7 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { steppedPlanDevice } from '../utils/planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
+import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import * as pelsStatusModule from '../../lib/plan/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
@@ -75,6 +76,49 @@ const actuation = (counts: Partial<PlanActuationResult> = {}): PlanActuationResu
 });
 
 const LEGACY_PLAN_SNAPSHOT_SETTING = ['device', 'plan', 'snapshot'].join('_');
+
+type LiveHeater = {
+  on: boolean;
+  currentDrawKw: number;
+  expectedPowerKw: number;
+  currentTemperature: number;
+  setpointC: number;
+  control?: DeviceControlPosture;
+  binaryControlObservation?: BinaryControlObservation;
+};
+
+// The heater ('dev-1') as the live plan input carries it: an available
+// temperature device switched through `onoff`, with no smart task, boost,
+// surplus or starvation state, under Power-limit control unless a case passes
+// its own posture. A case states whether it is on, what it draws, expects and
+// reads, and its setpoint.
+const liveHeaterInput = (live: LiveHeater): PlanInputDevice => withFixtureResidualKw({
+  control: live.control ?? fixtureControlPosture({ controllable: true }),
+  available: true,
+  currentDrawKw: live.currentDrawKw,
+  id: 'dev-1',
+  expectedPowerKw: live.expectedPowerKw,
+  expectedPowerSource: 'default',
+  name: 'Heater',
+  commandableNow: true,
+  objectiveSessionInactive: false,
+  boostSupported: false,
+  boostRequested: false,
+  hasStandingDemand: true,
+  surplusTracking: false,
+  confirmedNotDrawing: false,
+  isEvCharger: false,
+  isBatteryOrSolar: false,
+  starvationSupported: false,
+  currentTarget: live.setpointC,
+  targets: [{ id: 'target_temperature', value: live.setpointC, unit: '°C' }],
+  deviceType: 'temperature',
+  binaryCapabilityId: 'onoff',
+  binaryControl: { on: live.on },
+  currentOn: live.on,
+  ...(live.binaryControlObservation ? { binaryControlObservation: live.binaryControlObservation } : {}),
+  currentTemperature: live.currentTemperature,
+});
 
 const unavailableBinaryConfirmations = (
   devices: readonly { id: string; name: string }[],
@@ -137,35 +181,53 @@ const buildPlan = (
   };
 };
 
+// The deps every PlanService in this file shares and no case here is about:
+// the shared wiring, nothing observed and no grant or battery card, an open
+// build gate, no stepped settle devices, the Main home, live writes, no price
+// level and a fixed last power update. A case spreads it first and adds its
+// engine, Homey, device reads and whatever it overrides.
+const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServiceDeps,
+  | 'hasStandingCommandGrant'
+  | 'getObservedStateOfCharge'
+  | 'getHomeBatteryCard'
+  | 'getObservedEvChargingState'
+  | 'getObservedTemperature'
+  | 'planBuildGate'
+  | 'getSteppedSettleDevices'
+  | 'homeId'
+  | 'publishPelsStatus'
+  | 'getCapacityDryRun'
+  | 'readSimulationSetting'
+  | 'getCurrentHourPriceLevel'
+  | 'getLastPowerUpdate'> => ({
+  ...planServiceWiring(),
+  hasStandingCommandGrant: () => false,
+  getObservedStateOfCharge: () => ({ kind: 'absent' }),
+  getHomeBatteryCard: () => ({ kind: 'none' }),
+  getObservedEvChargingState: () => ({ kind: 'absent' }),
+  getObservedTemperature: () => ({ kind: 'absent' }),
+  planBuildGate: openPlanBuildGate(),
+  getSteppedSettleDevices: () => [],
+  homeId: 'main',
+  publishPelsStatus: vi.fn(),
+  getCapacityDryRun: () => false,
+  readSimulationSetting: () => false,
+  getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+  getLastPowerUpdate: () => 1_745_000_000_000,
+});
+
 const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanService>[0]> = {}) => {
   const { loggers: loggerOverrides, ...rest } = overrides;
   const deps = {
-    ...planServiceWiring(),
-    homeId: 'main',
-    hasStandingCommandGrant: () => false,
-    getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-    getHomeBatteryCard: () => ({ kind: 'none' } as const),
-    getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-    getObservedTemperature: () => ({ kind: 'absent' } as const),
-    planBuildGate: openPlanBuildGate(),
+    ...planServiceDeps(),
     homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
-    publishPelsStatus: vi.fn(),
     planEngine: partialDouble<PlanServiceDeps['planEngine']>({
-        ...createMockPlanEngine(),
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
     }),
     getPlanDevices: () => [],
     getSettleDevices: () => [],
-    getSteppedSettleDevices: () => [],
-    getCapacityDryRun: () => false,
-    readSimulationSetting: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getLastPowerUpdate: () => 1_745_000_000_000,
     loggers: {
       debugStructured: vi.fn(),
       ...loggerOverrides,
@@ -447,35 +509,19 @@ describe('PlanService', () => {
           observedTarget = 21;
           return buildPlan(21, 'keep');
         }),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
     };
 
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+      ...planServiceDeps(),
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: observedTarget, currentTemperature: 21 },
       }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -535,32 +581,15 @@ describe('PlanService', () => {
           { totalKw: 3.2, softLimitKw: 2, headroomKw: -1.24 },
           { currentState: 'off', binaryControl: { on: false }, plannedState: 'shed' },
         )),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
     };
 
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
             overviewDebugStructured,
       isOverviewDebugEnabled: () => true,
     });
@@ -680,11 +709,6 @@ describe('PlanService', () => {
           .fn()
           .mockResolvedValueOnce(summaryPlan)
           .mockResolvedValueOnce(summaryPlan),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
       }),
       loggers: { debugStructured },
     });
@@ -720,10 +744,6 @@ describe('PlanService', () => {
           currentDrawKw: 0,
           expectedPowerKw: 3,
         })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
       overviewDebugStructured,
@@ -755,10 +775,6 @@ describe('PlanService', () => {
           currentDrawKw: 0,
           expectedPowerKw: 3,
         })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
       overviewDebugStructured,
@@ -807,10 +823,6 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(plan),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
       overviewDebugStructured,
@@ -856,10 +868,6 @@ describe('PlanService', () => {
           planningPowerKw: 3,
           reportedStepId: 'max',
         })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
       overviewDebugStructured,
@@ -886,10 +894,6 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValueOnce(samePlan).mockResolvedValueOnce(samePlan),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
       overviewDebugStructured,
@@ -924,10 +928,6 @@ describe('PlanService', () => {
             currentDrawKw: 0.25,
             expectedPowerKw: 3,
           })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
       overviewDebugStructured,
@@ -974,10 +974,6 @@ describe('PlanService', () => {
           .fn()
           .mockResolvedValueOnce(cooldownPlan)
           .mockResolvedValueOnce(cooldownTickPlan),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
       overviewDebugStructured,
@@ -1008,10 +1004,6 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(samePlan),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
       overviewDebugStructured: undefined,
@@ -1027,59 +1019,18 @@ describe('PlanService', () => {
     const overviewDebugStructured = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     let liveOn = false;
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({
-        control: fixtureControlPosture({ controllable: true }), available: true,
-        id: 'dev-1',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: liveOn },
-        currentOn: liveOn,
-        currentTemperature: 21,
-        currentDrawKw: liveOn ? 0.25 : 0,
-        expectedPowerKw: 3, expectedPowerSource: 'default',
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: liveOn, currentDrawKw: liveOn ? 0.25 : 0, expectedPowerKw: 3, currentTemperature: 21, setpointC: 20,
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
-        syncSteppedCommands: () => false,
-        syncStorageCommands: () => undefined,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
             overviewDebugStructured,
       isOverviewDebugEnabled: () => true,
     });
@@ -1201,39 +1152,11 @@ describe('PlanService', () => {
   it('logs the post-actuation overview transition when the device observation arrives', async () => {
     let currentOn = false;
     const overviewDebugStructured = vi.fn();
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: currentOn },
-        currentOn: currentOn,
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: currentOn, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
@@ -1245,10 +1168,6 @@ describe('PlanService', () => {
           boostActive: false,
           plannedTarget: 20,
         })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockImplementation(async () => {
           currentOn = true;
           return actuation({ deviceWriteCount: 1 });
@@ -1256,10 +1175,6 @@ describe('PlanService', () => {
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
             overviewDebugStructured,
       isOverviewDebugEnabled: () => true,
     });
@@ -1289,32 +1204,15 @@ describe('PlanService', () => {
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { priority: 10 }))
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { priority: 1 })),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
     };
 
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -1337,32 +1235,14 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockRejectedValue('boom');
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(19, 'keep')),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
       }),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
       loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
           });
 
@@ -1384,32 +1264,14 @@ describe('PlanService', () => {
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'keep', { totalKw: 1.0 }))
         .mockResolvedValueOnce(buildPlan(20, 'keep', { totalKw: 1.2 })),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue(actuation()),
     };
 
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -1422,56 +1284,20 @@ describe('PlanService', () => {
   it('does not publish drifted live state as the committed snapshot', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(actuation());
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        binaryControlObservation: buildBinaryObservation('onoff', false),
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: false, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+      binaryControlObservation: buildBinaryObservation('onoff', false),
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, {
@@ -1518,56 +1344,20 @@ describe('PlanService', () => {
     // from an ordinary no-op.
     const applyPlanActions = vi.fn().mockResolvedValue(actuation());
     const onAbort = vi.fn();
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        binaryControlObservation: buildBinaryObservation('onoff', false),
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: false, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+      binaryControlObservation: buildBinaryObservation('onoff', false),
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
     });
 
     service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, {
@@ -1609,61 +1399,25 @@ describe('PlanService', () => {
       })),
     }));
 
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 18,
-        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        currentOn: true,
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: true, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 18,
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+      ...planServiceDeps(),
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: 18, currentTemperature: 21 },
       }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         hasPendingTargetCommands: vi.fn(() => true),
         syncPendingTargetCommands: vi.fn(() => true),
         decoratePlanWithPendingTargetCommands,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     service['rebuildHost'].publishPlan(buildPlan(18, 'keep'), Date.now());
@@ -1712,51 +1466,19 @@ describe('PlanService', () => {
       })),
     }));
 
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        currentOn: true,
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: true, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+      ...planServiceDeps(),
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: 20, currentTemperature: 21 },
       }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
       homey: stubDepsHomey({ set: settingsSet, realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         hasPendingTargetCommands: vi.fn(() => hasPendingTargetCommands),
         syncPendingTargetCommands: vi.fn(() => {
           hasPendingTargetCommands = false;
@@ -1766,10 +1488,6 @@ describe('PlanService', () => {
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     service['rebuildHost'].publishPlan(decoratePlanWithPendingTargetCommands(buildPlan(18, 'keep')), Date.now());
@@ -1788,59 +1506,20 @@ describe('PlanService', () => {
 
   it('keeps the published plan and its generatedAtMs when live sync re-renders status', async () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: false, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands: vi.fn(() => false),
-        syncSteppedCommands: () => false,
-        syncStorageCommands: () => undefined,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     const publishedPlan = {
@@ -1870,62 +1549,23 @@ describe('PlanService', () => {
   it('re-renders status from live state when a pending binary command is confirmed', async () => {
     let hasPendingBinaryCommands = true;
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: false, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         hasPendingBinaryCommands: vi.fn(() => hasPendingBinaryCommands),
         syncPendingBinaryCommands: vi.fn(() => {
           hasPendingBinaryCommands = false;
           return true;
         }),
-        syncSteppedCommands: () => false,
-        syncStorageCommands: () => undefined,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     const publishedPlan = buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
@@ -2007,62 +1647,25 @@ describe('PlanService', () => {
   it('keeps a smart task\'s command authority when live sync runs after a confirmed command', async () => {
     let hasPendingBinaryCommands = true;
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({
-        // The raw input: Power-limit control off, no grant yet.
-        control: { managed: true, commandAuthority: false },
-        available: true,
-        currentDrawKw: 2,
-        id: 'dev-1',
-        expectedPowerKw: 2, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        currentOn: true,
-        currentTemperature: 19,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: true, currentDrawKw: 2, expectedPowerKw: 2, currentTemperature: 19, setpointC: 20,
+      // The raw input: Power-limit control off, no grant yet.
+      control: { managed: true, commandAuthority: false },
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn(),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         hasPendingBinaryCommands: vi.fn(() => hasPendingBinaryCommands),
         syncPendingBinaryCommands: vi.fn(() => {
           hasPendingBinaryCommands = false;
           return true;
         }),
-        syncSteppedCommands: () => false,
-        syncStorageCommands: () => undefined,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
     });
 
     // Built after admission: the task lent PELS authority and the plan resumed
@@ -2094,39 +1697,11 @@ describe('PlanService', () => {
       currentOn = true;
       return actuation();
     });
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: currentOn },
-        currentOn: currentOn,
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: currentOn, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
@@ -2138,18 +1713,10 @@ describe('PlanService', () => {
           boostActive: false,
           plannedTarget: 20,
         })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -2184,56 +1751,19 @@ describe('PlanService', () => {
           resolveBuild = () => resolve(buildPlan(20, 'keep'));
         }),
       ),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue(actuation()),
       hasPendingTargetCommands: vi.fn(() => true),
       syncPendingTargetCommands,
       decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
     };
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: true },
-        currentOn: true,
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: true, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     const rebuildPromise = service.rebuildPlanFromCache('power_delta', { detail: 'serialize_rebuild' });
@@ -2275,25 +1805,11 @@ describe('PlanService', () => {
     const syncPendingBinaryCommands = vi.fn(() => false);
     const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'keep'));
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot,
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         syncPendingTargetCommands,
         syncPendingBinaryCommands,
         prunePendingTargetCommands: vi.fn(() => false),
@@ -2306,8 +1822,6 @@ describe('PlanService', () => {
       getSettleDevices: () => unavailableBinaryConfirmations(firstLiveDevices),
       getCapacityDryRun: () => true,
       readSimulationSetting: () => true,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'capture_live_devices_once' });
@@ -2373,25 +1887,11 @@ describe('PlanService', () => {
     }];
     const syncPendingBinaryCommands = vi.fn(() => false);
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue(actuation()),
         hasPendingBinaryCommands: vi.fn(() => true),
         syncPendingBinaryCommands,
         prunePendingTargetCommands: vi.fn(() => false),
@@ -2401,8 +1901,6 @@ describe('PlanService', () => {
       getSettleDevices: () => settleDevices,
       getCapacityDryRun: () => true,
       readSimulationSetting: () => true,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'binary_evidence_snapshot_refresh' });
@@ -2446,32 +1944,15 @@ describe('PlanService', () => {
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValue(buildPlan(20, 'keep')),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions,
     };
 
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: settingsSet, realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'test_identical.first' });
@@ -2566,24 +2047,11 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveDevices),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed_expected_on_state' });
@@ -2648,32 +2116,15 @@ describe('PlanService', () => {
           plannedTarget: 20,
           currentTemperature: 20,
         })),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions,
     };
 
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => liveDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveDevices),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed_expected_on_state' });
@@ -2706,16 +2157,7 @@ describe('PlanService', () => {
   it('reuses cached pels status computation when inputs are unchanged', () => {
     const buildPelsStatusSpy = vi.spyOn(pelsStatusModule, 'buildPelsStatus');
     const planService = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey(),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({ ...createMockPlanEngine() }),
       getPlanDevices: () => [],
@@ -2755,10 +2197,6 @@ describe('PlanService', () => {
         vi.advanceTimersByTime(11);
         return buildPlan(20, 'keep');
       }),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions: vi.fn().mockImplementation(async () => {
         vi.advanceTimersByTime(13);
         return actuation({ deviceWriteCount: 1 });
@@ -2766,15 +2204,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
+      ...planServiceDeps(),
       // The pels_status write is what `statusWriteMs` measures; route the injected
       // writer to the same fake-timer-advancing spy the settings.set used to be, so
       // the phase-timing assertion keeps observing the ~7ms status write cost.
@@ -2783,10 +2213,6 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'test_reason.phase_trace' });
@@ -2816,32 +2242,14 @@ describe('PlanService', () => {
         vi.advanceTimersByTime(17);
         throw new Error('plan exploded');
       }),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue(actuation()),
     };
 
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: settingsSet, realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
       loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
           });
 
@@ -2930,10 +2338,6 @@ describe('PlanService', () => {
               });
               return buildPlan(20, 'keep');
             }),
-            computePhysicalPowerLimit: vi.fn(() => 0),
-            computeShortfallThreshold: vi.fn(() => 0),
-            handleShortfall: vi.fn().mockResolvedValue(undefined),
-            handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
             applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
           },
         };
@@ -3049,10 +2453,6 @@ describe('PlanService', () => {
           .fn()
           .mockResolvedValueOnce(buildPlan(20, 'keep'))
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { plannedState: 'shed' })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 2 })),
       }),
     });
@@ -3087,10 +2487,6 @@ describe('PlanService', () => {
           .fn()
           .mockResolvedValueOnce(buildPlan(20, 'keep'))
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { plannedState: 'shed' })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0, commandRequestCount: 1 })),
       }),
     });
@@ -3145,40 +2541,12 @@ describe('PlanService', () => {
   it('calls schedulePostActuationRefresh after rebuild actuation', async () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 1 }));
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        binaryControlObservation: buildBinaryObservation('onoff', false),
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: false, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+      binaryControlObservation: buildBinaryObservation('onoff', false),
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -3187,18 +2555,10 @@ describe('PlanService', () => {
           plannedState: 'keep',
           boostActive: false,
         })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
       schedulePostActuationRefresh,
           });
 
@@ -3210,40 +2570,12 @@ describe('PlanService', () => {
   it('does not call schedulePostActuationRefresh after rebuild actuation when no writes occur', async () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 }));
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        binaryControlObservation: buildBinaryObservation('onoff', false),
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: false, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+      binaryControlObservation: buildBinaryObservation('onoff', false),
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -3252,18 +2584,10 @@ describe('PlanService', () => {
           plannedState: 'keep',
           boostActive: false,
         })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
       schedulePostActuationRefresh,
           });
 
@@ -3293,10 +2617,6 @@ describe('PlanService', () => {
     const planEngine = {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockResolvedValue(steppedPlan),
-      computePhysicalPowerLimit: vi.fn(() => 0),
-      computeShortfallThreshold: vi.fn(() => 0),
-      handleShortfall: vi.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions,
       shouldApplyStablePlanActions: vi.fn(() => (
         steppedPlan.devices.some((device) => (
@@ -3325,24 +2645,11 @@ describe('PlanService', () => {
         })];
       };
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
           });
 
     const firstOutcome = await service.rebuildPlanFromCache('power_delta');
@@ -3358,40 +2665,12 @@ describe('PlanService', () => {
     // Report a real device write so the rebuild resolves `appliedActions: true` —
     // the post-actuation refresh is gated on having actually written.
     const applyPlanActions = vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 1, commandRequestCount: 0 }));
-    const liveFixtureDevices: () => PlanInputDevice[] = () => [withFixtureResidualKw({ control: fixtureControlPosture({ controllable: true }), available: true, currentDrawKw: 0,
-        id: 'dev-1',
-        expectedPowerKw: 1, expectedPowerSource: 'default',
-        name: 'Heater',
-        commandableNow: true,
-        objectiveSessionInactive: false,
-        boostSupported: false,
-        boostRequested: false,
-        hasStandingDemand: true,
-        surplusTracking: false,
-        confirmedNotDrawing: false,
-        isEvCharger: false,
-        isBatteryOrSolar: false,
-        starvationSupported: false,
-        currentTarget: 20,
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-        deviceType: 'temperature',
-        binaryCapabilityId: 'onoff',
-        binaryControl: { on: false },
-        currentOn: false,
-        binaryControlObservation: buildBinaryObservation('onoff', false),
-        currentTemperature: 21,
-      })];
+    const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
+      on: false, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
+      binaryControlObservation: buildBinaryObservation('onoff', false),
+    })];
     const service = new PlanService({
-      ...planServiceWiring(),
-      hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getObservedTemperature: () => ({ kind: 'absent' }),
-      planBuildGate: openPlanBuildGate(),
-      getSteppedSettleDevices: () => [],
-      homeId: 'main',
-      publishPelsStatus: vi.fn(),
+      ...planServiceDeps(),
       homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -3403,18 +2682,10 @@ describe('PlanService', () => {
           boostActive: false,
           plannedTarget: 20,
         })),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-      getCapacityDryRun: () => false,
-      readSimulationSetting: () => false,
-      getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-      getLastPowerUpdate: () => 1_745_000_000_000,
       schedulePostActuationRefresh,
           });
 
@@ -3447,10 +2718,6 @@ describe('rebuild ordering', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
-        computePhysicalPowerLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
         syncPendingBinaryCommands,
       }),
