@@ -214,6 +214,24 @@ describe('importLegacyDeviceDiagnostics', () => {
     expect(settings.get(DEVICE_DIAGNOSTICS_STATE_KEY)).toBeNull();
   });
 
+  // The mark retires the key for good, so it must never land without the rows.
+  it('commits the import mark with the rows, or neither', () => {
+    const { settings, db, store } = rig();
+    const legacy = state({ 'dev-1': { [TODAY]: day(10) } });
+    settings.set(DEVICE_DIAGNOSTICS_STATE_KEY, legacy);
+    db.exec("CREATE TRIGGER refuse_mark BEFORE INSERT ON meta BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    importLegacyDeviceDiagnostics(settings, store);
+    expect(rowCount(db)).toBe(0);
+    expect(store.hasImportedLegacy()).toBe(false);
+    expect(settings.get(DEVICE_DIAGNOSTICS_STATE_KEY)).toEqual(legacy);
+
+    db.exec('DROP TRIGGER refuse_mark');
+    importLegacyDeviceDiagnostics(settings, store);
+    expect(createDeviceDiagnosticsStateStore(db).read().state).toEqual(legacy);
+    expect(store.hasImportedLegacy()).toBe(true);
+    expect(settings.get(DEVICE_DIAGNOSTICS_STATE_KEY)).toBeNull();
+  });
+
   // A day both sides hold is summed. Merging the blob again on the next boot
   // would add its days to the same days the first import already took, the
   // service's counts since included; the import's mark retires the key instead.

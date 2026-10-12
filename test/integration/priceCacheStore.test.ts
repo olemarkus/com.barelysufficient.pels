@@ -16,6 +16,7 @@ import {
   POWERHOUR_PRICES_TOMORROW,
 } from '../../lib/utils/settingsKeys';
 import { MockSettings } from '../mocks/homey';
+import { captureLogger } from '../utils/loggerCapture';
 
 const open = () => {
   const db = openUserdataDatabase(IN_MEMORY_DATABASE);
@@ -285,6 +286,46 @@ describe('importLegacyPriceCaches: payload-fed sources', () => {
     expect(settings.getKeys()).not.toContain(POWERHOUR_PRICES_DEVICE);
   });
 
+  // A marked key whose row is empty is retried on every read that finds no
+  // row. A failed unset is said once per key; the retries go on.
+  it('says a failed unset once per key, and keeps retrying it on every read', () => {
+    const { settings, store } = rig();
+    settings.set(POWERHOUR_PRICES_TODAY, PAYLOAD);
+    const unset = vi.spyOn(settings, 'unset').mockImplementation(() => { throw new Error('sdk unavailable'); });
+    const capture = captureLogger();
+    try {
+      importLegacyPriceCaches(settings, store);
+      const priceData = createPriceDataStore(settings, store);
+      priceData.writePowerhourDay('today', null);
+      for (let read = 0; read < 3; read += 1) priceData.readPowerhourCache();
+      expect(unset.mock.calls.filter(([key]) => key === POWERHOUR_PRICES_TODAY)).toHaveLength(4);
+      expect(capture.findEvents('legacy_price_cache_import_deferred')).toEqual([
+        expect.objectContaining({ settingsKey: POWERHOUR_PRICES_TODAY, reason: 'unset_threw' }),
+      ]);
+    } finally {
+      capture.restore();
+      unset.mockRestore();
+    }
+    expect(store.read(POWERHOUR_PRICES_TODAY)).toBeNull();
+  });
+
+  // The mark retires the key for good, so it must never land without the row.
+  it('commits the import mark with the row, or neither', () => {
+    const { settings, db, store } = rig();
+    settings.set(FLOW_PRICES_TODAY, PAYLOAD);
+    db.exec("CREATE TRIGGER refuse_mark BEFORE INSERT ON meta BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    importLegacyPriceCaches(settings, store);
+    expect(createPriceCacheStore(db).read(FLOW_PRICES_TODAY)).toBeNull();
+    expect(store.hasImportedLegacy(FLOW_PRICES_TODAY)).toBe(false);
+    expect(settings.get(FLOW_PRICES_TODAY)).toEqual(PAYLOAD);
+
+    db.exec('DROP TRIGGER refuse_mark');
+    importLegacyPriceCaches(settings, store);
+    expect(createPriceCacheStore(db).read(FLOW_PRICES_TODAY)).toEqual(PAYLOAD);
+    expect(store.hasImportedLegacy(FLOW_PRICES_TODAY)).toBe(true);
+    expect(settings.get(FLOW_PRICES_TODAY)).toBeNull();
+  });
+
   it('recovers a Flow day when its boot import read was transiently empty', () => {
     const { settings, store } = rig();
     settings.set(FLOW_PRICES_TODAY, PAYLOAD);
@@ -381,6 +422,29 @@ describe('importLegacyPriceCaches: combined prices', () => {
     expect(settings.getKeys()).toContain(COMBINED_PRICES);
 
     expect(createPriceDataStore(settings, store).readCombinedRaw()).toEqual(V2);
+    expect(settings.getKeys()).not.toContain(COMBINED_PRICES);
+  });
+
+  // A deferred import lets the price module build combined prices of its own,
+  // and the next attempt retires the key unread because that row beats it.
+  // Should that unset fail, the key must still never refill the row once the
+  // module clears it.
+  it('marks a key the store beat, so a failed unset never refills a row cleared since', () => {
+    const { settings, store } = rig();
+    settings.set(COMBINED_PRICES, V1);
+    const originalGet = settings.get.bind(settings);
+    const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === COMBINED_PRICES ? undefined : originalGet(key)));
+    importLegacyPriceCaches(settings, store);
+    get.mockRestore();
+    store.write(COMBINED_PRICES, V2);
+    const unset = vi.spyOn(settings, 'unset').mockImplementation(() => { throw new Error('sdk unavailable'); });
+    importLegacyPriceCaches(settings, store);
+    unset.mockRestore();
+    expect(settings.get(COMBINED_PRICES)).toEqual(V1);
+
+    const priceData = createPriceDataStore(settings, store);
+    priceData.clearCombined();
+    expect(priceData.readCombinedRaw()).toBeNull();
     expect(settings.getKeys()).not.toContain(COMBINED_PRICES);
   });
 });

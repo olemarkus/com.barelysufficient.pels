@@ -21,7 +21,11 @@ import type {
 import { getLogger } from '../../logging/logger';
 import type { SettingsPort } from '../../ports/homeyRuntime';
 import {
-  importLegacySettingsKey, isLegacySettingsKeyListed, type LegacyImportResult,
+  hasLegacyImportMark,
+  importLegacySettingsKey,
+  isLegacySettingsKeyListed,
+  type LegacyImportResult,
+  writeLegacyImportMark,
 } from '../../store/legacySettingsImport';
 import { createJsonRowTable, parseJsonRow, sameJson } from '../../store/jsonRowTable';
 import type { UserdataDatabase } from '../../store/userdataDatabase';
@@ -52,6 +56,14 @@ export type PlanHistoryStore = {
   write(history: DeferredObjectivePlanHistoryV6): void;
   readMeteredDelivery(): PersistedMeteredDeliveryState[];
   writeMeteredDelivery(states: readonly PersistedMeteredDeliveryState[]): void;
+};
+
+/** The store as this module builds it: the recorder's port, and the legacy import's, per legacy key. */
+export type PlanHistoryRepository = PlanHistoryStore & {
+  /** Whether the legacy settings `key` was imported into the store. Throws only on I/O. */
+  hasImportedLegacy(key: string): boolean;
+  /** {@link PlanHistoryStore.write} what the legacy `key`'s import made, and mark it, in one transaction. */
+  writeLegacyImport(key: string, history: DeferredObjectivePlanHistoryV6): void;
 };
 
 const SCHEMA = `
@@ -96,7 +108,7 @@ const meteredKey = (state: Pick<PersistedMeteredDeliveryState, 'deviceId' | 'dea
   `${state.deviceId}|${state.deadlineAtMs}`
 );
 
-export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryStore => {
+export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryRepository => {
   db.exec(SCHEMA);
   const s = prepareStatements(db);
   let held: Held | null = null;
@@ -139,6 +151,19 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryStore =
     }
   };
 
+  /** Make the rows hold `history`, inside the caller's transaction; the diff base follows once it commits. */
+  const writeRows = (history: DeferredObjectivePlanHistoryV6): Held => {
+    const next = heldOf(history);
+    // A store that has neither read nor written diffs against its rows on
+    // disk, so a write can always delete what `history` dropped.
+    const previous = held ?? (() => {
+      const stored = load();
+      return stored === null ? null : heldOf(stored);
+    })();
+    writeDiff(next, previous);
+    return next;
+  };
+
   return {
     read: () => db.transaction(() => {
       const history = load();
@@ -146,17 +171,15 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryStore =
       return history;
     }),
     write: (history) => {
-      const next = heldOf(history);
-      db.transaction(() => {
-        // A store that has neither read nor written diffs against its rows
-        // on disk, so a write can always delete what `history` dropped.
-        const previous = held ?? (() => {
-          const stored = load();
-          return stored === null ? null : heldOf(stored);
-        })();
-        writeDiff(next, previous);
+      held = db.transaction(() => writeRows(history));
+    },
+    hasImportedLegacy: (key) => hasLegacyImportMark(db, key),
+    writeLegacyImport: (key, history) => {
+      held = db.transaction(() => {
+        const next = writeRows(history);
+        writeLegacyImportMark(db, key);
+        return next;
       });
-      held = next;
     },
     readMeteredDelivery: () => db.transaction(() => [...metered.read().values()]),
     writeMeteredDelivery: (states) => db.transaction(() => (
@@ -202,23 +225,24 @@ const logImport = (key: string, result: LegacyImportResult): void => {
  * store, run at boot before the recorder loads: the current `_v5` key, then
  * the v4 key that was kept for rollback, each merged UNDER what the store
  * holds, then unset together with the `_v5_initialized` marker. Rules and
- * their reasons: `lib/store/legacySettingsImport.ts`. Merging a blob again
- * after an import whose unset failed is harmless, so no import mark retires
- * these keys: every id the store holds wins, and the recorder drops entries
- * only by the rolling cap, which the merge applies again, so an entry the
- * cap retired is retired again.
+ * their reasons: `lib/store/legacySettingsImport.ts`. Only each key's own
+ * import mark retires it: the recorder drops entries by the rolling cap
+ * alone, and runs finalized in one tick share a finalisation time, so
+ * merging a blob again after an import whose unset failed could keep an
+ * entry the cap retired and drop the one it kept, both of that time.
  */
-export const importLegacyPlanHistory = (settings: SettingsPort, store: PlanHistoryStore): void => {
+export const importLegacyPlanHistory = (settings: SettingsPort, store: PlanHistoryRepository): void => {
   for (const key of [DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING]) {
     if (isLegacySettingsKeyListed(settings, key) !== true) continue;
     let dropped = 0;
     const result = importLegacySettingsKey(settings, key, {
-      holds: () => false,
+      holds: () => store.hasImportedLegacy(key),
       adopt: (raw) => {
         const salvaged = salvageLegacyPlanHistory(raw);
         if (salvaged === null) return false;
         const stored = store.read();
-        store.write(stored === null ? salvaged.snapshot : withLegacyUnder(stored, salvaged.snapshot));
+        const merged = stored === null ? salvaged.snapshot : withLegacyUnder(stored, salvaged.snapshot);
+        store.writeLegacyImport(key, merged);
         dropped = salvaged.dropped;
         return true;
       },

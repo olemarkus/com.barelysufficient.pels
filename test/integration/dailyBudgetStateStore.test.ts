@@ -128,6 +128,24 @@ describe('importLegacyDailyBudgetState', () => {
     expect(learnedMore.settings.getKeys()).not.toContain(DAILY_BUDGET_STATE);
   });
 
+  // The mark retires the key for good, so it must never land without the rows.
+  it('commits the import mark with the rows, or neither', () => {
+    const { settings, db, store } = rig();
+    const legacy = { ...TODAY_PLAN, ...learned(30, 1 / 24) };
+    settings.set(DAILY_BUDGET_STATE, legacy);
+    db.exec("CREATE TRIGGER refuse_mark BEFORE INSERT ON meta BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    importLegacyDailyBudgetState(settings, store);
+    expect(createDailyBudgetStateStore(db).read()).toBeNull();
+    expect(store.hasImportedLegacy()).toBe(false);
+    expect(settings.getKeys()).toContain(DAILY_BUDGET_STATE);
+
+    db.exec('DROP TRIGGER refuse_mark');
+    importLegacyDailyBudgetState(settings, store);
+    expect(createDailyBudgetStateStore(db).read()).toEqual(legacy);
+    expect(store.hasImportedLegacy()).toBe(true);
+    expect(settings.getKeys()).not.toContain(DAILY_BUDGET_STATE);
+  });
+
   // The owner's reset leaves a profile with no days learned. Merging the blob
   // again on the next boot would take the blob's profile back, since it has
   // learned more; the import's mark retires the key instead.

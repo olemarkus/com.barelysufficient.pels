@@ -243,7 +243,7 @@ describe('importLegacyPlanHistory', () => {
     expect(settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBe('garbage');
     expect(settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_INITIALIZED)).toBe(true);
     settings.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, { version: 5, entries: [entry('a', 1_000)] });
-    const write = vi.spyOn(store, 'write').mockImplementation(() => { throw new Error('disk full'); });
+    const write = vi.spyOn(store, 'writeLegacyImport').mockImplementation(() => { throw new Error('disk full'); });
     importLegacyPlanHistory(settings, store);
     expect(store.read()).toBeNull();
     write.mockRestore();
@@ -257,5 +257,47 @@ describe('importLegacyPlanHistory', () => {
     expect(store.read()?.entries.map((e) => e.id)).toEqual(['a']);
     expect(settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBeNull();
     expect(settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_INITIALIZED)).toBeNull();
+  });
+
+  // Runs finalized in one recorder tick share a finalisation time, and the
+  // cap drops the first of such a tie. Merging the blob again on the next boot
+  // would sort the dropped entry after the kept one and keep it instead; the
+  // import's mark retires the key.
+  it('retires the key of an import whose unset threw, so an entry the cap retired stays retired', () => {
+    const { settings, store } = rig();
+    const legacy = [entry('a', 1_000), entry('b', 1_000), ...Array.from({ length: 28 }, (_, i) => entry(`s${i}`, 2_000 + i))];
+    settings.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, { version: 5, entries: legacy });
+    const unset = vi.spyOn(settings, 'unset').mockImplementationOnce(() => { throw new Error('sdk unavailable'); });
+    importLegacyPlanHistory(settings, store);
+    unset.mockRestore();
+    expect(settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toEqual({ version: 5, entries: legacy });
+    // The recorder finalizes a run, and its cap drops the oldest entry: 'a'.
+    const imported = store.read();
+    if (imported === null) throw new Error('the import wrote nothing');
+    const capped = { ...imported, entries: [...imported.entries, ...v5(entry('new', 9_000)).entries].slice(1) };
+    expect(capped.entries.map((e) => e.id)).not.toContain('a');
+    store.write(capped);
+
+    importLegacyPlanHistory(settings, store);
+    expect(settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBeNull();
+    expect(store.read()?.entries.map((e) => e.id)).toEqual(capped.entries.map((e) => e.id));
+  });
+
+  // The mark retires the key for good, so it must never land without the rows.
+  it('commits the import mark with the rows, or neither', () => {
+    const { settings, db, store } = rig();
+    const legacy = { version: 5, entries: [entry('a', 1_000), entry('b', 2_000)] };
+    settings.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, legacy);
+    db.exec("CREATE TRIGGER refuse_mark BEFORE INSERT ON meta BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    importLegacyPlanHistory(settings, store);
+    expect(createPlanHistoryStore(db).read()).toBeNull();
+    expect(store.hasImportedLegacy(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBe(false);
+    expect(settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toEqual(legacy);
+
+    db.exec('DROP TRIGGER refuse_mark');
+    importLegacyPlanHistory(settings, store);
+    expect(createPlanHistoryStore(db).read()?.entries.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(store.hasImportedLegacy(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBe(true);
+    expect(settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBeNull();
   });
 });

@@ -192,6 +192,23 @@ describe('importLegacyWeatherHistory', () => {
     expect(settings.get(WEATHER_HISTORY_STATE)).toBeNull();
   });
 
+  // The mark retires the key for good, so it must never land without the rows.
+  it('commits the import mark with the rows, or neither', () => {
+    const { settings, db, store } = rig();
+    settings.set(WEATHER_HISTORY_STATE, STATE);
+    db.exec("CREATE TRIGGER refuse_mark BEFORE INSERT ON meta BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    importLegacyWeatherHistory(settings, store);
+    expect(createWeatherHistoryStore(db).read()).toBeNull();
+    expect(store.hasImportedLegacy()).toBe(false);
+    expect(settings.get(WEATHER_HISTORY_STATE)).toEqual(STATE);
+
+    db.exec('DROP TRIGGER refuse_mark');
+    importLegacyWeatherHistory(settings, store);
+    expect(createWeatherHistoryStore(db).read()).toEqual(STATE);
+    expect(store.hasImportedLegacy()).toBe(true);
+    expect(settings.get(WEATHER_HISTORY_STATE)).toBeNull();
+  });
+
   // A meter switch strips the fit and the budget pressure learned under the
   // old meter (`stripMeterScopeDerivedState`). The blob fills every field the
   // store lacks, so merging it again on the next boot would bring them back;

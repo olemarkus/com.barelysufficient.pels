@@ -21,8 +21,8 @@ const rig = () => {
   // since the userdata stores open before the boot migrations write
   // anything, and an empty list imports nothing.
   settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
-  const store = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
-  return { settings, store };
+  const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+  return { settings, db, store: createTrackerStore(db) };
 };
 
 describe('importLegacyPowerTrackers', () => {
@@ -147,6 +147,23 @@ describe('importLegacyPowerTrackers', () => {
     // The next boot finds the first boot's import mark and only retires the key.
     expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: ['main'], deferred: [] });
     expect(store.load('main')).toEqual(HISTORY);
+    expect(settings.get('power_tracker_state')).toBeNull();
+  });
+
+  // The mark retires the key for good, so it must never land without the rows.
+  it('commits the import mark with the rows, or neither', () => {
+    const { settings, db, store } = rig();
+    settings.set('power_tracker_state', HISTORY);
+    db.exec("CREATE TRIGGER refuse_mark BEFORE INSERT ON meta BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: ['main'] });
+    expect(createTrackerStore(db).load('main')).toBeNull();
+    expect(store.hasImportedLegacy('power_tracker_state')).toBe(false);
+    expect(settings.get('power_tracker_state')).toEqual(HISTORY);
+
+    db.exec('DROP TRIGGER refuse_mark');
+    expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: ['main'], retired: [], deferred: [] });
+    expect(createTrackerStore(db).load('main')).toEqual(HISTORY);
+    expect(store.hasImportedLegacy('power_tracker_state')).toBe(true);
     expect(settings.get('power_tracker_state')).toBeNull();
   });
 

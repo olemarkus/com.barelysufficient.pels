@@ -33,7 +33,7 @@ import { salvagePowerTrackerState } from './trackerStateGuards';
 import { normalizeError } from '../utils/errorUtils';
 import { MAIN_HOME_ID, POWER_TRACKER_STATE, type HomeId } from '../utils/settingsKeys';
 import { withHistoryUnder } from './homeTrackerPersistence';
-import type { TrackerStore } from './trackerStore';
+import type { TrackerRepository } from './trackerStore';
 
 const importLogger = getLogger('power/tracker-legacy-import');
 
@@ -58,7 +58,7 @@ const legacyHomeId = (key: string): HomeId | null => {
 /** Import one home's blob; `dropped` names what the salvage left out of an import. */
 const importHome = (
   settings: SettingsPort,
-  store: TrackerStore,
+  store: TrackerRepository,
   key: string,
   homeId: HomeId,
 ): LegacyImportResult['outcome'] => {
@@ -97,7 +97,7 @@ const importHome = (
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const importLegacyPowerTrackers = (
   settings: SettingsPort,
-  store: TrackerStore,
+  store: TrackerRepository,
 ): LegacyTrackerImport => {
   const result: LegacyTrackerImport = { imported: [], retired: [], deferred: [] };
   const keys = listLegacySettingsKeys(settings, (candidate) => legacyHomeId(candidate) !== null);

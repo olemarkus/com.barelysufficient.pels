@@ -73,6 +73,8 @@ export type PriceCacheStore = {
   hasImportedLegacy(settingsKey: string): boolean;
   /** {@link write} the value the legacy `settingsKey` held, and mark its import, in one transaction. */
   writeLegacyImport(key: PriceCacheKey, settingsKey: string, value: unknown): void;
+  /** Mark the legacy `settingsKey` imported without taking its value: a row the store holds beats it. */
+  markLegacyImported(settingsKey: string): void;
 };
 
 const SCHEMA = `
@@ -127,6 +129,7 @@ export const createPriceCacheStore = (db: UserdataDatabase): PriceCacheStore => 
       });
       held.set(key, { json, value: JSON.parse(json) as unknown });
     },
+    markLegacyImported: (settingsKey) => writeLegacyImportMark(db, settingsKey),
     remove: (key) => {
       if (held.has(key) && held.get(key) === null) return;
       s.remove.run(key);
@@ -220,10 +223,14 @@ const LEGACY_PRICE_CACHES: readonly LegacyPriceCache[] = [
  * Checked before the key is read, so a key the old code left holding `null`
  * (the Flow and Homey rotations cleared days that way) is retired once a newer
  * row lands, instead of deferring as a possible transient miss on every boot.
+ * A key the store beats is never needed again, so it is marked imported
+ * before the unset: should the unset fail, the key stays retired once that
+ * row is cleared, rather than refilling it with its older value.
  */
 const retireBeatenKey = (settings: SettingsPort, cache: PriceCacheStore, legacy: LegacyPriceCache): boolean => {
   try {
     if (!legacy.storeWins(cache.read(legacy.cacheKey))) return false;
+    cache.markLegacyImported(legacy.settingsKey);
     settings.unset(legacy.settingsKey);
   } catch {
     return false;
@@ -240,6 +247,22 @@ const retireBeatenKey = (settings: SettingsPort, cache: PriceCacheStore, legacy:
  * (it is gone, or the list could not be read).
  */
 export type LegacyPriceCacheImport = LegacyImportResult | { outcome: 'skipped' };
+
+/**
+ * The keys whose failed unset each cache has said at warn. A marked key whose
+ * row is empty is retried on every read that finds no row, so a persistently
+ * failing unset is said once per key per run; the retries go on silently.
+ */
+const unsetFailureSaid = new WeakMap<PriceCacheStore, Set<string>>();
+
+/** Whether this deferral is a failed unset this cache has already said for `settingsKey`; records it if not. */
+const isRepeatedUnsetFailure = (cache: PriceCacheStore, settingsKey: string, result: LegacyImportResult): boolean => {
+  if (result.outcome !== 'deferred' || result.reason !== 'unset_threw') return false;
+  const said = unsetFailureSaid.get(cache) ?? new Set<string>();
+  if (said.has(settingsKey)) return true;
+  unsetFailureSaid.set(cache, said.add(settingsKey));
+  return false;
+};
 
 const importLegacyPriceCache = (
   settings: SettingsPort,
@@ -262,7 +285,7 @@ const importLegacyPriceCache = (
     storeLogger.info({ event: 'legacy_price_cache_imported', settingsKey });
   } else if (result.outcome === 'retired') {
     storeLogger.info({ event: 'legacy_price_cache_key_retired', settingsKey, reason: result.reason });
-  } else {
+  } else if (!isRepeatedUnsetFailure(cache, settingsKey, result)) {
     storeLogger.warn({
       event: 'legacy_price_cache_import_deferred',
       settingsKey,
@@ -278,8 +301,9 @@ const importLegacyPriceCache = (
  * before the price service first reads them. Rules and their reasons:
  * `lib/store/legacySettingsImport.ts`. Each key is decided on its own: a value
  * fetched since the upgrade wins and the key is just retired; otherwise the
- * key's value is adopted, over whatever stopgap the store holds. A key whose
- * import completed is retired by its mark whatever the row holds by then: the
+ * key's value is adopted, over whatever stopgap the store holds. A key that was
+ * imported, or that a row beat, is retired by its mark whatever the row holds
+ * by then: the
  * price module clears rows and writes stopgaps on purpose (a Power by the Hour
  * device the owner stopped using, a Flow day rotated out), and a reader that
  * finds no row retries the import, so the key left by a failed unset would

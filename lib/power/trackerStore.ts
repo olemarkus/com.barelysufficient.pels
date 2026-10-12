@@ -130,9 +130,13 @@ export type TrackerStore = {
   save(homeId: HomeId, next: PowerTrackerState): void;
   /** Drop every row the home has and write `next` whole, in one transaction. */
   replace(homeId: HomeId, next: PowerTrackerState): void;
+};
+
+/** The store as this module builds it: the tracker's port, and the legacy import's, per legacy key. */
+export type TrackerRepository = TrackerStore & {
   /** Whether the home's legacy settings `key` was imported into the store. Throws only on I/O. */
   hasImportedLegacy(key: string): boolean;
-  /** {@link replace} with the state the legacy `key`'s import made, and mark that import, in one transaction. */
+  /** {@link TrackerStore.replace} with what the legacy `key`'s import made, and mark it, in one transaction. */
   writeLegacyImport(homeId: HomeId, key: string, next: PowerTrackerState): void;
 };
 
@@ -373,7 +377,7 @@ const readHome = (s: Statements, clearRows: (homeId: HomeId) => void, homeId: Ho
   return quarantine.state;
 };
 
-export const createTrackerStore = (db: UserdataDatabase): TrackerStore => {
+export const createTrackerStore = (db: UserdataDatabase): TrackerRepository => {
   db.exec(SCHEMA);
   const s = prepareStatements(db);
   /** What the store holds per home — the diff base of the next save. */
