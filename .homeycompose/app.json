@@ -18,15 +18,15 @@
     "fi": "PELS Energianhallinta"
   },
   "description": {
-    "en": "Lower peaks, cheaper charging and more of your own solar, with your whole home working together.",
-    "no": "Lavere nettleie og billigere lading, varme og varmtvann, med hele hjemmet på samme lag.",
-    "nl": "Meer eigen zonnestroom, slim laden en lagere pieken voor je hele woning.",
-    "fr": "Recharge et chauffage aux heures les plus avantageuses, avec toute la maison sous contrôle.",
-    "it": "Ricarica, riscaldamento e acqua calda in equilibrio con la potenza di casa.",
-    "sv": "Billigare laddning och uppvärmning, med hela hemmets elförbrukning i samma plan.",
-    "de": "Günstig laden, Solarstrom selbst nutzen und Wärmepumpe, Warmwasser und Speicher gemeinsam steuern.",
-    "da": "Billige timer til elbil, varme og varmt vand, med samlet styring af hjemmets strøm.",
-    "fi": "Lataa auto ja lämmitä koti sekä käyttövesi pörssisähkön edullisilla jaksoilla."
+    "en": "Shift charging and heating to cheaper hours, limit power peaks and use your solar surplus.",
+    "no": "Hold effekttoppene nede og styr elbillading, varme og varmtvann etter strømprisen.",
+    "nl": "Laad je auto en verwarm je woning met zonnestroom of goedkope stroom, binnen je vermogensgrens.",
+    "fr": "Règle la recharge, le chauffage et l'eau chaude selon vos tarifs et la puissance disponible.",
+    "it": "Regola ricarica, riscaldamento e scaldacqua secondo prezzi e potenza disponibile.",
+    "sv": "Styr elbilsladdning, värme och varmvatten efter elpriset och hemmets effektgränser.",
+    "de": "Steuert Wallbox, Wärmepumpe und Speicher nach Strompreisen und Solarüberschuss.",
+    "da": "Elbilopladning, varme og varmt vand tilpasset elpriser og nettariffer.",
+    "fi": "Ajoita auton lataus, sähkölämmitys ja käyttöveden lämmitys pörssisähkön hinnan mukaan."
   },
   "brandColor": "#22c55e",
   "category": [
