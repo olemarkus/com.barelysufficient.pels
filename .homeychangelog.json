@@ -610,5 +610,8 @@
   },
   "3.12.0": {
     "en": "You can now set a Grid import limit independently of the Capacity limit. PELS leaves a small margin below the grid limit and reduces flexible loads as measured import approaches it. The settings and Overview show which limit is active, and you can choose either limit, both, or neither.\n\nPrice settings and Smart tasks still work when both limits are off. If the whole-home meter stops reporting, the existing meter-outage protection still applies and may limit managed devices."
+  },
+  "3.12.1": {
+    "en": "You can now set a Grid import limit independently of the Capacity limit. PELS leaves a small margin below the grid limit and reduces flexible loads as measured import approaches it. You can use either limit, both, or neither. The settings and Overview show which limit is active, and daily budget and Smart task plans follow the limits you have turned on. Price settings and Smart tasks still work when both limits are off. If the whole-home meter stops reporting, the existing meter-outage protection still applies and may limit managed devices."
   }
 }
