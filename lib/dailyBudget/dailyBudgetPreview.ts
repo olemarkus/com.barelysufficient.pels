@@ -1,91 +1,31 @@
-import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
   getNextLocalDayStartUtcMs,
 } from '../../packages/shared-domain/src/utils/dateUtils';
-import {
-  buildPlan,
-} from './dailyBudgetMath';
-import { buildPlanBreakdown } from './dailyBudgetBreakdown';
-import type { CombinedPriceData } from './dailyBudgetMath';
+import { buildPlan } from './dailyBudgetMath';
+import type { DailyBudgetPlanInputs } from './dailyBudgetManagerTypes';
+import { resolvePlanBounds, type PlanBounds } from './dailyBudgetPlanCore';
+import { buildPriceData, NO_PRICE_DATA, type PriceData } from './dailyBudgetPrices';
+import { getEffectiveProfileData, getProfileSplitSampleCount } from './dailyBudgetProfile';
 import {
   buildDailyBudgetSnapshot,
   computeBudgetState,
-  resolvePlannedSplit,
+  isDailyBudgetEnabled,
+  type DayContext,
 } from './dailyBudgetState';
-import type { DayContext } from './dailyBudgetState';
-import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
-import type { ObservedHourlyStats } from './observedHourlyStats';
+import type { DailyBudgetDayPayload, DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';
+import { resolveObservedHourlyStats } from './observedHourlyStats';
 
-type BuildDailyBudgetPreviewParams = {
-  dayStartUtcMs: number;
-  timeZone: string;
-  settings: DailyBudgetSettings;
-  combinedPrices?: CombinedPriceData | null;
-  priceOptimizationEnabled: boolean;
-  priceShapingEnabled: boolean;
-  planningCeiling: PowerLimitCeiling | null;
-  enabled: boolean;
-  profileWeights: number[];
-  profileSampleCount: number;
-  profileSplitSampleCount?: number;
-  profileBreakdown?: { uncontrolled: number[]; controlled: number[] };
-  observedStats: ObservedHourlyStats;
+/** A day's plan before any of it has elapsed, and the inputs it was built on. */
+export type DailyBudgetPreview = {
+  snapshot: DailyBudgetDayPayload;
+  priceData: PriceData;
+  bounds: PlanBounds;
 };
 
-const resolvePlannedBreakdown = (params: {
-  enabled: boolean;
-  buildResult: ReturnType<typeof buildPlan> | null;
-  plannedKWh: number[];
-  bucketStartUtcMs: number[];
-  timeZone: string;
-  profileBreakdown?: { uncontrolled: number[]; controlled: number[] };
-}): ReturnType<typeof buildPlanBreakdown> | null => {
-  const {
-    enabled,
-    buildResult,
-    plannedKWh,
-    bucketStartUtcMs,
-    timeZone,
-    profileBreakdown,
-  } = params;
-  if (!enabled) return null;
-  const hasPlannedBreakdown = Array.isArray(buildResult?.plannedUncontrolledKWh)
-    && Array.isArray(buildResult?.plannedControlledKWh)
-    && buildResult.plannedUncontrolledKWh.length === plannedKWh.length
-    && buildResult.plannedControlledKWh.length === plannedKWh.length;
-  if (hasPlannedBreakdown) {
-    return {
-      plannedUncontrolledKWh: buildResult.plannedUncontrolledKWh,
-      plannedControlledKWh: buildResult.plannedControlledKWh,
-    };
-  }
-  return buildPlanBreakdown({
-    bucketStartUtcMs,
-    timeZone,
-    plannedKWh,
-    breakdown: profileBreakdown,
-  });
-};
-
-export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): DailyBudgetDayPayload => {
-  const {
-    dayStartUtcMs,
-    timeZone,
-    settings,
-    combinedPrices,
-    priceOptimizationEnabled,
-    priceShapingEnabled,
-    planningCeiling,
-    enabled,
-    profileWeights,
-    profileSampleCount,
-    profileSplitSampleCount,
-    profileBreakdown,
-    observedStats,
-  } = params;
-
+/** The context of a local day that has not started: no usage, no current bucket. */
+export const buildPreviewDayContext = (dayStartUtcMs: number, timeZone: string): DayContext => {
   const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
   const { bucketStartUtcMs, bucketStartLocalLabels } = buildLocalDayBuckets({
     dayStartUtcMs,
@@ -93,91 +33,64 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     timeZone,
   });
   const bucketUsage = bucketStartUtcMs.map(() => 0);
-  const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
-  const currentBucketIndex = -1;
-  const usedNowKWh = 0;
-  const context: DayContext = {
+  return {
     nowMs: dayStartUtcMs,
     timeZone,
     dateKey: getDateKeyInTimeZone(new Date(dayStartUtcMs), timeZone),
     dayStartUtcMs,
     bucketStartUtcMs,
     bucketStartLocalLabels,
-    bucketKeys,
-    currentBucketIndex,
+    bucketKeys: bucketStartUtcMs.map((ts) => new Date(ts).toISOString()),
+    currentBucketIndex: -1,
     currentBucketProgress: 0,
     bucketUsage,
     budgetControlBucketUsage: bucketUsage,
     bucketUsageControlled: bucketStartUtcMs.map(() => null),
     bucketUsageUncontrolled: bucketStartUtcMs.map(() => null),
     bucketUsageExempt: undefined,
-    usedNowKWh,
-    budgetControlUsedNowKWh: usedNowKWh,
-    meteredUsedNowKWh: usedNowKWh,
+    usedNowKWh: 0,
+    budgetControlUsedNowKWh: 0,
+    meteredUsedNowKWh: 0,
     exemptUsedNowKWh: 0,
     currentBucketUsage: 0,
   };
+};
 
-  let buildResult: ReturnType<typeof buildPlan> | null = null;
-  if (enabled) {
-    buildResult = buildPlan({
-      bucketStartUtcMs,
-      bucketUsage,
-      currentBucketIndex,
-      usedNowKWh,
-      dailyBudgetKWh: settings.dailyBudgetKWh,
-      profileWeights,
-      profileWeightsControlled: profileBreakdown?.controlled,
-      profileWeightsUncontrolled: profileBreakdown?.uncontrolled,
-      timeZone,
-      combinedPrices,
-      priceOptimizationEnabled,
-      priceShapingEnabled,
-      priceShapingFlexShare: settings.priceShapingFlexShare,
-      planningCeiling,
-      controlledUsageWeight: settings.controlledUsageWeight,
-      observedStats,
-    });
-  }
-  const plannedKWh = buildResult?.plannedKWh ?? bucketStartUtcMs.map(() => 0);
-  const breakdown = resolvePlannedBreakdown({
-    enabled,
-    buildResult,
-    plannedKWh,
-    bucketStartUtcMs,
-    timeZone,
-    profileBreakdown,
-  });
-
-  const budget = computeBudgetState({
-    context,
-    enabled,
-    dailyBudgetKWh: settings.dailyBudgetKWh,
-    plannedKWh,
-    profileSampleCount,
-    profileSplitSampleCount,
-  });
-
-  const priceData = enabled && buildResult
-    ? {
-      prices: buildResult.price,
-      priceFactors: buildResult.priceFactor,
-      priceShapingActive: buildResult.priceShapingActive,
-      priceSpreadFactor: buildResult.priceSpreadFactor,
-      effectivePriceShapingFlexShare: buildResult.effectivePriceShapingFlexShare,
-    }
-    : { priceShapingActive: false };
-
-  return buildDailyBudgetSnapshot({
-    context,
+export const buildDailyBudgetPreview = (
+  state: DailyBudgetState,
+  settings: DailyBudgetSettings,
+  day: DayContext,
+  inputs: DailyBudgetPlanInputs,
+  defaultProfile: number[],
+): DailyBudgetPreview => {
+  const { combinedPrices, priceOptimizationEnabled, planningCeiling } = inputs;
+  const enabled = isDailyBudgetEnabled(settings);
+  const profile = getEffectiveProfileData(state, settings, defaultProfile);
+  const priceData = enabled ? buildPriceData(day, settings, combinedPrices, priceOptimizationEnabled) : NO_PRICE_DATA;
+  const plan = enabled
+    ? buildPlan(day, settings, profile, resolveObservedHourlyStats(state), null, priceData, planningCeiling)
+    : null;
+  const plannedKWh = plan?.plannedKWh ?? day.bucketStartUtcMs.map(() => 0);
+  const snapshot = buildDailyBudgetSnapshot({
+    context: day,
     settings,
     enabled,
     plannedKWh,
-    plannedGrossUncontrolledKWh: buildResult?.plannedGrossUncontrolledKWh,
-    ...resolvePlannedSplit(plannedKWh, breakdown),
+    plannedGrossUncontrolledKWh: plan?.plannedGrossUncontrolledKWh,
+    // Off, the day plans nothing, so there is no load to split.
+    plannedUncontrolledKWh: plan?.plannedUncontrolledKWh ?? plannedKWh.slice(),
+    plannedControlledKWh: plan?.plannedControlledKWh ?? plannedKWh.map(() => 0),
     priceData,
-    budget,
+    budget: computeBudgetState(
+      day,
+      enabled,
+      settings.dailyBudgetKWh,
+      plannedKWh,
+      profile.sampleCount,
+      getProfileSplitSampleCount(state),
+    ),
     frozen: false,
     planningCeiling,
   });
+  return { snapshot, priceData, bounds: plan?.bounds ?? resolvePlanBounds(day, null) };
 };

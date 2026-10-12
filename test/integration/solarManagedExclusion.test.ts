@@ -206,17 +206,17 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
-    const observations = buildDeviceDiagnosticsObservations({
+    const observations = buildDeviceDiagnosticsObservations(
       context,
-      power: context,
+      context,
       planDevices,
-      restoreResult: emptyRestoreResult,
-      budgetPressureEligible: false,
-      smartTaskDrivingDeviceIds: new Set<string>(),
-    });
+      emptyRestoreResult,
+      false,
+      new Set<string>(),
+    );
     const solarObservation = observations.find((o) => o.deviceId === SOLAR_ID);
-    expect(solarObservation?.eligibleForStarvation).toBe(false);
-    expect(solarObservation?.countingCause).toBeNull();
+    expect(solarObservation?.starvation.eligibleForStarvation).toBe(false);
+    expect(solarObservation?.starvation.countingCause).toBeNull();
   });
 
   it('PV production is NEVER recorded into the per-device consumption buckets (diagnostics-as-load)', async () => {

@@ -287,7 +287,7 @@ export class WeatherCollector {
   private refreshCachedAdvice(): void {
     if (!this.state.latestFit) return;
     if (this.state.latestFit.recentResidualQ80 !== undefined && this.state.latestSuggestion) return;
-    const refreshed = this.deps.recomputeDerived?.(this.state) ?? this.state;
+    const refreshed = this.deps.recomputeDerived(this.state);
     if (refreshed !== this.state) this.markDirty();
     this.state = refreshed;
   }
@@ -650,7 +650,7 @@ export class WeatherCollector {
     // fresh suggestion to the daily budget once if opted in (never per caught-up
     // day — the suggestion targets the just-started day).
     if (pendingKeys.length > 0) {
-      this.state = performBudgetAutoApply(this.deps.recomputeDerived?.(this.state) ?? this.state, this.deps);
+      this.state = performBudgetAutoApply(this.deps.recomputeDerived(this.state), this.deps);
       this.markDirty();
     }
   }

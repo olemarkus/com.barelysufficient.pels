@@ -18,7 +18,9 @@ const deps = (over: Partial<Parameters<typeof performBudgetAutoApply>[1]> = {}) 
   getSettings: () => ({ enabled: true, autoApplyDailyBudget: true }),
   getNowMs: () => NOW_MS,
   applySuggestedDailyBudget: vi.fn(() => true),
+  getAppliedDailyBudgetKwh: (): number | undefined => undefined,
   onDailyBudgetAutoApplied: vi.fn(),
+  recordBudgetDecision: vi.fn(),
   getPowerLimitSettings: () => capacityOnlyPowerLimits(10),
   getTimeZone: () => 'UTC',
   logger,
@@ -173,18 +175,17 @@ describe('budget advice decision recording', () => {
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'budget_advice_history_record_failed' }));
   });
 
-  it('does not add a budget read when opted out without a journal, and contains journal read failures', () => {
+  it('contains journal read failures when opted out', () => {
     const readBudget = vi.fn(() => { throw new Error('read unavailable'); });
     const warn = vi.fn();
+    const recordBudgetDecision = vi.fn();
     const d = deps({
       getSettings: () => ({ enabled: true, autoApplyDailyBudget: false }),
       getAppliedDailyBudgetKwh: readBudget,
+      recordBudgetDecision,
       logger: { info: vi.fn(), warn } as unknown as PinoLogger,
     });
     expect(performBudgetAutoApply(baseState(), d)).toEqual(baseState());
-    expect(readBudget).not.toHaveBeenCalled();
-    const recordBudgetDecision = vi.fn();
-    expect(() => performBudgetAutoApply(baseState(), { ...d, recordBudgetDecision })).not.toThrow();
     expect(recordBudgetDecision).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledOnce();
   });

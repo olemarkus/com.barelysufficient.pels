@@ -309,11 +309,7 @@ export class DeviceDiagnosticsPersistence {
   }
 
   private getRecentDateKeys(currentDateKey: string, count: number): string[] {
-    return getModelRecentDateKeys({
-      currentDateKey,
-      count,
-      timeZone: this.deps.getTimeZone(),
-    });
+    return getModelRecentDateKeys(currentDateKey, count, this.deps.getTimeZone());
   }
 
   private pruneExpiredDays(nowTs: number): number {

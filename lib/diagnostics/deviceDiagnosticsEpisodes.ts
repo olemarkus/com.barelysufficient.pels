@@ -1,5 +1,4 @@
 import type {
-  DeviceDiagnosticsPlanObservation,
   DeviceDiagnosticsStarvationResetReasonCode,
   LiveDeviceDiagnostics,
   LiveStarvationObservation,
@@ -9,7 +8,7 @@ import type {
 import type { DeviceDiagnosticsStarvationPauseReason } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
-import { isFiniteNumber } from './deviceDiagnosticsNumbers';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 const moduleLogger = getLogger('diagnostics/device');
 
@@ -21,26 +20,6 @@ export const createEmptyStarvationState = (): LiveStarvationState => ({
   starvedAccumulatedMs: 0,
   starvationCause: null,
   starvationPauseReason: null,
-});
-
-// `pelsHoldsBelowTarget` is resolved in the PRODUCER (`lib/plan/planDiagnostics.ts`)
-// and carried on the observation, so this is a copy, not a second derivation. It
-// used to be computed here while the demand/censoring counters derived their own,
-// narrower notion of the same thing from a setpoint gap alone — the two disagreed
-// by hours a day on turn_off-shed devices.
-export const normalizeStarvationObservation = (
-  observation: DeviceDiagnosticsPlanObservation,
-): LiveStarvationObservation => ({
-  eligibleForStarvation: observation.eligibleForStarvation,
-  currentTemperatureC: observation.currentTemperatureC,
-  intendedNormalTargetC: observation.intendedNormalTargetC,
-  commandedTargetC: observation.commandedTargetC,
-  targetStepC: observation.targetStepC,
-  pelsCommandsTurnOffShed: observation.pelsCommandsTurnOffShed,
-  suppressionState: observation.suppressionState,
-  countingCause: observation.countingCause,
-  pauseReason: observation.pauseReason,
-  pelsHoldsBelowTarget: observation.pelsHoldsBelowTarget,
 });
 
 const isValidStarvationObservation = (observation: LiveStarvationObservation): boolean => (

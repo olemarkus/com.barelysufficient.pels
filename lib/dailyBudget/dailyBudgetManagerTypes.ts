@@ -2,7 +2,8 @@ import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySet
 import type { PowerTrackerState } from '../power/tracker';
 import type { CombinedPriceData } from './dailyBudgetMath';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
-import type { PriceData } from './dailyBudgetState';
+import type { PlanBounds } from './dailyBudgetPlanCore';
+import type { PriceData } from './dailyBudgetPrices';
 import type {
   DailyBudgetSettings,
   DailyBudgetState,
@@ -39,13 +40,6 @@ export type ExistingPlanState = {
   deviationExisting: number;
 };
 
-export type RebuildPlanDebug = {
-  lockCurrentBucket: boolean;
-  shouldLockCurrent: boolean;
-  remainingStartIndex: number;
-  hasPreviousPlan: boolean;
-};
-
 export type DailyBudgetUpdateParams = {
   nowMs?: number;
   timeZone: string;
@@ -68,8 +62,8 @@ export type PlanResult = {
   plannedGrossUncontrolledKWh?: number[];
   plannedControlledKWh?: number[];
   priceData: PriceData;
-  shouldLog: boolean;
-  planDebug?: RebuildPlanDebug;
+  /** Present when this update rebuilt the plan; a rebuild is what the plan debug logs. */
+  bounds?: PlanBounds;
   uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 };
 

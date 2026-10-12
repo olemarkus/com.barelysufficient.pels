@@ -77,8 +77,7 @@ export function normalizeLastAutoApply(raw: unknown): WeatherHistoryState['lastA
   return { dateKey, kwh, appliedAtMs };
 }
 
-const finiteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
-const optionalFinite = (value: unknown): number | undefined => (finiteNumber(value) ? value : undefined);
+const optionalFinite = (value: unknown): number | undefined => (isFiniteNumber(value) ? value : undefined);
 const optionalString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
 
 /**
@@ -91,7 +90,9 @@ function normalizeMetDay(raw: unknown): MetDaySummary | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const blob = raw as Record<string, unknown>;
   if (typeof blob.dateKey !== 'string') return undefined;
-  if (!finiteNumber(blob.meanTempC) || !finiteNumber(blob.minTempC) || !finiteNumber(blob.maxTempC)) return undefined;
+  if (!isFiniteNumber(blob.meanTempC) || !isFiniteNumber(blob.minTempC) || !isFiniteNumber(blob.maxTempC)) {
+    return undefined;
+  }
   const eveningMinTempC = optionalFinite(blob.eveningMinTempC);
   const eveningMeanTempC = optionalFinite(blob.eveningMeanTempC);
   const symbolCode = optionalString(blob.symbolCode);
@@ -121,7 +122,7 @@ function normalizeMetDay(raw: unknown): MetDaySummary | undefined {
 export function normalizeMetForecast(raw: unknown): WeatherMetForecastCache | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const blob = raw as Record<string, unknown>;
-  if (!finiteNumber(blob.fetchedAtMs)) return undefined;
+  if (!isFiniteNumber(blob.fetchedAtMs)) return undefined;
   if (typeof blob.byDay !== 'object' || blob.byDay === null) return undefined;
   const byDay: Record<string, MetDaySummary> = Object.fromEntries(
     Object.values(blob.byDay as Record<string, unknown>).flatMap((value) => {

@@ -10,6 +10,7 @@ import type { Logger as PinoLogger } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import type { DailyBudgetManager } from './dailyBudgetManager';
 import type { DailyBudgetPlanInputs } from './dailyBudgetManagerTypes';
+import type { DailyBudgetPreview } from './dailyBudgetPreview';
 import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
 
 const moduleLogger = getLogger('dailyBudget/service');
@@ -33,18 +34,13 @@ export const buildTomorrowPreview = (
   inputs: DailyBudgetPlanInputs,
   manager: DailyBudgetManager,
   settings: DailyBudgetSettings,
-): DailyBudgetDayPayload | null => {
+): DailyBudgetPreview | null => {
   try {
     const timeZone = deps.resolveTimeZone();
     const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
     const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
     const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
-    return manager.buildPreview({
-      dayStartUtcMs: tomorrowStartUtcMs,
-      timeZone,
-      settings,
-      ...inputs,
-    });
+    return manager.buildPreview(tomorrowStartUtcMs, timeZone, settings, inputs);
   } catch (error) {
     (deps.structuredLog ?? moduleLogger).error({
       event: 'daily_budget_tomorrow_preview_failed',
@@ -84,14 +80,7 @@ export const buildYesterdayHistory = (
   if (!context) return null;
   const { timeZone, yesterdayStartUtcMs } = context;
   try {
-    return manager.buildHistory({
-      dayStartUtcMs: yesterdayStartUtcMs,
-      timeZone,
-      powerTracker: deps.getPowerTracker(),
-      ...inputs,
-      priceShapingEnabled: settings.priceShapingEnabled,
-      controlledUsageWeight: settings.controlledUsageWeight,
-    });
+    return manager.buildHistory(yesterdayStartUtcMs, timeZone, deps.getPowerTracker(), settings, inputs);
   } catch (error) {
     (deps.structuredLog ?? moduleLogger).error({
       event: 'daily_budget_yesterday_history_failed',

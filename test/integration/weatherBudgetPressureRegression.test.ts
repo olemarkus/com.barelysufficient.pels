@@ -82,6 +82,9 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
       getSettings: () => ({ enabled: true, autoApplyDailyBudget: true }),
       getNowMs: deps.getNowMs, getTimeZone: deps.getTimeZone,
       getPowerLimitSettings: deps.getPowerLimitSettings, applySuggestedDailyBudget, logger,
+      getAppliedDailyBudgetKwh: (): number | undefined => undefined,
+      onDailyBudgetAutoApplied: () => undefined,
+      recordBudgetDecision: () => undefined,
     };
     performBudgetAutoApply(migrated, applyDeps);
     expect(applySuggestedDailyBudget).not.toHaveBeenCalled();

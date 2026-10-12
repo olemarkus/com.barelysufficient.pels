@@ -1,13 +1,9 @@
 import { getDateKeyStartMs, getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
 import type { BudgetAdviceDecision } from '../../packages/contracts/src/budgetDiagnostics';
-import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import { planningPowerCeiling } from '../../packages/shared-domain/src/settings/powerLimits';
-import type { Logger as PinoLogger } from 'pino';
-import type {
-  WeatherAdvisorSettings,
-  WeatherHistoryState,
-} from '../../packages/contracts/src/weatherAdvisorTypes';
+import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
+import type { WeatherCollectorDeps } from './weatherCollectorDeps';
 
 /**
  * Weather-insight daily-budget auto-apply. Kept out of the collector so the
@@ -17,22 +13,23 @@ import type {
  * Design of record: `notes/weather-insight-spec.md` + the auto-apply plan.
  */
 
-/** Just the collector deps this needs — declared locally to avoid coupling to WeatherCollectorDeps. */
-type AutoApplyDeps = {
-  getSettings: () => WeatherAdvisorSettings;
-  getNowMs: () => number;
-  /** Returns true when applied, false when the daily budget feature is off (leave-off semantics). */
-  applySuggestedDailyBudget?: (suggestedKwh: number) => boolean;
-  /** The daily budget in force right now, for the decision journal. `undefined` = feature off/unreadable. */
-  getAppliedDailyBudgetKwh?: () => number | undefined;
-  /** Notifies setup that the auto-apply landed so it can fire the Flow trigger; see WeatherCollectorDeps. */
-  onDailyBudgetAutoApplied?: (info: { budgetKwh: number; forecastMeanTempC: number }) => void;
-  /** The live power-limit settings; the recorded daily ceiling is their planning ceiling. */
-  getPowerLimitSettings: () => PowerLimitSettings;
-  getTimeZone: () => string;
-  recordBudgetDecision?: (decision: BudgetAdviceDecision) => void;
-  logger: PinoLogger;
-};
+/**
+ * The slice of `WeatherCollectorDeps` the auto-apply reads: the settings, the
+ * daily-budget apply and read, the Flow notification, the power-limit settings
+ * the recorded daily ceiling is resolved from, and the decision journal.
+ */
+type AutoApplyDeps = Pick<
+  WeatherCollectorDeps,
+  | 'getSettings'
+  | 'getNowMs'
+  | 'applySuggestedDailyBudget'
+  | 'getAppliedDailyBudgetKwh'
+  | 'onDailyBudgetAutoApplied'
+  | 'getPowerLimitSettings'
+  | 'getTimeZone'
+  | 'recordBudgetDecision'
+  | 'logger'
+>;
 
 /**
  * At a completed rollup (state already refit), apply the fresh suggestion to the
@@ -54,8 +51,8 @@ export function performBudgetAutoApply(state: WeatherHistoryState, deps: AutoApp
     return state;
   }
   // The recommendation already includes demand correction; allow it to move both ways.
-  const currentKwh = deps.getAppliedDailyBudgetKwh?.() ?? null;
-  if (!(deps.applySuggestedDailyBudget?.(suggestion.suggestedBudgetKwh) ?? false)) {
+  const currentKwh = readAppliedBudget(deps);
+  if (!deps.applySuggestedDailyBudget(suggestion.suggestedBudgetKwh)) {
     recordDecision(state, deps, 'budget_disabled_or_unavailable', currentKwh);
     return state;
   }
@@ -65,7 +62,7 @@ export function performBudgetAutoApply(state: WeatherHistoryState, deps: AutoApp
     dateKey: suggestion.targetDateKey,
     toKwh: suggestion.suggestedBudgetKwh,
   });
-  deps.onDailyBudgetAutoApplied?.({
+  deps.onDailyBudgetAutoApplied({
     budgetKwh: suggestion.suggestedBudgetKwh,
     forecastMeanTempC: suggestion.forecastMeanTempC,
   });
@@ -85,7 +82,7 @@ function recordDecision(
   budgetBeforeKwh: number | null,
 ): void {
   const suggestion = state.latestSuggestion;
-  if (!suggestion || !deps.recordBudgetDecision) return;
+  if (!suggestion) return;
   try {
     deps.recordBudgetDecision({
       budgetAlgorithmVersion: 2,
@@ -129,7 +126,7 @@ function resolveDailyCeiling(targetDateKey: string, deps: AutoApplyDeps): number
 }
 
 function readAppliedBudget(deps: AutoApplyDeps): number | null {
-  return deps.getAppliedDailyBudgetKwh?.() ?? null;
+  return deps.getAppliedDailyBudgetKwh() ?? null;
 }
 
 function numberOrNull(value: number | undefined): number | null {

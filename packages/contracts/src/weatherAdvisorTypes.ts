@@ -371,7 +371,7 @@ export type EnergySignatureSuggestion = {
   beyondObservedCold: boolean;
   /** Forecast warmer than any observed day; evaluated at the warmest observed instead. */
   beyondObservedWarm: boolean;
-  /** The daily budget has recently been limiting the home — the suggestion was leaned up. */
+  /** The daily budget has recently been limiting the home — the suggestion's headroom was leaned q80→q90. */
   budgetMayBeLimiting: boolean;
   /** kWh the budget-pressure loop added on top of the model, after its ceiling. 0 when idle. */
   budgetPressureKwh: number;

@@ -1,8 +1,10 @@
 import {
+  buildLocalDayBuckets,
   formatDayFirstInTimeZone,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getMonthStartInTimeZone,
+  getNextLocalDayStartUtcMs,
   getStartOfDayInTimeZone,
   getWeekStartInTimeZone,
   getZonedParts,
@@ -154,6 +156,24 @@ export const getHourlyPatternMeta = (buckets: Record<string, number> | undefined
     ? `${dayOnly(startDate)}–${dayMonth(endDate)}`
     : `${dayMonth(startDate)}–${dayMonth(endDate)}`;
   return `Average kWh per hour based on the last ${days} days (${range}).`;
+};
+
+/**
+ * Today's metered kWh: the sum of the local day's hourly buckets, keyed by hour
+ * start the way the daily budget counts them.
+ */
+export const sumTodayUsageKWh = (
+  buckets: Record<string, number> | undefined,
+  now: Date,
+  timeZone: string,
+): number => {
+  const dayStartUtcMs = getDateKeyStartMs(getDateKeyInTimeZone(now, timeZone), timeZone);
+  const { bucketStartUtcMs } = buildLocalDayBuckets({
+    dayStartUtcMs,
+    nextDayStartUtcMs: getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone),
+    timeZone,
+  });
+  return bucketStartUtcMs.reduce((sum, ts) => sum + (buckets?.[new Date(ts).toISOString()] ?? 0), 0);
 };
 
 export const getPowerTimeContext = (now: Date, timeZone: string) => {

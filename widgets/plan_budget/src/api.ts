@@ -1,5 +1,6 @@
 import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
-import type { CombinedPriceData, CombinedPriceEntry } from '../../../lib/dailyBudget/dailyBudgetPrices';
+import type { CombinedPriceData } from '../../../lib/dailyBudget/dailyBudgetPrices';
+import type { CombinedPriceEntry } from '../../../lib/price/priceTypes';
 import type { DailyBudgetUiRead } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { DailyBudgetHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import { buildPlanPriceWidgetPayload } from './planPriceWidgetPayload';

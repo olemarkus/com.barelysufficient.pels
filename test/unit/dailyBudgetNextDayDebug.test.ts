@@ -21,6 +21,8 @@ const INPUTS: DailyBudgetPlanInputs = {
     prices: Array.from({ length: 24 }, (_, index) => ({
       startsAt: new Date(TOMORROW_START_UTC_MS + index * HOUR_MS).toISOString(),
       total: 100 + index * 20,
+      isCheap: false,
+      isExpensive: false,
     })),
   },
   priceOptimizationEnabled: true,
@@ -37,12 +39,9 @@ const buildManager = (isDebugTopicEnabled = true) => {
   return { manager, debugStructured };
 };
 
-const buildTomorrowPreview = (manager: DailyBudgetManager, settings: DailyBudgetSettings) => manager.buildPreview({
-  dayStartUtcMs: TOMORROW_START_UTC_MS,
-  timeZone: TZ,
-  settings,
-  ...INPUTS,
-});
+const buildTomorrowPreview = (manager: DailyBudgetManager, settings: DailyBudgetSettings) => (
+  manager.buildPreview(TOMORROW_START_UTC_MS, TZ, settings, INPUTS)
+);
 
 const nextDayEntries = (debugStructured: ReturnType<typeof vi.fn<StructuredDebugEmitter>>) => (
   debugStructured.mock.calls
@@ -68,8 +67,8 @@ describe('daily budget next-day debug', () => {
         settings: { dailyBudgetKWh: number };
       };
     };
-    expect(payload.dateKey).toBe(preview.dateKey);
-    expect(payload.buckets).toEqual(preview.buckets);
+    expect(payload.dateKey).toBe(preview.snapshot.dateKey);
+    expect(payload.buckets).toEqual(preview.snapshot.buckets);
     expect(payload.meta.priceSpreadFactor).toBeGreaterThan(0);
     expect(payload.meta.effectivePriceShapingFlexShare).toBeCloseTo(SETTINGS.priceShapingFlexShare, 6);
     expect(payload.meta.settings.dailyBudgetKWh).toBe(SETTINGS.dailyBudgetKWh);

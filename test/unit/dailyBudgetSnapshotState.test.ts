@@ -7,7 +7,7 @@
 // planning-price change re-seeds tomorrow/yesterday allocations.
 import { describe, expect, it } from 'vitest';
 import { computeAdjacentDaysSeedSignature } from '../../lib/dailyBudget/dailyBudgetSnapshotState';
-import type { CombinedPriceEntry } from '../../lib/dailyBudget/dailyBudgetPrices';
+import type { CombinedPriceEntry } from '../../lib/price/priceTypes';
 
 const TODAY_KEY = '2026-06-01';
 const START_A = '2026-06-01T00:00:00.000Z';

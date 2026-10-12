@@ -1,8 +1,10 @@
 import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
-import { computePlanDeviation, type DayContext, type PriceData } from './dailyBudgetState';
-import type { ExistingPlanState, RebuildPlanDebug } from './dailyBudgetManagerTypes';
+import { computePlanDeviation, type DayContext } from './dailyBudgetState';
+import type { ExistingPlanState } from './dailyBudgetManagerTypes';
 import { getProfileBlendConfidence } from './dailyBudgetMath';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
+import type { PlanBounds } from './dailyBudgetPlanCore';
+import type { PriceData } from './dailyBudgetPrices';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   OBSERVED_HOURLY_MAX_QUANTILE,
@@ -32,21 +34,15 @@ type NumericArraySummary = {
   mean: number | null;
 };
 
-export function resolveExistingPlanState(params: {
-  state: DailyBudgetState;
-  context: DayContext;
-  enabled: boolean;
-  dailyBudgetKWh: number;
-}): {
+export function resolveExistingPlanState(
+  state: DailyBudgetState,
+  context: DayContext,
+  enabled: boolean,
+  dailyBudgetKWh: number,
+): {
   planState: ExistingPlanState;
   resetPlanState: boolean;
 } {
-  const {
-    state,
-    context,
-    enabled,
-    dailyBudgetKWh,
-  } = params;
   const planStateMismatch = hasPlanStateMismatch(state, context);
   const existingPlan = getExistingPlan(
     state,
@@ -55,14 +51,13 @@ export function resolveExistingPlanState(params: {
   );
   let deviationExisting = 0;
   if (enabled && existingPlan) {
-    const deviation = computePlanDeviation({
+    const deviation = computePlanDeviation(
+      context,
       enabled,
-      plannedKWh: existingPlan,
+      existingPlan,
       dailyBudgetKWh,
-      currentBucketIndex: context.currentBucketIndex,
-      currentBucketProgress: context.currentBucketProgress,
-      usedNowKWh: context.budgetControlUsedNowKWh,
-    });
+      context.budgetControlUsedNowKWh,
+    );
     deviationExisting = deviation.deviationKWh;
   }
   return {
@@ -72,37 +67,6 @@ export function resolveExistingPlanState(params: {
       deviationExisting,
     },
     resetPlanState: planStateMismatch,
-  };
-}
-
-export function resolvePlanLockState(params: {
-  context: DayContext;
-  existingPlan: number[] | null;
-  lastPlanBucketStartUtcMs?: number | null;
-}): {
-  lockCurrentBucket: boolean;
-  hasPreviousPlan: boolean;
-  shouldLockCurrent: boolean;
-  remainingStartIndex: number;
-  // Absent when the day has no buckets (or the current index falls outside
-  // them); the manager mirrors it straight into the nullable state field.
-  currentBucketStartUtcMs: number | undefined;
-} {
-  const { context, existingPlan, lastPlanBucketStartUtcMs } = params;
-  const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
-  const lockCurrentBucket = lastPlanBucketStartUtcMs === currentBucketStartUtcMs;
-  const hasPreviousPlan = Array.isArray(existingPlan)
-    && existingPlan.length === context.bucketStartUtcMs.length;
-  const shouldLockCurrent = Boolean(lockCurrentBucket) && hasPreviousPlan;
-  const remainingStartIndex = shouldLockCurrent
-    ? Math.min(context.currentBucketIndex + 1, context.bucketStartUtcMs.length)
-    : context.currentBucketIndex;
-  return {
-    lockCurrentBucket,
-    hasPreviousPlan,
-    shouldLockCurrent,
-    remainingStartIndex,
-    currentBucketStartUtcMs,
   };
 }
 
@@ -174,7 +138,7 @@ export function logDailyBudgetPlanDebug(params: {
   state: DailyBudgetState;
   defaultProfile: number[];
   variant?: 'current' | 'next_day';
-  planDebug?: RebuildPlanDebug;
+  bounds: PlanBounds;
   uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 }): void {
   const {
@@ -187,7 +151,7 @@ export function logDailyBudgetPlanDebug(params: {
     state,
     defaultProfile,
     variant,
-    planDebug,
+    bounds,
     uncontrolledReserveDiagnostics,
   } = params;
   const { combinedWeights, learnedWeights, profileMeta } = getProfileDebugSummary(
@@ -195,58 +159,13 @@ export function logDailyBudgetPlanDebug(params: {
     settings,
     defaultProfile,
   );
-  const debugPayload = buildPlanDebugPayload({
-    snapshot,
-    settings,
-    priceOptimizationEnabled,
-    planningCeiling,
-    priceData,
-    state,
-    defaultProfile,
-    combinedWeights,
-    learnedWeights,
-    profileMeta,
-    planDebug,
-    uncontrolledReserveDiagnostics,
-  });
   debugStructured({
     event: 'daily_budget_profile_samples',
     sampleCount: profileMeta.sampleCount,
     splitSampleCount: profileMeta.splitSampleCount,
     controlledShare: profileMeta.controlledShare,
   });
-  debugStructured({ ...debugPayload, event: 'daily_budget_plan_debug', variant: variant ?? 'current' });
-}
-
-function buildPlanDebugPayload(params: {
-  snapshot: DailyBudgetDayPayload;
-  settings: DailyBudgetSettings;
-  priceOptimizationEnabled: boolean;
-  planningCeiling: PowerLimitCeiling | null;
-  priceData: PriceData;
-  state: DailyBudgetState;
-  defaultProfile: number[];
-  combinedWeights: number[];
-  learnedWeights: number[] | null;
-  profileMeta: ReturnType<typeof getProfileDebugSummary>['profileMeta'];
-  planDebug?: RebuildPlanDebug;
-  uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
-}): DailyBudgetDayPayload & { meta: Record<string, unknown> } {
-  const {
-    snapshot,
-    settings,
-    priceOptimizationEnabled,
-    planningCeiling,
-    priceData,
-    state,
-    defaultProfile,
-    combinedWeights,
-    learnedWeights,
-    profileMeta,
-    planDebug,
-    uncontrolledReserveDiagnostics,
-  } = params;
-  return {
+  debugStructured({
     ...snapshot,
     meta: {
       settings: {
@@ -276,11 +195,13 @@ function buildPlanDebugPayload(params: {
       uncontrolledReserveMaxQuantile: UNCONTROLLED_RESERVE_MAX_QUANTILE,
       ...buildObservedStatsDebugMeta(state),
       uncontrolledReserveDiagnostics: uncontrolledReserveDiagnostics ?? null,
-      priceSpreadFactor: priceData.priceSpreadFactor ?? null,
-      effectivePriceShapingFlexShare: priceData.effectivePriceShapingFlexShare ?? null,
-      planDebug: planDebug ?? null,
+      priceSpreadFactor: priceData.priceSpreadFactor,
+      effectivePriceShapingFlexShare: priceData.effectivePriceShapingFlexShare,
+      planDebug: bounds,
     },
-  };
+    event: 'daily_budget_plan_debug',
+    variant: variant ?? 'current',
+  });
 }
 
 function buildObservedStatsDebugMeta(state: DailyBudgetState): Record<string, unknown> {

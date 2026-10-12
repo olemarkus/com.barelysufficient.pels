@@ -169,7 +169,7 @@ describe('current-hour price level is resolved once per plan build', () => {
 
     // mode 20 + cheapDelta 2, formatted by `buildDiagnosticsObservation` — proves the
     // diagnostics loop read the shared level rather than its own per-device call.
-    expect(deviceDiagnostics.observed[0].map((o) => o.desiredStateSummary))
+    expect(deviceDiagnostics.observed[0].map((o) => o.demand.desiredStateSummary))
       .toEqual(new Array(DEVICE_COUNT).fill('22.0C'));
     expect(getCurrentHourPriceLevel).toHaveBeenCalledTimes(1);
   });
@@ -190,7 +190,7 @@ describe('current-hour price level is resolved once per plan build', () => {
 
     // mode 20 - cheapDelta 2 = 18: cooling harder while power is cheap.
     expect(plan.devices.map(plannedTargetOf)).toEqual([18]);
-    expect(deviceDiagnostics.observed[0].map((o) => o.desiredStateSummary)).toEqual(['18.0C']);
+    expect(deviceDiagnostics.observed[0].map((o) => o.demand.desiredStateSummary)).toEqual(['18.0C']);
   });
 
   it('still applies the cheap-hour delta to every configured device', async () => {

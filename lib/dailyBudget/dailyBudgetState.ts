@@ -16,6 +16,7 @@ import {
   resolveCurrentBucketIndex,
   sumArray,
 } from './dailyBudgetMath';
+import type { PriceData } from './dailyBudgetPrices';
 import { alignWeightsToBuckets, buildBudgetProjection } from './dailyBudgetProjection';
 import type {
   ConfidenceDebug,
@@ -57,20 +58,12 @@ export type BudgetState = {
   profileBlendConfidence: number;
 };
 
-export type PriceData = {
-  prices?: Array<number | null>;
-  priceFactors?: Array<number | null>;
-  priceShapingActive: boolean;
-  priceSpreadFactor?: number;
-  effectivePriceShapingFlexShare?: number;
-};
+/** The budget plans only when it is on and has kWh to spread. */
+export const isDailyBudgetEnabled = (settings: DailyBudgetSettings): boolean => (
+  settings.enabled && settings.dailyBudgetKWh > 0
+);
 
-export const buildDayContext = (params: {
-  nowMs: number;
-  timeZone: string;
-  powerTracker: PowerTrackerState;
-}): DayContext => {
-  const { nowMs, timeZone, powerTracker } = params;
+export const buildDayContext = (nowMs: number, timeZone: string, powerTracker: PowerTrackerState): DayContext => {
   const dateKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
   const dayStartUtcMs = getDateKeyStartMs(dateKey, timeZone);
   const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
@@ -87,12 +80,7 @@ export const buildDayContext = (params: {
     bucketUsageExempt,
   } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
   const currentBucketIndex = resolveCurrentBucketIndex(dayStartUtcMs, bucketStartUtcMs.length, nowMs);
-  const currentBucketProgress = resolveBucketProgress({
-    nowMs,
-    bucketStartUtcMs,
-    currentBucketIndex,
-    nextDayStartUtcMs,
-  });
+  const currentBucketProgress = resolveBucketProgress(nowMs, bucketStartUtcMs, currentBucketIndex, nextDayStartUtcMs);
   const {
     budgetControlBucketUsage,
     budgetControlUsedNowKWh,
@@ -234,55 +222,38 @@ export const resolveBudgetCountedDayKwh = (
   return buildBudgetUsageViews({ bucketUsage, bucketUsageExempt }).budgetControlUsedNowKWh;
 };
 
-export const computePlanDeviation = (params: {
-  enabled: boolean;
-  plannedKWh: number[];
-  dailyBudgetKWh: number;
-  currentBucketIndex: number;
-  currentBucketProgress: number;
-  usedNowKWh: number;
-}): { allowedCumKWh: number[]; allowedNowKWh: number; deviationKWh: number } => {
-  const {
-    enabled,
-    plannedKWh,
-    dailyBudgetKWh,
-    currentBucketIndex,
-    currentBucketProgress,
-    usedNowKWh,
-  } = params;
+/** How far `usedNowKWh` runs ahead of the plan's allowance at this point of the day. */
+export const computePlanDeviation = (
+  context: DayContext,
+  enabled: boolean,
+  plannedKWh: number[],
+  dailyBudgetKWh: number,
+  usedNowKWh: number,
+): { allowedCumKWh: number[]; allowedNowKWh: number; deviationKWh: number } => {
   const allowedCumKWh = buildAllowedCumKWh(plannedKWh, dailyBudgetKWh);
   const allowedNowKWh = enabled
-    ? interpolateAllowedNowKWh(allowedCumKWh, currentBucketIndex, currentBucketProgress)
+    ? interpolateAllowedNowKWh(allowedCumKWh, context.currentBucketIndex, context.currentBucketProgress)
     : 0;
   const deviationKWh = enabled ? usedNowKWh - allowedNowKWh : 0;
   return { allowedCumKWh, allowedNowKWh, deviationKWh };
 };
 
-export const computeBudgetState = (params: {
-  context: DayContext;
-  enabled: boolean;
-  dailyBudgetKWh: number;
-  plannedKWh: number[];
-  profileSampleCount: number;
-  profileSplitSampleCount?: number;
-}): BudgetState => {
-  const {
+export const computeBudgetState = (
+  context: DayContext,
+  enabled: boolean,
+  dailyBudgetKWh: number,
+  plannedKWh: number[],
+  profileSampleCount: number,
+  profileSplitSampleCount?: number,
+): BudgetState => {
+  const plannedWeight = buildWeightsFromPlan(plannedKWh);
+  const { allowedCumKWh, allowedNowKWh, deviationKWh } = computePlanDeviation(
     context,
     enabled,
-    dailyBudgetKWh,
-    plannedKWh,
-    profileSampleCount,
-    profileSplitSampleCount,
-  } = params;
-  const plannedWeight = buildWeightsFromPlan(plannedKWh);
-  const { allowedCumKWh, allowedNowKWh, deviationKWh } = computePlanDeviation({
-    enabled,
     plannedKWh,
     dailyBudgetKWh,
-    currentBucketIndex: context.currentBucketIndex,
-    currentBucketProgress: context.currentBucketProgress,
-    usedNowKWh: context.usedNowKWh,
-  });
+    context.usedNowKWh,
+  );
   const remainingKWh = enabled ? dailyBudgetKWh - context.usedNowKWh : 0;
   const baseConfidence = getProfileBlendConfidence(profileSampleCount);
   const splitConfidence = typeof profileSplitSampleCount === 'number'
@@ -318,13 +289,12 @@ function interpolateAllowedNowKWh(
   return prev + (current - prev) * progress;
 }
 
-function resolveBucketProgress(params: {
-  nowMs: number;
-  bucketStartUtcMs: number[];
-  currentBucketIndex: number;
-  nextDayStartUtcMs: number;
-}): number {
-  const { nowMs, bucketStartUtcMs, currentBucketIndex, nextDayStartUtcMs } = params;
+function resolveBucketProgress(
+  nowMs: number,
+  bucketStartUtcMs: number[],
+  currentBucketIndex: number,
+  nextDayStartUtcMs: number,
+): number {
   if (bucketStartUtcMs.length === 0) return 0;
   const clampedIndex = Math.max(0, Math.min(currentBucketIndex, bucketStartUtcMs.length - 1));
   const start = bucketStartUtcMs[clampedIndex];
@@ -389,13 +359,13 @@ export const buildDailyBudgetSnapshot = (params: {
     planningCeiling,
     stableWeights,
   } = params;
-  const allocationPressure = computeAllocationPressure({
-    dailyBudgetKWh: settings.dailyBudgetKWh,
-    enabled,
+  const allocationPressure = computeAllocationPressure(
     context,
+    settings.dailyBudgetKWh,
+    enabled,
     plannedKWh,
     planningCeiling,
-  });
+  );
 
   // Stable day-start pace weights. Today's caller passes the profile's
   // combinedWeights (stable); tomorrow/yesterday have no intraday re-pacing, so
@@ -471,14 +441,13 @@ export const buildDailyBudgetSnapshot = (params: {
 
 const HOURS_PER_DAY = 24;
 
-function computeAllocationPressure(params: {
-  dailyBudgetKWh: number;
-  enabled: boolean;
-  context: DayContext;
-  plannedKWh: number[];
-  planningCeiling: PowerLimitCeiling | null;
-}): DailyBudgetAllocationPressure {
-  const { dailyBudgetKWh, enabled, context, plannedKWh, planningCeiling } = params;
+function computeAllocationPressure(
+  context: DayContext,
+  dailyBudgetKWh: number,
+  enabled: boolean,
+  plannedKWh: number[],
+  planningCeiling: PowerLimitCeiling | null,
+): DailyBudgetAllocationPressure {
   const powerLimitCeiling = planningCeiling === null ? null : {
     limit: planningCeiling.limit,
     maxFittingDailyBudgetKWh: Math.max(0, planningCeiling.kw) * HOURS_PER_DAY,

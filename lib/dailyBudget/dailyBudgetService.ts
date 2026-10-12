@@ -17,6 +17,7 @@ import {
   buildYesterdayHistory as computeYesterdayHistory,
   type DailyBudgetAdjacentDayDeps,
 } from './dailyBudgetAdjacentDays';
+import type { DailyBudgetPreview } from './dailyBudgetPreview';
 import { resolveBudgetCountedDayKwh } from './dailyBudgetState';
 import { composeHotPathDailyBudgetSnapshot, computeAdjacentDaysSeedSignature } from './dailyBudgetSnapshotState';
 import {
@@ -300,7 +301,7 @@ export class DailyBudgetService {
     inputs: DailyBudgetPlanInputs,
     manager: DailyBudgetManager = this.manager,
     settings: DailyBudgetSettings = this.settings,
-  ): DailyBudgetDayPayload | null {
+  ): DailyBudgetPreview | null {
     return computeTomorrowPreview(this.adjacentDayDeps, nowMs, inputs, manager, settings);
   }
 
@@ -428,7 +429,7 @@ export class DailyBudgetService {
       includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
     });
     const tomorrowSnapshot = this.applyOverallModelConfidence(
-      this.buildTomorrowPreview(nowMs, inputs, manager, settings),
+      this.buildTomorrowPreview(nowMs, inputs, manager, settings)?.snapshot ?? null,
       update.snapshot,
     );
     const candidate: DailyBudgetUiPayload = {
@@ -538,7 +539,7 @@ export class DailyBudgetService {
   ): void {
     const todayKey = snapshot.dateKey;
     const tomorrowPreview = this.buildTomorrowPreview(nowMs, inputs);
-    const tomorrowSnapshot = this.applyOverallModelConfidence(tomorrowPreview, snapshot);
+    const tomorrowSnapshot = this.applyOverallModelConfidence(tomorrowPreview?.snapshot ?? null, snapshot);
     const yesterdaySnapshot = this.applyOverallModelConfidence(this.buildYesterdayHistory(nowMs, inputs), snapshot);
     this.daySnapshots = {
       [todayKey]: snapshot,
@@ -558,7 +559,7 @@ export class DailyBudgetService {
   // rebuild of today's plan; the Budget Adjust candidate never reaches this. A
   // failed debug write must not fail the update: `manager.update` has already
   // handed over its persist reason, which a throw here would drop.
-  private logTomorrowPlan(preview: DailyBudgetDayPayload, inputs: DailyBudgetPlanInputs): void {
+  private logTomorrowPlan(preview: DailyBudgetPreview, inputs: DailyBudgetPlanInputs): void {
     try {
       this.manager.logNextDayPlan(preview, this.settings, inputs);
     } catch (error) {

@@ -261,16 +261,16 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       shortfall: { inShortfall: false },
       deps: defaultDeps,
     });
-    const observations = buildDeviceDiagnosticsObservations({
+    const observations = buildDeviceDiagnosticsObservations(
       context,
-      power: context,
+      context,
       planDevices,
-      restoreResult: emptyRestoreResult,
-      budgetPressureEligible: false,
-      smartTaskDrivingDeviceIds: new Set<string>(),
-    });
+      emptyRestoreResult,
+      false,
+      new Set<string>(),
+    );
     const batteryObservation = observations.find((o) => o.deviceId === BATTERY_ID);
-    expect(batteryObservation?.eligibleForStarvation).toBe(false);
-    expect(batteryObservation?.countingCause).toBeNull();
+    expect(batteryObservation?.starvation.eligibleForStarvation).toBe(false);
+    expect(batteryObservation?.starvation.countingCause).toBeNull();
   });
 });

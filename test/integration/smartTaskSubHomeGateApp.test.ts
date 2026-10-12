@@ -74,28 +74,32 @@ describe('smart-task sub-home gate (app lanes)', () => {
     const observation = (deviceId: string, name: string): DeviceDiagnosticsPlanObservation => ({
       deviceId,
       name,
-      includeDemandMetrics: true,
-      unmetDemand: true,
-      blockCause: 'headroom',
-      targetDeficitActive: true,
-      desiredStateSummary: '65.0C',
-      appliedStateSummary: '50.0C',
-      eligibleForStarvation: true,
-      currentTemperatureC: 50,
-      intendedNormalTargetC: 65,
-      commandedTargetC: 50,
-      targetStepC: 0.5,
-      pelsCommandsTurnOffShed: false,
-      // Commanded 50 against a 65 mode target — what the producer resolves for
-      // this shape.
-      pelsHoldsBelowTarget: true,
-      expectedPowerKw: 2,
-      budgetPressureDenied: true,
-      budgetUnservedDenied: false,
-      budgetDemandRecovered: false,
-      suppressionState: 'counting',
-      countingCause: 'daily_budget',
-      pauseReason: null,
+      demand: {
+        includeDemandMetrics: true,
+        unmetDemand: true,
+        blockCause: 'headroom',
+        targetDeficitActive: true,
+        desiredStateSummary: '65.0C',
+        appliedStateSummary: '50.0C',
+        expectedPowerKw: 2,
+        budgetPressureDenied: true,
+        budgetUnservedDenied: false,
+        budgetDemandRecovered: false,
+      },
+      starvation: {
+        eligibleForStarvation: true,
+        currentTemperatureC: 50,
+        intendedNormalTargetC: 65,
+        commandedTargetC: 50,
+        targetStepC: 0.5,
+        pelsCommandsTurnOffShed: false,
+        // Commanded 50 against a 65 mode target — what the producer resolves for
+        // this shape.
+        pelsHoldsBelowTarget: true,
+        suppressionState: 'counting',
+        countingCause: 'daily_budget',
+        pauseReason: null,
+      },
     });
     const start = Date.now();
     for (const offsetMinutes of [0, 9, 16]) {

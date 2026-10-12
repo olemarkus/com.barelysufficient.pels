@@ -764,7 +764,7 @@ describe('computeBacktestedConfidence', () => {
     includeBootstrapDebug?: boolean;
   }) => {
     const { daysAhead = 0, timeZone = TZ, powerTracker } = params;
-    const context = buildDayContext({ nowMs: NOW_MS + daysAhead * 24 * HOUR_MS, timeZone, powerTracker });
+    const context = buildDayContext(NOW_MS + daysAhead * 24 * HOUR_MS, timeZone, powerTracker);
     return resolveConfidence(
       params.cache, context, powerTracker, params.profileBlendConfidence ?? 1,
       params.refresh ?? false, params.includeBootstrapDebug ?? false,

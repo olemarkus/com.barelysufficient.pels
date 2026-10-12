@@ -96,6 +96,8 @@ const buildRolloverPayloads = async () => {
   ].map((total, hour) => ({
     startsAt: new Date(dayStart + hour * 60 * 60 * 1000).toISOString(),
     total,
+    isCheap: false,
+    isExpensive: false,
   }));
 
   manager.loadState({

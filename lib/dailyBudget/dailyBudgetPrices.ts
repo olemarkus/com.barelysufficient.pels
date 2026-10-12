@@ -1,64 +1,54 @@
 import { clamp } from '../../packages/shared-domain/src/utils/math';
 import { resolvePlanningPrice } from '../price/budgetPrice';
-import {
-  PRICE_SHAPING_FLEX_SHARE,
-  PRICE_SHAPING_PRICE_RANGE_EPSILON,
-} from './dailyBudgetConstants';
+import type { readCombinedPriceData } from '../price/priceStore';
+import { PRICE_SHAPING_PRICE_RANGE_EPSILON } from './dailyBudgetConstants';
+import type { DayContext } from './dailyBudgetState';
+import type { DailyBudgetSettings } from './dailyBudgetTypes';
 
-export type CombinedPriceEntry = {
-  startsAt: string;
-  total: number;
-  // Optional planning price (`budgetPrice ?? total` at consumption time) — the
-  // export/import blend the producer derives over the forecast solar surplus
-  // (see lib/price/budgetPrice.ts). Absent for non-prosumers, in which case
-  // every consumer falls back to `total` and behaviour is byte-identical.
-  budgetPrice?: number;
-  // Optional price-tier flags. Present on the canonical price store entries
-  // (see lib/price/priceTypes.ts) and consumed by the snapshot signature so
-  // that threshold/surcharge changes which only flip these flags still
-  // re-seed adjacent days. Optional here because legacy/test data may omit
-  // them.
-  isCheap?: boolean;
-  isExpensive?: boolean;
-};
+/** The combined prices as the price store's reader hands them out. */
+export type CombinedPriceData = NonNullable<ReturnType<typeof readCombinedPriceData>>;
 
-export type CombinedPriceData = {
-  prices?: CombinedPriceEntry[];
-  lastFetched?: string;
-  priceUnit?: string;
-};
-
-export function buildPriceDebugData(params: {
-  bucketStartUtcMs: number[];
-  currentBucketIndex: number;
-  combinedPrices?: CombinedPriceData | null;
-  priceOptimizationEnabled: boolean;
-  priceShapingEnabled: boolean;
-  priceShapingFlexShare?: number;
-}): {
+/**
+ * The day's prices as the plan and the payload read them. `priceSpreadFactor`
+ * and `effectivePriceShapingFlexShare` are 0 whenever shaping is not active.
+ */
+export type PriceData = {
+  /** Import money series (`total`): what the payload publishes and cost lines read. */
   prices?: Array<number | null>;
+  /** Planning-price series (`budgetPrice ?? total`); ≡ `prices` for non-prosumers. */
+  planningPrices?: Array<number | null>;
   priceFactors?: Array<number | null>;
   priceShapingActive: boolean;
-  priceSpreadFactor?: number;
-  effectivePriceShapingFlexShare?: number;
-} {
-  const priceShape = buildPriceFactors(params);
-  const configuredFlexShare = typeof params.priceShapingFlexShare === 'number'
-    ? params.priceShapingFlexShare
-    : PRICE_SHAPING_FLEX_SHARE;
-  const priceSpreadFactor = typeof priceShape.priceSpreadFactor === 'number'
-    ? priceShape.priceSpreadFactor
-    : 0;
-  const effectivePriceShapingFlexShare = priceShape.priceShapingActive
-    && priceSpreadFactor > 0
-    ? clamp(configuredFlexShare, 0, 1)
-    : 0;
+  priceSpreadFactor: number;
+  /** The share of the remaining budget that price shaping may move. */
+  effectivePriceShapingFlexShare: number;
+};
+
+/** A day that carries no prices: the budget is off. */
+export const NO_PRICE_DATA: PriceData = {
+  priceShapingActive: false,
+  priceSpreadFactor: 0,
+  effectivePriceShapingFlexShare: 0,
+};
+
+export function buildPriceData(
+  context: DayContext,
+  settings: DailyBudgetSettings,
+  combinedPrices: CombinedPriceData | null,
+  priceOptimizationEnabled: boolean,
+): PriceData {
+  const priceShape = buildPriceFactors(
+    context.bucketStartUtcMs,
+    context.currentBucketIndex,
+    combinedPrices,
+    priceOptimizationEnabled,
+    settings.priceShapingEnabled,
+  );
   return {
-    prices: priceShape.prices,
-    priceFactors: priceShape.priceFactors,
-    priceShapingActive: priceShape.priceShapingActive,
-    priceSpreadFactor,
-    effectivePriceShapingFlexShare,
+    ...priceShape,
+    effectivePriceShapingFlexShare: priceShape.priceShapingActive && priceShape.priceSpreadFactor > 0
+      ? clamp(settings.priceShapingFlexShare, 0, 1)
+      : 0,
   };
 }
 
@@ -101,43 +91,30 @@ export function buildPriceSeriesPair(params: {
   };
 }
 
-export function buildPriceFactors(params: {
-  bucketStartUtcMs: number[];
-  currentBucketIndex: number;
-  combinedPrices?: CombinedPriceData | null;
-  priceOptimizationEnabled: boolean;
-  priceShapingEnabled: boolean;
-}): {
-  prices?: Array<number | null>;
-  /** Planning-price series (`budgetPrice ?? total`); ≡ `prices` for non-prosumers. */
-  planningPrices?: Array<number | null>;
-  priceFactors?: Array<number | null>;
-  priceShapingActive: boolean;
-  priceSpreadFactor?: number;
-} {
-  const {
-    bucketStartUtcMs,
-    currentBucketIndex,
-    combinedPrices,
-    priceOptimizationEnabled,
-    priceShapingEnabled,
-  } = params;
-
+export function buildPriceFactors(
+  bucketStartUtcMs: number[],
+  currentBucketIndex: number,
+  combinedPrices: CombinedPriceData | null,
+  priceOptimizationEnabled: boolean,
+  priceShapingEnabled: boolean,
+): Omit<PriceData, 'effectivePriceShapingFlexShare'> {
   const safeCurrentBucketIndex = Math.max(0, currentBucketIndex);
   const series = buildPriceSeriesPair({ bucketStartUtcMs, combinedPrices });
   if (!series) {
-    return { priceShapingActive: false };
+    return { priceShapingActive: false, priceSpreadFactor: 0 };
   }
   // Money series (`prices`, on `total`) is what the payload publishes and cost
   // lines consume; the planning series drives shaping/allocation below.
   const { prices: pricesAll, planningPrices: planningPricesAll } = series;
-  if (!priceOptimizationEnabled || !priceShapingEnabled) {
-    return { prices: pricesAll, planningPrices: planningPricesAll, priceShapingActive: false };
-  }
+  const unshaped = {
+    prices: pricesAll,
+    planningPrices: planningPricesAll,
+    priceShapingActive: false,
+    priceSpreadFactor: 0,
+  };
+  if (!priceOptimizationEnabled || !priceShapingEnabled) return unshaped;
   const remainingPrices = planningPricesAll.slice(safeCurrentBucketIndex);
-  if (remainingPrices.some((value) => typeof value !== 'number')) {
-    return { prices: pricesAll, planningPrices: planningPricesAll, priceShapingActive: false };
-  }
+  if (remainingPrices.some((value) => typeof value !== 'number')) return unshaped;
   const numericPrices = remainingPrices as number[];
   const priceList = [...numericPrices].sort((a, b) => a - b);
   const median = percentile(priceList, 0.5);

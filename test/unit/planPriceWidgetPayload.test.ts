@@ -368,7 +368,7 @@ describe('plan price widget payload', () => {
       bucketStartUtc,
       bucketPrices: [1],
       combinedPrices: {
-        prices: [{ startsAt: bucketStartUtc[1], total: 123 }],
+        prices: [{ startsAt: bucketStartUtc[1], total: 123, isCheap: false, isExpensive: false }],
       },
     });
 
@@ -388,8 +388,8 @@ describe('plan price widget payload', () => {
       bucketPrices: [100, 200],
       combinedPrices: {
         prices: [
-          { startsAt: bucketStartUtc[0], total: 100 },
-          { startsAt: bucketStartUtc[1], total: 200, budgetPrice: 20 },
+          { startsAt: bucketStartUtc[0], total: 100, isCheap: false, isExpensive: false },
+          { startsAt: bucketStartUtc[1], total: 200, budgetPrice: 20, isCheap: false, isExpensive: false },
         ],
       },
     });
@@ -406,8 +406,8 @@ describe('plan price widget payload', () => {
       bucketPrices: [100, 200],
       combinedPrices: {
         prices: [
-          { startsAt: bucketStartUtc[0], total: 100 },
-          { startsAt: bucketStartUtc[1], total: 200 },
+          { startsAt: bucketStartUtc[0], total: 100, isCheap: false, isExpensive: false },
+          { startsAt: bucketStartUtc[1], total: 200, isCheap: false, isExpensive: false },
         ],
       },
     });
@@ -417,8 +417,8 @@ describe('plan price widget payload', () => {
       bucketPrices: [100, 200],
       combinedPrices: {
         prices: [
-          { startsAt: bucketStartUtc[0], total: 100, budgetPrice: 100 },
-          { startsAt: bucketStartUtc[1], total: 200, budgetPrice: 200 },
+          { startsAt: bucketStartUtc[0], total: 100, budgetPrice: 100, isCheap: false, isExpensive: false },
+          { startsAt: bucketStartUtc[1], total: 200, budgetPrice: 200, isCheap: false, isExpensive: false },
         ],
       },
     });
@@ -441,8 +441,8 @@ describe('plan price widget payload', () => {
       combinedPrices: {
         priceUnit: 'øre/kWh',
         prices: [
-          { startsAt: today.buckets.startUtc[0], total: 100 },
-          { startsAt: today.buckets.startUtc[1], total: 200, budgetPrice: 20 },
+          { startsAt: today.buckets.startUtc[0], total: 100, isCheap: false, isExpensive: false },
+          { startsAt: today.buckets.startUtc[1], total: 200, budgetPrice: 20, isCheap: false, isExpensive: false },
         ],
       },
       target: 'today',
@@ -482,7 +482,7 @@ describe('plan price widget payload', () => {
     expect(resolvePriceSeries({
       bucketStartUtc: [],
       bucketPrices: [],
-      combinedPrices: { prices: [{ startsAt: '2026-03-19T00:00:00.000Z', total: 123 }] },
+      combinedPrices: { prices: [{ startsAt: '2026-03-19T00:00:00.000Z', total: 123, isCheap: false, isExpensive: false }] },
     })).toEqual([]);
 
     expect(resolveLabel([], ['invalid-date'], 0)).toBe('');

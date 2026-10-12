@@ -1,4 +1,5 @@
 import { DailyBudgetManager } from '../../lib/dailyBudget/dailyBudgetManager';
+import { CONTROLLED_USAGE_WEIGHT, PRICE_SHAPING_FLEX_SHARE } from '../../lib/dailyBudget/dailyBudgetConstants';
 import {
   getDateKeyStartMs,
   getDateKeyInTimeZone,
@@ -26,14 +27,17 @@ describe('daily budget history reproduction', () => {
       dailyBudgetCaps: { [firstBucketKey]: 1 },
     };
 
-    const history = manager.buildHistory({
-      planningCeiling: null,
-      dayStartUtcMs: yesterdayStartUtcMs,
-      timeZone: TZ,
-      powerTracker,
+    const settings = {
+      enabled: true,
+      dailyBudgetKWh: 10,
+      priceShapingEnabled: true,
+      controlledUsageWeight: CONTROLLED_USAGE_WEIGHT,
+      priceShapingFlexShare: PRICE_SHAPING_FLEX_SHARE,
+    };
+    const history = manager.buildHistory(yesterdayStartUtcMs, TZ, powerTracker, settings, {
       combinedPrices: null,
       priceOptimizationEnabled: true,
-      priceShapingEnabled: true,
+      planningCeiling: null,
     });
 
     expect(history).not.toBeNull();

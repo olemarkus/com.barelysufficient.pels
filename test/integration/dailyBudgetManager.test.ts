@@ -6,7 +6,7 @@ import {
   getProfileBlendConfidence,
   normalizeWeights,
 } from '../../lib/dailyBudget/dailyBudgetMath';
-import { buildPriceFactors } from '../../lib/dailyBudget/dailyBudgetPrices';
+import { buildPriceData, buildPriceFactors } from '../../lib/dailyBudget/dailyBudgetPrices';
 import { PRICE_SHAPING_FLEX_SHARE } from '../../lib/dailyBudget/dailyBudgetConstants';
 import {
   buildLocalDayBuckets,
@@ -899,17 +899,11 @@ describe('daily budget price shaping', () => {
     const bucketStartUtcMs = [dayStart, dayStart + 60 * 60 * 1000];
     const priceData = {
       prices: [
-        { startsAt: new Date(bucketStartUtcMs[0]).toISOString(), total: 10 },
-        { startsAt: new Date(bucketStartUtcMs[1]).toISOString(), total: 100 },
+        { startsAt: new Date(bucketStartUtcMs[0]).toISOString(), total: 10, isCheap: false, isExpensive: false },
+        { startsAt: new Date(bucketStartUtcMs[1]).toISOString(), total: 100, isCheap: false, isExpensive: false },
       ],
     };
-    const result = buildPriceFactors({
-      bucketStartUtcMs,
-      currentBucketIndex: 0,
-      combinedPrices: priceData,
-      priceOptimizationEnabled: true,
-      priceShapingEnabled: true,
-    });
+    const result = buildPriceFactors(bucketStartUtcMs, 0, priceData, true, true);
     expect(result.priceShapingActive).toBe(true);
     expect(result.priceFactors?.[0]).toBeGreaterThan(result.priceFactors?.[1] ?? 0);
     expect(result.priceFactors?.[0]).toBeLessThanOrEqual(1.3);
@@ -935,6 +929,8 @@ describe('daily budget price shaping', () => {
         startsAt: new Date(dayStart + index * 60 * 60 * 1000).toISOString(),
         total: 100,
         ...(index === surplusIndex ? { budgetPrice: 10 } : {}),
+        isCheap: false,
+        isExpensive: false,
       })),
     };
 
@@ -959,8 +955,7 @@ describe('daily budget price shaping', () => {
     expect(planned[surplusIndex]).toBeGreaterThan(planned[surplusIndex + 1]);
   });
 
-  it('retains effective price shaping flex share in non-rebuild price data', () => {
-    const manager = buildManager();
+  it('carries the effective price shaping flex share in the day price data', () => {
     const settings = buildSettings({
       dailyBudgetKWh: 10,
       priceShapingEnabled: true,
@@ -968,38 +963,18 @@ describe('daily budget price shaping', () => {
     });
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
     const dayStart = getDateKeyStartMs(dateKey, TZ);
-    const now = dayStart + 30 * 60 * 1000;
     const bucketKey0 = new Date(dayStart).toISOString();
     const combinedPrices = {
       prices: Array.from({ length: 24 }, (_, index) => ({
         startsAt: new Date(dayStart + index * 60 * 60 * 1000).toISOString(),
         total: 100 + index * 10,
+        isCheap: false,
+        isExpensive: false,
       })),
     };
 
-    manager.update({
-      planningCeiling: null,
-      nowMs: now,
-      timeZone: TZ,
-      settings,
-      powerTracker: { buckets: { [bucketKey0]: 0 } },
-      combinedPrices,
-      priceOptimizationEnabled: true,
-    });
-
-    const context = buildDayContext({
-      nowMs: now + 2 * 60 * 1000,
-      timeZone: TZ,
-      powerTracker: { buckets: { [bucketKey0]: 0 } },
-    });
-    const priceData = manager['resolvePriceData']({
-      context,
-      settings,
-      enabled: true,
-      combinedPrices,
-      priceOptimizationEnabled: true,
-    });
-    expect(typeof priceData.effectivePriceShapingFlexShare).toBe('number');
+    const context = buildDayContext(dayStart + 32 * 60 * 1000, TZ, { buckets: { [bucketKey0]: 0 } });
+    const priceData = buildPriceData(context, settings, combinedPrices, true);
     expect(priceData.priceSpreadFactor).toBeGreaterThan(0);
     expect(priceData.effectivePriceShapingFlexShare).toBeCloseTo(settings.priceShapingFlexShare, 6);
   });
@@ -1027,6 +1002,8 @@ describe('daily budget advanced weighting integration', () => {
     values.map((total, hour) => ({
       startsAt: new Date(dayStartUtcMs + hour * 60 * 60 * 1000).toISOString(),
       total,
+      isCheap: false,
+      isExpensive: false,
     }))
   );
 
@@ -1231,6 +1208,8 @@ describe('daily budget stale-plan and split persistence', () => {
     ].map((total, hour) => ({
       startsAt: new Date(dayStart + hour * 60 * 60 * 1000).toISOString(),
       total,
+      isCheap: false,
+      isExpensive: false,
     }));
     const initialState = {
       profileUncontrolled: {
@@ -1426,13 +1405,11 @@ describe('daily budget preview', () => {
     const manager = buildManager();
     const settings = buildSettings({ dailyBudgetKWh: 24 });
     const dayStart = getDateKeyStartMs('2024-01-15', TZ);
-    const preview = manager.buildPreview({
-      planningCeiling: null,
-      dayStartUtcMs: dayStart,
-      timeZone: TZ,
-      settings,
+    const preview = manager.buildPreview(dayStart, TZ, settings, {
+      combinedPrices: null,
       priceOptimizationEnabled: false,
-    });
+      planningCeiling: null,
+    }).snapshot;
 
     expect(preview.currentBucketIndex).toBe(-1);
     expect(preview.state.allowedNowKWh).toBe(0);
@@ -1465,13 +1442,11 @@ describe('daily budget preview', () => {
       profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
     });
 
-    const preview = manager.buildPreview({
-      planningCeiling: null,
-      dayStartUtcMs: dayStart,
-      timeZone: TZ,
-      settings,
+    const preview = manager.buildPreview(dayStart, TZ, settings, {
+      combinedPrices: null,
       priceOptimizationEnabled: false,
-    });
+      planningCeiling: null,
+    }).snapshot;
 
     expect(preview.buckets.plannedUncontrolledKWh[0]).toBeGreaterThan(0.2);
     expect(preview.buckets.plannedGrossUncontrolledKWh).toHaveLength(preview.buckets.plannedKWh.length);

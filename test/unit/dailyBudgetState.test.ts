@@ -6,6 +6,7 @@ import {
   resolveBudgetCountedDayKwh,
 } from '../../lib/dailyBudget/dailyBudgetState';
 import type { BudgetState, DayContext } from '../../lib/dailyBudget/dailyBudgetState';
+import { NO_PRICE_DATA } from '../../lib/dailyBudget/dailyBudgetPrices';
 import type { DailyBudgetSettings } from '../../lib/dailyBudget/dailyBudgetTypes';
 
 describe('daily budget state helpers', () => {
@@ -142,10 +143,7 @@ describe('daily budget state helpers', () => {
 
   it('buildDayContext keeps reported usage real while using exempt-adjusted values for budget control', () => {
     const nowMs = Date.UTC(2024, 0, 1, 1, 30, 0);
-    const context = buildDayContext({
-      nowMs,
-      timeZone: 'UTC',
-      powerTracker: {
+    const context = buildDayContext(nowMs, 'UTC', {
         buckets: {
           '2024-01-01T00:00:00.000Z': 2,
           '2024-01-01T01:00:00.000Z': 1,
@@ -154,8 +152,7 @@ describe('daily budget state helpers', () => {
           '2024-01-01T00:00:00.000Z': 0.5,
           '2024-01-01T01:00:00.000Z': 0.25,
         },
-      },
-    });
+      });
 
     expect(context.bucketUsage.slice(0, 2)).toEqual([2, 1]);
     expect(context.bucketUsageExempt?.slice(0, 2)).toEqual([0.5, 0.25]);
@@ -181,7 +178,7 @@ describe('daily budget state helpers', () => {
       plannedKWh: [0, 0, 2, 2],
       plannedUncontrolledKWh: [0, 0, 0, 0],
       plannedControlledKWh: [0, 0, 2, 2],
-      priceData: { priceShapingActive: true },
+      priceData: { priceShapingActive: true, priceSpreadFactor: 0, effectivePriceShapingFlexShare: 0 },
       budget: buildBudgetState({ remainingKWh: 4 }),
       frozen: false,
     });
@@ -209,7 +206,7 @@ describe('daily budget state helpers', () => {
       plannedKWh: [0, 0, 3, 2],
       plannedUncontrolledKWh: [0, 0, 0, 0],
       plannedControlledKWh: [0, 0, 3, 2],
-      priceData: { priceShapingActive: true },
+      priceData: { priceShapingActive: true, priceSpreadFactor: 0, effectivePriceShapingFlexShare: 0 },
       budget: buildBudgetState({ remainingKWh: 10 }),
       frozen: false,
     });
@@ -237,7 +234,7 @@ describe('daily budget state helpers', () => {
       plannedKWh: [0, 0, 3, 2],
       plannedUncontrolledKWh: [0, 0, 0, 0],
       plannedControlledKWh: [0, 0, 3, 2],
-      priceData: { priceShapingActive: true },
+      priceData: { priceShapingActive: true, priceSpreadFactor: 0, effectivePriceShapingFlexShare: 0 },
       budget: buildBudgetState({ remainingKWh: 4 }),
       frozen: false,
     });
@@ -264,7 +261,7 @@ describe('daily budget state helpers', () => {
       plannedKWh: [0, 0, 3, 2],
       plannedUncontrolledKWh: [0, 0, 0, 0],
       plannedControlledKWh: [0, 0, 3, 2],
-      priceData: { priceShapingActive: true },
+      priceData: { priceShapingActive: true, priceSpreadFactor: 0, effectivePriceShapingFlexShare: 0 },
       budget: buildBudgetState({ remainingKWh: 10 }),
       frozen: false,
       planningCeiling: { limit: 'capacity', kw: 2 },
@@ -290,7 +287,7 @@ describe('daily budget state helpers', () => {
       plannedKWh: [0, 0, 3, 2],
       plannedUncontrolledKWh: [0, 0, 0, 0],
       plannedControlledKWh: [0, 0, 3, 2],
-      priceData: { priceShapingActive: true },
+      priceData: { priceShapingActive: true, priceSpreadFactor: 0, effectivePriceShapingFlexShare: 0 },
       budget: buildBudgetState({ remainingKWh: 10 }),
       frozen: false,
       planningCeiling: { limit: 'grid', kw: 7 },
@@ -317,7 +314,7 @@ describe('daily budget state helpers', () => {
       plannedKWh: [0, 0, 3, 2],
       plannedUncontrolledKWh: [0, 0, 0, 0],
       plannedControlledKWh: [0, 0, 3, 2],
-      priceData: { priceShapingActive: true },
+      priceData: { priceShapingActive: true, priceSpreadFactor: 0, effectivePriceShapingFlexShare: 0 },
       budget: buildBudgetState({ remainingKWh: 10 }),
       frozen: false,
     });
@@ -339,7 +336,7 @@ describe('daily budget state helpers', () => {
       plannedKWh: [2, 2, 2, 2],
       plannedUncontrolledKWh: [0, 0, 0, 0],
       plannedControlledKWh: [2, 2, 2, 2],
-      priceData: { priceShapingActive: false },
+      priceData: NO_PRICE_DATA,
       budget: buildBudgetState({ remainingKWh: 4 }),
       frozen: false,
     });

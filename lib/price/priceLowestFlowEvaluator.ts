@@ -5,6 +5,7 @@ import {
   shiftDateKey,
   getZonedParts,
 } from '../../packages/shared-domain/src/utils/dateUtils';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { CombinedHourlyPrice } from './priceTypes';
 const STEPS_PER_DAY = 24;
 const DEFAULT_EPSILON = 1e-6;
@@ -41,9 +42,12 @@ export type LowestPriceEvaluationResult = {
   cutoff: number | null;
   candidateCount: number;
 };
-const hasFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
+// A card that cannot answer: no cutoff to report.
+const noMatch = (
+  reason: Exclude<LowestPriceEvaluationResult['reason'], 'ok'>,
+  currentPrice: number | null,
+  candidateCount: number,
+): LowestPriceEvaluationResult => ({ matches: false, reason, currentPrice, cutoff: null, candidateCount });
 const floorDiv = (value: number, divisor: number): number => Math.floor(value / divisor);
 const normalizeStep = (step: number): number => ((step % STEPS_PER_DAY) + STEPS_PER_DAY) % STEPS_PER_DAY;
 const getPositiveIntegerArg = (
@@ -57,7 +61,7 @@ const getPositiveIntegerArg = (
   if (!Number.isFinite(valueNum)) return null;
   const value = Math.trunc(valueNum);
   if (!Number.isFinite(value) || value < options.min) return null;
-  if (hasFiniteNumber(options.max) && value > options.max) return null;
+  if (isFiniteNumber(options.max) && value > options.max) return null;
   return value;
 };
 const normalizeCombinedEntries = (combinedPrices: readonly CombinedHourlyPrice[]): ParsedPriceEntry[] => (
@@ -91,12 +95,11 @@ const buildSlotIndex = (
   // including the two instants of a repeated DST hour.
   return grouped;
 };
-const buildEvaluationContext = (params: {
-  combinedPrices: readonly CombinedHourlyPrice[];
-  timeZone: string;
-  now: Date;
-}): EvaluationContext => {
-  const { combinedPrices, timeZone, now } = params;
+const buildEvaluationContext = (
+  combinedPrices: readonly CombinedHourlyPrice[],
+  timeZone: string,
+  now: Date,
+): EvaluationContext => {
   const entries = normalizeCombinedEntries(combinedPrices);
   const nowMs = now.getTime();
   const nowParts = getZonedParts(now, timeZone);
@@ -115,14 +118,13 @@ const getExpectedIndexedHoursForDay = (dateKey: string, timeZone: string): numbe
   const localDayHours = Math.round((nextDayStartUtcMs - dayStartUtcMs) / (60 * 60 * 1000));
   return Math.max(0, localDayHours);
 };
-const evaluateLowestRank = (params: {
-  prices: number[];
-  currentPrice: number;
-  number: number;
-  epsilon?: number;
-}): { matches: boolean; cutoff: number; candidateCount: number } | null => {
-  const { prices, currentPrice, number } = params;
-  const epsilon = hasFiniteNumber(params.epsilon) ? params.epsilon : DEFAULT_EPSILON;
+const evaluateLowestRank = (
+  prices: number[],
+  currentPrice: number,
+  number: number,
+  epsilonOverride: number | undefined,
+): { matches: boolean; cutoff: number; candidateCount: number } | null => {
+  const epsilon = isFiniteNumber(epsilonOverride) ? epsilonOverride : DEFAULT_EPSILON;
   const finitePrices = prices.filter((price) => Number.isFinite(price));
   if (finitePrices.length === 0) return null;
   const rankCount = Math.max(1, Math.min(Math.trunc(number), finitePrices.length));
@@ -162,14 +164,13 @@ const selectCurrentHourSlot = (hourSlots: HourSlot[], nowMs: number): HourSlot |
   const active = [...hourSlots].reverse().find((slot) => slot.startsAtMs <= nowMs);
   return active ?? null;
 };
-const selectWindowSlot = (params: {
-  hourSlots: HourSlot[];
-  dayOffset: number;
-  localHour: number;
-  currentHour: number;
-  nowMs: number;
-}): HourSlot | null => {
-  const { hourSlots, dayOffset, localHour, currentHour, nowMs } = params;
+const selectWindowSlot = (
+  hourSlots: HourSlot[],
+  dayOffset: number,
+  localHour: number,
+  context: EvaluationContext,
+): HourSlot | null => {
+  const { currentHour, nowMs } = context;
   if (hourSlots.length === 0) return null;
   if (dayOffset === 0 && localHour === currentHour) return selectCurrentHourSlot(hourSlots, nowMs);
   if (dayOffset < 0) return hourSlots.at(-1) ?? null;
@@ -184,36 +185,12 @@ const evaluateLowestToday = (
   epsilon?: number,
 ): LowestPriceEvaluationResult => {
   const number = getPositiveIntegerArg(args, 'number', { min: 1, max: STEPS_PER_DAY });
-  if (!number) {
-    return {
-      matches: false,
-      reason: 'invalid_args',
-      currentPrice: null,
-      cutoff: null,
-      candidateCount: 0,
-    };
-  }
+  if (!number) return noMatch('invalid_args', null, 0);
   const daySlots = getDaySlots(context, context.todayKey);
-  if (daySlots.length === 0) {
-    return {
-      matches: false,
-      reason: 'missing_day_slots',
-      currentPrice: null,
-      cutoff: null,
-      candidateCount: 0,
-    };
-  }
+  if (daySlots.length === 0) return noMatch('missing_day_slots', null, 0);
   const expectedHours = getExpectedIndexedHoursForDay(context.todayKey, context.timeZone);
-  if (daySlots.length < expectedHours) {
-    return {
-      matches: false,
-      reason: 'incomplete_day_slots',
-      currentPrice: null,
-      cutoff: null,
-      candidateCount: daySlots.length,
-    };
-  }
-  const currentPrice = hasFiniteNumber(currentPriceOverride)
+  if (daySlots.length < expectedHours) return noMatch('incomplete_day_slots', null, daySlots.length);
+  const currentPrice = isFiniteNumber(currentPriceOverride)
     ? currentPriceOverride
     : (() => {
       const currentHourSlots = context.slotsByDateHour.get(context.todayKey)?.get(context.currentHour) ?? [];
@@ -221,37 +198,10 @@ const evaluateLowestToday = (
       if (!currentSlot) return null;
       return currentSlot.price;
     })();
-  if (!hasFiniteNumber(currentPrice)) {
-    return {
-      matches: false,
-      reason: 'missing_current_slot',
-      currentPrice: null,
-      cutoff: null,
-      candidateCount: daySlots.length,
-    };
-  }
-  const evaluation = evaluateLowestRank({
-    prices: daySlots.map((slot) => slot.price),
-    currentPrice,
-    number,
-    epsilon,
-  });
-  if (!evaluation) {
-    return {
-      matches: false,
-      reason: 'missing_day_slots',
-      currentPrice,
-      cutoff: null,
-      candidateCount: daySlots.length,
-    };
-  }
-  return {
-    matches: evaluation.matches,
-    reason: 'ok',
-    currentPrice,
-    cutoff: evaluation.cutoff,
-    candidateCount: evaluation.candidateCount,
-  };
+  if (!isFiniteNumber(currentPrice)) return noMatch('missing_current_slot', null, daySlots.length);
+  const evaluation = evaluateLowestRank(daySlots.map((slot) => slot.price), currentPrice, number, epsilon);
+  if (!evaluation) return noMatch('missing_day_slots', currentPrice, daySlots.length);
+  return { ...evaluation, reason: 'ok', currentPrice };
 };
 type LowestBeforeArgs = {
   period: number;
@@ -276,36 +226,29 @@ const getBeforeWindowBounds = (
   if ((currentStep >= endStep) || (currentStep < startStep)) return null;
   return { startStep, endStep };
 };
-const collectBeforeWindowPrices = (params: {
-  context: EvaluationContext;
-  currentStep: number;
-  startStep: number;
-  endStep: number;
-  currentPriceOverride: number | undefined;
-}): {
+const collectBeforeWindowPrices = (
+  context: EvaluationContext,
+  bounds: { startStep: number; endStep: number },
+  currentPriceOverride: number | undefined,
+): {
   prices: number[];
   currentPrice: number | null;
   error: LowestPriceEvaluationResult | null;
 } => {
-  const { context, currentStep, startStep, endStep, currentPriceOverride } = params;
+  const { startStep, endStep } = bounds;
+  const currentStep = context.currentHour;
   const dateOffsetCache = new Map<number, string>();
   let prices: number[] = [];
-  let currentPrice: number | null = hasFiniteNumber(currentPriceOverride) ? currentPriceOverride : null;
+  let currentPrice: number | null = isFiniteNumber(currentPriceOverride) ? currentPriceOverride : null;
   for (let step = startStep; step < endStep; step += 1) {
     const dayOffset = floorDiv(step, STEPS_PER_DAY);
     const localHour = normalizeStep(step);
     const dateKey = getDateKeyForDayOffset(dayOffset, context, dateOffsetCache);
     const hourSlots = context.slotsByDateHour.get(dateKey)?.get(localHour) ?? [];
-    const slot = selectWindowSlot({
-      hourSlots,
-      dayOffset,
-      localHour,
-      currentHour: currentStep,
-      nowMs: context.nowMs,
-    });
+    const slot = selectWindowSlot(hourSlots, dayOffset, localHour, context);
     if (!slot) {
       const isCurrentStep = dayOffset === 0 && localHour === currentStep;
-      if (isCurrentStep && hasFiniteNumber(currentPriceOverride)) {
+      if (isCurrentStep && isFiniteNumber(currentPriceOverride)) {
         prices = [...prices, currentPriceOverride];
         currentPrice = currentPriceOverride;
         continue;
@@ -313,17 +256,11 @@ const collectBeforeWindowPrices = (params: {
       return {
         prices,
         currentPrice,
-        error: {
-          matches: false,
-          reason: 'missing_window_slot',
-          currentPrice,
-          cutoff: null,
-          candidateCount: prices.length,
-        },
+        error: noMatch('missing_window_slot', currentPrice, prices.length),
       };
     }
     prices = [...prices, slot.price];
-    if (!hasFiniteNumber(currentPrice) && dayOffset === 0 && localHour === currentStep) {
+    if (!isFiniteNumber(currentPrice) && dayOffset === 0 && localHour === currentStep) {
       currentPrice = slot.price;
     }
   }
@@ -336,66 +273,16 @@ const evaluateLowestBefore = (
   epsilon?: number,
 ): LowestPriceEvaluationResult => {
   const parsedArgs = parseLowestBeforeArgs(args);
-  if (!parsedArgs) {
-    return {
-      matches: false,
-      reason: 'invalid_args',
-      currentPrice: null,
-      cutoff: null,
-      candidateCount: 0,
-    };
-  }
-  const currentStep = context.currentHour;
-  const bounds = getBeforeWindowBounds(currentStep, parsedArgs.time, parsedArgs.period);
-  if (!bounds) {
-    return {
-      matches: false,
-      reason: 'outside_window',
-      currentPrice: null,
-      cutoff: null,
-      candidateCount: 0,
-    };
-  }
-  const collected = collectBeforeWindowPrices({
-    context,
-    currentStep,
-    startStep: bounds.startStep,
-    endStep: bounds.endStep,
-    currentPriceOverride,
-  });
+  if (!parsedArgs) return noMatch('invalid_args', null, 0);
+  const bounds = getBeforeWindowBounds(context.currentHour, parsedArgs.time, parsedArgs.period);
+  if (!bounds) return noMatch('outside_window', null, 0);
+  const collected = collectBeforeWindowPrices(context, bounds, currentPriceOverride);
   if (collected.error) return collected.error;
   const { prices, currentPrice } = collected;
-  if (!hasFiniteNumber(currentPrice)) {
-    return {
-      matches: false,
-      reason: 'missing_current_slot',
-      currentPrice: null,
-      cutoff: null,
-      candidateCount: prices.length,
-    };
-  }
-  const evaluation = evaluateLowestRank({
-    prices,
-    currentPrice,
-    number: parsedArgs.number,
-    epsilon,
-  });
-  if (!evaluation) {
-    return {
-      matches: false,
-      reason: 'missing_window_slot',
-      currentPrice,
-      cutoff: null,
-      candidateCount: prices.length,
-    };
-  }
-  return {
-    matches: evaluation.matches,
-    reason: 'ok',
-    currentPrice,
-    cutoff: evaluation.cutoff,
-    candidateCount: evaluation.candidateCount,
-  };
+  if (!isFiniteNumber(currentPrice)) return noMatch('missing_current_slot', null, prices.length);
+  const evaluation = evaluateLowestRank(prices, currentPrice, parsedArgs.number, epsilon);
+  if (!evaluation) return noMatch('missing_window_slot', currentPrice, prices.length);
+  return { ...evaluation, reason: 'ok', currentPrice };
 };
 export function evaluateLowestPriceCard(params: {
   cardId: LowestPriceCardId;
@@ -406,11 +293,7 @@ export function evaluateLowestPriceCard(params: {
   currentPriceOverride?: number;
   epsilon?: number;
 }): LowestPriceEvaluationResult {
-  const context = buildEvaluationContext({
-    combinedPrices: params.combinedPrices,
-    timeZone: params.timeZone,
-    now: params.now,
-  });
+  const context = buildEvaluationContext(params.combinedPrices, params.timeZone, params.now);
   if (params.cardId === 'price_lowest_today') {
     return evaluateLowestToday(params.args, context, params.currentPriceOverride, params.epsilon);
   }
@@ -421,11 +304,7 @@ export function resolveCurrentPriceFromCombined(params: {
   timeZone: string;
   now: Date;
 }): { currentPrice: number | null; reason: 'ok' | 'missing_current_slot' } {
-  const context = buildEvaluationContext({
-    combinedPrices: params.combinedPrices,
-    timeZone: params.timeZone,
-    now: params.now,
-  });
+  const context = buildEvaluationContext(params.combinedPrices, params.timeZone, params.now);
   const currentHourSlots = context.slotsByDateHour.get(context.todayKey)?.get(context.currentHour) ?? [];
   const current = selectCurrentHourSlot(currentHourSlots, context.nowMs);
   if (!current) {

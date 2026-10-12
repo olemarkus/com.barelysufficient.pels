@@ -9,7 +9,7 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import type { LiveDeviceDiagnostics } from './deviceDiagnosticsServiceTypes';
 import { DEVICE_DIAGNOSTICS_WINDOW_DAYS, type DeviceDiagnosticsPersistence } from './deviceDiagnosticsPersistence';
-import { isFiniteNumber } from './deviceDiagnosticsNumbers';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 const createEmptyStarvationSummary = (): DeviceDiagnosticsStarvationSummary => ({
   isStarved: false,
@@ -46,16 +46,13 @@ export const buildStarvationSummary = (
   };
 };
 
-export const buildUiPayload = (params: {
-  liveByDeviceId: Record<string, LiveDeviceDiagnostics>;
-  latestObservationBatchId: number;
-  persistence: DeviceDiagnosticsPersistence;
-  timeZone: string;
-  nowTs: number;
-}): SettingsUiDeviceDiagnosticsPayload => {
-  const {
-    liveByDeviceId, latestObservationBatchId, persistence, timeZone, nowTs,
-  } = params;
+export const buildUiPayload = (
+  liveByDeviceId: Record<string, LiveDeviceDiagnostics>,
+  latestObservationBatchId: number,
+  persistence: DeviceDiagnosticsPersistence,
+  timeZone: string,
+  nowTs: number,
+): SettingsUiDeviceDiagnosticsPayload => {
   const currentDateKey = getDateKeyInTimeZone(new Date(nowTs), timeZone);
   const dateKeysByWindow = persistence.buildWindowDateKeys(currentDateKey);
   const deviceIds = new Set([

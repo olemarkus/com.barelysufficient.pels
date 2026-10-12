@@ -1,15 +1,11 @@
-import type { PlanResult } from './dailyBudgetManagerTypes';
 import { UNMANAGED_RESERVE_CONSERVATIVE_MODE } from './dailyBudgetConstants';
+import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
 
-export function logUncontrolledReserveDebug(params: {
-  plan: PlanResult;
-  reserveMode: number;
-  shouldLog?: boolean;
-  structuredDebug?: (payload: Record<string, unknown>) => void;
-}): void {
-  const { plan, reserveMode, shouldLog = plan.shouldLog, structuredDebug } = params;
-  const diagnostics = plan.uncontrolledReserveDiagnostics;
-  if (!shouldLog || !diagnostics) return;
+export function logUncontrolledReserveDebug(
+  diagnostics: UncontrolledReservePlanDiagnostics,
+  reserveMode: number,
+  structuredDebug: ((payload: Record<string, unknown>) => void) | undefined,
+): void {
   structuredDebug?.({
     component: 'daily_budget',
     event: 'uncontrolled_reserve_plan',

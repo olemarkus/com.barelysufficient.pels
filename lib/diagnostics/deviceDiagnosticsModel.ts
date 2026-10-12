@@ -2,7 +2,8 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
 } from '../../packages/shared-domain/src/utils/dateUtils';
-import { ACTIVATION_BACKOFF_MAX_LEVEL } from '../plan/admission';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { clampPenaltyLevel } from './deviceDiagnosticsNumbers';
 import type {
   DeviceDiagnosticsWindowSummary,
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';
@@ -42,10 +43,6 @@ export type PersistedDiagnosticsState = {
   devicesById: Record<string, PersistedDeviceDiagnostics>;
 };
 
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
-
 const clampNonNegativeInt = (value: unknown): number => (
   isFiniteNumber(value) ? Math.max(0, Math.trunc(value)) : 0
 );
@@ -53,11 +50,6 @@ const clampNonNegativeInt = (value: unknown): number => (
 const clampDurationMs = (value: unknown): number => (
   isFiniteNumber(value) ? Math.max(0, value) : 0
 );
-
-const clampPenaltyLevel = (value: unknown): number => {
-  if (!isFiniteNumber(value)) return 0;
-  return Math.max(0, Math.min(ACTIVATION_BACKOFF_MAX_LEVEL, Math.trunc(value)));
-};
 
 const sanitizeNullableDuration = (value: unknown): number | null => (
   isFiniteNumber(value) ? Math.max(0, value) : null
@@ -299,14 +291,10 @@ export const buildWindowSummary = (
 };
 /* eslint-enable functional/immutable-data */
 
-export const getRecentDateKeys = (params: {
-  currentDateKey: string;
-  count: number;
-  timeZone: string;
-}): string[] => {
-  const currentDayStartMs = getDateKeyStartMs(params.currentDateKey, params.timeZone);
-  return Array.from({ length: params.count }, (_unused, offset) => {
+export const getRecentDateKeys = (currentDateKey: string, count: number, timeZone: string): string[] => {
+  const currentDayStartMs = getDateKeyStartMs(currentDateKey, timeZone);
+  return Array.from({ length: count }, (_unused, offset) => {
     const date = new Date(currentDayStartMs + (12 * 60 * 60 * 1000) - (offset * 24 * 60 * 60 * 1000));
-    return getDateKeyInTimeZone(date, params.timeZone);
+    return getDateKeyInTimeZone(date, timeZone);
   });
 };

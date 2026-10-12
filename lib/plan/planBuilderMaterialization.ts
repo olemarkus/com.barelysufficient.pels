@@ -234,14 +234,9 @@ export class PlanMaterializationStages {
   ): void {
     trackPlanStage('plan_observe_diag_ms', () => {
       if (!this.deps.deviceDiagnostics) return;
-      const observations = buildDeviceDiagnosticsObservations({
-        context,
-        power,
-        planDevices,
-        restoreResult,
-        budgetPressureEligible,
-        smartTaskDrivingDeviceIds,
-      });
+      const observations = buildDeviceDiagnosticsObservations(
+        context, power, planDevices, restoreResult, budgetPressureEligible, smartTaskDrivingDeviceIds,
+      );
       this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
     });
   }

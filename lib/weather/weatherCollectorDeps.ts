@@ -104,22 +104,22 @@ export type WeatherCollectorDeps = {
    * Recomputes derived fields (energy-signature fit, budget suggestion) after
    * the records change. Injected so the collector stays a pure data layer.
    */
-  recomputeDerived?: (state: WeatherHistoryState) => WeatherHistoryState;
+  recomputeDerived: (state: WeatherHistoryState) => WeatherHistoryState;
   /**
    * Applies the suggested daily budget at a rollup when the user opted into
    * auto-apply. Returns `true` when applied, `false` when the daily budget
    * feature is off (leave-off semantics). Injected so `lib/weather` never
    * imports `lib/dailyBudget` (the `no-weather-to-peer` boundary).
    */
-  applySuggestedDailyBudget?: (suggestedKwh: number) => boolean;
+  applySuggestedDailyBudget: (suggestedKwh: number) => boolean;
   /**
    * Fired once per target day, right after a successful weather auto-apply, so
    * the setup layer can fire the `daily_budget_weather_adjusted` Flow trigger.
    * A flat callback (not the SDK) keeps `lib/weather` off `flowCards`/the SDK:
    * the domain emits the values that drove the change; setup shapes the tokens.
    */
-  onDailyBudgetAutoApplied?: (info: { budgetKwh: number; forecastMeanTempC: number }) => void;
-  recordBudgetDecision?: (decision: BudgetAdviceDecision) => void;
+  onDailyBudgetAutoApplied: (info: { budgetKwh: number; forecastMeanTempC: number }) => void;
+  recordBudgetDecision: (decision: BudgetAdviceDecision) => void;
   /** The persisted decision journal, served by the budget-diagnostics API (`budgetHistory`). */
   readBudgetDecisions: () => BudgetAdviceDecision[];
   logger: PinoLogger;

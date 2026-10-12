@@ -15,6 +15,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   DeviceDiagnosticsService,
+  type DeviceDiagnosticsPlanObservation,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import { createInMemoryDeviceDiagnosticsStateStore } from '../helpers/inMemoryDeviceDiagnosticsStateStore';
 import {
@@ -137,21 +138,27 @@ const buildObservation = (params: {
     params.softLimitSource,
     params.fixtureTotalKw,
   );
-  return buildDeviceDiagnosticsObservations({
-    context: cycle,
-    power: cycle,
+  return buildDeviceDiagnosticsObservations(
+    cycle,
+    cycle,
     // Production always stamps the plan device's `deviceType` from the snapshot, so
     // mirror the input device's modality onto the plan device the fixture builds.
     // The temperature-cluster reads (`currentTarget` / `currentTemperature`) on the
     // plan device narrow through `isTemperaturePlanDevice`, which keys on it.
-    planDevices: [buildPlanDevice({ deviceType: params.inputDevice.deviceType, ...params.planDevice })],
-    restoreResult: buildRestoreResult(params.restoreResult),
-    budgetPressureEligible: params.budgetPressureEligible ?? false,
-    smartTaskDrivingDeviceIds: params.smartTaskDriving
+    [buildPlanDevice({ deviceType: params.inputDevice.deviceType, ...params.planDevice })],
+    buildRestoreResult(params.restoreResult),
+    params.budgetPressureEligible ?? false,
+    params.smartTaskDriving
       ? new Set([params.inputDevice.id ?? params.planDevice.id ?? ''])
       : new Set<string>(),
-  })[0];
+  )[0];
 };
+
+// One observation's demand and starvation facts side by side, for assertions.
+const facts = (observation: DeviceDiagnosticsPlanObservation) => ({
+  ...observation.demand,
+  ...observation.starvation,
+});
 
 describe('plan diagnostics observations', () => {
   it('classifies active overshoot as headroom for temperature devices', () => {
@@ -191,7 +198,7 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 22 },
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       includeDemandMetrics: true,
       unmetDemand: true,
       blockCause: 'headroom',
@@ -228,7 +235,7 @@ describe('plan diagnostics observations', () => {
       },
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       includeDemandMetrics: true,
       unmetDemand: true,
       blockCause: 'headroom',
@@ -261,7 +268,7 @@ describe('plan diagnostics observations', () => {
       },
     });
 
-    expect(observation.blockCause).toBe('cooldown_backoff');
+    expect(observation.demand.blockCause).toBe('cooldown_backoff');
   });
 
   it('classifies shed cooldown as cooldown/backoff for temperature devices', () => {
@@ -300,7 +307,7 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 22 },
     });
 
-    expect(observation.blockCause).toBe('cooldown_backoff');
+    expect(observation.demand.blockCause).toBe('cooldown_backoff');
   });
 
   it('excludes EV chargers from unmet-demand and starvation diagnostics', () => {
@@ -342,7 +349,7 @@ describe('plan diagnostics observations', () => {
       },
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       includeDemandMetrics: false,
       unmetDemand: false,
       blockCause: 'not_blocked',
@@ -382,7 +389,7 @@ describe('plan diagnostics observations', () => {
       budgetPressureEligible: true,
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       includeDemandMetrics: true,
       unmetDemand: true,
       budgetPressureDenied: true,
@@ -419,7 +426,7 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 21 },
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       eligibleForStarvation: true,
       currentTemperatureC: 18,
       intendedNormalTargetC: 21,
@@ -461,14 +468,14 @@ describe('plan diagnostics observations', () => {
       inputDevice,
       planDevice: { ...basePlanDevice, plannedTarget: 16 },
       modeTargets: { 'heater-1': 21 },
-    }).commandedTargetC).toBe(16);
+    }).starvation.commandedTargetC).toBe(16);
 
     // No planned setpoint → fall back to the held current setpoint.
     expect(buildObservation({
       inputDevice,
       planDevice: basePlanDevice,
       modeTargets: { 'heater-1': 21 },
-    }).commandedTargetC).toBe(19);
+    }).starvation.commandedTargetC).toBe(19);
   });
 
   it('flags a turn_off shed of a temperature device as a PELS-commanded off shed', () => {
@@ -497,11 +504,11 @@ describe('plan diagnostics observations', () => {
     });
 
     // turn_off shed → no lowered setpoint, but flagged as a PELS off shed.
-    expect(buildObservation({
+    expect(facts(buildObservation({
       inputDevice,
       planDevice: { ...basePlanDevice, shedAction: 'turn_off' },
       modeTargets: { 'heater-1': 18 },
-    })).toMatchObject({
+    }))).toMatchObject({
       pelsCommandsTurnOffShed: true,
       commandedTargetC: 18,
       currentTemperatureC: 16,
@@ -513,14 +520,14 @@ describe('plan diagnostics observations', () => {
       inputDevice,
       planDevice: { ...basePlanDevice, plannedState: 'keep', shedAction: 'turn_off' },
       modeTargets: { 'heater-1': 18 },
-    }).pelsCommandsTurnOffShed).toBe(false);
+    }).starvation.pelsCommandsTurnOffShed).toBe(false);
 
     // A setpoint-lowering shed is not a turn_off off shed.
     expect(buildObservation({
       inputDevice,
       planDevice: { ...basePlanDevice, shedAction: 'set_temperature', plannedTarget: 16 },
       modeTargets: { 'heater-1': 18 },
-    }).pelsCommandsTurnOffShed).toBe(false);
+    }).starvation.pelsCommandsTurnOffShed).toBe(false);
   });
 
   // Regression: a turn_off shed leaves the setpoint at the mode target, so the
@@ -556,11 +563,11 @@ describe('plan diagnostics observations', () => {
       expectedPowerKw: 1.14,
     });
 
-    expect(buildObservation({
+    expect(facts(buildObservation({
       inputDevice,
       planDevice: offShed,
       modeTargets: { 'heater-1': 18 },
-    })).toMatchObject({
+    }))).toMatchObject({
       pelsHoldsBelowTarget: true,
       unmetDemand: true,
       // Still false: the SETPOINT gap really is zero. The producer-resolved
@@ -570,18 +577,18 @@ describe('plan diagnostics observations', () => {
     });
 
     // Off but already at/above target — genuinely satisfied, not held back.
-    expect(buildObservation({
+    expect(facts(buildObservation({
       inputDevice: { ...inputDevice, currentTemperature: 18.5 },
       planDevice: { ...offShed, currentTemperature: 18.5 },
       modeTargets: { 'heater-1': 18 },
-    })).toMatchObject({ pelsHoldsBelowTarget: false, unmetDemand: false });
+    }))).toMatchObject({ pelsHoldsBelowTarget: false, unmetDemand: false });
 
     // The user turned it off — PELS is not withholding anything.
-    expect(buildObservation({
+    expect(facts(buildObservation({
       inputDevice,
       planDevice: { ...offShed, plannedState: 'keep' },
       modeTargets: { 'heater-1': 18 },
-    })).toMatchObject({ pelsHoldsBelowTarget: false, unmetDemand: false });
+    }))).toMatchObject({ pelsHoldsBelowTarget: false, unmetDemand: false });
   });
 
   it('uses the operating-mode target rather than price-optimization deltas for starvation baseline', () => {
@@ -620,9 +627,9 @@ describe('plan diagnostics observations', () => {
       currentHourPriceLevel: PriceLevel.CHEAP,
     });
 
-    expect(observation.desiredStateSummary).toBe('24.0C');
-    expect(observation.intendedNormalTargetC).toBe(20);
-    expect(observation.targetStepC).toBe(0.5);
+    expect(observation.demand.desiredStateSummary).toBe('24.0C');
+    expect(observation.starvation.intendedNormalTargetC).toBe(20);
+    expect(observation.starvation.targetStepC).toBe(0.5);
   });
 
   it.each([
@@ -672,7 +679,7 @@ describe('plan diagnostics observations', () => {
       thermalDirection: 'cooling',
     });
 
-    expect(observation.pelsHoldsBelowTarget).toBe(held);
+    expect(observation.starvation.pelsHoldsBelowTarget).toBe(held);
   });
 
   it('counts starvation for a device that has been silent for hours — nothing ages an observation out', () => {
@@ -710,9 +717,9 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 21 },
     });
 
-    expect(observation.eligibleForStarvation).toBe(true);
-    expect(observation.suppressionState).toBe('counting');
-    expect(observation.countingCause).toBe('capacity');
+    expect(observation.starvation.eligibleForStarvation).toBe(true);
+    expect(observation.starvation.suppressionState).toBe('counting');
+    expect(observation.starvation.countingCause).toBe('capacity');
   });
 
   it('keeps unknown shed reasons explicitly attributed instead of mapping them to a known cause', () => {
@@ -747,7 +754,7 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 21 },
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       suppressionState: 'paused',
       countingCause: null,
       pauseReason: 'unknown_suppression_reason',
@@ -783,7 +790,7 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 21 },
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       suppressionState: 'paused',
       countingCause: null,
       pauseReason: 'deferred_objective_avoid',
@@ -847,13 +854,13 @@ describe('plan diagnostics observations', () => {
     });
 
     // A device PELS is commanding in full is not held back by PELS.
-    expect(keepObservation.pauseReason).toBe('keep');
-    expect(keepObservation.suppressionState).toBe('paused');
+    expect(keepObservation.starvation.pauseReason).toBe('keep');
+    expect(keepObservation.starvation.suppressionState).toBe('paused');
     // A device PELS declined to resume this cycle IS held back by PELS — the queue being
     // busy is PELS's own pacing, not the device getting served.
-    expect(restoreObservation.countingCause).toBe('restore');
-    expect(restoreObservation.suppressionState).toBe('counting');
-    expect(restoreObservation.pauseReason).toBeNull();
+    expect(restoreObservation.starvation.countingCause).toBe('restore');
+    expect(restoreObservation.starvation.suppressionState).toBe('counting');
+    expect(restoreObservation.starvation.pauseReason).toBeNull();
   });
 
   it('counts a meter-settling hold — PELS is still the reason the device is off', () => {
@@ -885,9 +892,9 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 21 },
     });
 
-    expect(observation.countingCause).toBe('cooldown');
-    expect(observation.suppressionState).toBe('counting');
-    expect(observation.pauseReason).toBeNull();
+    expect(observation.starvation.countingCause).toBe('cooldown');
+    expect(observation.starvation.suppressionState).toBe('counting');
+    expect(observation.starvation.pauseReason).toBeNull();
   });
 
   it('re-attributes a daily-bound insufficient-headroom hold to the daily_budget counting cause', () => {
@@ -933,7 +940,7 @@ describe('plan diagnostics observations', () => {
       softLimitSource: 'daily',
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       suppressionState: 'counting',
       countingCause: 'daily_budget',
       pauseReason: null,
@@ -981,7 +988,7 @@ describe('plan diagnostics observations', () => {
       softLimitSource: 'capacity',
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       suppressionState: 'counting',
       countingCause: 'insufficient_headroom',
       pauseReason: null,
@@ -1021,7 +1028,7 @@ describe('plan diagnostics observations', () => {
       softLimitSource: 'daily',
     });
 
-    expect(observation).toMatchObject({
+    expect(facts(observation)).toMatchObject({
       suppressionState: 'counting',
       countingCause: 'capacity',
     });
@@ -1056,9 +1063,9 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 21 },
     });
 
-    expect(observation.countingCause).toBe('activation_backoff');
-    expect(observation.suppressionState).toBe('counting');
-    expect(observation.pauseReason).toBeNull();
+    expect(observation.starvation.countingCause).toBe('activation_backoff');
+    expect(observation.starvation.suppressionState).toBe('counting');
+    expect(observation.starvation.pauseReason).toBeNull();
   });
 
   it('counts a resume PELS throttled', () => {
@@ -1090,9 +1097,9 @@ describe('plan diagnostics observations', () => {
       modeTargets: { 'heater-1': 21 },
     });
 
-    expect(observation.countingCause).toBe('restore_throttled');
-    expect(observation.suppressionState).toBe('counting');
-    expect(observation.pauseReason).toBeNull();
+    expect(observation.starvation.countingCause).toBe('restore_throttled');
+    expect(observation.starvation.suppressionState).toBe('counting');
+    expect(observation.starvation.pauseReason).toBeNull();
   });
 
   // A startup reservation is bounded (`HEADROOM_RESERVE_MAX_MS`, 15 min) and issues no write,
@@ -1133,9 +1140,9 @@ describe('plan diagnostics observations', () => {
 
     // Its own cause, not folded into `capacity` — device detail must be able to say the
     // device is waiting on a reservation rather than on the hard cap.
-    expect(observation.countingCause).toBe('reserved_for_start');
-    expect(observation.suppressionState).toBe('counting');
-    expect(observation.pauseReason).toBeNull();
+    expect(observation.starvation.countingCause).toBe('reserved_for_start');
+    expect(observation.starvation.suppressionState).toBe('counting');
+    expect(observation.starvation.pauseReason).toBeNull();
   });
 });
 
@@ -1474,10 +1481,10 @@ describe('budget feedback cause and physical recovery', () => {
     modeTargets: { 'heater-1': 22 }, softLimitSource: source,
   });
   it('attributes pending denial to daily pace, independently of the old capacity-ceiling gate', () => {
-    expect(observation('daily', 18)).toMatchObject({
+    expect(facts(observation('daily', 18))).toMatchObject({
       budgetUnservedDenied: true, budgetDemandRecovered: false, countingCause: 'daily_budget',
     });
-    expect(observation('capacity', 18)).toMatchObject({ budgetUnservedDenied: false });
+    expect(facts(observation('capacity', 18))).toMatchObject({ budgetUnservedDenied: false });
   });
   it('does not accept an unavailable device temperature as observed recovery', () => {
     const result = buildObservation({
@@ -1487,18 +1494,18 @@ describe('budget feedback cause and physical recovery', () => {
         currentTemperature: 22, currentTarget: 22, plannedTarget: 22 },
       modeTargets: { 'heater-1': 22 },
     });
-    expect(result?.budgetDemandRecovered).toBe(false);
+    expect(result?.demand.budgetDemandRecovered).toBe(false);
   });
   it('does not price new capacity-bound intervals from a carried daily-budget reason', () => {
-    expect(observation('capacity', 18, 18, { code: PLAN_REASON_CODES.dailyBudget })).toMatchObject({
+    expect(facts(observation('capacity', 18, 18, { code: PLAN_REASON_CODES.dailyBudget }))).toMatchObject({
       countingCause: 'daily_budget', budgetUnservedDenied: false, budgetDemandRecovered: false,
     });
   });
   it('requires physical recovery rather than commanding the intended target', () => {
-    expect(observation('daily', 18, 22)).toMatchObject({
+    expect(facts(observation('daily', 18, 22))).toMatchObject({
       budgetUnservedDenied: false, budgetDemandRecovered: false,
     });
-    expect(observation('daily', 22, 22)).toMatchObject({
+    expect(facts(observation('daily', 22, 22))).toMatchObject({
       budgetUnservedDenied: false, budgetDemandRecovered: true,
     });
   });

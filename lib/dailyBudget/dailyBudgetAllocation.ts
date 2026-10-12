@@ -29,42 +29,7 @@ export function normalizeWeights(weights: number[]): number[] {
   return weights.map((value) => value / total);
 }
 
-/**
- * Blends base bucket weights toward price-shaped weights:
- * `base·(1−f) + base·factor·f` per bucket, with `f = clamp(flexShare, 0, 1)`
- * — an out-of-range `flexShare` is safe. `baseWeights` are unitless relative
- * weights and the result is NOT renormalized; callers normalize downstream.
- * `priceFactors` entries are index-aligned multipliers around 1 produced by
- * `buildPriceFactors` (clamped to [0.7, 1.3]; above 1 = cheaper than the
- * median); a `null` or missing entry (an elapsed bucket — a missing remaining
- * price disables shaping entirely instead of emitting per-bucket nulls)
- * leaves that bucket at its base weight. An absent or empty `priceFactors`
- * array returns a copy of `baseWeights` unchanged, ignoring `flexShare`.
- */
-export function buildCompositeWeights(params: {
-  baseWeights: number[];
-  priceFactors?: Array<number | null>;
-  flexShare: number;
-}): number[] {
-  const { baseWeights, priceFactors, flexShare } = params;
-  if (!priceFactors || priceFactors.length === 0) {
-    return baseWeights.slice();
-  }
-  const safeFlexShare = clamp(flexShare, 0, 1);
-  const baselineShare = 1 - safeFlexShare;
-  return baseWeights.map((value, index) => {
-    const factor = priceFactors[index];
-    const priceAdjusted = typeof factor === 'number' ? value * factor : value;
-    return value * baselineShare + priceAdjusted * safeFlexShare;
-  });
-}
-
-export function allocateBudgetWithCaps(params: {
-  weights: number[];
-  totalKWh: number;
-  caps: number[];
-}): number[] {
-  const { weights, totalKWh, caps } = params;
+export function allocateBudgetWithCaps(weights: number[], totalKWh: number, caps: number[]): number[] {
   const count = weights.length;
   let effectiveWeights = weights.slice();
   const allocations = Array.from({ length: count }, () => 0);
@@ -87,14 +52,7 @@ export function allocateBudgetWithCaps(params: {
       continue;
     }
 
-    const distribution = distributeActiveAllocations({
-      active,
-      remaining,
-      weightSum,
-      effectiveWeights,
-      caps,
-      allocations,
-    });
+    const distribution = distributeActiveAllocations(active, remaining, weightSum, effectiveWeights, caps, allocations);
     remaining = distribution.overflow;
     active = distribution.nextActive;
     guard += 1;
@@ -103,23 +61,15 @@ export function allocateBudgetWithCaps(params: {
   return allocations;
 }
 
-/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-function distributeActiveAllocations(params: {
-  active: number[];
-  remaining: number;
-  weightSum: number;
-  effectiveWeights: number[];
-  caps: number[];
-  allocations: number[];
-}): { overflow: number; nextActive: number[] } {
-  const {
-    active,
-    remaining,
-    weightSum,
-    effectiveWeights,
-    caps,
-    allocations,
-  } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign -- The caller's accumulator: no per-pass copies. */
+function distributeActiveAllocations(
+  active: number[],
+  remaining: number,
+  weightSum: number,
+  effectiveWeights: number[],
+  caps: number[],
+  allocations: number[],
+): { overflow: number; nextActive: number[] } {
   let overflow = 0;
   const nextActive: number[] = [];
   for (const index of active) {
@@ -143,15 +93,14 @@ function distributeActiveAllocations(params: {
   }
   return { overflow, nextActive };
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
-export function allocateBudgetWithCapsAndFloors(params: {
-  weights: number[];
-  totalKWh: number;
-  caps: number[];
-  floors: number[];
-}): number[] {
-  const { weights, totalKWh, caps, floors } = params;
+export function allocateBudgetWithCapsAndFloors(
+  weights: number[],
+  totalKWh: number,
+  caps: number[],
+  floors: number[],
+): number[] {
   const count = weights.length;
   if (count === 0 || totalKWh <= 0) return weights.map(() => 0);
 
@@ -169,61 +118,42 @@ export function allocateBudgetWithCapsAndFloors(params: {
     Math.max(0, (cap ?? 0) - (scaledFloors[index] ?? 0))
   ));
   const remainderAllocations = remaining > 0
-    ? allocateBudgetWithCaps({ weights, totalKWh: remaining, caps: remainingCaps })
+    ? allocateBudgetWithCaps(weights, remaining, remainingCaps)
     : weights.map(() => 0);
 
   return scaledFloors.map((value, index) => value + (remainderAllocations[index] ?? 0));
 }
 
-export function allocateBudgetWithPriceTargets(params: {
-  neutralWeights: number[];
-  totalKWh: number;
-  caps: number[];
-  floors: number[];
-  prices?: Array<number | null>;
-  flexShare: number;
-}): number[] {
-  const {
-    neutralWeights,
-    totalKWh,
-    caps,
-    floors,
-    prices,
-    flexShare,
-  } = params;
-  const neutral = allocateBudgetWithCapsAndFloors({
-    weights: neutralWeights,
-    totalKWh,
-    caps,
-    floors,
-  });
+export function allocateBudgetWithPriceTargets(
+  neutralWeights: number[],
+  totalKWh: number,
+  caps: number[],
+  floors: number[],
+  prices: Array<number | null> | undefined,
+  flexShare: number,
+): number[] {
+  const neutral = allocateBudgetWithCapsAndFloors(neutralWeights, totalKWh, caps, floors);
   const safeFlexShare = clamp(flexShare, 0, 1);
   if (safeFlexShare <= 0 || !prices || prices.length !== neutralWeights.length) {
     return neutral;
   }
 
-  const priceTargets = buildPriceTargetWeights({ prices, caps, floors, totalKWh });
+  const priceTargets = buildPriceTargetWeights(prices, caps, floors, totalKWh);
   if (!priceTargets) return neutral;
 
-  const priceTargetAllocation = allocateBudgetWithCapsAndFloors({
-    weights: priceTargets,
-    totalKWh,
-    caps,
-    floors,
-  });
+  const priceTargetAllocation = allocateBudgetWithCapsAndFloors(priceTargets, totalKWh, caps, floors);
   const neutralShare = 1 - safeFlexShare;
   return neutral.map((value, index) => (
     value * neutralShare + (priceTargetAllocation[index] ?? 0) * safeFlexShare
   ));
 }
 
-function buildPriceTargetWeights(params: {
-  prices: Array<number | null>;
-  caps: number[];
-  floors: number[];
-  totalKWh: number;
-}): number[] | null {
-  const { prices, caps, floors, totalKWh } = params;
+function buildPriceTargetWeights(
+  prices: Array<number | null>,
+  caps: number[],
+  floors: number[],
+  totalKWh: number,
+): number[] | null {
   if (prices.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
     return null;
   }

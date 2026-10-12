@@ -11,53 +11,12 @@ export type DeviceDiagnosticsBlockCause = 'not_blocked' | 'headroom' | 'cooldown
 export type DeviceDiagnosticsStarvationSuppressionState = 'counting' | 'paused' | 'none';
 
 export type DeviceDiagnosticsStarvationResetReasonCode = 'device_no_longer_eligible';
+/** One device's demand and starvation facts from a plan build, resolved by `lib/plan/planDiagnostics.ts`. */
 export type DeviceDiagnosticsPlanObservation = {
   deviceId: string;
   name: string;
-  includeDemandMetrics: boolean;
-  unmetDemand: boolean;
-  blockCause: DeviceDiagnosticsBlockCause;
-  targetDeficitActive: boolean;
-  desiredStateSummary: string;
-  appliedStateSummary: string;
-  eligibleForStarvation: boolean;
-  currentTemperatureC: number | null;
-  intendedNormalTargetC: number | null;
-  // The effective target PELS is currently COMMANDING the device toward (the
-  // applied/held setpoint, quantized to the device's target step). A device is
-  // starved only when PELS holds this BELOW `intendedNormalTargetC` — i.e. PELS
-  // is actively limiting the device, not merely waiting for it to reach a target
-  // it is already commanding in full.
-  commandedTargetC: number | null;
-  targetStepC: number | null;
-  // True when PELS is shedding this temperature device by commanding it OFF
-  // (`plannedState === 'shed'` with the `turn_off` shed behavior). A turn_off
-  // shed cuts power without lowering a setpoint, so the commanded-vs-intended
-  // target check alone cannot see it; this flag carries the "PELS holds the
-  // device off" signal so a below-target turn_off shed still counts as
-  // suppression. A device the USER turned off (PELS not shedding it) has
-  // `plannedState !== 'shed'` and never sets this.
-  pelsCommandsTurnOffShed: boolean;
-  // PELS is holding this device below its intended/mode target — a lowered
-  // commanded setpoint OR a turn_off shed while the room sits below target.
-  // Resolved ONCE in the producer (`lib/plan/planDiagnostics.ts`) so the
-  // starvation clock and the demand/censoring counters can never diverge.
-  pelsHoldsBelowTarget: boolean;
-  // The device's modelled draw when running, in kW. Prices a budget-denied hold
-  // into the energy the daily-budget evidence is measured in.
-  expectedPowerKw: number;
-  // Cause-independent daily-budget pressure. True whenever this device has
-  // unmet demand while the configured budget is below the planning ceiling over
-  // the day (`isDailyBudgetBelowPlanningCeiling`), or any enabled budget when no
-  // power limit is enabled.
-  budgetPressureDenied: boolean;
-  /** Temperature demand held specifically by daily pace, while physically short of target. */
-  budgetUnservedDenied: boolean;
-  /** Observed physical recovery; commanding the full target is not sufficient. */
-  budgetDemandRecovered: boolean;
-  suppressionState: DeviceDiagnosticsStarvationSuppressionState;
-  countingCause: DeviceDiagnosticsStarvationCountingCause | null;
-  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
+  demand: LiveDemandObservation;
+  starvation: LiveStarvationObservation;
 };
 
 type DeviceDiagnosticsControlEventBase = {
@@ -144,7 +103,13 @@ export type LiveDemandObservation = {
   targetDeficitActive: boolean;
   desiredStateSummary: string;
   appliedStateSummary: string;
+  // The device's modelled draw when running, in kW. Prices a budget-denied hold
+  // into the energy the daily-budget evidence is measured in.
   expectedPowerKw: number;
+  // Cause-independent daily-budget pressure. True whenever this device has
+  // unmet demand while the configured budget is below the planning ceiling over
+  // the day (`isDailyBudgetBelowPlanningCeiling`), or any enabled budget when no
+  // power limit is enabled.
   budgetPressureDenied: boolean;
   /** Temperature demand held specifically by daily pace, while physically short of target. */
   budgetUnservedDenied: boolean;
@@ -157,8 +122,20 @@ export type LiveStarvationObservation = {
   eligibleForStarvation: boolean;
   currentTemperatureC: number | null;
   intendedNormalTargetC: number | null;
+  // The effective target PELS is currently COMMANDING the device toward (the
+  // applied/held setpoint, quantized to the device's target step). A device is
+  // starved only when PELS holds this BELOW `intendedNormalTargetC` — i.e. PELS
+  // is actively limiting the device, not merely waiting for it to reach a target
+  // it is already commanding in full.
   commandedTargetC: number | null;
   targetStepC: number | null;
+  // True when PELS is shedding this temperature device by commanding it OFF
+  // (`plannedState === 'shed'` with the `turn_off` shed behavior). A turn_off
+  // shed cuts power without lowering a setpoint, so the commanded-vs-intended
+  // target check alone cannot see it; this flag carries the "PELS holds the
+  // device off" signal so a below-target turn_off shed still counts as
+  // suppression. A device the USER turned off (PELS not shedding it) has
+  // `plannedState !== 'shed'` and never sets this.
   pelsCommandsTurnOffShed: boolean;
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
@@ -168,7 +145,9 @@ export type LiveStarvationObservation = {
   // (`commandedTargetC < intendedNormalTargetC` by at least the target step) OR
   // PELS sheds the device by turning it OFF while its temperature sits below the
   // intended target. Both are PELS actively limiting the device; a device PELS
-  // commands in full (`keep`) is never below.
+  // commands in full (`keep`) is never below. Resolved ONCE in the producer
+  // (`lib/plan/planDiagnostics.ts`) so the starvation clock and the
+  // demand/censoring counters can never diverge.
   pelsHoldsBelowTarget: boolean;
 };
 

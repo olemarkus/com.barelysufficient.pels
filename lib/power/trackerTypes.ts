@@ -1,19 +1,12 @@
-import type { DeviceObjectiveProfile } from '../objectives/types';
-import type { PowerSource } from './powerSource';
+import type {
+  PowerTrackerMeterIdentity,
+  PowerTrackerState as SharedPowerTrackerState,
+} from '../../packages/contracts/src/powerTrackerTypes';
+
+export type { PowerTrackerMeterIdentity };
 
 /** Longest interval for which one held whole-home sample remains accounting evidence. */
 export const MAX_POWER_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
-
-/**
- * Durable identity of the meter signal whose freshness latch is carried by a
- * sub-home tracker. Completed accounting may span identity changes, but the
- * held sample and unfinished capacity quarter may only be reused when this
- * identity matches the runtime being constructed.
- */
-export type PowerTrackerMeterIdentity = {
-  powerSource: PowerSource;
-  meterDeviceId: string | null;
-};
 
 export type CapacityQuarter = {
   startMs: number;
@@ -76,21 +69,8 @@ export type HeldReading = {
   longHoldEndedAtMs: number | null;
 };
 
-export type PowerTrackerState = {
-  /** Sub-home-only provenance for the freshness latch; absent on legacy/main trackers. */
-  meterIdentity?: PowerTrackerMeterIdentity;
-  lastPowerW?: number;
-  lastControlledPowerW?: number;
-  lastUncontrolledPowerW?: number;
-  lastExemptPowerW?: number;
-  /**
-   * Gross PV generation (W) carried by the LAST sample, present only when that
-   * sample carried a finite generation reading. A generation-less sample drops
-   * the field (absence as absence — never stale-held), so generation accrual
-   * only ever integrates between two generation-carrying samples.
-   */
-  lastGenerationW?: number;
-  lastTimestamp?: number;
+/** The contract's tracker state, plus the runtime's own freshness and capacity state. */
+export type PowerTrackerState = SharedPowerTrackerState & {
   /**
    * The whole-home reading as it has held since it last changed, and whether
    * the home's measured load has since said it should have moved. What makes a
@@ -99,36 +79,8 @@ export type PowerTrackerState = {
    * every sample and cleared with it on a freshness reset.
    */
   heldReading?: HeldReading;
-  buckets?: Record<string, number>;
   capacityQuarter?: CapacityQuarter;
   capacityMonthlyPeak?: CapacityMonthlyPeak;
-  hourlySampleCounts?: Record<string, number>;
-  hourlyBudgets?: Record<string, number>;
-  dailyBudgetCaps?: Record<string, number>;
-  dailyTotals?: Record<string, number>;
-  hourlyAverages?: Record<string, { sum: number; count: number }>;
-  controlledBuckets?: Record<string, number>;
-  uncontrolledBuckets?: Record<string, number>;
-  exemptBuckets?: Record<string, number>;
-  controlledDailyTotals?: Record<string, number>;
-  uncontrolledDailyTotals?: Record<string, number>;
-  exemptDailyTotals?: Record<string, number>;
-  controlledHourlyAverages?: Record<string, { sum: number; count: number }>;
-  uncontrolledHourlyAverages?: Record<string, { sum: number; count: number }>;
-  exemptHourlyAverages?: Record<string, { sum: number; count: number }>;
-  deviceBuckets?: Record<string, Record<string, number>>;
-  lastDevicePowerWById?: Record<string, number>;
-  // Solar accounting families (sparse — only ever written in homes with a
-  // generation signal / observed export, so a non-solar home's persisted state
-  // stays deep-equal with the pre-solar shape). Hourly buckets are keyed by
-  // UTC-hour ISO strings like `buckets`; daily totals by the Homey-local
-  // calendar date via the prune fold. kWh only — money is derived read-side.
-  generationBuckets?: Record<string, number>;
-  exportBuckets?: Record<string, number>;
-  generationDailyTotals?: Record<string, number>;
-  exportDailyTotals?: Record<string, number>;
-  unreliablePeriods?: Array<{ start: number; end: number }>;
-  objectiveProfiles?: Record<string, DeviceObjectiveProfile>;
 };
 
 /**

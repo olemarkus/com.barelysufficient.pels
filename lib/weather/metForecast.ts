@@ -4,6 +4,8 @@ import {
   getZonedParts,
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { isUnknownRecord } from '../utils/types';
 
 /**
  * Direct MET Norway Locationforecast 2.0 (compact) forecast source for the
@@ -57,23 +59,17 @@ export type MetForecastDays = {
 
 type ParsedEntry = { timeMs: number; tempC: number; localHour: number; symbolCode?: string; precipMm?: number };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null
-);
-
 /** Nested record accessor: returns the value at `key` only when it is itself a record. */
 const recordAt = (obj: Record<string, unknown> | undefined, key: string): Record<string, unknown> | undefined => {
   const value = obj?.[key];
-  return isRecord(value) ? value : undefined;
+  return isUnknownRecord(value) ? value : undefined;
 };
 
-const finiteOrUndefined = (value: unknown): number | undefined => (
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined
-);
+const finiteOrUndefined = (value: unknown): number | undefined => (isFiniteNumber(value) ? value : undefined);
 
 /** Defensively reduce one MET compact entry to a typed, local-hour-stamped point, or null. */
 function parseEntry(item: unknown, timeZone: string): ParsedEntry | null {
-  if (!isRecord(item) || typeof item.time !== 'string') return null;
+  if (!isUnknownRecord(item) || typeof item.time !== 'string') return null;
   const timeMs = Date.parse(item.time);
   if (!Number.isFinite(timeMs)) return null;
   const data = recordAt(item, 'data');
@@ -92,7 +88,7 @@ function parseEntry(item: unknown, timeZone: string): ParsedEntry | null {
 
 /** Defensively walk the MET compact envelope into typed hourly entries (local-hour stamped). */
 function parseTimeseries(raw: unknown, timeZone: string): ParsedEntry[] {
-  const properties = recordAt(isRecord(raw) ? raw : undefined, 'properties');
+  const properties = recordAt(isUnknownRecord(raw) ? raw : undefined, 'properties');
   if (!properties || !Array.isArray(properties.timeseries)) return [];
   return properties.timeseries.flatMap((item) => {
     const parsed = parseEntry(item, timeZone);

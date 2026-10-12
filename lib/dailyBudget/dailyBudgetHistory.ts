@@ -5,7 +5,8 @@ import {
   getDateKeyInTimeZone,
   getNextLocalDayStartUtcMs,
 } from '../../packages/shared-domain/src/utils/dateUtils';
-import { buildPriceDebugData, sumArray, type CombinedPriceData } from './dailyBudgetMath';
+import { sumArray, type CombinedPriceData } from './dailyBudgetMath';
+import { buildPriceData } from './dailyBudgetPrices';
 import {
   buildBucketUsage,
   buildBudgetUsageViews,
@@ -22,8 +23,7 @@ export const buildDailyBudgetHistory = (params: {
   dayStartUtcMs: number;
   timeZone: string;
   powerTracker: PowerTrackerState;
-  combinedPrices?: CombinedPriceData | null;
-  priceOptimizationEnabled: boolean;
+  combinedPrices: CombinedPriceData | null;
   priceShapingEnabled: boolean;
   profileSampleCount: number;
   profileBreakdown?: { uncontrolled: number[]; controlled: number[] } | null;
@@ -35,7 +35,6 @@ export const buildDailyBudgetHistory = (params: {
     timeZone,
     powerTracker,
     combinedPrices,
-    priceOptimizationEnabled,
     priceShapingEnabled,
     profileSampleCount,
     profileBreakdown,
@@ -95,22 +94,17 @@ export const buildDailyBudgetHistory = (params: {
     currentBucketUsage: bucketUsage[currentBucketIndex] ?? 0,
   };
 
-  const budget = computeBudgetState({
-    context,
+  const budget = computeBudgetState(context, enabled, dailyBudgetKWh, plannedKWh, profileSampleCount);
+
+  const settings = {
     enabled,
     dailyBudgetKWh,
-    plannedKWh,
-    profileSampleCount,
-  });
-
-  const canShapePrices = context.currentBucketIndex < bucketStartUtcMs.length;
-  const priceData = buildPriceDebugData({
-    bucketStartUtcMs,
-    currentBucketIndex: context.currentBucketIndex,
-    combinedPrices,
-    priceOptimizationEnabled: priceOptimizationEnabled && canShapePrices,
-    priceShapingEnabled: priceShapingEnabled && canShapePrices,
-  });
+    priceShapingEnabled,
+    controlledUsageWeight: CONTROLLED_USAGE_WEIGHT,
+    priceShapingFlexShare: PRICE_SHAPING_FLEX_SHARE,
+  };
+  // A closed day has no hours left to shape: it carries its prices only.
+  const priceData = buildPriceData(context, settings, combinedPrices, false);
 
   const planBreakdown = buildPlanBreakdown({
     bucketStartUtcMs,
@@ -121,13 +115,7 @@ export const buildDailyBudgetHistory = (params: {
 
   return buildDailyBudgetSnapshot({
     context,
-    settings: {
-      enabled,
-      dailyBudgetKWh,
-      priceShapingEnabled,
-      controlledUsageWeight: CONTROLLED_USAGE_WEIGHT,
-      priceShapingFlexShare: PRICE_SHAPING_FLEX_SHARE,
-    },
+    settings,
     enabled,
     plannedKWh,
     ...resolvePlannedSplit(plannedKWh, planBreakdown),

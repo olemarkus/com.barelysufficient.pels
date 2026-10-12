@@ -1,5 +1,9 @@
 import { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DeviceDiagnosticsPlanObservation } from '../../lib/diagnostics/deviceDiagnosticsService';
+import type {
+  LiveDemandObservation,
+  LiveStarvationObservation,
+} from '../../lib/diagnostics/deviceDiagnosticsServiceTypes';
 import { createInMemoryDeviceDiagnosticsStateStore } from '../helpers/inMemoryDeviceDiagnosticsStateStore';
 import { getDateKeyStartMs } from '../../packages/shared-domain/src/utils/dateUtils';
 
@@ -25,17 +29,20 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
   };
 };
 
-const buildObservation = (
-  overrides: Partial<DeviceDiagnosticsPlanObservation> = {},
-): DeviceDiagnosticsPlanObservation => ({
-  deviceId: 'heater-1',
-  name: 'Hall Heater',
+const DEFAULT_DEMAND: LiveDemandObservation = {
   includeDemandMetrics: true,
   unmetDemand: true,
   blockCause: 'headroom',
   targetDeficitActive: true,
   desiredStateSummary: '22.0C',
   appliedStateSummary: '18.0C',
+  expectedPowerKw: 1,
+  budgetPressureDenied: false,
+  budgetUnservedDenied: false,
+  budgetDemandRecovered: false,
+};
+
+const DEFAULT_STARVATION: LiveStarvationObservation = {
   eligibleForStarvation: true,
   currentTemperatureC: 18,
   intendedNormalTargetC: 22,
@@ -45,15 +52,30 @@ const buildObservation = (
   targetStepC: 0.5,
   pelsCommandsTurnOffShed: false,
   pelsHoldsBelowTarget: true,
-  expectedPowerKw: 1,
-  budgetPressureDenied: false,
-  budgetUnservedDenied: false,
-  budgetDemandRecovered: false,
   suppressionState: 'counting',
   countingCause: 'capacity',
   pauseReason: null,
-  // Observer-resolved freshness; a fresh observation is eligible to count.
-  ...overrides,
+};
+
+/** One device's facts stated flat, the way the specs below vary them. */
+type ObservationFacts = Pick<DeviceDiagnosticsPlanObservation, 'deviceId' | 'name'>
+  & LiveDemandObservation
+  & LiveStarvationObservation;
+
+const withOverrides = <T extends object>(defaults: T, overrides: Partial<ObservationFacts>): T => (
+  Object.fromEntries(Object.entries(defaults).map(([key, value]) => [
+    key,
+    key in overrides ? (overrides as Record<string, unknown>)[key] : value,
+  ])) as T
+);
+
+const buildObservation = (
+  overrides: Partial<ObservationFacts> = {},
+): DeviceDiagnosticsPlanObservation => ({
+  deviceId: overrides.deviceId ?? 'heater-1',
+  name: overrides.name ?? 'Hall Heater',
+  demand: withOverrides(DEFAULT_DEMAND, overrides),
+  starvation: withOverrides(DEFAULT_STARVATION, overrides),
 });
 
 const getStarvationState = (service: DeviceDiagnosticsService, deviceId = 'heater-1') => (
@@ -1571,7 +1593,7 @@ describe('DeviceDiagnosticsService budget-pressure denial integral', () => {
   const closeMs = () => getDateKeyStartMs(NEXT_DAY_KEY, TZ);
 
   const MIN = 60 * 1000;
-  const denied = (overrides: Partial<DeviceDiagnosticsPlanObservation> = {}) => buildObservation({
+  const denied = (overrides: Partial<ObservationFacts> = {}) => buildObservation({
     expectedPowerKw: 2,
     budgetPressureDenied: true,
     ...overrides,
@@ -1636,8 +1658,9 @@ describe('budget-attributed unresolved heater demand', () => {
   const MIN = 60000;
   const dateKey = '2026-10-02';
   const start = getDateKeyStartMs(dateKey, 'Europe/Oslo') + 12 * 3600000;
-  const denied = buildObservation({ budgetPressureDenied: true, budgetUnservedDenied: true,
-    countingCause: 'daily_budget', expectedPowerKw: 2 });
+  const deniedFacts: Partial<ObservationFacts> = { budgetPressureDenied: true, budgetUnservedDenied: true,
+    countingCause: 'daily_budget', expectedPowerKw: 2 };
+  const denied = buildObservation(deniedFacts);
   const accrue = (service: DeviceDiagnosticsService) => {
     for (let ts = start; ts <= start + 30 * MIN; ts += 5 * MIN) {
       service.observePlanSample({ nowTs: ts, observations: [denied] });
@@ -1647,12 +1670,13 @@ describe('budget-attributed unresolved heater demand', () => {
     const { service } = createDeps();
     accrue(service);
     expect(service.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeCloseTo(1);
-    const restored = buildObservation({ unmetDemand: false, pelsHoldsBelowTarget: false,
-      commandedTargetC: 22, currentTemperatureC: 18, budgetDemandRecovered: false });
+    const restoredFacts: Partial<ObservationFacts> = { unmetDemand: false, pelsHoldsBelowTarget: false,
+      commandedTargetC: 22, currentTemperatureC: 18, budgetDemandRecovered: false };
+    const restored = buildObservation(restoredFacts);
     service.observePlanSample({ nowTs: start + 35 * MIN, observations: [restored] });
     expect(service.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeCloseTo(7 / 6);
     service.observePlanSample({ nowTs: start + 40 * MIN, observations: [
-      { ...restored, currentTemperatureC: 22, budgetDemandRecovered: true },
+      buildObservation({ ...restoredFacts, currentTemperatureC: 22, budgetDemandRecovered: true }),
     ] });
     expect(service.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBe(0);
     expect(service.getDaySuppressionTotals(dateKey)?.budgetDeniedKwh).toBeCloseTo(7 / 6);
@@ -1661,8 +1685,8 @@ describe('budget-attributed unresolved heater demand', () => {
   it('does not turn a capacity-only hold into unresolved budget evidence', () => {
     const { service } = createDeps();
     for (let ts = start; ts <= start + 30 * MIN; ts += 5 * MIN) {
-      service.observePlanSample({ nowTs: ts, observations: [{ ...denied, budgetUnservedDenied: false,
-        countingCause: 'capacity' }] });
+      service.observePlanSample({ nowTs: ts, observations: [buildObservation({ ...deniedFacts,
+        budgetUnservedDenied: false, countingCause: 'capacity' })] });
     }
     expect(service.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeUndefined();
     expect(service.getDaySuppressionTotals(dateKey)?.budgetDeniedKwh).toBeCloseTo(1);

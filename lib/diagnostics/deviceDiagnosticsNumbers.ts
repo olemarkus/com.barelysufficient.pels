@@ -1,8 +1,5 @@
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { ACTIVATION_BACKOFF_MAX_LEVEL } from '../plan/admission';
-
-export const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 export const clampPenaltyLevel = (value: unknown): number => {
   if (!isFiniteNumber(value)) return 0;

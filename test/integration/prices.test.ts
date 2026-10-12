@@ -1675,13 +1675,7 @@ describe('Price optimization', () => {
       expect(persisted?.total).toBeGreaterThan(1); // money price untouched
 
       // Daily-budget shaping consumes the read-back planning price.
-      const shaped = buildPriceFactors({
-        bucketStartUtcMs: hourStarts,
-        currentBucketIndex: 0,
-        combinedPrices: data,
-        priceOptimizationEnabled: true,
-        priceShapingEnabled: true,
-      });
+      const shaped = buildPriceFactors(hourStarts, 0, data, true, true);
       expect(shaped.planningPrices?.[surplusIndex]).toBe(1);
       expect(shaped.prices?.[surplusIndex]).toBe(persisted?.total ?? Number.NaN);
       expect(shaped.priceFactors?.[surplusIndex] ?? 0).toBeGreaterThan(1);

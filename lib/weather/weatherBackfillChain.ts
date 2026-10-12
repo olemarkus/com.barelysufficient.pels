@@ -114,11 +114,9 @@ export class WeatherBackfillChain {
    * established are settled (the kWh layer will not change further), and mark
    * the state for persistence so the refreshed fit survives a restart. Called
    * only from the stages that own the settled-kWh guarantee — never the
-   * temperature stage, whose records are still missing historical kWh. A no-op
-   * when no recompute dep is wired (so callers need no extra guard).
+   * temperature stage, whose records are still missing historical kWh.
    */
   private refitFromSettledRecords(): void {
-    if (!this.deps.recomputeDerived) return;
     this.host.setState(this.deps.recomputeDerived(this.host.getState()));
     this.host.markDirty();
   }

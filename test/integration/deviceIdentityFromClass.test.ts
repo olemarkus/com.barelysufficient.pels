@@ -248,16 +248,16 @@ describe('class-resolved identity through the plan build', () => {
   it('makes a thermostat-class device starvation-eligible and leaves the battery ineligible', async () => {
     const { context, planDevices } = await planFromRawDevices();
 
-    const observations = buildDeviceDiagnosticsObservations({
+    const observations = buildDeviceDiagnosticsObservations(
       context,
-      power: context,
+      context,
       planDevices,
-      restoreResult: emptyRestoreResult,
-      budgetPressureEligible: false,
-      smartTaskDrivingDeviceIds: new Set<string>(),
-    });
+      emptyRestoreResult,
+      false,
+      new Set<string>(),
+    );
 
-    expect(observations.find((o) => o.deviceId === THERMOSTAT_ID)?.eligibleForStarvation).toBe(true);
-    expect(observations.find((o) => o.deviceId === BATTERY_ID)?.eligibleForStarvation).toBe(false);
+    expect(observations.find((o) => o.deviceId === THERMOSTAT_ID)?.starvation.eligibleForStarvation).toBe(true);
+    expect(observations.find((o) => o.deviceId === BATTERY_ID)?.starvation.eligibleForStarvation).toBe(false);
   });
 });

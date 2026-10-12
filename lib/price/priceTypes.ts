@@ -1,4 +1,5 @@
 import type { PriceSchemeSetting } from '../../packages/contracts/src/settingsUiApi';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 /**
  * What one priced stretch of time says, whatever its length. Neither a period
@@ -74,25 +75,9 @@ export type PriceScheme = PriceSchemeSetting;
 /** That union's read policy, re-exported beside the type it resolves to. */
 export { readPriceSchemeSetting } from '../../packages/shared-domain/src/settings/priceScheme';
 
-export type CombinedPriceEntry = {
-  startsAt: string;
+/** One stored hour: the combined fields with the price as `total`, and its price tier. */
+export type CombinedPriceEntry = Omit<CombinedPriceFields, 'totalPrice'> & {
   total: number;
-  /** Export (feed-in) price, incl VAT, same unit as `total`; signed, may be <= 0; undefined when disabled. */
-  exportPrice?: number;
-  /** Planning price (derived blend of export + import over the forecast surplus); undefined ⇒ `total`. */
-  budgetPrice?: number;
-  spotPriceExVat?: number;
-  gridTariffExVat?: number;
-  providerSurchargeExVat?: number;
-  consumptionTaxExVat?: number;
-  enovaFeeExVat?: number;
-  vatMultiplier?: number;
-  vatAmount?: number;
-  electricitySupportExVat?: number;
-  electricitySupport?: number;
-  norgesprisAdjustmentExVat?: number;
-  norgesprisAdjustment?: number;
-  totalExVat?: number;
   isCheap: boolean;
   isExpensive: boolean;
 };
@@ -115,10 +100,6 @@ export type CombinedPricesV2 = {
   minDiffOre?: number;
   lastFetched?: string;
 };
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 const isHourEntry = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;

@@ -1,4 +1,8 @@
-import type { BudgetPressureState, EnergySignatureFit } from '../../packages/contracts/src/weatherAdvisorTypes';
+import type {
+  BudgetPressureState,
+  EnergySignatureFit,
+  EnergySignatureSuggestion,
+} from '../../packages/contracts/src/weatherAdvisorTypes';
 import {
   predictDailyKwh, resolveResidualHeadroom,
 } from '../../packages/shared-domain/src/energySignature/energySignature';
@@ -42,18 +46,18 @@ export type DailyBudgetSuggestionInput = {
   budgetPressure?: BudgetPressureState;
 };
 
-export type DailyBudgetSuggestionResult = {
-  predictedKwh: number;
-  predictedLowKwh: number;
-  predictedHighKwh: number;
-  suggestedBudgetKwh: number;
-  beyondObservedCold: boolean;
-  beyondObservedWarm: boolean;
-  /** The daily budget has recently been limiting — headroom leaned q80→q90. */
-  budgetMayBeLimiting: boolean;
-  /** kWh the budget-pressure loop contributed, after its ceiling. 0 when idle. */
-  budgetPressureKwh: number;
-};
+/** The model's part of the published suggestion; the caller adds the forecast and timing context. */
+export type DailyBudgetSuggestionResult = Pick<
+  EnergySignatureSuggestion,
+  | 'predictedKwh'
+  | 'predictedLowKwh'
+  | 'predictedHighKwh'
+  | 'suggestedBudgetKwh'
+  | 'beyondObservedCold'
+  | 'beyondObservedWarm'
+  | 'budgetMayBeLimiting'
+  | 'budgetPressureKwh'
+>;
 
 const MIN_RELATIVE_HEADROOM = 0.05;
 const OBSERVED_RANGE_SLACK_C = 2;

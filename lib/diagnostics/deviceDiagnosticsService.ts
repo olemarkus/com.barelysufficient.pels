@@ -7,17 +7,16 @@ import type {
   DeviceDiagnosticsPlanObservation,
   DeviceDiagnosticsRecorder,
   DeviceDiagnosticsServiceDeps,
-  LiveDemandObservation,
   LiveDeviceDiagnostics,
 } from './deviceDiagnosticsServiceTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
-import { clampPenaltyLevel, isFiniteNumber } from './deviceDiagnosticsNumbers';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { clampPenaltyLevel } from './deviceDiagnosticsNumbers';
 import { DeviceDiagnosticsPersistence } from './deviceDiagnosticsPersistence';
 import {
   StarvationTracker,
   createEmptyStarvationState,
-  normalizeStarvationObservation,
   starvationTargetChanged,
 } from './deviceDiagnosticsEpisodes';
 import { logObservationTransition, logTrackedUsageEvent } from './deviceDiagnosticsLogging';
@@ -31,17 +30,13 @@ import {
 
 export type {
   DeviceDiagnosticsBlockCause,
-  DeviceDiagnosticsStarvationSuppressionState,
   DeviceDiagnosticsPlanObservation,
   DeviceDiagnosticsTrackedTransitionReconciliation,
   DeviceDiagnosticsControlEvent,
   DeviceDiagnosticsBackoffTransition,
   DeviceDiagnosticsRecorder,
 } from './deviceDiagnosticsServiceTypes';
-export type {
-  DeviceDiagnosticsStarvationCountingCause,
-  DeviceDiagnosticsStarvationPauseReason,
-} from '../../packages/contracts/src/deviceDiagnosticsTypes';
+export type { DeviceDiagnosticsStarvationCountingCause } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 
 const moduleLogger = getLogger('diagnostics/device');
 // Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
@@ -215,13 +210,13 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   getUiPayload(nowTs: number = Date.now()): SettingsUiDeviceDiagnosticsPayload {
     this.persistence.ensureDayRollover(nowTs);
-    return buildUiPayload({
-      liveByDeviceId: this.liveByDeviceId,
-      latestObservationBatchId: this.latestObservationBatchId,
-      persistence: this.persistence,
-      timeZone: this.deps.getTimeZone(),
+    return buildUiPayload(
+      this.liveByDeviceId,
+      this.latestObservationBatchId,
+      this.persistence,
+      this.deps.getTimeZone(),
       nowTs,
-    });
+    );
   }
 
   getCurrentStarvedDeviceCount(): number {
@@ -248,19 +243,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     const live = this.getLiveDeviceState(observation.deviceId);
     live.name = observation.name;
     live.lastObservationBatchId = observationBatchId;
-    const nextObservation: LiveDemandObservation = {
-      includeDemandMetrics: observation.includeDemandMetrics,
-      unmetDemand: observation.unmetDemand,
-      blockCause: observation.blockCause,
-      targetDeficitActive: observation.targetDeficitActive,
-      desiredStateSummary: observation.desiredStateSummary,
-      appliedStateSummary: observation.appliedStateSummary,
-      expectedPowerKw: observation.expectedPowerKw,
-      budgetPressureDenied: observation.budgetPressureDenied,
-      budgetUnservedDenied: observation.budgetUnservedDenied,
-      budgetDemandRecovered: observation.budgetDemandRecovered,
-    };
-    const nextStarvationObservation = normalizeStarvationObservation(observation);
+    const { demand: nextObservation, starvation: nextStarvationObservation } = observation;
 
     if (isFiniteNumber(live.lastObservedTs) && live.lastObservation) {
       const gapMs = Math.max(0, nowTs - live.lastObservedTs);
@@ -285,7 +268,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       }
     }
 
-    if (observation.budgetDemandRecovered) {
+    if (nextObservation.budgetDemandRecovered) {
       this.persistence.recordBudgetDemandRecovery(observation.deviceId, nowTs);
     }
 

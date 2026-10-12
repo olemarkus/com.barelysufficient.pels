@@ -1,6 +1,7 @@
 import { shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import { resolvePlanningPrice } from '../price/budgetPrice';
-import type { CombinedPriceData, CombinedPriceEntry } from './dailyBudgetPrices';
+import type { CombinedPriceEntry } from '../price/priceTypes';
+import type { CombinedPriceData } from './dailyBudgetPrices';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from './dailyBudgetTypes';
 
 // Hot-path snapshot composition. `updateState` runs on every power sample

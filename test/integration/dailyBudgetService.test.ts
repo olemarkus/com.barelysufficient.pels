@@ -1,6 +1,8 @@
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import type { CombinedPriceData } from '../../lib/dailyBudget/dailyBudgetMath';
 import type { DailyBudgetPlanInputs } from '../../lib/dailyBudget/dailyBudgetManagerTypes';
+import type { DailyBudgetPreview } from '../../lib/dailyBudget/dailyBudgetPreview';
+import { NO_PRICE_DATA } from '../../lib/dailyBudget/dailyBudgetPrices';
 import type { ConfidenceDebug, DailyBudgetDayPayload, DailyBudgetState, DailyBudgetStatePersistReason } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
@@ -30,6 +32,13 @@ const planInputs = (combinedPrices: CombinedPriceData | null): DailyBudgetPlanIn
   combinedPrices,
   priceOptimizationEnabled: false,
   planningCeiling: null,
+});
+
+// A stubbed tomorrow builder's preview: the payload it hands back, planned on no prices.
+const tomorrowPreviewOf = (snapshot: DailyBudgetDayPayload): DailyBudgetPreview => ({
+  snapshot,
+  priceData: NO_PRICE_DATA,
+  bounds: { lockCurrentBucket: false, hasPreviousPlan: false, shouldLockCurrent: false, remainingStartIndex: 0 },
 });
 
 function buildConfidenceDebug(overrides: Partial<ConfidenceDebug> = {}): ConfidenceDebug {
@@ -152,7 +161,7 @@ describe('DailyBudgetService', () => {
       confidenceDebug: buildConfidenceDebug({ profileBlendConfidence: 0.2 }),
     });
 
-    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrowPreviewOf(tomorrow));
     service['buildYesterdayHistory'] = vi.fn(() => yesterday);
 
     service['setDaySnapshot'](today, NOW_MS, planInputs(null), true);
@@ -171,7 +180,7 @@ describe('DailyBudgetService', () => {
     const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.15 });
     const yesterday = buildDayPayload({ dateKey: '2025-03-14', confidence: 0.2 });
 
-    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrowPreviewOf(tomorrow));
     service['buildYesterdayHistory'] = vi.fn(() => yesterday);
 
     service['setDaySnapshot'](today, NOW_MS, planInputs(null), true);
@@ -205,7 +214,7 @@ describe('DailyBudgetService', () => {
     const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.15 });
     const yesterday = buildDayPayload({ dateKey: '2025-03-14', confidence: 0.2 });
 
-    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrowPreviewOf(tomorrow));
     service['buildYesterdayHistory'] = vi.fn(() => yesterday);
 
     service['setDaySnapshot'](today, NOW_MS, planInputs(null), true);
@@ -213,7 +222,7 @@ describe('DailyBudgetService', () => {
     const newToday = buildDayPayload({ dateKey: '2025-03-17', confidence: 0.5 });
     const newTomorrow = buildDayPayload({ dateKey: '2025-03-18', confidence: 0.5 });
     const newYesterday = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.5 });
-    service['buildTomorrowPreview'] = vi.fn(() => newTomorrow);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrowPreviewOf(newTomorrow));
     service['buildYesterdayHistory'] = vi.fn(() => newYesterday);
     service['setDaySnapshot'](newToday, NOW_MS, planInputs(null));
 
@@ -264,8 +273,8 @@ describe('DailyBudgetService', () => {
     const service = buildService();
     const today = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 });
 
-    let combinedPrices: { prices: { startsAt: string; total: number }[]; lastFetched: string } | null = {
-      prices: [{ startsAt: '2025-03-15T00:00:00Z', total: 1 }],
+    let combinedPrices: { prices: { startsAt: string; total: number, isCheap: false, isExpensive: false }[]; lastFetched: string } | null = {
+      prices: [{ startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: false, isExpensive: false }],
       lastFetched: '2025-03-15T10:00:00Z',
     };
 
@@ -286,12 +295,12 @@ describe('DailyBudgetService', () => {
     const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.3 });
     combinedPrices = {
       prices: [
-        { startsAt: '2025-03-15T00:00:00Z', total: 1 },
-        { startsAt: '2025-03-16T00:00:00Z', total: 1 },
+        { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
+        { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
       ],
       lastFetched: '2025-03-15T13:00:00Z',
     };
-    const tomorrowBuilder = vi.fn(() => tomorrow);
+    const tomorrowBuilder = vi.fn(() => tomorrowPreviewOf(tomorrow));
     service['buildTomorrowPreview'] = tomorrowBuilder;
 
     service['setDaySnapshot'](today, NOW_MS, planInputs(combinedPrices));
@@ -312,12 +321,12 @@ describe('DailyBudgetService', () => {
     const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.3 });
     const prices = {
       prices: [
-        { startsAt: '2025-03-15T00:00:00Z', total: 1 },
-        { startsAt: '2025-03-16T00:00:00Z', total: 1 },
+        { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
+        { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
       ],
       lastFetched: '2025-03-15T13:00:00Z',
     };
-    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrowPreviewOf(tomorrow));
     service['buildYesterdayHistory'] = vi.fn(() => null);
     service['setDaySnapshot'](today, NOW_MS, planInputs(prices));
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
@@ -1025,7 +1034,7 @@ describe('DailyBudgetService', () => {
       { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
       { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
     ];
-    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrowPreviewOf(tomorrow));
     service['buildYesterdayHistory'] = vi.fn(() => null);
     service['setDaySnapshot'](today, NOW_MS, planInputs({ prices: baseEntries }));
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
@@ -1053,7 +1062,7 @@ describe('DailyBudgetService', () => {
       { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
       { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
     ];
-    service['buildTomorrowPreview'] = vi.fn(() => tomorrow);
+    service['buildTomorrowPreview'] = vi.fn(() => tomorrowPreviewOf(tomorrow));
     service['buildYesterdayHistory'] = vi.fn(() => null);
     service['setDaySnapshot'](today, NOW_MS, planInputs({ prices: baseEntries }));
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');

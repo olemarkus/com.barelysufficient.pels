@@ -90,6 +90,7 @@ describe('persisted budget diagnostics history', () => {
         getNowMs: () => NOW, getTimeZone: () => TZ, getPowerLimitSettings: () => capacityOnlyPowerLimits(4.7),
         getAppliedDailyBudgetKwh: () => currentBudget,
         applySuggestedDailyBudget: (value) => { currentBudget = value; return true; },
+        onDailyBudgetAutoApplied: () => undefined,
         recordBudgetDecision: (record) => h.decisions.record(record),
         logger: { info: vi.fn(), warn: vi.fn() } as unknown as PinoLogger,
       });

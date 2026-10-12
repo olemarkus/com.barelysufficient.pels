@@ -33,7 +33,6 @@ import { getHomeScope } from './homeScope.ts';
 import { readUsagePower } from './usagePowerRead.ts';
 import { createToggleGroup } from './components.ts';
 import type { SettingsUiPowerTracker } from '../../../contracts/src/powerTrackerTypes.ts';
-import { buildDayContext } from '../../../shared-domain/src/dailyBudget/dayContext.ts';
 import {
   HOME_SCOPE_USAGE_UNAVAILABLE_BODY,
   HOME_SCOPE_USAGE_UNAVAILABLE_HEADLINE,
@@ -69,6 +68,7 @@ import {
   isLeadingHistoryDayPartial,
   mergeDailyTotals,
   mergeHourlyAverages,
+  sumTodayUsageKWh,
   type DailyHistoryPoint,
   type HourlyPatternPoint,
   type PowerStatsSummary,
@@ -359,12 +359,7 @@ const computePowerStats = (
   const usageHourlyAverages = normalizeUsageHourlyAverages(
     tracker.hourlyAverages,
   );
-  const dayContext = buildDayContext({
-    nowMs: now.getTime(),
-    timeZone,
-    powerTracker: { ...tracker, buckets: usageBuckets },
-  });
-  const today = dayContext.usedNowKWh;
+  const today = sumTodayUsageKWh(usageBuckets, now, timeZone);
   const derivedDailyTotals = mergeDailyTotals(usageDailyTotals, usageBuckets, timeZone);
   const derivedHourlyAverages = mergeHourlyAverages(usageHourlyAverages, usageBuckets, timeZone);
   const totals = getWeekMonthTotals(derivedDailyTotals, timeContext, today, timeZone);

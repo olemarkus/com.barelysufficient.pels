@@ -1,5 +1,11 @@
 import type { DeviceObjectiveProfile } from './objectiveProfileTypes.js';
 
+/**
+ * Durable identity of the meter signal whose freshness latch is carried by a
+ * sub-home tracker. Completed accounting may span identity changes, but the
+ * held sample and unfinished capacity quarter may only be reused when this
+ * identity matches the runtime being constructed.
+ */
 export type PowerTrackerMeterIdentity = {
   powerSource: 'homey_energy' | 'flow';
   meterDeviceId: string | null;
@@ -12,8 +18,12 @@ export type PowerTrackerState = {
   lastControlledPowerW?: number;
   lastUncontrolledPowerW?: number;
   lastExemptPowerW?: number;
-  // Gross PV generation (W) carried by the last sample; absent when that
-  // sample had no generation signal (never stale-held).
+  /**
+   * Gross PV generation (W) carried by the LAST sample, present only when that
+   * sample carried a finite generation reading. A generation-less sample drops
+   * the field (absence as absence — never stale-held), so generation accrual
+   * only ever integrates between two generation-carrying samples.
+   */
   lastGenerationW?: number;
   lastTimestamp?: number;
   buckets?: Record<string, number>;
@@ -33,9 +43,11 @@ export type PowerTrackerState = {
   exemptHourlyAverages?: Record<string, { sum: number; count: number }>;
   deviceBuckets?: Record<string, Record<string, number>>;
   lastDevicePowerWById?: Record<string, number>;
-  // Sparse solar accounting families — present only in homes with a generation
-  // signal / observed export. Hourly buckets keyed by UTC-hour ISO strings;
-  // daily totals by the Homey-local calendar date. kWh only.
+  // Solar accounting families (sparse — only ever written in homes with a
+  // generation signal / observed export, so a non-solar home's persisted state
+  // stays deep-equal with the pre-solar shape). Hourly buckets are keyed by
+  // UTC-hour ISO strings like `buckets`; daily totals by the Homey-local
+  // calendar date via the prune fold. kWh only — money is derived read-side.
   generationBuckets?: Record<string, number>;
   exportBuckets?: Record<string, number>;
   generationDailyTotals?: Record<string, number>;

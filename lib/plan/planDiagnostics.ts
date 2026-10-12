@@ -3,9 +3,8 @@ import type {
   DeviceDiagnosticsBlockCause,
   DeviceDiagnosticsPlanObservation,
   DeviceDiagnosticsStarvationCountingCause,
-  DeviceDiagnosticsStarvationPauseReason,
-  DeviceDiagnosticsStarvationSuppressionState,
 } from '../diagnostics/deviceDiagnosticsService';
+import type { LiveStarvationObservation } from '../diagnostics/deviceDiagnosticsServiceTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveStarvationSuppressionSemantics } from '../planContract/planDecisionSemantics';
 import type { MeasuredPower, PlanContext } from './planContext';
@@ -25,41 +24,29 @@ const noStarvationSuppression = (): StarvationSuppressionNormalization => ({
   pauseReason: null,
 });
 
-type StarvationSuppressionNormalization = {
-  suppressionState: DeviceDiagnosticsStarvationSuppressionState;
-  countingCause: DeviceDiagnosticsStarvationCountingCause | null;
-  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
-};
-
-type BuildDeviceDiagnosticsObservationsParams = {
-  context: PlanContext;
-  power: MeasuredPower;
-  planDevices: DevicePlanDevice[];
-  restoreResult: RestorePlanResult;
-  budgetPressureEligible: boolean;
-  smartTaskDrivingDeviceIds: ReadonlySet<string>;
-};
+type StarvationSuppressionNormalization = Pick<
+  LiveStarvationObservation,
+  'suppressionState' | 'countingCause' | 'pauseReason'
+>;
 
 export const buildDeviceDiagnosticsObservations = (
-  params: BuildDeviceDiagnosticsObservationsParams,
+  context: PlanContext,
+  power: MeasuredPower,
+  planDevices: DevicePlanDevice[],
+  restoreResult: RestorePlanResult,
+  budgetPressureEligible: boolean,
+  smartTaskDrivingDeviceIds: ReadonlySet<string>,
 ): DeviceDiagnosticsPlanObservation[] => {
-  const inputDeviceById = new Map(params.context.devices.map((device) => [device.id, device]));
-  return params.planDevices.map((device) => buildDiagnosticsObservation({
-    temperatureSetpoints: params.context.temperatureSetpoints,
-    inputDevice: inputDeviceById.get(device.id),
+  const inputDeviceById = new Map(context.devices.map((device) => [device.id, device]));
+  return planDevices.map((device) => buildDiagnosticsObservation(
+    context,
+    power,
+    restoreResult,
+    budgetPressureEligible,
     device,
-    restoreResult: params.restoreResult,
-    budgetPressureEligible: params.budgetPressureEligible,
-    smartTaskDriving: params.smartTaskDrivingDeviceIds.has(device.id),
-    // Producer-resolved on `MeasuredPower` (see the field doc there): daily pace binding
-    // AND no physical limit (capacity or grid) also breached. Hourly-cap exhaustion forces
-    // `softLimitSource` to 'capacity' (capacitySoftLimit → 0), so exhausted hours stay
-    // in the capacity bucket too. Reading the shared field keeps this fold and the
-    // device-reason re-attribution in `normalizeShedReasons` in lockstep — the breach
-    // term is what stops the rescue widget offering "Let it run now" during a genuine
-    // capacity breach while the card correctly keeps the headroom framing.
-    budgetReleasableHeadroomHold: params.power.budgetReleasableHeadroomHold,
-  }));
+    inputDeviceById.get(device.id),
+    smartTaskDrivingDeviceIds.has(device.id),
+  ));
 };
 
 const isTemperatureInputDevice = (inputDevice?: PlanInputDevice): boolean => (
@@ -157,12 +144,11 @@ const resolvePelsHoldsBelowTarget = (
   && (pelsCommandsBelowTarget(device, setpoints) || (pelsCommandsTurnOffShed && setpoints.roomShortOfIntended))
 );
 
-const resolveEligibleForStarvation = (params: {
-  device: DevicePlanDevice;
-  inputDevice?: PlanInputDevice;
-  hasStandingDemand: boolean;
-}): boolean => {
-  const { device, inputDevice, hasStandingDemand } = params;
+const resolveEligibleForStarvation = (
+  device: DevicePlanDevice,
+  inputDevice: PlanInputDevice | undefined,
+  hasStandingDemand: boolean,
+): boolean => {
   if (!hasStandingDemand || !inputDevice) return false;
   if (!isTemperatureInputDevice(inputDevice)) return false;
   if (!inputDevice.starvationSupported) return false;
@@ -245,13 +231,12 @@ const resolveSuppressionFromReason = (
   };
 };
 
-const resolveStarvationSuppression = (params: {
-  device: DevicePlanDevice;
-  inputDevice?: PlanInputDevice;
-  hasStandingDemand: boolean;
-  budgetReleasableHeadroomHold: boolean;
-}): StarvationSuppressionNormalization => {
-  const { device, inputDevice, hasStandingDemand, budgetReleasableHeadroomHold } = params;
+const resolveStarvationSuppression = (
+  device: DevicePlanDevice,
+  inputDevice: PlanInputDevice | undefined,
+  hasStandingDemand: boolean,
+  budgetReleasableHeadroomHold: boolean,
+): StarvationSuppressionNormalization => {
   if (!hasStandingDemand || !inputDevice || !device.control.commandAuthority || !inputDevice.control.commandAuthority) {
     return noStarvationSuppression();
   }
@@ -326,24 +311,23 @@ const resolveBudgetDemandRecovered = (
   && setpoints !== null && !setpoints.roomShortOfIntended
 );
 
-const buildDiagnosticsObservation = (params: {
-  temperatureSetpoints: TemperatureSetpointsByDevice;
-  inputDevice?: PlanInputDevice;
-  device: DevicePlanDevice;
-  restoreResult: RestorePlanResult;
-  budgetReleasableHeadroomHold: boolean;
-  budgetPressureEligible: boolean;
-  smartTaskDriving: boolean;
-}): DeviceDiagnosticsPlanObservation => {
-  const {
-    temperatureSetpoints,
-    inputDevice,
-    device,
-    restoreResult,
-    budgetReleasableHeadroomHold,
-    budgetPressureEligible,
-    smartTaskDriving,
-  } = params;
+const buildDiagnosticsObservation = (
+  context: PlanContext,
+  power: MeasuredPower,
+  restoreResult: RestorePlanResult,
+  budgetPressureEligible: boolean,
+  device: DevicePlanDevice,
+  inputDevice: PlanInputDevice | undefined,
+  smartTaskDriving: boolean,
+): DeviceDiagnosticsPlanObservation => {
+  // Producer-resolved on `MeasuredPower` (see the field doc there): daily pace binding
+  // AND no physical limit (capacity or grid) also breached. Hourly-cap exhaustion forces
+  // `softLimitSource` to 'capacity' (capacitySoftLimit → 0), so exhausted hours stay
+  // in the capacity bucket too. Reading the shared field keeps this fold and the
+  // device-reason re-attribution in `normalizeShedReasons` in lockstep — the breach
+  // term is what stops the rescue widget offering "Let it run now" during a genuine
+  // capacity breach while the card correctly keeps the headroom framing.
+  const { budgetReleasableHeadroomHold } = power;
   // Demand metrics and the starvation lanes both ask the same question — does
   // being off mean this device is going without? — and the producer answered it
   // (`hasStandingDemand`). A charger with no car is not starved, and neither
@@ -352,7 +336,7 @@ const buildDiagnosticsObservation = (params: {
   const includeDemandMetrics = (hasStandingDemand || smartTaskDriving)
     && device.control.commandAuthority
     && device.available;
-  const setpoints = resolveObservationSetpoints(temperatureSetpoints, inputDevice);
+  const setpoints = resolveObservationSetpoints(context.temperatureSetpoints, inputDevice);
   const desiredTarget = setpoints === null ? null : setpoints.desiredC;
   const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
   const currentTemperatureC = resolveCurrentTemperatureC(device);
@@ -361,17 +345,13 @@ const buildDiagnosticsObservation = (params: {
     device,
     isTemperatureInputDevice(inputDevice),
   );
-  const eligibleForStarvation = resolveEligibleForStarvation({
-    device,
-    inputDevice,
-    hasStandingDemand,
-  });
-  const starvationSuppression = resolveStarvationSuppression({
+  const eligibleForStarvation = resolveEligibleForStarvation(device, inputDevice, hasStandingDemand);
+  const starvationSuppression = resolveStarvationSuppression(
     device,
     inputDevice,
     hasStandingDemand,
     budgetReleasableHeadroomHold,
-  });
+  );
   const targetDeficitActive = includeDemandMetrics
     && setpoints !== null
     && currentTarget !== null
@@ -388,56 +368,45 @@ const buildDiagnosticsObservation = (params: {
   return {
     deviceId: device.id,
     name: device.name,
-    includeDemandMetrics,
-    unmetDemand,
-    blockCause: resolveDiagnosticsBlockCause({
-      device,
-      desiredTarget,
-      targetDeficitActive,
+    demand: {
+      includeDemandMetrics,
       unmetDemand,
-      restoreResult,
-    }),
-    targetDeficitActive,
-    desiredStateSummary: desiredTarget !== null ? `${desiredTarget.toFixed(1)}C` : 'on',
-    appliedStateSummary: buildAppliedStateSummary(desiredTarget, currentTarget, device.currentState),
-    eligibleForStarvation,
-    currentTemperatureC,
-    intendedNormalTargetC: setpoints === null ? null : setpoints.intendedC,
-    commandedTargetC,
-    targetStepC: setpoints === null ? null : setpoints.targetStepC,
-    pelsCommandsTurnOffShed,
-    pelsHoldsBelowTarget,
-    expectedPowerKw: device.expectedPowerKw,
-    // Denied demand is priced as energy the budget kept from the device, which
-    // takes a device PELS could have powered: one with a power reading. A
-    // temperature device planned for its setpoints alone was never offered power
-    // to deny, so holding it below target is not budget pressure.
-    budgetPressureDenied: budgetPressureEligible && unmetDemand && isMeteredPlanDevice(device),
-    budgetUnservedDenied: resolveBudgetUnservedDenied(
-      device, setpoints, starvationSuppression, eligibleForStarvation, pelsHoldsBelowTarget,
-      budgetReleasableHeadroomHold,
-    ),
-    budgetDemandRecovered: resolveBudgetDemandRecovered(device, inputDevice, setpoints),
-    suppressionState: starvationSuppression.suppressionState,
-    countingCause: starvationSuppression.countingCause,
-    pauseReason: starvationSuppression.pauseReason,
+      blockCause: resolveDiagnosticsBlockCause(device, desiredTarget, targetDeficitActive, unmetDemand, restoreResult),
+      targetDeficitActive,
+      desiredStateSummary: desiredTarget !== null ? `${desiredTarget.toFixed(1)}C` : 'on',
+      appliedStateSummary: buildAppliedStateSummary(desiredTarget, currentTarget, device.currentState),
+      expectedPowerKw: device.expectedPowerKw,
+      // Denied demand is priced as energy the budget kept from the device, which
+      // takes a device PELS could have powered: one with a power reading. A
+      // temperature device planned for its setpoints alone was never offered power
+      // to deny, so holding it below target is not budget pressure.
+      budgetPressureDenied: budgetPressureEligible && unmetDemand && isMeteredPlanDevice(device),
+      budgetUnservedDenied: resolveBudgetUnservedDenied(
+        device, setpoints, starvationSuppression, eligibleForStarvation, pelsHoldsBelowTarget,
+        budgetReleasableHeadroomHold,
+      ),
+      budgetDemandRecovered: resolveBudgetDemandRecovered(device, inputDevice, setpoints),
+    },
+    starvation: {
+      eligibleForStarvation,
+      currentTemperatureC,
+      intendedNormalTargetC: setpoints === null ? null : setpoints.intendedC,
+      commandedTargetC,
+      targetStepC: setpoints === null ? null : setpoints.targetStepC,
+      pelsCommandsTurnOffShed,
+      pelsHoldsBelowTarget,
+      ...starvationSuppression,
+    },
   };
 };
 
-const resolveDiagnosticsBlockCause = (params: {
-  device: DevicePlanDevice;
-  desiredTarget: number | null;
-  targetDeficitActive: boolean;
-  unmetDemand: boolean;
-  restoreResult: RestorePlanResult;
-}): DeviceDiagnosticsBlockCause => {
-  const {
-    device,
-    desiredTarget,
-    targetDeficitActive,
-    unmetDemand,
-    restoreResult,
-  } = params;
+const resolveDiagnosticsBlockCause = (
+  device: DevicePlanDevice,
+  desiredTarget: number | null,
+  targetDeficitActive: boolean,
+  unmetDemand: boolean,
+  restoreResult: RestorePlanResult,
+): DeviceDiagnosticsBlockCause => {
   if (!unmetDemand) return 'not_blocked';
 
   if (desiredTarget !== null) {

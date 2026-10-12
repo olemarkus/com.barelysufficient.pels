@@ -1,10 +1,9 @@
 import { clamp } from '../../packages/shared-domain/src/utils/math';
-import { normalizeWeights } from './dailyBudgetAllocation';
 import {
   allocateBudgetWithCaps,
   allocateBudgetWithCapsAndFloors,
   allocateBudgetWithPriceTargets,
-  buildCompositeWeights,
+  normalizeWeights,
 } from './dailyBudgetAllocation';
 import { buildPlan } from './dailyBudgetPlanCore';
 
@@ -60,9 +59,7 @@ export {
   allocateBudgetWithCaps,
   allocateBudgetWithCapsAndFloors,
   allocateBudgetWithPriceTargets,
-  buildCompositeWeights,
   buildPlan,
   normalizeWeights,
 };
-export { buildPriceDebugData } from './dailyBudgetPrices';
 export type { CombinedPriceData } from './dailyBudgetPrices';

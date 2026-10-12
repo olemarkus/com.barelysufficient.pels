@@ -1062,7 +1062,7 @@ describe('power page stats (buckets-only)', () => {
   });
 
   it('matches daily budget today usage with the power summary total', async () => {
-    const { buildDayContext } = await import('../../shared-domain/src/dailyBudget/dayContext.ts');
+    const { buildDayContext } = await import('../../../lib/dailyBudget/dailyBudgetState.ts');
     const { getDateKeyInTimeZone, getDateKeyStartMs } = await import('../../shared-domain/src/utils/dateUtils.ts');
 
     const timeZone = 'Europe/Oslo';
@@ -1075,7 +1075,7 @@ describe('power page stats (buckets-only)', () => {
     const buckets = buildBuckets(new Date(dayStartMs).toISOString(), 6, 1.25);
     await installHomeyClient({ buckets }, timeZone);
 
-    const context = buildDayContext({ nowMs, timeZone, powerTracker: { buckets } });
+    const context = buildDayContext(nowMs, timeZone, { buckets });
     await captureRenderedPowerStats();
 
     expect(document.querySelector('#usage-today')?.textContent).toBe(`${context.usedNowKWh.toFixed(1)} kWh`);

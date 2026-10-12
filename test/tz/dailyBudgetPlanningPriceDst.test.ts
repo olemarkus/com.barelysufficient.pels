@@ -42,6 +42,8 @@ describe('buildPriceSeriesPair — DST-sized local days (Europe/Oslo app zone)',
         startsAt: new Date(ts).toISOString(),
         total: 100,
         ...(index === surplusIndex ? { budgetPrice: 10 } : {}),
+        isCheap: false,
+        isExpensive: false,
       })),
     };
 
@@ -63,6 +65,8 @@ describe('buildPriceSeriesPair — DST-sized local days (Europe/Oslo app zone)',
         total: 100,
         // Only the FIRST occurrence of the repeated local hour has surplus.
         ...(ts === firstTwoAmUtcMs ? { budgetPrice: 5 } : {}),
+        isCheap: false,
+        isExpensive: false,
       })),
     };
     const pair = buildPriceSeriesPair({ bucketStartUtcMs, combinedPrices });

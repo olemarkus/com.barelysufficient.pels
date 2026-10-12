@@ -185,35 +185,19 @@ const getLearnedProfileParts = (
   };
 };
 
-/**
- * Retrieve the profile breakdown using only the controlled-usage weight,
- * without requiring a full DailyBudgetSettings object.
- */
-export const getProfileBreakdown = (
-  state: DailyBudgetState,
-  controlledUsageWeight: number,
-  defaultProfile: number[],
-): { uncontrolled: number[]; controlled: number[] } => {
-  const settings: DailyBudgetSettings = {
-    enabled: true,
-    dailyBudgetKWh: 0,
-    priceShapingEnabled: false,
-    controlledUsageWeight,
-    priceShapingFlexShare: 0,
-  };
-  return getEffectiveProfileData(state, settings, defaultProfile).breakdown;
+/** The hour profile a plan is built on: the default profile blended toward the learned one. */
+export type EffectiveProfileData = {
+  combinedWeights: number[];
+  breakdown: { uncontrolled: number[]; controlled: number[] };
+  sampleCount: number;
+  controlledShare: number;
 };
 
 export const getEffectiveProfileData = (
   state: DailyBudgetState,
   settings: DailyBudgetSettings,
   defaultProfile: number[],
-): {
-  combinedWeights: number[];
-  breakdown: { uncontrolled: number[]; controlled: number[] };
-  sampleCount: number;
-  controlledShare: number;
-} => {
+): EffectiveProfileData => {
   const learned = getLearnedProfileParts(state, settings, defaultProfile);
   const confidence = getProfileBlendConfidence(getProfileSampleCount(state));
   if (!learned) {
