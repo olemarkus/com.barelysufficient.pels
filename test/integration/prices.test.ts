@@ -249,6 +249,24 @@ const createMockHttpsResponse = (statusCode: number, data: unknown) => {
   return mockResponse;
 };
 
+// A global Date whose clock reads `now`: `new Date()` and `Date.now()` return
+// it, and a Date built from arguments is built as usual. The `now` object is
+// read on every call, so a case that moves it moves the clock.
+const mockDateAt = (now: Date): DateConstructor => class extends Date {
+  constructor(...args: unknown[]) {
+    if (args.length === 0) {
+      super(now.getTime());
+    } else {
+      // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
+      super(...args);
+    }
+  }
+
+  static now() {
+    return now.getTime();
+  }
+} as DateConstructor;
+
 describe('Spot price fetching', () => {
   let mockHttpsGet: Mock;
   let allowConsoleErrorUntilCleanup = false;
@@ -494,20 +512,7 @@ describe('Spot price fetching', () => {
     now.setUTCHours(10, 0, 0, 0);
     const todayStr = now.toISOString().split('T')[0];
     const originalDate = global.Date;
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     global.Date = MockDate;
 
     // Seed cache for NO1, then switch to NO2
@@ -579,20 +584,7 @@ describe('Spot price fetching', () => {
     });
 
     // Mock Date to return 14:00 UTC
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
     const { setAllowConsoleError } = require('../setup.ts');
@@ -652,20 +644,7 @@ describe('Spot price fetching', () => {
     });
 
     // Mock Date to return 14:00 UTC
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
 
@@ -715,20 +694,7 @@ describe('Spot price fetching', () => {
     });
 
     // Mock Date to return 10:00
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
 
@@ -767,20 +733,7 @@ describe('Spot price fetching', () => {
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
     const originalDate = global.Date;
-    global.Date = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    global.Date = mockDateAt(now);
 
     try {
       const app = createApp();
@@ -1039,20 +992,7 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Hytter og fritidshus');
 
     const now = new Date(2026, 0, 3, 12, 0, 0);
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
 
@@ -1111,20 +1051,7 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_data', realCache);
 
     const now = new Date(2026, 0, 3, 12, 0, 0);
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
 
@@ -1353,20 +1280,7 @@ describe('Price optimization', () => {
   };
 
   const withMockedNow = async <T>(now: Date, run: () => Promise<T>): Promise<T> => {
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
     try {
@@ -2114,20 +2028,7 @@ describe('Price optimization', () => {
     const app = createApp();
 
     // Mock Date to return hour 8
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
 
@@ -2195,20 +2096,7 @@ describe('Price optimization', () => {
     const app = createApp();
 
     // Mock Date to return hour 12
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
 
@@ -2276,20 +2164,7 @@ describe('Price optimization', () => {
     const app = createApp();
 
     // Mock Date to return hour 3
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
 
@@ -2364,20 +2239,7 @@ describe('Price optimization', () => {
     });
     mockHomeyInstance.settings.set('price_area', 'NO3');
 
-    const MockDate = class extends Date {
-      constructor(...args: unknown[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-expect-error Date's constructor is overloaded, so a spread of the mock's rest args matches no single overload.
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
+    const MockDate = mockDateAt(now);
     const originalDate = global.Date;
     global.Date = MockDate;
 
