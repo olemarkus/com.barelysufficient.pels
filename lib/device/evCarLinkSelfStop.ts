@@ -185,13 +185,12 @@ export class EvCarSelfStopWatcher {
      * Watch each linked charger for the car stopping of its own accord, and each
      * linked car for charging past the limit its stops had qualified.
      */
-    watch(params: {
-        chargers: readonly EvCarLinkChargerView[];
-        nowMs: number;
-        links: ReadonlyMap<string, SelfStopLink>;
-        cars: ReadonlyMap<string, CarObservation>;
-    }): void {
-        const { chargers, nowMs, links, cars } = params;
+    watch(
+        chargers: readonly EvCarLinkChargerView[],
+        nowMs: number,
+        links: ReadonlyMap<string, SelfStopLink>,
+        cars: ReadonlyMap<string, CarObservation>,
+    ): void {
         for (const charger of chargers) {
             const active = links.get(charger.id);
             if (active) this.lingering.delete(charger.id);
@@ -247,9 +246,7 @@ export class EvCarSelfStopWatcher {
 
         this.selfStopReported.add(charger.id);
         // Keep observing a confirmed stop until fresh car or power evidence ends it.
-        this.emitSelfStop({
-            charger, link, car, reason, heldForMs, nowMs, chargerPowerW: charger.measuredPowerW,
-        });
+        this.emitSelfStop(charger, link, car, reason, heldForMs, nowMs, charger.measuredPowerW);
     }
 
     private liveLingeringLink(
@@ -317,16 +314,15 @@ export class EvCarSelfStopWatcher {
     }
 
 
-    private emitSelfStop(params: {
-        charger: EvCarLinkChargerView;
-        link: SelfStopLink;
-        car: CarObservation;
-        reason: EvCarSelfStopReason;
-        heldForMs: number;
-        nowMs: number;
-        chargerPowerW: number;
-    }): void {
-        const { charger, link, car, reason, heldForMs, nowMs, chargerPowerW } = params;
+    private emitSelfStop(
+        charger: EvCarLinkChargerView,
+        link: SelfStopLink,
+        car: CarObservation,
+        reason: EvCarSelfStopReason,
+        heldForMs: number,
+        nowMs: number,
+        chargerPowerW: number,
+    ): void {
         // Only limit-LIKE stops feed the charge-limit statistic. A smart-charging
         // schedule pauses at whatever percentage the schedule says, so two such
         // holds would clear the two-sample threshold and publish a confident
@@ -339,12 +335,7 @@ export class EvCarSelfStopWatcher {
         // this one — and two such episodes publish a confidently wrong limit.
         const socIsCurrent = car.socAtMs >= link.sinceMs;
         if (car.socPct !== undefined && socIsCurrent && reason === 'car_not_charging') {
-            this.deps.setSnapshot(recordEvCarSelfStopSoc({
-                snapshot: this.deps.getSnapshot(),
-                carId: link.carId,
-                socPct: car.socPct,
-                nowMs,
-            }));
+            this.deps.setSnapshot(recordEvCarSelfStopSoc(this.deps.getSnapshot(), link.carId, car.socPct, nowMs));
         }
         const snapshot = this.deps.getSnapshot();
         const limit = summarizeEvCarObservedLimit(snapshot, link.carId);

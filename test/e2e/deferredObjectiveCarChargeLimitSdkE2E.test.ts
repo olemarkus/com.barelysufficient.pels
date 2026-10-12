@@ -96,7 +96,8 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
     settings.set(CONTROLLABLE_DEVICES, { [CHARGER_ID]: true });
     settings.set('capacity_priorities', { Home: { [CHARGER_ID]: 1 } });
     settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
-    // Two earlier sessions where the car stopped on its own at 70 %.
+    // Two earlier sessions where the car stopped on its own at 70 %, in the
+    // settings blob an upgrading install carries: boot imports it into the store.
     settings.set(EV_CAR_LINK_STATE, {
       version: 2,
       pairs: {},
@@ -116,6 +117,7 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
 
     const app = createApp();
     await app.onInit();
+    expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
     await pumpMinutes(2);
 
     // Plug in: both sides move together, so the probe links the pair.

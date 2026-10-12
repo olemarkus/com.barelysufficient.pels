@@ -154,16 +154,7 @@ CREATE TABLE IF NOT EXISTS power_tracker_scalars (
 ) WITHOUT ROWID;
 `;
 
-type Statements = {
-  upsertHourly: PreparedStatement; deleteHourly: PreparedStatement; loadHourly: PreparedStatement;
-  upsertDaily: PreparedStatement; deleteDaily: PreparedStatement; loadDaily: PreparedStatement;
-  upsertAverage: PreparedStatement; deleteAverage: PreparedStatement; loadAverages: PreparedStatement;
-  upsertDevice: PreparedStatement; deleteDevice: PreparedStatement; loadDevices: PreparedStatement;
-  upsertScalar: PreparedStatement; deleteScalar: PreparedStatement; loadScalars: PreparedStatement;
-  clearAll: PreparedStatement[];
-};
-
-const prepareStatements = (db: UserdataDatabase): Statements => ({
+const prepareStatements = (db: UserdataDatabase) => ({
   upsertHourly: db.prepare('INSERT INTO power_tracker_hourly (home_id, series, hour_key, value) VALUES (?, ?, ?, ?) '
     + 'ON CONFLICT (home_id, series, hour_key) DO UPDATE SET value = excluded.value'),
   deleteHourly: db.prepare('DELETE FROM power_tracker_hourly WHERE home_id = ? AND series = ? AND hour_key = ?'),
@@ -191,6 +182,8 @@ const prepareStatements = (db: UserdataDatabase): Statements => ({
     'power_tracker_device_hourly', 'power_tracker_scalars',
   ].map((table) => db.prepare(`DELETE FROM ${table} WHERE home_id = ?`)),
 });
+
+type Statements = ReturnType<typeof prepareStatements>;
 
 const EMPTY: Readonly<Record<string, never>> = Object.freeze({});
 

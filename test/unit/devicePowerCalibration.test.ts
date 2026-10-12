@@ -4,13 +4,12 @@ import {
   getStepPowerKw,
   hasRecentDrawAt,
   isStepCalibrationConfident,
-  mergeRecoveredCalibrationHistory,
   normalizePersistedPowerCalibration,
-  toPersistedPowerCalibrationValue,
   POWER_CALIBRATION_VERSION,
   pruneStale,
   recordSample,
   type RecordSampleInput,
+  withLegacyCalibrationUnder,
 } from '../../lib/device/devicePowerCalibration';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 
@@ -340,17 +339,21 @@ describe('pruneStale', () => {
 });
 
 describe('normalizePersistedPowerCalibration', () => {
-  it('returns empty for unknown shapes', () => {
-    expect(normalizePersistedPowerCalibration(null).snapshot.version).toBe(POWER_CALIBRATION_VERSION);
-    expect(normalizePersistedPowerCalibration({ version: 999, devices: {} })).toEqual({
-      kind: 'loaded',
-      snapshot: createEmptyPowerCalibrationSnapshot(),
-    });
-    expect(normalizePersistedPowerCalibration('garbage').snapshot.devices).toEqual({});
+  const read = (value: unknown) => {
+    const result = normalizePersistedPowerCalibration(value);
+    if (result === null) throw new Error('not a calibration');
+    return result;
+  };
+
+  it('answers null for a value that is not a calibration of this version', () => {
+    expect(normalizePersistedPowerCalibration(null)).toBeNull();
+    expect(normalizePersistedPowerCalibration({ version: 999, devices: {} })).toBeNull();
+    expect(normalizePersistedPowerCalibration({ version: POWER_CALIBRATION_VERSION, devices: 'garbage' })).toBeNull();
+    expect(normalizePersistedPowerCalibration('garbage')).toBeNull();
   });
 
   it('drops malformed device or step records but preserves valid siblings', () => {
-    const { snapshot: result } = normalizePersistedPowerCalibration({
+    const { snapshot: result } = read({
       version: POWER_CALIBRATION_VERSION,
       stepFloorApplied: true,
       devices: {
@@ -383,7 +386,7 @@ describe('normalizePersistedPowerCalibration', () => {
     // bad step would drop all of the device's calibration history. The
     // entry survives with an empty `steps` map; subsequent samples rebuild
     // the EMA in place.
-    const { snapshot: result } = normalizePersistedPowerCalibration({
+    const { snapshot: result } = read({
       version: POWER_CALIBRATION_VERSION,
       stepFloorApplied: true,
       devices: {
@@ -411,7 +414,7 @@ describe('normalizePersistedPowerCalibration', () => {
 
   it('drops steps learned below 80 % of their nameplate from a value without the step-floor mark', () => {
     // Written by a build before the step floor: version 1, no mark.
-    const result = normalizePersistedPowerCalibration({
+    const result = read({
       version: 1,
       devices: {
         // The production 6 A rung: 0.7878 kW learned against 1.38 kW (57 %).
@@ -432,7 +435,7 @@ describe('normalizePersistedPowerCalibration', () => {
   });
 
   it('still reads a value without the mark as upgraded when nothing needs resetting', () => {
-    const result = normalizePersistedPowerCalibration({
+    const result = read({
       version: 1,
       devices: { hoiax: { steps: { max: persistedStep(2.87, 3) }, lastTouchedMs: 1_000 } },
     });
@@ -448,20 +451,16 @@ describe('normalizePersistedPowerCalibration', () => {
 
   it('never resets a step in a value carrying the mark, however low it learned', () => {
     // A single-phase car on a rung configured three-phase learns about a third
-    // of nameplate under the current gates; once written back it must stay.
+    // of nameplate under the current gates; once written with the mark it stays.
     const snapshot: PowerCalibrationSnapshot = {
       version: POWER_CALIBRATION_VERSION,
       devices: { elbillader: { steps: { '6a': persistedStep(1.38, 4.14) }, lastTouchedMs: 1_000 } },
     };
-    const persisted = toPersistedPowerCalibrationValue(snapshot);
-    expect(persisted.stepFloorApplied).toBe(true);
-    // Earlier builds read only `version: 1`, so the mark must not change it.
-    expect(persisted.version).toBe(1);
-    expect(normalizePersistedPowerCalibration(persisted)).toEqual({ kind: 'loaded', snapshot });
+    expect(read({ ...snapshot, stepFloorApplied: true })).toEqual({ kind: 'loaded', snapshot });
   });
 });
 
-describe('mergeRecoveredCalibrationHistory', () => {
+describe('withLegacyCalibrationUnder', () => {
   const step = (observedKw: number, lastSampleMs: number) => ({
     observedKw,
     nameplateAtSampleKw: 3,
@@ -470,31 +469,31 @@ describe('mergeRecoveredCalibrationHistory', () => {
     lastSampleMs,
   });
 
-  it('fills devices the in-memory store has not re-observed since boot', () => {
-    const merged = mergeRecoveredCalibrationHistory({
-      inMemory: {
+  it('fills devices the store has not observed since the upgrade', () => {
+    const merged = withLegacyCalibrationUnder(
+      {
         version: POWER_CALIBRATION_VERSION,
         devices: { fresh: { steps: { high: step(2.6, 2_000) }, lastTouchedMs: 2_000 } },
       },
-      recovered: {
+      {
         version: POWER_CALIBRATION_VERSION,
         devices: { historic: { steps: { high: step(2.9, 1_000) }, lastTouchedMs: 1_000 } },
       },
-    });
+    );
     expect(Object.keys(merged.devices).sort()).toEqual(['fresh', 'historic']);
     expect(merged.devices.historic.steps.high.observedKw).toBeCloseTo(2.9);
     expect(merged.devices.fresh.steps.high.observedKw).toBeCloseTo(2.6);
   });
 
-  it('merges a shared device per step: in-memory wins on collision, recovered fills the rest', () => {
-    // The in-memory device has only re-visited one step since boot. Recovered
+  it('merges a shared device per step: the store wins on collision, the legacy value fills the rest', () => {
+    // The stored device has only visited one step since the upgrade. Legacy
     // EMAs for the other steps are exactly the history the merge preserves.
-    const merged = mergeRecoveredCalibrationHistory({
-      inMemory: {
+    const merged = withLegacyCalibrationUnder(
+      {
         version: POWER_CALIBRATION_VERSION,
         devices: { shared: { steps: { max: step(2.6, 2_000) }, lastTouchedMs: 2_000 } },
       },
-      recovered: {
+      {
         version: POWER_CALIBRATION_VERSION,
         devices: {
           shared: {
@@ -503,22 +502,19 @@ describe('mergeRecoveredCalibrationHistory', () => {
           },
         },
       },
-    });
+    );
     expect(Object.keys(merged.devices.shared.steps).sort()).toEqual(['low', 'max', 'medium']);
     expect(merged.devices.shared.steps.max.observedKw).toBeCloseTo(2.6);
     expect(merged.devices.shared.steps.low.observedKw).toBeCloseTo(1.1);
     expect(merged.devices.shared.lastTouchedMs).toBe(2_000);
   });
 
-  it('returns the recovered history untouched when nothing mutated in memory', () => {
-    const recovered = {
+  it('returns the legacy history untouched when the store holds nothing', () => {
+    const legacy = {
       version: POWER_CALIBRATION_VERSION,
       devices: { historic: { steps: { high: step(2.9, 1_000) }, lastTouchedMs: 1_000 } },
     };
-    const merged = mergeRecoveredCalibrationHistory({
-      inMemory: createEmptyPowerCalibrationSnapshot(),
-      recovered,
-    });
-    expect(merged.devices).toEqual(recovered.devices);
+    const merged = withLegacyCalibrationUnder(createEmptyPowerCalibrationSnapshot(), legacy);
+    expect(merged.devices).toEqual(legacy.devices);
   });
 });

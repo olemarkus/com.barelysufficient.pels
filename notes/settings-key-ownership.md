@@ -206,8 +206,11 @@ and the `combined_prices` built from them live in the price cache.
   grid tariff one entry per hour, the spot prices with their area, and the
   payload-fed sources' day payloads and markers, and the combined prices built
   from them), and the daily budget's plan and learned profiles
-  (`lib/dailyBudget/dailyBudgetStateStore.ts`, one row per field, diffed);
-  calibration follows. A cache belongs here whatever its size (owner, 2026-09-27):
+  (`lib/dailyBudget/dailyBudgetStateStore.ts`, one row per field, diffed),
+  and the per-step power calibration (`lib/device/devicePowerCalibrationStore.ts`,
+  one row per device) and the EV car-link probe's votes, stop samples and
+  sessions (`lib/device/evCarLinkStore.ts`, one row per family), each written
+  through as it changes. A cache belongs here whatever its size (owner, 2026-09-27):
   shrinking one does not make it configuration.
 - **Nowhere** — a value that is a fact of the running app and nothing else. The
   live status (`PelsStatus`, once the `pels_status` / `pels_status:<homeId>`

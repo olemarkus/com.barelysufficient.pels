@@ -37,4 +37,3 @@ export { createPriceCoordinator, createPriceFlowTagPublisher } from './appInit/p
 export { registerAppFlowCards } from './appInit/registerAppFlowCards';
 export { toPlanDevice } from './appInit/toPlanDevice';
 export { buildDeviceParseProviders } from './appInit/buildDeviceParseProviders';
-export { createPersistedEvCarLinkAccess } from './appInit/evCarLinkAccess';

@@ -2,8 +2,8 @@
  * Per-device-per-step power calibration store.
  *
  * Pure functions over a {@link PowerCalibrationSnapshot}: callers own the
- * snapshot and pass it in / get the updated value out. The settings-store
- * layer (`lib/device/devicePowerCalibrationStore.ts`) loads, persists, and
+ * snapshot and pass it in / get the updated value out. The store
+ * (`lib/device/devicePowerCalibrationStore.ts`) holds, persists, and
  * dispatches samples; this module only contains the EMA math, gating
  * policy, and query helpers.
  *
@@ -29,32 +29,19 @@ import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 export const POWER_CALIBRATION_VERSION: PowerCalibrationVersion = 1;
 
 /**
- * The persisted value: the snapshot plus `stepFloorApplied`, the mark a build
- * that rejects samples below the step floor writes alongside it.
+ * A legacy settings value carries `stepFloorApplied: true` when a build that
+ * rejects samples below the step floor wrote it.
  *
  * Earlier builds accepted any draw above 10 % of the step's nameplate, and a
  * stepped device's lowest rung has no rung beneath to guard it (their anomaly
  * gate, `|x - mu| > 3 mu`, could only ever reject a high sample). A charger's
  * lowest rung learned its trickle and paused draws: a 6 A rung (1.38 kW)
  * settled at 0.79 kW while the car drew 1.13-1.36 kW. A value without the mark
- * still loads, but every step learned below
- * {@link LEGACY_STEP_RESET_BELOW_NAMEPLATE_RATIO} of the nameplate it was
- * learned against is dropped so it relearns from nameplate under the current
- * gates; a legitimately low step, such as a single-phase car on a charger
- * configured three-phase, relearns once too.
- *
- * A mark and not a version bump, because earlier builds read only `version: 1`
- * and treat anything else as no calibration at all: installing one (a branch
- * build on the same Homey) would then overwrite every learned step. They ignore
- * the mark instead and write the value back without it, so on the way back the
- * reset runs again over whatever they learned, which is the right answer.
+ * still imports, but every step learned below this share of the nameplate it
+ * was learned against is dropped so it relearns from nameplate under the
+ * current gates; a legitimately low step, such as a single-phase car on a
+ * charger configured three-phase, relearns once too.
  */
-export type PersistedPowerCalibrationValue = PowerCalibrationSnapshot & { stepFloorApplied: true };
-
-export function toPersistedPowerCalibrationValue(snapshot: PowerCalibrationSnapshot): PersistedPowerCalibrationValue {
-  return { ...snapshot, stepFloorApplied: true };
-}
-
 const LEGACY_STEP_RESET_BELOW_NAMEPLATE_RATIO = 0.8;
 
 export function createEmptyPowerCalibrationSnapshot(): PowerCalibrationSnapshot {
@@ -137,29 +124,26 @@ export type LegacyStepReset = {
 };
 
 /**
- * What a persisted calibration value read as. `upgraded` is a value without the
- * step-floor mark ({@link PersistedPowerCalibrationValue}) with the step reset
- * applied: the stored bytes still lack the mark (and may hold steps it dropped),
- * so the store must write it back. `loaded` covers every other read, including
- * absent, malformed and unknown-version values, which load as empty.
+ * What a legacy settings value read as. `upgraded` is a value without the
+ * step-floor mark (see {@link LEGACY_STEP_RESET_BELOW_NAMEPLATE_RATIO}) with
+ * the step reset applied; `loaded` is a value carrying it.
  */
 export type PersistedPowerCalibration =
   | { kind: 'loaded'; snapshot: PowerCalibrationSnapshot }
   | { kind: 'upgraded'; snapshot: PowerCalibrationSnapshot; resetSteps: LegacyStepReset[] };
 
 /**
- * Returns a defensively-typed snapshot. Unknown shapes degrade to an empty
- * snapshot rather than throwing; partial step records are dropped silently.
- * A value without the step-floor mark comes back `upgraded`, with the step
- * reset applied. Use this whenever a snapshot crosses a persistence boundary.
+ * Read a legacy settings value defensively: partial device and step records
+ * are dropped, and a value without the step-floor mark comes back `upgraded`,
+ * with the step reset applied. `null` for a value that is not a calibration of
+ * this version at all.
  */
-export function normalizePersistedPowerCalibration(value: unknown): PersistedPowerCalibration {
-  const empty: PersistedPowerCalibration = { kind: 'loaded', snapshot: createEmptyPowerCalibrationSnapshot() };
-  if (!isRecord(value)) return empty;
+export function normalizePersistedPowerCalibration(value: unknown): PersistedPowerCalibration | null {
+  if (!isRecord(value)) return null;
   const versionRaw = (value as { version?: unknown }).version;
-  if (versionRaw !== POWER_CALIBRATION_VERSION) return empty;
+  if (versionRaw !== POWER_CALIBRATION_VERSION) return null;
   const devicesRaw = (value as { devices?: unknown }).devices;
-  if (!isRecord(devicesRaw)) return empty;
+  if (!isRecord(devicesRaw)) return null;
 
   const entries = Object.entries(devicesRaw).flatMap(([deviceId, deviceRaw]) => {
     if (typeof deviceId !== 'string' || deviceId.length === 0) return [];
@@ -335,37 +319,35 @@ export function pruneStale(
 }
 
 /**
- * Overlay in-memory accepted state on recovered persisted history before the
- * first post-grace write. Used when the boot-time settings read was suspect
- * (abandon-grace engaged) and a recovery re-read later returned real history:
- * writing the in-memory snapshot alone would overwrite everything the boot
- * read failed to deliver.
+ * A legacy settings value under what the store already holds. The store fills
+ * from an empty boot (a deferred import still lets samples be written), and
+ * writing the legacy value alone would overwrite what it learned since, as
+ * writing the store's alone would lose everything the legacy value holds.
  *
  * Granularity is per (device, step), not per device: step EMAs are
- * independent, and a device re-observed since boot has typically only visited
- * one or two of its steps — dropping the recovered EMAs for the others would
- * discard exactly the history this merge exists to preserve. On a collision
- * the in-memory step wins (its EMA reflects post-boot reality; two EMAs with
+ * independent, and a device observed since the upgrade has typically only
+ * visited one or two of its steps — dropping the legacy EMAs for the others
+ * would discard exactly the history the import exists to keep. On a collision
+ * the stored step wins (its EMA reflects post-upgrade reality; two EMAs with
  * different anchors cannot be meaningfully averaged).
  */
-export function mergeRecoveredCalibrationHistory(params: {
-  inMemory: PowerCalibrationSnapshot;
-  recovered: PowerCalibrationSnapshot;
-}): PowerCalibrationSnapshot {
-  const { inMemory, recovered } = params;
-  const overlapping = Object.entries(inMemory.devices).flatMap(([deviceId, inMemoryDevice]) => {
-    const recoveredDevice = recovered.devices[deviceId];
-    if (recoveredDevice === undefined) return [];
+export function withLegacyCalibrationUnder(
+  stored: PowerCalibrationSnapshot,
+  legacy: PowerCalibrationSnapshot,
+): PowerCalibrationSnapshot {
+  const overlapping = Object.entries(stored.devices).flatMap(([deviceId, storedDevice]) => {
+    const legacyDevice = legacy.devices[deviceId];
+    if (legacyDevice === undefined) return [];
     return [[deviceId, {
-      steps: { ...recoveredDevice.steps, ...inMemoryDevice.steps },
-      lastTouchedMs: Math.max(recoveredDevice.lastTouchedMs, inMemoryDevice.lastTouchedMs),
+      steps: { ...legacyDevice.steps, ...storedDevice.steps },
+      lastTouchedMs: Math.max(legacyDevice.lastTouchedMs, storedDevice.lastTouchedMs),
     }] as const];
   });
   return {
     version: POWER_CALIBRATION_VERSION,
     devices: {
-      ...recovered.devices,
-      ...inMemory.devices,
+      ...legacy.devices,
+      ...stored.devices,
       ...Object.fromEntries(overlapping),
     },
   };
@@ -498,7 +480,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function normalizeDeviceCalibration(value: unknown): DeviceCalibration | null {
+/**
+ * One device's calibration as persisted, read defensively. Used for a legacy
+ * settings value and for every row the store reads back.
+ */
+export function normalizeDeviceCalibration(value: unknown): DeviceCalibration | null {
   if (!isRecord(value)) return null;
   const stepsRaw = (value as { steps?: unknown }).steps;
   const lastTouchedRaw = (value as { lastTouchedMs?: unknown }).lastTouchedMs;
@@ -518,8 +504,14 @@ function normalizeDeviceCalibration(value: unknown): DeviceCalibration | null {
   return { steps: Object.fromEntries(stepEntries), lastTouchedMs: lastTouchedRaw };
 }
 
+/** `value` carries every field of a `StepCalibration` in a usable range; fields beyond them are dropped. */
 function normalizeStepCalibration(value: unknown): StepCalibration | null {
-  if (!isPersistedStepShape(value)) return null;
+  if (!isRecord(value)) return null;
+  if (!isFiniteNumber(value.observedKw) || value.observedKw < 0) return null;
+  if (!isFiniteNumber(value.nameplateAtSampleKw) || value.nameplateAtSampleKw <= 0) return null;
+  if (!isFiniteNumber(value.samples) || value.samples < 0) return null;
+  if (!isFiniteNumber(value.sustainedSeconds) || value.sustainedSeconds < 0) return null;
+  if (!isFiniteNumber(value.lastSampleMs)) return null;
   return {
     observedKw: value.observedKw,
     nameplateAtSampleKw: value.nameplateAtSampleKw,
@@ -527,38 +519,4 @@ function normalizeStepCalibration(value: unknown): StepCalibration | null {
     sustainedSeconds: value.sustainedSeconds,
     lastSampleMs: value.lastSampleMs,
   };
-}
-
-/**
- * Validate that `value` carries every field of a `StepCalibration` in the
- * shape the normaliser would accept. Used by both `normalizeStepCalibration`
- * (drop bad records) and `isPlausiblePersistedSnapshot` (engage load-grace
- * when *any* nested record is malformed) so the two paths stay in lockstep
- * — otherwise a payload whose nested records the normaliser silently drops
- * could still bypass the grace window.
- */
-export function isPersistedStepShape(value: unknown): value is StepCalibration {
-  if (!isRecord(value)) return false;
-  if (!isFiniteNumber(value.observedKw) || value.observedKw < 0) return false;
-  if (!isFiniteNumber(value.nameplateAtSampleKw) || value.nameplateAtSampleKw <= 0) return false;
-  if (!isFiniteNumber(value.samples) || value.samples < 0) return false;
-  if (!isFiniteNumber(value.sustainedSeconds) || value.sustainedSeconds < 0) return false;
-  if (!isFiniteNumber(value.lastSampleMs)) return false;
-  return true;
-}
-
-/**
- * Validate that `value` carries every field of a `DeviceCalibration` with all
- * nested step records also strictly valid. Used by
- * `isPlausiblePersistedSnapshot`; the corresponding normaliser is intentionally
- * more lenient (preserves the device entry when only a subset of steps are
- * malformed) but the plausibility check must reject *any* malformed nested
- * data to keep the grace window protective.
- */
-export function isStrictlyValidPersistedDevice(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  const v = value as { steps?: unknown; lastTouchedMs?: unknown };
-  if (!isFiniteNumber(v.lastTouchedMs)) return false;
-  if (!isRecord(v.steps)) return false;
-  return Object.values(v.steps).every(isPersistedStepShape);
 }

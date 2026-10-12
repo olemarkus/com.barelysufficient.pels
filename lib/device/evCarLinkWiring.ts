@@ -83,43 +83,41 @@ export const buildEvCarLinkChargerViews = (
 });
 
 /**
- * Owner of the link snapshot. Backed by `EvCarLinkStore` when a Homey runtime is
- * available; otherwise in-memory for the process lifetime.
+ * Owner of the link snapshot. Backed by the userdata store
+ * (`createPersistedEvCarLinkAccess`) when the app runs; otherwise in-memory
+ * for the process lifetime.
  */
 export type EvCarLinkSnapshotAccess = {
+    /**
+     * Whether `get` holds the probe's whole history: not while part of it waits
+     * in the legacy settings key for the next boot's import.
+     */
+    historyResolved: boolean;
     get: () => EvCarLinkSnapshot;
     set: (snapshot: EvCarLinkSnapshot) => void;
-    /** Whether `get` holds the persisted history, not an empty stand-in for an unreadable one. */
-    historyResolved: () => boolean;
-    /**
-     * Durable-write hook invoked when the transport is destroyed. Normal writes
-     * are debounced, so without this the votes and observed-stop samples accepted
-     * since the last persist tick are lost on restart.
-     */
-    flush: () => void;
 };
 
-export const createEvCarLinkProducer = (params: {
-    emit: EvCarLinkEventEmitter;
-    getSnapshots: () => readonly ChargerViewInput[];
-    snapshotAccess?: EvCarLinkSnapshotAccess;
-    onAssociatedCarStateOfCharge?: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'];
-    onAssociationEnded?: EvCarLinkProducerDeps['onAssociationEnded'];
-}): EvCarLinkProducer => {
+/** The probe over the committed snapshots; without a `snapshotAccess` it stays in-memory. */
+export const createEvCarLinkProducer = (
+    emit: EvCarLinkEventEmitter,
+    getSnapshots: () => readonly ChargerViewInput[],
+    snapshotAccess: EvCarLinkSnapshotAccess | undefined,
+    onAssociatedCarStateOfCharge: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'],
+    onAssociationEnded: EvCarLinkProducerDeps['onAssociationEnded'],
+): EvCarLinkProducer => {
     let inMemory: EvCarLinkSnapshot = createEmptyEvCarLinkSnapshot();
-    const access: EvCarLinkSnapshotAccess = params.snapshotAccess ?? {
+    const access: EvCarLinkSnapshotAccess = snapshotAccess ?? {
+        historyResolved: true,
         get: () => inMemory,
         set: (snapshot) => { inMemory = snapshot; },
-        historyResolved: () => true,
-        flush: () => {},
     };
     return new EvCarLinkProducer({
-        emit: params.emit,
-        getChargers: () => buildEvCarLinkChargerViews(params.getSnapshots()),
+        emit,
+        getChargers: () => buildEvCarLinkChargerViews(getSnapshots()),
         getSnapshot: access.get,
         setSnapshot: access.set,
-        isHistoryResolved: access.historyResolved,
-        onAssociatedCarStateOfCharge: params.onAssociatedCarStateOfCharge,
-        onAssociationEnded: params.onAssociationEnded,
+        historyResolved: access.historyResolved,
+        onAssociatedCarStateOfCharge,
+        onAssociationEnded,
     });
 };

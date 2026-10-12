@@ -125,8 +125,7 @@ export type DeviceHomeAssignments = Record<string, HomeId>;
  *   (implausible — regardless of marker), OR the read threw. Mutation
  *   (read-modify-write) flows MUST refuse to write on `'suspect'` and retry
  *   on a later read instead.
- * Precedent: `lib/device/devicePowerCalibrationStore.ts`
- * (`power_calibration_initialized`, notes/persisted-settings-state.md).
+ * Rationale: notes/persisted-settings-state.md.
  */
 export type HomeStoreReadResult<T> =
   | { state: 'unwritten' }
@@ -285,8 +284,8 @@ const isPlausibleSubHomeEntry = (raw: unknown): boolean => {
 
 /**
  * Store-boundary plausibility for the persisted `homes_config` blob, STRICTER
- * than {@link normalizeHomesConfig} (calibration-store precedent): the
- * normalizer is lenient by design (drops bad entries, keeps good ones), but a
+ * than {@link normalizeHomesConfig}: the normalizer is lenient by design
+ * (drops bad entries, keeps good ones), but a
  * blob it would lossily change signals partial corruption — classifying it
  * `'present'` would let the next whole-value write persist only the survivors
  * and discard corrupted-but-recoverable entries. Implausible ⇒ the store read

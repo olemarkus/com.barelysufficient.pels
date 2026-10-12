@@ -27,10 +27,10 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   EV_CAR_ASSOCIATIONS,
-  EV_CAR_LINK_STATE,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 import api from '../../api';
+import { createEvCarLinkRepository } from '../../lib/device/evCarLinkStore';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import { drainUntil } from '../utils/asyncDrain';
 import type { DeviceStateOfChargeSnapshot } from '../../packages/contracts/src/types';
@@ -294,7 +294,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
       chargerState: 'plugged_out',
     });
     await pumpMinutes(5);
-    expect(mockHomeyInstance.settings.get(EV_CAR_LINK_STATE)).toMatchObject({
+    expect(createEvCarLinkRepository(app.getUserdataDatabase()).read(Date.now())).toMatchObject({
       version: 2,
       cars: { [CAR_ID]: { stopSocPct: [70] } },
     });
@@ -332,8 +332,8 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     await pumpMinutes(65);
 
     expect(of('ev_car_self_stopped')).toEqual([]);
-    const persisted = mockHomeyInstance.settings.get(EV_CAR_LINK_STATE) as { cars?: Record<string, unknown> } | undefined;
-    expect(persisted?.cars?.[CAR_ID]).toBeUndefined();
+    const persisted = createEvCarLinkRepository(app.getUserdataDatabase()).read(Date.now());
+    expect(persisted?.cars[CAR_ID]).toBeUndefined();
   });
 
   it('reports a session elsewhere when the car plugs in with no charger transition', async () => {

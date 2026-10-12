@@ -1500,17 +1500,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the weather history (`lib/weather/weatherHistoryStore.ts`), the smart-task plan history
       (`lib/objectives/deferredObjectives/planHistoryStore.ts`), the device diagnostics
       (`lib/diagnostics/deviceDiagnosticsStateStore.ts`), the price caches
-      (`lib/price/priceCacheStore.ts`) and the daily budget's plan and learned profiles
-      (`lib/dailyBudget/dailyBudgetStateStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`). These have not, and are ~3 kB of the ~19 kB object:
-      `power_calibration` (2 kB,
-      `lib/device/devicePowerCalibrationStore.ts`), `device_power_peaks` (1 kB,
-      `lib/device/learnedPowerPeakState.ts`) and `deferred_objective_active_plans`
-      (`setup/appInit/deferredRecorders.ts`). The size is what matters, because the small live
-      latches stay in settings by ruling and keep writing: measured on production on 2026-09-26,
-      `device_last_controlled_ms` writes ~19 times an hour (every executor actuation batch,
-      `setup/homeRuntime/homeSignalWriters.ts`), `deferred_objective_observation_watermark` 12
-      (`setup/appInit/deferredRecorders.ts`), `power_calibration` up to 10 while a charger runs.
+      (`lib/price/priceCacheStore.ts`), the daily budget's plan and learned profiles
+      (`lib/dailyBudget/dailyBudgetStateStore.ts`), the per-step power calibration
+      (`lib/device/devicePowerCalibrationStore.ts`) and the EV car-link probe
+      (`lib/device/evCarLinkStore.ts`) moved to the userdata store
+      (`lib/store/userdataDatabase.ts`). These have not, and are ~1 kB of the ~17 kB object:
+      `device_power_peaks` (1 kB, `lib/device/learnedPowerPeakState.ts`) and
+      `deferred_objective_active_plans` (`setup/appInit/deferredRecorders.ts`). The size is what
+      matters, because the small live latches stay in settings by ruling and keep writing:
+      measured on production on 2026-09-26, `device_last_controlled_ms` writes ~19 times an hour
+      (every executor actuation batch, `setup/homeRuntime/homeSignalWriters.ts`) and
+      `deferred_objective_observation_watermark` 12 (`setup/appInit/deferredRecorders.ts`).
       Change: one repository per family beside its domain, taking the
       open database (the tracker and weather stores are the pattern: rows or one JSON row per
       event, diffed writes, the legacy key imported once at boot through

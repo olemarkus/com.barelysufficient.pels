@@ -206,6 +206,23 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('imports the legacy power-calibration blob at boot and retires the key', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    const learned = { observedKw: 2.9, nameplateAtSampleKw: 3, samples: 50, sustainedSeconds: 900, lastSampleMs: 1 };
+    mockHomeyInstance.settings.set('power_calibration', {
+      version: 1,
+      stepFloorApplied: true,
+      devices: { 'dev-1': { steps: { max: learned }, lastTouchedMs: Date.now() } },
+    });
+
+    const app = createApp();
+    await initApp(app);
+
+    expect(app.getPowerCalibrationSnapshot().devices['dev-1'].steps.max).toEqual(learned);
+    expect(mockHomeyInstance.settings.get('power_calibration')).toBeNull();
+  });
+
   it('applies the observed-state projection before syncLivePlanState reads it', async () => {
     // Regression (stage 4b): listeners fire in registration order, and
     // syncLivePlanState reads the projection (via toPlanDevice's observed reads).
@@ -3859,6 +3876,9 @@ describe('periodic snapshot refresh scheduling', () => {
   it('clears the one-shot prune timer registry entry after the initial prune fires', async () => {
     vi.useFakeTimers();
     const app = createApp();
+    // The initial timer also prunes the calibration store, which lives in the
+    // userdata database the boot opens before it starts pruning.
+    app['openUserdata']();
     const pruneSpy = vi.spyOn(app.mainTracker, 'prune').mockImplementation(() => {});
 
     try {

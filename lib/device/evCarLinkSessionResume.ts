@@ -46,15 +46,13 @@ export type SessionResumeVerdict = {
 };
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export const resolveResumableSessions = (params: {
-    sessions: Readonly<Record<string, EvCarLinkSession>> | undefined;
-    chargers: readonly EvCarLinkChargerView[];
-    cars: ReadonlyMap<string, CarObservation>;
-    /** Chargers that already hold a live link, or were already resumed this run. */
-    isSettled: (chargerId: string) => boolean;
-}): SessionResumeVerdict => {
-    const { sessions, chargers, cars, isSettled } = params;
-    if (!sessions) return { resume: [], forget: [] };
+/** `isSettled` names the chargers that already hold a live link, or were already resumed this run. */
+export const resolveResumableSessions = (
+    sessions: Readonly<Record<string, EvCarLinkSession>>,
+    chargers: readonly EvCarLinkChargerView[],
+    cars: ReadonlyMap<string, CarObservation>,
+    isSettled: (chargerId: string) => boolean,
+): SessionResumeVerdict => {
     const resume: ResumableSession[] = [];
     const forget: string[] = [];
     for (const charger of chargers) {

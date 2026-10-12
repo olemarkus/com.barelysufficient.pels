@@ -17,7 +17,10 @@ the rationale for not re-raising the refactor.
 The abandon-grace window alone only *postpones* the destructive reset: nothing
 re-read the recoverable value, so the first accepted write after the grace
 still overwrote real history with empty-derived state. The calibration store
-and the EV car-link store (each per-store, per the ruling above) now add:
+and the EV car-link store (each per-store, per the ruling above) added the two
+mechanisms below. Both stores have since moved to the userdata store and
+deleted them (addendum 2026-10-10); they are kept as the record of what a
+settings blob that must stay a blob needs.
 
 - **First-write recovery re-read** — while the boot read was suspect (grace
   engaged), the write path re-reads the persisted value before its first
@@ -93,6 +96,26 @@ had none and had been carried for the life of the feature.
 
 New per-device or per-subject state should start per-key. Reach for the
 machinery below only when something genuinely must be written as one document.
+
+### Addendum (2026-10-10): history and learned data leave settings instead
+
+Per-key is the answer for configuration. History, learned data and caches go
+to the userdata store (`notes/settings-key-ownership.md` § "Which store a key
+lives in"), where the whole class of problem is gone: a read either answers or
+throws, nothing transiently reads back absent, and a write costs the bytes
+written. The calibration and EV car-link stores moved there and lost the grace
+window, the written-before marker, the recovery re-read, the dirty flag, the
+debounce, the persist guard and the flush; they write each accepted change
+through, one row per device (calibration) or per family (car link).
+
+The userdata repositories do share one primitive, unlike the stores this note
+cut: `lib/store/jsonRowTable.ts`, a table of JSON rows under a text key that
+reads (deleting rows that do not parse or that the owner refuses) and writes
+the diff against what it last read or wrote. That part is mechanism, not
+policy: what a row must hold, how rows make the domain state, and the legacy
+import stay with each repository. Its one assumption is that a state replaces
+a value when it changes; the daily budget and the device diagnostics mutate
+theirs in place, so they keep a JSON diff base of their own.
 
 ## Historical Proposal
 

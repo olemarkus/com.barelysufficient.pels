@@ -76,7 +76,7 @@ class Harness {
       getChargers: () => this.chargers,
       getSnapshot: () => this.snapshot,
       setSnapshot: (next) => { this.snapshot = next; },
-      isHistoryResolved: () => true,
+      historyResolved: true,
       onAssociatedCarStateOfCharge: (reading) => { this.adopted.push(reading); },
       onAssociationEnded: (chargerId) => { this.ended.push(chargerId); },
     });
@@ -195,6 +195,7 @@ describe('linking a car to a charger', () => {
       version: h.snapshot.version,
       pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
       cars: {},
+      sessions: {},
     };
     seedDisconnected(h, 0);
     h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
@@ -467,6 +468,7 @@ describe('linking a car to a charger', () => {
       version: h.snapshot.version,
       pairs: { 'car-A|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
       cars: {},
+      sessions: {},
     };
     h.car(carDevice({ id: 'car-A', state: 'plugged_out', socPct: 40 }), 0);
     h.car(carDevice({ id: 'car-B', state: 'plugged_out', socPct: 55 }), 0);
@@ -488,6 +490,7 @@ describe('linking a car to a charger', () => {
       version: h.snapshot.version,
       pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
       cars: {},
+      sessions: {},
     };
     // FIRST observation of the car is already connected, so there is no edge.
     h.car(carDevice({ state: 'plugged_in_charging', socPct: 40 }), 0);
@@ -508,6 +511,7 @@ describe('linking a car to a charger', () => {
       version: h.snapshot.version,
       pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES + 5, lastVotedAtMs: 1 } },
       cars: {},
+      sessions: {},
     };
     h.car(carDevice({ state: 'plugged_out', socPct: 40 }), 0);
     h.tick(0);
@@ -525,6 +529,7 @@ describe('linking a car to a charger', () => {
       version: h.snapshot.version,
       pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
       cars: {},
+      sessions: {},
     };
     h.chargers = [charger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true })];
     h.car(carDevice({ state: 'plugged_in_charging', socPct: 40 }), 0);
@@ -540,11 +545,12 @@ describe('linking a car to a charger', () => {
       version: h.snapshot.version,
       pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
       cars: {},
+      sessions: {},
     };
     h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
     h.car(carDevice({ state: 'plugged_in_charging', socPct: 40, available: false }), 1_000);
     expect(h.of('ev_car_link_resolved')).toEqual([]);
-    expect(h.snapshot.sessions).toBeUndefined();
+    expect(h.snapshot.sessions).toEqual({});
 
     h.car(carDevice({ state: 'plugged_in_charging', socPct: 42, available: true }), 60_000);
 

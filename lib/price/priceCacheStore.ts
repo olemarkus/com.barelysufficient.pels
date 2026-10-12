@@ -18,7 +18,7 @@
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
-import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
+import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
 import {
   COMBINED_PRICES,
@@ -71,13 +71,11 @@ CREATE TABLE IF NOT EXISTS price_cache (
 ) WITHOUT ROWID;
 `;
 
-type Statements = { load: PreparedStatement; upsert: PreparedStatement; remove: PreparedStatement };
-
 type Held = { json: string; value: unknown };
 
 export const createPriceCacheStore = (db: UserdataDatabase): PriceCacheStore => {
   db.exec(SCHEMA);
-  const s: Statements = {
+  const s = {
     load: db.prepare('SELECT value_json FROM price_cache WHERE key = ?'),
     upsert: db.prepare('INSERT INTO price_cache (key, value_json) VALUES (?, ?) '
       + 'ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json'),

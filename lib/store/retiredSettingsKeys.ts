@@ -30,6 +30,11 @@ const RETIRED_SETTINGS_KEYS: ReadonlySet<string> = new Set([
   'learned_thermostat_deadband_c',
   'overview_redesign_enabled',
   'daily_budget_breakdown_enabled',
+  // Written-before markers of the calibration and EV car-link blobs, which
+  // only told a fresh install from a transient settings miss; the userdata
+  // store has no such miss to tell.
+  'power_calibration_initialized',
+  'ev_car_link_state_initialized',
 ]);
 
 export const unsetRetiredSettingsKeys = (settings: SettingsPort): void => {

@@ -26,7 +26,7 @@ import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import type { HomeMembershipWiring } from '../homeMembershipWiring';
 import { buildDeviceParseProviders } from './buildDeviceParseProviders';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
-import { createPersistedEvCarLinkAccess } from './evCarLinkAccess';
+import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 
@@ -131,10 +131,10 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
   // wiring-assigns-ctx-members house pattern).
   // eslint-disable-next-line functional/immutable-data -- shared AppContext write
   ctx.externalOffHold = createExternalOffHoldPolicy(ctx.homey.settings);
-  const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook({
-    getStore: () => deps.getPowerCalibrationStore(),
-    debugStructured: ctx.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
-  });
+  const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook(
+    deps.getPowerCalibrationStore(),
+    ctx.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
+  );
   const deviceManager = new DeviceTransport(deps.homeyApp, {
     log: ctx.log.bind(ctx),
     error: ctx.error.bind(ctx),
@@ -161,7 +161,7 @@ export async function wireDeviceTransport(deps: DeviceTransportWiringDeps): Prom
       ctx.deviceControlHelpers.reconcileTargetPowerReachability([snapshot], nowMs);
     },
     observedStateDispatcher: deps.getObservedStateEmitter().asDispatcher(deps.getObservedHomePower()),
-    evCarLinkSnapshotAccess: createPersistedEvCarLinkAccess(ctx.homey, deps.timers),
+    evCarLinkSnapshotAccess: createEvCarLinkAccessForApp(ctx),
     retainedPowerStore: createRetainedPowerStore(ctx.getUserdataDatabase()),
   });
   // Subscribe the projection BEFORE the transport is reachable through `ctx`:

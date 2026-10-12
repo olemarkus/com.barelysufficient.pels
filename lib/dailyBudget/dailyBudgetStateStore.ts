@@ -23,7 +23,8 @@
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
-import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
+import { parseJsonRow } from '../store/jsonRowTable';
+import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
 import { DAILY_BUDGET_STATE } from '../utils/settingsKeys';
 import { resolveProfileSampleCount } from './dailyBudgetLearning';
@@ -51,22 +52,12 @@ CREATE TABLE IF NOT EXISTS daily_budget_state_fields (
 ) WITHOUT ROWID;
 `;
 
-type Statements = { upsert: PreparedStatement; remove: PreparedStatement; load: PreparedStatement };
-
-const prepareStatements = (db: UserdataDatabase): Statements => ({
+const prepareStatements = (db: UserdataDatabase) => ({
   upsert: db.prepare('INSERT INTO daily_budget_state_fields (key, value_json) VALUES (?, ?) '
     + 'ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json'),
   remove: db.prepare('DELETE FROM daily_budget_state_fields WHERE key = ?'),
   load: db.prepare('SELECT key, value_json FROM daily_budget_state_fields'),
 });
-
-const parseRow = (json: string): unknown => {
-  try {
-    return JSON.parse(json) as unknown;
-  } catch {
-    return undefined;
-  }
-};
 
 /**
  * The fields as JSON, by name: the diff base of the next write. JSON rather
@@ -90,7 +81,7 @@ export const createDailyBudgetStateStore = (db: UserdataDatabase): DailyBudgetSt
   const load = (): Record<string, unknown> | null => {
     const rows = s.load.all() as Array<{ key: string; value_json: string }>;
     const fields = Object.fromEntries(rows.flatMap((row) => {
-      const value = parseRow(row.value_json);
+      const value = parseJsonRow(row.value_json);
       if (value !== undefined) return [[row.key, value] as const];
       storeLogger.error({ event: 'daily_budget_state_row_quarantined', key: row.key });
       s.remove.run(row.key);

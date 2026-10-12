@@ -30,12 +30,12 @@ const resolve = (params: {
   chargers?: EvCarLinkChargerView[];
   cars?: Array<[string, CarObservation]>;
   settled?: string[];
-}) => resolveResumableSessions({
-  sessions: params.sessions ?? { 'charger-1': { carId: 'car-1', sinceMs: 1_000 } },
-  chargers: params.chargers ?? [charger()],
-  cars: new Map(params.cars ?? [['car-1', car()]]),
-  isSettled: (id) => (params.settled ?? []).includes(id),
-});
+}) => resolveResumableSessions(
+  params.sessions ?? { 'charger-1': { carId: 'car-1', sinceMs: 1_000 } },
+  params.chargers ?? [charger()],
+  new Map(params.cars ?? [['car-1', car()]]),
+  (id) => (params.settled ?? []).includes(id),
+);
 
 describe('resolveResumableSessions', () => {
   it('resumes when both the charger and its remembered car report connected', () => {
@@ -74,12 +74,8 @@ describe('resolveResumableSessions', () => {
   });
 
   it('resumes nothing without a persisted session', () => {
-    // Snapshots written before sessions were persisted, and every charger whose
-    // session ended normally.
-    expect(resolve({ sessions: {} }).resume).toEqual([]);
-    expect(resolveResumableSessions({
-      sessions: undefined, chargers: [charger()], cars: new Map(), isSettled: () => false,
-    })).toEqual({ resume: [], forget: [] });
+    // Every charger whose session ended normally.
+    expect(resolve({ sessions: {} })).toEqual({ resume: [], forget: [] });
   });
 
   it('leaves a charger alone once it is settled', () => {
@@ -91,15 +87,15 @@ describe('resolveResumableSessions', () => {
   it('resumes each charger in a two-car, two-charger home', () => {
     // The case a "refuse when another car is connected" guard would break: both
     // cars are legitimately connected, each on its own charger.
-    const resumed = resolveResumableSessions({
-      sessions: {
+    const resumed = resolveResumableSessions(
+      {
         'charger-1': { carId: 'car-1', sinceMs: 1_000 },
         'charger-2': { carId: 'car-2', sinceMs: 2_000 },
       },
-      chargers: [charger(), charger({ id: 'charger-2', name: 'Garasje' })],
-      cars: new Map([['car-1', car()], ['car-2', car({ name: 'Zoe' })]]),
-      isSettled: () => false,
-    });
+      [charger(), charger({ id: 'charger-2', name: 'Garasje' })],
+      new Map([['car-1', car()], ['car-2', car({ name: 'Zoe' })]]),
+      () => false,
+    );
     expect(resumed.resume.map((entry) => entry.carId)).toEqual(['car-1', 'car-2']);
   });
 });

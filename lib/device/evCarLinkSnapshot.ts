@@ -4,16 +4,16 @@
  *
  * Split from `evCarLink.ts` (the correlation decisions) so each file stays under
  * the 500 LOC cap and so the persistence concerns are testable without the
- * matcher. The store wiring that debounces writes and rides out a transient
- * settings read lives in `evCarLinkStore.ts`.
+ * matcher. The store that persists it lives in `evCarLinkStore.ts`.
  *
- * Everything here is pure. Unknown persisted shapes degrade to an empty snapshot
- * rather than throwing — the same defensive contract as
+ * Everything here is pure. Partial persisted records are dropped rather than
+ * thrown on — the same defensive contract as
  * `normalizePersistedPowerCalibration`.
  */
 import type {
     EvCarChargerMatch,
     EvCarLinkAffinity,
+    EvCarLinkSession,
     EvCarLinkSnapshot,
     EvCarLinkVersion,
     EvCarObservedStops,
@@ -107,16 +107,16 @@ const normalizeObservedStops = (value: unknown): EvCarObservedStops | null => {
 };
 
 /**
- * Returns a defensively-typed snapshot. Unknown shapes degrade to an empty
- * snapshot rather than throwing; partial pair/car records are dropped silently.
- * Use this whenever a snapshot crosses the persistence boundary.
+ * Returns a defensively-typed snapshot, or `null` for a value that is not a
+ * snapshot of a known version at all; partial pair/car records are dropped
+ * silently. Use this whenever a snapshot crosses the persistence boundary.
  */
-export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs?: number): EvCarLinkSnapshot => {
-    if (!isRecord(value)) return createEmptyEvCarLinkSnapshot();
-    if (!isKnownEvCarLinkVersion(value.version)) return createEmptyEvCarLinkSnapshot();
+export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs: number): EvCarLinkSnapshot | null => {
+    if (!isRecord(value)) return null;
+    if (!isKnownEvCarLinkVersion(value.version)) return null;
     const pairsRaw = value.pairs;
     const carsRaw = value.version === EV_CAR_LINK_VERSION_WITH_UNSOUND_STOPS ? {} : value.cars;
-    if (!isRecord(pairsRaw) || !isRecord(carsRaw)) return createEmptyEvCarLinkSnapshot();
+    if (!isRecord(pairsRaw) || !isRecord(carsRaw)) return null;
 
     // Clamp any timestamp that sits in the future to the load-time clock. A
     // Homey clock jump mid-vote, or a corrupt persisted value, otherwise makes
@@ -124,9 +124,7 @@ export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs?: number): EvCa
     // retention check — so the record never expires and can keep qualifying as an
     // affinity prior forever. Clamping is conservative: the record simply starts
     // ageing from now instead of being trusted indefinitely.
-    const clamp = (timestampMs: number): number => (
-        nowMs !== undefined && timestampMs > nowMs ? nowMs : timestampMs
-    );
+    const clamp = (timestampMs: number): number => Math.min(timestampMs, nowMs);
     const pairs = Object.entries(pairsRaw).flatMap(([key, raw]) => {
         if (parseEvCarLinkPairKey(key) === null) return [];
         const normalized = normalizeAffinity(raw);
@@ -161,17 +159,13 @@ export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs?: number): EvCa
 };
 
 /** Records the session a charger is in, so a restart can offer to resume it. */
-export const recordEvCarLinkSession = (params: {
-    snapshot: EvCarLinkSnapshot;
-    chargerId: string;
-    carId: string;
-    sinceMs: number;
-}): EvCarLinkSnapshot => ({
-    ...params.snapshot,
-    sessions: {
-        ...params.snapshot.sessions,
-        [params.chargerId]: { carId: params.carId, sinceMs: params.sinceMs },
-    },
+export const recordEvCarLinkSession = (
+    snapshot: EvCarLinkSnapshot,
+    chargerId: string,
+    session: EvCarLinkSession,
+): EvCarLinkSnapshot => ({
+    ...snapshot,
+    sessions: { ...snapshot.sessions, [chargerId]: session },
 });
 
 /**
@@ -182,56 +176,20 @@ export const clearEvCarLinkSession = (params: {
     snapshot: EvCarLinkSnapshot;
     chargerId: string;
 }): EvCarLinkSnapshot => {
-    const { [params.chargerId]: removed, ...rest } = params.snapshot.sessions ?? {};
+    const { [params.chargerId]: removed, ...rest } = params.snapshot.sessions;
     return removed === undefined ? params.snapshot : { ...params.snapshot, sessions: rest };
-};
-
-/**
- * Strict plausibility gate for the load path. A snapshot that merely parses is
- * not proof the settings read succeeded — an empty-but-well-formed value is
- * exactly what a transient read failure looks like. The store uses this to
- * decide whether it may skip its load-grace window.
- */
-export const isStrictlyValidPersistedEvCarLink = (value: unknown): boolean => {
-    if (!isRecord(value)) return false;
-    // A v1 blob is a successful read, not a suspect one: its samples are dropped
-    // by the normaliser, not by a load grace.
-    if (!isKnownEvCarLinkVersion(value.version)) return false;
-    const { pairs, cars } = value;
-    if (!isRecord(pairs) || !isRecord(cars)) return false;
-    const pairEntries = Object.entries(pairs);
-    const carEntries = Object.entries(cars);
-    if (pairEntries.length === 0 && carEntries.length === 0) return false;
-    return pairEntries.every(([key, raw]) => parseEvCarLinkPairKey(key) !== null && normalizeAffinity(raw) !== null)
-        && carEntries.every(([carId, raw]) => carId.length > 0 && isFullyValidObservedStops(raw));
-};
-
-/**
- * Stricter than `normalizeObservedStops`, which FILTERS invalid samples and
- * still succeeds on a partially-corrupt array. A mixed payload like
- * `[80, null]` would otherwise pass the plausibility gate, the store would skip
- * its load grace, and the next accepted vote would persist the lossy normalized
- * value straight over history that was still recoverable. Partial corruption is
- * corruption: require every raw sample to survive on its own.
- */
-const isFullyValidObservedStops = (value: unknown): boolean => {
-    if (!isRecord(value)) return false;
-    const { stopSocPct } = value;
-    if (!Array.isArray(stopSocPct) || !stopSocPct.every(isValidSocPct)) return false;
-    return normalizeObservedStops(value) !== null;
 };
 
 /**
  * Add one coincidence vote to a pair. Votes only ever increase: an away session
  * carries no counter-evidence, so there is deliberately no decrement path.
  */
-export const recordEvCarLinkVote = (params: {
-    snapshot: EvCarLinkSnapshot;
-    carId: string;
-    chargerId: string;
-    nowMs: number;
-}): EvCarLinkSnapshot => {
-    const { snapshot, carId, chargerId, nowMs } = params;
+export const recordEvCarLinkVote = (
+    snapshot: EvCarLinkSnapshot,
+    carId: string,
+    chargerId: string,
+    nowMs: number,
+): EvCarLinkSnapshot => {
     const key = buildEvCarLinkPairKey(carId, chargerId);
     const previous = snapshot.pairs[key];
     return {
@@ -275,13 +233,12 @@ export const resolveEvCarChargerMatches = (
  * cars always accept samples so a full table cannot silently freeze one car's
  * history.
  */
-export const recordEvCarSelfStopSoc = (params: {
-    snapshot: EvCarLinkSnapshot;
-    carId: string;
-    socPct: number;
-    nowMs: number;
-}): EvCarLinkSnapshot => {
-    const { snapshot, carId, socPct, nowMs } = params;
+export const recordEvCarSelfStopSoc = (
+    snapshot: EvCarLinkSnapshot,
+    carId: string,
+    socPct: number,
+    nowMs: number,
+): EvCarLinkSnapshot => {
     if (!isValidSocPct(socPct)) return snapshot;
     const previous = snapshot.cars[carId];
     if (!previous && Object.keys(snapshot.cars).length >= EV_CAR_LINK_MAX_TRACKED_CARS) return snapshot;
@@ -377,12 +334,11 @@ export const clearEvCarObservedStops = (
 };
 
 /** Drop pair and car records untouched for longer than `maxAgeMs`. */
-export const pruneEvCarLinkSnapshot = (params: {
-    snapshot: EvCarLinkSnapshot;
-    nowMs: number;
-    maxAgeMs?: number;
-}): EvCarLinkSnapshot => {
-    const { snapshot, nowMs, maxAgeMs = EV_CAR_LINK_PRUNE_MAX_AGE_MS } = params;
+export const pruneEvCarLinkSnapshot = (
+    snapshot: EvCarLinkSnapshot,
+    nowMs: number,
+    maxAgeMs: number = EV_CAR_LINK_PRUNE_MAX_AGE_MS,
+): EvCarLinkSnapshot => {
     const pairs = Object.entries(snapshot.pairs)
         .filter(([, affinity]) => nowMs - affinity.lastVotedAtMs <= maxAgeMs);
     const cars = Object.entries(snapshot.cars)
@@ -397,44 +353,41 @@ export const pruneEvCarLinkSnapshot = (params: {
         // Carried through: pruning ages out EVIDENCE, and a live session is not
         // evidence. Rebuilding without it meant one stale pair at boot silently
         // dropped every session, so a mid-charge restart lost its car.
-        ...(snapshot.sessions ? { sessions: snapshot.sessions } : {}),
+        sessions: snapshot.sessions,
     };
 };
 
 /**
- * Overlay in-memory accepted state on recovered persisted history before the
- * first post-grace write. Used when the boot-time settings read was suspect
- * (abandon-grace engaged) and a recovery re-read later returned real history:
- * writing the in-memory snapshot alone would overwrite the multi-session
- * evidence the probe exists to gather.
+ * A legacy settings value under what the store already holds. The store fills
+ * from an empty boot (a deferred import still lets the probe vote), and
+ * writing the legacy value alone would overwrite the multi-session evidence
+ * gathered since.
  *
- * In-memory entries win per key (pair and car records observed since boot
- * reflect current reality); recovered history fills everything else, with
- * cars bounded by `EV_CAR_LINK_MAX_TRACKED_CARS` (recovered entries dropped
- * first). A colliding pair record is taken from memory WHOLESALE — no
- * per-field sub-merge like calibration's per-(device, step) overlay —
- * because vote counts cannot be combined without double-counting: a plug
- * edge spanning the restart can be counted on both sides (persisted
- * pre-crash, voted again after resume), so summing would inflate exactly
- * the affinity evidence the votes exist to accumulate, while calibration's
- * step EMAs are independent keyed observations with no such overlap.
- * Sessions are deliberately NOT filled from the recovered side:
- * in-memory absence cannot distinguish "never seen" from "cleared by an
- * observed session end since boot", and re-injecting a cleared session long
- * after boot re-arms the wrong-resume risk `evCarLinkSessionResume.ts`
- * documents (a car connected elsewhere reports connected exactly like one
- * connected here). Sessions are lifecycle state, not the evidence this merge
- * exists to preserve.
+ * Stored entries win per key (pair and car records observed since the upgrade
+ * reflect current reality); the legacy value fills everything else, with cars
+ * bounded by `EV_CAR_LINK_MAX_TRACKED_CARS` (legacy entries dropped first). A
+ * colliding pair record is taken from the store WHOLESALE — no per-field
+ * sub-merge like calibration's per-(device, step) overlay — because vote
+ * counts cannot be combined without double-counting: a plug edge spanning the
+ * upgrade can be counted on both sides, so summing would inflate exactly the
+ * affinity evidence the votes exist to accumulate, while calibration's step
+ * EMAs are independent keyed observations with no such overlap.
+ * Sessions are deliberately NOT filled from the legacy side: the store's
+ * absence cannot distinguish "never seen" from "cleared by an observed session
+ * end since the upgrade", and re-injecting a cleared session re-arms the
+ * wrong-resume risk `evCarLinkSessionResume.ts` documents (a car connected
+ * elsewhere reports connected exactly like one connected here). Sessions are
+ * lifecycle state, not the evidence this merge exists to preserve.
  */
-export const mergeRecoveredEvCarLinkHistory = (params: {
-    inMemory: EvCarLinkSnapshot;
-    recovered: EvCarLinkSnapshot;
-}): EvCarLinkSnapshot => ({
+export const withLegacyEvCarLinkUnder = (
+    stored: EvCarLinkSnapshot,
+    legacy: EvCarLinkSnapshot,
+): EvCarLinkSnapshot => ({
     version: EV_CAR_LINK_VERSION,
-    pairs: { ...params.recovered.pairs, ...params.inMemory.pairs },
+    pairs: { ...legacy.pairs, ...stored.pairs },
     cars: Object.fromEntries([
-        ...Object.entries(params.inMemory.cars),
-        ...Object.entries(params.recovered.cars).filter(([carId]) => !(carId in params.inMemory.cars)),
+        ...Object.entries(stored.cars),
+        ...Object.entries(legacy.cars).filter(([carId]) => !(carId in stored.cars)),
     ].slice(0, EV_CAR_LINK_MAX_TRACKED_CARS)),
-    sessions: { ...params.inMemory.sessions },
+    sessions: { ...stored.sessions },
 });

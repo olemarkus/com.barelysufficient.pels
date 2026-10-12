@@ -88,10 +88,11 @@ Remaining work:
 
 ### Persisted settings state
 
-Calibration, active deadline plans, and deadline history still duplicate dirty/debounce/grace/flush
-vocabulary, but the shared-helper proposal was cut because their lifecycle semantics differ. Keep
-future cleanup feature-specific unless a concrete shared invariant appears. See
-`notes/persisted-settings-state.md` for the cut rationale.
+The settings-backed recorders that remain (active deadline plans among them) still duplicate
+dirty/debounce/grace/flush vocabulary, but the shared-helper proposal was cut because their
+lifecycle semantics differ. Keep future cleanup feature-specific unless a concrete shared invariant
+appears; history and learned data leave settings for the userdata store instead, which shares one
+row primitive (`lib/store/jsonRowTable.ts`). See `notes/persisted-settings-state.md`.
 
 ## LOC Policy
 

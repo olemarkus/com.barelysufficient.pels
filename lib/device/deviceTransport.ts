@@ -186,12 +186,12 @@ export class DeviceTransport {
             this.handleRealtimeDeviceUpdate,
             this.handleRealtimeCapabilityUpdate,
         );
-        this.observationProducers = createObservationProducers({
-            emit: (p) => this.logger.structuredLog.info(p),
-            getSnapshots: () => this.snapshotStore.getSnapshot(),
-            evCarLinkSnapshotAccess: options.evCarLinkSnapshotAccess,
+        this.observationProducers = createObservationProducers(
+            (p) => this.logger.structuredLog.info(p),
+            () => this.snapshotStore.getSnapshot(),
+            options.evCarLinkSnapshotAccess,
             // The probe reports; this decides whether anything is written.
-            onAssociatedCarStateOfCharge: (reading) => {
+            (reading) => {
                 if (!applyAssociatedCarStateOfCharge(
                     this.providers.getEvCarAssociationCarIds?.(reading.chargerId) ?? [],
                     this.observationProducers.evCarLink.getAssociatedCarForCharger(reading.chargerId),
@@ -200,11 +200,11 @@ export class DeviceTransport {
                 )) return;
                 this.dispatchObservedStateForDevice(reading.chargerId, 'measure_battery');
             },
-            onAssociationEnded: (chargerId) => {
+            (chargerId) => {
                 if (!clearAssociatedCarStateOfCharge(this.snapshotStore, chargerId)) return;
                 this.dispatchObservedStateForDevice(chargerId, 'measure_battery');
             },
-        });
+        );
         this.observationBridge = new ObservationBridge(
             this.snapshotStore,
             options.observedStateDispatcher,
@@ -531,7 +531,6 @@ export class DeviceTransport {
     }
 
     public destroy(): void {
-        this.observationProducers.destroy();
         this.deviceSdk.stop();
         this.observationBridge.state.clear();
         this.snapshotStore.clearTrackedRawDevices();

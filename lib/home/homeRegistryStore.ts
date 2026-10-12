@@ -42,8 +42,7 @@ const readKeys = (settings: SettingsPort): SettingsKeysReadResult => {
 // Marker classification is conservative: only a CLEAN absent (undefined/null)
 // means never-written. A malformed marker value (present but not exactly
 // `true`) or a thrown read counts as marker-PRESENT — junk in the marker key
-// must never grant write permission via 'unwritten' (mirrors the calibration
-// precedent, lib/device/devicePowerCalibrationStore.ts).
+// must never grant write permission via 'unwritten'.
 const readMarker = (settings: SettingsPort, markerKey: string): boolean => {
   try {
     const value = settings.get(markerKey);
@@ -70,19 +69,18 @@ const writeMarkerBestEffort = (settings: SettingsPort, markerKey: string): void 
 //                        or manually-PUT blob re-arms transient-miss detection)
 //   absent, no marker  → unwritten (true fresh install)
 //   absent, marker set → suspect (transient SDK miss, not fresh)
-//   junk (implausible) → suspect regardless of marker (calibration precedent:
-//                        malformed is always cautious)
+//   junk (implausible) → suspect regardless of marker (malformed is always
+//                        cautious)
 // The whole classification is insured: a throwing accessor on the blob (a
 // hostile getter/Proxy) or a future normalizer bug must never escape the
 // discriminated contract — any throw classifies 'suspect'.
-const classifyRead = <T>(params: {
-  settings: SettingsPort;
-  key: string;
-  markerKey: string;
-  isPlausible: (raw: unknown) => boolean;
-  normalize: (raw: unknown) => T;
-}): HomeStoreReadResult<T> => {
-  const { settings, key, markerKey, isPlausible, normalize } = params;
+const classifyRead = <T>(
+  settings: SettingsPort,
+  key: string,
+  markerKey: string,
+  isPlausible: (raw: unknown) => boolean,
+  normalize: (raw: unknown) => T,
+): HomeStoreReadResult<T> => {
   try {
     const raw = readKey(settings, key);
     if (raw.threw) return { state: 'suspect' };
@@ -118,14 +116,13 @@ const classifyRead = <T>(params: {
 // only heals after a successful read). Marker-first fails conservative: a
 // failed value write leaves marker-present + old/absent value, which reads
 // 'suspect' (or present-with-the-old-value) — never 'unwritten'.
-const writeClassified = (params: {
-  settings: SettingsPort;
-  key: string;
-  markerKey: string;
-  isPlausible: (raw: unknown) => boolean;
-  value: unknown;
-}): void => {
-  const { settings, key, markerKey, isPlausible, value } = params;
+const writeClassified = (
+  settings: SettingsPort,
+  key: string,
+  markerKey: string,
+  isPlausible: (raw: unknown) => boolean,
+  value: unknown,
+): void => {
   if (!isPlausible(value)) throw new HomeStoreWriteRefusedError(key);
   settings.set(markerKey, true);
   settings.set(key, value);
@@ -142,22 +139,12 @@ const writeClassified = (params: {
  */
 export const createHomesStore = (settings: SettingsPort): HomesStore => ({
   read(): HomeStoreReadResult<HomeConfig> {
-    return classifyRead({
-      settings,
-      key: HOMES_CONFIG,
-      markerKey: HOMES_CONFIG_INITIALIZED,
-      isPlausible: isPlausibleHomesConfigBlob,
-      normalize: normalizeHomesConfig,
-    });
+    return classifyRead(
+      settings, HOMES_CONFIG, HOMES_CONFIG_INITIALIZED, isPlausibleHomesConfigBlob, normalizeHomesConfig,
+    );
   },
   write(config: HomeConfig): void {
-    writeClassified({
-      settings,
-      key: HOMES_CONFIG,
-      markerKey: HOMES_CONFIG_INITIALIZED,
-      isPlausible: isPlausibleHomesConfigBlob,
-      value: config,
-    });
+    writeClassified(settings, HOMES_CONFIG, HOMES_CONFIG_INITIALIZED, isPlausibleHomesConfigBlob, config);
   },
 });
 
@@ -175,21 +162,21 @@ export const createDeviceHomeAssignmentsStore = (
   settings: SettingsPort,
 ): DeviceHomeAssignmentsStore => ({
   read(): HomeStoreReadResult<DeviceHomeAssignments> {
-    return classifyRead({
+    return classifyRead(
       settings,
-      key: DEVICE_HOME_ASSIGNMENTS,
-      markerKey: DEVICE_HOME_ASSIGNMENTS_INITIALIZED,
-      isPlausible: isPlausibleDeviceHomeAssignmentsBlob,
-      normalize: normalizeDeviceHomeAssignments,
-    });
+      DEVICE_HOME_ASSIGNMENTS,
+      DEVICE_HOME_ASSIGNMENTS_INITIALIZED,
+      isPlausibleDeviceHomeAssignmentsBlob,
+      normalizeDeviceHomeAssignments,
+    );
   },
   write(assignments: DeviceHomeAssignments): void {
-    writeClassified({
+    writeClassified(
       settings,
-      key: DEVICE_HOME_ASSIGNMENTS,
-      markerKey: DEVICE_HOME_ASSIGNMENTS_INITIALIZED,
-      isPlausible: isPlausibleDeviceHomeAssignmentsBlob,
-      value: assignments,
-    });
+      DEVICE_HOME_ASSIGNMENTS,
+      DEVICE_HOME_ASSIGNMENTS_INITIALIZED,
+      isPlausibleDeviceHomeAssignmentsBlob,
+      assignments,
+    );
   },
 });

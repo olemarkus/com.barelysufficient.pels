@@ -84,7 +84,7 @@ abstract class AppRuntimeApi extends Base {
   protected abstract readonly backgroundTasks: BackgroundTasksController;
   protected abstract readonly powerSamplePipeline: PowerSamplePipeline;
   protected abstract observedDeviceStateProjection: ObservedDeviceStateProjection;
-  protected abstract powerCalibrationStore: PowerCalibrationStore;
+  public abstract getPowerCalibrationStore(): PowerCalibrationStore;
   protected abstract readonly serviceWiring: AppServiceWiring;
   protected abstract readonly nativeWiring: AppNativeWiring;
   protected abstract readonly powerTrackerHelpers: AppPowerTracker;
@@ -232,7 +232,7 @@ abstract class AppRuntimeApi extends Base {
     return this.requirePlanService().evaluateHeadroomForDevice(params);
   }
   public getPowerCalibrationSnapshot(): PowerCalibrationSnapshot {
-    return this.powerCalibrationStore.getSnapshot();
+    return this.getPowerCalibrationStore().getSnapshot();
   }
   public async onInit(): Promise<void> { await this.serviceWiring.runInit(); }
   protected runNativeWiringDetectionBestEffort(): void { this.nativeWiring.runNativeWiringDetectionBestEffort(); }
@@ -342,13 +342,6 @@ abstract class AppRuntimeApi extends Base {
   }
   public emitSettingsUiDevicesUpdated(): void {
     emitSettingsUiDevicesUpdatedForApp(this.homey, (message, error) => this.error(message, error));
-  }
-  protected loadPowerCalibrationStore(): void { this.powerTrackerHelpers.loadPowerCalibrationStore(); }
-  protected persistPowerCalibrationIfDue(nowMs: number = Date.now()): void {
-    this.powerTrackerHelpers.persistPowerCalibrationIfDue(nowMs);
-  }
-  protected flushPowerCalibration(nowMs: number = Date.now()): void {
-    this.powerTrackerHelpers.flushPowerCalibration(nowMs);
   }
   protected runStartupSettingsMigrations(): void {
     migrateManagedDevices({ homey: this.homey });

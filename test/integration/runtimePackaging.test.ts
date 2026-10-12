@@ -16,7 +16,9 @@ const collectRuntimeTypeScriptFiles = (entry: string): string[] => {
   });
 };
 
-const importDeclarationPattern = /import\s+(?!type\b)(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]|import\s*['"]([^'"]+)['"]/g;
+// Anchored to the start of a line so the word "import" in a doc comment never
+// pairs with the next statement's specifier.
+const importDeclarationPattern = /^import\s+(?!type\b)(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]|^import\s*['"]([^'"]+)['"]/gm;
 
 const collectContractValueImportViolations = (): string[] => {
   const violations: string[] = [];

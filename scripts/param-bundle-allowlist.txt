@@ -44,18 +44,11 @@ lib/dailyBudget/dailyBudgetService.ts 1
 lib/dailyBudget/dailyBudgetState.ts 6
 lib/dailyBudget/dailyBudgetStatePersistence.ts 1
 lib/dailyBudget/dailyBudgetStoredPlanBreakdown.ts 2
-lib/device/devicePowerCalibrationStore.ts 4
 lib/device/devicePowerEstimate.ts 4
 lib/device/deviceResidualKw.ts 2
 lib/device/evCarLink.ts 3
 lib/device/evCarLinkObservation.ts 2
-lib/device/evCarLinkProducer.ts 1
 lib/device/evCarLinkReadModel.ts 1
-lib/device/evCarLinkSelfStop.ts 2
-lib/device/evCarLinkSessionResume.ts 1
-lib/device/evCarLinkSnapshot.ts 4
-lib/device/evCarLinkStore.ts 4
-lib/device/evCarLinkWiring.ts 1
 lib/device/expectedPowerOverrideState.ts 1
 lib/device/flowBackedDeviceState.ts 3
 lib/device/learnedPowerPeakState.ts 1
@@ -70,7 +63,6 @@ lib/device/measuredPowerReader.ts 1
 lib/device/measuredPowerResolver.ts 1
 lib/device/nativeEvWiring.ts 2
 lib/device/nativeSteppedLoadWiring.ts 8
-lib/device/observationProducers.ts 1
 lib/device/targetPowerContractWarn.ts 2
 lib/device/targetPowerProbeScheduler.ts 1
 lib/device/targetPowerReachability.ts 2
@@ -125,7 +117,6 @@ lib/executor/targetCommandRetry.ts 1
 lib/executor/targetExecutor.ts 3
 lib/executor/targetPendingCommand.ts 1
 lib/executor/targetPowerReachability.ts 4
-lib/home/homeRegistryStore.ts 2
 lib/logging/deviationGate.ts 1
 lib/logging/logDedupe.ts 1
 lib/objectives/deferredObjectives/activePlanDuration.ts 1

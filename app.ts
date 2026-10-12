@@ -43,7 +43,7 @@ import type { PvForecastController } from './setup/appInit/createPvForecastServi
 import type { HomeySolarForecastLifecycle } from './lib/solar/homeySolarForecastController';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
 import { SettingsRepository } from './setup/settingsRepository';
-import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
+import type { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore';
 import type { PlanRebuildScheduler } from './lib/plan/rebuildScheduler/scheduler';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import { createCapacitySettingsReloader, createCapacitySettingsStore } from './lib/power/capacitySettingsStore';
@@ -81,7 +81,9 @@ import {
 } from './setup/appServiceWiring';
 import type { HomeMembershipService } from './lib/home/homeMembershipService';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
-import { AppPowerTracker, createTrackerStoreForApp } from './setup/appPowerTracker';
+import {
+  AppPowerTracker, createPowerCalibrationStoreForApp, createTrackerStoreForApp,
+} from './setup/appPowerTracker';
 import type { TrackerStore } from './lib/power/trackerStore';
 import type { UserdataDatabase } from './lib/store/userdataDatabase';
 import { TimerRegistry } from './lib/utils/timerRegistry';
@@ -101,7 +103,6 @@ class PelsApp extends PelsAppBase implements AppContext {
   public get powerTracker(): PowerTrackerState { return this.mainTracker.getState(); }
   public set powerTracker(value: PowerTrackerState) { this.mainTracker.adopt(value); }
   public resetMainPowerTrackerFreshness(): void { this.mainTracker.resetFreshness(); }
-  protected powerCalibrationStore: PowerCalibrationStore = new PowerCalibrationStore();
   public capacityGuard!: CapacityGuard;
   public readonly planStatuses: PlanStatusRegistry = createPlanStatusRegistry();
   public readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus = createDeferredObjectiveStatusBus();
@@ -401,19 +402,25 @@ class PelsApp extends PelsAppBase implements AppContext {
 
   protected structuredLogger?: PinoLogger;
   /**
-   * The userdata database and the tracker's repository on it: opened at the
-   * first boot step, closed last at teardown, and absent outside that window
-   * — a caller outside it gets an error, never a lazily opened file nothing
-   * would close. The handles live here because this is the composition root;
-   * each repository is built by its own domain's wiring, so no one file
-   * composes two domains to hand them out.
+   * The userdata database and the stores on it that later boot steps reach
+   * for (the trackers', and the power calibration the device transport feeds
+   * from its first observation): opened at the first boot step, closed last at
+   * teardown, and absent outside that window — a caller outside it gets an
+   * error, never a lazily opened file nothing would close. The calibration
+   * store alone stays after the close: its snapshot is held in memory, a late
+   * plan read still gets it, and a late write fails and is said. The handles
+   * live here because this is the composition root; each repository is built
+   * by its own domain's wiring, so no one file composes two domains to hand
+   * them out.
    */
   private userdataDatabase?: UserdataDatabase;
   private trackerStore?: TrackerStore;
+  private powerCalibrationStore?: PowerCalibrationStore;
   private openUserdata(): void {
-    // The database first: the repository is built on the one this holds.
+    // The database first: the repositories are built on the one this holds.
     this.userdataDatabase = this.openUserdataDatabase();
     this.trackerStore = createTrackerStoreForApp(this.ctx);
+    this.powerCalibrationStore = createPowerCalibrationStoreForApp(this.ctx);
   }
   private opened<T>(handle: T | undefined): T {
     if (handle === undefined) throw new Error('the userdata database is not open');
@@ -421,6 +428,9 @@ class PelsApp extends PelsAppBase implements AppContext {
   }
   public getTrackerStore(): TrackerStore {
     return this.opened(this.trackerStore);
+  }
+  public getPowerCalibrationStore(): PowerCalibrationStore {
+    return this.opened(this.powerCalibrationStore);
   }
   public getUserdataDatabase(): UserdataDatabase {
     return this.opened(this.userdataDatabase);
@@ -526,16 +536,12 @@ class PelsApp extends PelsAppBase implements AppContext {
   });
   protected readonly powerTrackerHelpers = new AppPowerTracker({
     homey: this.homey,
-    settingsRepository: this.settingsRepository,
     timers: this.timers,
     getTracker: () => this.mainTracker,
-    getPowerCalibrationStore: () => this.powerCalibrationStore,
-    setPowerCalibrationStore: (store) => { this.powerCalibrationStore = store; },
+    getPowerCalibrationStore: () => this.getPowerCalibrationStore(),
     getDailyBudgetService: () => this.dailyBudgetService,
     error: (...args) => this.error(...args),
     updateDailyBudgetAndRecordCap: (options) => this.updateDailyBudgetAndRecordCap(options),
-    persistPowerCalibrationIfDue: (nowMs) => this.persistPowerCalibrationIfDue(nowMs),
-    flushPowerCalibration: (nowMs) => this.flushPowerCalibration(nowMs),
   });
   private readonly ctx = this.context;
   // Smart-task (deferred-objective) preview/create/cancel/rescue + history
@@ -610,7 +616,7 @@ class PelsApp extends PelsAppBase implements AppContext {
     setStructuredLogger: (logger) => { this.structuredLogger = logger; },
     getPlanService: () => this.planService,
     getStablePowerSampleRevision: () => this.powerSamplePipeline.getStableSampleRevision(),
-    getPowerCalibrationStore: () => this.powerCalibrationStore,
+    getPowerCalibrationStore: () => this.getPowerCalibrationStore(),
     getObservedStateEmitter: () => this.observedStateEmitter,
     getObservedHomePower: () => this.observedHomePower,
     getObservedDeviceStateProjection: () => this.observedDeviceStateProjection,
@@ -641,11 +647,9 @@ class PelsApp extends PelsAppBase implements AppContext {
     persistLearnedPowerPeaks: () => this.flowBacked.persistLearnedPeaks(),
     reloadMainModeCatalog: () => this.homeModeCatalog.reload(),
     flushLearnedPowerPeaks: () => this.flowBacked.flushLearnedPeaks(),
-    loadPowerCalibrationStore: () => this.loadPowerCalibrationStore(),
     startPowerTrackerPruning: () => this.startPowerTrackerPruning(),
     stopPowerTracker: () => this.stopPowerTracker(),
     closeUserdataDatabase: () => this.closeUserdataDatabase(),
-    flushPowerCalibration: () => this.flushPowerCalibration(),
     runStartupSettingsMigrations: () => this.runStartupSettingsMigrations(),
     initPlanRuntime: () => this.initPlanRuntime(),
     initPriceCoordinator: () => this.initPriceCoordinator(),

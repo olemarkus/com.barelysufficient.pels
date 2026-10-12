@@ -10,7 +10,9 @@ import {
 import {
   PowerCalibrationStore,
   createCalibrationSnapshotMutationHook,
+  createPowerCalibrationRepository,
 } from '../../lib/device/devicePowerCalibrationStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type {
   MeasuredPowerObservedProbe,
   ReportedStepObservedProbe,
@@ -699,6 +701,9 @@ describe('recordPowerSampleForApp', () => {
 
 describe('createCalibrationSnapshotMutationHook', () => {
   const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+  const memoryStore = (): PowerCalibrationStore => (
+    new PowerCalibrationStore(createPowerCalibrationRepository(openUserdataDatabase(IN_MEMORY_DATABASE)))
+  );
   const makeSnapshot = (
     overrides: Partial<
       TargetDeviceSnapshot & MeasuredPowerObservedProbe
@@ -726,12 +731,9 @@ describe('createCalibrationSnapshotMutationHook', () => {
   } as TargetDeviceSnapshot);
 
   it('emits a per-sample accepted event when the sample lands inside the band', () => {
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const store = memoryStore();
     const debugStructured = vi.fn();
-    const hook = createCalibrationSnapshotMutationHook({
-      getStore: () => store,
-      debugStructured,
-    });
+    const hook = createCalibrationSnapshotMutationHook(store, debugStructured);
     hook(makeSnapshot({ measuredPowerKw: 1.1 }), start);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'power_calibration_sample_accepted',
@@ -742,12 +744,9 @@ describe('createCalibrationSnapshotMutationHook', () => {
   });
 
   it('emits a per-sample skipped event when the sample exceeds the configured step', () => {
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const store = memoryStore();
     const debugStructured = vi.fn();
-    const hook = createCalibrationSnapshotMutationHook({
-      getStore: () => store,
-      debugStructured,
-    });
+    const hook = createCalibrationSnapshotMutationHook(store, debugStructured);
     hook(makeSnapshot({ measuredPowerKw: 1.81 }), start);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'power_calibration_sample_skipped',
@@ -757,12 +756,9 @@ describe('createCalibrationSnapshotMutationHook', () => {
   });
 
   it('stays silent when the snapshot is ineligible for calibration', () => {
-    const store = new PowerCalibrationStore();
+    const store = memoryStore();
     const debugStructured = vi.fn();
-    const hook = createCalibrationSnapshotMutationHook({
-      getStore: () => store,
-      debugStructured,
-    });
+    const hook = createCalibrationSnapshotMutationHook(store, debugStructured);
     hook(makeSnapshot({ reportedStepId: undefined }), start);
     expect(debugStructured).not.toHaveBeenCalled();
   });
@@ -771,12 +767,9 @@ describe('createCalibrationSnapshotMutationHook', () => {
     // EV chargers and inverter heaters can publish measure_power every 1-2 s;
     // without this debounce, EMA `alpha` would saturate to MIN_ALPHA within
     // ~30 s of operation and stop responding to legitimate drift.
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const store = memoryStore();
     const debugStructured = vi.fn();
-    const hook = createCalibrationSnapshotMutationHook({
-      getStore: () => store,
-      debugStructured,
-    });
+    const hook = createCalibrationSnapshotMutationHook(store, debugStructured);
     hook(makeSnapshot({ measuredPowerKw: 1.1 }), start);
     hook(makeSnapshot({ measuredPowerKw: 1.12 }), start + 1_000);
     hook(makeSnapshot({ measuredPowerKw: 1.15 }), start + 5_000);
@@ -791,12 +784,9 @@ describe('createCalibrationSnapshotMutationHook', () => {
     // assumed step) would swallow the next valid sample for up to
     // the 30 s debounce — exactly the startup/step-change transitions this hook
     // is meant to capture.
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const store = memoryStore();
     const debugStructured = vi.fn();
-    const hook = createCalibrationSnapshotMutationHook({
-      getStore: () => store,
-      debugStructured,
-    });
+    const hook = createCalibrationSnapshotMutationHook(store, debugStructured);
     hook(makeSnapshot({ reportedStepId: undefined, measuredPowerKw: 1.1 }), start);
     expect(debugStructured).not.toHaveBeenCalled();
     hook(makeSnapshot({ measuredPowerKw: 1.1 }), start + 1_000);
@@ -809,12 +799,9 @@ describe('createCalibrationSnapshotMutationHook', () => {
     // would swallow the next valid sample without protecting anything in
     // return. The debounce exists only to stop accepted-sample chatter from
     // saturating EMA `alpha`.
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const store = memoryStore();
     const debugStructured = vi.fn();
-    const hook = createCalibrationSnapshotMutationHook({
-      getStore: () => store,
-      debugStructured,
-    });
+    const hook = createCalibrationSnapshotMutationHook(store, debugStructured);
     // First call: above-step-ceiling rejection.
     hook(makeSnapshot({ measuredPowerKw: 1.81 }), start);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
@@ -832,12 +819,9 @@ describe('createCalibrationSnapshotMutationHook', () => {
   it('caps repeated skip lines per (device, step, reason) without debouncing ingestion', () => {
     // A charger trickling on its lowest rung is rejected on every reading for
     // as long as the car trickles; the skip line must not repeat each time.
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const store = memoryStore();
     const debugStructured = vi.fn();
-    const hook = createCalibrationSnapshotMutationHook({
-      getStore: () => store,
-      debugStructured,
-    });
+    const hook = createCalibrationSnapshotMutationHook(store, debugStructured);
     const skipped = (reason: string) => expect.objectContaining({
       event: 'power_calibration_sample_skipped',
       reason,
@@ -863,12 +847,9 @@ describe('createCalibrationSnapshotMutationHook', () => {
   });
 
   it('debounces per (device, step) independently', () => {
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const store = memoryStore();
     const debugStructured = vi.fn();
-    const hook = createCalibrationSnapshotMutationHook({
-      getStore: () => store,
-      debugStructured,
-    });
+    const hook = createCalibrationSnapshotMutationHook(store, debugStructured);
     hook(makeSnapshot({ reportedStepId: 'low', measuredPowerKw: 1.1 }), start);
     hook(makeSnapshot({ reportedStepId: 'medium', measuredPowerKw: 1.6 }), start + 1_000);
     expect(debugStructured).toHaveBeenCalledTimes(2);

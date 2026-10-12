@@ -86,9 +86,9 @@ is both layering-correct and what keeps vendor knowledge in the one adapter that
 | `lib/device/evCarLinkSnapshot.ts` | Persisted shape: normalise, vote, sample, prune, summarise |
 | `lib/device/evCarLinkProducer.ts` | The producer: ingests cars, diffs chargers, emits events |
 | `lib/device/evCarLinkWiring.ts` | Charger-view narrowing + producer construction |
-| `lib/device/evCarLinkStore.ts` | Debounce / load-grace persistence |
+| `lib/device/evCarLinkStore.ts` | Userdata-store persistence, written through; one-shot legacy settings import |
 | `lib/device/observationProducers.ts` | Builds this alongside the battery and solar producers |
-| `setup/appInit/evCarLinkAccess.ts` | Store lifecycle (lazy load, flush) |
+| `setup/appInit/evCarLinkAccess.ts` | Builds the store on the userdata database and runs the import |
 
 ## Association and eligibility
 
@@ -115,10 +115,10 @@ car is ticked, so the persisted `pairs` already record which charger each car ha
 vote time per matched charger), and the UI uses it to show a match before the owner ticks the
 car and gives up a working Flow-reported level. It carries no count: a session usually casts
 one vote on plug-in and another on unplug. The history covers the prune window (90 days). It
-is read per candidate, so a home without cars never loads the link store. While a suspect
-boot read awaits recovery (`EvCarLinkStore.hasResolvedHistory`), the history is
-`unavailable` rather than empty, and the UI gives no match-based advice: an empty snapshot
-standing in for an unreadable one must not read as "never matched".
+is read per candidate from the probe's snapshot. While a suspect read at the upgrade boot leaves
+part of it in the legacy settings key for the next boot's import, the history is `unavailable`
+rather than empty, and the UI gives no match-based advice: an empty snapshot standing in for an
+unread one must not read as "never matched".
 
 **The charge reading is served with its timestamp and is not gated on the session start.**
 Cars publish `measure_battery` on change, so a session normally opens with the last pre-plug
@@ -332,9 +332,9 @@ earlier in the same session, disproves it: its samples are dropped
 (`ev_car_observed_limit_disproven`) and the limit is learned again. A car that merely arrives
 above its limit (fast-charged on a trip) proves nothing.
 
-The persisted shape is version 2. A version-1 blob still loads with its pairs and sessions,
-but its stop samples are dropped: they were banked under the rule above that production
-showed to be unsound.
+The persisted shape is version 2. A version-1 settings blob still imports with its pairs and
+sessions, but its stop samples are dropped: they were banked under the rule above that
+production showed to be unsound.
 
 ## Known limits (read these before trusting a log)
 
@@ -422,9 +422,10 @@ Two things that scenario has to get right, both of which silently produce nothin
   what makes the classifier return null and clear the per-charger reported flag. Without it
   the second stop is the same episode and banks nothing.
 
-Both `pairs[...].votes` and `cars[...].stopSocPct` also live in the `ev_car_link_state` app
-setting, which is readable over the API — a second channel when the log is inconvenient, and
-the one place the raw sample array can be read rather than inferred from event fields.
+Both `pairs[...].votes` and `cars[...].stopSocPct` also live in the userdata store
+(`ev_car_link_state` table, one JSON row per family) — the one place the raw sample array can
+be read rather than inferred from event fields. It is not an app setting any more, so it is not
+readable over the settings API.
 
 ## Known evidence limits
 

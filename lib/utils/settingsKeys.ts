@@ -277,8 +277,13 @@ export const DEVICE_HOME_ASSIGNMENTS_INITIALIZED = 'device_home_assignments_init
 // state; the settings UI never reads either key.
 export const MODE_TARGET_OWNERSHIP_STATE = 'mode_target_ownership_state';
 export const MODE_TARGET_OWNERSHIP_STATE_INITIALIZED = 'mode_target_ownership_state_initialized';
+/**
+ * The LEGACY power-calibration key, from before the learned per-step power
+ * moved to the userdata store. Read once, at boot, by the import that carries
+ * an upgraded install's calibration into the store and then unsets the key
+ * (`lib/device/devicePowerCalibrationStore.ts`).
+ */
 export const POWER_CALIBRATION = 'power_calibration';
-export const POWER_CALIBRATION_INITIALIZED = 'power_calibration_initialized';
 // Weather-insight feature: config blob (enable flag + device ids, written by the
 // Settings UI master switch/pickers or via `homey api`).
 export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
@@ -291,8 +296,7 @@ export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
 export const WEATHER_HISTORY_STATE = 'weather_history_state';
 // Learned PV-generation forecast: recorded generation history + concurrent irradiance.
 export const PV_FORECAST_STATE = 'pv_forecast_state';
-// Written-before marker for the above (the `power_calibration_initialized`
-// precedent): lets the boot read tell a fresh install (no marker ⇒ nothing to
+// Written-before marker for the above: lets the boot read tell a fresh install (no marker ⇒ nothing to
 // protect, persist immediately) from a transient SDK miss (marker set ⇒ engage
 // the abandon-grace window instead of overwriting up to 90 days of learned
 // generation history). Read/written only by `setup/pvForecastStateAdapter.ts`.
@@ -309,12 +313,13 @@ export const CURTAILMENT_HOLD_STATE = 'curtailment_hold_state';
 // export half of solar-surplus reachability, kept apart from the resettable
 // accounting history. Owned by `lib/power/signedExportLatch.ts`.
 export const SIGNED_EXPORT_OBSERVED = 'signed_export_observed';
-// EV car-to-charger link probe: coincidence-vote affinity map plus the
-// per-car self-stop state-of-charge samples. Observation-only — no consumer
-// reads it for planning. The `_INITIALIZED` companion distinguishes a fresh
-// install from a transient settings-read miss (see `evCarLinkStore.ts`).
+/**
+ * The LEGACY EV car-link probe key, from before the probe's votes and stop
+ * samples moved to the userdata store. Read once, at boot, by the import that
+ * carries them into the store and then unsets the key
+ * (`lib/device/evCarLinkStore.ts`).
+ */
 export const EV_CAR_LINK_STATE = 'ev_car_link_state';
-export const EV_CAR_LINK_STATE_INITIALIZED = 'ev_car_link_state_initialized';
 
 // Runtime duplicate: contracts sources are removed from the packaged app.
 export const TEMPERATURE_CONTROL_MODES = 'temperature_control_modes';

@@ -21,11 +21,7 @@ export const resolveChargerPhasePresetsRead = (
         : { state: 'unavailable' }
 );
 
-/**
- * Each candidate carries the chargers the probe has matched it to. The link
- * history is read per candidate, so a home with no cars never touches the
- * lazily loaded link store.
- */
+/** Each candidate carries the chargers the probe has matched it to, from the probe's snapshot. */
 export const resolveCarAssociationCandidatesRead = (
     snapshotWarm: boolean,
     devices: readonly HomeyDeviceLike[],

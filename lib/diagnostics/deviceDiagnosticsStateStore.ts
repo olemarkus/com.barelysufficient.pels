@@ -18,7 +18,8 @@
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
-import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
+import { parseJsonRow } from '../store/jsonRowTable';
+import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
 import {
   type PersistedDayAggregate, type PersistedDiagnosticsState, sanitizePersistedState,
@@ -63,12 +64,7 @@ CREATE TABLE IF NOT EXISTS device_diagnostics_meta (
 ) WITHOUT ROWID;
 `;
 
-type Statements = {
-  upsertDay: PreparedStatement; deleteDay: PreparedStatement; loadDays: PreparedStatement;
-  upsertMeta: PreparedStatement; deleteMeta: PreparedStatement; loadMeta: PreparedStatement;
-};
-
-const prepareStatements = (db: UserdataDatabase): Statements => ({
+const prepareStatements = (db: UserdataDatabase) => ({
   upsertDay: db.prepare('INSERT INTO device_diagnostics_days (device_id, date_key, aggregate_json) VALUES (?, ?, ?) '
     + 'ON CONFLICT (device_id, date_key) DO UPDATE SET aggregate_json = excluded.aggregate_json'),
   deleteDay: db.prepare('DELETE FROM device_diagnostics_days WHERE device_id = ? AND date_key = ?'),
@@ -103,14 +99,6 @@ const heldOf = (envelope: Envelope): Held => {
   return { days, meta: new Map(META_KEYS.map((key) => [key, JSON.stringify(envelope[key])])) };
 };
 
-const parseRow = (json: string): unknown => {
-  try {
-    return JSON.parse(json) as unknown;
-  } catch {
-    return undefined;
-  }
-};
-
 export const createDeviceDiagnosticsStateStore = (db: UserdataDatabase): DeviceDiagnosticsStateStore => {
   db.exec(SCHEMA);
   const s = prepareStatements(db);
@@ -122,7 +110,7 @@ export const createDeviceDiagnosticsStateStore = (db: UserdataDatabase): DeviceD
     const metaRows = s.loadMeta.all() as Array<{ key: string; value_json: string }>;
     if (dayRows.length === 0 && metaRows.length === 0) return null;
     const parsedDays = dayRows.flatMap((row) => {
-      const aggregate = parseRow(row.aggregate_json);
+      const aggregate = parseJsonRow(row.aggregate_json);
       if (aggregate !== undefined) return [{ deviceId: row.device_id, dateKey: row.date_key, aggregate }];
       storeLogger.error({
         event: 'device_diagnostics_row_quarantined', deviceId: row.device_id, dateKey: row.date_key,
@@ -137,7 +125,7 @@ export const createDeviceDiagnosticsStateStore = (db: UserdataDatabase): DeviceD
         .map((row) => [row.dateKey, row.aggregate])),
     }]));
     const meta = Object.fromEntries(metaRows.flatMap((row) => {
-      const value = parseRow(row.value_json);
+      const value = parseJsonRow(row.value_json);
       if (value !== undefined) return [[row.key, value] as const];
       storeLogger.error({ event: 'device_diagnostics_row_quarantined', key: row.key });
       s.deleteMeta.run(row.key);

@@ -35,7 +35,7 @@
  * damage: it is deleted as read and said once, and never costs the rows around it.
  */
 import { getLogger } from '../logging/logger';
-import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
+import type { UserdataDatabase } from '../store/userdataDatabase';
 import type { MeterEnergyReading } from './measuredPowerReader';
 
 const storeLogger = getLogger('device/retained-power-store');
@@ -89,18 +89,7 @@ CREATE TABLE IF NOT EXISTS device_meter_anchor (
 ) WITHOUT ROWID;
 `;
 
-type Statements = {
-  loadReadings: PreparedStatement;
-  upsertReading: PreparedStatement;
-  removeReading: PreparedStatement;
-  pruneReadings: PreparedStatement;
-  loadAnchors: PreparedStatement;
-  upsertAnchor: PreparedStatement;
-  removeAnchor: PreparedStatement;
-  pruneAnchors: PreparedStatement;
-};
-
-const prepareStatements = (db: UserdataDatabase): Statements => ({
+const prepareStatements = (db: UserdataDatabase) => ({
   loadReadings: db.prepare('SELECT device_id, reading_json, saved_at_ms FROM device_power_reading ORDER BY device_id'),
   upsertReading: db.prepare('INSERT INTO device_power_reading (device_id, reading_json, saved_at_ms) VALUES (?, ?, ?) '
     + 'ON CONFLICT (device_id) DO UPDATE SET reading_json = excluded.reading_json, saved_at_ms = excluded.saved_at_ms'),

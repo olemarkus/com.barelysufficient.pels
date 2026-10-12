@@ -73,9 +73,10 @@ export type EvCarChargerMatch = {
  * user selected the car, so this shows a match before the owner relies on it.
  * No count: a session usually casts one vote on plug-in and another on unplug.
  *
- * `unavailable` while the persisted history could not be read at boot and has
- * not been recovered yet: an empty list then would claim "never matched" for a
- * car that may have matched many times.
+ * `unavailable` while part of the history waits in the legacy settings key (a
+ * suspect read at the upgrade boot leaves it for the next boot's import): an
+ * empty list then would claim "never matched" for a car that may have matched
+ * many times.
  */
 export type EvCarChargerMatchHistory =
     /** Newest match first; empty when no match falls inside the prune window. */
@@ -88,9 +89,6 @@ export type EvCarLinkSnapshot = {
     pairs: Record<string, EvCarLinkAffinity>;
     /** Keyed by car device id. */
     cars: Record<string, EvCarObservedStops>;
-    /**
-     * Keyed by charger device id. Absent on snapshots written before this
-     * existed, which simply means no session can be resumed.
-     */
-    sessions?: Record<string, EvCarLinkSession>;
+    /** Keyed by charger device id. */
+    sessions: Record<string, EvCarLinkSession>;
 };

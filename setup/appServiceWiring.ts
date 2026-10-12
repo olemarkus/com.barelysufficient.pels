@@ -172,12 +172,10 @@ export type AppServiceWiringDeps = {
   loadPersistedState: () => void;
   persistLearnedPowerPeaks: () => void;
   flushLearnedPowerPeaks: () => void;
-  loadPowerCalibrationStore: () => void;
   startPowerTrackerPruning: () => void;
   stopPowerTracker: () => void;
   /** Last: every tracker has flushed by now, and nothing reads the file after this. */
   closeUserdataDatabase: () => void;
-  flushPowerCalibration: () => void;
   runStartupSettingsMigrations: () => void;
   // Routed through the app so test seams that reassign the instance method are
   // honoured (and so the thin PelsApp delegators are runtime-reachable, not just
@@ -262,17 +260,6 @@ export class AppServiceWiring {
     await runStartupStep(
       'initDeviceDiagnosticsService',
       () => this.deps.initDeviceDiagnosticsService(),
-      logStartupStepFailure,
-    );
-    // Load the calibration store before the device manager so the
-    // event-driven `onSnapshotMutated` hook is bound to the persisted store
-    // from the first observation. Otherwise any live-feed event arriving
-    // between `initDeviceManager` and `loadPowerCalibrationStore` would land
-    // on the placeholder store and be discarded when the persisted snapshot
-    // replaces it.
-    await runStartupStep(
-      'loadPowerCalibrationStore',
-      () => this.deps.loadPowerCalibrationStore(),
       logStartupStepFailure,
     );
     await this.runDeviceStartupSteps(logStartupStepFailure);
@@ -729,13 +716,9 @@ export class AppServiceWiring {
     // Persist any unflushed deferred-objective plan-history entries before shutting down.
     flushDeferredObjectiveRecorders(ctx);
     flushDailyBudgetStateOnUninit(ctx);
-    // Flush bypasses the debounce window so any samples accepted since the
-    // last persist tick reach settings before shutdown. Without this, samples
-    // recorded inside the persist-debounce window are lost on restart.
-    this.deps.flushPowerCalibration();
-    // Same reason for the learned peaks, which are rate-limited to one write a
-    // minute: the peak observed in the last minute of a run is precisely the one
-    // a restart would drop, and the trailing flush timer is already gone by now.
+    // The learned peaks are rate-limited to one write a minute: the peak
+    // observed in the last minute of a run is precisely the one a restart would
+    // drop, and the trailing flush timer is already gone by now.
     this.deps.flushLearnedPowerPeaks();
     // Mark how far we've observed; back-fill on next startup picks up from here. Skipped if
     // the recorder is still dirty (save failed), so the next start re-scans the missed window.

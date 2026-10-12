@@ -28,27 +28,24 @@ export type ObservationProducers = {
     battery: BatteryStateProducer;
     solar: SolarProductionProducer;
     evCarLink: EvCarLinkProducer;
-    /**
-     * Teardown for whatever holds durable state. Only the EV car-link probe does
-     * (its writes are debounced, so a shutdown needs an explicit flush); battery
-     * and solar retain nothing.
-     */
-    destroy: () => void;
 };
 
-export const createObservationProducers = (params: {
-    /** Structured-log sink; every producer emits through this one seam. */
-    emit: (payload: Record<string, unknown>) => void;
-    /** Committed snapshots, read lazily by the EV car-link charger view. */
-    getSnapshots: () => readonly ChargerViewInput[];
-    /** Persistence port for the probe, injected by the wiring layer; omit to stay in-memory. */
-    evCarLinkSnapshotAccess?: EvCarLinkSnapshotAccess;
-    /** A fresh battery level from a charger's associated car (see the probe deps). */
-    onAssociatedCarStateOfCharge?: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'];
-    /** A charger's car session ended. */
-    onAssociationEnded?: EvCarLinkProducerDeps['onAssociationEnded'];
-}): ObservationProducers => {
-    const evCarLinkAccess = params.evCarLinkSnapshotAccess;
+/**
+ * `emit` is the structured-log sink every producer emits through;
+ * `getSnapshots` the committed snapshots, read lazily by the EV car-link
+ * charger view; `evCarLinkSnapshotAccess` the probe's persistence port,
+ * injected by the wiring layer (without one the probe stays in-memory); and
+ * the last two the probe's callbacks for a fresh battery level from a
+ * charger's associated car and for a charger's car session ending (see the
+ * probe deps).
+ */
+export const createObservationProducers = (
+    emit: (payload: Record<string, unknown>) => void,
+    getSnapshots: () => readonly ChargerViewInput[],
+    evCarLinkSnapshotAccess: EvCarLinkSnapshotAccess | undefined,
+    onAssociatedCarStateOfCharge: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'],
+    onAssociationEnded: EvCarLinkProducerDeps['onAssociationEnded'],
+): ObservationProducers => {
     // Gated: battery and solar re-report the SAME value on every fetch (~1/min),
     // so an unchanged repeat carries nothing. The gate wraps them here rather
     // than inside either producer so their "retain nothing" contract stays
@@ -60,18 +57,17 @@ export const createObservationProducers = (params: {
     // carries a fully static payload, so gating it would swallow a genuine
     // second occurrence. It is also not a volume problem. See the caller
     // contract in `observationEmitGate.ts`.
-    const observationEmit = createObservationEmitGate({ emit: params.emit });
+    const observationEmit = createObservationEmitGate({ emit });
     return ({
     temperature: new TemperatureAdjustmentObserver(),
     battery: new BatteryStateProducer((payload) => observationEmit({ ...payload })),
     solar: new SolarProductionProducer((payload) => observationEmit({ ...payload })),
-    evCarLink: createEvCarLinkProducer({
-        emit: (payload) => params.emit({ ...payload }),
-        getSnapshots: params.getSnapshots,
-        snapshotAccess: evCarLinkAccess,
-        onAssociatedCarStateOfCharge: params.onAssociatedCarStateOfCharge,
-        onAssociationEnded: params.onAssociationEnded,
-    }),
-    destroy: () => evCarLinkAccess?.flush(),
+    evCarLink: createEvCarLinkProducer(
+        (payload) => emit({ ...payload }),
+        getSnapshots,
+        evCarLinkSnapshotAccess,
+        onAssociatedCarStateOfCharge,
+        onAssociationEnded,
+    ),
     });
 };

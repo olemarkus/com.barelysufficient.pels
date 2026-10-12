@@ -7,8 +7,6 @@ import {
   clearEvCarObservedStops,
   createEmptyEvCarLinkSnapshot,
   getEvCarLinkVotes,
-  isStrictlyValidPersistedEvCarLink,
-  mergeRecoveredEvCarLinkHistory,
   normalizeEvCarLinkSnapshot,
   parseEvCarLinkPairKey,
   pruneEvCarLinkSnapshot,
@@ -17,7 +15,15 @@ import {
   resolveEvCarChargeLimit,
   resolveEvCarChargerMatches,
   summarizeEvCarObservedLimit,
+  withLegacyEvCarLinkUnder,
 } from '../../lib/device/evCarLinkSnapshot';
+import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
+
+const normalized = (value: unknown, nowMs = 10_000): EvCarLinkSnapshot => {
+  const snapshot = normalizeEvCarLinkSnapshot(value, nowMs);
+  if (snapshot === null) throw new Error('not a snapshot');
+  return snapshot;
+};
 
 describe('pair keys', () => {
   it('round-trips', () => {
@@ -34,18 +40,14 @@ describe('pair keys', () => {
 
 describe('recordEvCarLinkVote', () => {
   it('accumulates votes for a pair', () => {
-    const once = recordEvCarLinkVote({
-      snapshot: createEmptyEvCarLinkSnapshot(), carId: 'car', chargerId: 'charger', nowMs: 1_000,
-    });
-    const twice = recordEvCarLinkVote({ snapshot: once, carId: 'car', chargerId: 'charger', nowMs: 2_000 });
+    const once = recordEvCarLinkVote(createEmptyEvCarLinkSnapshot(), 'car', 'charger', 1_000);
+    const twice = recordEvCarLinkVote(once, 'car', 'charger', 2_000);
     expect(getEvCarLinkVotes(twice, 'car', 'charger')).toBe(2);
     expect(twice.pairs[buildEvCarLinkPairKey('car', 'charger')].lastVotedAtMs).toBe(2_000);
   });
 
   it('keeps pairs independent', () => {
-    const snapshot = recordEvCarLinkVote({
-      snapshot: createEmptyEvCarLinkSnapshot(), carId: 'carA', chargerId: 'charger', nowMs: 1,
-    });
+    const snapshot = recordEvCarLinkVote(createEmptyEvCarLinkSnapshot(), 'carA', 'charger', 1);
     expect(getEvCarLinkVotes(snapshot, 'carB', 'charger')).toBe(0);
   });
 });
@@ -72,26 +74,20 @@ describe('resolveEvCarChargerMatches', () => {
 
 describe('recordEvCarSelfStopSoc', () => {
   it('records in-range samples', () => {
-    const snapshot = recordEvCarSelfStopSoc({
-      snapshot: createEmptyEvCarLinkSnapshot(), carId: 'car', socPct: 80, nowMs: 5,
-    });
+    const snapshot = recordEvCarSelfStopSoc(createEmptyEvCarLinkSnapshot(), 'car', 80, 5);
     expect(snapshot.cars.car.stopSocPct).toEqual([80]);
   });
 
   it('drops out-of-range readings instead of clamping them', () => {
     // A clamped 0 or 100 would pollute the cluster the probe exists to read.
-    const snapshot = recordEvCarSelfStopSoc({
-      snapshot: createEmptyEvCarLinkSnapshot(), carId: 'car', socPct: 140, nowMs: 5,
-    });
+    const snapshot = recordEvCarSelfStopSoc(createEmptyEvCarLinkSnapshot(), 'car', 140, 5);
     expect(snapshot.cars.car).toBeUndefined();
   });
 
   it('bounds retained samples', () => {
     const snapshot = Array.from({ length: EV_CAR_LINK_MAX_STOP_SAMPLES + 5 })
       .reduce<ReturnType<typeof createEmptyEvCarLinkSnapshot>>(
-        (acc, _unused, index) => recordEvCarSelfStopSoc({
-          snapshot: acc, carId: 'car', socPct: 50 + (index % 10), nowMs: index + 1,
-        }),
+        (acc, _unused, index) => recordEvCarSelfStopSoc(acc, 'car', 50 + (index % 10), index + 1),
         createEmptyEvCarLinkSnapshot(),
       );
     expect(snapshot.cars.car.stopSocPct).toHaveLength(EV_CAR_LINK_MAX_STOP_SAMPLES);
@@ -100,21 +96,19 @@ describe('recordEvCarSelfStopSoc', () => {
   it('refuses a new car past the tracked-car cap but keeps serving known cars', () => {
     const full = Array.from({ length: EV_CAR_LINK_MAX_TRACKED_CARS })
       .reduce<ReturnType<typeof createEmptyEvCarLinkSnapshot>>(
-        (acc, _unused, index) => recordEvCarSelfStopSoc({
-          snapshot: acc, carId: `car${index}`, socPct: 80, nowMs: index + 1,
-        }),
+        (acc, _unused, index) => recordEvCarSelfStopSoc(acc, `car${index}`, 80, index + 1),
         createEmptyEvCarLinkSnapshot(),
       );
-    const overflowed = recordEvCarSelfStopSoc({ snapshot: full, carId: 'newCar', socPct: 80, nowMs: 99 });
+    const overflowed = recordEvCarSelfStopSoc(full, 'newCar', 80, 99);
     expect(overflowed.cars.newCar).toBeUndefined();
-    const known = recordEvCarSelfStopSoc({ snapshot: overflowed, carId: 'car0', socPct: 81, nowMs: 100 });
+    const known = recordEvCarSelfStopSoc(overflowed, 'car0', 81, 100);
     expect(known.cars.car0.stopSocPct).toEqual([80, 81]);
   });
 });
 
 describe('summarizeEvCarObservedLimit', () => {
   const withStops = (stops: number[]) => stops.reduce(
-    (acc, socPct, index) => recordEvCarSelfStopSoc({ snapshot: acc, carId: 'car', socPct, nowMs: index + 1 }),
+    (acc, socPct, index) => recordEvCarSelfStopSoc(acc, 'car', socPct, index + 1),
     createEmptyEvCarLinkSnapshot(),
   );
 
@@ -138,7 +132,7 @@ describe('summarizeEvCarObservedLimit', () => {
 
 describe('resolveEvCarChargeLimit', () => {
   const withStops = (stops: number[]) => stops.reduce(
-    (acc, socPct, index) => recordEvCarSelfStopSoc({ snapshot: acc, carId: 'car', socPct, nowMs: index + 1 }),
+    (acc, socPct, index) => recordEvCarSelfStopSoc(acc, 'car', socPct, index + 1),
     createEmptyEvCarLinkSnapshot(),
   );
 
@@ -167,33 +161,31 @@ describe('resolveEvCarChargeLimit', () => {
 
 describe('normalizeEvCarLinkSnapshot', () => {
   it('loads a version-1 blob without the stop samples it banked under the unsound rule', () => {
-    const legacy = {
+    const legacy = normalized({
       version: 1,
       pairs: { [buildEvCarLinkPairKey('car', 'charger')]: { votes: 43, lastVotedAtMs: 1_000 } },
       cars: { car: { stopSocPct: [42, 29, 16], lastObservedAtMs: 1_000 } },
       sessions: { charger: { carId: 'car', sinceMs: 500 } },
-    };
-    expect(isStrictlyValidPersistedEvCarLink(legacy)).toBe(true);
-    const normalized = normalizeEvCarLinkSnapshot(legacy);
-    expect(normalized.version).toBe(EV_CAR_LINK_VERSION);
-    expect(getEvCarLinkVotes(normalized, 'car', 'charger')).toBe(43);
-    expect(normalized.sessions).toEqual({ charger: { carId: 'car', sinceMs: 500 } });
-    expect(normalized.cars).toEqual({});
+    });
+    expect(legacy.version).toBe(EV_CAR_LINK_VERSION);
+    expect(getEvCarLinkVotes(legacy, 'car', 'charger')).toBe(43);
+    expect(legacy.sessions).toEqual({ charger: { carId: 'car', sinceMs: 500 } });
+    expect(legacy.cars).toEqual({});
   });
 
-  it('degrades unknown shapes to empty rather than throwing', () => {
-    expect(normalizeEvCarLinkSnapshot(undefined)).toEqual(createEmptyEvCarLinkSnapshot());
-    expect(normalizeEvCarLinkSnapshot('nonsense')).toEqual(createEmptyEvCarLinkSnapshot());
-    expect(normalizeEvCarLinkSnapshot([])).toEqual(createEmptyEvCarLinkSnapshot());
+  it('answers null for a value that is not a snapshot rather than throwing', () => {
+    expect(normalizeEvCarLinkSnapshot(undefined, 0)).toBeNull();
+    expect(normalizeEvCarLinkSnapshot('nonsense', 0)).toBeNull();
+    expect(normalizeEvCarLinkSnapshot([], 0)).toBeNull();
+    expect(normalizeEvCarLinkSnapshot({ version: EV_CAR_LINK_VERSION, pairs: {}, cars: [] }, 0)).toBeNull();
   });
 
   it('rejects a foreign version', () => {
-    expect(normalizeEvCarLinkSnapshot({ version: 99, pairs: {}, cars: {} }))
-      .toEqual(createEmptyEvCarLinkSnapshot());
+    expect(normalizeEvCarLinkSnapshot({ version: 99, pairs: {}, cars: {} }, 0)).toBeNull();
   });
 
   it('drops partial records but keeps valid siblings', () => {
-    const normalized = normalizeEvCarLinkSnapshot({
+    const snapshot = normalized({
       version: EV_CAR_LINK_VERSION,
       pairs: {
         'car|charger': { votes: 2, lastVotedAtMs: 100 },
@@ -205,34 +197,10 @@ describe('normalizeEvCarLinkSnapshot', () => {
         broken: { stopSocPct: 'nope', lastObservedAtMs: 100 },
       },
     });
-    expect(Object.keys(normalized.pairs)).toEqual(['car|charger']);
+    expect(Object.keys(snapshot.pairs)).toEqual(['car|charger']);
     // The out-of-range sample is dropped, the valid siblings survive.
-    expect(normalized.cars.car.stopSocPct).toEqual([80, 81]);
-    expect(normalized.cars.broken).toBeUndefined();
-  });
-});
-
-describe('isStrictlyValidPersistedEvCarLink', () => {
-  it('accepts a fully valid snapshot', () => {
-    expect(isStrictlyValidPersistedEvCarLink({
-      version: EV_CAR_LINK_VERSION,
-      pairs: { 'car|charger': { votes: 1, lastVotedAtMs: 5 } },
-      cars: {},
-    })).toBe(true);
-  });
-
-  it('rejects an empty snapshot — indistinguishable from a failed read', () => {
-    expect(isStrictlyValidPersistedEvCarLink({
-      version: EV_CAR_LINK_VERSION, pairs: {}, cars: {},
-    })).toBe(false);
-  });
-
-  it('rejects any malformed nested record', () => {
-    expect(isStrictlyValidPersistedEvCarLink({
-      version: EV_CAR_LINK_VERSION,
-      pairs: { 'car|charger': { votes: 1, lastVotedAtMs: 5 }, bad: { votes: 1, lastVotedAtMs: 5 } },
-      cars: {},
-    })).toBe(false);
+    expect(snapshot.cars.car.stopSocPct).toEqual([80, 81]);
+    expect(snapshot.cars.broken).toBeUndefined();
   });
 });
 
@@ -245,15 +213,16 @@ describe('pruneEvCarLinkSnapshot', () => {
         'new|charger': { votes: 1, lastVotedAtMs: 9_000 },
       },
       cars: { old: { stopSocPct: [80], lastObservedAtMs: 1_000 } },
+      sessions: {},
     };
-    const pruned = pruneEvCarLinkSnapshot({ snapshot, nowMs: 10_000, maxAgeMs: 5_000 });
+    const pruned = pruneEvCarLinkSnapshot(snapshot, 10_000, 5_000);
     expect(Object.keys(pruned.pairs)).toEqual(['new|charger']);
     expect(pruned.cars).toEqual({});
   });
 
   it('returns the same reference when nothing expired', () => {
     const snapshot = createEmptyEvCarLinkSnapshot();
-    expect(pruneEvCarLinkSnapshot({ snapshot, nowMs: 10_000 })).toBe(snapshot);
+    expect(pruneEvCarLinkSnapshot(snapshot, 10_000)).toBe(snapshot);
   });
 });
 
@@ -262,77 +231,70 @@ describe('future timestamps', () => {
     // A clock jump or corrupt persisted value would otherwise give the record a
     // negative age, which always passes the retention check — so it could stay a
     // qualified affinity prior forever.
-    const normalized = normalizeEvCarLinkSnapshot({
+    const snapshot = normalized({
       version: EV_CAR_LINK_VERSION,
       pairs: { 'car|charger': { votes: 2, lastVotedAtMs: 9_000 } },
       cars: { car: { stopSocPct: [80], lastObservedAtMs: 9_000 } },
     }, 5_000);
-    expect(normalized.pairs['car|charger'].lastVotedAtMs).toBe(5_000);
-    expect(normalized.cars.car.lastObservedAtMs).toBe(5_000);
+    expect(snapshot.pairs['car|charger'].lastVotedAtMs).toBe(5_000);
+    expect(snapshot.cars.car.lastObservedAtMs).toBe(5_000);
   });
 
   it('leaves past timestamps alone', () => {
-    const normalized = normalizeEvCarLinkSnapshot({
+    const snapshot = normalized({
       version: EV_CAR_LINK_VERSION,
       pairs: { 'car|charger': { votes: 2, lastVotedAtMs: 1_000 } },
       cars: {},
     }, 5_000);
-    expect(normalized.pairs['car|charger'].lastVotedAtMs).toBe(1_000);
+    expect(snapshot.pairs['car|charger'].lastVotedAtMs).toBe(1_000);
   });
 });
 
-describe('mergeRecoveredEvCarLinkHistory', () => {
+describe('withLegacyEvCarLinkUnder', () => {
   const affinity = (votes: number, lastVotedAtMs: number) => ({ votes, lastVotedAtMs });
   const stops = (pct: number, lastObservedAtMs: number) => ({ stopSocPct: [pct], lastObservedAtMs });
 
-  it('in-memory entries win per key; recovered history fills pairs and cars, never sessions', () => {
-    const merged = mergeRecoveredEvCarLinkHistory({
-      inMemory: {
+  it('stored entries win per key; the legacy value fills pairs and cars, never sessions', () => {
+    const merged = withLegacyEvCarLinkUnder(
+      {
         version: EV_CAR_LINK_VERSION,
         pairs: { 'car|charger': affinity(1, 2_000) },
         cars: { car: stops(78, 2_000) },
         sessions: { charger: { carId: 'car', sinceMs: 1_900 } },
       },
-      recovered: {
+      {
         version: EV_CAR_LINK_VERSION,
         pairs: { 'car|charger': affinity(9, 1_000), 'other|charger2': affinity(4, 900) },
         cars: { car: stops(80, 1_000), other: stops(90, 900) },
         sessions: { charger2: { carId: 'other', sinceMs: 800 } },
       },
-    });
-    // Collisions: the post-boot record reflects current reality.
+    );
+    // Collisions: the record observed since the upgrade reflects current reality.
     expect(merged.pairs['car|charger'].votes).toBe(1);
     expect(merged.cars.car.stopSocPct).toEqual([78]);
-    // Fills: multi-session evidence the boot read failed to deliver.
+    // Fills: multi-session evidence only the legacy value holds.
     expect(merged.pairs['other|charger2'].votes).toBe(4);
     expect(merged.cars.other.stopSocPct).toEqual([90]);
-    // Sessions come from memory ONLY: in-memory absence cannot distinguish
-    // "never seen" from "cleared by an observed session end since boot", and
-    // re-injecting a cleared session re-arms the documented wrong-resume risk.
+    // Sessions come from the store ONLY: its absence cannot distinguish
+    // "never seen" from "cleared by an observed session end since the
+    // upgrade", and re-injecting a cleared session re-arms the documented
+    // wrong-resume risk.
     expect(merged.sessions).toEqual({ charger: { carId: 'car', sinceMs: 1_900 } });
   });
 
-  it('keeps the merged car set bounded, dropping recovered entries first', () => {
-    const inMemoryCars = Object.fromEntries(
+  it('keeps the merged car set bounded, dropping legacy entries first', () => {
+    const storedCars = Object.fromEntries(
       Array.from({ length: 3 }, (_, i) => [`mem-${i}`, stops(70 + i, 2_000)]),
     );
-    const recoveredCars = Object.fromEntries(
+    const legacyCars = Object.fromEntries(
       Array.from({ length: EV_CAR_LINK_MAX_TRACKED_CARS }, (_, i) => [`old-${i}`, stops(60 + i, 1_000)]),
     );
-    const merged = mergeRecoveredEvCarLinkHistory({
-      inMemory: { version: EV_CAR_LINK_VERSION, pairs: {}, cars: inMemoryCars, sessions: {} },
-      recovered: { version: EV_CAR_LINK_VERSION, pairs: {}, cars: recoveredCars, sessions: {} },
-    });
+    const merged = withLegacyEvCarLinkUnder(
+      { version: EV_CAR_LINK_VERSION, pairs: {}, cars: storedCars, sessions: {} },
+      { version: EV_CAR_LINK_VERSION, pairs: {}, cars: legacyCars, sessions: {} },
+    );
     expect(Object.keys(merged.cars)).toHaveLength(EV_CAR_LINK_MAX_TRACKED_CARS);
-    // Every post-boot record survives; recovered fill takes the remainder.
+    // Every stored record survives; the legacy fill takes the remainder.
     expect(Object.keys(merged.cars).filter((id) => id.startsWith('mem-'))).toHaveLength(3);
-  });
-
-  it('tolerates snapshots without a sessions record', () => {
-    const merged = mergeRecoveredEvCarLinkHistory({
-      inMemory: { version: EV_CAR_LINK_VERSION, pairs: {}, cars: {} },
-      recovered: { version: EV_CAR_LINK_VERSION, pairs: {}, cars: {} },
-    });
-    expect(merged.sessions).toEqual({});
   });
 });

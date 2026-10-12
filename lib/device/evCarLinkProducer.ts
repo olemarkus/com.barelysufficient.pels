@@ -98,14 +98,17 @@ export type EvCarLinkEventEmitter = (payload: EvCarLinkEvent) => void;
  */
 type ActiveLink = ActiveLinkView & { source: string };
 
+/** A car's charge reading held until its charger link resolves; see `flushPendingSocShadows`. */
+type PendingSocShadow = { previousSocPct?: number; socPct: number; socAtMs: number };
+
 export type EvCarLinkProducerDeps = {
     emit: EvCarLinkEventEmitter;
     /** Committed charger views; read lazily so the producer never holds snapshots. */
     getChargers: () => readonly EvCarLinkChargerView[];
     getSnapshot: () => EvCarLinkSnapshot;
     setSnapshot: (snapshot: EvCarLinkSnapshot) => void;
-    /** Whether `getSnapshot` holds the persisted history (see `EvCarLinkSnapshotAccess`). */
-    isHistoryResolved: () => boolean;
+    /** Whether `getSnapshot` holds the whole history (see `EvCarLinkSnapshotAccess`). */
+    historyResolved: boolean;
     /**
      * A fresh battery level from the car associated with `chargerId`. Fired
      * wherever the probe already computes `wouldAdopt`, so the probe still
@@ -133,11 +136,8 @@ export class EvCarLinkProducer {
     private readonly resumedChargerIds = new Set<string>();
     /** Consecutive targeted reads that requested a car and did not return it. */
     private readonly targetedMissesByCarId = new Map<string, number>();
-    /** Charge readings awaiting link resolution; see `flushPendingSocShadows`. */
-    private readonly pendingSocShadows = new Map<
-        string,
-        { previousSocPct?: number; socPct: number; socAtMs: number }
-    >();
+    /** Charge readings awaiting link resolution, by car. */
+    private readonly pendingSocShadows = new Map<string, PendingSocShadow>();
     /** One-shot dedupe for events re-derived on every correlation pass. */
     private readonly reportKeys = new EvCarLinkReportKeys();
 
@@ -164,7 +164,7 @@ export class EvCarLinkProducer {
 
     /** Chargers this car has matched, from the persisted votes; selection plays no part. */
     readChargerMatchesForCar(carId: string): EvCarChargerMatchHistory {
-        if (!this.deps.isHistoryResolved()) return { state: 'unavailable' };
+        if (!this.deps.historyResolved) return { state: 'unavailable' };
         return { state: 'resolved', chargerMatches: resolveEvCarChargerMatches(this.deps.getSnapshot(), carId) };
     }
 
@@ -333,7 +333,7 @@ export class EvCarLinkProducer {
         // deliberately persisted for recovery. Actual device removal must clear
         // that record too or a deleted car id survives in storage forever.
         if (!preservePersistedSession) {
-            for (const [chargerId, session] of Object.entries(this.deps.getSnapshot().sessions ?? {})) {
+            for (const [chargerId, session] of Object.entries(this.deps.getSnapshot().sessions)) {
                 if (session.carId === carId && !chargerIds.includes(chargerId)) chargerIds.push(chargerId);
             }
         }
@@ -405,7 +405,7 @@ export class EvCarLinkProducer {
 
         this.flushPendingSocShadows(chargers);
         this.publishAssociatedCarLevels();
-        this.selfStop.watch({ chargers, nowMs, links: this.activeLinks, cars: this.cars });
+        this.selfStop.watch(chargers, nowMs, this.activeLinks, this.cars);
     }
 
     private ingestChargerEdges(chargers: readonly EvCarLinkChargerView[], nowMs: number): void {
@@ -468,12 +468,9 @@ export class EvCarLinkProducer {
             const key = `${coincidence.carId}|${coincidence.chargerId}|${coincidence.kind}|${coincidence.atMs}`;
             if (!this.reportKeys.claim(key)) continue;
 
-            const voted = recordEvCarLinkVote({
-                snapshot: this.deps.getSnapshot(),
-                carId: coincidence.carId,
-                chargerId: coincidence.chargerId,
-                nowMs,
-            });
+            const voted = recordEvCarLinkVote(
+                this.deps.getSnapshot(), coincidence.carId, coincidence.chargerId, nowMs,
+            );
             this.deps.setSnapshot(voted);
             const votes = getEvCarLinkVotes(voted, coincidence.carId, coincidence.chargerId);
             const charger = chargers.find((entry) => entry.id === coincidence.chargerId);
@@ -542,19 +539,17 @@ export class EvCarLinkProducer {
      * history already explains.
      */
     private persistSession(chargerId: string, carId: string, sinceMs: number): void {
-        this.deps.setSnapshot(recordEvCarLinkSession({
-            snapshot: this.deps.getSnapshot(), chargerId, carId, sinceMs,
-        }));
+        this.deps.setSnapshot(recordEvCarLinkSession(this.deps.getSnapshot(), chargerId, { carId, sinceMs }));
     }
 
     /** Applies whatever `resolveResumableSessions` says may be picked back up. */
     private resumePersistedSessions(chargers: readonly EvCarLinkChargerView[]): void {
-        const verdict = resolveResumableSessions({
-            sessions: this.deps.getSnapshot().sessions,
+        const verdict = resolveResumableSessions(
+            this.deps.getSnapshot().sessions,
             chargers,
-            cars: this.cars,
-            isSettled: (id) => this.activeLinks.has(id) || this.resumedChargerIds.has(id),
-        });
+            this.cars,
+            (id) => this.activeLinks.has(id) || this.resumedChargerIds.has(id),
+        );
         // Disproved first: a remembered endpoint reporting disconnected means that
         // session is over. Keeping the record would let the pair resume later on
         // unrelated connections — the old car plugging in at work while a guest
@@ -736,7 +731,7 @@ export class EvCarLinkProducer {
     private emitSocShadow(
         carId: string,
         charger: EvCarLinkChargerView,
-        reading: { previousSocPct?: number; socPct: number; socAtMs: number },
+        reading: PendingSocShadow,
         sessionStartedAtMs: number,
     ): void {
         const { previousSocPct, socPct, socAtMs } = reading;

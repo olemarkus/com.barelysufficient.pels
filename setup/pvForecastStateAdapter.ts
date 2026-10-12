@@ -3,10 +3,10 @@
 // the boundary: a malformed blob is coerced field-by-field, dropping non-finite /
 // wrong-shape entries rather than handing them inward, and the boot read is
 // classified into `loaded | absent | unreadable` over a written-before marker
-// (`pv_forecast_state_initialized`, the `power_calibration_initialized`
-// precedent) plus the key-list cross-check, so a transient SDK miss can never
-// masquerade as a fresh install and let the persist timer overwrite up to 90
-// days of learned generation history (notes/persisted-settings-state.md).
+// (`pv_forecast_state_initialized`) plus the key-list cross-check, so a
+// transient SDK miss can never masquerade as a fresh install and let the
+// persist timer overwrite up to 90 days of learned generation history
+// (notes/persisted-settings-state.md).
 
 import { PV_FORECAST_STATE, PV_FORECAST_STATE_INITIALIZED } from '../lib/utils/settingsKeys';
 import type {
@@ -212,8 +212,7 @@ export const createPvForecastStore = (
   };
 
   // Installs that persisted the blob before the marker existed get it
-  // backfilled whenever a read proves the blob is real (the
-  // `loadPowerCalibrationStore` backfill precedent). A later miss on such an
+  // backfilled whenever a read proves the blob is real. A later miss on such an
   // install is already caught by the key-list cross-check; the backfill's
   // value is converging it onto the marker — the primary per-key probe — a few
   // minutes before the next persist would, hardening against a key list that

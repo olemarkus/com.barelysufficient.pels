@@ -22,7 +22,8 @@ import type { WeatherDailyRecord, WeatherHistoryState } from '../../packages/con
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
-import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
+import { createJsonRowTable } from '../store/jsonRowTable';
+import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
 import { WEATHER_HISTORY_STATE } from '../utils/settingsKeys';
 import { normalizeWeatherHistoryState } from './weatherHistory';
@@ -41,121 +42,22 @@ export type WeatherHistoryStore = {
   write(state: WeatherHistoryState): void;
 };
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS weather_history_days (
-  date_key TEXT PRIMARY KEY NOT NULL, record_json TEXT NOT NULL
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS weather_history_fields (
-  key TEXT PRIMARY KEY NOT NULL, value_json TEXT NOT NULL
-) WITHOUT ROWID;
-`;
-
-type Statements = {
-  upsertDay: PreparedStatement; deleteDay: PreparedStatement; loadDays: PreparedStatement;
-  upsertField: PreparedStatement; deleteField: PreparedStatement; loadFields: PreparedStatement;
-};
-
-const prepareStatements = (db: UserdataDatabase): Statements => ({
-  upsertDay: db.prepare('INSERT INTO weather_history_days (date_key, record_json) VALUES (?, ?) '
-    + 'ON CONFLICT (date_key) DO UPDATE SET record_json = excluded.record_json'),
-  deleteDay: db.prepare('DELETE FROM weather_history_days WHERE date_key = ?'),
-  loadDays: db.prepare('SELECT date_key, record_json FROM weather_history_days ORDER BY date_key'),
-  upsertField: db.prepare('INSERT INTO weather_history_fields (key, value_json) VALUES (?, ?) '
-    + 'ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json'),
-  deleteField: db.prepare('DELETE FROM weather_history_fields WHERE key = ?'),
-  loadFields: db.prepare('SELECT key, value_json FROM weather_history_fields'),
-});
-
-const parseRow = (json: string): unknown => {
-  try {
-    return JSON.parse(json) as unknown;
-  } catch {
-    return undefined;
-  }
-};
-
-/** What the store holds, as the diff base of the next write. */
-type Held = { days: Map<string, WeatherDailyRecord>; fields: Map<string, unknown> };
-
-const heldOf = (state: WeatherHistoryState): Held => ({
-  days: new Map(state.records.map((record) => [record.dateKey, record])),
-  fields: new Map(Object.entries(state).filter(([key, value]) => key !== 'records' && value !== undefined)),
-});
-
-const sameJson = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b);
-
 export const createWeatherHistoryStore = (db: UserdataDatabase): WeatherHistoryStore => {
-  db.exec(SCHEMA);
-  const s = prepareStatements(db);
-  let held: Held | null = null;
-
-  /** Runs inside a transaction: an unparseable row is deleted as it is read. */
-  const load = (): WeatherHistoryState | null => {
-    const dayRows = s.loadDays.all() as Array<{ date_key: string; record_json: string }>;
-    const fieldRows = s.loadFields.all() as Array<{ key: string; value_json: string }>;
-    if (dayRows.length === 0 && fieldRows.length === 0) return null;
-    const records = dayRows.flatMap((row) => {
-      const record = parseRow(row.record_json);
-      if (record !== undefined) return [record as WeatherDailyRecord];
-      storeLogger.error({ event: 'weather_history_row_quarantined', where: `day ${row.date_key}` });
-      s.deleteDay.run(row.date_key);
-      return [];
-    });
-    const fields = Object.fromEntries(fieldRows.flatMap((row) => {
-      const value = parseRow(row.value_json);
-      if (value !== undefined) return [[row.key, value] as const];
-      storeLogger.error({ event: 'weather_history_row_quarantined', where: `field ${row.key}` });
-      s.deleteField.run(row.key);
-      return [];
-    }));
-    if (records.length === 0 && Object.keys(fields).length === 0) return null;
-    return { ...fields, records };
-  };
-
-  const writeDays = (next: Map<string, WeatherDailyRecord>, previous: Held | null): void => {
-    for (const [dateKey, record] of next) {
-      const before = previous?.days.get(dateKey);
-      if (before === undefined || !sameJson(before, record)) s.upsertDay.run(dateKey, JSON.stringify(record));
-    }
-    for (const dateKey of previous?.days.keys() ?? []) {
-      if (!next.has(dateKey)) s.deleteDay.run(dateKey);
-    }
-  };
-
-  const writeFields = (next: Map<string, unknown>, previous: Held | null): void => {
-    for (const [key, value] of next) {
-      const before = previous?.fields.get(key);
-      if (before === undefined || !sameJson(before, value)) s.upsertField.run(key, JSON.stringify(value));
-    }
-    for (const key of previous?.fields.keys() ?? []) {
-      if (!next.has(key)) s.deleteField.run(key);
-    }
-  };
-
-  const writeDiff = (next: WeatherHistoryState, previous: Held | null): void => {
-    const target = heldOf(next);
-    writeDays(target.days, previous);
-    writeFields(target.fields, previous);
-  };
-
+  const days = createJsonRowTable(
+    db, 'weather_history_days', ['date_key', 'record_json'], (record) => record as WeatherDailyRecord,
+  );
+  const fields = createJsonRowTable(db, 'weather_history_fields', ['key', 'value_json'], (value) => value);
   return {
     read: () => db.transaction(() => {
-      const state = load();
-      held = state === null ? null : heldOf(state);
-      return state;
+      const records = [...days.read().values()];
+      const stored = fields.read();
+      if (records.length === 0 && stored.size === 0) return null;
+      return { ...Object.fromEntries(stored), records };
     }),
-    write: (state) => {
-      db.transaction(() => {
-        // A store that has neither read nor written diffs against its rows
-        // on disk, so a write can always delete what `state` dropped.
-        const previous = held ?? (() => {
-          const stored = load();
-          return stored === null ? null : heldOf(stored);
-        })();
-        writeDiff(state, previous);
-      });
-      held = heldOf(state);
-    },
+    write: (state) => db.transaction(() => {
+      days.write(new Map(state.records.map((record) => [record.dateKey, record])));
+      fields.write(new Map(Object.entries(state).filter(([key, value]) => key !== 'records' && value !== undefined)));
+    }),
   };
 };
 

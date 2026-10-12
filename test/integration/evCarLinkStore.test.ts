@@ -1,373 +1,209 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadEvCarLinkStore, persistEvCarLinkFlush, persistEvCarLinkIfDue } from '../../lib/device/evCarLinkStore';
+import {
+  createEvCarLinkRepository,
+  createPersistedEvCarLinkAccess,
+  importLegacyEvCarLinkState,
+} from '../../lib/device/evCarLinkStore';
 import {
   EV_CAR_LINK_PRUNE_MAX_AGE_MS,
   EV_CAR_LINK_VERSION,
+  recordEvCarLinkSession,
   recordEvCarLinkVote,
+  recordEvCarSelfStopSoc,
 } from '../../lib/device/evCarLinkSnapshot';
-import { EV_CAR_LINK_STATE, EV_CAR_LINK_STATE_INITIALIZED } from '../../lib/utils/settingsKeys';
+import { createEvCarLinkProducer } from '../../lib/device/evCarLinkWiring';
+import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
+import { EV_CAR_LINK_STATE } from '../../lib/utils/settingsKeys';
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
-import type { HomeyRuntime } from '../../lib/ports/homeyRuntime';
+import { captureLogger } from '../utils/loggerCapture';
+import { MockSettings } from '../mocks/homey';
 
 const NOW = 10 * EV_CAR_LINK_PRUNE_MAX_AGE_MS;
 
-const runtime = (initial: Record<string, unknown>): HomeyRuntime => {
-  const values = new Map(Object.entries(initial));
-  return {
-    settings: {
-      get: (key: string) => values.get(key),
-      set: (key: string, value: unknown) => { values.set(key, value); },
-      unset: (key: string) => { values.delete(key); },
-      getKeys: () => [...values.keys()],
-    },
-  };
+const HISTORY: EvCarLinkSnapshot = {
+  version: EV_CAR_LINK_VERSION,
+  pairs: { 'car|charger': { votes: 5, lastVotedAtMs: NOW - 1_000 } },
+  cars: { car: { stopSocPct: [80, 80], lastObservedAtMs: NOW - 1_000 } },
+  sessions: { charger: { carId: 'car', sinceMs: NOW - 2_000 } },
 };
 
-describe('loadEvCarLinkStore', () => {
-  it('prunes records past the retention window on load', () => {
+const open = () => {
+  const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+  return { db, repository: createEvCarLinkRepository(db) };
+};
+
+const totalChanges = (db: UserdataDatabase): number => (
+  (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n
+);
+
+describe('evCarLinkStore', () => {
+  it('answers null while empty, and round-trips a snapshot', () => {
+    const { repository } = open();
+    expect(repository.read(NOW)).toBeNull();
+    repository.write(HISTORY);
+    expect(repository.read(NOW)).toEqual(HISTORY);
+  });
+
+  it('a vote rewrites the pairs and nothing else', () => {
+    const { db, repository } = open();
+    const access = createPersistedEvCarLinkAccess(repository, NOW, true);
+    access.set(HISTORY);
+    const before = totalChanges(db);
+    access.set(recordEvCarLinkVote(access.get(), 'car', 'charger', NOW));
+    expect(totalChanges(db) - before).toBe(1);
+    expect(repository.read(NOW)?.pairs['car|charger'].votes).toBe(6);
+  });
+
+  it('writes every change through, so the next boot reads it', () => {
+    const { repository } = open();
+    const access = createPersistedEvCarLinkAccess(repository, NOW, true);
+    access.set(recordEvCarSelfStopSoc(access.get(), 'car', 80, NOW));
+    access.set(recordEvCarLinkSession(access.get(), 'charger', { carId: 'car', sinceMs: NOW }));
+    expect(createPersistedEvCarLinkAccess(repository, NOW, true).get()).toEqual(access.get());
+  });
+
+  it('prunes records past the retention window on read, keeping sessions', () => {
     // Pair records only accumulate through device churn across restarts, so boot
     // is when stale ones appear. Without this the advertised retention never
-    // applies and the settings blob grows with every replaced car or charger.
-    const store = loadEvCarLinkStore({
-      homey: runtime({
-        [EV_CAR_LINK_STATE]: {
-          version: EV_CAR_LINK_VERSION,
-          pairs: {
-            'old|charger': { votes: 9, lastVotedAtMs: 1 },
-            'live|charger': { votes: 1, lastVotedAtMs: NOW - 1_000 },
-          },
-          cars: { old: { stopSocPct: [80], lastObservedAtMs: 1 } },
-        },
-        [EV_CAR_LINK_STATE_INITIALIZED]: true,
-      }),
-      options: { nowMs: NOW },
+    // applies and the store grows with every replaced car or charger.
+    const { repository } = open();
+    repository.write({
+      ...HISTORY,
+      pairs: { ...HISTORY.pairs, 'old|charger': { votes: 9, lastVotedAtMs: 1 } },
+      cars: { ...HISTORY.cars, old: { stopSocPct: [80], lastObservedAtMs: 1 } },
     });
-    expect(Object.keys(store.getSnapshot().pairs)).toEqual(['live|charger']);
-    expect(store.getSnapshot().cars).toEqual({});
+    expect(repository.read(NOW)).toEqual(HISTORY);
   });
 
-  it('reports its history as unresolved after a suspect boot read, and resolved after a plausible one', () => {
-    // An empty snapshot standing in for an unreadable one must not read as
-    // "this car never matched": the settings UI would tell the owner to clear
-    // a car selection that may have matched many times.
-    const throwing: HomeyRuntime = {
-      settings: {
-        get: () => { throw new Error('settings unavailable'); },
-        set: () => {},
-        unset: () => {},
-        getKeys: () => [],
-      },
-    };
-    expect(loadEvCarLinkStore({ homey: throwing, options: { nowMs: NOW } }).hasResolvedHistory()).toBe(false);
-
-    const plausible = loadEvCarLinkStore({
-      homey: runtime({
-        [EV_CAR_LINK_STATE]: {
-          version: EV_CAR_LINK_VERSION,
-          pairs: { 'car|charger': { votes: 2, lastVotedAtMs: NOW - 1_000 } },
-          cars: {},
-        },
-        [EV_CAR_LINK_STATE_INITIALIZED]: true,
-      }),
-      options: { nowMs: NOW },
-    });
-    expect(plausible.hasResolvedHistory()).toBe(true);
-    // A fresh install has no history to lose.
-    expect(loadEvCarLinkStore({ homey: runtime({}), options: { nowMs: NOW } }).hasResolvedHistory()).toBe(true);
-  });
-
-  it('engages the load grace when a persisted stop array is only partly valid', () => {
-    // `normalizeObservedStops` FILTERS bad samples and still succeeds, so a mixed
-    // array used to pass the plausibility gate: no grace, and the next accepted
-    // vote persisted the lossy normalized value over recoverable history.
-    const store = loadEvCarLinkStore({
-      homey: runtime({
-        [EV_CAR_LINK_STATE]: {
-          version: EV_CAR_LINK_VERSION,
-          pairs: {},
-          cars: { 'car-1': { stopSocPct: [80, null], lastObservedAtMs: NOW - 1_000 } },
-        },
-        [EV_CAR_LINK_STATE_INITIALIZED]: true,
-      }),
-      options: { nowMs: NOW },
-    });
-
-    store.setSnapshot({ ...store.getSnapshot(), pairs: { 'car-1|charger-1': { votes: 1, lastVotedAtMs: NOW } } });
-    // Inside the grace nothing may be written over the partially-readable value.
-    expect(store.snapshotForFlush(NOW)).toBeNull();
-    expect(store.snapshotForPersist(NOW)).toBeNull();
-  });
-
-  it('loads a plausible snapshot and persists a later change immediately', () => {
-    const store = loadEvCarLinkStore({
-      homey: runtime({
-        [EV_CAR_LINK_STATE]: {
-          version: EV_CAR_LINK_VERSION,
-          pairs: { 'car|charger': { votes: 3, lastVotedAtMs: NOW - 1_000 } },
-          cars: {},
-        },
-        [EV_CAR_LINK_STATE_INITIALIZED]: true,
-      }),
-      options: { nowMs: NOW },
-    });
-    // The loaded snapshot is the persisted one, not an empty rebuild.
-    expect(store.getSnapshot().pairs['car|charger'].votes).toBe(3);
-    // Nothing dirty yet, so nothing to flush.
-    expect(store.snapshotForFlush(NOW)).toBeNull();
-    // A plausible read engages NO load grace, so the first change is immediately
-    // flushable — that is the behaviour this test exists to pin.
-    store.setSnapshot(recordEvCarLinkVote({
-      snapshot: store.getSnapshot(), carId: 'car', chargerId: 'charger', nowMs: NOW,
+  it('deletes a family row that is not a record, and drops the malformed records of one that is', () => {
+    const { db, repository } = open();
+    repository.write(HISTORY);
+    db.prepare("UPDATE ev_car_link_state SET value_json = '[]' WHERE family = 'cars'").run();
+    db.prepare("UPDATE ev_car_link_state SET value_json = ? WHERE family = 'pairs'").run(JSON.stringify({
+      ...HISTORY.pairs, 'not-a-pair': { votes: 1, lastVotedAtMs: NOW },
     }));
-    expect(store.snapshotForFlush(NOW)).not.toBeNull();
-    expect(store.getSnapshot().pairs['car|charger'].votes).toBe(4);
+    expect(repository.read(NOW)).toEqual({ ...HISTORY, cars: {} });
+    expect((db.prepare('SELECT COUNT(*) AS n FROM ev_car_link_state').get() as { n: number }).n).toBe(2);
   });
 
-  it('engages the load grace when a prior install reads back empty', () => {
-    // Marker present but no snapshot = transient settings miss, not a fresh
-    // install. Persisting immediately would overwrite recoverable history.
-    const store = loadEvCarLinkStore({
-      homey: runtime({ [EV_CAR_LINK_STATE_INITIALIZED]: true }),
-      options: { nowMs: NOW },
-    });
-    store.setSnapshot({ version: EV_CAR_LINK_VERSION, pairs: {}, cars: {} });
-    expect(store.snapshotForFlush(NOW)).toBeNull();
-  });
-
-  it('writes immediately on a genuine fresh install', () => {
-    const store = loadEvCarLinkStore({ homey: runtime({}), options: { nowMs: NOW } });
-    store.setSnapshot({
-      version: EV_CAR_LINK_VERSION,
-      pairs: { 'car|charger': { votes: 1, lastVotedAtMs: NOW } },
-      cars: {},
-    });
-    expect(store.snapshotForFlush(NOW)).not.toBeNull();
-  });
-
-  it('survives a settings read that throws', () => {
-    const throwing: HomeyRuntime = {
-      settings: {
-        get: vi.fn(() => { throw new Error('sdk unavailable'); }),
-        set: vi.fn(),
-        unset: vi.fn(),
-        getKeys: vi.fn(() => []),
-      },
-    };
-    const store = loadEvCarLinkStore({ homey: throwing, options: { nowMs: NOW } });
-    expect(store.getSnapshot().pairs).toEqual({});
-    // A throw must take the cautious branch, never the fresh-install one.
-    store.setSnapshot({ version: EV_CAR_LINK_VERSION, pairs: {}, cars: {} });
-    expect(store.snapshotForFlush(NOW)).toBeNull();
+  it('keeps a change whose write failed, and writes it with the next one', () => {
+    const { repository } = open();
+    const access = createPersistedEvCarLinkAccess(repository, NOW, true);
+    const capture = captureLogger();
+    const write = vi.spyOn(repository, 'write').mockImplementationOnce(() => { throw new Error('disk full'); });
+    try {
+      access.set(HISTORY);
+      expect(capture.findEvent('ev_car_link_persist_failed')).toBeDefined();
+    } finally {
+      write.mockRestore();
+      capture.restore();
+    }
+    expect(access.get()).toBe(HISTORY);
+    expect(repository.read(NOW)).toBeNull();
+    access.set(recordEvCarLinkVote(access.get(), 'car', 'charger', NOW));
+    expect(repository.read(NOW)).toEqual(access.get());
   });
 });
 
-describe('first-write recovery re-read', () => {
-  const GRACE_END = NOW + 5 * 60 * 1000;
-  const DEFERRAL_END = GRACE_END + 5 * 60 * 1000;
-  const historicBlob = {
-    version: EV_CAR_LINK_VERSION,
-    pairs: { 'other|charger2': { votes: 6, lastVotedAtMs: NOW - 500 } },
-    cars: { other: { stopSocPct: [80], lastObservedAtMs: NOW - 500 } },
+describe('importLegacyEvCarLinkState', () => {
+  const rig = () => {
+    const settings = new MockSettings();
+    // A real install never has an empty key list here: the boot migrations
+    // set their markers first.
+    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    return { settings, ...open() };
   };
 
-  it('merges recovered history under the in-memory state on the first post-grace write', () => {
-    const homey = runtime({ [EV_CAR_LINK_STATE_INITIALIZED]: true });
-    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
-    store.setSnapshot(recordEvCarLinkVote({
-      snapshot: store.getSnapshot(), carId: 'car', chargerId: 'charger', nowMs: NOW,
-    }));
-    // The transiently-missing value reappears before the first write.
-    homey.settings.set(EV_CAR_LINK_STATE, historicBlob);
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: GRACE_END + 1_000 })).toBe(true);
-    const written = homey.settings.get(EV_CAR_LINK_STATE) as EvCarLinkSnapshot;
-    expect(written.pairs['car|charger'].votes).toBe(1);
-    expect(written.pairs['other|charger2'].votes).toBe(6);
-    expect(written.cars.other.stopSocPct).toEqual([80]);
+  it('imports the blob into an empty store and retires the key; a second boot has nothing to do', () => {
+    const { settings, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, HISTORY);
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+    expect(repository.read(NOW)).toEqual(HISTORY);
+    expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
+    const get = vi.spyOn(settings, 'get');
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+    expect(get).not.toHaveBeenCalled();
   });
 
-  it('recovers the history on the persist guard without waiting for a new vote', () => {
-    // Match history is served as unavailable until recovery settles, and the
-    // recovery re-read runs only on the write path. A home that sees no plug-in
-    // must still get its history back from the heartbeat.
-    const homey = runtime({ [EV_CAR_LINK_STATE_INITIALIZED]: true });
-    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
-    expect(store.hasResolvedHistory()).toBe(false);
-    expect(store.isDirty()).toBe(false);
-
-    homey.settings.set(EV_CAR_LINK_STATE, historicBlob);
-    expect(persistEvCarLinkIfDue({ homey, store, nowMs: GRACE_END + 1_000 })).toBe(true);
-
-    expect(store.hasResolvedHistory()).toBe(true);
-    expect(store.getSnapshot().pairs['other|charger2'].votes).toBe(6);
-    expect((homey.settings.get(EV_CAR_LINK_STATE) as EvCarLinkSnapshot).pairs['other|charger2'].votes).toBe(6);
+  // An empty snapshot standing in for an unread one must not read as "this car
+  // never matched": the settings UI would tell the owner to clear a car
+  // selection that may have matched many times.
+  it('reports the history unresolved while a suspect read leaves the blob for the next boot', () => {
+    const { settings, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, HISTORY);
+    const originalGet = settings.get.bind(settings);
+    const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === EV_CAR_LINK_STATE ? undefined : originalGet(key)));
+    const historyResolved = importLegacyEvCarLinkState(settings, repository, NOW);
+    get.mockRestore();
+    expect(historyResolved).toBe(false);
+    const producer = createEvCarLinkProducer(
+      () => {}, () => [], createPersistedEvCarLinkAccess(repository, NOW, historyResolved), undefined, undefined,
+    );
+    expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
+    // A blob with no snapshot in it holds no history to wait for.
+    settings.set(EV_CAR_LINK_STATE, 'garbage');
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
   });
 
-  it('writes nothing when a guard-driven recovery of a clean store finds nothing', () => {
-    // Boot read threw with no marker yet (an upgrading install); the re-read
-    // then finds the key absent. Recovery settles, but the empty boot stand-in
-    // must not be written over a value the re-read may only have missed.
-    let bootRead = true;
-    const values = new Map<string, unknown>();
-    const homey: HomeyRuntime = {
-      settings: {
-        get: (key: string) => {
-          if (bootRead && key === EV_CAR_LINK_STATE) throw new Error('SDK unavailable');
-          return values.get(key);
-        },
-        set: (key: string, value: unknown) => { values.set(key, value); },
-        unset: (key: string) => { values.delete(key); },
-        getKeys: () => [...values.keys()],
-      },
-    };
-    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
-    bootRead = false;
-    expect(store.hasResolvedHistory()).toBe(false);
-
-    expect(persistEvCarLinkIfDue({ homey, store, nowMs: GRACE_END + 1_000 })).toBe(false);
-
-    expect(store.hasResolvedHistory()).toBe(true);
-    expect(values.has(EV_CAR_LINK_STATE)).toBe(false);
+  it('reports the history unresolved when the settings key list cannot be read', () => {
+    const { settings, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, HISTORY);
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(false);
+    expect(settings.get(EV_CAR_LINK_STATE)).toEqual(HISTORY);
   });
 
-  it('arms the transient-miss deadline at the first deferred attempt, then writes past it', () => {
-    const homey = runtime({ [EV_CAR_LINK_STATE_INITIALIZED]: true });
-    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
-    store.setSnapshot(recordEvCarLinkVote({
-      snapshot: store.getSnapshot(), carId: 'car', chargerId: 'charger', nowMs: NOW,
-    }));
-    // First attempt lands long past boot + grace + window — a boot-anchored
-    // deadline would abandon recovery on this SINGLE re-read. It must defer
-    // and arm the window instead.
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: DEFERRAL_END })).toBe(false);
-    expect(store.isDirty()).toBe(true);
-    expect(homey.settings.get(EV_CAR_LINK_STATE)).toBeUndefined();
-    // Once the armed window elapses with the value still absent, the key is
-    // genuinely gone; writing destroys nothing.
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: DEFERRAL_END + 5 * 60 * 1000 })).toBe(true);
-    expect((homey.settings.get(EV_CAR_LINK_STATE) as EvCarLinkSnapshot).pairs['car|charger'].votes).toBe(1);
+  it('imports a version-1 blob without the stop samples it banked under the unsound rule', () => {
+    const { settings, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, { ...HISTORY, version: 1 });
+    importLegacyEvCarLinkState(settings, repository, NOW);
+    expect(repository.read(NOW)).toEqual({ ...HISTORY, cars: {} });
   });
 
-  it('writes through immediately when the re-read finds neither value nor marker (genuine wipe)', () => {
-    const phase = { healed: false };
-    const values = new Map<string, unknown>();
-    const homey: HomeyRuntime = {
-      settings: {
-        get: (key: string): unknown => {
-          if (key === EV_CAR_LINK_STATE && !phase.healed) throw new Error('SDK unavailable');
-          return undefined;
-        },
-        set: (key: string, value: unknown) => { values.set(key, value); },
-        unset: (key: string) => { values.delete(key); },
-        getKeys: () => [...values.keys()],
-      },
-    };
-    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
-    store.setSnapshot(recordEvCarLinkVote({
-      snapshot: store.getSnapshot(), carId: 'car', chargerId: 'charger', nowMs: NOW,
-    }));
-    phase.healed = true;
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: GRACE_END + 1_000 })).toBe(true);
-    expect(values.has(EV_CAR_LINK_STATE)).toBe(true);
+  // A boot whose import deferred still lets the probe vote; the next boot's
+  // import keeps both, the store's records winning where both have one, and
+  // never brings back a session the store may have seen end.
+  it('imports the blob under what the store already holds', () => {
+    const { settings, repository } = rig();
+    repository.write({
+      version: EV_CAR_LINK_VERSION,
+      pairs: { 'car|charger': { votes: 1, lastVotedAtMs: NOW } },
+      cars: {},
+      sessions: {},
+    });
+    settings.set(EV_CAR_LINK_STATE, {
+      ...HISTORY,
+      pairs: { ...HISTORY.pairs, 'car|other': { votes: 2, lastVotedAtMs: NOW - 3_000 } },
+    });
+    importLegacyEvCarLinkState(settings, repository, NOW);
+    expect(repository.read(NOW)).toEqual({
+      version: EV_CAR_LINK_VERSION,
+      pairs: { 'car|charger': { votes: 1, lastVotedAtMs: NOW }, 'car|other': { votes: 2, lastVotedAtMs: NOW - 3_000 } },
+      cars: HISTORY.cars,
+      sessions: {},
+    });
+    expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
   });
 
-  it('gives the transient-miss arm its own full window after a long thrown phase', () => {
-    // Regression: with one shared deferral window, a long thrown phase would
-    // expire it and the first heal-into-absent read abandoned recovery after
-    // zero spaced absent re-reads. Each arm must own its window.
-    const phase = { throwing: true };
-    const values = new Map<string, unknown>();
-    const homey: HomeyRuntime = {
-      settings: {
-        get: (key: string): unknown => {
-          if (key === EV_CAR_LINK_STATE_INITIALIZED) return true;
-          if (key === EV_CAR_LINK_STATE && phase.throwing) throw new Error('SDK unavailable');
-          return undefined;
-        },
-        set: (key: string, value: unknown) => { values.set(key, value); },
-        unset: (key: string) => { values.delete(key); },
-        getKeys: () => [...values.keys()],
-      },
-    };
-    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
-    store.setSnapshot(recordEvCarLinkVote({
-      snapshot: store.getSnapshot(), carId: 'car', chargerId: 'charger', nowMs: NOW,
-    }));
-    // Thrown deferrals arm the thrown arm's window and keep deferring well
-    // past it.
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: GRACE_END + 1_000 })).toBe(false);
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: GRACE_END + 20 * 60 * 1000 })).toBe(false);
-    // The SDK heals into the transiently-absent mode.
-    phase.throwing = false;
-    const missStart = GRACE_END + 21 * 60 * 1000;
-    // The first absent read must DEFER and arm the miss arm's OWN window.
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: missStart })).toBe(false);
-    expect(values.has(EV_CAR_LINK_STATE)).toBe(false);
-    // A spaced absent re-read inside the miss window still defers.
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: missStart + 60 * 1000 })).toBe(false);
-    expect(values.has(EV_CAR_LINK_STATE)).toBe(false);
-    // Only once the miss window elapses does the write go.
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: missStart + 5 * 60 * 1000 })).toBe(true);
-    expect(values.has(EV_CAR_LINK_STATE)).toBe(true);
-  });
-
-  it('defers when the value is absent and the marker read throws at recovery time', () => {
-    // An unreadable marker is treated as marker-present; inverting it would
-    // let a transient marker-read failure abandon recovery and overwrite
-    // live history.
-    const phase = { markerThrows: false };
-    const values = new Map<string, unknown>();
-    const homey: HomeyRuntime = {
-      settings: {
-        get: (key: string): unknown => {
-          if (key === EV_CAR_LINK_STATE_INITIALIZED) {
-            if (phase.markerThrows) throw new Error('SDK unavailable');
-            return true;
-          }
-          return undefined;
-        },
-        set: (key: string, value: unknown) => { values.set(key, value); },
-        unset: (key: string) => { values.delete(key); },
-        getKeys: () => [...values.keys()],
-      },
-    };
-    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
-    store.setSnapshot(recordEvCarLinkVote({
-      snapshot: store.getSnapshot(), carId: 'car', chargerId: 'charger', nowMs: NOW,
-    }));
-    phase.markerThrows = true;
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: GRACE_END + 1_000 })).toBe(false);
-    expect(store.isDirty()).toBe(true);
-    expect(values.has(EV_CAR_LINK_STATE)).toBe(false);
-  });
-
-  it('defers a throwing re-read past any deadline, then merges once the SDK heals', () => {
-    let healed = false;
-    const values = new Map<string, unknown>();
-    const homey: HomeyRuntime = {
-      settings: {
-        get: (key: string): unknown => {
-          if (key === EV_CAR_LINK_STATE_INITIALIZED) return true;
-          if (key === EV_CAR_LINK_STATE) {
-            if (!healed) throw new Error('SDK unavailable');
-            return historicBlob;
-          }
-          return undefined;
-        },
-        set: (key: string, value: unknown) => { values.set(key, value); },
-        unset: (key: string) => { values.delete(key); },
-        getKeys: () => [...values.keys()],
-      },
-    };
-    const store = loadEvCarLinkStore({ homey, options: { nowMs: NOW } });
-    store.setSnapshot(recordEvCarLinkVote({
-      snapshot: store.getSnapshot(), carId: 'car', chargerId: 'charger', nowMs: NOW,
-    }));
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: DEFERRAL_END + 60 * 60 * 1000 })).toBe(false);
-    expect(values.has(EV_CAR_LINK_STATE)).toBe(false);
-    healed = true;
-    expect(persistEvCarLinkFlush({ homey, store, nowMs: DEFERRAL_END + 61 * 60 * 1000 })).toBe(true);
-    const written = values.get(EV_CAR_LINK_STATE) as EvCarLinkSnapshot;
-    expect(written.pairs['car|charger'].votes).toBe(1);
-    expect(written.pairs['other|charger2'].votes).toBe(6);
+  // One transient must never cost the probe's evidence: a suspect read leaves
+  // the key where it is for the next boot.
+  it('defers on a suspect read, a value with no snapshot in it, or a store that cannot answer', () => {
+    const { settings, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, { version: 99, pairs: {}, cars: {} });
+    importLegacyEvCarLinkState(settings, repository, NOW);
+    expect(settings.get(EV_CAR_LINK_STATE)).toEqual({ version: 99, pairs: {}, cars: {} });
+    settings.set(EV_CAR_LINK_STATE, HISTORY);
+    const originalGet = settings.get.bind(settings);
+    const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === EV_CAR_LINK_STATE ? undefined : originalGet(key)));
+    importLegacyEvCarLinkState(settings, repository, NOW);
+    get.mockRestore();
+    const write = vi.spyOn(repository, 'write').mockImplementation(() => { throw new Error('disk full'); });
+    importLegacyEvCarLinkState(settings, repository, NOW);
+    write.mockRestore();
+    expect(repository.read(NOW)).toBeNull();
+    expect(originalGet(EV_CAR_LINK_STATE)).toEqual(HISTORY);
+    importLegacyEvCarLinkState(settings, repository, NOW);
+    expect(repository.read(NOW)).toEqual(HISTORY);
+    expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
   });
 });
