@@ -304,6 +304,15 @@ describe('createPriceDataStore: a Power by the Hour day without a row', () => {
     vi.spyOn(settings, 'get').mockImplementation((key) => (key === POWERHOUR_PRICES_TODAY ? undefined : originalGet(key)));
     expect(priceData.readPowerhourCache().today).toEqual({ kind: 'unreadable' });
   });
+
+  // The import leaves a value it finds nothing usable in where it is, for
+  // good. Read as pending, the source would never store that day again.
+  it('reads a listed value the import finds nothing usable in as absent', () => {
+    const { settings, priceData } = rig();
+    settings.set(POWERHOUR_PRICES_TODAY, 'garbage');
+    expect(priceData.readPowerhourCache().today).toEqual({ kind: 'absent' });
+    expect(settings.get(POWERHOUR_PRICES_TODAY)).toBe('garbage');
+  });
 });
 
 describe('importLegacyPriceCaches: combined prices', () => {

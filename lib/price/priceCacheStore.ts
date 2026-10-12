@@ -17,7 +17,9 @@
  */
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
-import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
+import {
+  importLegacySettingsKey, isLegacySettingsKeyListed, type LegacyImportResult,
+} from '../store/legacySettingsImport';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
 import {
@@ -215,10 +217,21 @@ const retireBeatenKey = (settings: SettingsPort, cache: PriceCacheStore, legacy:
   return true;
 };
 
-const importLegacyPriceCache = (settings: SettingsPort, cache: PriceCacheStore, legacy: LegacyPriceCache): void => {
+/**
+ * What one legacy price key's import came to: the shared import's result, or
+ * `skipped` when nothing was tried because the key list does not show the key
+ * (it is gone, or the list could not be read).
+ */
+export type LegacyPriceCacheImport = LegacyImportResult | { outcome: 'skipped' };
+
+const importLegacyPriceCache = (
+  settings: SettingsPort,
+  cache: PriceCacheStore,
+  legacy: LegacyPriceCache,
+): LegacyPriceCacheImport => {
   const { settingsKey, cacheKey } = legacy;
-  if (isLegacySettingsKeyListed(settings, settingsKey) !== true) return;
-  if (retireBeatenKey(settings, cache, legacy)) return;
+  if (isLegacySettingsKeyListed(settings, settingsKey) !== true) return { outcome: 'skipped' };
+  if (retireBeatenKey(settings, cache, legacy)) return { outcome: 'retired', reason: 'store_already_holds' };
   const result = importLegacySettingsKey(settings, settingsKey, {
     holds: () => legacy.storeWins(cache.read(cacheKey)),
     adopt: (raw) => {
@@ -240,6 +253,7 @@ const importLegacyPriceCache = (settings: SettingsPort, cache: PriceCacheStore, 
       ...(result.error === undefined ? {} : { err: normalizeError(result.error) }),
     });
   }
+  return result;
 };
 
 /**
@@ -255,13 +269,16 @@ export const importLegacyPriceCaches = (settings: SettingsPort, cache: PriceCach
 
 /**
  * Retry the import of one cache's legacy key, for a reader that finds no row
- * while the key may still be pending. A no-op once the key is gone.
+ * while the key may still be pending. A no-op once the key is gone. The result
+ * says why a key that is still there was not taken, so the reader can tell a
+ * transient miss (the day is still pending) from a value the import finds
+ * nothing usable in (`not_a_value`), which stays in settings for good.
  */
 export const importPendingLegacyPriceCache = (
   settings: SettingsPort,
   cache: PriceCacheStore,
   cacheKey: PriceCacheKey,
-): void => {
+): LegacyPriceCacheImport => {
   const legacy = LEGACY_PRICE_CACHES.find((entry) => entry.cacheKey === cacheKey);
-  if (legacy !== undefined) importLegacyPriceCache(settings, cache, legacy);
+  return legacy === undefined ? { outcome: 'skipped' } : importLegacyPriceCache(settings, cache, legacy);
 };

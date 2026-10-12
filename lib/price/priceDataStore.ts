@@ -20,7 +20,9 @@ import type {
   PowerhourCache, PowerhourCacheDevice, PowerhourCachedDay, PowerhourDay,
 } from './powerhourScheme';
 import type { CombinedPricesV2 } from './priceTypes';
-import { importPendingLegacyPriceCache, type PriceCacheStore, type PricePayloadKey } from './priceCacheStore';
+import {
+  importPendingLegacyPriceCache, type LegacyPriceCacheImport, type PriceCacheStore, type PricePayloadKey,
+} from './priceCacheStore';
 import { isLegacySettingsKeyListed } from '../store/legacySettingsImport';
 
 /**
@@ -66,19 +68,29 @@ const toStoredFlowPayload = (payload: FlowPricePayload | null): StoredFlowPriceP
  * `null` is absence, which is what the SDK answers for an unset key and what
  * reading it otherwise turned into a home that never got prices again.
  *
- * A value while the key list cannot be read settles nothing either. The
- * import skips a key it cannot see listed, so the value is a day it has yet
- * to take; read as absence, the merge would store the app's future-only
- * answer as the whole day, and the next import would retire the key under
- * that row with this morning's hours still in it.
+ * Any other value is a day the import has yet to take, and settles nothing:
+ * read as absence, the merge would store the app's future-only answer as the
+ * whole day, and the next import would retire the key under that row with
+ * this morning's hours still in it. That holds while the key list cannot be
+ * read (the import skips a key it cannot see listed) and when the import's
+ * own read or store access failed just now. The one exception is a listed
+ * value the import tried and found nothing usable in (`not_a_value`): it stays
+ * in settings for good, so reading it as pending would block the source
+ * forever.
  */
-const classifyPendingLegacyKey = (settings: SettingsPort, key: string): 'absent' | 'unreadable' => {
+const classifyPendingLegacyKey = (
+  settings: SettingsPort,
+  key: string,
+  pendingImport: LegacyPriceCacheImport,
+): 'absent' | 'unreadable' => {
   try {
     const listed = isLegacySettingsKeyListed(settings, key);
     if (listed === false) return 'absent';
     const value = settings.get(key);
     if (value === undefined) return 'unreadable';
-    return listed === null && value !== null ? 'unreadable' : 'absent';
+    if (value === null) return 'absent';
+    const holdsNothingUsable = pendingImport.outcome === 'deferred' && pendingImport.reason === 'not_a_value';
+    return listed === true && holdsNothingUsable ? 'absent' : 'unreadable';
   } catch {
     return 'unreadable';
   }
@@ -90,24 +102,24 @@ const classifyPendingLegacyKey = (settings: SettingsPort, key: string): 'absent'
  * A read that throws is `unreadable`. A missing row first retries the key's
  * import (a boot whose read of the old key came back empty leaves it pending),
  * so a day PELS still holds only in the old key is never written over with the
- * app's future-only answer.
+ * app's future-only answer; why that retry took nothing decides what a row
+ * still missing means.
  */
 const readPowerhourRow = (
   settings: SettingsPort,
   cache: PriceCacheStore,
   key: typeof POWERHOUR_PRICES_TODAY | typeof POWERHOUR_PRICES_TOMORROW | typeof POWERHOUR_PRICES_DEVICE,
 ): { kind: 'stored'; value: unknown } | { kind: 'absent' } | { kind: 'unreadable' } => {
-  let value: unknown;
   try {
-    value = cache.read(key);
-    if (value === null) {
-      importPendingLegacyPriceCache(settings, cache, key);
-      value = cache.read(key);
-    }
+    const stored = cache.read(key);
+    if (stored !== null) return { kind: 'stored', value: stored };
+    const pendingImport = importPendingLegacyPriceCache(settings, cache, key);
+    const imported = cache.read(key);
+    if (imported !== null) return { kind: 'stored', value: imported };
+    return { kind: classifyPendingLegacyKey(settings, key, pendingImport) };
   } catch {
     return { kind: 'unreadable' };
   }
-  return value === null ? { kind: classifyPendingLegacyKey(settings, key) } : { kind: 'stored', value };
 };
 
 /**
