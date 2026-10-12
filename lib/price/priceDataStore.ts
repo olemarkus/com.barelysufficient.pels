@@ -21,7 +21,11 @@ import type {
 } from './powerhourScheme';
 import type { CombinedPricesV2 } from './priceTypes';
 import {
-  importPendingLegacyPriceCache, type LegacyPriceCacheImport, type PriceCacheStore, type PricePayloadKey,
+  importPendingLegacyPriceCache,
+  isUsableLegacyPriceValue,
+  type LegacyPriceCacheImport,
+  type PriceCacheStore,
+  type PricePayloadKey,
 } from './priceCacheStore';
 import { isLegacySettingsKeyListed } from '../store/legacySettingsImport';
 
@@ -60,6 +64,10 @@ const toStoredFlowPayload = (payload: FlowPricePayload | null): StoredFlowPriceP
   };
 };
 
+/** The Power by the Hour cache rows, each still named after its legacy settings key. */
+type PowerhourRowKey =
+  | typeof POWERHOUR_PRICES_TODAY | typeof POWERHOUR_PRICES_TOMORROW | typeof POWERHOUR_PRICES_DEVICE;
+
 /**
  * A Power by the Hour row the cache does not hold, while its legacy settings
  * key may still be pending its one-shot import: the old key's own
@@ -74,13 +82,16 @@ const toStoredFlowPayload = (payload: FlowPricePayload | null): StoredFlowPriceP
  * this morning's hours still in it. That holds while the key list cannot be
  * read (the import skips a key it cannot see listed) and when the import's
  * own read or store access failed just now. The one exception is a listed
- * value the import tried and found nothing usable in (`not_a_value`): it stays
- * in settings for good, so reading it as pending would block the source
- * forever.
+ * value that both the import (`not_a_value`) and this read find nothing usable
+ * in: it stays in settings for good, so reading it as pending would block the
+ * source forever. A usable value read here stays pending even then, because a
+ * listed key reading back malformed is a failed read
+ * (`notes/persisted-settings-state.md`): the import's read was the failed one,
+ * and its next read takes the day.
  */
 const classifyPendingLegacyKey = (
   settings: SettingsPort,
-  key: string,
+  key: PowerhourRowKey,
   pendingImport: LegacyPriceCacheImport,
 ): 'absent' | 'unreadable' => {
   try {
@@ -89,7 +100,8 @@ const classifyPendingLegacyKey = (
     const value = settings.get(key);
     if (value === undefined) return 'unreadable';
     if (value === null) return 'absent';
-    const holdsNothingUsable = pendingImport.outcome === 'deferred' && pendingImport.reason === 'not_a_value';
+    const holdsNothingUsable = pendingImport.outcome === 'deferred' && pendingImport.reason === 'not_a_value'
+      && !isUsableLegacyPriceValue(key, value);
     return listed === true && holdsNothingUsable ? 'absent' : 'unreadable';
   } catch {
     return 'unreadable';
@@ -108,7 +120,7 @@ const classifyPendingLegacyKey = (
 const readPowerhourRow = (
   settings: SettingsPort,
   cache: PriceCacheStore,
-  key: typeof POWERHOUR_PRICES_TODAY | typeof POWERHOUR_PRICES_TOMORROW | typeof POWERHOUR_PRICES_DEVICE,
+  key: PowerhourRowKey,
 ): { kind: 'stored'; value: unknown } | { kind: 'absent' } | { kind: 'unreadable' } => {
   try {
     const stored = cache.read(key);

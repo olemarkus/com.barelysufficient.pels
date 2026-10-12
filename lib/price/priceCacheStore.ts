@@ -272,7 +272,9 @@ export const importLegacyPriceCaches = (settings: SettingsPort, cache: PriceCach
  * while the key may still be pending. A no-op once the key is gone. The result
  * says why a key that is still there was not taken, so the reader can tell a
  * transient miss (the day is still pending) from a value the import finds
- * nothing usable in (`not_a_value`), which stays in settings for good.
+ * nothing usable in (`not_a_value`), which stays in settings for good. That
+ * verdict is about the import's own read; a reader judges the value it reads
+ * itself with {@link isUsableLegacyPriceValue}.
  */
 export const importPendingLegacyPriceCache = (
   settings: SettingsPort,
@@ -281,4 +283,14 @@ export const importPendingLegacyPriceCache = (
 ): LegacyPriceCacheImport => {
   const legacy = LEGACY_PRICE_CACHES.find((entry) => entry.cacheKey === cacheKey);
   return legacy === undefined ? { outcome: 'skipped' } : importLegacyPriceCache(settings, cache, legacy);
+};
+
+/**
+ * Whether the import of `cacheKey`'s legacy key would take `raw`: the import's
+ * own validation, for a reader judging a value it read after the import
+ * declined. A usable value there means the import's read was the failed one.
+ */
+export const isUsableLegacyPriceValue = (cacheKey: PriceCacheKey, raw: unknown): boolean => {
+  const legacy = LEGACY_PRICE_CACHES.find((entry) => entry.cacheKey === cacheKey);
+  return legacy !== undefined && legacy.toStored(raw) !== null;
 };

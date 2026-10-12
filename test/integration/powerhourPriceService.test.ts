@@ -424,6 +424,53 @@ describe('Power by the Hour price service', () => {
     expect(mockHomeyInstance.settings.getKeys()).not.toContain(POWERHOUR_PRICES_TODAY);
   });
 
+  // A listed key reading back malformed is a failed read. Here the import's
+  // read of the pending tomorrow key (today's whole day, not yet rotated)
+  // comes back as garbage once, and the reader's read right after it finds the
+  // day. Read as absent, the rotation cleared yesterday and promoted nothing,
+  // the merge wrote the app's future-only answer as today, and the next
+  // rotation cleared the imported tomorrow copy that held the elapsed hours.
+  it('keeps a pending day across the rotation when only the import read it malformed', async () => {
+    const fullDay = (dateKey: string) => ({
+      dateKey,
+      pricesByHour: Object.fromEntries(Array.from({ length: 24 }, (_, hour) => [String(hour), hour])),
+      updatedAt: fixedNow.toISOString(),
+    });
+    const nightKey = shiftDateKey(todayKey, -1);
+    priceCache.write(POWERHOUR_PRICES_TODAY, fullDay(nightKey));
+    priceCache.write(POWERHOUR_PRICES_DEVICE, 'no2-device');
+    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TOMORROW, fullDay(todayKey));
+    setMockApiApp(POWERHOUR_APP_ID, {
+      installed: true,
+      get: async () => dapPrices(todayKey, 14, (hour) => hour),
+    });
+    const service = buildService();
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    let flaked = false;
+    const get = vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key: string) => {
+      if (key !== POWERHOUR_PRICES_TOMORROW || flaked) return originalGet(key);
+      flaked = true;
+      return 'garbage';
+    });
+
+    await service.refreshSpotPrices(true);
+    get.mockRestore();
+
+    expect(flaked).toBe(true);
+    expect((priceCache.read(POWERHOUR_PRICES_TODAY) as { dateKey?: string })?.dateKey).toBe(nightKey);
+    expect(mockHomeyInstance.settings.getKeys()).toContain(POWERHOUR_PRICES_TOMORROW);
+
+    await service.refreshSpotPrices(true);
+    await service.refreshSpotPrices(true);
+    const today = priceCache.read(POWERHOUR_PRICES_TODAY) as {
+      dateKey?: string; pricesByHour?: Record<string, number>;
+    };
+    expect(today?.dateKey).toBe(todayKey);
+    expect(Object.keys(today?.pricesByHour ?? {})).toHaveLength(24);
+    expect(today?.pricesByHour?.['3']).toBe(3);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(POWERHOUR_PRICES_TOMORROW);
+  });
+
   it('keeps the elapsed hours when a stored day cannot be read', async () => {
     const nightKey = shiftDateKey(todayKey, -1);
     const fullDay = (dateKey: string) => ({
