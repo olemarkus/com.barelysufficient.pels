@@ -15,7 +15,8 @@
     "sv": "PELS Energistyrning",
     "de": "PELS Energiemanager",
     "da": "PELS Energistyring",
-    "fi": "PELS Energianhallinta"
+    "fi": "PELS Energianhallinta",
+    "pl": "PELS Zarządzanie energią"
   },
   "description": {
     "en": "Shift charging and heating to cheaper hours, limit power peaks and use your solar surplus.",
@@ -26,7 +27,8 @@
     "sv": "Styr elbilsladdning, värme och varmvatten efter elpriset och hemmets effektgränser.",
     "de": "Steuert Wallbox, Wärmepumpe und Speicher nach Strompreisen und Solarüberschuss.",
     "da": "Elbilopladning, varme og varmt vand tilpasset elpriser og nettariffer.",
-    "fi": "Ajoita auton lataus, sähkölämmitys ja käyttöveden lämmitys pörssisähkön hinnan mukaan."
+    "fi": "Ajoita auton lataus, sähkölämmitys ja käyttöveden lämmitys pörssisähkön hinnan mukaan.",
+    "pl": "Ładuje auto i ogrzewa dom nadwyżkami z fotowoltaiki lub tańszym prądem."
   },
   "brandColor": "#22c55e",
   "category": [
@@ -361,6 +363,27 @@
       "Zaptec",
       "Sessy",
       "Marstek"
+    ],
+    "pl": [
+      "fotowoltaika",
+      "autokonsumpcja",
+      "nadwyżki energii",
+      "magazyn energii",
+      "zarządzanie energią",
+      "ceny dynamiczne",
+      "taryfy strefowe",
+      "tani prąd",
+      "ładowanie samochodu elektrycznego",
+      "ładowanie z fotowoltaiki",
+      "ładowarka EV",
+      "pompa ciepła",
+      "sterowanie ogrzewaniem",
+      "bojler",
+      "ciepła woda",
+      "zarządzanie mocą",
+      "ograniczenie poboru mocy",
+      "Smart tasks",
+      "Power by the Hour"
     ]
   },
   "permissions": [
