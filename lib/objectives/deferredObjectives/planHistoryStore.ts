@@ -202,7 +202,11 @@ const logImport = (key: string, result: LegacyImportResult): void => {
  * store, run at boot before the recorder loads: the current `_v5` key, then
  * the v4 key that was kept for rollback, each merged UNDER what the store
  * holds, then unset together with the `_v5_initialized` marker. Rules and
- * their reasons: `lib/store/legacySettingsImport.ts`.
+ * their reasons: `lib/store/legacySettingsImport.ts`. Merging a blob again
+ * after an import whose unset failed is harmless, so no import mark retires
+ * these keys: every id the store holds wins, and the recorder drops entries
+ * only by the rolling cap, which the merge applies again, so an entry the
+ * cap retired is retired again.
  */
 export const importLegacyPlanHistory = (settings: SettingsPort, store: PlanHistoryStore): void => {
   for (const key of [DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING]) {

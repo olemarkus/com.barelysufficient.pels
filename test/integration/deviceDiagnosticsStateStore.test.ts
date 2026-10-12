@@ -205,12 +205,29 @@ describe('importLegacyDeviceDiagnostics', () => {
     expect(settings.get(DEVICE_DIAGNOSTICS_STATE_KEY)).toEqual({ ...state({}), version: 1 });
     const legacy = state({ 'dev-1': { [TODAY]: day(10) } });
     settings.set(DEVICE_DIAGNOSTICS_STATE_KEY, legacy);
-    const write = vi.spyOn(store, 'write').mockImplementation(() => { throw new Error('disk full'); });
+    const write = vi.spyOn(store, 'writeLegacyImport').mockImplementation(() => { throw new Error('disk full'); });
     importLegacyDeviceDiagnostics(settings, store);
     write.mockRestore();
     expect(settings.get(DEVICE_DIAGNOSTICS_STATE_KEY)).toEqual(legacy);
     importLegacyDeviceDiagnostics(settings, store);
     expect(store.read().state).toEqual(legacy);
     expect(settings.get(DEVICE_DIAGNOSTICS_STATE_KEY)).toBeNull();
+  });
+
+  // A day both sides hold is summed. Merging the blob again on the next boot
+  // would add its days to the same days the first import already took, the
+  // service's counts since included; the import's mark retires the key instead.
+  it('retires the key of an import whose unset threw, so no day is counted twice', () => {
+    const { settings, store } = rig();
+    settings.set(DEVICE_DIAGNOSTICS_STATE_KEY, state({ 'dev-1': { [YESTERDAY]: day(20), [TODAY]: day(10) } }));
+    const unset = vi.spyOn(settings, 'unset').mockImplementationOnce(() => { throw new Error('sdk unavailable'); });
+    importLegacyDeviceDiagnostics(settings, store);
+    unset.mockRestore();
+    const counted = state({ 'dev-1': { [YESTERDAY]: day(20), [TODAY]: { ...day(15), shedCount: 2 } } });
+    store.write(counted);
+
+    importLegacyDeviceDiagnostics(settings, store);
+    expect(settings.get(DEVICE_DIAGNOSTICS_STATE_KEY)).toBeNull();
+    expect(store.read().state).toEqual(counted);
   });
 });

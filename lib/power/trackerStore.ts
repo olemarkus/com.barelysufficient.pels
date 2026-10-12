@@ -28,6 +28,7 @@
  * round trip through the store is the identity.
  */
 import type { PreparedStatement, UserdataDatabase } from '../store/userdataDatabase';
+import { hasLegacyImportMark, writeLegacyImportMark } from '../store/legacySettingsImport';
 import { getLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
 import type { PowerTrackerState } from './trackerTypes';
@@ -129,6 +130,10 @@ export type TrackerStore = {
   save(homeId: HomeId, next: PowerTrackerState): void;
   /** Drop every row the home has and write `next` whole, in one transaction. */
   replace(homeId: HomeId, next: PowerTrackerState): void;
+  /** Whether the home's legacy settings `key` was imported into the store. Throws only on I/O. */
+  hasImportedLegacy(key: string): boolean;
+  /** {@link replace} with the state the legacy `key`'s import made, and mark that import, in one transaction. */
+  writeLegacyImport(homeId: HomeId, key: string, next: PowerTrackerState): void;
 };
 
 const SCHEMA = `
@@ -443,6 +448,11 @@ export const createTrackerStore = (db: UserdataDatabase): TrackerStore => {
   const clearRows = (homeId: HomeId): void => {
     for (const statement of s.clearAll) statement.run(homeId);
   };
+  /** Drop every row the home has and write `next` whole; runs inside a transaction. */
+  const writeWhole = (homeId: HomeId, next: PowerTrackerState): void => {
+    clearRows(homeId);
+    writeDiff(homeId, next, null);
+  };
 
   /** Read the home's rows and make them the diff base; runs inside a transaction. */
   const read = (homeId: HomeId): PowerTrackerState | null => {
@@ -464,9 +474,14 @@ export const createTrackerStore = (db: UserdataDatabase): TrackerStore => {
       lastKnown.set(homeId, next);
     },
     replace: (homeId, next) => {
+      db.transaction(() => writeWhole(homeId, next));
+      lastKnown.set(homeId, next);
+    },
+    hasImportedLegacy: (key) => hasLegacyImportMark(db, key),
+    writeLegacyImport: (homeId, key, next) => {
       db.transaction(() => {
-        clearRows(homeId);
-        writeDiff(homeId, next, null);
+        writeWhole(homeId, next);
+        writeLegacyImportMark(db, key);
       });
       lastKnown.set(homeId, next);
     },

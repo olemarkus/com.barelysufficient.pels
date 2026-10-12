@@ -15,7 +15,11 @@
  * whatever the store already holds: a boot whose import deferred still
  * hydrates an empty tracker and persists it at the first prune, and the next
  * boot's import must keep both — the history from the blob, the hours since
- * from the store.
+ * from the store. Only the import's own mark retires a key, never "the store
+ * has rows": merging a blob again after an import whose unset failed would
+ * bring back the history an owner's reset cleared, and the hours the prune
+ * has folded into the daily totals and averages since, to be folded and
+ * counted a second time.
  *
  * Delete this module once no install older than the release that introduced
  * the store can still be upgraded.
@@ -36,7 +40,7 @@ const importLogger = getLogger('power/tracker-legacy-import');
 /** What one boot did with the legacy blobs, by home. */
 export type LegacyTrackerImport = {
   imported: HomeId[];
-  /** Keys unset without an import: the store already held the home. */
+  /** Keys unset without an import: an earlier boot imported them and could not unset them. */
   retired: HomeId[];
   /**
    * Left in place for the next boot: a suspect read (a value with no tracker
@@ -60,12 +64,13 @@ const importHome = (
 ): LegacyImportResult['outcome'] => {
   let dropped: readonly string[] = [];
   const outcome = importLegacySettingsKey(settings, key, {
-    holds: () => false,
+    holds: () => store.hasImportedLegacy(key),
     adopt: (raw) => {
       const salvaged = salvagePowerTrackerState(raw);
       if (salvaged === null) return false;
       const stored = store.load(homeId);
-      store.replace(homeId, stored === null ? salvaged.state : withHistoryUnder(stored, salvaged.state));
+      const merged = stored === null ? salvaged.state : withHistoryUnder(stored, salvaged.state);
+      store.writeLegacyImport(homeId, key, merged);
       dropped = salvaged.dropped;
       return true;
     },

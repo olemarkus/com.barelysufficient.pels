@@ -15,9 +15,10 @@
  *   followed by one such write would retire the blob unread on the next
  *   boot. Those families merge the blob UNDER what the store holds in `adopt`
  *   instead, and answer `holds` either `false` or, where importing the same
- *   blob twice would bring back what the store has since dropped on purpose,
- *   from the import mark (`hasLegacyImportMark`) that `adopt` writes in the
- *   same transaction as the rows, so only a completed import retires the key;
+ *   blob twice would bring back what the store has since dropped on purpose
+ *   or count again what it has already added up, from the import mark
+ *   (`hasLegacyImportMark`) that `adopt` writes in the same transaction as the
+ *   rows, so only a completed import retires the key;
  * - the store is empty and the value adopts → the key is unset;
  * - a suspect read — a listed key answering empty, a value the family finds
  *   nothing usable in, a throwing SDK, a store that cannot be read or
@@ -34,6 +35,17 @@ export type LegacyImportTarget = {
   holds(): boolean;
   /** Write the raw value into the store; `false` when it holds nothing usable. Throws on I/O. */
   adopt(raw: unknown): boolean;
+};
+
+/**
+ * What a store whose one legacy key is retired by the import mark adds to its
+ * own port, for that import alone. Both throw only on I/O.
+ */
+export type MarkedLegacyImport<T> = {
+  /** Whether the legacy key was imported into the store ({@link hasLegacyImportMark}). */
+  hasImportedLegacy(): boolean;
+  /** Write `value` as the store's write does, and the import mark, in one transaction. */
+  writeLegacyImport(value: T): void;
 };
 
 export type LegacyImportResult =

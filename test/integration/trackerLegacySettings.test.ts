@@ -1,3 +1,4 @@
+import { aggregateAndPruneHistory } from '../../lib/power/tracker';
 import { importLegacyPowerTrackers } from '../../lib/power/trackerLegacySettings';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
@@ -107,9 +108,9 @@ describe('importLegacyPowerTrackers', () => {
     const load = vi.spyOn(store, 'load').mockImplementation(() => { throw new Error('disk busy'); });
     expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: ['main'] });
     load.mockRestore();
-    const replace = vi.spyOn(store, 'replace').mockImplementation(() => { throw new Error('disk full'); });
+    const write = vi.spyOn(store, 'writeLegacyImport').mockImplementation(() => { throw new Error('disk full'); });
     expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: ['main'] });
-    replace.mockRestore();
+    write.mockRestore();
     expect(originalGet('power_tracker_state')).toEqual(HISTORY);
     expect(store.load('main')).toBeNull();
     // The boot that reads cleanly imports.
@@ -143,10 +144,40 @@ describe('importLegacyPowerTrackers', () => {
     expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: ['main'] });
     expect(store.load('main')).toEqual(HISTORY);
     unset.mockRestore();
-    // The next boot imports again — under the rows the first boot left, which
-    // are the same history — and this time the key goes.
-    expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: ['main'], retired: [], deferred: [] });
+    // The next boot finds the first boot's import mark and only retires the key.
+    expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: ['main'], deferred: [] });
     expect(store.load('main')).toEqual(HISTORY);
+    expect(settings.get('power_tracker_state')).toBeNull();
+  });
+
+  // The prune folds an hour that ages out into the daily totals and the
+  // averages. Merging the blob again on the next boot would bring the hour
+  // back to be folded, and counted, a second time; the import's mark retires
+  // the key instead.
+  it('retires the key of an import whose unset threw, so the prune never folds an hour twice', () => {
+    const { settings, store } = rig();
+    const hourMs = 60 * 60 * 1000;
+    const agedHour = new Date(Math.floor((Date.now() - 31 * 24 * hourMs) / hourMs) * hourMs).toISOString();
+    settings.set('power_tracker_state', { buckets: { [agedHour]: 2 } });
+    const unset = vi.spyOn(settings, 'unset').mockImplementationOnce(() => { throw new Error('sdk down'); });
+    expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: ['main'] });
+    unset.mockRestore();
+    const prune = () => store.save('main', aggregateAndPruneHistory(store.load('main') ?? {}, 'UTC'));
+    prune();
+    const folded = store.load('main');
+    expect(folded?.buckets).toBeUndefined();
+    expect(Object.values(folded?.dailyTotals ?? {})).toEqual([2]);
+
+    const capture = captureLogger();
+    try {
+      const nextBoot = importLegacyPowerTrackers(settings, store);
+      prune();
+      expect(store.load('main')).toEqual(folded);
+      expect(nextBoot).toEqual({ imported: [], retired: ['main'], deferred: [] });
+      expect(capture.findEvent('legacy_power_tracker_key_retired')).toMatchObject({ reason: 'store_already_holds' });
+    } finally {
+      capture.restore();
+    }
     expect(settings.get('power_tracker_state')).toBeNull();
   });
 });

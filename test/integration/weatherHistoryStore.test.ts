@@ -1,3 +1,4 @@
+import { normalizeWeatherHistoryState, stripMeterScopeDerivedState } from '../../lib/weather/weatherHistory';
 import { createWeatherHistoryStore, importLegacyWeatherHistory } from '../../lib/weather/weatherHistoryStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { WEATHER_HISTORY_STATE } from '../../lib/utils/settingsKeys';
@@ -181,7 +182,7 @@ describe('importLegacyWeatherHistory', () => {
     const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === WEATHER_HISTORY_STATE ? undefined : originalGet(key)));
     importLegacyWeatherHistory(settings, store);
     get.mockRestore();
-    const write = vi.spyOn(store, 'write').mockImplementation(() => { throw new Error('disk full'); });
+    const write = vi.spyOn(store, 'writeLegacyImport').mockImplementation(() => { throw new Error('disk full'); });
     importLegacyWeatherHistory(settings, store);
     write.mockRestore();
     expect(store.read()).toBeNull();
@@ -189,5 +190,27 @@ describe('importLegacyWeatherHistory', () => {
     importLegacyWeatherHistory(settings, store);
     expect(store.read()).toEqual(STATE);
     expect(settings.get(WEATHER_HISTORY_STATE)).toBeNull();
+  });
+
+  // A meter switch strips the fit and the budget pressure learned under the
+  // old meter (`stripMeterScopeDerivedState`). The blob fills every field the
+  // store lacks, so merging it again on the next boot would bring them back;
+  // the import's mark retires the key instead.
+  it('retires the key of an import whose unset threw, so what a meter switch stripped stays gone', () => {
+    const { settings, store } = rig();
+    settings.set(WEATHER_HISTORY_STATE, STATE);
+    const unset = vi.spyOn(settings, 'unset').mockImplementationOnce(() => { throw new Error('sdk unavailable'); });
+    importLegacyWeatherHistory(settings, store);
+    unset.mockRestore();
+    expect(settings.get(WEATHER_HISTORY_STATE)).toEqual(STATE);
+    const imported = normalizeWeatherHistoryState(store.read());
+    if (imported === null) throw new Error('the import wrote nothing');
+    store.write({ ...stripMeterScopeDerivedState(imported), meterScopeSignature: 'source:flow' });
+    const switched = store.read();
+    expect(switched).not.toHaveProperty('budgetPressure');
+
+    importLegacyWeatherHistory(settings, store);
+    expect(settings.get(WEATHER_HISTORY_STATE)).toBeNull();
+    expect(store.read()).toEqual(switched);
   });
 });

@@ -22,7 +22,13 @@
  */
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
-import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
+import {
+  hasLegacyImportMark,
+  importLegacySettingsKey,
+  isLegacySettingsKeyListed,
+  type MarkedLegacyImport,
+  writeLegacyImportMark,
+} from '../store/legacySettingsImport';
 import { parseJsonRow } from '../store/jsonRowTable';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
@@ -72,7 +78,10 @@ const heldOf = (fields: object): Held => new Map(Object.entries(fields).flatMap(
   ),
 ));
 
-export const createDailyBudgetStateStore = (db: UserdataDatabase): DailyBudgetStateStore => {
+/** The store as this module builds it: the service's port, and the legacy import's. */
+export type DailyBudgetStateRepository = DailyBudgetStateStore & MarkedLegacyImport<DailyBudgetState>;
+
+export const createDailyBudgetStateStore = (db: UserdataDatabase): DailyBudgetStateRepository => {
   db.exec(SCHEMA);
   const s = prepareStatements(db);
   let held: Held | null = null;
@@ -99,6 +108,19 @@ export const createDailyBudgetStateStore = (db: UserdataDatabase): DailyBudgetSt
     }
   };
 
+  /** Make the rows hold `state`, inside the caller's transaction; the diff base follows once it commits. */
+  const writeRows = (state: DailyBudgetState): Held => {
+    const next = heldOf(state);
+    // A store that has neither read nor written diffs against its rows on
+    // disk, so a write can always delete what `state` dropped.
+    const previous = held ?? (() => {
+      const stored = load();
+      return stored === null ? null : heldOf(stored);
+    })();
+    writeDiff(next, previous);
+    return next;
+  };
+
   return {
     read: () => db.transaction(() => {
       const fields = load();
@@ -108,17 +130,15 @@ export const createDailyBudgetStateStore = (db: UserdataDatabase): DailyBudgetSt
       return null;
     }),
     write: (state) => {
-      const next = heldOf(state);
-      db.transaction(() => {
-        // A store that has neither read nor written diffs against its rows
-        // on disk, so a write can always delete what `state` dropped.
-        const previous = held ?? (() => {
-          const stored = load();
-          return stored === null ? null : heldOf(stored);
-        })();
-        writeDiff(next, previous);
+      held = db.transaction(() => writeRows(state));
+    },
+    hasImportedLegacy: () => hasLegacyImportMark(db, DAILY_BUDGET_STATE),
+    writeLegacyImport: (state) => {
+      held = db.transaction(() => {
+        const next = writeRows(state);
+        writeLegacyImportMark(db, DAILY_BUDGET_STATE);
+        return next;
       });
-      held = next;
     },
   };
 };
@@ -142,8 +162,9 @@ const fieldsWhere = (state: DailyBudgetState, learned: boolean): DailyBudgetStat
  * learned more days: a boot whose import deferred lets the service write a
  * fresh, unlearned state within minutes, and that must not cost the weeks of
  * profile the blob holds. The one case this cannot tell apart is an owner
- * resetting the learning while the import is still pending: the import brings
- * the blob's profile back, and the reset has to be made again.
+ * resetting the learning while the import is still pending (deferred, never
+ * completed): the import brings the blob's profile back, and the reset has to
+ * be made again.
  */
 const withLegacyUnder = (stored: DailyBudgetState, legacy: DailyBudgetState): DailyBudgetState => ({
   ...fieldsWhere(stored, false),
@@ -155,16 +176,19 @@ const withLegacyUnder = (stored: DailyBudgetState, legacy: DailyBudgetState): Da
  * the store, run at boot before the service loads. Rules and their reasons:
  * `lib/store/legacySettingsImport.ts`. The store fills from an empty boot (the
  * service persists within minutes), so "the store holds rows" never retires
- * the key: the blob goes under whatever the store holds instead.
+ * the key: the blob goes under whatever the store holds instead. Only the
+ * import's own mark retires it: merging the blob again after an import whose
+ * unset failed would undo a learning reset made since, because the blob's
+ * profile has learned more days than the reset one.
  */
-export const importLegacyDailyBudgetState = (settings: SettingsPort, store: DailyBudgetStateStore): void => {
+export const importLegacyDailyBudgetState = (settings: SettingsPort, store: DailyBudgetStateRepository): void => {
   if (isLegacySettingsKeyListed(settings, DAILY_BUDGET_STATE) !== true) return;
   const result = importLegacySettingsKey(settings, DAILY_BUDGET_STATE, {
-    holds: () => false,
+    holds: () => store.hasImportedLegacy(),
     adopt: (raw) => {
       if (!isDailyBudgetState(raw)) return false;
       const stored = store.read();
-      store.write(stored === null ? raw : withLegacyUnder(stored, raw));
+      store.writeLegacyImport(stored === null ? raw : withLegacyUnder(stored, raw));
       return true;
     },
   });

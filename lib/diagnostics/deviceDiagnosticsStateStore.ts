@@ -17,7 +17,13 @@
  */
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
-import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
+import {
+  hasLegacyImportMark,
+  importLegacySettingsKey,
+  isLegacySettingsKeyListed,
+  type MarkedLegacyImport,
+  writeLegacyImportMark,
+} from '../store/legacySettingsImport';
 import { parseJsonRow } from '../store/jsonRowTable';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
@@ -99,7 +105,11 @@ const heldOf = (envelope: Envelope): Held => {
   return { days, meta: new Map(META_KEYS.map((key) => [key, JSON.stringify(envelope[key])])) };
 };
 
-export const createDeviceDiagnosticsStateStore = (db: UserdataDatabase): DeviceDiagnosticsStateStore => {
+/** The store as this module builds it: the service's port, and the legacy import's. */
+export type DeviceDiagnosticsStateRepository =
+  DeviceDiagnosticsStateStore & MarkedLegacyImport<PersistedDiagnosticsState>;
+
+export const createDeviceDiagnosticsStateStore = (db: UserdataDatabase): DeviceDiagnosticsStateRepository => {
   db.exec(SCHEMA);
   const s = prepareStatements(db);
   let held: Held | null = null;
@@ -156,6 +166,19 @@ export const createDeviceDiagnosticsStateStore = (db: UserdataDatabase): DeviceD
     }
   };
 
+  /** Make the rows hold `state`, inside the caller's transaction; the diff base follows once it commits. */
+  const writeRows = (state: PersistedDiagnosticsState): Held => {
+    const next = heldOf(state);
+    // A store that has neither read nor written diffs against its rows on
+    // disk, so a write can always delete what `state` dropped.
+    const previous = held ?? (() => {
+      const stored = loadRaw();
+      return stored === null ? null : heldOf(stored);
+    })();
+    writeDiff(next, previous);
+    return next;
+  };
+
   return {
     read: () => db.transaction(() => {
       const raw = loadRaw();
@@ -165,17 +188,15 @@ export const createDeviceDiagnosticsStateStore = (db: UserdataDatabase): DeviceD
       return sanitize(raw);
     }),
     write: (state) => {
-      const next = heldOf(state);
-      db.transaction(() => {
-        // A store that has neither read nor written diffs against its rows
-        // on disk, so a write can always delete what `state` dropped.
-        const previous = held ?? (() => {
-          const stored = loadRaw();
-          return stored === null ? null : heldOf(stored);
-        })();
-        writeDiff(next, previous);
+      held = db.transaction(() => writeRows(state));
+    },
+    hasImportedLegacy: () => hasLegacyImportMark(db, DEVICE_DIAGNOSTICS_STATE_KEY),
+    writeLegacyImport: (state) => {
+      held = db.transaction(() => {
+        const next = writeRows(state);
+        writeLegacyImportMark(db, DEVICE_DIAGNOSTICS_STATE_KEY);
+        return next;
       });
-      held = next;
     },
   };
 };
@@ -255,18 +276,23 @@ const withLegacyUnder = (
  * into the store, run at boot before the service loads. Rules and their
  * reasons: `lib/store/legacySettingsImport.ts`. The blob goes UNDER whatever
  * the store holds, and a blob the sanitiser resets (another version, a
- * malformed envelope) holds nothing usable.
+ * malformed envelope) holds nothing usable. Only the import's own mark
+ * retires the key: a day both sides hold is summed, so merging the blob again
+ * after an import whose unset failed would count every day it carried twice.
  */
-export const importLegacyDeviceDiagnostics = (settings: SettingsPort, store: DeviceDiagnosticsStateStore): void => {
+export const importLegacyDeviceDiagnostics = (
+  settings: SettingsPort,
+  store: DeviceDiagnosticsStateRepository,
+): void => {
   if (isLegacySettingsKeyListed(settings, DEVICE_DIAGNOSTICS_STATE_KEY) !== true) return;
   const result = importLegacySettingsKey(settings, DEVICE_DIAGNOSTICS_STATE_KEY, {
-    holds: () => false,
+    holds: () => store.hasImportedLegacy(),
     adopt: (raw) => {
       const legacy = sanitizePersistedState({
         raw, persistVersion: DEVICE_DIAGNOSTICS_PERSIST_VERSION, windowDays: DEVICE_DIAGNOSTICS_WINDOW_DAYS,
       });
       if (legacy.resetReason !== undefined) return false;
-      store.write(withLegacyUnder(store.read().state, legacy.state));
+      store.writeLegacyImport(withLegacyUnder(store.read().state, legacy.state));
       return true;
     },
   });

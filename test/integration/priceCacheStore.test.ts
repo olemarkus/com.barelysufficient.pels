@@ -133,10 +133,11 @@ describe('importLegacyPriceCaches', () => {
     expect(store.read('grid_tariff')).toEqual(TARIFF);
     expect(settings.get(NETTLEIE_DATA)).toBeNull();
 
-    store.write('grid_tariff', []);
-    settings.set(NETTLEIE_DATA, TARIFF);
-    importLegacyPriceCaches(settings, store);
-    expect(store.read('grid_tariff')).toEqual(TARIFF);
+    const empty = rig();
+    empty.store.write('grid_tariff', []);
+    empty.settings.set(NETTLEIE_DATA, TARIFF);
+    importLegacyPriceCaches(empty.settings, empty.store);
+    expect(empty.store.read('grid_tariff')).toEqual(TARIFF);
   });
 
   it('adopts an empty tariff as the empty tariff it is', () => {
@@ -259,6 +260,29 @@ describe('importLegacyPriceCaches: payload-fed sources', () => {
     get.mockRestore();
     expect(settings.getKeys()).toContain(FLOW_PRICES_TODAY);
     expect(store.read(FLOW_PRICES_TODAY)).toBeNull();
+  });
+
+  // The price module clears the Power by the Hour days and their device marker
+  // when the owner stops using that device, and a reader that finds no row
+  // retries the import. Without the import's mark, the key a failed unset left
+  // would refill the rows with the device's prices; with it, the key is retired.
+  it('retires the key of an import whose unset threw, so a row cleared since stays clear', () => {
+    const { settings, store } = rig();
+    settings.set(POWERHOUR_PRICES_TODAY, PAYLOAD);
+    settings.set(POWERHOUR_PRICES_DEVICE, 'no2-device');
+    const unset = vi.spyOn(settings, 'unset').mockImplementation(() => { throw new Error('sdk unavailable'); });
+    importLegacyPriceCaches(settings, store);
+    unset.mockRestore();
+    expect(store.read(POWERHOUR_PRICES_TODAY)).toEqual(PAYLOAD);
+    const priceData = createPriceDataStore(settings, store);
+    priceData.writePowerhourDay('today', null);
+    priceData.writePowerhourCacheDevice(null);
+
+    expect(priceData.readPowerhourCache()).toMatchObject({ today: { kind: 'absent' }, device: { kind: 'absent' } });
+    expect(store.read(POWERHOUR_PRICES_TODAY)).toBeNull();
+    expect(store.read(POWERHOUR_PRICES_DEVICE)).toBeNull();
+    expect(settings.getKeys()).not.toContain(POWERHOUR_PRICES_TODAY);
+    expect(settings.getKeys()).not.toContain(POWERHOUR_PRICES_DEVICE);
   });
 
   it('recovers a Flow day when its boot import read was transiently empty', () => {

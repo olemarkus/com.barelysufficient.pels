@@ -18,7 +18,11 @@
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import {
-  importLegacySettingsKey, isLegacySettingsKeyListed, type LegacyImportResult,
+  hasLegacyImportMark,
+  importLegacySettingsKey,
+  isLegacySettingsKeyListed,
+  type LegacyImportResult,
+  writeLegacyImportMark,
 } from '../store/legacySettingsImport';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
@@ -65,6 +69,10 @@ export type PriceCacheStore = {
   write(key: PriceCacheKey, value: unknown): void;
   /** Drop the cached value, so a read answers `null`. */
   remove(key: PriceCacheKey): void;
+  /** Whether the legacy settings key `settingsKey` was imported into the store. Throws only on I/O. */
+  hasImportedLegacy(settingsKey: string): boolean;
+  /** {@link write} the value the legacy `settingsKey` held, and mark its import, in one transaction. */
+  writeLegacyImport(key: PriceCacheKey, settingsKey: string, value: unknown): void;
 };
 
 const SCHEMA = `
@@ -108,6 +116,15 @@ export const createPriceCacheStore = (db: UserdataDatabase): PriceCacheStore => 
       const json = JSON.stringify(value);
       if (heldFor(key)?.json === json) return;
       s.upsert.run(key, json);
+      held.set(key, { json, value: JSON.parse(json) as unknown });
+    },
+    hasImportedLegacy: (settingsKey) => hasLegacyImportMark(db, settingsKey),
+    writeLegacyImport: (key, settingsKey, value) => {
+      const json = JSON.stringify(value);
+      db.transaction(() => {
+        s.upsert.run(key, json);
+        writeLegacyImportMark(db, settingsKey);
+      });
       held.set(key, { json, value: JSON.parse(json) as unknown });
     },
     remove: (key) => {
@@ -233,11 +250,11 @@ const importLegacyPriceCache = (
   if (isLegacySettingsKeyListed(settings, settingsKey) !== true) return { outcome: 'skipped' };
   if (retireBeatenKey(settings, cache, legacy)) return { outcome: 'retired', reason: 'store_already_holds' };
   const result = importLegacySettingsKey(settings, settingsKey, {
-    holds: () => legacy.storeWins(cache.read(cacheKey)),
+    holds: () => legacy.storeWins(cache.read(cacheKey)) || cache.hasImportedLegacy(settingsKey),
     adopt: (raw) => {
       const stored = legacy.toStored(raw);
       if (stored === null) return false;
-      cache.write(cacheKey, stored);
+      cache.writeLegacyImport(cacheKey, settingsKey, stored);
       return true;
     },
   });
@@ -261,7 +278,12 @@ const importLegacyPriceCache = (
  * before the price service first reads them. Rules and their reasons:
  * `lib/store/legacySettingsImport.ts`. Each key is decided on its own: a value
  * fetched since the upgrade wins and the key is just retired; otherwise the
- * key's value is adopted, over whatever stopgap the store holds.
+ * key's value is adopted, over whatever stopgap the store holds. A key whose
+ * import completed is retired by its mark whatever the row holds by then: the
+ * price module clears rows and writes stopgaps on purpose (a Power by the Hour
+ * device the owner stopped using, a Flow day rotated out), and a reader that
+ * finds no row retries the import, so the key left by a failed unset would
+ * otherwise refill the row with what was just cleared.
  */
 export const importLegacyPriceCaches = (settings: SettingsPort, cache: PriceCacheStore): void => {
   for (const legacy of LEGACY_PRICE_CACHES) importLegacyPriceCache(settings, cache, legacy);

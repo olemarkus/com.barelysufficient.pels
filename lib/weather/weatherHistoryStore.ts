@@ -21,7 +21,13 @@
 import type { WeatherDailyRecord, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
-import { importLegacySettingsKey, isLegacySettingsKeyListed } from '../store/legacySettingsImport';
+import {
+  hasLegacyImportMark,
+  importLegacySettingsKey,
+  isLegacySettingsKeyListed,
+  type MarkedLegacyImport,
+  writeLegacyImportMark,
+} from '../store/legacySettingsImport';
 import { createJsonRowTable } from '../store/jsonRowTable';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
@@ -42,11 +48,18 @@ export type WeatherHistoryStore = {
   write(state: WeatherHistoryState): void;
 };
 
-export const createWeatherHistoryStore = (db: UserdataDatabase): WeatherHistoryStore => {
+/** The store as this module builds it: the collector's port, and the legacy import's. */
+export type WeatherHistoryRepository = WeatherHistoryStore & MarkedLegacyImport<WeatherHistoryState>;
+
+export const createWeatherHistoryStore = (db: UserdataDatabase): WeatherHistoryRepository => {
   const days = createJsonRowTable(
     db, 'weather_history_days', ['date_key', 'record_json'], (record) => record as WeatherDailyRecord,
   );
   const fields = createJsonRowTable(db, 'weather_history_fields', ['key', 'value_json'], (value) => value);
+  const writeRows = (state: WeatherHistoryState): void => {
+    days.write(new Map(state.records.map((record) => [record.dateKey, record])));
+    fields.write(new Map(Object.entries(state).filter(([key, value]) => key !== 'records' && value !== undefined)));
+  };
   return {
     read: () => db.transaction(() => {
       const records = [...days.read().values()];
@@ -54,9 +67,11 @@ export const createWeatherHistoryStore = (db: UserdataDatabase): WeatherHistoryS
       if (records.length === 0 && stored.size === 0) return null;
       return { ...Object.fromEntries(stored), records };
     }),
-    write: (state) => db.transaction(() => {
-      days.write(new Map(state.records.map((record) => [record.dateKey, record])));
-      fields.write(new Map(Object.entries(state).filter(([key, value]) => key !== 'records' && value !== undefined)));
+    write: (state) => db.transaction(() => writeRows(state)),
+    hasImportedLegacy: () => hasLegacyImportMark(db, WEATHER_HISTORY_STATE),
+    writeLegacyImport: (state) => db.transaction(() => {
+      writeRows(state);
+      writeLegacyImportMark(db, WEATHER_HISTORY_STATE);
     }),
   };
 };
@@ -82,17 +97,21 @@ const withLegacyUnder = (stored: WeatherHistoryState, legacy: WeatherHistoryStat
  * the store already holds: a boot whose import deferred lets the collector
  * write the days since, and the next boot's import must keep both — the two
  * years of records from the blob, the new days and every store-owned field
- * from the store.
+ * from the store. Only the import's own mark retires the key: the blob fills
+ * every field the store lacks, so merging it again after an import whose
+ * unset failed would bring back what the collector has dropped since, such
+ * as the fit and the budget pressure a meter switch strips
+ * (`stripMeterScopeDerivedState`).
  */
-export const importLegacyWeatherHistory = (settings: SettingsPort, store: WeatherHistoryStore): void => {
+export const importLegacyWeatherHistory = (settings: SettingsPort, store: WeatherHistoryRepository): void => {
   if (isLegacySettingsKeyListed(settings, WEATHER_HISTORY_STATE) !== true) return;
   const result = importLegacySettingsKey(settings, WEATHER_HISTORY_STATE, {
-    holds: () => false,
+    holds: () => store.hasImportedLegacy(),
     adopt: (raw) => {
       const legacy = normalizeWeatherHistoryState(raw);
       if (legacy === null) return false;
       const stored = normalizeWeatherHistoryState(store.read());
-      store.write(stored === null ? legacy : withLegacyUnder(stored, legacy));
+      store.writeLegacyImport(stored === null ? legacy : withLegacyUnder(stored, legacy));
       return true;
     },
   });

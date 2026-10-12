@@ -2,6 +2,7 @@ import {
   createDailyBudgetStateStore,
   importLegacyDailyBudgetState,
 } from '../../lib/dailyBudget/dailyBudgetStateStore';
+import { resetDailyBudgetLearningState } from '../../lib/dailyBudget/dailyBudgetLearningReset';
 import type { DailyBudgetState } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { DAILY_BUDGET_STATE } from '../../lib/utils/settingsKeys';
@@ -119,10 +120,33 @@ describe('importLegacyDailyBudgetState', () => {
     expect(store.read()).toEqual({ ...TODAY_PLAN, ...learned(30, 0.03) });
     expect(settings.getKeys()).not.toContain(DAILY_BUDGET_STATE);
 
-    settings.set(DAILY_BUDGET_STATE, { ...oldPlan, ...learned(3, 0.03) });
-    store.write({ ...TODAY_PLAN, ...learned(31, 0.05) });
+    const learnedMore = rig();
+    learnedMore.settings.set(DAILY_BUDGET_STATE, { ...oldPlan, ...learned(3, 0.03) });
+    learnedMore.store.write({ ...TODAY_PLAN, ...learned(31, 0.05) });
+    importLegacyDailyBudgetState(learnedMore.settings, learnedMore.store);
+    expect(learnedMore.store.read()).toEqual({ ...TODAY_PLAN, ...learned(31, 0.05) });
+    expect(learnedMore.settings.getKeys()).not.toContain(DAILY_BUDGET_STATE);
+  });
+
+  // The owner's reset leaves a profile with no days learned. Merging the blob
+  // again on the next boot would take the blob's profile back, since it has
+  // learned more; the import's mark retires the key instead.
+  it('retires the key of an import whose unset threw, so a learning reset since stays reset', () => {
+    const { settings, store } = rig();
+    settings.set(DAILY_BUDGET_STATE, { ...TODAY_PLAN, ...learned(30, 0.03) });
+    const unset = vi.spyOn(settings, 'unset').mockImplementationOnce(() => { throw new Error('sdk unavailable'); });
     importLegacyDailyBudgetState(settings, store);
-    expect(store.read()).toEqual({ ...TODAY_PLAN, ...learned(31, 0.05) });
+    unset.mockRestore();
+    expect(settings.getKeys()).toContain(DAILY_BUDGET_STATE);
+    const imported = store.read();
+    if (imported === null) throw new Error('the import wrote nothing');
+    store.write(resetDailyBudgetLearningState(imported, hourly(1 / 24)));
+    const reset = store.read();
+    expect(reset?.profileSampleCount).toBe(0);
+
+    importLegacyDailyBudgetState(settings, store);
+    expect(settings.getKeys()).not.toContain(DAILY_BUDGET_STATE);
+    expect(store.read()).toEqual(reset);
   });
 
   it('does nothing once the key is gone', () => {
