@@ -767,6 +767,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Prices
 
+- [ ] **A Power by the Hour day can still be lost when only the import's own read flakes.**
+      `classifyPendingLegacyKey` (`lib/price/priceDataStore.ts`) answers `absent` for a key that is
+      listed and reads back a healthy payload after `importPendingLegacyPriceCache` declined it.
+      When the import declined because its read threw or came back empty while the key was listed
+      (a transient SDK miss), the merge then stores the app's future-only answer as the whole day,
+      and the next import retires the key under that row, losing the elapsed hours (the same loss
+      the unknown-key-list case had). The reader cannot simply answer `unreadable` for every listed
+      value: a value the import finds nothing usable in (`not_a_value`) stays in settings for good,
+      and `unreadable` would then block the source forever. **What changes:** have
+      `importPendingLegacyPriceCache` return the `LegacyImportResult` and answer `unreadable` only
+      for a transient deferral (`read_threw`, `listed_key_empty`, a store read or write failure),
+      `absent` for `not_a_value`. **Done when** a spec where the import's read throws once while
+      the reader's read returns the full day keeps every hour, and a malformed value still reads
+      as `absent`. Source: review of the learned-store import hardening, 2026-10-12. [P2]
+
 - [ ] **The Power by the Hour source drops the export price it is handed.** The app's
       `/dap-prices` slots carry `exportPrice` beside `importPrice` (verified against 8.19.0 on SHS),
       and `resolveSlot` (`lib/price/powerhourPriceFetch.ts`) reads only the import half. A prosumer
