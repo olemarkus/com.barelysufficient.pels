@@ -21,30 +21,30 @@ const eveningBaseMs = () => {
 
 // ── create_smart_task ────────────────────────────────────────────────────────
 
-const tempDevice = (deviceId, deviceName, currentValue, group = 'heating', extra = {}) => ({
-  deviceId, deviceName, kind: 'temperature', group, unitSymbol: '°C',
+const tempDevice = (deviceId, deviceName, currentValue, extra = {}) => ({
+  deviceId, deviceName, kind: 'temperature', unitSymbol: '°C',
   goalMin: 5, goalMax: 85, goalStep: 0.5, defaultGoal: 65, currentValue, ...extra,
 });
 const evDevice = (deviceId, deviceName, currentValue) => ({
-  deviceId, deviceName, kind: 'ev_soc', group: 'ev_charger', unitSymbol: '%',
+  deviceId, deviceName, kind: 'ev_soc', unitSymbol: '%',
   goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue,
 });
 
 const CREATE_DEVICES = {
   default: [tempDevice('hw', 'Hot water', 48), evDevice('ev', 'Driveway charger', 42)],
   overflow: [
-    tempDevice('living', 'Living room', 19.5, 'heating', { goalMax: 30, defaultGoal: 21 }),
-    tempDevice('bed', 'Bedroom', 17.2, 'heating', { goalMax: 30, defaultGoal: 18 }),
-    tempDevice('bath', 'Bathroom floor', 22.1, 'heating', { goalMax: 35, defaultGoal: 24 }),
-    tempDevice('office', 'Office', 20.4, 'heating', { goalMax: 30, defaultGoal: 20 }),
-    tempDevice('kids', 'Kids room', 19.1, 'heating', { goalMax: 30, defaultGoal: 20 }),
-    tempDevice('hall', 'Hallway', 18.6, 'heating', { goalMax: 30, defaultGoal: 19 }),
-    tempDevice('base', 'Basement', 16.0, 'heating', { goalMax: 30, defaultGoal: 17 }),
-    tempDevice('guest', 'Guest room', 17.8, 'heating', { goalMax: 30, defaultGoal: 18 }),
-    tempDevice('study', 'Study', 20.0, 'heating', { goalMax: 30, defaultGoal: 21 }),
-    tempDevice('hw', 'Hot water', 48, 'heating'),
-    tempDevice('cabin', 'Cabin water heater', 55, 'heating', { defaultGoal: 60 }),
-    tempDevice('garage-w', 'Garage water heater', 50, 'heating', { defaultGoal: 55 }),
+    tempDevice('living', 'Living room', 19.5, { goalMax: 30, defaultGoal: 21 }),
+    tempDevice('bed', 'Bedroom', 17.2, { goalMax: 30, defaultGoal: 18 }),
+    tempDevice('bath', 'Bathroom floor', 22.1, { goalMax: 35, defaultGoal: 24 }),
+    tempDevice('office', 'Office', 20.4, { goalMax: 30, defaultGoal: 20 }),
+    tempDevice('kids', 'Kids room', 19.1, { goalMax: 30, defaultGoal: 20 }),
+    tempDevice('hall', 'Hallway', 18.6, { goalMax: 30, defaultGoal: 19 }),
+    tempDevice('base', 'Basement', 16.0, { goalMax: 30, defaultGoal: 17 }),
+    tempDevice('guest', 'Guest room', 17.8, { goalMax: 30, defaultGoal: 18 }),
+    tempDevice('study', 'Study', 20.0, { goalMax: 30, defaultGoal: 21 }),
+    tempDevice('hw', 'Hot water', 48),
+    tempDevice('cabin', 'Cabin water heater', 55, { defaultGoal: 60 }),
+    tempDevice('garage-w', 'Garage water heater', 50, { defaultGoal: 55 }),
     evDevice('ev', 'Driveway charger', 42),
     evDevice('evg', 'Guest charger', 30),
     evDevice('evb', 'Barn charger', 18),

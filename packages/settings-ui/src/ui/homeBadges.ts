@@ -36,6 +36,11 @@ type HomeBadgeIndex = {
 const NO_BADGES: HomeBadgeIndex = { areaNameByHomeId: {}, areaHomeIdByDeviceId: {} };
 
 let index: HomeBadgeIndex = NO_BADGES;
+// Whether `index` holds a resolved read. It starts empty, which reads every
+// device as Main home, so a consumer that states what that means asks first.
+let indexResolved = false;
+
+export const hasResolvedHomeBadges = (): boolean => indexResolved;
 
 // Monotonic refresh id. The device-list fetch (`getTargetDevices`) and a
 // `homes_config`/`device_home_assignments` notification can start overlapping
@@ -162,7 +167,10 @@ export const refreshHomeBadges = async (): Promise<void> => {
     // `unavailable` (degraded or junk payload) keeps the last-good index —
     // the same abandon-grace as the failed-read path below. Not logged: the
     // boot window legitimately serves a degraded snapshot on every load.
-    if (read.status === 'resolved') index = read.index;
+    if (read.status === 'resolved') {
+      index = read.index;
+      indexResolved = true;
+    }
   } catch (error) {
     await logSettingsError('Failed to load meter areas for device badges', error, 'homeBadges');
   }

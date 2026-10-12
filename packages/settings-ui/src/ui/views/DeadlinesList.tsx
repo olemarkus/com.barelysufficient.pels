@@ -1,5 +1,5 @@
 import { render, type ComponentChildren } from 'preact';
-import { MdElevation, MdRipple } from './materialWebJSX.tsx';
+import { MdElevation, MdFilledTonalButton, MdRipple } from './materialWebJSX.tsx';
 import { ChevronRightIcon } from './icons.tsx';
 import {
   deadlineLabels,
@@ -8,7 +8,8 @@ import {
   resolveSmartTaskListReadyByTone,
   resolveSmartTaskListReadyByStatusWord,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
-  SMART_TASK_LIST_EMPTY_COPY,
+  SMART_TASK_CREATE_PAGE_COPY,
+  SMART_TASK_LIST_CREATE_HINT,
   SMART_TASK_LIST_ROW_LABELS,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
@@ -371,24 +372,7 @@ const ErrorBody = ({ message }: { message: string }) => (
 const EmptyBody = () => (
   <>
     <p class="plan-hero__subline plan-hero__subline--action deadlines-list-body" data-state="empty">
-      {SMART_TASK_LIST_EMPTY_COPY.intro}{' '}
-      <strong>{SMART_TASK_LIST_EMPTY_COPY.heatingAction}</strong>{' '}
-      {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
-      <em>{SMART_TASK_LIST_EMPTY_COPY.heatingExample}</em>
-      {SMART_TASK_LIST_EMPTY_COPY.listSeparator}{' '}
-      <strong>{SMART_TASK_LIST_EMPTY_COPY.chargingAction}</strong>{' '}
-      {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
-      <em>{SMART_TASK_LIST_EMPTY_COPY.chargingExample}</em>{' '}
-      {SMART_TASK_LIST_EMPTY_COPY.energyConjunction}{' '}
-      <strong>{SMART_TASK_LIST_EMPTY_COPY.energyAction}</strong>{' '}
-      {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
-      <em>{SMART_TASK_LIST_EMPTY_COPY.energyExample}</em>{' '}
-      {SMART_TASK_LIST_EMPTY_COPY.outro}
-    </p>
-    <p class="plan-hero__subline deadlines-list-body" data-state="empty-widget-route">
-      {SMART_TASK_LIST_EMPTY_COPY.widgetLead}{' '}
-      <strong>{SMART_TASK_LIST_EMPTY_COPY.widgetName}</strong>{' '}
-      {SMART_TASK_LIST_EMPTY_COPY.widgetOutro}
+      {SMART_TASK_LIST_CREATE_HINT}
     </p>
   </>
 );
@@ -418,11 +402,24 @@ const MainHomeOnlyNotice = () => (
   </p>
 );
 
-const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
+/** What the Smart tasks list can ask its orchestrator to do. */
+export type DeadlinesListActions = {
+  onNewTask: () => void;
+};
+
+const DeadlinesListRoot = ({ state, actions }: { state: DeadlinesListState; actions: DeadlinesListActions }) => {
+  const createAction = (
+    <div class="deadlines-list-create-action">
+      <MdFilledTonalButton onClick={actions.onNewTask}>
+        {SMART_TASK_CREATE_PAGE_COPY.newTaskAction}
+      </MdFilledTonalButton>
+    </div>
+  );
   if (state.status === 'loading') {
     return (
       <>
         <BaselineHeader state="loading" />
+        {createAction}
         <LoadingBody />
       </>
     );
@@ -431,6 +428,7 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
     return (
       <>
         <BaselineHeader state="error" />
+        {createAction}
         <ErrorBody message={state.message} />
       </>
     );
@@ -450,6 +448,7 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
           <BaselineHeader state="empty_between_runs">
             <BetweenRunsBody />
           </BaselineHeader>
+          {createAction}
           {scopeNotice}
         </>
       );
@@ -459,6 +458,7 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
         <BaselineHeader state="empty">
           <EmptyBody />
         </BaselineHeader>
+        {createAction}
         {scopeNotice}
       </>
     );
@@ -475,6 +475,7 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   return (
     <>
       {heroCopy !== null ? <Hero copy={heroCopy} /> : <BaselineHeader state="empty" />}
+      {createAction}
       {scopeNotice}
       <div class="deadline-list">
         {state.cards.map((card) => (
@@ -485,6 +486,10 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   );
 };
 
-export const renderDeadlinesList = (surface: HTMLElement, state: DeadlinesListState): void => {
-  render(<DeadlinesListRoot state={state} />, surface);
+export const renderDeadlinesList = (
+  surface: HTMLElement,
+  state: DeadlinesListState,
+  actions: DeadlinesListActions,
+): void => {
+  render(<DeadlinesListRoot state={state} actions={actions} />, surface);
 };

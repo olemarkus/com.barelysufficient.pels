@@ -268,7 +268,7 @@ describe('card primitive: every surface walks the canonical `.pels-surface-card`
         currentValueLine: null,
         liveCauseLine: null,
       }],
-    });
+    }, { onNewTask: () => {} });
     const card = mount.querySelector('a.deadline-list-card');
     expect(card, 'expected a .deadline-list-card link').not.toBeNull();
     expect(card?.classList.contains('pels-surface-card')).toBe(true);

@@ -10,6 +10,10 @@ import { resolveDeviceDetailControlState } from './controlState.ts';
 import { syncRespectExternalOffRow } from './respectExternalOff.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { deviceDetailSetupDisclosure } from '../dom.ts';
+import type { DeviceDetailFocus } from '../cardActivation.ts';
+import { formatDevicePageStartRule, resolveDeviceStartRule } from '../deviceStartRule.ts';
+import { hasUsedSmartTasks } from '../smartTaskUsage.ts';
+import { isSmartTaskCreateOpenFor } from '../smartTaskCreate.ts';
 
 /**
  * "Only PELS starts this device" — the per-device opt-in that gives a device a
@@ -37,6 +41,14 @@ import { deviceDetailSetupDisclosure } from '../dom.ts';
  * Shown only for managed devices PELS can actually switch: without a binary
  * handle there is nothing to turn back off, and offering the switch would
  * persist a setting that can never take effect.
+ *
+ * And only for a device that has used Smart tasks (`hasUsedSmartTasks`: one
+ * stored, or one in task history), or whose first task is being created right
+ * now. The policy means "runs only for a Smart task", so on a device without
+ * one it is a way to switch the device off for good, and most homes never use
+ * Smart tasks: the device page is about power limiting, and the Smart task
+ * surfaces say what happens around a task and link here (owner ruling
+ * 2026-10-10).
  */
 
 // Queried here rather than in `dom.ts` for the same reason `respectExternalOff`
@@ -48,6 +60,7 @@ const toggleEl = q<HTMLElement & { selected: boolean; disabled: boolean }>(
   '#device-detail-start-policy',
 );
 const noTaskHintEl = q<HTMLElement>('#device-detail-start-policy-no-task-hint');
+const startRuleEl = q<HTMLElement>('#device-detail-start-rule');
 const pausedHintEl = q<HTMLElement>('#device-detail-start-policy-paused-hint');
 
 const runSerializedStartPolicyWrite = createSerializedAsyncRunner();
@@ -74,9 +87,13 @@ const isPelsOnly = (deviceId: string): boolean => (
 
 const isPowerLimitControlOn = (deviceId: string): boolean => state.controllableMap[deviceId] === true;
 
+const isSmartTaskDevice = (deviceId: string): boolean => (
+  hasUsedSmartTasks(deviceId) || isSmartTaskCreateOpenFor(deviceId)
+);
+
 /**
- * Show the row while Power-limit control is off, for any managed device PELS can
- * switch, OR when the device is already opted in.
+ * Show the row while Power-limit control is off, for a managed device PELS can
+ * switch that has a Smart task, OR when the device is already opted in.
  *
  * The opted-in half is the escape hatch every sibling setting keeps: without it
  * a device that stops qualifying (unmanaged now, its binary handle gone, or
@@ -88,21 +105,37 @@ const shouldShowStartPolicyRow = (
   device: SettingsUiDeviceDetailItem | null,
   isManaged: boolean,
 ): boolean => (
-  (!isPowerLimitControlOn(deviceId) && isManaged && device?.binaryControllable === true)
+  (!isPowerLimitControlOn(deviceId) && isManaged && device?.binaryControllable === true
+    && isSmartTaskDevice(deviceId))
   || isPelsOnly(deviceId)
 );
+
+const revealSetupRow = (row: HTMLElement | null): void => {
+  if (deviceDetailSetupDisclosure && !deviceDetailSetupDisclosure.open) {
+    deviceDetailSetupDisclosure.open = true;
+  }
+  if (!row || row.hidden) return;
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+};
 
 /**
  * Land on this row: Setup expanded and the row centred. The "Keep {device}
  * within Smart tasks" suggestion names this setting, so opening the device with
  * Setup collapsed would leave the owner hunting for it.
  */
-export const revealStartPolicyRow = (): void => {
-  if (deviceDetailSetupDisclosure && !deviceDetailSetupDisclosure.open) {
-    deviceDetailSetupDisclosure.open = true;
-  }
-  if (!rowEl || rowEl.hidden) return;
-  rowEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+const revealStartPolicyRow = (): void => revealSetupRow(rowEl);
+
+/**
+ * Land on Power-limit control, with the rows that refine it ("Leave off until
+ * turned on again", "Only PELS starts this device") and the start rule just
+ * below. A Smart task's "Change" link lands here.
+ */
+const revealPowerLimitRow = (): void => revealSetupRow(q<HTMLElement>('#device-detail-controllable-row'));
+
+/** Land on the Setup row a deep link names; `top` leaves the page where it opened. */
+export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
+  if (focus === 'start-policy') revealStartPolicyRow();
+  if (focus === 'power-limit') revealPowerLimitRow();
 };
 
 /** Sync the row for the open device. */
@@ -180,11 +213,28 @@ export const initStartPolicyHandler = ({
 };
 
 /**
- * The two rows that answer "who may switch this device": the off side
- * ("Leave off until turned on again") and the on side ("Only PELS starts this
- * device"). They are complements — one applies when Power-limit control is on,
- * the other when it is off — so they are synced together and read as one
- * concern at the call site.
+ * The line under Power-limit control saying who starts the device. Hidden for
+ * "Only PELS starts this device", whose own row says it (the device stays off
+ * and runs only for a Smart task), and while there is no rule to state.
+ */
+const syncStartRuleLine = (device: SettingsUiDeviceDetailItem | null): void => {
+  if (!startRuleEl) return;
+  const read = device ? resolveDeviceStartRule(device) : null;
+  if (device === null || read === null || read.state !== 'resolved' || read.rule === 'smart_tasks_only') {
+    startRuleEl.hidden = true;
+    startRuleEl.textContent = '';
+    return;
+  }
+  startRuleEl.textContent = formatDevicePageStartRule(read.rule, hasActiveDeadlineObjective(device.id));
+  startRuleEl.hidden = false;
+};
+
+/**
+ * What answers "who may switch this device": the off side ("Leave off until
+ * turned on again"), the on side ("Only PELS starts this device"), and the
+ * line under Power-limit control that states the rule they make. The two rows
+ * are complements (one applies when Power-limit control is on, the other when
+ * it is off), so all three are synced together and read as one concern.
  */
 export const syncDevicePolicyRows = (params: {
   deviceId: string | null;
@@ -192,4 +242,5 @@ export const syncDevicePolicyRows = (params: {
 }): void => {
   syncRespectExternalOffRow(params);
   syncStartPolicyRow(params);
+  syncStartRuleLine(params.deviceId ? params.getDeviceById(params.deviceId) : null);
 };

@@ -212,7 +212,7 @@ describe('chip primitive: every surface walks the canonical `.plan-chip`', () =>
         currentValueLine: null,
         liveCauseLine: null,
       }],
-    });
+    }, { onNewTask: () => {} });
     const chips = mount.querySelectorAll('.deadline-list-card__header .plan-chip');
     // At minimum: kind + status chips render. Confidence chip is optional.
     expect(chips.length).toBeGreaterThanOrEqual(2);

@@ -11,6 +11,9 @@ import {
 import type { DeferredObjectivePlanPreviewEstimate } from '../../packages/contracts/src/deferredObjectivePlanPreview';
 import {
   cancelSettingsUiSmartTask,
+  createSettingsUiSmartTask,
+  getSettingsUiSmartTaskDevices,
+  previewSettingsUiNewSmartTask,
   previewSettingsUiSmartTask,
   updateSettingsUiSmartTask,
 } from '../../setup/settingsUiSmartTaskApi';
@@ -486,5 +489,97 @@ describe('cancelSettingsUiSmartTask', () => {
     const { homey: refusedHomey } = buildContext({ cancelDeferredObjective: refused });
     expect(cancelSettingsUiSmartTask({ homey: refusedHomey, body: { deviceId: DEVICE_ID } }))
       .toEqual({ ok: false, reason: 'write_conflict' });
+  });
+});
+
+describe('settings UI smart task creation', () => {
+  it('offers a measured binary load as an energy task and excludes one without live power', () => {
+    const binary = (id: string, measured: boolean) => ({
+      id, name: id, isEvCharger: false, binaryControllable: true,
+      targets: [], controlModel: 'binary',
+      ...(measured ? { measuredPowerKw: 0, measuredPowerIsDirectMeasurement: true } : {}),
+    });
+    const getCreateSmartTaskCandidateDevices = () => ({
+      state: 'ready', devices: [binary('metered', true), binary('unmetered', false)],
+    });
+    const { homey } = buildContext({ getCreateSmartTaskCandidateDevices }, false);
+    const result = getSettingsUiSmartTaskDevices({ homey });
+    expect(result).toEqual({
+      state: 'ready',
+      devices: [expect.objectContaining({ deviceId: 'metered', kind: 'energy', unitSymbol: 'kWh' })],
+    });
+  });
+
+  it('answers unavailable, not an empty list, when the device snapshot cannot be read', () => {
+    const getCreateSmartTaskCandidateDevices = () => ({ state: 'unavailable' });
+    const { homey } = buildContext({ getCreateSmartTaskCandidateDevices }, false);
+    expect(getSettingsUiSmartTaskDevices({ homey })).toEqual({ state: 'unavailable' });
+  });
+
+  it('previews a new task against the Homey timezone and saves the exact previewed deadline', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const createNewDeferredObjective = vi.fn(() => ({ ok: true }));
+    const { homey } = buildContext({ previewDeferredObjectivePlan, createNewDeferredObjective }, false);
+    const body = updateBody({ kind: 'energy', target: 10 });
+    const preview = previewSettingsUiNewSmartTask({ homey, body });
+    expect(preview).toMatchObject({ ok: true, deadlineAtMs: expectedDeadline('07:00') });
+    if (!preview.ok) throw new Error('preview failed');
+    const saved = createSettingsUiSmartTask({ homey, body: { ...body, deadlineAtMs: preview.deadlineAtMs } });
+    expect(saved).toEqual({ ok: true });
+    expect(createNewDeferredObjective).toHaveBeenCalledWith(
+      DEVICE_ID,
+      expect.objectContaining({ deadlineAtMs: preview.deadlineAtMs, targetEnergyKWh: 10 }),
+    );
+  });
+
+  it('passes only the permissions the form named, so the preview prices what is saved', () => {
+    const createNewDeferredObjective = vi.fn(() => ({ ok: true }));
+    const { homey } = buildContext({ createNewDeferredObjective }, false);
+    expect(createSettingsUiSmartTask({ homey, body: updateBody() })).toEqual({ ok: true });
+    const [, candidate] = createNewDeferredObjective.mock.calls[0] as unknown as [
+      string, DeferredObjectivePlanPreviewCandidate,
+    ];
+    expect(candidate.rescue).toBeUndefined();
+  });
+
+  it('answers task_exists when the app refuses a create over an open task', () => {
+    const createNewDeferredObjective = vi.fn(() => ({ ok: false, reason: 'task_exists' }));
+    const { homey } = buildContext({ createNewDeferredObjective }, false);
+    expect(createSettingsUiSmartTask({ homey, body: updateBody() }))
+      .toEqual({ ok: false, reason: 'task_exists' });
+  });
+
+  it('refuses a preview for a device with a paused task, which is still open', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const { homey, settings } = buildContext({ previewDeferredObjectivePlan });
+    settings.set(OBJECTIVE_KEY, storedEntry({ enabled: false }));
+    expect(previewSettingsUiNewSmartTask({ homey, body: updateBody() }))
+      .toEqual({ ok: false, reason: 'task_exists' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+  });
+
+  it('previews over a finished run, which is no longer open', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const { homey, settings } = buildContext({ previewDeferredObjectivePlan });
+    settings.set(OBJECTIVE_KEY, storedEntry({ enabled: false, deadlineAtMs: NOW_MS - 60 * 60 * 1000 }));
+    expect(previewSettingsUiNewSmartTask({ homey, body: updateBody() })).toMatchObject({ ok: true });
+  });
+
+  it('GUARDRAIL: a preview while tasks may still sit in the unmigrated legacy blob is a retryable conflict', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const { homey, settings } = buildContext({ previewDeferredObjectivePlan }, false);
+    settings.set('deferred_objectives', { version: 1, objectivesByDeviceId: { [DEVICE_ID]: storedEntry() } });
+    expect(previewSettingsUiNewSmartTask({ homey, body: updateBody() }))
+      .toEqual({ ok: false, reason: 'write_conflict' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+  });
+
+  it('GUARDRAIL: a preview over an unreadable task store is a retryable conflict, never a free device', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const { homey, settings } = buildContext({ previewDeferredObjectivePlan }, false);
+    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    expect(previewSettingsUiNewSmartTask({ homey, body: updateBody() }))
+      .toEqual({ ok: false, reason: 'write_conflict' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
   });
 });

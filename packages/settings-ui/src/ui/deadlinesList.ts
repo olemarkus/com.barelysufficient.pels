@@ -22,6 +22,22 @@ import {
 } from '../../../shared-domain/src/smartTaskRowFacts.ts';
 import { flattenPlanHistoryEntries } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
+import { renderSmartTaskCreate, type SmartTaskCreateActions } from './views/SmartTaskCreate.tsx';
+import {
+  backFromSmartTaskCreate,
+  openSmartTaskCreate,
+  openSmartTaskCreateDeviceSettings,
+  registerSmartTaskCreateRenderer,
+  requestSmartTaskCreatePreview,
+  resolveSmartTaskCreateAfterTaskLine,
+  retrySmartTaskCreateLoad,
+  selectSmartTaskCreateDevice,
+  setSmartTaskCreateGoal,
+  setSmartTaskCreatePermission,
+  setSmartTaskCreateReadyBy,
+  submitSmartTaskCreate,
+  type SmartTaskCreateSnapshot,
+} from './smartTaskCreate.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import { areMeterAreasInUse, subscribeToHomeScope } from './homeScope.ts';
 import {
@@ -37,6 +53,7 @@ import {
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import {
   renderDeadlinesList,
+  type DeadlinesListActions,
   type DeadlinesListCard,
   type DeadlinesListState,
 } from './views/DeadlinesList.tsx';
@@ -117,6 +134,10 @@ export const resolveDeadlinesListCards = (
 export const resolveDeadlinesHistoryEntries = (
   payload: SettingsUiDeferredObjectivePlanHistoryPayload | null,
 ): ResolvedDeferredObjectivePlanHistoryEntry[] => flattenPlanHistoryEntries(payload);
+
+const listActions: DeadlinesListActions = {
+  onNewTask: () => openSmartTaskCreate({ kind: 'smart_tasks' }),
+};
 
 const getSurface = (): HTMLElement | null => (
   document.getElementById('deadlines-list-root')
@@ -251,7 +272,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
   refreshGeneration += 1;
   const generation = refreshGeneration;
   const historySurface = getHistorySurface();
-  renderDeadlinesList(surface, { status: 'loading' });
+  renderDeadlinesList(surface, { status: 'loading' }, listActions);
   if (historySurface) renderDeadlinesHistoryList(historySurface, { status: 'loading' });
 
   // Coordinate the active list's empty state with the (independently fetched)
@@ -278,7 +299,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
       // panel activation, and this panel refreshes on its own activation.
       meterAreasInUse: areMeterAreasInUse(),
     };
-    renderDeadlinesList(surface, state);
+    renderDeadlinesList(surface, state, listActions);
   };
 
   // Fire history fetch in parallel but don't await it before rendering the
@@ -322,7 +343,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
     renderDeadlinesList(surface, {
       status: 'error',
       message: SMART_TASK_LIST_LOAD_ERROR_COPY,
-    });
+    }, listActions);
   }
 };
 
@@ -340,3 +361,48 @@ subscribeToHomeScope(() => {
     void logSettingsError('Failed to refresh deadlines list', error, 'homeScope');
   });
 });
+
+// The New smart task flow paints into its own surface on this page. Its
+// controller (`smartTaskCreate.ts`) owns the flow; this wires its view and
+// refreshes the list it returns to.
+const smartTaskCreateActions: SmartTaskCreateActions = {
+  onBack: backFromSmartTaskCreate,
+  onRetry: retrySmartTaskCreateLoad,
+  onSelectDevice: selectSmartTaskCreateDevice,
+  onGoalInput: setSmartTaskCreateGoal,
+  onReadyByInput: setSmartTaskCreateReadyBy,
+  onPermissionToggle: setSmartTaskCreatePermission,
+  onPreview: () => { void requestSmartTaskCreatePreview(); },
+  onCreate: () => { void submitSmartTaskCreate(); },
+  onChangeDeviceSettings: openSmartTaskCreateDeviceSettings,
+};
+
+// The flow and the list share this tab: while the flow is open the list and
+// its history are hidden, and closing the flow brings them back refreshed.
+const setListVisible = (visible: boolean): void => {
+  const list = document.getElementById('deadlines-list-root');
+  const history = document.getElementById('deadlines-history-root');
+  const surface = document.getElementById('smart-task-create-root');
+  if (list) list.hidden = !visible;
+  if (history) history.hidden = !visible;
+  if (surface) surface.hidden = visible;
+};
+
+const paintSmartTaskCreate = (snapshot: SmartTaskCreateSnapshot | null): void => {
+  const root = document.getElementById('smart-task-create-root');
+  if (!root) return;
+  setListVisible(snapshot === null);
+  if (snapshot === null) {
+    renderSmartTaskCreate(root, null);
+    void refreshDeadlinesList();
+    return;
+  }
+  const { step } = snapshot;
+  renderSmartTaskCreate(root, {
+    snapshot,
+    afterTaskLine: step.kind === 'preview' ? resolveSmartTaskCreateAfterTaskLine(step.device.deviceId) : null,
+    actions: smartTaskCreateActions,
+  });
+};
+
+registerSmartTaskCreateRenderer(paintSmartTaskCreate);

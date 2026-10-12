@@ -25,7 +25,9 @@ import { resolveDeviceDetailKind, type DeviceDetailKind } from '../deviceKind.ts
 // - Battery: its Managed and Power-limit control switches and its place in
 //   the priority order; none of a load's sections apply, so they are hidden
 //   here rather than by their own gates (`applyBatteryKindVisibility`).
-// Every list carries all eleven sections so hidden, inapplicable ones keep a
+// - Smart task: after Setup for every kind. Most homes never use Smart tasks,
+//   and the page is about power limiting.
+// Every list carries all twelve sections so hidden, inapplicable ones keep a
 // stable DOM position (their own gates keep them hidden).
 const SECTION_IDS = {
   battery: 'device-detail-battery-section',
@@ -37,6 +39,7 @@ const SECTION_IDS = {
   charging: 'device-detail-charging-section',
   car: 'device-detail-car-section',
   setup: 'device-detail-setup-section',
+  smartTask: 'device-detail-smart-task',
   activityLog: 'device-detail-activity-log-section',
   diagnostics: 'device-detail-diagnostics-section',
 } as const;
@@ -52,10 +55,12 @@ const ALL_SECTION_KEYS = Object.keys(SECTION_IDS) as SectionKey[];
 // previous kind's position.
 const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
   battery: ['battery', 'activityLog', 'diagnostics'],
-  ev_charger: ['charging', 'car', 'stepped', 'setup', 'activityLog', 'diagnostics'],
-  temperature: ['modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'activityLog', 'diagnostics'],
-  stepped: ['stepped', 'shedding', 'setup', 'activityLog', 'diagnostics'],
-  binary: ['shedding', 'surplus', 'setup', 'activityLog', 'diagnostics'],
+  ev_charger: ['charging', 'car', 'stepped', 'setup', 'smartTask', 'activityLog', 'diagnostics'],
+  temperature: [
+    'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'smartTask', 'activityLog', 'diagnostics',
+  ],
+  stepped: ['stepped', 'shedding', 'setup', 'smartTask', 'activityLog', 'diagnostics'],
+  binary: ['shedding', 'surplus', 'setup', 'smartTask', 'activityLog', 'diagnostics'],
 };
 
 const sectionOrderFor = (kind: DeviceDetailKind): readonly SectionKey[] => [

@@ -1,12 +1,10 @@
-import type { OpenDeviceDetailDetail } from '../cardActivation.ts';
+import type { DeviceDetailFocus, OpenDeviceDetailDetail } from '../cardActivation.ts';
 
 // Re-exported so device-detail wiring imports the open-request type from one
 // place rather than reaching across imports.
-export type { OpenDeviceDetailDetail };
+export type { DeviceDetailFocus, OpenDeviceDetailDetail };
 
-export type PendingDeviceDetailOpen = {
-  deviceId: string;
-};
+export type PendingDeviceDetailOpen = OpenDeviceDetailDetail;
 
 // A device-detail open request that arrives before the device list has loaded
 // is remembered here and replayed once `devices-updated` fires. Encapsulating
@@ -22,8 +20,8 @@ export type PendingDeviceDetailOpen = {
 export const createPendingDeviceDetailOpen = () => {
   let pending: PendingDeviceDetailOpen | null = null;
   return {
-    set: (deviceId: string): void => {
-      pending = { deviceId };
+    set: (request: OpenDeviceDetailDetail): void => {
+      pending = request;
     },
     peek: (): PendingDeviceDetailOpen | null => pending,
     take: (): PendingDeviceDetailOpen | null => {

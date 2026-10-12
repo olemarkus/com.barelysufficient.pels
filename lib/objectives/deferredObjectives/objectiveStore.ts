@@ -7,6 +7,7 @@ import {
   createEmptyDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettings,
   isSmartTaskInProgress,
+  isSmartTaskOpen,
   normalizeDeferredObjectiveSettingsEntry,
   type SmartTaskInProgressRead,
 } from '../../../packages/shared-domain/src/settings/deferredObjectiveSettings';
@@ -74,8 +75,7 @@ export const hasOpenDeferredObjective = (
   nowMs: number,
 ): boolean => {
   const entry = readObjectiveForDevice(store, deviceId);
-  if (!entry) return false;
-  return entry.enabled || entry.deadlineAtMs > nowMs;
+  return entry !== undefined && isSmartTaskOpen(entry, nowMs);
 };
 
 /**
@@ -206,6 +206,34 @@ export const readDeferredObjectiveRoster = (
   return { status: 'resolved', settings };
 };
 /* eslint-enable functional/immutable-data */
+
+/**
+ * Whether the device has an open Smart task (`isSmartTaskOpen`), for the
+ * settings UI's create preview, which must not offer a create the write will
+ * refuse. Three states like `readSmartTaskInProgress`: an entry the normalizer
+ * rejects, or an absence the key list cannot confirm, is `unavailable`, never
+ * `none`, so a read gap never reads as a device free for a new task.
+ */
+export const readSmartTaskOpen = (
+  store: ObjectiveSettingsStore,
+  deviceId: string,
+  nowMs: number,
+): 'open' | 'none' | 'unavailable' => {
+  try {
+    // A task may still live only in the legacy blob the per-key migration has
+    // not consumed; this read-only caller must not migrate it, and must not
+    // report the device free while it may hold one.
+    const keys: unknown = store.getKeys();
+    if (Array.isArray(keys) && keys.includes(DEFERRED_OBJECTIVES_SETTINGS)) return 'unavailable';
+    const raw = store.get(perDeviceKey(deviceId));
+    const entry = normalizeDeferredObjectiveSettingsEntry(raw);
+    if (entry) return isSmartTaskOpen(entry, nowMs) ? 'open' : 'none';
+    if (raw !== null && raw !== undefined) return 'unavailable';
+    return objectiveAbsenceIsTrustworthy(store, deviceId) ? 'none' : 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+};
 
 /** Persist one device's objective under its own key. */
 export const writeObjectiveForDevice = (

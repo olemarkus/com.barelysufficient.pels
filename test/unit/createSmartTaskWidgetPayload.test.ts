@@ -65,8 +65,6 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
       deviceId: 'heater',
       deviceName: 'Hot water',
       kind: 'temperature',
-      // Every temperature device groups as heating.
-      group: 'heating',
       unitSymbol: '°C',
       goalMin: 30,
       goalMax: 85,
@@ -91,7 +89,6 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
     expect(payload.devices[0]).toMatchObject({
       deviceId: 'ev',
       kind: 'ev_soc',
-      group: 'ev_charger',
       unitSymbol: '%',
       goalMin: 1,
       goalMax: 100,
@@ -134,12 +131,12 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
     // All temperature devices group as heating (water heaters can't be told
     // apart from thermostats at runtime), ordered by name (Attic, Cellar,
     // Tank), then EV chargers by name (Audi, Zoe); the on/off plug is dropped.
-    expect(payload.devices.map((d) => [d.deviceName, d.group])).toEqual([
-      ['Attic', 'heating'],
-      ['Cellar', 'heating'],
-      ['Tank', 'heating'],
-      ['Audi', 'ev_charger'],
-      ['Zoe', 'ev_charger'],
+    expect(payload.devices.map((d) => [d.deviceName, d.kind])).toEqual([
+      ['Attic', 'temperature'],
+      ['Cellar', 'temperature'],
+      ['Tank', 'temperature'],
+      ['Audi', 'ev_soc'],
+      ['Zoe', 'ev_soc'],
     ]);
   });
 

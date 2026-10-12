@@ -62,6 +62,10 @@ export const MdFilledTonalButton = (props: MdBaseProps) => (
   h('md-filled-tonal-button', props as Record<string, unknown>)
 );
 
+export const MdDialog = (props: MdBaseProps) => (
+  h('md-dialog', props as Record<string, unknown>)
+);
+
 export const MdList = (props: MdBaseProps) => (
   h('md-list', props as Record<string, unknown>)
 );

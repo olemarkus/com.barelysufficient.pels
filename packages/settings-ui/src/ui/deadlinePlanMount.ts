@@ -26,16 +26,24 @@ import { getHomeyTimezone } from './homey.ts';
 import {
   closeSmartTaskEditor,
   beginSmartTaskClear,
+  dismissSmartTaskClear,
   getSmartTaskEditSnapshot,
   initSmartTaskEditController,
   openSmartTaskEditor,
-  requestSmartTaskClear,
   setSmartTaskEditPermission,
   setSmartTaskEditReadyBy,
   setSmartTaskEditTarget,
   submitSmartTaskUpdate,
+  type SmartTaskEditContext,
 } from './smartTaskEdit.ts';
-import { renderDeadlinePlan, type SmartTaskEditProps } from './views/DeadlinePlan.tsx';
+import {
+  renderDeadlinePlan,
+  type SmartTaskAfterTaskProps,
+  type SmartTaskEditProps,
+} from './views/DeadlinePlan.tsx';
+import { dispatchOpenDeviceDetail } from './cardActivation.ts';
+import { resolveAfterTaskLine } from './deviceStartRule.ts';
+import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import type { MdButtonElement } from './dom.ts';
@@ -118,9 +126,7 @@ const initDeadlinePlanRecourseDispatcher = (): void => {
     event.preventDefault();
     const deviceId = trigger.dataset.deadlineRecourseDeviceId;
     const onSettled = (deviceId !== undefined && deviceId.length > 0)
-      ? () => {
-        document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId } }));
-      }
+      ? () => dispatchOpenDeviceDetail(deviceId, 'top')
       : undefined;
     // The `data-deadline-recourse-device-id` attribute is always written by the
     // JSX producer (`deviceId ?? ''`), so an empty string can legitimately
@@ -273,10 +279,7 @@ let runtimeRefreshBound = false;
 // instead of unmounting a component-local draft. Baselines are captured at
 // open time inside `onOpen`, so later boot refreshes rebuild these props
 // without touching what the user is typing.
-const buildSmartTaskEditProps = (
-  m: ActiveMount,
-  mode: SmartTaskEditProps['mode'],
-): SmartTaskEditProps | undefined => {
+const buildSmartTaskEditContext = (m: ActiveMount): SmartTaskEditContext | undefined => {
   const { deviceId, lastBoot } = m;
   if (deviceId === null || !lastBoot) return undefined;
   const entry = normalizeDeferredObjectiveSettings(
@@ -294,9 +297,9 @@ const buildSmartTaskEditProps = (
   // HH:mm the write path will resolve it from, so an untouched ready-by field
   // round-trips to the same moment (browser-timezone math never enters).
   const baselineReadyBy = formatLocalHHMM(entry.deadlineAtMs, getHomeyTimezone());
-  const snapshot = getSmartTaskEditSnapshot();
-  const context = {
+  return {
     deviceId,
+    deviceName: formatDisplayDeviceName(device.name),
     kind: entry.kind,
     unit: bounds.unit,
     min: bounds.min,
@@ -320,6 +323,16 @@ const buildSmartTaskEditProps = (
     // so the permission would be dropped as inert.
     supportsLimitLowerPriority: device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device),
   };
+};
+
+const buildSmartTaskEditProps = (
+  m: ActiveMount,
+  mode: SmartTaskEditProps['mode'],
+): SmartTaskEditProps | undefined => {
+  const context = buildSmartTaskEditContext(m);
+  if (!context) return undefined;
+  const { deviceId } = context;
+  const snapshot = getSmartTaskEditSnapshot();
   return {
     mode,
     // An open editor for a DIFFERENT device (SPA navigation between tasks)
@@ -331,10 +344,22 @@ const buildSmartTaskEditProps = (
     onTargetInput: setSmartTaskEditTarget,
     onPermissionToggle: setSmartTaskEditPermission,
     onSave: () => { void submitSmartTaskUpdate(); },
-    onClear: mode === 'clear_only'
-      ? () => { void beginSmartTaskClear(context); }
-      : () => { void requestSmartTaskClear(); },
+    onClear: () => { void beginSmartTaskClear(context); },
+    onDismissClear: dismissSmartTaskClear,
   };
+};
+
+// Who starts the device once the task is done, from the device's own settings
+// (`deviceStartRule.ts`). "Change" opens the device page over this one, on
+// Power-limit control, so closing it comes back here.
+const buildSmartTaskAfterTaskProps = (m: ActiveMount): SmartTaskAfterTaskProps | undefined => {
+  const { deviceId, lastBoot } = m;
+  if (deviceId === null || !lastBoot) return undefined;
+  const device = lastBoot.devicesPayload.devices.find((candidate) => candidate.id === deviceId);
+  if (!device) return undefined;
+  const line = resolveAfterTaskLine(device);
+  if (line === null) return undefined;
+  return { line, onChange: () => dispatchOpenDeviceDetail(deviceId, 'power-limit') };
 };
 
 const renderActiveMount = (): void => {
@@ -358,6 +383,7 @@ const renderActiveMount = (): void => {
       ? loadState.pending.actionMode
       : 'edit_and_clear';
     loadState.edit = buildSmartTaskEditProps(m, mode);
+    loadState.afterTask = buildSmartTaskAfterTaskProps(m);
   }
   renderDeadlinePlan(m.surface, loadState);
 };
@@ -367,10 +393,20 @@ const renderActiveMount = (): void => {
 // controller. The edit controller repaints through the same full-root render
 // the runtime refresh uses, and a committed clear closes the page (the route
 // now points at an absent task). Each callee guards its own idempotence.
+// "Change" on the after-task card opens the device page over this one; repaint
+// when it closes, so the card states the settings the owner may have changed.
+let deviceDetailCloseBound = false;
+const initDeviceDetailCloseRepaint = (): void => {
+  if (deviceDetailCloseBound) return;
+  deviceDetailCloseBound = true;
+  document.addEventListener('device-detail-closed', renderActiveMount);
+};
+
 const initDeadlinePlanChrome = (): void => {
   initDeadlinePlanClose();
   initDeadlinePlanRecourseDispatcher();
   initDeadlinePlanUsageLinkDispatcher();
+  initDeviceDetailCloseRepaint();
   initSmartTaskEditController({
     render: renderActiveMount,
     requestClose: () => onCloseDeadlinePlan(),
@@ -378,6 +414,18 @@ const initDeadlinePlanChrome = (): void => {
     // from live data instead of the cached boot that still holds the task.
     refreshBoot: () => { void mountDeadlinePlan(); },
   });
+};
+
+const openEditorFromRoute = (): void => {
+  const m = activeMount;
+  if (!m) return;
+  // Consume the one-shot intent so a later boot refresh does not reopen a
+  // saved or discarded draft.
+  const url = new URL(window.location.href);
+  url.searchParams.delete('edit');
+  window.history.replaceState(window.history.state, '', url);
+  const context = buildSmartTaskEditContext(m);
+  if (context) openSmartTaskEditor(context);
 };
 
 export const mountDeadlinePlan = async (): Promise<void> => {
@@ -435,6 +483,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
     return;
   }
   renderActiveMount();
+  if (params.get('edit') === '1' && !isStale()) openEditorFromRoute();
 
   void fetchDeadlinePlanHistory(deviceId, timeZone).then((history) => {
     if (isStale()) return;

@@ -49,6 +49,9 @@ import {
 } from './setup/settingsUiStarvationRescueApi';
 import {
   cancelSettingsUiSmartTask,
+  createSettingsUiSmartTask,
+  getSettingsUiSmartTaskDevices,
+  previewSettingsUiNewSmartTask,
   previewSettingsUiSmartTask,
   updateSettingsUiSmartTask,
 } from './setup/settingsUiSmartTaskApi';
@@ -244,6 +247,21 @@ export = {
     'ui_smart_task_preview',
     ({ homey, body }: ApiContext & { body?: unknown }) => (
       previewSettingsUiSmartTask({ homey, body })
+    ),
+  ),
+  ui_smart_task_devices: withApiLogging('ui_smart_task_devices', ({ homey }: ApiContext) => (
+    getSettingsUiSmartTaskDevices({ homey })
+  )),
+  ui_smart_task_create: withApiLogging(
+    'ui_smart_task_create',
+    ({ homey, body }: ApiContext & { body?: unknown }) => (
+      createSettingsUiSmartTask({ homey, body })
+    ),
+  ),
+  ui_smart_task_create_preview: withApiLogging(
+    'ui_smart_task_create_preview',
+    ({ homey, body }: ApiContext & { body?: unknown }) => (
+      previewSettingsUiNewSmartTask({ homey, body })
     ),
   ),
   ui_smart_task_update: withApiLogging(

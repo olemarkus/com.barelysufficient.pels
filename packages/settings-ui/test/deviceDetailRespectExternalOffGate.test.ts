@@ -31,7 +31,10 @@ const buildDom = () => {
         <div id="device-detail-native-wiring-row" hidden></div>
         <md-switch id="device-detail-native-wiring"></md-switch>
         <md-switch id="device-detail-managed"></md-switch>
-        <md-switch id="device-detail-controllable"></md-switch>
+        <div class="md-switch-row" id="device-detail-controllable-row">
+          <md-switch id="device-detail-controllable"></md-switch>
+          <small class="field__hint" id="device-detail-start-rule" hidden></small>
+        </div>
         <div class="md-switch-row" id="device-detail-temperature-control-disabled-row" hidden>
           <md-filled-select id="device-detail-temperature-control-disabled">
             <md-select-option value="mode"></md-select-option>
@@ -139,6 +142,9 @@ type OpenPanelParams = {
   storedTemperatureControlDisabledMap?: Record<string, unknown>;
   modeTarget?: number;
   priceEnabled?: boolean;
+  surplusWilling?: boolean;
+  surplusPoolReachable?: boolean;
+  priceSettingsLoaded?: boolean;
 };
 
 const openPanel = async (params: OpenPanelParams) => {
@@ -161,7 +167,18 @@ const openPanel = async (params: OpenPanelParams) => {
   state.respectExternalOffMap = params.optedIn ? { [deviceId]: true } : {};
   state.deviceStartPolicyMap = params.pelsOnly ? { [deviceId]: 'pels_only' } : {};
   state.temperatureControlDisabledMap = params.temperatureControlDisabled ? { [deviceId]: true } : {};
-  state.priceOptimizationSettings = params.priceEnabled
+  state.priceOptimizationSettings = params.surplusWilling
+    ? {
+      [deviceId]: {
+        enabled: false,
+        cheapDelta: 0,
+        expensiveDelta: 0,
+        priceConfigured: false,
+        surplusWilling: true,
+        surplusDelta: 0,
+      },
+    }
+    : params.priceEnabled
     ? {
       [deviceId]: {
         enabled: true,
@@ -178,6 +195,10 @@ const openPanel = async (params: OpenPanelParams) => {
   state.activeMode = 'Home';
   state.editingMode = 'Home';
   state.loadedModeHomeId = 'main';
+  state.deviceSettingMapsLoaded = true;
+  state.priceOptimizationSettingsLoaded = params.priceSettingsLoaded ?? true;
+  state.devicesLoaded = true;
+  state.surplusPoolReachable = params.surplusPoolReachable ?? true;
   if (params.activeSmartTask) {
     state.deferredObjectiveSettings = {
       version: 1,
@@ -193,6 +214,10 @@ const openPanel = async (params: OpenPanelParams) => {
     } as typeof state.deferredObjectiveSettings;
   }
 
+  // The real meter-area read, through the mock's default `/ui_homes` (one home):
+  // a solar rule waits for it.
+  const { refreshHomeBadges } = await import('../src/ui/homeBadges.ts');
+  await refreshHomeBadges();
   initDeviceDetailHandlers();
   openDeviceDetail(deviceId);
   await flushPromises();
@@ -283,15 +308,21 @@ describe('device detail "Leave off until turned on again" gating', () => {
     expect(toggle()?.selected).toBe(true);
   });
 
-  it('disables the switch with the power-limit hint when Power-limit control is off', async () => {
-    // While Power-limit control is off PELS never resumes the device, so the
-    // setting has no effect; disable it and say why, as the dump-load and
-    // surplus rows do. Not a detection limit — detection is plan-independent —
-    // and loosening it once invited owners to pair the hold with a booking Flow
-    // that turns the device off, which leaves it off for good.
+  it('hides the row while Power-limit control is off', async () => {
+    // While Power-limit control is off PELS never resumes the device, so there
+    // is nothing to decide here: the row sits under that switch as its
+    // sub-option (owner ruling 2026-10-10). Not a detection limit — detection
+    // is plan-independent — and loosening it once invited owners to pair the
+    // hold with a booking Flow that turns the device off, which leaves it off
+    // for good.
     await openPanel({ device: buildBinaryDevice(), controllable: false });
+    expect(row()?.hidden).toBe(true);
+  });
+
+  it('keeps an opted-in row while Power-limit control is off, saying why it does nothing now', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: false, optedIn: true });
     expect(row()?.hidden).toBe(false);
-    expect(toggle()?.disabled).toBe(true);
+    expect(toggle()?.disabled).toBe(false);
     expect(powerLimitHint()?.hidden).toBe(false);
     expect(powerLimitHint()?.textContent).toContain('Power-limit control');
   });
@@ -364,11 +395,18 @@ describe('device detail "Only PELS starts this device" row', () => {
   const pausedHint = () => document.querySelector('#device-detail-start-policy-paused-hint') as HTMLElement | null;
   const noTaskHint = () => document.querySelector('#device-detail-start-policy-no-task-hint') as HTMLElement | null;
 
-  it('is offered while Power-limit control is off', async () => {
-    await openPanel({ device: buildBinaryDevice(), controllable: false });
+  it('is offered while Power-limit control is off, for a device with a Smart task', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: false, activeSmartTask: true });
     expect(startPolicyRow()?.hidden).toBe(false);
     expect(startPolicyToggle()?.disabled).toBe(false);
     expect(pausedHint()?.hidden).toBe(true);
+  });
+
+  it('is hidden for a device without a Smart task, where it would switch the device off for good', async () => {
+    // Most homes never use Smart tasks; the device page is about power
+    // limiting, and a task's own page links here (owner ruling 2026-10-10).
+    await openPanel({ device: buildBinaryDevice(), controllable: false });
+    expect(startPolicyRow()?.hidden).toBe(true);
   });
 
   it('is hidden while Power-limit control is on for a device not opted in', async () => {
@@ -376,8 +414,15 @@ describe('device detail "Only PELS starts this device" row', () => {
     expect(startPolicyRow()?.hidden).toBe(true);
   });
 
-  it('is where the "Keep within Smart tasks" suggestion lands, with Setup open', async () => {
+  it('stays offered after a cleared task, on the history evidence the suggestion also uses', async () => {
+    const { recordSmartTaskHistoryDevices } = await import('../src/ui/smartTaskUsage.ts');
+    recordSmartTaskHistoryDevices(['heater-1']);
     await openPanel({ device: buildBinaryDevice(), controllable: false });
+    expect(startPolicyRow()?.hidden).toBe(false);
+  });
+
+  it('is where the "Keep within Smart tasks" suggestion lands, with Setup open', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: false, activeSmartTask: true });
     const setup = document.querySelector('#device-detail-setup-disclosure') as HTMLDetailsElement;
     setup.open = false;
     const scrolled = vi.fn();
@@ -420,6 +465,93 @@ describe('device detail "Only PELS starts this device" row', () => {
     await flushPromises();
     expect(pausedHint()?.hidden).toBe(true);
     expect(startPolicyToggle()?.selected).toBe(true);
+  });
+});
+
+describe('device detail start rule under Power-limit control', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    buildDom();
+    mockSiblings();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const startRule = () => document.querySelector('#device-detail-start-rule') as HTMLElement | null;
+
+  it('says PELS also turns the device on, including after it was turned off elsewhere', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: true });
+    expect(startRule()?.hidden).toBe(false);
+    expect(startRule()?.textContent)
+      .toBe('PELS turns it on whenever power allows, even after it was turned off elsewhere.');
+  });
+
+  it('says an outside off holds with Leave off until turned on again', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: true, optedIn: true });
+    expect(startRule()?.textContent)
+      .toBe('PELS turns it on whenever power allows, unless it was turned off elsewhere.');
+  });
+
+  it('says when the rule applies while a Smart task is running, since the task decides then', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: false, activeSmartTask: true });
+    expect(startRule()?.textContent).toBe(
+      'When no smart task is running, PELS does not start it. If it is started elsewhere, PELS leaves it running.',
+    );
+  });
+
+  it('says PELS does not start the device while Power-limit control is off', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: false });
+    expect(startRule()?.textContent)
+      .toBe('PELS does not start it. If it is started elsewhere, PELS leaves it running.');
+  });
+
+  it('says a device on Run on solar surplus runs on the surplus', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: true, surplusWilling: true });
+    expect(startRule()?.textContent).toBe('PELS runs it on your solar surplus.');
+  });
+
+  it('does not claim solar running where no surplus can fund it: the runtime starts the device then', async () => {
+    await openPanel({
+      device: buildBinaryDevice(), controllable: true, surplusWilling: true, surplusPoolReachable: false,
+    });
+    expect(startRule()?.textContent)
+      .toBe('PELS turns it on whenever power allows, even after it was turned off elsewhere.');
+  });
+
+  it('states the rule with Power-limit control off before the price settings load, since it reads none', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: false, priceSettingsLoaded: false });
+    expect(startRule()?.textContent)
+      .toBe('PELS does not start it. If it is started elsewhere, PELS leaves it running.');
+  });
+
+  it('waits for the price settings before stating a rule with Power-limit control on', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: true, priceSettingsLoaded: false });
+    expect(startRule()?.hidden).toBe(true);
+  });
+
+  it('leaves Only PELS starts this device to its own row', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: false, pelsOnly: true });
+    expect(startRule()?.hidden).toBe(true);
+  });
+
+  it('states nothing for an unmanaged device', async () => {
+    await openPanel({ device: buildBinaryDevice(), managed: false });
+    expect(startRule()?.hidden).toBe(true);
+  });
+
+  it('is where a Smart task\u2019s Change link lands, with Setup open', async () => {
+    await openPanel({ device: buildBinaryDevice(), controllable: true });
+    const setup = document.querySelector('#device-detail-setup-disclosure') as HTMLDetailsElement;
+    setup.open = false;
+    const scrolled = vi.fn();
+    const target = document.querySelector('#device-detail-controllable-row') as HTMLElement;
+    target.scrollIntoView = scrolled;
+    const { openDeviceDetailAt } = await import('../src/ui/deviceDetail/index.ts');
+    openDeviceDetailAt('heater-1', 'power-limit');
+    expect(setup.open).toBe(true);
+    expect(scrolled).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
   });
 });
 
@@ -471,19 +603,18 @@ describe('device detail "Leave off until turned on again" write', () => {
     });
   });
 
-  it('enables the switch as soon as the user follows its own hint', async () => {
-    // The hint sends the user to Power-limit control. If the panel does not
-    // re-sync on that write, they turn it on and the switch they were sent to
-    // is still disabled with the same hint showing.
+  it('appears, enabled, as soon as Power-limit control is turned on', async () => {
+    // The row is the sub-option of Power-limit control. If the panel does not
+    // re-sync on that write, the owner turns it on and the row stays hidden.
     await openPanel({ device: buildBinaryDevice(), controllable: false });
-    expect(toggle()?.disabled).toBe(true);
-    expect(powerLimitHint()?.hidden).toBe(false);
+    expect(row()?.hidden).toBe(true);
 
     const powerLimit = document.querySelector('#device-detail-controllable') as MdSwitchLike;
     powerLimit.selected = true;
     powerLimit.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
+    expect(row()?.hidden).toBe(false);
     expect(toggle()?.disabled).toBe(false);
     expect(powerLimitHint()?.hidden).toBe(true);
   });

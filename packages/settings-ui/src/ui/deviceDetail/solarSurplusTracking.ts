@@ -38,7 +38,7 @@ import {
  * device (that modality is the setpoint lift) and anything with no ladder to
  * modulate.
  */
-const isSurplusTrackingDeviceShape = (
+export const isSurplusTrackingDeviceShape = (
   device: SettingsUiDeviceDetailItem | null,
   controlState: { isManaged: boolean; canManageDevice: boolean },
 ): boolean => {

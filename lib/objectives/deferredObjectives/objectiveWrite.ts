@@ -12,6 +12,7 @@ import {
   type ObjectiveSettingsStore,
 } from './objectiveStore';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { isSmartTaskOpen } from '../../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVES_PERKEY_MIGRATED } from '../../utils/settingsKeys';
 import type { SmartTaskHomeScope } from '../../../packages/contracts/src/smartTaskHomeScope';
@@ -59,6 +60,18 @@ export type ObjectiveWriteOutcome =
     reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home'
       | 'device_not_planned' | 'ownership_unavailable';
   };
+
+/** `createObjectiveForDevice`'s outcome: an upsert's, plus the open-task refusal. */
+export type CreateObjectiveWriteOutcome =
+  | ObjectiveWriteOutcome
+  | { persisted: false; reason: 'open_task_exists' };
+
+export type ObjectiveWriteParams = {
+  deviceId: string;
+  deviceName: string | null;
+  entry: DeferredObjectiveSettingsEntry;
+  rescue?: 'preserve' | 'replace';
+};
 
 export type DeferredObjectiveDeviceWriteDeps = {
   store: ObjectiveSettingsStore;
@@ -150,27 +163,51 @@ const notifyAndFlush = (
  */
 export const upsertObjectiveForDevice = (
   deps: DeferredObjectiveDeviceWriteDeps,
-  params: {
-    deviceId: string;
-    deviceName: string | null;
-    entry: DeferredObjectiveSettingsEntry;
-    rescue?: 'preserve' | 'replace';
-  },
-): ObjectiveWriteOutcome => {
+  params: ObjectiveWriteParams,
+): ObjectiveWriteOutcome => writeObjective(deps, params, 'replace');
+
+/**
+ * Create a device's deferred objective, refusing while the device has an OPEN
+ * one (`isSmartTaskOpen`): a create surface offers that task instead of
+ * replacing it. The refusal is decided against the same trusted read of the
+ * previous entry the write itself uses, so no gap between a separate check and
+ * the write can let a create land over a task it did not see.
+ */
+export const createObjectiveForDevice = (
+  deps: DeferredObjectiveDeviceWriteDeps,
+  params: ObjectiveWriteParams,
+): CreateObjectiveWriteOutcome => writeObjective(deps, params, 'refuse');
+
+const refuseForHomeScope = (
+  deps: DeferredObjectiveDeviceWriteDeps,
+  deviceId: string,
+): ObjectiveWriteOutcome | null => {
+  const homeScope = deps.resolveDeviceHomeScope?.(deviceId) ?? 'main';
+  if (homeScope === 'sub_home') return refuse(deps, 'upsert', deviceId, 'device_in_sub_home');
+  if (homeScope === 'source_device') return refuse(deps, 'upsert', deviceId, 'device_not_planned');
+  if (homeScope === 'unavailable') return refuse(deps, 'upsert', deviceId, 'ownership_unavailable');
+  return null;
+};
+
+// One body for both writes; only `'refuse'` can answer `open_task_exists`, and
+// the overloads say so, so an upsert's outcome never carries it.
+function writeObjective(
+  deps: DeferredObjectiveDeviceWriteDeps, params: ObjectiveWriteParams, openTask: 'replace',
+): ObjectiveWriteOutcome;
+function writeObjective(
+  deps: DeferredObjectiveDeviceWriteDeps, params: ObjectiveWriteParams, openTask: 'refuse',
+): CreateObjectiveWriteOutcome;
+function writeObjective(
+  deps: DeferredObjectiveDeviceWriteDeps,
+  params: ObjectiveWriteParams,
+  openTask: 'replace' | 'refuse',
+): CreateObjectiveWriteOutcome {
   // v1 scope gate FIRST: a sub-home device's rejection is a hard, honest "not
   // available here", never the transient retry framing the guards below map to.
   // See the dep's doc — clear (`clearObjectiveForDevice`) is intentionally
   // ungated so a task on a relocated device can always be removed.
-  const homeScope = deps.resolveDeviceHomeScope?.(params.deviceId) ?? 'main';
-  if (homeScope === 'sub_home') {
-    return refuse(deps, 'upsert', params.deviceId, 'device_in_sub_home');
-  }
-  if (homeScope === 'source_device') {
-    return refuse(deps, 'upsert', params.deviceId, 'device_not_planned');
-  }
-  if (homeScope === 'unavailable') {
-    return refuse(deps, 'upsert', params.deviceId, 'ownership_unavailable');
-  }
+  const scopeRefusal = refuseForHomeScope(deps, params.deviceId);
+  if (scopeRefusal !== null) return scopeRefusal;
   if (!ensureMigrated(deps)) return refuse(deps, 'upsert', params.deviceId, 'migration_deferred');
   const { deviceId, deviceName } = params;
   const rescuePolicy = params.rescue ?? 'preserve';
@@ -181,6 +218,10 @@ export const upsertObjectiveForDevice = (
   // so refuse rather than overwrite the user's objective / drop a preserved rescue.
   if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) {
     return refuse(deps, 'upsert', deviceId, 'untrusted_absence');
+  }
+  if (openTask === 'refuse' && prevEntry !== undefined && isSmartTaskOpen(prevEntry, deps.nowMs)) {
+    deps.debugStructured?.({ event: 'objective_write_refused', op: 'upsert', deviceId, reason: 'open_task_exists' });
+    return { persisted: false, reason: 'open_task_exists' };
   }
   // Preserve a standing rescue permission unless the caller is authoritative
   // about rescue or the new entry already sets its own.
@@ -194,7 +235,7 @@ export const upsertObjectiveForDevice = (
   writeObjectiveForDevice(deps.store, deviceId, nextEntry);
   notifyAndFlush(deps, { deviceId, deviceName, prevEntry, nextEntry, nowMs: deps.nowMs, previousEvaluation });
   return { persisted: true };
-};
+}
 
 /**
  * Clear a device's deferred objective.

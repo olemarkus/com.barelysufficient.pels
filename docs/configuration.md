@@ -142,6 +142,7 @@ connection, PELS resumes the association automatically; no physical replug is ne
 Notes:
 
 - Power-limit control needs a power reading for the device: its own power meter, or the live value Homey Energy shows for it. Until the first reading arrives, PELS does not limit the device.
+- For a device PELS can switch on and off, the line under **Power-limit control** says who starts it with your settings. With **Power-limit control** on, PELS limits the device when it must and also turns it on whenever power allows, even after it was turned off elsewhere; turn on **Leave off until turned on again** to keep it off after it is turned off elsewhere. With **Power-limit control** off, PELS does not start the device, and leaves it running when it is started elsewhere. While a smart task is in progress the task decides, and the line begins *When no smart task is running*.
 - Temperature devices can still be managed for mode and price behavior even when power-limit control is unavailable.
 - Set **When the temperature changes outside PELS** to **Keep the new temperature** when another app or Flow owns a thermostat's target. PELS keeps showing the measured temperature and target, and never writes the target itself. It still manages capacity with the device's other controls: turning it off and on, and, for a device with power levels such as a compatible water heater, lowering it a level at a time. Saved temperature settings are kept and apply again when you switch back to **Return to mode target**.
 - **Built-in device control** lets PELS adjust a supported device, including compatible water heaters and Easee chargers, without a current-control Flow. When an existing Flow already writes the same setting, PELS keeps that working setup and leaves built-in control off. **Setup & recommendations** offers an optional migration: disable only the Flow action that controls the device, then turn on **Use built-in device control**. A Flow that only reads the device, reports battery level, or adjusts an unrelated setting is not a built-in-control conflict. Battery reporting should remain only when no car is selected for that charger; otherwise PELS flags the ignored action separately.
@@ -151,7 +152,9 @@ Notes:
 
 ### Leave off until turned on again
 
-Off by default, and available for devices PELS can switch on and off.
+Off by default, and available for devices PELS can switch on and off. It sits
+under **Power-limit control** and appears while that is on, because with
+Power-limit control off PELS does not turn the device on again anyway.
 
 When it is on and the device is turned off — in Homey, on the device itself, or
 from another Flow — PELS leaves it off until it is turned on again. Turning the
@@ -201,6 +204,21 @@ keeps running. If power is tight, PELS may limit it again right away.
 One limitation worth knowing: PELS can only notice an off action that your
 device's Homey integration reports back. A physical switch that does not tell
 Homey it was pressed is invisible to PELS.
+
+### Only PELS starts this device
+
+Use it for a device that should run only when a [Smart task](/smart-tasks) needs
+it, such as an EV charger that starts charging by itself when the car is plugged
+in. With it on, PELS turns the device off again when it is started in Homey, on
+the device itself, or from another Flow, and the device runs in the hours its
+Smart task picks. Without a Smart task it stays off.
+
+It applies while **Power-limit control** is off. With Power-limit control on,
+PELS already decides when the device runs, so the setting is paused; it applies
+again when Power-limit control is turned off. It is offered on the device page
+while **Power-limit control** is off, once the device has had a Smart task.
+**Change** on a Smart task's **When the task is done** card opens the device page
+at **Power-limit control**.
 
 ## Settings > Modes
 

@@ -3039,22 +3039,33 @@ md-filled-button.is-busy {
   line-height: var(--font-line-height-tight);
 }
 
-/* Smart-task detail edit/clear card. Collapsed: one quiet hint + "Edit task"
- * row. Open: `.field` goal/ready-by inputs, the server-previewed landing
- * lines, and the action row. The native `<input type="time">` gets the same
- * surface treatment as the MD filled field beside it (Material Web has no
- * time type), with the shared 48 px touch-target floor. */
+/* The task action row sits directly beneath the hero: Edit task as the filled
+ * action, the destructive Clear pushed to the far edge so it can't be
+ * fat-fingered from it (it wraps below on 320 px where the row breaks). The
+ * edit form below it holds only Save and Discard. */
+.smart-task-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.smart-task-actions > md-text-button {
+  margin-left: auto;
+}
+
+/* Homey's host stylesheet resets every element's padding, which collapses the
+ * label onto the pill's edges; restore the M3 lead/trail space (same idiom as
+ * `.homes-settings md-filled-button`) and never shrink it beside Clear. */
+.smart-task-actions > md-filled-tonal-button {
+  flex: none;
+  padding-inline: var(--spacing-6);
+}
+
 .smart-task-edit {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3);
-}
-
-.smart-task-edit__offer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-2);
 }
 
 /* Native time input, bound to the SAME container tokens the MD filled text
@@ -3065,6 +3076,10 @@ md-filled-button.is-busy {
  * app's dark scheme so the picker glyph / spinners stay visible on the dark
  * production theme. */
 .smart-task-edit__time-input {
+  /* The MD field defines this on its own element, so a native input next to it
+   * inherits nothing; set the same token here (and the light-canvas override
+   * with the MD fields below). */
+  --md-filled-text-field-container-color: var(--color-surface-4);
   min-height: var(--pels-touch-target-min);
   padding: var(--spacing-2) var(--spacing-3);
   appearance: none;
@@ -3157,23 +3172,12 @@ md-filled-button.is-busy {
   gap: var(--spacing-1);
 }
 
-.smart-task-edit__previewing {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--font-size-sm);
-}
-
+.smart-task-edit__previewing,
 .smart-task-edit__preview-when,
 .smart-task-edit__preview-cost {
   margin: 0;
-  color: var(--text);
-  font-size: var(--font-size-sm);
-}
-
-.smart-task-edit__preview-verdict {
-  margin: 0;
-  color: var(--color-state-warning-text);
-  font-size: var(--font-size-sm);
+  color: var(--pels-text-supporting-color);
+  font-size: var(--pels-text-supporting-font-size);
 }
 
 .smart-task-edit__error {
@@ -3189,28 +3193,107 @@ md-filled-button.is-busy {
   gap: var(--spacing-2);
 }
 
-/* Push the destructive Clear to the far edge so it can't be fat-fingered from
- * Save/Discard; wraps below on 320 px where the row breaks. */
-.smart-task-edit__clear {
-  margin-left: auto;
+/* A preview's verdict line, coloured by `resolveSmartTaskPreviewTone`, the one
+ * mapping the create and edit previews share. */
+:is(.smart-task-edit, .smart-task-create) .pels-text-status-line[data-tone='good'] {
+  color: var(--color-state-positive-text);
 }
 
-/* Two-step confirm label stack: every possible label occupies the same grid
- * cell, so the button is always as wide as its WIDEST label and arming the
- * confirm can never move the tap target out from under the finger. Only the
- * `data-active` label is visible; the rest keep the width reserved. */
-.smart-task-edit__clear-labels {
-  display: inline-grid;
+:is(.smart-task-edit, .smart-task-create) .pels-text-status-line[data-tone='warn'] {
+  color: var(--color-state-warning-text);
 }
 
-.smart-task-edit__clear-labels > span {
-  grid-area: 1 / 1;
-  visibility: hidden;
-  white-space: nowrap;
+:is(.smart-task-edit, .smart-task-create) .pels-text-status-line[data-tone='alert'] {
+  color: var(--color-state-negative-text);
 }
 
-.smart-task-edit__clear-labels > span[data-active='true'] {
-  visibility: visible;
+:is(.smart-task-edit, .smart-task-create) .pels-text-status-line[data-tone='info'] {
+  color: var(--color-state-info-text);
+}
+
+/* "When the task is done": who starts the device after the task, with a link
+ * to its settings. A card on the task page (the surface card's grid), a block
+ * in the create preview. The link keeps its own width at the start edge. */
+.smart-task-after-task > :is(h2, p),
+.smart-task-create__after-task > p,
+.smart-task-create__preview > p {
+  margin: 0;
+}
+
+.smart-task-after-task > md-text-button {
+  justify-self: start;
+}
+
+.smart-task-create__after-task {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+}
+
+/* The rule under Power-limit control is its own sentence, not more hint text:
+ * a little air above it keeps it from reading as lines 6-7 of the hint. */
+#device-detail-start-rule {
+  margin-top: var(--spacing-1);
+}
+
+.deadlines-list-create-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.smart-task-create,
+.smart-task-create__picker,
+.smart-task-create__form,
+.smart-task-create__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.smart-task-create__bar,
+.smart-task-create__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.smart-task-create__actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.smart-task-create__actions > md-filled-button {
+  width: 100%;
+}
+
+.smart-task-create__device {
+  width: 100%;
+  min-height: var(--pels-touch-target-min);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.smart-task-create__device > span {
+  color: var(--pels-text-supporting-color);
+}
+
+/* The device page's Smart task box, last on the page: a title, one line, and
+ * a quiet text action at the start edge. */
+.device-detail-smart-task {
+  gap: var(--spacing-2);
+  height: max-content;
+}
+
+.device-detail-smart-task > h3,
+.device-detail-smart-task > p {
+  margin: 0;
+}
+
+.device-detail-smart-task > md-text-button {
+  justify-self: start;
 }
 
 /* Recourse action row beneath the cannot-finish meta line. The 48 px floor
@@ -9173,7 +9256,8 @@ md-switch {
      `#dddee2` which reads as a heavy gray slab. Use white container with a
      visible hairline border, matching Homey's own input pattern. */
   md-filled-text-field,
-  md-filled-select {
+  md-filled-select,
+  .smart-task-edit__time-input {
     --md-filled-text-field-container-color: var(--color-surface-1);
     --md-filled-select-text-field-container-color: var(--color-surface-1);
     border: 1px solid var(--color-border-medium);

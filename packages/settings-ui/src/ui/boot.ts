@@ -138,6 +138,7 @@ import {
   unmountDeadlinePlan,
 } from './deadlinePlanMount.ts';
 import { initDeadlinePlanRouter } from './deadlinePlanRouter.ts';
+import { initSmartTaskCreateController } from './smartTaskCreate.ts';
 import { liveStatusOrNull } from './powerStatusRead.ts';
 
 // `showTab` only STARTS the target panel's async scope work (a Main-only deep
@@ -503,6 +504,7 @@ const initializeBootHandlers = () => {
     openPanel: showTab,
     openDevice: openDeviceDetailAt,
   });
+  initSmartTaskCreateController(showTab);
   showTab('overview');
   initTabHandlers();
   // Register deep-link interception before awaited startup reads begin. The

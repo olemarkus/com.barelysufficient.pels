@@ -1,3 +1,4 @@
+import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { DEVICE_POWER_SUPPORT_HINT, POWER_READING_REMEDY } from './deviceControlAvailability.ts';
 import { deviceCardList, emptyState, refreshButton } from './dom.ts';
@@ -338,7 +339,7 @@ const createRedesignDetailButton = (device: SettingsUiDeviceListItem): HTMLEleme
   button.appendChild(icon);
 
   button.addEventListener('click', () => {
-    document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId: device.id } }));
+    dispatchOpenDeviceDetail(device.id, 'top');
   });
   return button;
 };

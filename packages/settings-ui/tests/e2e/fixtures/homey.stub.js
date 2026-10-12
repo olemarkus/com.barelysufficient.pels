@@ -716,6 +716,9 @@
         deviceClass: 'waterheater',
         deviceType: 'onoff',
         controlModel: 'stepped_load',
+        // The real water heater has an on/off control PELS can switch, so its
+        // Smart task page states who starts it once the task is done.
+        binaryControllable: true,
         currentOn: true,
         currentTemperature: 51.1,
         // The observed-temperature facet `/ui_devices` serves in production: the

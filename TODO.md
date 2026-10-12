@@ -564,20 +564,23 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       before the confirm and surface an honest "this will not free power for this device" state, or
       fall through to `rescueDoneQueued` framing. Source: adversarial review, 2026-08-04. [P3]
 
-- [ ] **Create Smart tasks directly from the Smart tasks page.**
-      *Persona:* Set-and-forget owner / Optimiser who is already on the Smart tasks page.
-      *Hypothesis:* the aggregate Smart tasks page can inspect, edit, and cancel tasks but its
-      first-run state sends the user to a Flow or dashboard widget to create one. A `New smart
-      task` action using the existing candidate picker, goal bounds, preview, and device-scoped
-      write path makes the surface complete without introducing another persistence lane.
-      *Why it's needed:* creation is an ordinary Smart-task operation and should not require
-      leaving the canonical task surface. Keep the dashboard widget as a convenient second route;
-      both surfaces must share contracts and producer-resolved validation.
-      Design: `notes/smart-task-ui/README.md`.
-      Files: `setup/settingsUiSmartTaskApi.ts`, `packages/contracts/src/smartTaskEdit.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`, creation controller/view code shared
-      with or adapted from `widgets/create_smart_task/`. [P3]
+- [ ] **Move the settings-UI edit lane and the create_smart_task widget onto lib-owned request lanes.**
+      *Persona:* contributor changing how a smart task is previewed or saved.
+      *Hypothesis:* the settings UI's create lane is decided in
+      `lib/objectives/deferredObjectives/smartTaskCreateLane.ts` and `setup/` only binds its
+      ports, but the edit lane (`previewSettingsUiSmartTask`, `updateSettingsUiSmartTask`,
+      `gateEditableTask` in `setup/settingsUiSmartTaskApi.ts`) and the widget
+      (`previewCreateSmartTask`, `createCreateSmartTask` in `widgets/create_smart_task/src/api.ts`)
+      still run the parse, gate, scope, deadline and candidate sequence themselves, with SDK clock
+      and settings reads in `setup/`. Three copies of one sequence drift. The candidate
+      validation both creates share (`resolveValidatedObjectiveEntry` behind
+      `createDeferredObjective` and `createNewDeferredObjective` in `setup/appSmartTaskApi.ts`)
+      also lives in `setup/`.
+      *Closing change:* lib lane functions for edit and widget create next to the create lane,
+      taking the same ports; `setup/` and the widget's `api.ts` only bind ports and forward.
+      Done when neither file reads `homey.clock`/`homey.settings` or classifies a request, and
+      `appSmartTaskApi.ts` only forwards to an objectives-owned create.
+      Source: layering review of the smart task creation PR, 2026-10-13. [P2]
 
 - [ ] **Support a kWh target on the EV deadline flow card.**
       *Persona:* EV commuter whose charger doesn't report SoC.

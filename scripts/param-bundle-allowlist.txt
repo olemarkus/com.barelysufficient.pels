@@ -103,7 +103,6 @@ lib/objectives/deferredObjectives/frozenDiagnostic.ts 3
 lib/objectives/deferredObjectives/frozenHorizonPlan.ts 1
 lib/objectives/deferredObjectives/horizonPlanner.ts 9
 lib/objectives/deferredObjectives/hoursRemainingCrossings.ts 3
-lib/objectives/deferredObjectives/objectiveWrite.ts 1
 lib/objectives/deferredObjectives/planPreview.ts 1
 lib/objectives/deferredObjectives/policyHorizon.ts 2
 lib/objectives/deferredObjectives/priorityAllocation.ts 7
@@ -189,7 +188,6 @@ packages/settings-ui/src/ui/deviceControlAvailability.ts 2
 packages/settings-ui/src/ui/deviceDetail/activityLog.ts 1
 packages/settings-ui/src/ui/deviceDetail/controlState.ts 1
 packages/settings-ui/src/ui/deviceDetail/evBoost.ts 1
-packages/settings-ui/src/ui/deviceDetail/liveStatus.ts 1
 packages/settings-ui/src/ui/deviceDetail/modes.ts 1
 packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts 1
 packages/settings-ui/src/ui/deviceDetail/priceOpt.ts 1

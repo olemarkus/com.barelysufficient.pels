@@ -23,6 +23,7 @@ import type {
 import {
   createEmptyDeferredObjectiveSettings,
   isSmartTaskInProgress,
+  isSmartTaskOpen,
 } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
@@ -88,6 +89,13 @@ export type UiState = {
   controllableMap: Record<string, boolean>;
   managedMap: Record<string, boolean>;
   /**
+   * Whether the per-device setting maps above and below (`controllableMap`,
+   * `respectExternalOffMap`, `deviceStartPolicyMap`, …) hold a read. They start
+   * empty, which reads exactly like a home where no device has Power-limit
+   * control, so a consumer that states what those settings do asks this first.
+   */
+  deviceSettingMapsLoaded: boolean;
+  /**
    * A home battery's Managed toggle (`battery_control_devices`): absent = on,
    * `false` = off. `unreadable` when the stored value does not parse: the
    * runtime then treats every battery as unmanaged, and so does the UI.
@@ -114,6 +122,9 @@ export type UiState = {
   deferredObjectiveSettings: DeferredObjectiveSettingsV1;
   deferredObjectiveActivePlans: OverviewDeferredObjectiveActivePlans | null;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
+  // Whether `priceOptimizationSettings` holds a read: it starts empty, which
+  // reads like no device opted into price or solar surplus.
+  priceOptimizationSettingsLoaded: boolean;
   // Home-level: true when an auto-tracked solar/PV device is present (from the
   // `/ui_devices` payload). The per-device "Use solar surplus" control is hidden
   // unless this OR `hasExhibitedExport` is true — the feature is meaningless in a
@@ -191,6 +202,7 @@ export const state: UiState = {
   modeTargets: {},
   controllableMap: {},
   managedMap: {},
+  deviceSettingMapsLoaded: false,
   batteryControl: { status: 'resolved', devices: {} },
   budgetExemptMap: {},
   respectExternalOffMap: {},
@@ -210,6 +222,7 @@ export const state: UiState = {
   deferredObjectiveSettings: createEmptyDeferredObjectiveSettings(),
   deferredObjectiveActivePlans: null,
   priceOptimizationSettings: {},
+  priceOptimizationSettingsLoaded: false,
   hasManagedSolarDevice: false,
   hasExhibitedExport: false,
   surplusPoolReachable: false,
@@ -247,6 +260,13 @@ export const resolveBatteryPowerLimitOn = (deviceId: string): boolean => (
 export const hasActiveDeadlineObjective = (deviceId: string, nowMs: number = Date.now()): boolean => {
   const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
   return entry !== undefined && isSmartTaskInProgress(entry, nowMs);
+};
+
+// Open, not just in progress: a paused task whose ready-by is still ahead
+// counts, because a device carries one task at a time (`isSmartTaskOpen`).
+export const hasOpenSmartTask = (deviceId: string, nowMs: number = Date.now()): boolean => {
+  const entry = state.deferredObjectiveSettings.objectivesByDeviceId[deviceId];
+  return entry !== undefined && isSmartTaskOpen(entry, nowMs);
 };
 
 // "This home has solar surfaces at all" — a role-detected solar/PV device OR a

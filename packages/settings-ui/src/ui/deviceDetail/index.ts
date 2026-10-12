@@ -1,8 +1,8 @@
 import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './liveStatus.ts';
+import { hideDeviceSmartTaskBox, renderDeviceSmartTaskBox } from './smartTaskBox.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import {
   deviceDetailOverlay,
-  deviceDetailTitle,
   deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
@@ -110,13 +110,13 @@ import {
   autoExpandSetupWhenBare,
 } from './sectionLayout.ts';
 import { resolveDeviceDetailControlMode, resolveDeviceDetailKind } from '../deviceKind.ts';
-import { createPendingDeviceDetailOpen } from './focus.ts';
+import { createPendingDeviceDetailOpen, type DeviceDetailFocus } from './focus.ts';
 import {
   initDeviceDetailBudgetExemptHandler,
   setDeviceDetailBudgetExemptState,
 } from './budgetExempt.ts';
 import { initRespectExternalOffHandler } from './respectExternalOff.ts';
-import { initStartPolicyHandler, revealStartPolicyRow, syncDevicePolicyRows } from './startPolicy.ts';
+import { initStartPolicyHandler, revealDeviceDetailFocus, syncDevicePolicyRows } from './startPolicy.ts';
 import {
   initTemperatureControlDisabledHandler,
   syncTemperatureControlDisabledRow,
@@ -128,7 +128,7 @@ import {
   initDeviceDetailOverlaySubscriptions,
   noteDeviceDetailOpened,
 } from './overlayHandlers.ts';
-import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
+import { setDeviceDetailTitle } from './title.ts';
 import { DEVICE_POWER_SUPPORT_HINT } from '../deviceControlAvailability.ts';
 import { syncPriceOptRow } from './priceSourceHint.ts';
 
@@ -138,15 +138,6 @@ const pendingDeviceDetailOpen = createPendingDeviceDetailOpen();
 const getCurrentDetailDeviceId = () => currentDetailDeviceId;
 
 const getDeviceById = (deviceId: string) => state.latestDevices.find((device) => device.id === deviceId) || null;
-
-const setDeviceDetailTitle = (name: string) => {
-  if (!deviceDetailTitle) return;
-  const displayName = formatDisplayDeviceName(name);
-  deviceDetailTitle.textContent = displayName;
-  // The app-bar title is single-line + ellipsis; carry the full name in `title`
-  // so a long device name that clips stays recoverable on hover / long-press.
-  deviceDetailTitle.setAttribute('title', displayName);
-};
 
 const refreshSharedDeviceViews = () => {
   renderDevices(state.latestDevices);
@@ -335,6 +326,7 @@ const refreshOpenDeviceDetail = () => {
   setDeviceDetailTitle(device.name);
   applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(currentDetailDeviceId);
+  renderDeviceSmartTaskBox(currentDetailDeviceId);
   setDeviceDetailControlStates(currentDetailDeviceId);
   setDeviceDetailShedBehavior({
     deviceId: currentDetailDeviceId,
@@ -380,6 +372,7 @@ export const openDeviceDetail = (deviceId: string) => {
   setDeviceDetailTitle(device.name);
   applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(deviceId);
+  renderDeviceSmartTaskBox(deviceId);
   setDeviceDetailControlStates(deviceId);
   setDeviceDetailShedBehavior({
     deviceId,
@@ -426,10 +419,14 @@ export const closeDeviceDetail = () => {
   }
   resetNativeWiringSetupDisclosure();
   hideDeviceDetailLiveStatus();
+  hideDeviceSmartTaskBox();
   currentDetailDeviceId = null;
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = true;
   }
+  // A page under the overlay that states what this device's settings do (the
+  // New smart task flow's after-task line) repaints once they may have changed.
+  document.dispatchEvent(new CustomEvent('device-detail-closed'));
 };
 
 const initDeviceDetailControlModelHandler = () => {
@@ -475,20 +472,17 @@ export {
   loadTemperatureBoostSettings,
 };
 
-/** Where a deep link lands inside the device page. */
-type DeviceDetailFocus = 'top' | 'start-policy';
-
 /** Open a device's page and land on the setting a deep link names. */
 export const openDeviceDetailAt = (deviceId: string, focus: DeviceDetailFocus): void => {
   openDeviceDetail(deviceId);
-  if (focus === 'start-policy' && currentDetailDeviceId === deviceId) revealStartPolicyRow();
+  if (currentDetailDeviceId === deviceId) revealDeviceDetailFocus(focus);
 };
 
 export const initDeviceDetailHandlers = () => {
   const overlayContext = {
     getCurrentDetailDeviceId,
     getDeviceById,
-    openDeviceDetail,
+    openDeviceDetailAt,
     closeDeviceDetail,
     refreshOpenDeviceDetail,
     pendingDeviceDetailOpen,

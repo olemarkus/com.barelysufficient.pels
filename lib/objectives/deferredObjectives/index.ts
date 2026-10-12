@@ -40,6 +40,7 @@ export {
   applyDeferredObjectiveChange,
 } from './objectiveChange';
 export {
+  createObjectiveForDevice,
   upsertObjectiveForDevice,
   clearObjectiveForDevice,
   type DeferredObjectiveDeviceWriteDeps,
@@ -56,6 +57,7 @@ export {
   readSmartTaskInProgress,
   writeObjectiveForDevice,
 } from './objectiveStore';
+export { buildSmartTaskCandidateDevices } from './smartTaskCandidateDevices';
 export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { formatDeadlineLocalTime, resolveDeferredObjectiveDeadline } from './deadline';
 export {

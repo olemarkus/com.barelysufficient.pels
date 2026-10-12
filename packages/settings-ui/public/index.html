@@ -418,6 +418,7 @@
            Settings rhythm). -->
       <div id="deadlines-list-root"></div>
       <div id="deadlines-history-root"></div>
+      <div id="smart-task-create-root" hidden></div>
     </section>
 
     <section class="panel hidden deadline-plan-panel" id="deadline-plan-panel" data-panel="deadline-plan" aria-labelledby="deadline-plan-title">
@@ -823,16 +824,13 @@
       <div class="slide-panel__content">
         <!-- Device hero: the same producer-resolved card grammar the Overview
              card renders (state word, power fact, modality fact, reason
-             ladder, smart-task chip), on the shared `.pels-hero` primitive so
+             ladder), on the shared `.pels-hero` primitive so
              the page opens on the app's canonical carded surface — every
              other surface leads with this block, and the state word carries
              the display type role instead of being outranked by the section
              titles below it. Populated by deviceDetail/liveStatus.ts; hidden
              until the plan snapshot carries this device. -->
         <div id="device-detail-live-status" class="plan-hero pels-hero device-detail-live-status" hidden>
-          <div id="device-detail-live-chip-row" class="plan-hero__chips" hidden>
-            <a id="device-detail-live-smart-task" class="plan-chip plan-chip--info plan-chip--link" data-tooltip="Open smart task" hidden>Smart task</a>
-          </div>
           <!-- Headline and sublines share one `.plan-hero__section` like every
                other hero (the chips rail stays outside, as on the Overview):
                the hero grid's outer gap separates SECTIONS, and the section's
@@ -1292,6 +1290,11 @@
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Power-limit control</span>
                     <small class="field__hint" id="device-detail-controllable-hint">Allow PELS to limit this device: to stay under your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus.</small>
+                    <!-- Who starts the device with these settings (deviceStartRule.ts),
+                         the half of Power-limit control owners do not expect: PELS
+                         also turns the device on. A Smart task states the same rule
+                         for after the task. -->
+                    <small class="field__hint" id="device-detail-start-rule" hidden></small>
                     <small class="field__hint" id="device-detail-controllable-battery-hint" hidden>PELS may cap its charge, call on it to hold your limit and share your solar between it and your devices, each at its turn in your priority order.</small>
                   </span>
                 </div>
@@ -1302,7 +1305,9 @@
                      control is off, where it is the only lever PELS has; with
                      power limiting on PELS already decides when the device runs,
                      so the row is hidden unless the device is opted in, where it
-                     says the setting is paused (startPolicy.ts). -->
+                     says the setting is paused. It is shown only for a device
+                     with a Smart task: it means "runs only for a Smart task"
+                     (startPolicy.ts). -->
                 <div class="md-switch-row" id="device-detail-start-policy-row" hidden>
                   <md-switch id="device-detail-start-policy"></md-switch>
                   <span class="md-switch-row__content">
@@ -1420,6 +1425,11 @@
             </div>
           </details>
         </section>
+
+        <!-- The device's Smart task, or Add smart task (deviceDetail/smartTaskBox.ts).
+             Last on the page: most homes never use Smart tasks, and the page
+             is about power limiting. -->
+        <section id="device-detail-smart-task" class="pels-surface-card device-detail-smart-task" hidden></section>
 
         <section class="detail-section" id="device-detail-diagnostics-section">
           <details id="device-detail-diagnostics-disclosure" class="settings-collapse detail-collapse">

@@ -11,6 +11,8 @@ export const buildDeadlineHref = (deviceId: string): string => (
   `./?page=${DEADLINE_PLAN_PAGE_PARAM}&deviceId=${encodeURIComponent(deviceId)}`
 );
 
+export const buildDeadlineEditHref = (deviceId: string): string => `${buildDeadlineHref(deviceId)}&edit=1`;
+
 // Detail route for a finalized smart-task plan in history. Keyed by an opaque
 // stable id assigned at finalization (uuid) so a future "two identical plans
 // for the same device" scenario can never collide on a derived timestamp key.
@@ -21,6 +23,18 @@ export const buildDeadlineHistoryHref = (deviceId: string, historyId: string): s
     historyId,
   });
   return `./?${params.toString()}`;
+};
+
+/**
+ * Open a Smart task route from code the way a link would: the deadline router
+ * intercepts anchor clicks at document capture and mounts the page in place.
+ */
+export const followDeadlineHref = (href: string): void => {
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
 };
 
 export const isDeadlinePlanRoute = (search: string): boolean => (

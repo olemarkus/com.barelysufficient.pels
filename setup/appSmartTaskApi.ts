@@ -15,6 +15,7 @@ import {
   migrateBlobToPerKeyIfNeeded,
   readDeferredObjectiveRoster,
   previewDeferredObjectivePlan,
+  createObjectiveForDevice,
   upsertObjectiveForDevice,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveSettingsEntry,
@@ -28,6 +29,7 @@ import {
   toPlanDevice,
 } from './appInit';
 import type { CancelDeferredObjectiveOutcome } from '../lib/app/pelsHost';
+import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
 import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
 import { requirePlanService } from './appInit/contextGuards';
 import { requireDeferredObjectiveEnergyDelivery } from './appInit/deferredRecorders';
@@ -370,6 +372,29 @@ export class AppSmartTaskApi {
     // transient refusals collapse to the retryable `write_refused` lane).
     if (!outcome.persisted) return { ok: false, reason: mapObjectiveWriteRefusalReason(outcome.reason) };
     return { ok: true };
+  }
+
+  // The settings UI's create: a fresh task, never one written over an open task
+  // (`createObjectiveForDevice` refuses against its own read of the previous
+  // entry), with exactly the permissions the request names (`'replace'`), since
+  // the create form shows every one of them and its preview priced exactly those.
+  public createNewDeferredObjective(
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): NewSmartTaskWriteResult {
+    const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
+    if (!validated.ok) return validated;
+    const { device, entry } = validated;
+    if (!this.ctx.deferredObjectivePlanHistoryRecorder || !this.ctx.deferredObjectiveActivePlanRecorder) {
+      return { ok: false, reason: 'invalid_candidate' };
+    }
+    const outcome = createObjectiveForDevice(
+      buildDeferredObjectiveDeviceWriteDeps(this.ctx, this.ctx.getNow().getTime()),
+      { deviceId, deviceName: device.name ?? null, entry, rescue: 'replace' },
+    );
+    if (outcome.persisted) return { ok: true };
+    if (outcome.reason === 'open_task_exists') return { ok: false, reason: 'task_exists' };
+    return { ok: false, reason: mapObjectiveWriteRefusalReason(outcome.reason) };
   }
 
   public cancelDeferredObjective(deviceId: string): CancelDeferredObjectiveOutcome {

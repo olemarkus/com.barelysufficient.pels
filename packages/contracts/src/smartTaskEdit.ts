@@ -7,7 +7,42 @@
 // nothing from `lib/`.
 
 import type { DeferredObjectivePlanPreviewEstimate } from './deferredObjectivePlanPreview.js';
-import type { DeferredObjectiveSettingsKind } from './deferredObjectiveSettings.js';
+import type { WidgetObjectiveWriteResult } from './widgetHostApi.js';
+import type {
+  DeferredObjectiveSettingsKind,
+  DeferredObjectiveUnit,
+} from './deferredObjectiveSettings.js';
+
+// One device the user can set a smart task on, as both creation surfaces list
+// it (the New smart task widget and the settings UI's Smart tasks page). Kind
+// sets the goal unit (°C for temperature, % for EV charge level, kWh for an
+// amount of energy); the bounds drive the goal input. `currentValue` seeds the
+// goal and the "now → target" hint, null when the device hasn't reported a
+// reading yet. Built by `buildSmartTaskCandidateDevices`
+// (`lib/objectives/deferredObjectives/smartTaskCandidateDevices.ts`).
+export type SmartTaskCandidateDevice = {
+  deviceId: string;
+  deviceName: string;
+  kind: DeferredObjectiveSettingsKind;
+  unitSymbol: DeferredObjectiveUnit;
+  goalMin: number;
+  goalMax: number;
+  goalStep: number;
+  defaultGoal: number;
+  currentValue: number | null;
+  // Whether the "May limit lower-priority devices" toggle can affect this
+  // device — true for stepped loads, whose higher step can displace strictly
+  // lower-priority demand. Gated on effect so the compose screen never offers
+  // a permission that would be a no-op for a binary device. The budget-exempt
+  // toggle has no such gate (any device can exceed the soft daily budget).
+  supportsLimitLowerPriority: boolean;
+};
+
+// The settings UI's candidate list. `unavailable` is a failed read of the app's
+// device snapshot, distinct from a ready list with no eligible devices.
+export type SettingsUiSmartTaskDevicesResponse =
+  | { state: 'ready'; devices: SmartTaskCandidateDevice[] }
+  | { state: 'unavailable' };
 
 // The candidate the user is composing. `readyByLocalTime` is a 24-hour local
 // "HH:mm" string; the server converts it to an absolute `deadlineAtMs` against
@@ -96,7 +131,17 @@ export type SettingsUiSmartTaskRejectReason =
   // The device has no active smart task to edit/clear (it completed, expired,
   // or was cleared elsewhere while the editor was open). The editor closes and
   // the surface refreshes rather than offering a retry.
-  | 'task_not_found';
+  | 'task_not_found'
+  // The create lane's mirror: the device already has an open task (paused
+  // tasks count), and a create never replaces one. The page opens that task.
+  | 'task_exists';
+
+/**
+ * The app's answer to the settings UI's create of a fresh task
+ * (`createNewDeferredObjective`): the widget's create outcome, plus
+ * `task_exists` when the device has an open task.
+ */
+export type NewSmartTaskWriteResult = WidgetObjectiveWriteResult | { ok: false; reason: 'task_exists' };
 
 // Preview response: the priority-coordinated plan estimate plus the resolved
 // deadline and pre-formatted local labels so the browser doesn't re-derive them.

@@ -191,6 +191,9 @@ test.describe('Deadline plan', () => {
     // surfaces the changed-hour revision reason the default state withheld.
     const chart = panel.locator('.deadline-schedule-chart');
     await expect(chart.locator('svg')).toBeVisible();
+    // The mouse presses at page coordinates, so the chart must be on screen;
+    // the cards above it can push it below the fold.
+    await chart.scrollIntoViewIfNeeded();
     const box = await chart.boundingBox();
     if (!box) throw new Error('schedule chart has no bounding box');
     await page.mouse.move(box.x + box.width * 0.08, box.y + box.height * 0.55);
@@ -234,6 +237,7 @@ test.describe('Deadline plan', () => {
 
       const chart = panel.locator('.deadline-schedule-chart');
       await expect(chart.locator('svg')).toBeVisible();
+      await chart.scrollIntoViewIfNeeded();
       const box = await chart.boundingBox();
       if (!box) throw new Error('schedule chart has no bounding box');
       // Press in the middle of the plot area and drag right — the readout

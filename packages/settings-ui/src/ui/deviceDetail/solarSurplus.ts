@@ -173,7 +173,7 @@ const hasActiveSmartTask = (deviceId: string): boolean => hasActiveDeadlineObjec
 // power-limit-controllable binary device, not temperature/stepped/EV. Mirrors the
 // runtime `resolveSurplusOnlyPosture` (which likewise never checks solar presence —
 // solar is a UI-offer concern, not a runtime one).
-const isDumpLoadDeviceShape = (
+export const isDumpLoadDeviceShape = (
   device: SettingsUiDeviceDetailItem | null,
   controlState: ReturnType<typeof resolveDeviceDetailControlState>,
 ): boolean => {

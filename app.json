@@ -301,6 +301,18 @@
       "method": "POST",
       "path": "/ui_smart_task_preview"
     },
+    "ui_smart_task_devices": {
+      "method": "GET",
+      "path": "/ui_smart_task_devices"
+    },
+    "ui_smart_task_create": {
+      "method": "POST",
+      "path": "/ui_smart_task_create"
+    },
+    "ui_smart_task_create_preview": {
+      "method": "POST",
+      "path": "/ui_smart_task_create_preview"
+    },
     "ui_smart_task_update": {
       "method": "POST",
       "path": "/ui_smart_task_update"

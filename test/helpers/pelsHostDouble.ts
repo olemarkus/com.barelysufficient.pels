@@ -56,6 +56,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     getDeviceLogUiPayload: () => ({ version: 1, entriesByDeviceId: {} }),
     getWeatherAdvisorReadout: async () => ({ kind: 'inactive' }),
     createDeferredObjective: notWired('createDeferredObjective'),
+    createNewDeferredObjective: notWired('createNewDeferredObjective'),
     cancelDeferredObjective: notWired('cancelDeferredObjective'),
     getApiStructuredLogger: () => undefined,
     getCreateSmartTaskCandidateDevices: () => ({ state: 'unavailable' }),

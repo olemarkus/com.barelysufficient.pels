@@ -715,6 +715,35 @@ Sources: `lib/plan/planTemperatureCardText.ts` (the two card reasons), `PLAN_STA
 | Per-device start policy (toggle) | `Only PELS starts this device` |
 | Card, while the policy is holding the device off | `Off`, and no reason line |
 
+The start policy is offered only for a device that has used Smart tasks (one
+stored, or one in task history, the evidence the "Keep {device} within Smart
+tasks" suggestion also reads), a device whose first task is being created, or one
+already opted in: it means "runs only for a Smart task", and most homes never use
+Smart tasks (owner ruling 2026-10-10).
+
+**The start rule.** One sentence states who starts a managed device PELS can
+switch, from its settings (`packages/settings-ui/src/ui/deviceStartRule.ts`). The
+device page shows it under Power-limit control with the subject `it`; a Smart
+task shows it in its `When the task is done` card with the device's name. The
+half of Power-limit control owners do not expect is that PELS also turns the
+device on, and the sentence exists to say so. Every sentence opens with `PELS`.
+
+| Settings | Sentence |
+|---|---|
+| Power-limit control on | `PELS turns it on whenever power allows, even after it was turned off elsewhere.` |
+| ... with `Leave off until turned on again` | `PELS turns it on whenever power allows, unless it was turned off elsewhere.` |
+| ... with a solar-surplus setting the runtime applies (the surplus pool is reachable, the device is in the Main home) | `PELS runs it on your solar surplus.` |
+| Power-limit control off, `Only PELS starts this device` | `PELS keeps it off until a smart task needs it. If it is started elsewhere, PELS turns it off again.` (Smart task card only; on the device page the policy's own row says it) |
+| Power-limit control off | `PELS does not start it. If it is started elsewhere, PELS leaves it running.` |
+
+The `When the task is done` card says more for the last row, because a task's end
+applies the device's Power limiting action and keeps it until the ready-by time:
+`Until the ready-by time, PELS does what Power limiting is set to for {device},
+such as turning it off. After that, PELS does not start it, and leaves it running
+if it is started elsewhere.` While a task is in progress the device page prefixes
+its sentence with `When no smart task is running, `, because the task decides then.
+Nothing is stated until the settings the rule reads have loaded.
+
 The toggle's hint says what happens: *"If this device is started in Homey, on the
 device, or by another Flow, PELS turns it off again. It runs when a Smart task
 needs it to, and not otherwise."* A second hint appears when the device has no
@@ -769,10 +798,11 @@ PELS, and it does not claim a human necessarily performed the action. Keep that
 name out of user-facing text. Source: `PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS` in
 `planStateLabels.ts`.
 
-The switch is offered for any device PELS can switch on and off. Like the
-dump-load and surplus rows, it is disabled while **Managed by PELS** or
-**Power-limit control** is off, because PELS does not resume the device then and
-the setting has no effect. The gate is not about detection, which is
+The switch is offered for a device PELS can switch on and off while
+**Power-limit control** is on: it is that switch's sub-option, and with power
+limiting off PELS does not resume the device, so there is nothing to decide
+(owner ruling 2026-10-10). An opted-in device keeps the row whatever the state,
+so the opt-out stays reachable. It is disabled while **Managed by PELS** is off. The gate is not about detection, which is
 plan-independent (`setup/externalOffHoldDetection.ts`), and it does not make
 the hold safe to pair with Flows: a Flow that turns the device off arms the hold,
 and a later Flow that only turns Power-limit control on does not start the
@@ -781,7 +811,7 @@ device again. Do not write copy that recommends the hold for Flow-booked hours;
 
 | When | Hint |
 |---|---|
-| Power-limit control is off (disables the switch) | `Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.` |
+| Power-limit control is off, device opted in | `Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.` |
 | The device has a temperature target (information only) | `This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.` |
 | The device has an active smart task (information only) | `This device has an active smart task. In its booked hours, PELS can turn the device on when there is available power, even after it was turned off elsewhere.` |
 
@@ -982,13 +1012,36 @@ connected and undriveable, which nothing could ever observe.
 The smart-task list distinguishes two zero-active-card states by whether the
 Past tasks archive below has any finished runs. Headlines come from
 `DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE` in
-`packages/shared-domain/src/deadlinesListHero.ts`; the first-run body intro is
-`SMART_TASK_LIST_EMPTY_COPY.intro` in `deadlineLabels.ts`.
+`packages/shared-domain/src/deadlinesListHero.ts`; the first-run body is
+`SMART_TASK_LIST_CREATE_HINT` in `deadlineLabels.ts`.
 
 | State | Headline | When |
 |---|---|---|
-| First run (no history) | `Add your first smart task` | No active cards and the Past tasks archive is empty — the headline pairs with the `No smart tasks yet` body intro, which names both creation routes: the Flow-card actions and the separate "New smart task" widget. |
+| First run (no history) | `Add your first smart task` | No active cards and the Past tasks archive is empty. The body, `No smart tasks yet. Set a goal and ready-by time for a managed device. PELS will choose when it runs.`, sits beside the page's `New smart task` action. |
 | Between runs (history exists) | `No smart tasks scheduled` | No active cards but the archive has finished runs — the calmer present-tense headline; the body (`DEADLINES_LIST_BETWEEN_RUNS_BODY`) points down to Past tasks. Never `first` / `yet` here — that framing would erase a returning user's history. |
+
+#### Creating, editing, and clearing a task
+
+Source: `SMART_TASK_CREATE_PAGE_COPY`, `SMART_TASK_EDIT_COPY` and
+`SMART_TASK_AFTER_TASK_COPY` in `deadlineLabels.ts`; the create flow shares the
+widget's field, preview, and error strings (`CREATE_SMART_TASK_WIDGET_COPY`).
+
+| Concept | Label |
+|---|---|
+| Smart tasks page action | `New smart task` |
+| Device page box (last on the page; hidden while checking and when the check fails), no task | `Smart task` / `Set a goal and when this device should reach it.` / `Add smart task` (text button) |
+| Device page box, open task | `Smart task` / `Target 65 °C · Ready by …` / `View task` (text button) |
+| Picker prompt | `Choose the managed device the task is for.` |
+| Picker, no eligible device | `No device can take a smart task yet. Turn on Managed by PELS for a thermostat, water heater, EV charger, or an on/off device with a power reading.` |
+| Picker row, device with an open task | `Open its smart task` |
+| Compose action / back from preview / back to picker | `Preview task` / `Edit goal` / `Choose another device` |
+| Task page actions | `Edit task` (tonal) and `Clear task` (destructive text button) |
+| Clear confirmation | `Clear smart task?` / `PELS will stop scheduling the task for {device}. The run so far moves to Past tasks.` / `Keep task` / `Clear task` |
+| Create preview landing line | `Scheduled 02:00–04:00 · Ready by Tomorrow 07:00` (no `If you save:`: there is no current plan beside it) |
+| After-task card (task page, below `What PELS uses`) and block (create preview) | `When the task is done` / the start rule with the device's name / `Change` |
+
+A device carries one task at a time: creating never replaces an open task, and
+choosing a device that has one opens that task instead.
 
 ### Past-task "Why:" sentences
 

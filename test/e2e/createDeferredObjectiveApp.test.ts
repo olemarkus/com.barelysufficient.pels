@@ -135,6 +135,29 @@ describe('createDeferredObjective (app)', () => {
     await app.onUninit?.();
   });
 
+  it('settings-UI create: refuses a device with an open task and leaves that task as it was', async () => {
+    const app = await initApp();
+    expect(app.createDeferredObjective('heater-1', tempCandidate(55))).toEqual({ ok: true });
+    expect(app.createNewDeferredObjective('heater-1', tempCandidate(60))).toEqual({ ok: false, reason: 'task_exists' });
+    expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({ targetTemperatureC: 55 });
+    await app.onUninit?.();
+  });
+
+  it('settings-UI create: saves exactly the permissions it names, dropping a finished run\'s', async () => {
+    const app = await initApp();
+    mockHomeyInstance.settings.set('deferred_objective.heater-1', {
+      ...tempCandidate(50),
+      enabled: false,
+      deadlineAtMs: Date.now() - 60 * 60 * 1000,
+      rescue: { exemptFromBudget: 'always' },
+    });
+    expect(app.createNewDeferredObjective('heater-1', tempCandidate(60))).toEqual({ ok: true });
+    const stored = readStored().objectivesByDeviceId['heater-1'];
+    expect(stored).toMatchObject({ enabled: true, targetTemperatureC: 60 });
+    expect(stored?.rescue).toBeUndefined();
+    await app.onUninit?.();
+  });
+
   it('rejects a target above the device setpoint max (device-specific bounds)', async () => {
     const app = await initApp();
     // 90 °C is inside the generic -50..100 normalizer envelope but ABOVE the

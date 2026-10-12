@@ -18,6 +18,7 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import type { WeatherAdvisorReadout } from '../../packages/contracts/src/weatherAdvisorTypes';
 import type { PelsWidgetHostApi, WidgetObjectiveWriteResult } from '../../packages/contracts/src/widgetHostApi';
+import type { NewSmartTaskWriteResult } from '../../packages/contracts/src/smartTaskEdit';
 
 /** The settings UI's clear of a device's smart task, as the app answers it. */
 export type CancelDeferredObjectiveOutcome = { ok: true } | {
@@ -77,6 +78,10 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
     candidate: DeferredObjectivePlanPreviewCandidate,
     rescuePolicy: 'preserve' | 'replace',
   ): WidgetObjectiveWriteResult;
+  createNewDeferredObjective(
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): NewSmartTaskWriteResult;
   cancelDeferredObjective(deviceId: string): CancelDeferredObjectiveOutcome;
   getApiStructuredLogger(): PinoLogger | undefined;
 };

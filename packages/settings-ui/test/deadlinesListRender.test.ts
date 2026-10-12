@@ -58,7 +58,7 @@ describe('DeadlinesList', () => {
       status: 'ready',
       cards: [buildCard()],
       meterAreasInUse: true,
-    });
+    }, { onNewTask: () => {} });
     const notice = mount.querySelector('#deadlines-home-scope-notice');
     expect(notice?.textContent).toBe(HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE);
   });
@@ -72,7 +72,7 @@ describe('DeadlinesList', () => {
       cards: [],
       historyPresent: true,
       meterAreasInUse: true,
-    });
+    }, { onNewTask: () => {} });
     expect(mount.querySelector('#deadlines-home-scope-notice')).not.toBeNull();
   });
 
@@ -81,14 +81,14 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard()],
-    });
+    }, { onNewTask: () => {} });
     expect(mount.querySelector('#deadlines-home-scope-notice')).toBeNull();
 
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard()],
       meterAreasInUse: false,
-    });
+    }, { onNewTask: () => {} });
     expect(mount.querySelector('#deadlines-home-scope-notice')).toBeNull();
   });
 
@@ -97,7 +97,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ confidence: 'medium', statusId: 'at_risk', learning: true })],
-    });
+    }, { onNewTask: () => {} });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).toContain('Refining');
     expect(chips).not.toContain('Confidence medium');
@@ -108,7 +108,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'queued' })],
-    });
+    }, { onNewTask: () => {} });
     const chipGroup = mount.querySelector<HTMLElement>('.deadline-list-card .deadline-list-card__chips');
     expect(chipGroup).not.toBeNull();
     const typeChip = chipGroup?.querySelector<HTMLElement>('.plan-chip--outline');
@@ -126,7 +126,7 @@ describe('DeadlinesList', () => {
 
   it('answers "am I on track?" from the list card via the on_track status chip', () => {
     const mount = mountIntoBody();
-    renderDeadlinesList(mount, { status: 'ready', cards: [buildCard({ statusId: 'on_track' })] });
+    renderDeadlinesList(mount, { status: 'ready', cards: [buildCard({ statusId: 'on_track' })] }, { onNewTask: () => {} });
     const chips = Array.from(
       mount.querySelectorAll('.deadline-list-card .deadline-list-card__chips .plan-chip'),
     ).map((el) => el.textContent ?? '');
@@ -139,14 +139,14 @@ describe('DeadlinesList', () => {
   // to a calm one apart from the headline text.
   it('carries the severity in a hero status chip on attention states, none when on track', () => {
     const atRisk = mountIntoBody();
-    renderDeadlinesList(atRisk, { status: 'ready', cards: [buildCard({ statusId: 'at_risk' })] });
+    renderDeadlinesList(atRisk, { status: 'ready', cards: [buildCard({ statusId: 'at_risk' })] }, { onNewTask: () => {} });
     expect(
       atRisk.querySelectorAll('.deadlines-list-hero .plan-hero__chips .plan-chip').length,
       'at-risk hero shows a status chip (the colour cue on a plain card)',
     ).toBeGreaterThan(0);
 
     const onTrack = mountIntoBody();
-    renderDeadlinesList(onTrack, { status: 'ready', cards: [buildCard({ statusId: 'on_track' })] });
+    renderDeadlinesList(onTrack, { status: 'ready', cards: [buildCard({ statusId: 'on_track' })] }, { onNewTask: () => {} });
     expect(
       onTrack.querySelectorAll('.deadlines-list-hero .plan-hero__chips').length,
       'calm on-track hero stays chip-less and colour-free',
@@ -158,7 +158,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ confidence: 'low', statusId: 'at_risk', learning: true })],
-    });
+    }, { onNewTask: () => {} });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).toContain('Estimating');
   });
@@ -168,7 +168,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ confidence: 'low', statusId: 'on_track', learning: true })],
-    });
+    }, { onNewTask: () => {} });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).not.toContain('Estimating');
   });
@@ -178,7 +178,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ confidence: 'low', statusId: 'at_risk', learning: false })],
-    });
+    }, { onNewTask: () => {} });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).not.toContain('Estimating');
   });
@@ -188,7 +188,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ confidence: null, statusId: 'at_risk', learning: true })],
-    });
+    }, { onNewTask: () => {} });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).not.toContain('Estimating');
     expect(chips).not.toContain('Refining');
@@ -199,7 +199,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ confidence: 'high' })],
-    });
+    }, { onNewTask: () => {} });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).not.toContain('Estimating');
     expect(chips).not.toContain('Refining');
@@ -211,7 +211,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'cannot_meet', confidence: 'low' })],
-    });
+    }, { onNewTask: () => {} });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).toContain('Cannot finish');
     expect(chips).not.toContain('Estimating');
@@ -222,7 +222,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ currentValueLine: 'currently 18.4 °C' })],
-    });
+    }, { onNewTask: () => {} });
     expect(mount.querySelector('.deadline-list-card__current')?.textContent).toBe('currently 18.4 °C');
   });
 
@@ -231,7 +231,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ currentValueLine: null })],
-    });
+    }, { onNewTask: () => {} });
     expect(mount.querySelector('.deadline-list-card__current')).toBeNull();
   });
 
@@ -240,7 +240,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ kind: 'ev_soc', targetValue: 80, liveCauseLine: 'Car stops at 70%' })],
-    });
+    }, { onNewTask: () => {} });
     expect(mount.querySelector('.deadline-list-card__current')?.textContent).toBe('Car stops at 70%');
   });
 
@@ -253,7 +253,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'on_track' })],
-    });
+    }, { onNewTask: () => {} });
     const whenLabels = Array.from(
       mount.querySelectorAll<HTMLElement>('.deadline-list-card__when dt'),
     ).map((el) => (el.textContent ?? '').trim());
@@ -269,7 +269,7 @@ describe('DeadlinesList', () => {
         statusId: 'unavailable',
         firstActionAtMs: null,
       })],
-    });
+    }, { onNewTask: () => {} });
 
     const whenLabels = Array.from(
       mount.querySelectorAll<HTMLElement>('.deadline-list-card__when dt'),
@@ -283,7 +283,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ extraPermissionsValue: 'May go over daily budget' })],
-    });
+    }, { onNewTask: () => {} });
     expect(mount.textContent).toContain('Extra permissions');
     expect(mount.textContent).toContain('May go over daily budget');
   });
@@ -298,7 +298,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'cannot_meet' })],
-    });
+    }, { onNewTask: () => {} });
     expect(mount.querySelector('.deadline-list-card__when-row--neutral')).toBeNull();
     expect(mount.querySelector('.deadline-list-card__when-row--warn')).not.toBeNull();
   });
@@ -308,7 +308,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'at_risk' })],
-    });
+    }, { onNewTask: () => {} });
     expect(mount.querySelector('.deadline-list-card__when-row--warn')).not.toBeNull();
   });
 
@@ -317,7 +317,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'on_track' })],
-    });
+    }, { onNewTask: () => {} });
     expect(mount.querySelector('.deadline-list-card__when-row--neutral')).not.toBeNull();
   });
 
@@ -336,7 +336,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'at_risk' })],
-    });
+    }, { onNewTask: () => {} });
     expect(readyByText(mount)).toContain('— At risk');
   });
 
@@ -345,7 +345,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'cannot_meet' })],
-    });
+    }, { onNewTask: () => {} });
     expect(readyByText(mount)).toContain('— Cannot finish');
   });
 
@@ -354,7 +354,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ kind: 'ev_soc', statusId: 'paused_unplugged' })],
-    });
+    }, { onNewTask: () => {} });
     // Compressed widget label, not the full "Paused — unplugged" chip label,
     // so the Ready-by line never shows a double em-dash.
     expect(readyByText(mount)).toContain('— Unplugged');
@@ -366,7 +366,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'on_track' })],
-    });
+    }, { onNewTask: () => {} });
     expect(readyByText(mount)).not.toContain('—');
   });
 
@@ -381,7 +381,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'on_track' })],
-    });
+    }, { onNewTask: () => {} });
     const hero = mount.querySelector('.deadlines-list-hero');
     expect(hero).not.toBeNull();
     expect(hero?.querySelector('.plan-hero__headline')?.textContent).toBe('1 smart task on track');
@@ -396,7 +396,7 @@ describe('DeadlinesList', () => {
         buildCard({ statusId: 'on_track' }),
         buildCard({ deviceId: 'dev_boiler', deviceName: 'Boiler', statusId: 'at_risk' }),
       ],
-    });
+    }, { onNewTask: () => {} });
     const hero = mount.querySelector('.deadlines-list-hero');
     expect(hero?.getAttribute('data-tone')).toBe('warn');
     expect(hero?.querySelector('.plan-hero__headline')?.textContent).toBe('1 of 2 smart tasks at risk');
@@ -404,7 +404,7 @@ describe('DeadlinesList', () => {
 
   it('does not render the populated-state hero on the empty state', () => {
     const mount = mountIntoBody();
-    renderDeadlinesList(mount, { status: 'ready', cards: [] });
+    renderDeadlinesList(mount, { status: 'ready', cards: [] }, { onNewTask: () => {} });
     // The populated hero (with a status-derived headline and the navigation
     // subline button) must not mount on the empty state — only the baseline
     // header variant is allowed there. The panel still keeps a visible
@@ -430,7 +430,7 @@ describe('DeadlinesList', () => {
         buildCard({ deviceId: 'dev_water_heater', statusId: 'on_track' }),
         buildCard({ deviceId: 'dev_boiler', deviceName: 'Boiler', statusId: 'on_track' }),
       ],
-    });
+    }, { onNewTask: () => {} });
     const button = mount.querySelector<HTMLButtonElement>('.deadlines-list-hero__nav-target');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-deadline-card-id')).toBe('dev_water_heater');
@@ -450,7 +450,7 @@ describe('DeadlinesList', () => {
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ deviceId: 'dev_water_heater', statusId: 'on_track' })],
-    });
+    }, { onNewTask: () => {} });
     const button = mount.querySelector<HTMLButtonElement>('.deadlines-list-hero__nav-target');
     expect(button).not.toBeNull();
     // Press feedback is a Material ripple, not a standing background.
@@ -489,13 +489,13 @@ describe('DeadlinesList', () => {
 
     it('renders the header in the loading state', () => {
       const mount = mountIntoBody();
-      renderDeadlinesList(mount, { status: 'loading' });
+      renderDeadlinesList(mount, { status: 'loading' }, { onNewTask: () => {} });
       expectHeaderVisible(mount);
     });
 
     it('renders the header in the error state', () => {
       const mount = mountIntoBody();
-      renderDeadlinesList(mount, { status: 'error', message: 'Network error.' });
+      renderDeadlinesList(mount, { status: 'error', message: 'Network error.' }, { onNewTask: () => {} });
       expectHeaderVisible(mount);
       expect(mount.textContent).toContain('Network error.');
     });
@@ -504,7 +504,7 @@ describe('DeadlinesList', () => {
       const mount = mountIntoBody();
       // No `historyPresent` flag — history not yet known. The view falls back
       // to the first-run copy below the header.
-      renderDeadlinesList(mount, { status: 'ready', cards: [] });
+      renderDeadlinesList(mount, { status: 'ready', cards: [] }, { onNewTask: () => {} });
       expectHeaderVisible(mount);
       // Empty-state copy still mounts below the header.
       expect(mount.textContent).toContain('No smart tasks yet');
@@ -515,7 +515,7 @@ describe('DeadlinesList', () => {
       renderDeadlinesList(mount, {
         status: 'ready',
         cards: [buildCard({ statusId: 'on_track' })],
-      });
+      }, { onNewTask: () => {} });
       expectHeaderVisible(mount);
     });
   });
@@ -529,7 +529,7 @@ describe('DeadlinesList', () => {
   describe('empty-state coordination with history', () => {
     it('keeps the first-run invitation when there is no active card AND no history', () => {
       const mount = mountIntoBody();
-      renderDeadlinesList(mount, { status: 'ready', cards: [], historyPresent: false });
+      renderDeadlinesList(mount, { status: 'ready', cards: [], historyPresent: false }, { onNewTask: () => {} });
       // First-run headline + Flow setup copy, never the between-runs wording.
       expect(mount.textContent).toContain('Add your first smart task');
       expect(mount.textContent).toContain('No smart tasks yet');
@@ -539,7 +539,7 @@ describe('DeadlinesList', () => {
 
     it('shows the between-runs header (not "first" / "yet") when history exists', () => {
       const mount = mountIntoBody();
-      renderDeadlinesList(mount, { status: 'ready', cards: [], historyPresent: true });
+      renderDeadlinesList(mount, { status: 'ready', cards: [], historyPresent: true }, { onNewTask: () => {} });
       // Between-runs headline + a pointer to Past tasks below.
       expect(mount.textContent).toContain('No smart tasks scheduled');
       expect(mount.textContent).toContain('Past tasks');
@@ -556,7 +556,7 @@ describe('DeadlinesList', () => {
       // `historyPresent` omitted — the history fetch has not resolved yet. The
       // conservative default is the first-run copy until the controller
       // re-renders with the resolved flag.
-      renderDeadlinesList(mount, { status: 'ready', cards: [] });
+      renderDeadlinesList(mount, { status: 'ready', cards: [] }, { onNewTask: () => {} });
       expect(mount.textContent).toContain('Add your first smart task');
       expect(mount.textContent).not.toContain('No smart tasks scheduled');
     });
@@ -567,7 +567,7 @@ describe('DeadlinesList', () => {
         status: 'ready',
         cards: [buildCard({ statusId: 'on_track' })],
         historyPresent: true,
-      });
+      }, { onNewTask: () => {} });
       // Neither empty body renders when there are active cards.
       expect(mount.querySelector('[data-state="empty"]')).toBeNull();
       expect(mount.querySelector('[data-state="empty-between-runs"]')).toBeNull();
@@ -593,7 +593,7 @@ describe('DeadlinesList', () => {
       renderDeadlinesList(mount, {
         status: 'ready',
         cards: [buildCard({ statusId: 'building_plan' })],
-      });
+      }, { onNewTask: () => {} });
       const chip = findChipByLabel(mount, 'Building plan…');
       expect(chip).not.toBeNull();
       expect(chip?.getAttribute('data-pulse')).toBe('true');
@@ -614,7 +614,7 @@ describe('DeadlinesList', () => {
         renderDeadlinesList(mount, {
           status: 'ready',
           cards: [buildCard({ statusId })],
-        });
+        }, { onNewTask: () => {} });
         const chips = Array.from(mount.querySelectorAll<HTMLElement>('.plan-chip'));
         chips.forEach((chip) => {
           expect(chip.getAttribute('data-pulse')).toBeNull();
@@ -631,7 +631,7 @@ describe('DeadlinesList', () => {
         buildCard({ deviceId: 'dev_water_heater', statusId: 'on_track' }),
         buildCard({ deviceId: 'dev_boiler', deviceName: 'Boiler', statusId: 'on_track' }),
       ],
-    });
+    }, { onNewTask: () => {} });
     const card = mount.querySelector<HTMLElement>('.deadline-list-card[data-device-id="dev_water_heater"]');
     expect(card).not.toBeNull();
     const scrollSpy = vi.fn();

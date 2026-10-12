@@ -20,8 +20,6 @@ const installHero = () => {
       <span id="device-detail-live-power"></span>
       <span id="device-detail-live-fact" hidden></span>
       <span id="device-detail-live-reason" hidden></span>
-      <span id="device-detail-live-chip-row" hidden></span>
-      <a id="device-detail-live-smart-task" hidden></a>
     </div>
   `;
 };

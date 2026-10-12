@@ -131,6 +131,7 @@ const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
   applyTemperatureControlSettings(read);
   applyBatteryControlSettings(read);
   state.nativeWiringMap = readBooleanSettingMap(read.nativeWiring);
+  state.deviceSettingMapsLoaded = true;
   state.modeAliases = readModeAliases(read.aliases) ?? (keepEditingMode ? state.modeAliases : {});
   renderModeOptions();
 };

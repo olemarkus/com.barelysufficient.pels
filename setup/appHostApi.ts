@@ -1,3 +1,4 @@
+import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
 import { getDebugEmitter } from '../lib/logging/logger';
 import type { BudgetDailyHistory, BudgetDecisionHistory } from '../packages/contracts/src/budgetDiagnostics';
 import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureControlPosture';
@@ -351,6 +352,12 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     rescuePolicy: 'preserve' | 'replace' = 'preserve',
   ): SmartTaskWriteResult {
     return this.smartTaskApi.createDeferredObjective(deviceId, candidate, rescuePolicy);
+  }
+  public createNewDeferredObjective(
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): NewSmartTaskWriteResult {
+    return this.smartTaskApi.createNewDeferredObjective(deviceId, candidate);
   }
   public cancelDeferredObjective(deviceId: string) {
     return this.smartTaskApi.cancelDeferredObjective(deviceId);

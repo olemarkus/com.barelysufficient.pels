@@ -11,10 +11,11 @@ import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../d
  *
  * Shown only for devices PELS can actually switch: the runtime gate is
  * binary-capability-only, so offering it for a temperature-only device would be
- * a switch that silently does nothing. Disabled — with a visible "why" — while
- * Managed or Power-limit control is off, since the setting only has meaning when
- * PELS controls whether the device runs. The dump-load and surplus rows gate the
- * same way.
+ * a switch that silently does nothing. Shown only while Power-limit control is
+ * on, since the setting only has meaning when PELS controls whether the device
+ * runs: it sits under that switch as its sub-option, and with limiting off there
+ * is nothing for the owner to decide here (owner ruling 2026-10-10). Disabled,
+ * with a visible "why", while Managed is off.
  *
  * THE GATE IS NOT ABOUT DETECTION, and it does not make the hold safe with Flows.
  * Detection is plan-independent (`setup/externalOffHoldDetection.ts`), so an
@@ -95,9 +96,11 @@ const applyRespectExternalOffDisabledState = (
 };
 
 /**
- * Sync the row for the open device. Shown when PELS has a binary handle for it,
- * OR when it is already opted in — the escape hatch, so the opt-OUT stays
- * reachable even if the device's shape stops qualifying later.
+ * Sync the row for the open device. Shown when PELS has a binary handle for it
+ * and Power-limit control is on, OR when it is already opted in — the escape
+ * hatch, so the opt-OUT stays reachable even if the device stops qualifying
+ * later. An opted-in device with Power-limit control off keeps the row with the
+ * power-limit hint saying why the setting does nothing right now.
  *
  * The gate is the control capability, NOT `supportsPower`: a temperature-only or
  * step-only device reports power metadata while having no binary handle, and the
@@ -105,6 +108,12 @@ const applyRespectExternalOffDisabledState = (
  * switch there would persist a setting that can never take effect and quietly
  * promise something PELS does not do.
  */
+const shouldShowRow = (
+  deviceId: string,
+  device: SettingsUiDeviceDetailItem | null,
+  optedIn: boolean,
+): boolean => (device?.binaryControllable === true && isPowerLimitControlOn(deviceId)) || optedIn;
+
 export const syncRespectExternalOffRow = (params: {
   deviceId: string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
@@ -114,7 +123,7 @@ export const syncRespectExternalOffRow = (params: {
   const device = deviceId ? params.getDeviceById(deviceId) : null;
   const controlState = resolveDeviceDetailControlState(device, deviceId ?? '');
   const optedIn = deviceId !== null && state.respectExternalOffMap[deviceId] === true;
-  const showRow = deviceId !== null && (device?.binaryControllable === true || optedIn);
+  const showRow = deviceId !== null && shouldShowRow(deviceId, device, optedIn);
   rowEl.hidden = !showRow;
   if (!showRow || deviceId === null) {
     toggleEl.selected = false;

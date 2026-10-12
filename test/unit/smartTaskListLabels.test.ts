@@ -20,7 +20,7 @@ import {
   resolveSmartTaskListReadyByStatusWord,
   resolveSmartTaskListReadyByTone,
   SMART_TASK_HISTORY_EYEBROW,
-  SMART_TASK_LIST_EMPTY_COPY,
+  SMART_TASK_LIST_CREATE_HINT,
   SMART_TASK_LIST_LOAD_ERROR_COPY,
   SMART_TASK_LIST_ROW_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
@@ -372,35 +372,10 @@ describe('smart-task list card copy constants', () => {
     });
   });
 
-  it('exports the empty-state fragments that assemble into the canonical sentence', () => {
-    expect(SMART_TASK_LIST_EMPTY_COPY).toStrictEqual({
-      intro: 'No smart tasks yet. Open the Flow editor and add the',
-      heatingAction: 'Add heating task',
-      actionWord: 'action',
-      // User-outcome phrasing — no internal Flow-card field name ("Ready by").
-      heatingExample: '(heat a device to a target temperature by a time)',
-      listSeparator: ', the',
-      chargingAction: 'Add charging task',
-      chargingExample: '(charge a device to a target percent by a time)',
-      energyConjunction: 'or the',
-      energyAction: 'Add energy task',
-      energyExample: '(deliver an amount of energy to an on/off device by a time)',
-      outro: 'to schedule a managed device for a specific ready-by time.',
-      widgetLead: 'You can also add the',
-      widgetName: 'New smart task',
-      widgetOutro: 'widget to a dashboard and create one there.',
-    });
-  });
-
-  it('keeps the example fragments free of the internal "Ready by" Flow-card field name', () => {
-    // The earlier examples read "(Heat … to … °C by Ready by)" — the trailing
-    // "Ready by" was the literal Flow input label, which leaked an internal
-    // field name into user-outcome copy. Guard against the regression.
-    expect(SMART_TASK_LIST_EMPTY_COPY.heatingExample).not.toContain('Ready by');
-    expect(SMART_TASK_LIST_EMPTY_COPY.chargingExample).not.toContain('Ready by');
-    // Temperature copy must never say "charge"; EV copy uses "percent".
-    expect(SMART_TASK_LIST_EMPTY_COPY.heatingExample.toLowerCase()).not.toContain('charge');
-    expect(SMART_TASK_LIST_EMPTY_COPY.chargingExample).toContain('percent');
+  it('exports the first-run create hint', () => {
+    expect(SMART_TASK_LIST_CREATE_HINT).toBe(
+      'No smart tasks yet. Set a goal and ready-by time for a managed device. PELS will choose when it runs.',
+    );
   });
 
   it('exports the load-error sentence', () => {

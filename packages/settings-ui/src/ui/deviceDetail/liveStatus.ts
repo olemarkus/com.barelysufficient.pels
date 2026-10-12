@@ -13,11 +13,9 @@ import {
   SETTINGS_UI_PLAN_PATH,
   type SettingsUiPlanPayload,
 } from '../../../../contracts/src/settingsUiApi.ts';
-import { buildDeadlineHref } from '../deadlineUrls.ts';
 import { getApiReadModel } from '../homey.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { parsePlanSnapshot } from '../planSnapshotParse.ts';
-import { hasActiveDeadlineObjective } from '../state.ts';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
 
 const getRow = (): {
@@ -26,8 +24,6 @@ const getRow = (): {
   powerEl: HTMLElement;
   factEl: HTMLElement | null;
   reasonEl: HTMLElement;
-  smartTaskEl: HTMLAnchorElement | null;
-  chipRowEl: HTMLElement | null;
 } | null => {
   const row = document.getElementById('device-detail-live-status');
   const stateEl = document.getElementById('device-detail-live-state');
@@ -40,8 +36,6 @@ const getRow = (): {
     powerEl,
     factEl: document.getElementById('device-detail-live-fact'),
     reasonEl,
-    smartTaskEl: document.getElementById('device-detail-live-smart-task') as HTMLAnchorElement | null,
-    chipRowEl: document.getElementById('device-detail-live-chip-row'),
   };
 };
 
@@ -73,14 +67,12 @@ export const renderDeviceDetailLiveStatus = async (deviceId: string): Promise<vo
   // backend status supplies any transition.
   const nowMs = Date.now();
   dev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
-  renderHeroRows({ mounts, dev, deviceId, nowMs });
+  renderHeroRows({ mounts, dev });
 };
 
 const renderHeroRows = (params: {
   mounts: NonNullable<ReturnType<typeof getRow>>;
   dev: PlanDeviceSnapshot;
-  deviceId: string;
-  nowMs: number;
 }): void => {
   const { mounts, dev } = params;
   mounts.stateEl.textContent = dev.status.label;
@@ -94,15 +86,6 @@ const renderHeroRows = (params: {
   const reasonText = dev.status.reason?.text ?? '';
   mounts.reasonEl.textContent = reasonText;
   mounts.reasonEl.hidden = reasonText === '';
-  if (mounts.smartTaskEl) {
-    const hasTask = hasActiveDeadlineObjective(params.deviceId, params.nowMs);
-    mounts.smartTaskEl.hidden = !hasTask;
-    // The chip rail collapses with its only chip: an empty visible rail
-    // would still occupy a hero grid row and double the gap above the
-    // headline.
-    if (mounts.chipRowEl) mounts.chipRowEl.hidden = !hasTask;
-    if (hasTask) mounts.smartTaskEl.href = buildDeadlineHref(params.deviceId);
-  }
   mounts.row.hidden = false;
 };
 

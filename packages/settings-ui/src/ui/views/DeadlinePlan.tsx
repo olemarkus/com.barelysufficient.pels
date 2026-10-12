@@ -11,6 +11,7 @@ import {
   formatLastSampleValue,
   formatSmartTaskGoalRangeHint,
   REVISION_PANEL_TITLE,
+  SMART_TASK_AFTER_TASK_COPY,
   SMART_TASK_EDIT_COPY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
@@ -45,7 +46,15 @@ import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail, PlanRevisionRow } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
-import { MdFilledButton, MdFilledTextField, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
+import {
+  MdDialog,
+  MdFilledButton,
+  MdFilledTextField,
+  MdFilledTonalButton,
+  MdSwitch,
+  MdTextButton,
+  readSwitchSelected,
+} from './materialWebJSX.tsx';
 import type { SmartTaskEditPermissionKey, SmartTaskEditSnapshot } from '../smartTaskEdit.ts';
 import { CheckCircleIcon, ExpandMoreIcon } from './icons.tsx';
 import { logSettingsWarn } from '../logging.ts';
@@ -294,6 +303,14 @@ export type SmartTaskEditProps = {
   onPermissionToggle: (key: SmartTaskEditPermissionKey, value: boolean) => void;
   onSave: () => void;
   onClear: () => void;
+  onDismissClear: () => void;
+};
+
+// Who starts the task's device once the task is done, and the way to its
+// settings. Absent when the device has no on/off control PELS manages.
+export type SmartTaskAfterTaskProps = {
+  line: string;
+  onChange: () => void;
 };
 
 export type DeadlinePlanLoadState =
@@ -306,6 +323,7 @@ export type DeadlinePlanLoadState =
     // Present when the page has an editable task; undefined hides the lane
     // (no boot yet, task absent/disabled).
     edit?: SmartTaskEditProps;
+    afterTask?: SmartTaskAfterTaskProps;
   }
   | {
     status: 'unavailable';
@@ -333,6 +351,7 @@ export type DeadlinePlanLoadState =
     payload: DeadlinePlanPayload;
     history?: DeadlinePlanHistoryView;
     edit?: SmartTaskEditProps;
+    afterTask?: SmartTaskAfterTaskProps;
   }
   | {
     // Detail view for a finalized plan in history. The page lands on the
@@ -1212,12 +1231,8 @@ const PriorRunsHistory = ({ history }: {
   );
 };
 
-// Inline edit/clear card below the hero. Collapsed: one quiet row offering the
-// action. Open: goal + ready-by fields, the server-previewed landing line
-// ("If you save: runs … · Ready by Tomorrow 07:00" — the honest, explicitly
-// conditional display of where the typed HH:mm lands), the cost/feasibility
-// readout, and the action row with a two-step Clear (label-swap confirm, same
-// pattern as Budget's discard).
+// Main task actions live directly below the hero. Clear uses a Material dialog
+// with a named device; the edit form below contains only Save and Discard.
 // Everything renders from the controller snapshot so a runtime refresh that
 // repaints the whole root — or even flips ready → pending — redraws the open
 // editor unchanged.
@@ -1225,34 +1240,37 @@ const SmartTaskClearControl = ({
   snapshot,
   disabled,
   onClear,
+  onDismiss,
 }: {
   snapshot: SmartTaskEditSnapshot | null;
   disabled: boolean;
   onClear: () => void;
+  onDismiss: () => void;
 }) => {
   const busyClearing = snapshot?.busy === 'clearing';
   const clearArmed = snapshot?.clearArmed === true;
+  // The dialog follows the controller: open while Clear is armed. A close the
+  // dialog makes itself (scrim, Escape, back) dismisses only an armed Clear, so
+  // the close that follows Keep or Confirm does nothing more.
   return (
-    <MdTextButton
-      class="smart-task-edit__clear md-text-button--destructive"
-      {...(disabled ? { disabled: true } : {})}
-      onClick={onClear}
-    >
-      {/* Stack every possible label in one grid cell and toggle visibility:
-          the button is always as wide as its widest label, so arming the
-          two-step confirm cannot move the tap target. */}
-      <span class="smart-task-edit__clear-labels">
-        <span aria-hidden={clearArmed || busyClearing ? 'true' : undefined} data-active={!clearArmed && !busyClearing ? 'true' : undefined}>
-          {SMART_TASK_EDIT_COPY.clearButton}
-        </span>
-        <span aria-hidden={!clearArmed || busyClearing ? 'true' : undefined} data-active={clearArmed && !busyClearing ? 'true' : undefined}>
-          {SMART_TASK_EDIT_COPY.clearConfirm}
-        </span>
-        <span aria-hidden={busyClearing ? undefined : 'true'} data-active={busyClearing ? 'true' : undefined}>
-          {SMART_TASK_EDIT_COPY.clearing}
-        </span>
-      </span>
-    </MdTextButton>
+    <>
+      <MdTextButton class="smart-task-edit__clear md-text-button--destructive"
+        {...(disabled ? { disabled: true } : {})}
+        onClick={onClear}>{busyClearing ? SMART_TASK_EDIT_COPY.clearing : SMART_TASK_EDIT_COPY.clearButton}</MdTextButton>
+      <MdDialog {...(clearArmed && !busyClearing ? { open: true } : {})}
+        onClose={() => { if (clearArmed) onDismiss(); }}>
+        <div slot="headline">{SMART_TASK_EDIT_COPY.clearDialogTitle}</div>
+        {snapshot !== null && (
+          <div slot="content">{SMART_TASK_EDIT_COPY.clearDialogBody(snapshot.context.deviceName)}</div>
+        )}
+        <div slot="actions">
+          <MdTextButton onClick={onDismiss}>{SMART_TASK_EDIT_COPY.clearDialogKeep}</MdTextButton>
+          <MdTextButton class="md-text-button--destructive" onClick={onClear}>
+            {SMART_TASK_EDIT_COPY.clearDialogConfirm}
+          </MdTextButton>
+        </div>
+      </MdDialog>
+    </>
   );
 };
 
@@ -1262,7 +1280,7 @@ const SmartTaskClearControl = ({
 // dims the LABEL only: a disabled row whose label reads at full strength looks
 // like a live control that silently ignores taps, and the hint is the one line
 // that explains why it's off, so it must stay the more legible of the two.
-const SmartTaskPermissionRow = ({ label, hint, selected, disabled, onToggle }: {
+export const SmartTaskPermissionRow = ({ label, hint, selected, disabled, onToggle }: {
   label: string;
   hint: string;
   selected: boolean;
@@ -1360,38 +1378,35 @@ const SmartTaskPermissionsSection = ({ snapshot, disabled, onToggle }: {
   );
 };
 
+const SmartTaskAfterTaskCard = ({ afterTask }: { afterTask: SmartTaskAfterTaskProps }) => (
+  <section class="pels-surface-card budget-redesign-card smart-task-after-task" aria-labelledby="smart-task-after-task-title">
+    <h2 class="plan-card__title" id="smart-task-after-task-title">{SMART_TASK_AFTER_TASK_COPY.title}</h2>
+    <p class="pels-card-supporting">{afterTask.line}</p>
+    <MdTextButton class="smart-task-after-task__change" onClick={afterTask.onChange}>
+      {SMART_TASK_AFTER_TASK_COPY.changeAction}
+    </MdTextButton>
+  </section>
+);
+
 const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
   const s = edit.snapshot;
-  if (edit.mode === 'clear_only') {
-    const busyClearing = s?.busy === 'clearing';
-    return (
-      <section class="pels-surface-card budget-redesign-card smart-task-edit">
-        {s?.errorLine !== null && s?.errorLine !== undefined && (
-          <p class="smart-task-edit__error">{s.errorLine}</p>
-        )}
-        <SmartTaskClearControl
-          snapshot={s}
-          disabled={busyClearing}
-          onClear={edit.onClear}
-        />
-      </section>
-    );
-  }
-  if (s === null) {
-    return (
-      <section class="pels-surface-card budget-redesign-card smart-task-edit">
-        <div class="smart-task-edit__offer">
-          <small class="section-hint">{SMART_TASK_EDIT_COPY.editHint}</small>
-          <MdTextButton onClick={edit.onOpen}>{SMART_TASK_EDIT_COPY.editButton}</MdTextButton>
-        </div>
-      </section>
-    );
-  }
-  const busySaving = s.busy === 'saving';
-  const busyClearing = s.busy === 'clearing';
-  const saveDisabled = !s.valid || !s.dirty || busySaving || busyClearing;
+  const busySaving = s?.busy === 'saving';
+  const busyClearing = s?.busy === 'clearing';
+  const saveDisabled = s === null || !s.valid || !s.dirty || busySaving || busyClearing;
+  // The editor form, when open. A clear-only controller (Clear tapped with the
+  // editor closed) has no form, so a failed clear leaves Edit usable and its
+  // error shows under the action row instead.
+  const formOpen = s !== null && !s.clearOnly && edit.mode === 'edit_and_clear';
   return (
-    <section class="pels-surface-card budget-redesign-card smart-task-edit">
+    <>
+      <div class="smart-task-actions">
+        {edit.mode === 'edit_and_clear' && <MdFilledTonalButton disabled={formOpen || busyClearing}
+          onClick={edit.onOpen}>{SMART_TASK_EDIT_COPY.editButton}</MdFilledTonalButton>}
+        <SmartTaskClearControl snapshot={s} disabled={busySaving || busyClearing}
+          onClear={edit.onClear} onDismiss={edit.onDismissClear} />
+      </div>
+      {!formOpen && s?.errorLine && <p class="smart-task-edit__error">{s.errorLine}</p>}
+      {formOpen && <section class="pels-surface-card budget-redesign-card smart-task-edit">
       <p class="plan-card__title">{SMART_TASK_EDIT_COPY.editButton}</p>
       <label class="field">
         <span class="field__label pels-text-settings-label">{CREATE_SMART_TASK_WIDGET_COPY.goalLabel}</span>
@@ -1433,7 +1448,7 @@ const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
         <div class="smart-task-edit__preview">
           <p class="smart-task-edit__preview-when">{s.preview.whenLine}</p>
           {s.preview.verdictLine !== null && (
-            <p class="smart-task-edit__preview-verdict">{s.preview.verdictLine}</p>
+            <p class="pels-text-status-line" data-tone={s.preview.verdictTone}>{s.preview.verdictLine}</p>
           )}
           {s.preview.costLine !== null && (
             <p class="smart-task-edit__preview-cost">{s.preview.costLine}</p>
@@ -1463,13 +1478,9 @@ const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
         >
           {SMART_TASK_EDIT_COPY.discardButton}
         </MdTextButton>
-        <SmartTaskClearControl
-          snapshot={s}
-          disabled={busySaving || busyClearing}
-          onClear={edit.onClear}
-        />
       </div>
-    </section>
+      </section>}
+    </>
   );
 };
 
@@ -1545,6 +1556,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
       <>
         <PendingHero pending={loadState.pending} />
         {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} />}
+        {loadState.afterTask !== undefined && <SmartTaskAfterTaskCard afterTask={loadState.afterTask} />}
         <PriorRunsHistory history={loadState.history} />
       </>
     );
@@ -1578,6 +1590,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
       {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} />}
       <ScheduleQuestionCards payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} editorOpen={loadState.edit?.snapshot != null} />
+      {loadState.afterTask !== undefined && <SmartTaskAfterTaskCard afterTask={loadState.afterTask} />}
       <RevisionHistoryPanel payload={loadState.payload} />
       <PriorRunsHistory history={loadState.history} />
     </>

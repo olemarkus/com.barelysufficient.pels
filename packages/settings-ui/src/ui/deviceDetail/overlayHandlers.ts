@@ -7,6 +7,7 @@ import {
 } from '../dom.ts';
 import { bindSegmentedToSelect } from '../components.ts';
 import { renderDeviceDetailLiveStatus } from './liveStatus.ts';
+import { renderDeviceSmartTaskBox } from './smartTaskBox.ts';
 import {
   isDeviceDetailDiagnosticsExpanded,
   refreshDeviceDetailDiagnostics,
@@ -14,8 +15,10 @@ import {
   showDeviceDetailDiagnosticsLoading,
 } from './diagnostics.ts';
 import { refreshDeviceDetailActivityLogIfExpanded } from './activityLog.ts';
-import type { createPendingDeviceDetailOpen, OpenDeviceDetailDetail } from './focus.ts';
-import type { SettingsUiDeviceView } from '../state.ts';
+import type { createPendingDeviceDetailOpen, DeviceDetailFocus, OpenDeviceDetailDetail } from './focus.ts';
+import { buildDeadlineHref, followDeadlineHref, isDeadlinePlanRoute } from '../deadlineUrls.ts';
+import { dispatchOpenSmartTaskCreate } from '../smartTaskCreate.ts';
+import { state, type SettingsUiDeviceView } from '../state.ts';
 
 /**
  * The device-detail overlay's DOM subscriptions: close/escape/backdrop, the
@@ -31,7 +34,7 @@ import type { SettingsUiDeviceView } from '../state.ts';
 export type DeviceDetailOverlayHandlerContext = {
   getCurrentDetailDeviceId: () => string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceView | null;
-  openDeviceDetail: (deviceId: string) => void;
+  openDeviceDetailAt: (deviceId: string, focus: DeviceDetailFocus) => void;
   closeDeviceDetail: () => void;
   refreshOpenDeviceDetail: () => void;
   pendingDeviceDetailOpen: ReturnType<typeof createPendingDeviceDetailOpen>;
@@ -125,28 +128,43 @@ const initDeviceDetailEscapeHandler = (
   });
 };
 
+// The tab Back returns to from the New smart task flow. A device page opened
+// over a task page belongs to Smart tasks: the task page's route is gone by the
+// time the flow closes, and the task page is a route, not a tab of its own.
+const resolveCreateSourceTab = (): string => (
+  isDeadlinePlanRoute(window.location.search) ? 'deadlines' : state.activePanel
+);
+
 const initDeviceDetailSmartTaskChipHandler = (
   ctx: Pick<DeviceDetailOverlayHandlerContext, 'closeDeviceDetail'>,
 ) => {
-  document.getElementById('device-detail-live-smart-task')?.addEventListener('click', () => {
-    // The deadline router already intercepted this click at document capture
-    // and mounted the plan page underneath; close the overlay directly so the
-    // page the user asked for is visible. No history.back(): the plan entry
-    // now sits on top, and the overlay's own entry pops later as a no-op.
+  document.getElementById('device-detail-smart-task')?.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) return;
+    const create = event.target.closest<HTMLElement>('[data-smart-task-create]');
+    if (create?.dataset.smartTaskCreate) {
+      const deviceId = create.dataset.smartTaskCreate;
+      ctx.closeDeviceDetail();
+      dispatchOpenSmartTaskCreate(deviceId, resolveCreateSourceTab());
+      return;
+    }
+    const view = event.target.closest<HTMLElement>('[data-smart-task-view]');
+    if (!view?.dataset.smartTaskView) return;
+    // Mount the plan page first, then close the overlay so the page the user
+    // asked for is visible. No history.back(): the plan entry now sits on top,
+    // and the overlay's own entry pops later as a no-op.
+    followDeadlineHref(buildDeadlineHref(view.dataset.smartTaskView));
     ctx.closeDeviceDetail();
   });
 };
 
 const initDeviceDetailOpenHandler = (ctx: DeviceDetailOverlayHandlerContext) => {
   document.addEventListener('open-device-detail', (event) => {
-    const custom = event as CustomEvent<OpenDeviceDetailDetail>;
-    const deviceId = custom.detail?.deviceId;
-    if (!deviceId) return;
+    const { deviceId, focus } = (event as CustomEvent<OpenDeviceDetailDetail>).detail;
 
     if (ctx.getDeviceById(deviceId)) {
-      ctx.openDeviceDetail(deviceId);
+      ctx.openDeviceDetailAt(deviceId, focus);
     } else {
-      ctx.pendingDeviceDetailOpen.set(deviceId);
+      ctx.pendingDeviceDetailOpen.set({ deviceId, focus });
       document.dispatchEvent(new CustomEvent('request-load-devices'));
     }
   });
@@ -181,7 +199,7 @@ const initDeviceDetailRefreshHandlers = (ctx: DeviceDetailOverlayHandlerContext)
     const pending = ctx.pendingDeviceDetailOpen.peek();
     if (pending && ctx.getDeviceById(pending.deviceId)) {
       ctx.pendingDeviceDetailOpen.take();
-      ctx.openDeviceDetail(pending.deviceId);
+      ctx.openDeviceDetailAt(pending.deviceId, pending.focus);
       return;
     }
     // A pending open whose device hasn't loaded yet stays queued for a later
@@ -203,6 +221,7 @@ const initDeviceDetailRefreshHandlers = (ctx: DeviceDetailOverlayHandlerContext)
 
     // The live-status row tracks every plan push while the overlay is open.
     void renderDeviceDetailLiveStatus(deviceId);
+    renderDeviceSmartTaskBox(deviceId);
     if (isDeviceDetailDiagnosticsExpanded()) {
       void refreshDeviceDetailDiagnostics(deviceId, () => (
         ctx.getCurrentDetailDeviceId() === deviceId && isDeviceDetailDiagnosticsExpanded()

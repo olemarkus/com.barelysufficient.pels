@@ -108,6 +108,9 @@ export const SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH = '/ui_starvation_rescue_
 // update = the committed edit (a validated re-create over the same device);
 // cancel = clear the task. Shapes live in `smartTaskEdit.ts`.
 export const SETTINGS_UI_SMART_TASK_PREVIEW_PATH = '/ui_smart_task_preview';
+export const SETTINGS_UI_SMART_TASK_DEVICES_PATH = '/ui_smart_task_devices';
+export const SETTINGS_UI_SMART_TASK_CREATE_PATH = '/ui_smart_task_create';
+export const SETTINGS_UI_SMART_TASK_CREATE_PREVIEW_PATH = '/ui_smart_task_create_preview';
 export const SETTINGS_UI_SMART_TASK_UPDATE_PATH = '/ui_smart_task_update';
 export const SETTINGS_UI_SMART_TASK_CANCEL_PATH = '/ui_smart_task_cancel';
 

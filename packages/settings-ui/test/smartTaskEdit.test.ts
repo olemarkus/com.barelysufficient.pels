@@ -59,6 +59,7 @@ const NO_PERMISSIONS = {
 
 const CONTEXT = {
   deviceId: 'heater-1',
+  deviceName: 'Heater',
   kind: 'temperature' as const,
   unit: '°C',
   min: 30,
@@ -482,7 +483,7 @@ describe('smartTaskEdit controller', () => {
     expect(again).toMatchObject({ draft: { readyBy: '06:30', target: '65' }, dirty: true });
   });
 
-  it('clear arms first, auto-reverts after the confirm window, and commits on the second tap', async () => {
+  it('clear waits for dialog confirmation and commits on the second tap', async () => {
     const calls: ApiCall[] = [];
     const requestClose = vi.fn();
     await installHomey((call) => {
@@ -497,10 +498,8 @@ describe('smartTaskEdit controller', () => {
     expect(controller.getSmartTaskEditSnapshot()!.clearArmed).toBe(true);
     expect(calls.filter((c) => c.uri === SETTINGS_UI_SMART_TASK_CANCEL_PATH)).toHaveLength(0);
 
-    // Auto-revert: the armed confirm must not survive the window.
-    await vi.advanceTimersByTimeAsync(5100);
+    controller.dismissSmartTaskClear();
     expect(controller.getSmartTaskEditSnapshot()!.clearArmed).toBe(false);
-
     await controller.requestSmartTaskClear();
     const cleared = controller.requestSmartTaskClear();
     await vi.runAllTimersAsync();

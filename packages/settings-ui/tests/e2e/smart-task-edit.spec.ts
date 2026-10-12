@@ -1,8 +1,8 @@
 import { expect, test, type Locator, type Page } from './fixtures/test';
 
-// Smart-task detail edit/clear lane: the collapsed offer row under the hero,
+// Smart-task detail edit/clear lane: the action row under the hero,
 // the inline goal/ready-by editor with the server-previewed landing line, the
-// echoed-deadline save, and the two-step Clear that closes the page.
+// echoed-deadline save, and the Clear dialog that closes the page.
 // (The previewed deadline sentinel 1_900_000_000_000 is inlined in the stub —
 // `addInitScript` closures cannot capture outer test-scope constants.)
 
@@ -47,9 +47,8 @@ const openDeadlinePlan = async (page: Page): Promise<Locator> => {
 
 const openEditor = async (page: Page): Promise<Locator> => {
   const panel = await openDeadlinePlan(page);
+  await panel.locator('.smart-task-actions').getByRole('button', { name: 'Edit task' }).click();
   const editCard = panel.locator('.smart-task-edit');
-  await expect(editCard.getByText('Change the goal, ready-by time, or extra permissions.')).toBeVisible();
-  await editCard.getByRole('button', { name: 'Edit task' }).click();
   await expect(editCard.locator('.smart-task-edit__time-input')).toBeVisible();
   return panel;
 };
@@ -60,7 +59,7 @@ test.describe('Smart task edit', () => {
     await page.setViewportSize({ width: 390, height: 900 });
   });
 
-  test('offers the edit row, prefills the editor, and saves the previewed deadline', async ({ page }) => {
+  test('offers the edit action, prefills the editor, and saves the previewed deadline', async ({ page }) => {
     const panel = await openEditor(page);
     const editCard = panel.locator('.smart-task-edit');
 
@@ -82,10 +81,10 @@ test.describe('Smart task edit', () => {
     await expect(editCard.locator('.smart-task-edit__preview-cost')).toBeVisible();
 
     // Save echoes the previewed deadline (the stub rejects anything else),
-    // then the editor collapses back to the offer row.
+    // then the editor closes and the action remains available.
     await editCard.getByRole('button', { name: 'Save changes' }).click();
-    await expect(editCard.getByText('Change the goal, ready-by time, or extra permissions.')).toBeVisible();
-    await expect(editCard.locator('.smart-task-edit__time-input')).toHaveCount(0);
+    await expect(editCard).toHaveCount(0);
+    await expect(panel.locator('.smart-task-actions').getByRole('button', { name: 'Edit task' })).toBeVisible();
   });
 
   test('a rejected save keeps the editor open with the reason inline', async ({ page }) => {
@@ -106,13 +105,14 @@ test.describe('Smart task edit', () => {
     await expect(editCard.locator('.smart-task-edit__time-input')).toBeVisible();
   });
 
-  test('clear is two-step and closes the detail page', async ({ page }) => {
+  test('clear asks for confirmation and closes the detail page', async ({ page }) => {
     const panel = await openEditor(page);
-    const editCard = panel.locator('.smart-task-edit');
 
-    // First tap arms; no cancel call yet (the editor stays open).
-    await editCard.getByRole('button', { name: 'Clear task' }).click();
-    const confirm = editCard.getByRole('button', { name: 'Tap again to clear' });
+    await panel.locator('.smart-task-actions').getByRole('button', { name: 'Clear task' }).click();
+    const dialog = panel.locator('md-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Connected 300');
+    const confirm = dialog.getByRole('button', { name: 'Clear task' });
     await expect(confirm).toBeVisible();
 
     // Second tap commits and the page closes back to the Smart tasks tab.
@@ -121,7 +121,7 @@ test.describe('Smart task edit', () => {
     await expect(page.getByRole('tab', { name: 'Smart tasks' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('a separate-meter task is clear-only and still uses two-step confirmation', async ({ page }) => {
+  test('a separate-meter task is clear-only and still asks for confirmation', async ({ page }) => {
     await page.addInitScript(() => {
       const stubWindow = window as typeof window & {
         __PELS_HOMEY_STUB__?: Record<string, unknown>;
@@ -132,15 +132,14 @@ test.describe('Smart task edit', () => {
       };
     });
     const panel = await openDeadlinePlan(page);
-    const editCard = panel.locator('.smart-task-edit');
+    const actions = panel.locator('.smart-task-actions');
 
     await expect(panel.locator('.plan-hero__headline')).toHaveText('Smart task unavailable');
-    await expect(editCard.getByRole('button', { name: 'Edit task' })).toHaveCount(0);
-    await expect(editCard.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
-    await expect(editCard.locator('.smart-task-edit__time-input')).toHaveCount(0);
+    await expect(actions.getByRole('button', { name: 'Edit task' })).toHaveCount(0);
+    await expect(panel.locator('.smart-task-edit')).toHaveCount(0);
 
-    await editCard.getByRole('button', { name: 'Clear task' }).click();
-    const confirm = editCard.getByRole('button', { name: 'Tap again to clear' });
+    await actions.getByRole('button', { name: 'Clear task' }).click();
+    const confirm = panel.locator('md-dialog').getByRole('button', { name: 'Clear task' });
     await expect(confirm).toBeVisible();
     await confirm.click();
     await expect(panel).toBeHidden();
@@ -262,7 +261,7 @@ test.describe('Smart task edit', () => {
     await expect(readOnlyRow).toBeVisible();
 
     const editCard = panel.locator('.smart-task-edit');
-    await editCard.getByRole('button', { name: 'Edit task' }).click();
+    await panel.locator('.smart-task-actions').getByRole('button', { name: 'Edit task' }).click();
     await expect(editCard.locator('.smart-task-edit__time-input')).toBeVisible();
     await expect(readOnlyRow).toHaveCount(0);
     // The task already holds a grant, so the disclosure opens itself rather than
@@ -287,7 +286,7 @@ test.describe('Smart task edit', () => {
     const editCard = panel.locator('.smart-task-edit');
     await editCard.locator('md-filled-text-field input').fill('70');
     await editCard.getByRole('button', { name: 'Discard' }).click();
-    await expect(editCard.locator('.smart-task-edit__time-input')).toHaveCount(0);
-    await expect(editCard.getByText('Change the goal, ready-by time, or extra permissions.')).toBeVisible();
+    await expect(editCard).toHaveCount(0);
+    await expect(panel.locator('.smart-task-actions').getByRole('button', { name: 'Edit task' })).toBeVisible();
   });
 });

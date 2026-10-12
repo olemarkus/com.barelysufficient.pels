@@ -1,16 +1,17 @@
 import type Homey from 'homey';
 import type {
   SettingsUiSmartTaskCancelResponse,
+  SettingsUiSmartTaskDevicesResponse,
   SettingsUiSmartTaskPreviewResponse,
   SettingsUiSmartTaskRejectReason,
   SettingsUiSmartTaskUpdateResponse,
 } from '../packages/contracts/src/smartTaskEdit';
-import type { SmartTaskHomeScope } from '../packages/contracts/src/smartTaskHomeScope';
 import {
   formatScheduledHoursWindow,
   formatSmartTaskDeadlineLong,
 } from '../packages/shared-domain/src/smartTaskDeadlineFormat';
 import {
+  buildSmartTaskCandidateDevices,
   buildValidSmartTaskCandidate,
   mapSmartTaskAppReason,
   migrateBlobToPerKeyIfNeeded,
@@ -22,9 +23,23 @@ import {
 } from '../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveSettingsEntry } from '../packages/contracts/src/deferredObjectiveSettings';
 import { objectiveAbsenceIsTrustworthy } from '../lib/objectives/deferredObjectives/objectiveStore';
-import { readPelsHost } from '../lib/app/pelsHost';
+import { readPelsHost, type PelsHost } from '../lib/app/pelsHost';
+import {
+  createNewSmartTask,
+  previewNewSmartTask,
+  rejectForSmartTaskHomeScope,
+  type SmartTaskCreateLanePorts,
+} from '../lib/objectives/deferredObjectives/smartTaskCreateLane';
 
-// Settings-UI smart-task edit lane (detail-page edit + clear). Editing routes
+// Settings-UI smart-task lanes: create (the Smart tasks page and the device
+// page's Add smart task) and edit + clear (the task's detail page).
+//
+// Create is decided in `lib/objectives/deferredObjectives/smartTaskCreateLane.ts`
+// and only forwarded here. Unlike the create_smart_task widget it never replaces
+// an open task: a device that has one answers `task_exists`, and the page offers
+// that task instead.
+//
+// Edit lane (detail-page edit + clear). Editing routes
 // through the SAME validated app method the create_smart_task widget uses
 // (`createDeferredObjective` → `upsertObjectiveForDevice`), so an edit is a
 // full re-create: the prior run is finalized to history as replaced, the run's
@@ -47,14 +62,6 @@ const updateReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartT
   reason,
 });
 
-const rejectForHomeScope = (
-  scope: SmartTaskHomeScope,
-): 'device_in_sub_home' | 'device_not_planned' | 'unavailable' | null => {
-  if (scope === 'sub_home') return 'device_in_sub_home';
-  if (scope === 'source_device') return 'device_not_planned';
-  if (scope === 'unavailable') return 'unavailable';
-  return null;
-};
 
 // The edit lane only ever REVISES an existing task, and the two reject lanes
 // are deliberately distinct:
@@ -119,7 +126,7 @@ export const previewSettingsUiSmartTask = (
   // does not opportunistically migrate settings or write the migration marker.
   const gate = gateEditableTask(homey, request.deviceId, false);
   if (!gate.editable) return previewReject(gate.reason);
-  const scopeReject = rejectForHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
+  const scopeReject = rejectForSmartTaskHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
   if (scopeReject !== null) return previewReject(scopeReject);
 
   const timeZone = homey.clock.getTimezone();
@@ -159,7 +166,7 @@ export const updateSettingsUiSmartTask = (
   if (!host) return updateReject('unavailable');
   const gate = gateEditableTask(homey, request.deviceId, true);
   if (!gate.editable) return updateReject(gate.reason);
-  const scopeReject = rejectForHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
+  const scopeReject = rejectForSmartTaskHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
   if (scopeReject !== null) return updateReject(scopeReject);
 
   const timeZone = homey.clock.getTimezone();
@@ -202,4 +209,38 @@ export const cancelSettingsUiSmartTask = (
   const result = host.cancelDeferredObjective(deviceId);
   if (result.ok) return { ok: true };
   return { ok: false, reason: result.reason === 'task_not_found' ? 'task_not_found' : 'write_conflict' };
+};
+
+export const getSettingsUiSmartTaskDevices = (
+  { homey }: ApiContext,
+): SettingsUiSmartTaskDevicesResponse => {
+  const host = readPelsHost(homey);
+  if (!host) return { state: 'unavailable' };
+  const read = host.getCreateSmartTaskCandidateDevices();
+  if (read.state !== 'ready') return { state: 'unavailable' };
+  return { state: 'ready', devices: buildSmartTaskCandidateDevices(read.devices) };
+};
+
+// The create lane's ports: the running app, the stored tasks, and the Homey
+// clock (`lib/objectives/deferredObjectives/smartTaskCreateLane.ts` decides).
+const createLanePorts = (homey: Homey.App['homey'], host: PelsHost): SmartTaskCreateLanePorts => ({
+  host,
+  store: homey.settings,
+  clock: homey.clock,
+});
+
+export const previewSettingsUiNewSmartTask = (
+  { homey, body }: ApiContext & { body?: unknown },
+): SettingsUiSmartTaskPreviewResponse => {
+  const host = readPelsHost(homey);
+  if (!host) return previewReject('unavailable');
+  return previewNewSmartTask(createLanePorts(homey, host), body);
+};
+
+export const createSettingsUiSmartTask = (
+  { homey, body }: ApiContext & { body?: unknown },
+): SettingsUiSmartTaskUpdateResponse => {
+  const host = readPelsHost(homey);
+  if (!host) return updateReject('unavailable');
+  return createNewSmartTask(createLanePorts(homey, host), body);
 };

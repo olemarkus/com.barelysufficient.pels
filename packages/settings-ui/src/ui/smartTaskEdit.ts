@@ -1,4 +1,10 @@
 import {
+  parseSmartTaskGoal,
+  SMART_TASK_READY_BY_PATTERN,
+  toSmartTaskPreviewView,
+  type SmartTaskPreviewView,
+} from './smartTaskDraft.ts';
+import {
   SETTINGS_UI_SMART_TASK_CANCEL_PATH,
   SETTINGS_UI_SMART_TASK_PREVIEW_PATH,
   SETTINGS_UI_SMART_TASK_UPDATE_PATH,
@@ -16,11 +22,8 @@ import type {
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import {
   composeSmartTaskDraftLandingLine,
-  CREATE_SMART_TASK_WIDGET_COPY,
   SMART_TASK_EDIT_COPY,
-  formatDeadlineCostMetaLine,
   resolveSmartTaskEditRejectCopy,
-  resolveSmartTaskPreviewStatusCopy,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
@@ -36,11 +39,6 @@ import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 // state; the view stays a thin renderer per `views/AGENTS.md`.
 
 const PREVIEW_DEBOUNCE_MS = 400;
-// Same auto-revert window as the other two-step confirm buttons
-// (BudgetOverview's discard confirm) so armed danger actions behave uniformly.
-const CLEAR_CONFIRM_REVERT_MS = 5000;
-
-const READY_BY_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 // The "Extra permissions" as plain granted/not-granted. The editor only ever
 // expresses that much: the server keeps an existing `'at_risk'` mode when a
@@ -58,6 +56,7 @@ export type SmartTaskEditPermissionKey = keyof SmartTaskEditPermissions;
 
 export type SmartTaskEditContext = {
   deviceId: string;
+  deviceName: string;
   kind: DeferredObjectiveSettingsKind;
   unit: string;
   min: number;
@@ -82,20 +81,10 @@ export type SmartTaskEditContext = {
   supportsLimitLowerPriority: boolean;
 };
 
-export type SmartTaskEditPreviewView = {
-  deadlineAtMs: number;
-  // "If you save: runs 02:00–04:00 · Ready by Tomorrow 07:00" — both halves
-  // formatted server-side in the Homey timezone, prefixed as explicitly
-  // conditional (`composeSmartTaskDraftLandingLine`). This is the honest
-  // pre-save display of where the typed HH:mm actually lands (today vs rolled
-  // to tomorrow) without contradicting the hero's current plan.
-  whenLine: string;
-  costLine: string | null;
-  // Feasibility verdict (cannot finish / at risk / unavailable reason). Null
-  // when the projection is an ordinary healthy estimate.
-  verdictLine: string | null;
-  caveat: string;
-};
+// "If you save: runs 02:00–04:00 · Ready by Tomorrow 07:00": explicitly
+// conditional (`composeSmartTaskDraftLandingLine`), because the hero above
+// still shows the CURRENT plan and the draft must not read as committed.
+export type SmartTaskEditPreviewView = SmartTaskPreviewView;
 
 export type SmartTaskEditBusy = 'clearing' | 'idle' | 'previewing' | 'saving';
 
@@ -111,6 +100,9 @@ export type SmartTaskEditSnapshot = {
   preview: SmartTaskEditPreviewView | null;
   errorLine: string | null;
   clearArmed: boolean;
+  // Opened only to clear the task (the separate-meter detail state has no
+  // editor): dismissing the confirmation closes the controller again.
+  clearOnly: boolean;
 };
 
 type ControllerState = SmartTaskEditSnapshot | null;
@@ -118,7 +110,6 @@ type ControllerState = SmartTaskEditSnapshot | null;
 let state: ControllerState = null;
 let revision = 0;
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
-let clearRevertTimer: ReturnType<typeof setTimeout> | null = null;
 let renderRequested: () => void = () => {};
 let requestClose: () => void = () => {};
 let refreshBoot: () => void = () => {};
@@ -138,14 +129,11 @@ export const initSmartTaskEditController = (hooks: {
 
 export const getSmartTaskEditSnapshot = (): SmartTaskEditSnapshot | null => state;
 
-const parseTarget = (raw: string): number | null => {
-  const parsed = Number.parseFloat(raw);
-  return Number.isFinite(parsed) ? parsed : null;
-};
+const parseTarget = parseSmartTaskGoal;
 
 const isValidDraft = (s: SmartTaskEditSnapshot): boolean => {
   const target = parseTarget(s.draft.target);
-  return READY_BY_PATTERN.test(s.draft.readyBy)
+  return SMART_TASK_READY_BY_PATTERN.test(s.draft.readyBy)
     && target !== null
     && target >= s.context.min
     && target <= s.context.max;
@@ -166,11 +154,13 @@ const isDirtyDraft = (s: SmartTaskEditSnapshot): boolean => {
     || permissions.pauseLowerPriorityDevices !== baseline.pauseLowerPriorityDevices;
 };
 
-const disarmClearTimer = (): void => {
-  if (clearRevertTimer !== null) {
-    clearTimeout(clearRevertTimer);
-    clearRevertTimer = null;
+export const dismissSmartTaskClear = (): void => {
+  if (state?.clearOnly) {
+    closeSmartTaskEditor();
+    return;
   }
+  if (state) state.clearArmed = false;
+  renderRequested();
 };
 
 const cancelPendingPreview = (): void => {
@@ -202,29 +192,10 @@ const buildRequestBody = (s: SmartTaskEditSnapshot): SmartTaskCandidateRequest =
 
 const toPreviewView = (
   response: Extract<SettingsUiSmartTaskPreviewResponse, { ok: true }>,
-): SmartTaskEditPreviewView => ({
-  deadlineAtMs: response.deadlineAtMs,
-  // Explicitly conditional ("If you save: runs …") — the hero above still
-  // shows the CURRENT plan, so the draft's window/cost must never read as an
-  // already-committed schedule beside it.
-  whenLine: composeSmartTaskDraftLandingLine({
-    scheduledWindowLabel: response.scheduledWindowLabel,
-    deadlineLabel: response.deadlineLabel,
-  }),
-  costLine: response.estimate.costEstimate !== null && response.estimate.costUnit
-    ? formatDeadlineCostMetaLine({
-      plannedTotalCost: response.estimate.costEstimate,
-      deliveredCost: null,
-      costUnit: response.estimate.costUnit,
-    })
-    : null,
-  verdictLine: resolveSmartTaskPreviewStatusCopy(
-    response.estimate.status,
-    response.estimate.unavailableReason,
-    response.estimate.budgetRole,
-  ),
-  caveat: CREATE_SMART_TASK_WIDGET_COPY.estimateCaveat,
-});
+): SmartTaskEditPreviewView => toSmartTaskPreviewView(response, composeSmartTaskDraftLandingLine({
+  scheduledWindowLabel: response.scheduledWindowLabel,
+  deadlineLabel: response.deadlineLabel,
+}));
 
 const runPreview = async (): Promise<void> => {
   const s = state;
@@ -280,8 +251,7 @@ const schedulePreview = (): void => {
   }, PREVIEW_DEBOUNCE_MS);
 };
 
-export const openSmartTaskEditor = (context: SmartTaskEditContext): void => {
-  disarmClearTimer();
+const openController = (context: SmartTaskEditContext, clearOnly: boolean): void => {
   cancelPendingPreview();
   revision += 1;
   state = {
@@ -297,12 +267,14 @@ export const openSmartTaskEditor = (context: SmartTaskEditContext): void => {
     preview: null,
     errorLine: null,
     clearArmed: false,
+    clearOnly,
   };
   renderRequested();
 };
 
+export const openSmartTaskEditor = (context: SmartTaskEditContext): void => openController(context, false);
+
 export const closeSmartTaskEditor = (): void => {
-  disarmClearTimer();
   cancelPendingPreview();
   revision += 1;
   state = null;
@@ -320,7 +292,6 @@ const applyDraftChange = (patch: Partial<SmartTaskEditSnapshot['draft']>): void 
   s.preview = null;
   s.errorLine = null;
   s.clearArmed = false;
-  disarmClearTimer();
   revision += 1;
   s.dirty = isDirtyDraft(s);
   s.valid = isValidDraft(s);
@@ -466,26 +437,16 @@ export const submitSmartTaskUpdate = async (): Promise<void> => {
   }
 };
 
-// First tap of the two-step clear: arm the confirm label and start the shared
-// auto-revert window.
+// First tap opens the confirmation dialog. It stays open until the user
+// dismisses or confirms it, including while the surrounding page refreshes.
 const armClearConfirm = (): void => {
   const s = state;
   if (!s) return;
   s.clearArmed = true;
   renderRequested();
-  disarmClearTimer();
-  clearRevertTimer = setTimeout(() => {
-    clearRevertTimer = null;
-    const current = state;
-    if (current && current.clearArmed) {
-      current.clearArmed = false;
-      renderRequested();
-    }
-  }, CLEAR_CONFIRM_REVERT_MS);
 };
 
-// Two-step clear: first tap arms (auto-reverts after the shared confirm
-// window), second tap commits. On success the page closes back to the
+// Clear opens a confirmation dialog; confirming commits. On success the page closes back to the
 // Smart-tasks list — the detail route now points at an absent task.
 export const requestSmartTaskClear = async (): Promise<void> => {
   const s = state;
@@ -494,7 +455,7 @@ export const requestSmartTaskClear = async (): Promise<void> => {
     armClearConfirm();
     return;
   }
-  disarmClearTimer();
+  s.clearArmed = false;
   cancelPendingPreview();
   // Invalidate any in-flight preview so its late response can't overwrite the
   // clearing state.
@@ -530,17 +491,15 @@ export const requestSmartTaskClear = async (): Promise<void> => {
   }
 };
 
-// The separate-meter detail state has no editor to open, but it must retain
-// the existing two-step Clear action. Seed the controller on the first tap,
-// then route through the same confirmation and cancel write as the editable
-// lane. A matching snapshot may already exist if the device moved meters
-// while its editor was open; keep it because the cancel write only needs the
-// device identity.
+// Clear works with or without an open editor. Without one (the editor is
+// closed, or the separate-meter detail state has none), seed the controller in
+// clear-only mode on the tap, then route through the same confirmation and
+// cancel write as the editor. A matching snapshot may already exist if the
+// editor is open, or the device moved meters while it was; keep it because the
+// cancel write only needs the device identity.
 export const beginSmartTaskClear = async (
   context: SmartTaskEditContext,
 ): Promise<void> => {
-  if (state?.context.deviceId !== context.deviceId) {
-    openSmartTaskEditor(context);
-  }
+  if (state?.context.deviceId !== context.deviceId) openController(context, true);
   await requestSmartTaskClear();
 };

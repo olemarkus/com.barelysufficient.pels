@@ -55,7 +55,7 @@ export const readStoredObjectiveState = (
 // which the boost resolvers gate on the device's stepped-load profile
 // (`resolveBoostSupported` → `hasSteppedLoadProfile`); a binary on/off device has
 // no higher step to promote to.
-const deviceSupportsLimitLowerPriority = (device: GateDevice): boolean => (
+export const deviceSupportsLimitLowerPriority = (device: GateDevice): boolean => (
   device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device)
 );
 

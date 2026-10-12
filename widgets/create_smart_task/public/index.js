@@ -188,11 +188,6 @@
   };
   var SMART_TASK_EDIT_COPY = {
     editButton: "Edit task",
-    // Collapsed-row supporting line: says what editing covers so the row earns
-    // its place even before it is tapped. Names the extra permissions too — they
-    // are the least discoverable thing behind this row, and until the editor
-    // could set them users had no way to find them at all.
-    editHint: "Change the goal, ready-by time, or extra permissions.",
     // Section hint for the editor's "Extra permissions" disclosure. The create
     // widget's variant opens "Off unless you turn them on", which is false on an
     // existing task whose permissions may already be granted — so this one only
@@ -204,10 +199,13 @@
     saving: "Saving\u2026",
     discardButton: "Discard",
     clearButton: "Clear task",
-    // Two-step confirm label (same auto-revert pattern as the Budget discard
-    // button) so a stray tap can't drop the task.
-    clearConfirm: "Tap again to clear",
     clearing: "Clearing\u2026",
+    // Confirmation dialog for Clear. Names the device, because the page may be
+    // one of several open task pages the owner has moved between.
+    clearDialogTitle: "Clear smart task?",
+    clearDialogBody: (deviceName) => `PELS will stop scheduling the task for ${deviceName}. The run so far moves to Past tasks.`,
+    clearDialogKeep: "Keep task",
+    clearDialogConfirm: "Clear task",
     // Honest about the mechanics: saving re-plans the task, and the run so far
     // is filed under Past tasks (where it wears the Abandoned chip) — said here
     // so the user who later scans history isn't surprised by a run they never
@@ -830,7 +828,6 @@
           deviceId: "preview-hot-water",
           deviceName: "Hot water",
           kind: "temperature",
-          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 85,
@@ -843,7 +840,6 @@
           deviceId: "preview-ev",
           deviceName: "Driveway charger",
           kind: "ev_soc",
-          group: "ev_charger",
           unitSymbol: "%",
           goalMin: 1,
           goalMax: 100,
@@ -864,7 +860,6 @@
           deviceId: "preview-living",
           deviceName: "Living room",
           kind: "temperature",
-          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 30,
@@ -877,7 +872,6 @@
           deviceId: "preview-bedroom",
           deviceName: "Bedroom",
           kind: "temperature",
-          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 30,
@@ -890,7 +884,6 @@
           deviceId: "preview-bathroom-floor",
           deviceName: "Bathroom floor",
           kind: "temperature",
-          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 35,
@@ -903,7 +896,6 @@
           deviceId: "preview-office",
           deviceName: "Office",
           kind: "temperature",
-          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 30,
@@ -916,7 +908,6 @@
           deviceId: "preview-hot-water",
           deviceName: "Hot water",
           kind: "temperature",
-          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 85,
@@ -929,7 +920,6 @@
           deviceId: "preview-cabin-water",
           deviceName: "Cabin water heater",
           kind: "temperature",
-          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 85,
@@ -942,7 +932,6 @@
           deviceId: "preview-ev",
           deviceName: "Driveway charger",
           kind: "ev_soc",
-          group: "ev_charger",
           unitSymbol: "%",
           goalMin: 1,
           goalMax: 100,
@@ -955,7 +944,6 @@
           deviceId: "preview-ev-guest",
           deviceName: "Guest charger",
           kind: "ev_soc",
-          group: "ev_charger",
           unitSymbol: "%",
           goalMin: 1,
           goalMax: 100,
@@ -1044,6 +1032,7 @@
     "heating",
     "ev_charger"
   ];
+  var resolveSmartTaskDeviceGroup = (device) => device.kind === "ev_soc" ? "ev_charger" : "heating";
   var SMART_TASK_DEVICE_PICKER_COPY = {
     // One-line eligibility hint under "Choose a device" — a smart task is a goal
     // on a device PELS manages, so only those appear here. Frames the subset as
@@ -1203,8 +1192,9 @@
     }
     const iconEl = li.querySelector("[data-device-icon]");
     if (iconEl instanceof HTMLElement) {
-      iconEl.dataset.group = device.group;
-      iconEl.setAttribute("aria-label", resolveSmartTaskDeviceGroupIconLabel(device.group));
+      const group = resolveSmartTaskDeviceGroup(device);
+      iconEl.dataset.group = group;
+      iconEl.setAttribute("aria-label", resolveSmartTaskDeviceGroupIconLabel(group));
     }
     const nameEl = li.querySelector("[data-device-name]");
     const metaEl = li.querySelector("[data-device-meta]");

@@ -99,3 +99,19 @@ describe('the settings page follows outside writes to price_optimization_setting
     expect(state.priceOptimizationSettings.pump?.cheapDelta).toBe(3);
   });
 });
+
+describe('a home that never saved price_optimization_settings', () => {
+  afterEach(() => {
+    setHomeyClient(null);
+  });
+
+  it('reads the unset key as an empty, loaded map rather than an unavailable read', async () => {
+    const homey = installHomeyMock({ settings: {} });
+    setHomeyClient(homey as never);
+    state.priceOptimizationSettings = { stale: entry(1) };
+    state.priceOptimizationSettingsLoaded = false;
+    await reloadPriceOptimizationSettings();
+    expect(state.priceOptimizationSettingsLoaded).toBe(true);
+    expect(state.priceOptimizationSettings).toEqual({});
+  });
+});

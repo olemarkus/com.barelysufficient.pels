@@ -2,41 +2,14 @@ import type {
   DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import type {
-  DeferredObjectiveSettingsKind,
-  DeferredObjectiveUnit,
-} from '../../../packages/contracts/src/deferredObjectiveSettings';
-import type {
+  SmartTaskCandidateDevice,
   SmartTaskCandidateRequest,
   SmartTaskWriteRejectReason,
 } from '../../../packages/contracts/src/smartTaskEdit';
-import type {
-  SmartTaskDeviceGroup,
-} from '../../../packages/shared-domain/src/smartTaskDevicePickerOrder';
 
-// One eligible device the user can set a smart task on. Kind sets the goal
-// unit (°C for temperature, % for EV charge level); the bounds drive the goal
-// stepper. `currentValue` seeds the stepper and the "now → target" hint, null
-// when the device hasn't reported a reading yet.
-export type CreateSmartTaskDevice = {
-  deviceId: string;
-  deviceName: string;
-  kind: DeferredObjectiveSettingsKind;
-  // Display family for the picker: drives the intentional group order and the
-  // per-row type icon (thermostats, then water heaters, then EV chargers).
-  group: SmartTaskDeviceGroup;
-  unitSymbol: DeferredObjectiveUnit;
-  goalMin: number;
-  goalMax: number;
-  goalStep: number;
-  defaultGoal: number;
-  currentValue: number | null;
-  // Whether the "May limit lower-priority devices" toggle can affect this
-  // device — true for stepped loads, whose higher step can displace strictly
-  // lower-priority demand. Gated on effect so the compose screen never offers
-  // a permission that would be a no-op for a binary device. The budget-exempt
-  // toggle has no such gate (any device can exceed the soft daily budget).
-  supportsLimitLowerPriority: boolean;
-};
+// One eligible device the user can set a smart task on: the shared candidate
+// row (`packages/contracts/src/smartTaskEdit.ts`), under the widget-local name.
+export type CreateSmartTaskDevice = SmartTaskCandidateDevice;
 
 export type CreateSmartTaskDevicesPayload = {
   state: 'ready';

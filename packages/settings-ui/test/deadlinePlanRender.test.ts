@@ -12,7 +12,6 @@ import type {
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import {
   deadlineLabels,
-  SMART_TASK_EDIT_COPY,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
 } from '../../shared-domain/src/deadlineLabels.ts';
@@ -171,10 +170,10 @@ describe('DeadlinePlan pending branch', () => {
         onPermissionToggle: vi.fn(),
         onSave: vi.fn(),
         onClear,
+        onDismissClear: vi.fn(),
       },
     });
 
-    expect(mount.textContent).not.toContain(SMART_TASK_EDIT_COPY.editHint);
     expect(mount.textContent).not.toContain('Edit task');
     expect(mount.textContent).not.toContain('Save changes');
     expect(mount.querySelector('.smart-task-edit__time-input')).toBeNull();
@@ -201,6 +200,7 @@ describe('DeadlinePlan pending branch', () => {
     return {
       context: {
         deviceId: 'dev_water_heater',
+        deviceName: 'Water heater',
         kind: 'temperature',
         unit: '°C',
         min: 30,
@@ -220,6 +220,7 @@ describe('DeadlinePlan pending branch', () => {
       preview: null,
       errorLine: null,
       clearArmed: false,
+      clearOnly: false,
     };
   };
 
@@ -238,6 +239,7 @@ describe('DeadlinePlan pending branch', () => {
         onPermissionToggle,
         onSave: vi.fn(),
         onClear: vi.fn(),
+        onDismissClear: vi.fn(),
       },
     });
     return mount;
@@ -413,6 +415,33 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     provenanceRows: [],
   },
   revisionLog: [], revisionSummary: { text: null, count: 0, shouldShowPanel: false },
+});
+
+describe('DeadlinePlan after-task card', () => {
+  it('says who starts the device once the task is done, and links to its settings', () => {
+    const onChange = vi.fn();
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, {
+      status: 'pending',
+      pending: buildPendingPayload(),
+      afterTask: {
+        line: 'PELS turns Charger on whenever power allows, even after it was turned off elsewhere.',
+        onChange,
+      },
+    });
+    const card = mount.querySelector('.smart-task-after-task');
+    expect(card?.querySelector('h2')?.textContent).toBe('When the task is done');
+    expect(card?.querySelector('p')?.textContent)
+      .toBe('PELS turns Charger on whenever power allows, even after it was turned off elsewhere.');
+    (card?.querySelector('md-text-button') as HTMLElement).click();
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders no card for a device the rule does not cover', () => {
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, { status: 'pending', pending: buildPendingPayload() });
+    expect(mount.querySelector('.smart-task-after-task')).toBeNull();
+  });
 });
 
 describe('DeadlinePlan loading skeleton', () => {

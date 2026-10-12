@@ -174,7 +174,7 @@ describe('BudgetOverview panel header consumes the shared hero primitive', () =>
 describe('DeadlinesList header consumes the shared hero primitive', () => {
   it('loading-state baseline header walks the canonical eyebrow + headline contract', () => {
     const mount = mountIntoBody();
-    renderDeadlinesList(mount, { status: 'loading' });
+    renderDeadlinesList(mount, { status: 'loading' }, { onNewTask: () => {} });
     // BaselineHeader is rendered as a `<header>` rather than a `<section>`;
     // walk by class to stay tolerant.
     const hero = mount.querySelector('.plan-hero.pels-hero');
@@ -202,7 +202,7 @@ describe('DeadlinesList header consumes the shared hero primitive', () => {
         currentValueLine: null,
         liveCauseLine: null,
       }],
-    });
+    }, { onNewTask: () => {} });
     const hero = mount.querySelector('.plan-hero.pels-hero.deadlines-list-hero');
     expectCanonicalHeroShape(hero);
   });

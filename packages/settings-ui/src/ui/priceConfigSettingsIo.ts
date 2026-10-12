@@ -51,14 +51,23 @@ export const writePriceOptimizationSettings = (): Promise<void> => {
  * several quick +/- taps. A page write that starts during the read voids it;
  * that write's own change notification reads again.
  */
+// A key never written reads as null (a failed read rejects instead), which is a
+// home where no device has price or solar settings yet: an empty map, loaded.
+const classifyStoredPriceOptimizationMap = (value: unknown): ReturnType<typeof classifyPriceOptimizationConfigMap> => (
+  value === null || value === undefined
+    ? { state: 'resolved', settings: {} }
+    : classifyPriceOptimizationConfigMap(value)
+);
+
 export const reloadPriceOptimizationSettings = async (): Promise<boolean> => {
   let started: number;
   do {
     started = priceOptimizationWritesStarted;
     await priceOptimizationWritesSettled;
   } while (started !== priceOptimizationWritesStarted);
-  const read = classifyPriceOptimizationConfigMap(await getSettingFresh(PRICE_OPTIMIZATION_SETTINGS));
+  const read = classifyStoredPriceOptimizationMap(await getSettingFresh(PRICE_OPTIMIZATION_SETTINGS));
   if (read.state !== 'resolved' || started !== priceOptimizationWritesStarted) return false;
+  state.priceOptimizationSettingsLoaded = true;
   if (JSON.stringify(read.settings) === JSON.stringify(state.priceOptimizationSettings)) return false;
   state.priceOptimizationSettings = read.settings;
   return true;
@@ -178,9 +187,10 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     getSetting(PV_FORECAST_SOURCE),
   ]);
 
-  const priceOptimizationRead = classifyPriceOptimizationConfigMap(priceOptSettings);
+  const priceOptimizationRead = classifyStoredPriceOptimizationMap(priceOptSettings);
   if (priceOptimizationRead.state === 'resolved') {
     state.priceOptimizationSettings = priceOptimizationRead.settings;
+    state.priceOptimizationSettingsLoaded = true;
   }
 
   return {

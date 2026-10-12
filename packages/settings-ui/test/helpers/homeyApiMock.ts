@@ -40,6 +40,9 @@ import {
   SETTINGS_UI_SMART_TASK_PREVIEW_PATH,
   SETTINGS_UI_SMART_TASK_UPDATE_PATH,
   SETTINGS_UI_SMART_TASK_CANCEL_PATH,
+  SETTINGS_UI_SMART_TASK_CREATE_PATH,
+  SETTINGS_UI_SMART_TASK_CREATE_PREVIEW_PATH,
+  SETTINGS_UI_SMART_TASK_DEVICES_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../../../lib/utils/settingsUiBootstrapKeys.ts';
 import { SETTINGS_UI_HOMES_PATH, SETTINGS_UI_HOMES_SAVE_PATH } from '../../../contracts/src/settingsUiHomes.ts';
@@ -113,6 +116,9 @@ export type MockHomeyUiState = {
   starvationRescueCreate?: unknown;
   smartTaskPreview?: unknown;
   smartTaskUpdate?: unknown;
+  smartTaskDevices?: unknown;
+  smartTaskCreatePreview?: unknown;
+  smartTaskCreate?: unknown;
   smartTaskCancel?: unknown;
 };
 
@@ -505,6 +511,17 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   ),
   [buildRouteKey('POST', SETTINGS_UI_SMART_TASK_CANCEL_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'smartTaskCancel') ?? { ok: false, reason: 'unavailable' }
+  ),
+  // Smart-task create lane (Smart tasks page and device page). Same fail-closed
+  // defaults; tests seed `uiState.smartTaskDevices` / `smartTaskCreate*`.
+  [buildRouteKey('GET', SETTINGS_UI_SMART_TASK_DEVICES_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'smartTaskDevices') ?? { state: 'unavailable' }
+  ),
+  [buildRouteKey('POST', SETTINGS_UI_SMART_TASK_CREATE_PREVIEW_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'smartTaskCreatePreview') ?? { ok: false, reason: 'unavailable' }
+  ),
+  [buildRouteKey('POST', SETTINGS_UI_SMART_TASK_CREATE_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'smartTaskCreate') ?? { ok: false, reason: 'unavailable' }
   ),
   [buildRouteKey('POST', LOG_HOMEY_DEVICE_PATH)]: () => async () => ({ ok: true }),
 };

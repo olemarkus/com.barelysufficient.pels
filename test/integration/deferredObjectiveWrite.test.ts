@@ -4,6 +4,7 @@ import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/de
 import { describe, expect, it, vi } from 'vitest';
 import {
   clearObjectiveForDevice,
+  createObjectiveForDevice,
   upsertObjectiveForDevice,
   type DeferredObjectiveDeviceWriteDeps,
 } from '../../lib/objectives/deferredObjectives/objectiveWrite';
@@ -236,6 +237,41 @@ describe('device-scoped objective ops (per-device-key)', () => {
     });
     expect(readObjectiveForDevice(store, 'ev-1')).toEqual(evEntry);
     expect(readObjectiveForDevice(store, 'ev-1')!.rescue).toBeUndefined();
+  });
+
+  // ── Create: never over an open task ─────────────────────────────────────────
+
+  it('create REFUSES (no write, no notify) a device with an open task', () => {
+    const store = buildStore({ 'ev-1': { ...evEntry, targetPercent: 50 } });
+    const h = buildDeviceDeps(store);
+    const outcome = createObjectiveForDevice(h.deps, {
+      deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry, rescue: 'replace',
+    });
+    expect(outcome).toEqual({ persisted: false, reason: 'open_task_exists' });
+    expect(readObjectiveForDevice(store, 'ev-1')).toEqual({ ...evEntry, targetPercent: 50 });
+    expect(h.activePlanRecorder.markPending).not.toHaveBeenCalled();
+    expect(h.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'objective_write_refused', reason: 'open_task_exists',
+    }));
+  });
+
+  it('create REFUSES a paused task whose ready-by is still ahead, which is still open', () => {
+    const store = buildStore({ 'ev-1': { ...evEntry, enabled: false } });
+    const h = buildDeviceDeps(store);
+    expect(createObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry }))
+      .toEqual({ persisted: false, reason: 'open_task_exists' });
+  });
+
+  it('create writes over a finished run, and with rescue:"replace" drops that run\'s permissions', () => {
+    const store = buildStore({
+      'ev-1': { ...evEntry, enabled: false, deadlineAtMs: NOW_MS - 60_000, rescue: { exemptFromBudget: 'always' } },
+    });
+    const h = buildDeviceDeps(store);
+    const outcome = createObjectiveForDevice(h.deps, {
+      deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry, rescue: 'replace',
+    });
+    expect(outcome).toEqual({ persisted: true });
+    expect(readObjectiveForDevice(store, 'ev-1')).toEqual(evEntry);
   });
 
   // ── Outcome contract: persisted vs refused (the false-success fix) ──────────

@@ -18,6 +18,7 @@ import type {
 } from '../../../contracts/src/settingsUiApi.ts';
 import { parseCarAssociationCandidatesRead } from './carAssociationCandidates.ts';
 import { state } from './state.ts';
+import { readSmartTaskUsageDeviceIds, recordSmartTaskHistoryDevices } from './smartTaskUsage.ts';
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
 import {
   loadAfterSetupFacts,
@@ -87,8 +88,6 @@ let carInventoryRefresh: Promise<void> | undefined;
 let busyRecommendationId: string | null = null;
 const runSerializedDismissalWrite = createSerializedAsyncRunner();
 const RECOMMENDATION_READ_RETRY_DELAYS_MS = [250, 750] as const;
-// Positive evidence survives a task being cleared or history becoming unavailable.
-const usedSmartTaskDeviceIds = new Set<string>();
 let smartTaskUsageRead: 'loading' | 'resolved' | 'unavailable' = 'loading';
 let smartTaskUsageGeneration = 0;
 
@@ -100,9 +99,9 @@ const loadSmartTaskUsage = async (): Promise<void> => {
       'GET', SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
     );
     if (generation !== smartTaskUsageGeneration) return;
-    for (const [deviceId, entries] of Object.entries(history.entriesByDeviceId)) {
-      if (entries.length > 0) usedSmartTaskDeviceIds.add(deviceId);
-    }
+    recordSmartTaskHistoryDevices(Object.entries(history.entriesByDeviceId)
+      .filter(([, entries]) => entries.length > 0)
+      .map(([deviceId]) => deviceId));
     smartTaskUsageRead = 'resolved';
   } catch (error) {
     if (generation !== smartTaskUsageGeneration) return;
@@ -152,9 +151,6 @@ const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): Set
     && (flowReporterRead.state === 'resolved' || flowReporterRead.state === 'stale')
     ? flowReporterRead.reporters
     : [];
-  for (const deviceId of Object.keys(state.deferredObjectiveSettings.objectivesByDeviceId)) {
-    usedSmartTaskDeviceIds.add(deviceId);
-  }
   // Device fixes first, by name; then what PELS can do next, in the order the
   // setup path's lede names them. The second group is not sorted into the
   // first: a wiring fix for one device outranks an optional feature.
@@ -171,7 +167,7 @@ const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): Set
       state.managedMap,
       state.controllableMap,
       state.deviceStartPolicyMap,
-      usedSmartTaskDeviceIds,
+      readSmartTaskUsageDeviceIds(),
     ),
     ...(afterSetupRead.state === 'resolved'
       ? resolveAfterSetupRecommendations(afterSetupRead.facts)

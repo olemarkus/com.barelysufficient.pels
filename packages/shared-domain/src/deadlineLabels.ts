@@ -567,10 +567,9 @@ export const resolveSmartTaskWidgetDetailCopy = (
   };
 };
 
-// Compressed empty-state pointer for the widget. The settings-UI variant
-// (`SMART_TASK_LIST_EMPTY_COPY`) wraps Flow-action names in rich markup the
-// widget can't render at 320–480 px; this is the one-sentence form. Names both
-// creation routes: a Flow card or the separate "New smart task" widget.
+// Compressed empty-state pointer for the widget, which has no create action of
+// its own. Names both routes a dashboard owner has: a Flow card or the separate
+// "New smart task" widget.
 export const SMART_TASK_WIDGET_EMPTY_HINT
   = 'Add a smart task from a Flow card for a managed device, or use the New smart task widget to see it here.';
 
@@ -751,6 +750,43 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   atRisk: 'At risk — this may need most of the available window.',
 } as const;
 
+// The card a Smart task carries about its device for the time after the task:
+// who starts the device then, as its device settings answer it
+// (`packages/settings-ui/src/ui/deviceStartRule.ts`), with a link to those
+// settings. During the task the task decides, so this is the part of the
+// device's behaviour the task does not cover, and the part owners forget.
+export const SMART_TASK_AFTER_TASK_COPY = {
+  title: 'When the task is done',
+  changeAction: 'Change',
+} as const;
+
+// The Smart tasks page's New smart task flow. Shares the create widget's field,
+// preview and error copy (`CREATE_SMART_TASK_WIDGET_COPY`); these are the
+// strings only the page has.
+export const SMART_TASK_CREATE_PAGE_COPY = {
+  newTaskAction: 'New smart task',
+  pickPrompt: 'Choose the managed device the task is for.',
+  // The list holds managed devices only, so the fix is Managed by PELS, not
+  // adding a device in Homey (the widget's wording).
+  noDevices: 'No device can take a smart task yet. Turn on Managed by PELS for a thermostat, '
+    + 'water heater, EV charger, or an on/off device with a power reading.',
+  // Picker row for a device that already has an open task: choosing it opens
+  // that task, because a device carries one task at a time.
+  openTask: 'Open its smart task',
+  previewTask: 'Preview task',
+  editGoal: 'Edit goal',
+  chooseAnotherDevice: 'Choose another device',
+  // The device page's Smart task box.
+  boxTitle: 'Smart task',
+  addTask: 'Add smart task',
+  addTaskHint: 'Set a goal and when this device should reach it.',
+  viewTask: 'View task',
+} as const;
+
+// First-run body on the Smart tasks page, beside its New smart task action.
+export const SMART_TASK_LIST_CREATE_HINT
+  = 'No smart tasks yet. Set a goal and ready-by time for a managed device. PELS will choose when it runs.';
+
 const PREVIEW_UNAVAILABLE_COPY_BY_REASON: Record<DeferredObjectivePlanPreviewUnavailableReason, string> = {
   invalid_deadline: 'Can’t preview this ready-by time yet.',
   invalid_session: 'Can’t preview this yet — plug the EV in to start.',
@@ -833,11 +869,6 @@ export const resolveCreateSmartTaskRejectCopy = (reason: string | undefined): st
 // `readyByLabel`) so composing and editing a task read as one language.
 export const SMART_TASK_EDIT_COPY = {
   editButton: 'Edit task',
-  // Collapsed-row supporting line: says what editing covers so the row earns
-  // its place even before it is tapped. Names the extra permissions too — they
-  // are the least discoverable thing behind this row, and until the editor
-  // could set them users had no way to find them at all.
-  editHint: 'Change the goal, ready-by time, or extra permissions.',
   // Section hint for the editor's "Extra permissions" disclosure. The create
   // widget's variant opens "Off unless you turn them on", which is false on an
   // existing task whose permissions may already be granted — so this one only
@@ -849,10 +880,15 @@ export const SMART_TASK_EDIT_COPY = {
   saving: 'Saving…',
   discardButton: 'Discard',
   clearButton: 'Clear task',
-  // Two-step confirm label (same auto-revert pattern as the Budget discard
-  // button) so a stray tap can't drop the task.
-  clearConfirm: 'Tap again to clear',
   clearing: 'Clearing…',
+  // Confirmation dialog for Clear. Names the device, because the page may be
+  // one of several open task pages the owner has moved between.
+  clearDialogTitle: 'Clear smart task?',
+  clearDialogBody: (deviceName: string): string => (
+    `PELS will stop scheduling the task for ${deviceName}. The run so far moves to Past tasks.`
+  ),
+  clearDialogKeep: 'Keep task',
+  clearDialogConfirm: 'Clear task',
   // Honest about the mechanics: saving re-plans the task, and the run so far
   // is filed under Past tasks (where it wears the Abandoned chip) — said here
   // so the user who later scans history isn't surprised by a run they never
@@ -904,6 +940,18 @@ export const composeSmartTaskDraftLandingLine = (params: {
   }
   return `${SMART_TASK_EDIT_COPY.ifYouSavePrefix} ${SMART_TASK_EDIT_COPY.ifYouSaveRunsWord} `
     + `${params.scheduledWindowLabel} · ${readyByPart}`;
+};
+
+// The create preview's landing line ("Scheduled 02:00–04:00 · Ready by
+// Tomorrow 07:00"), the widget's wording: there is no current plan beside it
+// to tell a draft apart from, so it needs no "If you save:".
+export const composeSmartTaskCreateLandingLine = (params: {
+  scheduledWindowLabel: string | null;
+  deadlineLabel: string;
+}): string => {
+  const readyByPart = `${CREATE_SMART_TASK_WIDGET_COPY.readyByLabel} ${params.deadlineLabel}`;
+  if (params.scheduledWindowLabel === null) return readyByPart;
+  return `${CREATE_SMART_TASK_WIDGET_COPY.scheduledLabel} ${params.scheduledWindowLabel} · ${readyByPart}`;
 };
 
 // Goal-field range hint ("Range 30–75 °C."), shared-domain-homed so the
@@ -1427,39 +1475,6 @@ export const formatSmartTaskGoalContextLine = (
 // Re-exported from the canonical list-row label so the widget and the
 // settings-UI list card share one source.
 export const SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
-
-// Empty-state copy for the Smart-tasks list when no smart tasks have been
-// scheduled yet. Split into discrete fragments so the JSX renderer can wrap
-// the action names in `<strong>` and the example sentences in `<em>` without
-// the strings drifting from this canonical source. Runtime log breadcrumbs
-// join the fragments with single spaces to recover the full sentence.
-export const SMART_TASK_LIST_EMPTY_COPY = {
-  intro: 'No smart tasks yet. Open the Flow editor and add the',
-  heatingAction: 'Add heating task',
-  actionWord: 'action',
-  // User-outcome phrasing, not the internal Flow-card field name. The earlier
-  // "(Heat … to … °C by Ready by)" leaked the literal `Ready by` input label —
-  // it read as a placeholder, not a sentence; this states what the task
-  // achieves. Stays on-vocabulary per `notes/ui-terminology.md` (temperature
-  // says "temperature", never "charge"; EV says "percent").
-  heatingExample: '(heat a device to a target temperature by a time)',
-  // Rendered straight after the example, with no space before the comma.
-  listSeparator: ', the',
-  chargingAction: 'Add charging task',
-  chargingExample: '(charge a device to a target percent by a time)',
-  energyConjunction: 'or the',
-  energyAction: 'Add energy task',
-  energyExample: '(deliver an amount of energy to an on/off device by a time)',
-  outro: 'to schedule a managed device for a specific ready-by time.',
-  // Second route: the "New smart task" dashboard widget
-  // (widgets/create_smart_task) creates a task directly, without the Flow
-  // editor. Rendered as its own trailing paragraph in `EmptyBody`, so the lead
-  // is phrased to stand alone (not "Or …", which would dangle off a separate
-  // block). Widget name wrapped in <strong> to match the Flow-action emphasis.
-  widgetLead: 'You can also add the',
-  widgetName: 'New smart task',
-  widgetOutro: 'widget to a dashboard and create one there.',
-} as const;
 
 // Banner copy for the Smart-tasks list when the bootstrap fetch fails. Lifted
 // to shared-domain so runtime log breadcrumbs and the UI render the same

@@ -154,6 +154,17 @@ export const isSmartTaskInProgress = (
 ): boolean => entry.enabled && Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > nowMs;
 
 /**
+ * Whether a stored Smart task is still OPEN on its device: enabled, or paused
+ * with its ready-by still ahead. A disabled past entry is a finished run kept
+ * for history. A device with an open task gets no second one: creation
+ * surfaces offer to edit or view the open task instead of replacing it.
+ */
+export const isSmartTaskOpen = (
+  entry: Pick<DeferredObjectiveSettingsEntry, 'enabled' | 'deadlineAtMs'>,
+  nowMs: number,
+): boolean => entry.enabled || entry.deadlineAtMs > nowMs;
+
+/**
  * One device's {@link isSmartTaskInProgress} answer as read from storage.
  * `unavailable` is a read that could not tell, which a caller deciding whether
  * to allow a change must treat as a refusal, never as `none`.
