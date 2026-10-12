@@ -8,6 +8,7 @@ import type {
   SteppedLoadDescriptorProbe,
 } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
+import { mockDeviceDetailCollaborators } from './helpers/deviceDetailCollaborators.ts';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -125,23 +126,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('keeps the currently open device panel stable when an earlier managed save resolves late', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -200,23 +185,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('saves built-in device control directly from its single switch', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -303,23 +272,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('surfaces the built-in device control notice and auto-expands Setup when management is blocked', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(createHomeyMock({
@@ -376,23 +329,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('hides the built-in device control notice once activation is no longer required', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(createHomeyMock({
@@ -439,23 +376,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('shows EV SoC details for charger device detail', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(createHomeyMock({ settings: { managed_devices: { 'ev-1': true } } }));
@@ -496,17 +417,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('dates the EV SoC subline when the charger does have a level', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({ renderDevices: vi.fn() }));
-    vi.doMock('../src/ui/modes.ts', () => ({ renderPriorities: vi.fn() }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn().mockResolvedValue(undefined) }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(createHomeyMock({ settings: { managed_devices: { 'ev-1': true } } }));
@@ -541,23 +452,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('restores the controllable checkbox when saving fails', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -597,23 +492,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('restores the managed checkbox when saving fails', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -737,23 +616,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('restores the control model when saving the profile fails', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     controlModelInput!.innerHTML = `
@@ -808,23 +671,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('does not refresh another device panel when an earlier control-model save fails late', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     controlModelInput!.innerHTML = `
@@ -903,23 +750,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('locks stepped-load profile editing to device-supported steps when native wiring is enabled', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     controlModelInput!.innerHTML = `
@@ -1011,23 +842,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('limits native EV wiring control modes to default and EV presets', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -1129,23 +944,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('hides EV boost and generated steps in continuous EV mode', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -1226,23 +1025,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('serializes control-model saves so concurrent devices do not lose earlier updates', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     controlModelInput!.innerHTML = `
@@ -1323,23 +1106,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('shows and saves temperature boost settings for stepped temperature devices', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -1400,23 +1167,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('hides temperature boost for stepped devices without a temperature boost target', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -1467,23 +1218,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('shows and saves EV boost settings for stepped EV chargers', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -1552,23 +1287,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('shows EV boost for EV chargers with a stored synthetic stepped-load preset', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -1637,23 +1356,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('shows EV boost for native EV chargers before a preset is configured', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(createHomeyMock({
@@ -1708,23 +1411,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('hides EV boost for EV chargers without stepped-load evidence', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(createHomeyMock({
@@ -1770,23 +1457,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('hides EV boost when an EV preset exists but is disabled', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(createHomeyMock({
@@ -1840,23 +1511,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('hides EV boost for non-EV stepped loads', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -1904,23 +1559,7 @@ describe('device detail managed state saves', () => {
   });
 
   it('shows EV boost status from the charger SoC state', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -2004,23 +1643,7 @@ describe('device detail managed state saves', () => {
       expected: 'Car not connected. Boost will not activate.',
     },
   ])('$title', async ({ evChargingState, expected }) => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({

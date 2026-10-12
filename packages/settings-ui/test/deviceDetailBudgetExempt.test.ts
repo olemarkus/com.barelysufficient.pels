@@ -1,6 +1,7 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import { createHomeyMock } from './helpers/homeyApiMock';
+import { mockDeviceDetailCollaborators } from './helpers/deviceDetailCollaborators.ts';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -75,23 +76,7 @@ describe('device detail budget exemption', () => {
   });
 
   it('loads and saves budget exempt status from the device detail panel', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -134,23 +119,7 @@ describe('device detail budget exemption', () => {
   });
 
   it('prefers the device snapshot when the budget exempt map is still empty', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock();
@@ -177,23 +146,7 @@ describe('device detail budget exemption', () => {
   });
 
   it('merges budget exempt updates with the latest persisted map', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -235,23 +188,7 @@ describe('device detail budget exemption', () => {
   });
 
   it('bypasses a stale cached budget exempt map when saving changes', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -292,23 +229,7 @@ describe('device detail budget exemption', () => {
   });
 
   it('lets a local uncheck override a stale snapshot budget flag', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceDetailCollaborators();
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -348,23 +269,7 @@ describe('device detail budget exemption', () => {
   it('handles budget exempt read failures without mutating the map', async () => {
     const logSettingsError = vi.fn().mockResolvedValue(undefined);
     const showToastError = vi.fn().mockResolvedValue(undefined);
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError,
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError,
-    }));
+    mockDeviceDetailCollaborators({ showToastError, logSettingsError });
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
@@ -415,23 +320,7 @@ describe('device detail budget exemption', () => {
     // already knows about.
     const logSettingsError = vi.fn().mockResolvedValue(undefined);
     const showToastError = vi.fn().mockResolvedValue(undefined);
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError,
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError,
-    }));
+    mockDeviceDetailCollaborators({ showToastError, logSettingsError });
 
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({

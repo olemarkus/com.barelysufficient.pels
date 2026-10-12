@@ -11,6 +11,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 import { createHomeyMock } from './helpers/homeyApiMock';
+import { mockDeviceDetailCollaborators } from './helpers/deviceDetailCollaborators.ts';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -115,17 +116,7 @@ const buildBinaryPump = (
 }) as SettingsUiDeviceSnapshot;
 
 const mockSiblings = () => {
-  vi.doMock('../src/ui/devices.ts', () => ({ renderDevices: vi.fn() }));
-  vi.doMock('../src/ui/modes.ts', () => ({ renderPriorities: vi.fn() }));
-  vi.doMock('../src/ui/priceOptimization.ts', () => ({
-    renderPriceOptimization: vi.fn(),
-    savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-  }));
-  vi.doMock('../src/ui/toast.ts', () => ({
-    showToast: vi.fn().mockResolvedValue(undefined),
-    showToastError: vi.fn().mockResolvedValue(undefined),
-  }));
-  vi.doMock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn().mockResolvedValue(undefined) }));
+  mockDeviceDetailCollaborators();
 };
 
 type OpenPanelParams = {

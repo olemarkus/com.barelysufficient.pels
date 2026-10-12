@@ -17,6 +17,7 @@ import type {
   SteppedLoadDescriptorProbe,
 } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
+import { mockDeviceDetailCollaborators } from './helpers/deviceDetailCollaborators.ts';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -141,23 +142,7 @@ const buildDevice = (
 }));
 
 const installCommonMocks = () => {
-  vi.doMock('../src/ui/devices.ts', () => ({
-    renderDevices: vi.fn(),
-  }));
-  vi.doMock('../src/ui/modes.ts', () => ({
-    renderPriorities: vi.fn(),
-  }));
-  vi.doMock('../src/ui/priceOptimization.ts', () => ({
-    renderPriceOptimization: vi.fn(),
-    savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-  }));
-  vi.doMock('../src/ui/toast.ts', () => ({
-    showToast: vi.fn().mockResolvedValue(undefined),
-    showToastError: vi.fn().mockResolvedValue(undefined),
-  }));
-  vi.doMock('../src/ui/logging.ts', () => ({
-    logSettingsError: vi.fn().mockResolvedValue(undefined),
-  }));
+  mockDeviceDetailCollaborators();
 };
 
 describe('device detail snapshot-fallback wiring (defense-in-depth)', () => {
