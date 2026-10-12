@@ -168,7 +168,21 @@ export class DailyBudgetService {
     return this.deps.getTimeZone();
   }
 
-  /** The update's one read of the prices, price switch and ceiling (`DailyBudgetPlanInputs`). */
+  /**
+   * The update's one read of the prices, price switch and ceiling
+   * (`DailyBudgetPlanInputs`): today's plan, the adjacent days and tomorrow's
+   * debug entry all plan on it, and so does a Budget Adjust preview on its own.
+   *
+   * The price reader can answer with no prices while it asks the price
+   * coordinator to rebuild the cache (`createCombinedPricesReader`): a malformed
+   * cache is dropped and read as `null`, and a legacy V1 cache whose entries all
+   * fall outside the three-day window, or that holds none, migrates to an empty
+   * store. The coordinator rebuilds synchronously, but this update keeps its
+   * empty read, so today's, tomorrow's and yesterday's price series go unpriced
+   * until the next update. That one reads the rebuilt prices; its price
+   * signature differs, so the adjacent days, and today's plan unless it is
+   * frozen, are rebuilt on them.
+   */
   private readPlanInputs(nowMs: number, timeZone: string): DailyBudgetPlanInputs {
     return {
       combinedPrices: readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone),

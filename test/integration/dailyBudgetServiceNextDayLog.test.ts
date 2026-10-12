@@ -4,8 +4,16 @@ import type { DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTyp
 import type { Logger, StructuredDebugEmitter } from '../../lib/logging/logger';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { resolvePlanningPowerCeiling } from '../../lib/power/capacityModel';
-import { COMBINED_PRICES_VERSION, type CombinedPricesV2 } from '../../lib/price/priceTypes';
+import type { SettingsPort } from '../../lib/ports/homeyRuntime';
+import { createCombinedPricesReader, type CombinedPricesReader } from '../../lib/price/combinedPricesReader';
+import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import {
+  COMBINED_PRICES_VERSION,
+  type CombinedPricesV1,
+  type CombinedPricesV2,
+} from '../../lib/price/priceTypes';
+import {
+  COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -13,6 +21,7 @@ import {
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
 import { partialDouble } from '../helpers/partialDouble';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
+import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 
 // Tomorrow's plan goes to the `daily_budget` debug topic as the `next_day`
 // variant of `daily_budget_plan_debug`. It is written when the service rebuilds
@@ -61,7 +70,17 @@ const buildPriceStore = (withTomorrow: boolean): CombinedPricesV2 => ({
   priceUnit: 'kr/kWh',
 });
 
-const buildHarness = () => {
+// A legacy V1 cache whose hours all lie weeks before the three-day window.
+const LEGACY_OUT_OF_WINDOW: CombinedPricesV1 = {
+  prices: buildHours(Date.UTC(2025, 1, 1, 0, 0, 0), [1, 1]),
+  avgPrice: 1,
+  lowThreshold: 0.8,
+  highThreshold: 1.2,
+  priceScheme: 'norway',
+  priceUnit: 'kr/kWh',
+};
+
+const buildHarness = (combinedPricesReader?: CombinedPricesReader) => {
   const settings: Record<string, unknown> = {
     [DAILY_BUDGET_ENABLED]: true,
     [DAILY_BUDGET_KWH]: 20,
@@ -87,7 +106,7 @@ const buildHarness = () => {
     getPowerTracker: () => tracker.state,
     getPriceOptimizationEnabled: () => true,
     getCapacitySettings: () => POWER_LIMITS,
-    combinedPricesReader: { readStore },
+    combinedPricesReader: combinedPricesReader ?? { readStore },
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
     dailyBudgetStateStore: { read: () => null, write: writeState },
     structuredLog: partialDouble<Logger>({ info: info as Logger['info'], error: error as Logger['error'] }),
@@ -184,6 +203,42 @@ describe('DailyBudgetService next-day plan log', () => {
 
     expect(planDebugEntries(debugStructured, 'next_day')).toHaveLength(1);
     expect(readStore).toHaveBeenCalledTimes(1);
+  });
+
+  // The price reader answers a cache it has to rebuild with no prices and a
+  // rebuild request, which the coordinator serves synchronously. The update keeps
+  // its one empty read; the next update plans tomorrow on the rebuilt prices.
+  it.each([
+    ['a malformed cache', { unexpected: 'shape' }],
+    ['a legacy cache with no hour in the window', LEGACY_OUT_OF_WINDOW],
+  ])('restores tomorrow\'s prices on the update after the reader recovers from %s', (_label, cached) => {
+    const priceCache = createInMemoryPriceCache();
+    priceCache.write(COMBINED_PRICES, cached);
+    const settingsPort: SettingsPort = {
+      get: () => null, set: () => undefined, unset: () => undefined, getKeys: () => [],
+    };
+    const requestRebuild = vi.fn(() => priceCache.write(COMBINED_PRICES, buildPriceStore(true)));
+    const reader = createCombinedPricesReader(createPriceDataStore(settingsPort, priceCache), requestRebuild);
+    const { service, debugStructured } = buildHarness(reader);
+
+    service.updateState({ nowMs: NOW_MS });
+
+    expect(requestRebuild).toHaveBeenCalledTimes(1);
+    expect(service.getSnapshot()?.days['2025-03-16']?.buckets.price).toBeUndefined();
+    const [unpriced, ...extraUnpriced] = planDebugEntries(debugStructured, 'next_day');
+    expect(extraUnpriced).toHaveLength(0);
+    expect(unpriced?.buckets.price).toBeUndefined();
+    expect(unpriced?.meta.priceSpreadFactor).toBe(0);
+    debugStructured.mockClear();
+
+    service.updateState({ nowMs: NOW_MS + 10_000 });
+
+    expect(requestRebuild).toHaveBeenCalledTimes(1);
+    expect(service.getSnapshot()?.days['2025-03-16']?.buckets.price).toEqual(TOMORROW_TOTALS);
+    const [entry, ...extra] = planDebugEntries(debugStructured, 'next_day');
+    expect(extra).toHaveLength(0);
+    expect(entry?.buckets.price).toEqual(TOMORROW_TOTALS);
+    expect(entry?.meta.priceSpreadFactor).toBeGreaterThan(0);
   });
 
   it('keeps the update and its persistence when the next-day entry fails', () => {
