@@ -9,7 +9,6 @@ import {
 } from './dailyBudgetState';
 import { getEffectiveProfileData } from './dailyBudgetProfile';
 import { logDailyBudgetPlanDebug } from './dailyBudgetManagerPlan';
-import type { CombinedPriceData } from './dailyBudgetMath';
 import type {
   ConfidenceDebug,
   DailyBudgetDayPayload,
@@ -19,7 +18,6 @@ import type {
 import type { DailyBudgetManagerDeps, PlanResult } from './dailyBudgetManagerTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
-import { logNextDayPlanDebug } from './dailyBudgetNextDayDebug';
 import { logUncontrolledReserveDebug as logReserveDebug } from './dailyBudgetReserveLogging';
 
 export function logBudgetSummaryIfNeeded(params: {
@@ -102,7 +100,6 @@ export function buildSnapshotAndLogDebug(params: {
   defaultProfile: number[];
   confidenceDebug?: ConfidenceDebug;
   planningCeiling: PowerLimitCeiling | null;
-  combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
 }): DailyBudgetDayPayload {
   const {
@@ -117,7 +114,6 @@ export function buildSnapshotAndLogDebug(params: {
     defaultProfile,
     confidenceDebug,
     planningCeiling,
-    combinedPrices,
     priceOptimizationEnabled,
   } = params;
   const shouldLog = plan.shouldLog && (deps.isDebugTopicEnabled?.('daily_budget') ?? true);
@@ -146,17 +142,6 @@ export function buildSnapshotAndLogDebug(params: {
     planDebug: plan.planDebug,
     uncontrolledReserveDiagnostics: plan.uncontrolledReserveDiagnostics,
   });
-  logNextDayPlanDebug({
-    debugStructured,
-    shouldLog,
-    context,
-    settings,
-    state,
-    combinedPrices,
-    priceOptimizationEnabled,
-    planningCeiling,
-    defaultProfile,
-  });
   logReserveDebug({
     plan,
     reserveMode: settings.controlledUsageWeight,
@@ -176,7 +161,6 @@ export function logPlanDebugIfNeeded(params: {
   settings: DailyBudgetSettings;
   state: DailyBudgetState;
   defaultProfile: number[];
-  variant?: 'current' | 'next_day';
   planDebug?: {
     lockCurrentBucket: boolean;
     shouldLockCurrent: boolean;
@@ -195,7 +179,6 @@ export function logPlanDebugIfNeeded(params: {
     settings,
     state,
     defaultProfile,
-    variant,
     planDebug,
     uncontrolledReserveDiagnostics,
   } = params;
@@ -209,7 +192,6 @@ export function logPlanDebugIfNeeded(params: {
     settings,
     state,
     defaultProfile,
-    variant,
     planDebug,
     uncontrolledReserveDiagnostics,
   });

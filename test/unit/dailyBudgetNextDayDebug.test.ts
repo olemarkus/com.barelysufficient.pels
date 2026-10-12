@@ -1,127 +1,95 @@
-import { buildDefaultProfile, DailyBudgetManager } from '../../lib/dailyBudget/dailyBudgetManager';
-import { logNextDayPlanDebug } from '../../lib/dailyBudget/dailyBudgetNextDayDebug';
-import { ensureDailyBudgetProfile } from '../../lib/dailyBudget/dailyBudgetProfile';
-import { buildDayContext } from '../../lib/dailyBudget/dailyBudgetState';
-import type { DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
-import { observedHourlyStatsFixture } from '../helpers/observedHourlyStatsFixture';
+import { DailyBudgetManager } from '../../lib/dailyBudget/dailyBudgetManager';
+import type { DailyBudgetDayPayload, DailyBudgetSettings } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 
 const TZ = 'Europe/Oslo';
+// 2024-01-16 00:00 in Oslo (CET, UTC+1).
+const TOMORROW_START_UTC_MS = Date.UTC(2024, 0, 15, 23, 0);
+const HOUR_MS = 60 * 60 * 1000;
+
+const SETTINGS: DailyBudgetSettings = {
+  enabled: true,
+  dailyBudgetKWh: 10,
+  priceShapingEnabled: true,
+  controlledUsageWeight: 0.3,
+  priceShapingFlexShare: 0.5,
+};
+
+const combinedPrices = {
+  prices: Array.from({ length: 24 }, (_, index) => ({
+    startsAt: new Date(TOMORROW_START_UTC_MS + index * HOUR_MS).toISOString(),
+    total: 100 + index * 20,
+  })),
+};
+
+const buildManager = (isDebugTopicEnabled = true) => {
+  const debugStructured = vi.fn<StructuredDebugEmitter>();
+  const manager = new DailyBudgetManager({
+    log: () => undefined,
+    isDebugTopicEnabled: () => isDebugTopicEnabled,
+    debugStructured,
+  });
+  return { manager, debugStructured };
+};
+
+const buildTomorrowPreview = (manager: DailyBudgetManager, settings: DailyBudgetSettings) => manager.buildPreview({
+  dayStartUtcMs: TOMORROW_START_UTC_MS,
+  timeZone: TZ,
+  settings,
+  combinedPrices,
+  priceOptimizationEnabled: true,
+  planningCeiling: null,
+});
+
+const nextDayEntries = (debugStructured: ReturnType<typeof vi.fn<StructuredDebugEmitter>>) => (
+  debugStructured.mock.calls
+    .map(([payload]) => payload)
+    .filter((payload) => payload.event === 'daily_budget_plan_debug' && payload.variant === 'next_day')
+);
 
 describe('daily budget next-day debug', () => {
-  it('logs effective price shaping flex share for next-day plan debug', () => {
-    const debugStructured = vi.fn();
-    const nowMs = Date.UTC(2024, 0, 15, 11, 0);
-    const context = buildDayContext({
-      nowMs,
-      timeZone: TZ,
-      powerTracker: { buckets: {} },
-    });
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 10,
-      priceShapingEnabled: true,
-      controlledUsageWeight: 0.3,
-      priceShapingFlexShare: 0.5,
-    };
-    const nextDayStartUtcMs = getNextLocalDayStartUtcMs(context.dayStartUtcMs, TZ);
-    const combinedPrices = {
-      prices: Array.from({ length: 24 }, (_, index) => ({
-        startsAt: new Date(nextDayStartUtcMs + index * 60 * 60 * 1000).toISOString(),
-        total: 100 + index * 20,
-      })),
-    };
+  it('writes the preview it is given, with the spread and effective flex share of its prices', () => {
+    const { manager, debugStructured } = buildManager();
+    const preview = buildTomorrowPreview(manager, SETTINGS);
 
-    logNextDayPlanDebug({
-      planningCeiling: null,
-      debugStructured,
-      shouldLog: true,
-      context,
-      settings,
-      state: {},
-      combinedPrices,
-      priceOptimizationEnabled: true,
-      defaultProfile: buildDefaultProfile(),
-    });
+    manager.logNextDayPlan(preview, SETTINGS, combinedPrices, true, null);
 
-    const debugCall = debugStructured.mock.calls.find((call) => (
-      typeof call[0] === 'object'
-      && call[0] !== null
-      && call[0].event === 'daily_budget_plan_debug'
-      && call[0].variant === 'next_day'
-    ));
-    expect(debugCall).toBeDefined();
-    const payload = debugCall?.[0] as { meta: { priceSpreadFactor: number; effectivePriceShapingFlexShare: number } };
-    expect(typeof payload.meta.priceSpreadFactor).toBe('number');
-    expect(typeof payload.meta.effectivePriceShapingFlexShare).toBe('number');
+    const [entry, ...extra] = nextDayEntries(debugStructured);
+    expect(extra).toHaveLength(0);
+    const payload = entry as DailyBudgetDayPayload & {
+      meta: {
+        priceSpreadFactor: number;
+        effectivePriceShapingFlexShare: number;
+        planningCeiling: unknown;
+        planDebug: unknown;
+        settings: { dailyBudgetKWh: number };
+      };
+    };
+    expect(payload.dateKey).toBe(preview.dateKey);
+    expect(payload.buckets).toEqual(preview.buckets);
     expect(payload.meta.priceSpreadFactor).toBeGreaterThan(0);
-    expect(payload.meta.effectivePriceShapingFlexShare).toBeCloseTo(settings.priceShapingFlexShare, 6);
+    expect(payload.meta.effectivePriceShapingFlexShare).toBeCloseTo(SETTINGS.priceShapingFlexShare, 6);
+    expect(payload.meta.settings.dailyBudgetKWh).toBe(SETTINGS.dailyBudgetKWh);
+    expect(payload.meta.planningCeiling).toBeNull();
+    expect(payload.meta.planDebug).toEqual({
+      lockCurrentBucket: false,
+      shouldLockCurrent: false,
+      remainingStartIndex: 0,
+      hasPreviousPlan: false,
+    });
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'daily_budget_profile_samples' }));
   });
 
-  it('plans the next-day gross background from the learned gross series, as the next-day preview does', () => {
-    const debugStructured = vi.fn();
-    const nowMs = Date.UTC(2024, 0, 15, 11, 0);
-    const context = buildDayContext({ nowMs, timeZone: TZ, powerTracker: { buckets: {} } });
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 10,
-      priceShapingEnabled: false,
-      controlledUsageWeight: 0.3,
-      priceShapingFlexShare: 0.5,
-    };
-    const defaultProfile = buildDefaultProfile();
-    const hourly = (value: number) => Array.from({ length: 24 }, () => value);
-    // Net and gross background are deliberately far apart, so a plan that drops
-    // the gross series and falls back to the net line cannot pass for one that
-    // uses it.
-    const { state } = ensureDailyBudgetProfile({
-      ...observedHourlyStatsFixture({
-        profileObservedP50UncontrolledKWh: hourly(0.1),
-        profileObservedP75UncontrolledKWh: hourly(0.15),
-        profileObservedP90UncontrolledKWh: hourly(0.2),
-        profileObservedUncontrolledSampleCounts: hourly(30),
-        profileObservedP50GrossUncontrolledKWh: hourly(0.8),
-        profileObservedP75GrossUncontrolledKWh: hourly(0.9),
-        profileObservedP90GrossUncontrolledKWh: hourly(1),
-        profileObservedGrossUncontrolledSampleCounts: hourly(30),
-      }),
-    }, defaultProfile);
+  it.each([
+    ['the budget is off', { ...SETTINGS, enabled: false }, true],
+    ['the budget is 0 kWh', { ...SETTINGS, dailyBudgetKWh: 0 }, true],
+    ['the daily_budget topic is off', SETTINGS, false],
+  ])('writes nothing when %s', (_label, settings, topicEnabled) => {
+    const { manager, debugStructured } = buildManager(topicEnabled);
+    const preview = buildTomorrowPreview(manager, SETTINGS);
 
-    logNextDayPlanDebug({
-      debugStructured,
-      shouldLog: true,
-      context,
-      settings,
-      state,
-      combinedPrices: null,
-      priceOptimizationEnabled: false,
-      planningCeiling: null,
-      defaultProfile,
-    });
-    const debugCall = debugStructured.mock.calls.find((call) => (
-      typeof call[0] === 'object'
-      && call[0] !== null
-      && call[0].event === 'daily_budget_plan_debug'
-      && call[0].variant === 'next_day'
-    ));
-    const logged = (debugCall?.[0] as DailyBudgetDayPayload | undefined)?.buckets;
+    manager.logNextDayPlan(preview, settings, combinedPrices, true, null);
 
-    const manager = new DailyBudgetManager({ log: () => undefined });
-    manager.loadState(state);
-    const preview = manager.buildPreview({
-      dayStartUtcMs: getNextLocalDayStartUtcMs(context.dayStartUtcMs, TZ),
-      timeZone: TZ,
-      settings,
-      combinedPrices: null,
-      priceOptimizationEnabled: false,
-      planningCeiling: null,
-    }).buckets;
-
-    expect(logged?.plannedGrossUncontrolledKWh).toHaveLength(24);
-    expect(logged?.plannedGrossUncontrolledKWh).toEqual(preview.plannedGrossUncontrolledKWh);
-    expect(logged?.plannedGrossUncontrolledKWh).not.toEqual(logged?.plannedUncontrolledKWh);
-    for (const grossKWh of logged?.plannedGrossUncontrolledKWh ?? []) {
-      expect(grossKWh).toBeGreaterThanOrEqual(0.8);
-    }
+    expect(debugStructured).not.toHaveBeenCalled();
   });
 });

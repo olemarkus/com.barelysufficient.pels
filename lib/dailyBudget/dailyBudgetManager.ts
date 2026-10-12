@@ -5,10 +5,12 @@ import { buildSnapshotAndLogDebug } from './dailyBudgetManagerSnapshot';
 import {
   describePlanningCeiling,
   hasPlanningCeilingMoved,
+  logDailyBudgetPlanDebug,
   resolveExistingPlanState,
   resolvePlanLockState,
   shouldRebuildDailyBudgetPlan,
 } from './dailyBudgetManagerPlan';
+import { buildNextDayPriceDebugData, NEXT_DAY_PLAN_DEBUG } from './dailyBudgetNextDayDebug';
 import { computeAdjacentDaysSeedSignature } from './dailyBudgetSnapshotState';
 import { buildDailyBudgetPreview } from './dailyBudgetPreview';
 import { buildDayContext, computeBudgetState, computePlanDeviation } from './dailyBudgetState';
@@ -207,7 +209,6 @@ export class DailyBudgetManager {
       defaultProfile: DEFAULT_PROFILE,
       confidenceDebug: cr.debug,
       planningCeiling,
-      combinedPrices,
       priceOptimizationEnabled,
     });
     this.snapshot = snapshot;
@@ -538,6 +539,32 @@ export class DailyBudgetManager {
       profileSplitSampleCount: getProfileSplitSampleCount(this.state),
       profileBreakdown: profileData.breakdown,
       observedStats: resolveObservedHourlyStats(this.state),
+    });
+  }
+
+  /**
+   * Writes tomorrow's preview to the `daily_budget` debug topic as the `next_day`
+   * plan entry. The service calls this from its adjacent-day rebuild, which runs
+   * when tomorrow's inputs move, so the entry follows those inputs rather than
+   * every rebuild of today's plan. The prices, price setting and ceiling are the
+   * ones `preview` was built on.
+   */
+  logNextDayPlan(
+    preview: DailyBudgetDayPayload, settings: DailyBudgetSettings, combinedPrices: CombinedPriceData | null,
+    priceOptimizationEnabled: boolean, planningCeiling: PowerLimitCeiling | null,
+  ): void {
+    if (!this.isEnabled(settings) || !(this.deps.isDebugTopicEnabled?.('daily_budget') ?? true)) return;
+    logDailyBudgetPlanDebug({
+      debugStructured: (payload) => this.emitDebug(payload),
+      snapshot: preview,
+      priceData: buildNextDayPriceDebugData(preview, settings, combinedPrices, priceOptimizationEnabled),
+      priceOptimizationEnabled,
+      planningCeiling,
+      settings,
+      state: this.state,
+      defaultProfile: DEFAULT_PROFILE,
+      variant: 'next_day',
+      planDebug: NEXT_DAY_PLAN_DEBUG,
     });
   }
 

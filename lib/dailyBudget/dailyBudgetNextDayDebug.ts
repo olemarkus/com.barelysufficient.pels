@@ -1,82 +1,34 @@
-import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
-import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 import { buildPriceDebugData, type CombinedPriceData } from './dailyBudgetMath';
-import { buildDailyBudgetPreview } from './dailyBudgetPreview';
-import type { DayContext, PriceData } from './dailyBudgetState';
-import type { DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';
-import { logDailyBudgetPlanDebug } from './dailyBudgetManagerPlan';
-import { resolveObservedHourlyStats } from './observedHourlyStats';
-import { getEffectiveProfileData, getProfileSplitSampleCount } from './dailyBudgetProfile';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import type { RebuildPlanDebug } from './dailyBudgetManagerTypes';
+import type { PriceData } from './dailyBudgetState';
+import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
 
-const isEnabled = (settings: DailyBudgetSettings): boolean => (
-  settings.enabled && settings.dailyBudgetKWh > 0
-);
+/** A preview plans the whole day, with no previous plan to lock against. */
+export const NEXT_DAY_PLAN_DEBUG: RebuildPlanDebug = {
+  lockCurrentBucket: false,
+  shouldLockCurrent: false,
+  remainingStartIndex: 0,
+  hasPreviousPlan: false,
+};
 
-export function logNextDayPlanDebug(params: {
-  debugStructured: StructuredDebugEmitter;
-  shouldLog: boolean;
-  context: DayContext;
-  settings: DailyBudgetSettings;
-  state: DailyBudgetState;
-  combinedPrices?: CombinedPriceData | null;
-  priceOptimizationEnabled: boolean;
-  planningCeiling: PowerLimitCeiling | null;
-  defaultProfile: number[];
-}): void {
-  const {
-    debugStructured,
-    shouldLog,
-    context,
-    settings,
-    state,
-    combinedPrices,
-    priceOptimizationEnabled,
-    planningCeiling,
-    defaultProfile,
-  } = params;
-  if (!shouldLog || !isEnabled(settings)) return;
-  const nextDayStartUtcMs = getNextLocalDayStartUtcMs(context.dayStartUtcMs, context.timeZone);
-  const profileData = getEffectiveProfileData(state, settings, defaultProfile);
-  const preview = buildDailyBudgetPreview({
-    dayStartUtcMs: nextDayStartUtcMs,
-    timeZone: context.timeZone,
-    settings,
-    combinedPrices,
-    priceOptimizationEnabled,
-    planningCeiling,
-    enabled: true,
-    priceShapingEnabled: settings.priceShapingEnabled,
-    profileWeights: profileData.combinedWeights,
-    profileSampleCount: profileData.sampleCount,
-    profileSplitSampleCount: getProfileSplitSampleCount(state),
-    profileBreakdown: profileData.breakdown,
-    observedStats: resolveObservedHourlyStats(state),
-  });
-  const bucketStartUtcMs = preview.buckets.startUtc.map((ts) => new Date(ts).getTime());
-  const priceData: PriceData = buildPriceDebugData({
-    bucketStartUtcMs,
+/**
+ * The price block of tomorrow's `next_day` plan entry. The preview payload
+ * carries neither the spread factor nor the effective flex share, and the spread
+ * is taken on planning prices it does not carry, so both are derived from the
+ * prices and price setting the preview was built on.
+ */
+export function buildNextDayPriceDebugData(
+  preview: DailyBudgetDayPayload,
+  settings: DailyBudgetSettings,
+  combinedPrices: CombinedPriceData | null,
+  priceOptimizationEnabled: boolean,
+): PriceData {
+  return buildPriceDebugData({
+    bucketStartUtcMs: preview.buckets.startUtc.map((ts) => new Date(ts).getTime()),
     currentBucketIndex: preview.currentBucketIndex,
     combinedPrices,
     priceOptimizationEnabled,
     priceShapingEnabled: settings.priceShapingEnabled,
     priceShapingFlexShare: settings.priceShapingFlexShare,
-  });
-  logDailyBudgetPlanDebug({
-    debugStructured,
-    snapshot: preview,
-    priceData,
-    priceOptimizationEnabled,
-    planningCeiling,
-    settings,
-    state,
-    defaultProfile,
-    variant: 'next_day',
-    planDebug: {
-      lockCurrentBucket: false,
-      shouldLockCurrent: false,
-      remainingStartIndex: 0,
-      hasPreviousPlan: false,
-    },
   });
 }

@@ -503,16 +503,20 @@ export class DailyBudgetService {
     const seedSignature = `${priceSignature}|${this.manager.getAdjacentDaysInputsMark()}`;
     if (includeAdjacentDays || seedSignature !== this.adjacentDaysSeedSignature) {
       this.adjacentDaysSeedSignature = seedSignature;
-      this.rebuildSnapshotWithAdjacentDays(snap, nowMs);
+      this.rebuildSnapshotWithAdjacentDays(snap, nowMs, prices);
       return;
     }
     ({ daySnapshots: this.daySnapshots, snapshot: this.snapshot }
       = composeHotPathDailyBudgetSnapshot(snap, this.snapshot));
   }
 
-  private rebuildSnapshotWithAdjacentDays(snapshot: DailyBudgetDayPayload, nowMs: number): void {
+  // `prices` are the ones this update read, so the ones tomorrow's preview is built on.
+  private rebuildSnapshotWithAdjacentDays(
+    snapshot: DailyBudgetDayPayload, nowMs: number, prices: CombinedPriceData | null,
+  ): void {
     const todayKey = snapshot.dateKey;
-    const tomorrowSnapshot = this.applyOverallModelConfidence(this.buildTomorrowPreview(nowMs), snapshot);
+    const tomorrowPreview = this.buildTomorrowPreview(nowMs);
+    const tomorrowSnapshot = this.applyOverallModelConfidence(tomorrowPreview, snapshot);
     const yesterdaySnapshot = this.applyOverallModelConfidence(this.buildYesterdayHistory(nowMs), snapshot);
     this.daySnapshots = {
       [todayKey]: snapshot,
@@ -525,6 +529,14 @@ export class DailyBudgetService {
       tomorrowKey: tomorrowSnapshot?.dateKey ?? null,
       yesterdayKey: yesterdaySnapshot?.dateKey ?? null,
     };
+    // Tomorrow's plan is logged here, when its inputs move, rather than on every
+    // rebuild of today's plan; the Budget Adjust candidate never reaches this.
+    if (tomorrowPreview) {
+      this.manager.logNextDayPlan(
+        tomorrowPreview, this.settings, prices,
+        this.deps.getPriceOptimizationEnabled(), resolvePlanningPowerCeiling(this.deps.getCapacitySettings()),
+      );
+    }
   }
 
   private getTodaySnapshot(): DailyBudgetDayPayload | null {
