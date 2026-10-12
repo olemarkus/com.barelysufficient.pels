@@ -1134,19 +1134,19 @@ describe('usage day stacked managed/background split', () => {
     const { resolveUsageDayStackSegments } = await import('../src/ui/usageDayChartEcharts.ts');
 
     // Exact split: no remainder.
-    expect(resolveUsageDayStackSegments({
-      measuredKWh: 2.5,
-      split: { managedKWh: 1.1, backgroundKWh: 1.4 },
-      warn: false,
-    })).toEqual({ backgroundKWh: 1.4, managedKWh: 1.1, unattributedKWh: 0, fallbackKWh: null });
+    expect(resolveUsageDayStackSegments(
+      2.5,
+      { managedKWh: 1.1, backgroundKWh: 1.4 },
+      false,
+    )).toEqual({ backgroundKWh: 1.4, managedKWh: 1.1, unattributedKWh: 0, fallbackKWh: null });
 
     // Under-attributed split: the measured remainder becomes the neutral
     // third segment instead of inflating either side.
-    const withRemainder = resolveUsageDayStackSegments({
-      measuredKWh: 2.0,
-      split: { managedKWh: 0.6, backgroundKWh: 0.9 },
-      warn: false,
-    });
+    const withRemainder = resolveUsageDayStackSegments(
+      2.0,
+      { managedKWh: 0.6, backgroundKWh: 0.9 },
+      false,
+    );
     expect(withRemainder.unattributedKWh).toBeCloseTo(0.5, 9);
     expect(withRemainder.backgroundKWh + withRemainder.managedKWh + withRemainder.unattributedKWh)
       .toBeCloseTo(2.0, 9);
@@ -1154,40 +1154,40 @@ describe('usage day stacked managed/background split', () => {
     // Gross split exceeds measured net (self-consumed solar): both sides
     // scale proportionally so the bar still totals the measured value; the
     // readout carries the unscaled gross figures with "Before solar:".
-    const solar = resolveUsageDayStackSegments({
-      measuredKWh: 1.0,
-      split: { managedKWh: 2.0, backgroundKWh: 1.0 },
-      warn: false,
-    });
+    const solar = resolveUsageDayStackSegments(
+      1.0,
+      { managedKWh: 2.0, backgroundKWh: 1.0 },
+      false,
+    );
     expect(solar.backgroundKWh + solar.managedKWh).toBeCloseTo(1.0, 9);
     expect(solar.managedKWh / solar.backgroundKWh).toBeCloseTo(2.0, 9);
 
     // FP-drift epsilon: a tracker sum a hair BELOW the measured total (float
     // noise, not a real gap) still counts as fully attributed — no invisible
     // unattributed sliver stealing the rounded top corners.
-    const drift = resolveUsageDayStackSegments({
-      measuredKWh: 2.0 + 1e-13,
-      split: { managedKWh: 1.0, backgroundKWh: 1.0 },
-      warn: false,
-    });
+    const drift = resolveUsageDayStackSegments(
+      2.0 + 1e-13,
+      { managedKWh: 1.0, backgroundKWh: 1.0 },
+      false,
+    );
     expect(drift.unattributedKWh).toBe(0);
     expect(drift.backgroundKWh + drift.managedKWh).toBeCloseTo(2.0, 9);
 
     // No split / warn hours fall back to the single full-height bar.
-    expect(resolveUsageDayStackSegments({ measuredKWh: 1.2, split: null, warn: false }).fallbackKWh).toBe(1.2);
-    expect(resolveUsageDayStackSegments({
-      measuredKWh: 1.2,
-      split: { managedKWh: 0.5, backgroundKWh: 0.4 },
-      warn: true,
-    }).fallbackKWh).toBe(1.2);
+    expect(resolveUsageDayStackSegments(1.2, null, false).fallbackKWh).toBe(1.2);
+    expect(resolveUsageDayStackSegments(
+      1.2,
+      { managedKWh: 0.5, backgroundKWh: 0.4 },
+      true,
+    ).fallbackKWh).toBe(1.2);
 
     // A barely-started hour falls back to the single Measured bar so its
     // `barMinHeight` stub stays visible (a stacked pair would be sub-pixel).
-    expect(resolveUsageDayStackSegments({
-      measuredKWh: 0.03,
-      split: { managedKWh: 0.02, backgroundKWh: 0.01 },
-      warn: false,
-    }).fallbackKWh).toBe(0.03);
+    expect(resolveUsageDayStackSegments(
+      0.03,
+      { managedKWh: 0.02, backgroundKWh: 0.01 },
+      false,
+    ).fallbackKWh).toBe(0.03);
   });
 
   it('renders stacked Background/Managed series whose sum equals each measured total', async () => {

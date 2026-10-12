@@ -1,10 +1,5 @@
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import type {
-  DeferredObjectiveSettingsEntry,
-  DeferredObjectiveUnit,
-} from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObjectiveProfileConfidence } from '../../../contracts/src/objectiveProfileTypes.ts';
-import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   formatConfidenceChipLabel,
   formatDeadlineDeliveredSoFarLine,
@@ -12,7 +7,10 @@ import {
   formatEnergyEstimateKWh,
   formatEstimatedCostStatValue,
   SMART_TASK_HERO_STAT_LABELS,
+  resolveReportedCarChargeLimit,
   resolveSmartTaskAtRiskWhy,
+  resolveSmartTaskBudgetRole,
+  resolveSmartTaskLiveCause,
   type DeadlineCannotMeetRecourse,
   type DeadlineBudgetRole,
   type DeadlineLabels,
@@ -20,7 +18,13 @@ import {
   type SmartTaskLiveCause,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import type { HorizonHour } from './deadlinePlanData.ts';
+import {
+  ONE_HOUR_MS,
+  type DeadlinePlanSchedule,
+  type HorizonHour,
+  type ObjectivePayloadReady,
+} from './deadlinePlanData.ts';
+import { resolveActualDeviceKwh } from './deadlinePlanTimeline.ts';
 import {
   formatDeadlineFull,
   formatHourLabel,
@@ -55,16 +59,14 @@ export const resolveHeroStatusChip = (params: {
 // the Cannot-finish chip and body reason own that row. The caller passes
 // action-oriented text ("Estimating" / "Refining") for low / medium confidence
 // when it remains useful.
-export const buildHeroChips = (params: {
-  labels: DeadlineLabels;
-  statusChip: DeadlineHeroStatusChip | null;
-  confidenceChipText: string | null;
-}): DeadlinePlanPayload['hero']['chips'] => [
-  { text: params.labels.kindChipLabel, tone: 'info' },
-  ...(params.statusChip ? [params.statusChip] : []),
-  ...(params.confidenceChipText !== null
-    ? [{ text: params.confidenceChipText, tone: 'muted' as const }]
-    : []),
+export const buildHeroChips = (
+  labels: DeadlineLabels,
+  statusChip: DeadlineHeroStatusChip | null,
+  confidenceChipText: string | null,
+): DeadlinePlanPayload['hero']['chips'] => [
+  { text: labels.kindChipLabel, tone: 'info' },
+  ...(statusChip ? [statusChip] : []),
+  ...(confidenceChipText !== null ? [{ text: confidenceChipText, tone: 'muted' as const }] : []),
 ];
 
 // Live-confidence chip: delegate the vocabulary to shared-domain so the hero
@@ -77,14 +79,14 @@ export const resolveConfidenceChipText = (
 // task: `on_track` is silent (a learned-but-forever-`low` thermal rate would
 // nag), and `cannot_meet` already owns its row. Mirrors the Smart-tasks list
 // gate in `formatSmartTaskListConfidenceChipLabel`.
-export const resolveLiveHeroConfidenceChipText = (params: {
-  confidence: ObjectiveProfileConfidence | null;
-  planStatus: DeferredObjectiveActivePlanStatusV1;
-  learning: boolean;
-}): string | null => {
-  if (params.planStatus === 'cannot_meet' || params.planStatus === 'on_track') return null;
-  if (!params.learning) return null;
-  return resolveConfidenceChipText(params.confidence);
+export const resolveLiveHeroConfidenceChipText = (
+  confidence: ObjectiveProfileConfidence | null,
+  planStatus: DeferredObjectiveActivePlanStatusV1,
+  learning: boolean,
+): string | null => {
+  if (planStatus === 'cannot_meet' || planStatus === 'on_track') return null;
+  if (!learning) return null;
+  return resolveConfidenceChipText(confidence);
 };
 
 // Maps the planner's `planStatus` to the hero's CSS rim tone. Resolved at the
@@ -127,26 +129,26 @@ export const resolveDeadlineHeroTone = (
 // limit or schedule) also suppresses it: "Charging now" from
 // the booked hour would contradict the reason line saying the device is not
 // taking power. A satisfied or healthy hero carrying a stale cause keeps it.
-export const resolveHeroHeadline = (params: {
-  labels: DeadlineLabels;
-  firstChargingHour: HorizonHour | undefined;
-  nowMs: number;
-  tone: DeadlinePlanHeroTone;
-  liveCause: SmartTaskLiveCause | null;
-}): string | null => {
+export const resolveHeroHeadline = (
+  labels: DeadlineLabels,
+  firstChargingHour: HorizonHour | undefined,
+  nowMs: number,
+  tone: DeadlinePlanHeroTone,
+  liveCause: SmartTaskLiveCause | null,
+): string | null => {
   // `warn` is the at-risk tone: a live cause explains that status, so the booked
   // hour's live state would contradict it. A satisfied or healthy hero keeps it.
-  if (params.tone === 'alert' || (params.tone === 'warn' && params.liveCause !== null)) return null;
-  if (!params.firstChargingHour) {
+  if (tone === 'alert' || (tone === 'warn' && liveCause !== null)) return null;
+  if (!firstChargingHour) {
     // Only a genuinely on-track plan (`good`) earns the reassuring sentinel;
     // an at-risk (`warn`) plan with no scheduled hour stays headless so it
     // can't claim "On track" while the chip + meta line warn otherwise.
-    return params.tone === 'good' ? 'On track — no action needed yet' : null;
+    return tone === 'good' ? 'On track — no action needed yet' : null;
   }
-  if (params.firstChargingHour.startsAtMs <= params.nowMs) {
-    return `${params.labels.activeChipLabel} now`;
+  if (firstChargingHour.startsAtMs <= nowMs) {
+    return `${labels.activeChipLabel} now`;
   }
-  return `${params.labels.activeChipLabel} from ${formatHourLabel(params.firstChargingHour.startsAtMs)}`;
+  return `${labels.activeChipLabel} from ${formatHourLabel(firstChargingHour.startsAtMs)}`;
 };
 
 // Resolves the "why does the smart task start at HH:MM" subline below the
@@ -154,28 +156,30 @@ export const resolveHeroHeadline = (params: {
 // (`firstChargingHour <= nowMs` or no charging hour at all), or when the
 // resolver inside `labels` returns null — the view suppresses the line
 // rather than fabricating a reason.
-export const resolveQueuedHeadlineReason = (params: {
-  labels: DeadlineLabels;
-  firstChargingHour: HorizonHour | undefined;
-  nowMs: number;
-  cannotMeet: boolean;
-  deadlineAtMs: number;
-  computedFromPricesUpTo: number | null;
-  // Producer-verified "planned hours average price < current hour price"
-  // comparison (`resolvePlannedWindowCheaperThanNow` in `deadlinePlan.ts`).
-  // Gates the "Cheaper than now" sentence so it never contradicts the
-  // schedule chart's bars.
-  plannedWindowCheaperThanNow: boolean;
-}): string | null => {
-  if (params.cannotMeet) return null;
-  if (!params.firstChargingHour) return null;
-  if (params.firstChargingHour.startsAtMs <= params.nowMs) return null;
-  return params.labels.resolveQueuedHeadlineReason({
-    firstPlannedTime: formatHourLabel(params.firstChargingHour.startsAtMs),
-    pricesShortOfDeadline: params.computedFromPricesUpTo === null
-      || params.computedFromPricesUpTo < params.deadlineAtMs,
-    deadlineTime: formatHourLabel(params.deadlineAtMs),
-    plannedWindowCheaperThanNow: params.plannedWindowCheaperThanNow,
+//
+// `computedFromPricesUpTo` is the latest revision's, carried verbatim so the
+// "prices not through deadline yet" branch needs no view-side comparison.
+// `plannedWindowCheaperThanNow` is the producer-verified "planned hours average
+// price < current hour price" comparison (`resolvePlannedWindowCheaperThanNow`
+// below); it gates the "Cheaper than now" sentence so it never contradicts the
+// schedule chart's bars.
+export const resolveQueuedHeadlineReason = (
+  labels: DeadlineLabels,
+  firstChargingHour: HorizonHour | undefined,
+  nowMs: number,
+  cannotMeet: boolean,
+  deadlineAtMs: number,
+  computedFromPricesUpTo: number | null,
+  plannedWindowCheaperThanNow: boolean,
+): string | null => {
+  if (cannotMeet) return null;
+  if (!firstChargingHour) return null;
+  if (firstChargingHour.startsAtMs <= nowMs) return null;
+  return labels.resolveQueuedHeadlineReason({
+    firstPlannedTime: formatHourLabel(firstChargingHour.startsAtMs),
+    pricesShortOfDeadline: computedFromPricesUpTo === null || computedFromPricesUpTo < deadlineAtMs,
+    deadlineTime: formatHourLabel(deadlineAtMs),
+    plannedWindowCheaperThanNow,
   });
 };
 
@@ -190,33 +194,39 @@ export const resolveQueuedHeadlineReason = (params: {
 // this: that recomputation (inverse of the low-confidence learned rate)
 // disagreed with the planner's verdict and produced a "can't determine why"
 // dead-end on plans the planner had already classified as cannot-meet.
-export const resolveCannotMeetMeta = (params: {
-  labels: DeadlineLabels;
-  planStatus: DeferredObjectiveActivePlanStatusV1;
-  budgetRole: DeadlineBudgetRole;
-  liveCause: SmartTaskLiveCause | null;
-}): string => {
+export const resolveCannotMeetMeta = (
+  labels: DeadlineLabels,
+  planStatus: DeferredObjectiveActivePlanStatusV1,
+  budgetRole: DeadlineBudgetRole,
+  liveCause: SmartTaskLiveCause | null,
+): string => {
   // A live cause (a confirmed device-side stop, the car's own charge limit)
   // outranks both cost causes: neither the target nor the
   // deadline is what needs changing. From the same shared resolver the Smart
   // tasks widget uses, so the surfaces cannot diverge.
-  if (params.liveCause !== null) return params.liveCause.reason;
+  if (liveCause !== null) return liveCause.reason;
   // A time-only at-risk task is hedged: it can still land, so "Not enough time …
   // Lower the target" would overstate it. The widget's at-risk line, word for
   // word. A budget cause keeps its own sentence below, which names the remedy.
-  if (params.planStatus === 'at_risk' && params.budgetRole === 'none') {
-    return resolveSmartTaskAtRiskWhy(params.budgetRole);
+  if (planStatus === 'at_risk' && budgetRole === 'none') {
+    return resolveSmartTaskAtRiskWhy(budgetRole);
   }
-  if (params.budgetRole === 'sole') return params.labels.cannotMeetDailyBudgetExhausted;
+  if (budgetRole === 'sole') return labels.cannotMeetDailyBudgetExhausted;
   // Named but not promised: lifting the budget would plan more energy and still
   // miss, so this says so rather than sending the owner to the Budget tab.
-  if (params.budgetRole === 'contributing') return params.labels.cannotMeetDailyBudgetContributed;
-  return params.labels.cannotMeetShortfall();
+  if (budgetRole === 'contributing') return labels.cannotMeetDailyBudgetContributed;
+  return labels.cannotMeetShortfall();
 };
 
 // The reason line for a task whose car's own charge limit sits below its target; null otherwise.
 const resolveCarLimitMeta = (carChargeLimit: SmartTaskCarChargeLimit | null): string | null => (
   carChargeLimit === null ? null : formatSmartTaskCarLimitReason(carChargeLimit)
+);
+
+// Whether the hero reports a task that may not finish: the reason line, the
+// recourse and the queued subline all key off this.
+const isCannotMeetStatus = (planStatus: DeferredObjectiveActivePlanStatusV1): boolean => (
+  planStatus === 'cannot_meet' || planStatus === 'at_risk'
 );
 
 // Resolves the recourse action surfaced below the cannot-finish body. Returns
@@ -236,150 +246,177 @@ const resolveCarLimitMeta = (carChargeLimit: SmartTaskCarChargeLimit | null): st
 // Per `feedback_hard_cap_is_physical.md`, no recourse branch suggests raising
 // the capacity hard cap — `open_budget` lands on the daily-budget surface
 // where users can lower the daily cap.
-export const resolveCannotMeetRecourse = (params: {
-  labels: DeadlineLabels;
-  cannotMeet: boolean;
-  planStatus: DeferredObjectiveActivePlanStatusV1;
-  budgetRole: DeadlineBudgetRole;
-  liveCause: SmartTaskLiveCause | null;
-  deviceId: string;
-}): DeadlineCannotMeetRecourse | null => {
-  if (!params.cannotMeet) return null;
+export const resolveCannotMeetRecourse = (
+  labels: DeadlineLabels,
+  planStatus: DeferredObjectiveActivePlanStatusV1,
+  budgetRole: DeadlineBudgetRole,
+  liveCause: SmartTaskLiveCause | null,
+  deviceId: string,
+): DeadlineCannotMeetRecourse | null => {
+  if (!isCannotMeetStatus(planStatus)) return null;
   // No recourse for a live cause: the reason sentence already names the action
   // (turn the device on, check the device, raise the car's own limit), and
   // neither the budget surface nor PELS's device settings hold the fix.
-  if (params.liveCause !== null) return null;
+  if (liveCause !== null) return null;
   // Only the sole case routes to the Budget tab.
-  if (params.budgetRole === 'sole') return params.labels.cannotMeetRecourse.openBudget;
+  if (budgetRole === 'sole') return labels.cannotMeetRecourse.openBudget;
   // A time-only at-risk task has no device setting to fix: the widget offers
   // none either. The device button is for a task that cannot finish.
-  if (params.planStatus === 'at_risk') return null;
+  if (planStatus === 'at_risk') return null;
   // The contributing case gets NO recourse, for the same reason a device the user
   // turned off gets none: the sentence already names the only action, and it is a
   // toggle in this very panel. The device overlay this would otherwise open holds
   // a different, similarly-named control (the standing per-device budget
   // exemption), so navigating there would point at the wrong lever.
-  if (params.budgetRole === 'contributing') return null;
-  return { ...params.labels.cannotMeetRecourse.openOverview, deviceId: params.deviceId };
+  if (budgetRole === 'contributing') return null;
+  return { ...labels.cannotMeetRecourse.openOverview, deviceId };
 };
 
-export type BuildHeroInput = {
-  device: ObservedDeviceState;
-  // Active task's device id. Threaded onto the device-side cannot-meet recourse
-  // payload so the click dispatcher deep-links to the device-settings overlay
-  // rather than dead-ending on the Overview tab (mirrors history-detail's
-  // "Review device" recourse). Empty string degrades gracefully — the
-  // dispatcher's `length > 0` guard suppresses the overlay open in that case.
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  labels: DeadlineLabels;
-  firstChargingHour: HorizonHour | undefined;
-  deadlineAtMs: number;
-  energyNeededKWh: number;
-  // Mean-based estimate paired with the buffered `energyNeededKWh` for the
-  // `expected…planned` range; equals `energyNeededKWh` when no buffer is booked.
-  energyExpectedKWh: number;
-  confidence: ObjectiveProfileConfidence | null;
-  // True only during genuine cold-start; gates the "Estimating" confidence chip.
-  learning: boolean;
-  planStatus: DeferredObjectiveActivePlanStatusV1;
-  nowMs: number;
-  cannotMeet: boolean;
-  budgetRole: DeadlineBudgetRole;
-  // The task's live cause from `resolveSmartTaskLiveCause` (a confirmed
-  // device-side stop, the car stopped at its own charge limit). Drives the
-  // reason sentence and suppresses the recourse, so an at-risk hero reached
-  // through the overlay never explains itself with the target, the deadline,
-  // or the budget.
-  liveCause: SmartTaskLiveCause | null;
+// Prorate one bucket's `actualKWh` against the plan's run interval. Tracker
+// buckets accumulate incrementally during the current hour (see
+// `lib/power/trackerEnergy.ts`), so the value represents `[hour_start,
+// min(now, hour_end))` of measured energy — not necessarily a full-hour
+// aggregate. The relevant slice for delivered-so-far is
+// `[max(startedAtMs, hour_start), min(now, hour_end))`, so the bucket is
+// prorated by `relevant / elapsed`: past closed hours have
+// `elapsed = ONE_HOUR_MS`; the current open hour has `elapsed = now -
+// hour_start` and the prorate becomes "fraction of the already-elapsed slice
+// that landed after `startedAtMs`". Returns 0 for any bucket that doesn't
+// overlap the run interval, or whose tracker reading is missing / non-positive.
+const resolveProratedActualKWh = (input: ObjectivePayloadReady, hourStartsAtMs: number): number => {
+  const { startedAtMs } = input.ctx.activePlan;
+  const { nowMs } = input.ctx;
+  const hourEndMs = hourStartsAtMs + ONE_HOUR_MS;
+  if (hourEndMs <= startedAtMs) return 0;
+  const bucketCloseMs = Math.min(nowMs, hourEndMs);
+  const elapsedMs = bucketCloseMs - hourStartsAtMs;
+  const relevantMs = bucketCloseMs - Math.max(startedAtMs, hourStartsAtMs);
+  if (elapsedMs <= 0 || relevantMs <= 0) return 0;
+  const actualKWh = resolveActualDeviceKwh(input.bootstrap, input.ctx.deviceId, hourStartsAtMs);
+  if (actualKWh === null || actualKWh <= 0) return 0;
+  return actualKWh * (relevantMs / elapsedMs);
+};
+
+// Resolves the live-derived cost + delivered-kWh fields of the hero.
+//
+// Live derivation (no persistence): the active plan revisions carry hourly
+// planned kWh; the power tracker carries hourly actual kWh per device. We
+// scale `hour.price` by the cost-display divisor (same scaling the timeline
+// uses) so the cost reads in the user's display currency unit.
+const resolveLiveCostAndDelivery = (
+  input: ObjectivePayloadReady,
+  currentChargeByStartMs: Map<number, number>,
+): { plannedTotalCost: number; deliveredKWh: number } => {
+  const divisor = Math.max(1, input.costDisplay.divisor);
+  let plannedTotalCost = 0;
+  let deliveredKWh = 0;
+  for (const hour of input.hours) {
+    const displayPrice = hour.price / divisor;
+    const plannedKWh = currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
+    if (plannedKWh > 0) plannedTotalCost += displayPrice * plannedKWh;
+    const proratedKWh = resolveProratedActualKWh(input, hour.startsAtMs);
+    if (proratedKWh > 0) deliveredKWh += proratedKWh;
+  }
+  return { plannedTotalCost, deliveredKWh };
+};
+
+// Producer-side price comparison feeding the queued hero's "Cheaper than now"
+// reason line: true iff the planned hours' average price is strictly below
+// the current hour's price. Reads the same per-hour prices and planned-hour
+// set `buildTimeline` / `resolveLiveCostAndDelivery` consume, so the sentence
+// can never contradict the schedule chart rendered beneath it. False when the
+// comparison can't be made (no planned hours, or no hour contains `nowMs`),
+// in which case the resolver falls back to the non-comparative phrasing.
+const resolvePlannedWindowCheaperThanNow = (
+  hours: HorizonHour[],
+  currentChargeByStartMs: Map<number, number>,
+  nowMs: number,
+): boolean => {
+  // Compares on the PLANNING price (`budgetPrice ?? total`) so the "cheaper than
+  // now" claim reconciles with the schedule chart the user sees below it (also
+  // planning-priced) and with the hours the scheduler actually ranked. Equals
+  // the import-price comparison for a non-prosumer. The divisor cancels out of
+  // a relative comparison, so raw planning prices are compared directly.
+  const plannedPrices = hours
+    .filter((hour) => (currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0)
+    .map((hour) => hour.planningPrice);
+  if (plannedPrices.length === 0) return false;
+  const currentHour = hours.find((hour) => nowMs >= hour.startsAtMs && nowMs < hour.endMs);
+  if (!currentHour) return false;
+  const plannedAverage = plannedPrices.reduce((sum, price) => sum + price, 0) / plannedPrices.length;
+  return plannedAverage < currentHour.planningPrice;
+};
+
+const resolveFiniteNumber = (value: number | null | undefined): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
+// Resolves the "Delivered X of Y kWh · …" subline against the energy the
+// planner currently estimates the run needs (`latest.energyNeededKWh`; replans
+// can shift it as the planner observes the device). The two visible branches
+// collapse the planner's status union to two phrasing shapes: the "still
+// {curr} of {target}" stem *only* on the physically-can't-deliver case
+// (`cannot_meet`), while at-risk keeps the on-track-shaped phrasing ("now …")
+// so the line stays hopeful while the chip still warns. The cannot-meet branch
+// no longer appends "won't reach by HH:MM" — the chip + meta line already
+// announce the verdict; see `formatDeadlineDeliveredSoFarLine`.
+const resolveDeliveredSoFarLine = (
+  input: ObjectivePayloadReady,
+  planStatus: DeferredObjectiveActivePlanStatusV1,
+  deliveredKWh: number,
+): string | null => {
+  const { progress, energy } = input;
+  return formatDeadlineDeliveredSoFarLine(
+    planStatus === 'cannot_meet' ? 'cannot_meet' : 'on_track_or_queued',
+    deliveredKWh,
+    energy?.energyNeededKWh ?? 0,
+    progress.currentValue,
+    input.ctx.activePlan.startProgressValue ?? null,
+    progress.targetValue,
+    progress.unit,
+  );
+};
+
+export const buildHero = (
+  input: ObjectivePayloadReady,
+  schedule: DeadlinePlanSchedule,
+): DeadlinePlanPayload['hero'] => {
+  const { ctx, energy } = input;
+  const { activePlan, nowMs } = ctx;
+  const { labels, planStatus, currentChargeByStartMs } = schedule;
+  // The cannot-meet body copy + recourse fire on a budget-bound verdict. The
+  // producer-resolved `latest.floorShortfallCause === 'budget'` is the only
+  // signal — it covers the per-bucket background-squeeze case (prod Connected
+  // 300) that the retired count-based heuristic missed. Per
+  // `feedback_layering_resolution_in_producer` the consumer reads the flat
+  // producer field and stops (`resolveSmartTaskBudgetRole`, the rule the list
+  // and the widget share). Absence is NOT "unknown": the recorder suppresses
+  // the `none` case for byte-stability, so an absent cause means the floor was
+  // not short at all.
+  // Three states, not a boolean: the budget can explain the shortfall outright
+  // (`sole` — lifting the per-bucket cap closes the gap), have a hand in it
+  // without closing it (`contributing`), or be uninvolved. The middle one used
+  // to be invisible, so a plan whose every hour was budget-shaped read as purely
+  // physical. It is resolved before the live cause, which an unreached car
+  // limit only supplies when the budget is uninvolved.
+  const budgetRole = resolveSmartTaskBudgetRole(activePlan.latest);
   // The car's own charge limit, when it sits below an EV task's target.
   // Explains, before the car gets there, why delivery will stop short.
-  carChargeLimit: SmartTaskCarChargeLimit | null;
-  // Planner's `computedFromPricesUpTo` carried verbatim so the producer can
-  // resolve the "prices not through deadline yet" headline-reason branch.
-  // Null when the latest revision predates the field.
-  computedFromPricesUpTo: number | null;
-  // Producer-verified price comparison gating the "Cheaper than now" queued
-  // reason line (see `resolveQueuedHeadlineReason`).
-  plannedWindowCheaperThanNow: boolean;
-  // Producer-resolved CSS rim tone, derived from the latest revision's
-  // `planStatus`. Carried through the payload so the view layer never branches
-  // on planner internals.
-  tone: DeadlinePlanHeroTone;
-  // Σ (display-scaled price × deviceKwh) across the timeline's planned hours,
-  // in the user's display currency (e.g. kr). Producer sums each render cycle
-  // so the live cost reflects the latest revision. Drives the "Estimated cost"
-  // stat; non-finite / no-unit values suppress the stat at the formatter.
-  plannedTotalCost: number;
-  // Cost-unit suffix (e.g. `kr`). Empty / null suppresses the "Estimated cost"
-  // stat at the shared-domain formatter — Flow / Homey schemes without a unit
-  // don't get a misleading Norwegian-specific label.
-  costUnit: string;
-  // Σ actualDeviceKwh across the run (kWh delivered so far). Zero when the
-  // run hasn't started consuming yet — the formatter renders `0.0 of Y kWh`
-  // so the user sees the planned total even before delivery.
-  deliveredKWh: number;
-  // Total energy the planner currently estimates the run needs to reach the
-  // target (`latest.energyNeededKWh`). Drives the "of Y kWh" tail. Note: this
-  // is the latest revision's value, not original — `rate_refined` / replans
-  // can shift it as the planner observes the device.
-  plannedTotalKWh: number;
-  // Current device reading on the objective unit (°C / %). Null when the
-  // device hasn't reported yet — the delivered-so-far line suppresses.
-  currentProgress: number | null;
-  // First trustworthy progress reading recorded for the run. Null when the
-  // recorder has no starting observation — the line uses `now …` wording.
-  startProgress: number | null;
-  targetValue: number | null;
-  targetUnit: DeferredObjectiveUnit;
-};
-
-// Resolves the "Delivered X of Y kWh · …" subline. Returns null when there's
-// no plan to summarise (planned kWh zero / non-finite, no progress reading,
-// or no live target). The two visible branches — on-track-ish vs cannot-meet
-// — collapse the planner's status union (cannot_meet / at_risk / on_track /
-// satisfied / queued) to the two phrasing shapes per the task design.
-export const resolveDeliveredSoFarLine = (
-  params: Pick<
-    BuildHeroInput,
-    'cannotMeet'
-    | 'tone'
-    | 'deliveredKWh'
-    | 'plannedTotalKWh'
-    | 'currentProgress'
-    | 'startProgress'
-    | 'targetValue'
-    | 'targetUnit'
-    | 'deadlineAtMs'
-  >,
-): string | null => {
-  if (params.currentProgress === null || params.targetValue === null) return null;
-  // `cannotMeet === true` on the BuildHeroInput collapses both `cannot_meet`
-  // and `at_risk` together (so the chip surface stays in sync). For the
-  // delivered-so-far line we want the "still {curr} of {target}" stem *only*
-  // on the physically-can't-deliver case — `tone === 'alert'` is the producer's
-  // already-resolved signal for that, derived from `planStatus`. At-risk
-  // (`tone === 'warn'`) keeps the on-track-shaped phrasing ("now …") so the
-  // line stays hopeful while the chip still warns. The cannot-meet branch no
-  // longer appends "won't reach by HH:MM" — the chip + meta line already
-  // announce the verdict; see `formatDeadlineDeliveredSoFarLine`.
-  const isCannotMeet = params.cannotMeet && params.tone === 'alert';
-  return formatDeadlineDeliveredSoFarLine({
-    status: isCannotMeet ? 'cannot_meet' : 'on_track_or_queued',
-    deliveredKWh: params.deliveredKWh,
-    plannedTotalKWh: params.plannedTotalKWh,
-    currentProgress: params.currentProgress,
-    startProgress: params.startProgress,
-    targetValue: params.targetValue,
-    targetUnit: params.targetUnit,
-  });
-};
-
-export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] => {
-  const headline = resolveHeroHeadline(params);
-  const target = formatTarget(params.objective);
-  const deadline = formatDeadlineFull(params.deadlineAtMs);
-  const subline = `${formatDisplayDeviceName(params.device.name)} • Target ${target} by ${deadline}`;
+  const carChargeLimit = resolveReportedCarChargeLimit(activePlan);
+  // The same live cause the Smart tasks widget explains, from the same resolver
+  // (a confirmed device-side stop, the car stopped at its own charge limit).
+  // Drives the reason sentence and suppresses the recourse, so an at-risk hero
+  // reached through the overlay never explains itself with the target, the
+  // deadline, or the budget.
+  const liveCause = resolveSmartTaskLiveCause(activePlan.diagnosticReasonCode, carChargeLimit, budgetRole);
+  const cannotMeet = isCannotMeetStatus(planStatus);
+  const tone = resolveDeadlineHeroTone(planStatus);
+  const firstChargingHour = input.hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
+  const costAndDelivery = resolveLiveCostAndDelivery(input, currentChargeByStartMs);
+  const energyNeededKWh = energy?.energyNeededKWh ?? 0;
+  const target = formatTarget(ctx.objective);
+  const deadline = formatDeadlineFull(ctx.deadlineAtMs);
+  const subline = `${formatDisplayDeviceName(ctx.device.name)} • Target ${target} by ${deadline}`;
   // Stat pairs carry the payoff numbers (energy + estimated cost) as loud
   // values, replacing the old grey `Needs … · N hours left · Auto` +
   // `Cost ≈ …` line pair. The energy figure keeps the `expected…planned`
@@ -390,14 +427,18 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
     {
       label: SMART_TASK_HERO_STAT_LABELS.energy,
       value: formatEnergyEstimateKWh({
-        energyPlannedKWh: params.energyNeededKWh,
-        energyExpectedKWh: params.energyExpectedKWh,
+        energyPlannedKWh: energyNeededKWh,
+        // Mean-based estimate paired with the buffered `energyNeededKWh`; the
+        // range collapses when no buffer is booked.
+        energyExpectedKWh: energy?.energyExpectedKWh ?? energyNeededKWh,
       }),
     },
   ];
+  // Non-finite / no-unit values suppress the stat at the formatter: Flow /
+  // Homey schemes without a unit don't get a misleading Norwegian-specific label.
   const estimatedCost = formatEstimatedCostStatValue({
-    plannedTotalCost: params.plannedTotalCost,
-    costUnit: params.costUnit,
+    plannedTotalCost: costAndDelivery.plannedTotalCost,
+    costUnit: input.costDisplay.unit,
   });
   if (estimatedCost !== null) {
     stats.push({ label: SMART_TASK_HERO_STAT_LABELS.cost, value: estimatedCost });
@@ -409,28 +450,36 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   // healthy / queued heroes, except one whose car's own charge limit sits below
   // the target, which says why delivery will stop short. A car that has stopped
   // there makes the task at risk, and the live cause explains it.
-  const metaLine = params.cannotMeet ? resolveCannotMeetMeta(params) : resolveCarLimitMeta(params.carChargeLimit);
-  const confidenceChipText = resolveLiveHeroConfidenceChipText({
-    confidence: params.confidence,
-    planStatus: params.planStatus,
-    learning: params.learning,
-  });
+  const metaLine = cannotMeet
+    ? resolveCannotMeetMeta(labels, planStatus, budgetRole, liveCause)
+    : resolveCarLimitMeta(carChargeLimit);
+  // True only during genuine cold-start; gates the "Estimating" confidence chip.
+  const confidenceChipText = resolveLiveHeroConfidenceChipText(
+    energy?.confidence ?? null,
+    planStatus,
+    energy?.learning ?? false,
+  );
   return {
-    chips: buildHeroChips({
-      labels: params.labels,
-      statusChip: resolveHeroStatusChip({
-        labels: params.labels,
-        planStatus: params.planStatus,
-      }),
-      confidenceChipText,
-    }),
-    tone: params.tone,
-    headline,
-    headlineReason: resolveQueuedHeadlineReason(params),
+    chips: buildHeroChips(labels, resolveHeroStatusChip({ labels, planStatus }), confidenceChipText),
+    tone,
+    headline: resolveHeroHeadline(labels, firstChargingHour, nowMs, tone, liveCause),
+    headlineReason: resolveQueuedHeadlineReason(
+      labels,
+      firstChargingHour,
+      nowMs,
+      cannotMeet,
+      ctx.deadlineAtMs,
+      resolveFiniteNumber(activePlan.latest.computedFromPricesUpTo),
+      // Resolved from the same hour set the timeline + cost sums consume.
+      resolvePlannedWindowCheaperThanNow(input.hours, currentChargeByStartMs, nowMs),
+    ),
     subline,
     stats,
     metaLine,
-    deliveredSoFarLine: resolveDeliveredSoFarLine(params),
-    recourse: resolveCannotMeetRecourse(params),
+    deliveredSoFarLine: resolveDeliveredSoFarLine(input, planStatus, costAndDelivery.deliveredKWh),
+    // Threads the active task's device id onto the device-side recourse so the
+    // click dispatcher deep-links to the device-settings overlay rather than
+    // dead-ending on the Overview tab (mirrors history-detail's "Review device").
+    recourse: resolveCannotMeetRecourse(labels, planStatus, budgetRole, liveCause, ctx.deviceId),
   };
 };

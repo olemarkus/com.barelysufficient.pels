@@ -100,50 +100,45 @@ describe('car-limit copy', () => {
 });
 
 describe('the list status of a task held below target by the car\'s limit', () => {
-  const stopped = resolveSmartTaskCarChargeLimit({ limitValue: 70, reached: true }, 80);
-  const charging = resolveSmartTaskCarChargeLimit({ limitValue: 70, reached: false }, 80);
+  const stopped = { limitValue: 70, reached: true };
+  const charging = { limitValue: 70, reached: false };
   const base = {
     pending: false,
-    pendingReason: undefined,
-    planStatus: 'on_track' as const,
-    firstActionAtMs: null,
-    nowMs: 0,
+    targetValue: 80,
+    latest: { planStatus: 'on_track' as const, hours: [] },
     liveCompletion: { kind: 'unavailable' as const },
   };
 
   it('reads at risk when the charger ended the session at the lower limit', () => {
     expect(resolveSmartTaskListStatus({
       ...base, diagnosticReasonCode: 'objective_invalid_session', carChargeLimit: stopped,
-    })).toBe('at_risk');
+    }, 0)).toBe('at_risk');
     expect(resolveSmartTaskListStatus({
-      ...base, diagnosticReasonCode: 'objective_invalid_session', carChargeLimit: null,
-    })).toBe('paused_unplugged');
+      ...base, diagnosticReasonCode: 'objective_invalid_session',
+    }, 0)).toBe('paused_unplugged');
   });
 
   it('reads unplugged for a car unplugged on its way to a known lower limit', () => {
     // The recorder holds the last limit while the charger reports no level; a
     // car that never got there was unplugged, and the owner should plug it in.
     expect(resolveSmartTaskListStatus({
-      ...base, diagnosticReasonCode: 'objective_invalid_session',
-      carChargeLimit: resolveReportedCarChargeLimit({
-        diagnosticReasonCode: 'objective_invalid_session', targetValue: 80, carChargeLimit: { limitValue: 70, reached: false },
-      }),
-    })).toBe('paused_unplugged');
+      ...base, diagnosticReasonCode: 'objective_invalid_session', carChargeLimit: charging,
+    }, 0)).toBe('paused_unplugged');
   });
 
   // Owner decision: "On track" promises the target, and a known lower car limit
   // means the car will stop short of it.
   it('reads at risk before the car gets to a known lower limit, even with a later first hour', () => {
     expect(resolveSmartTaskListStatus({
-      ...base, diagnosticReasonCode: undefined, carChargeLimit: charging, firstActionAtMs: 1000,
-    })).toBe('at_risk');
+      ...base, carChargeLimit: charging,
+      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1000, plannedKWh: 1 }] },
+    }, 0)).toBe('at_risk');
   });
 
   it('ignores a limit at or above the target', () => {
     expect(resolveSmartTaskListStatus({
-      ...base, diagnosticReasonCode: undefined,
-      carChargeLimit: resolveSmartTaskCarChargeLimit({ limitValue: 80, reached: true }, 80),
-    })).toBe('on_track');
+      ...base, carChargeLimit: { limitValue: 80, reached: true },
+    }, 0)).toBe('on_track');
   });
 
   // A pending plan has no committed status to overlay: the detail page shows
@@ -155,13 +150,11 @@ describe('the list status of a task held below target by the car\'s limit', () =
     ['device_in_sub_home', 'unavailable'],
   ] as const)('keeps a pending plan on its pending ladder (%s)', (pendingReason, expected) => {
     expect(resolveSmartTaskListStatus({
-      ...base, pending: true, pendingReason, planStatus: undefined, diagnosticReasonCode: undefined,
-      carChargeLimit: stopped,
-    })).toBe(expected);
+      ...base, pending: true, pendingReason, latest: null, carChargeLimit: stopped,
+    }, 0)).toBe(expected);
     expect(resolveSmartTaskListStatus({
-      ...base, pending: true, pendingReason, planStatus: 'on_track', diagnosticReasonCode: undefined,
-      carChargeLimit: stopped,
-    })).toBe(expected);
+      ...base, pending: true, pendingReason, carChargeLimit: stopped,
+    }, 0)).toBe(expected);
   });
 
   // Durable exclusions outrank every overlay, the car limit included: the detail
@@ -171,10 +164,10 @@ describe('the list status of a task held below target by the car\'s limit', () =
     ['objective_device_unmanaged', 'paused_unmanaged'],
   ] as const)('lets %s outrank a reached or pending car limit', (diagnosticReasonCode, expected) => {
     for (const carChargeLimit of [stopped, charging]) {
-      expect(resolveSmartTaskListStatus({ ...base, diagnosticReasonCode, carChargeLimit })).toBe(expected);
+      expect(resolveSmartTaskListStatus({ ...base, diagnosticReasonCode, carChargeLimit }, 0)).toBe(expected);
       expect(resolveSmartTaskListStatus({
-        ...base, pending: true, planStatus: undefined, diagnosticReasonCode, carChargeLimit,
-      })).toBe(expected);
+        ...base, pending: true, latest: null, diagnosticReasonCode, carChargeLimit,
+      }, 0)).toBe(expected);
     }
   });
 });
@@ -186,10 +179,9 @@ describe('a known car limit below the target reads the same on every surface', (
   const listStatus = (
     planStatus: 'on_track' | 'at_risk' | 'cannot_meet', reached: boolean,
   ) => resolveSmartTaskListStatus({
-    pending: false, pendingReason: undefined, diagnosticReasonCode: undefined, planStatus,
-    firstActionAtMs: null, nowMs: 0, liveCompletion: { kind: 'unavailable' },
-    carChargeLimit: resolveSmartTaskCarChargeLimit({ limitValue: 70, reached }, 80),
-  });
+    pending: false, latest: { planStatus, hours: [] }, liveCompletion: { kind: 'unavailable' },
+    targetValue: 80, carChargeLimit: { limitValue: 70, reached },
+  }, 0);
   const heroStatus = (
     planStatus: 'on_track' | 'at_risk' | 'cannot_meet', reached: boolean,
   ) => resolveEffectivePlanStatus(planStatus, {
@@ -314,9 +306,8 @@ describe('the car limit every surface reports for an unplugged car', () => {
 
   it('agrees with the list chip, which pauses that car as unplugged', () => {
     expect(resolveSmartTaskListStatus({
-      pending: false, pendingReason: undefined, diagnosticReasonCode: 'objective_invalid_session',
-      planStatus: 'on_track', firstActionAtMs: null, nowMs: 0, liveCompletion: { kind: 'unavailable' },
-      carChargeLimit: resolveReportedCarChargeLimit(plan(false, 'objective_invalid_session')),
-    })).toBe('paused_unplugged');
+      ...plan(false, 'objective_invalid_session'), pending: false,
+      latest: { planStatus: 'on_track', hours: [] }, liveCompletion: { kind: 'unavailable' },
+    }, 0)).toBe('paused_unplugged');
   });
 });

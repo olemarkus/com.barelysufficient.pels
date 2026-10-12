@@ -4,15 +4,21 @@ import type {
   DeviceDiagnosticsStarvationPauseReason,
   DeviceDiagnosticsStarvationSummary,
   DeviceDiagnosticsWindowKey,
-  DeviceDiagnosticsWindowSummary,
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../../../contracts/src/deviceDiagnosticsTypes.ts';
 import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../../contracts/src/settingsUiApi.ts';
 import {
   PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
+  PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  PLAN_STATE_HOURLY_BUDGET_SPENT,
   PLAN_STATE_RESERVED_FOR_START_STATUS,
 } from '../../../../shared-domain/src/planStateLabels.ts';
+import {
+  RESTORE_THROTTLED_REASON_LABEL,
+  TIMED_REASON_LABELS,
+} from '../../../../shared-domain/src/planReasonFormatting.ts';
+import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
 import { STARVATION_WAITING_FOR_POWER_COPY } from '../../../../shared-domain/src/planStarvation.ts';
 import { HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED } from '../../../../shared-domain/src/homeScopeCopy.ts';
 import {
@@ -57,34 +63,6 @@ const formatCycleDuration = (durationMs: number | null): string => {
 
 const formatStarvationDuration = (durationMs: number): string => formatHours(durationMs);
 
-const createEmptyStarvationSummary = (): DeviceDiagnosticsStarvationSummary => ({
-  isStarved: false,
-  starvedAccumulatedMs: 0,
-  starvationEpisodeStartedAt: null,
-  starvationLastResumedAt: null,
-  intendedNormalTargetC: null,
-  currentTemperatureC: null,
-  starvationCause: null,
-  starvationPauseReason: null,
-});
-
-const createEmptyWindowSummary = (): DeviceDiagnosticsWindowSummary => ({
-  unmetDemandMs: 0,
-  blockedByHeadroomMs: 0,
-  blockedByCooldownBackoffMs: 0,
-  targetDeficitMs: 0,
-  shedCount: 0,
-  restoreCount: 0,
-  failedActivationCount: 0,
-  stableActivationCount: 0,
-  penaltyBumpCount: 0,
-  maxPenaltyLevelSeen: 0,
-  avgShedToRestoreMs: null,
-  avgRestoreToSetbackMs: null,
-  minRestoreToSetbackMs: null,
-  maxRestoreToSetbackMs: null,
-});
-
 const getDateTimePart = (partsByType: Record<string, string>, type: string): string => partsByType[type] ?? '00';
 
 const formatStarvationTimestamp = (timestamp: number | null): string => {
@@ -119,20 +97,23 @@ const formatStarvationTimestamp = (timestamp: number | null): string => {
 
 type StarvationReason = DeviceDiagnosticsStarvationCountingCause | DeviceDiagnosticsStarvationPauseReason;
 
+// A cause one plan reason mints reads as that reason does in the activity log
+// (`formatDeviceReasonUserFacing` in `planReasonFormatting.ts`), so the two cannot drift.
 const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   capacity: STARVATION_WAITING_FOR_POWER_COPY,
-  daily_budget: 'Daily budget is limiting service',
-  hourly_budget: 'Capacity-period budget is limiting service',
+  daily_budget: PLAN_STATE_DAILY_BUDGET_STATUS,
+  // The status line already states the hold; only the spent-period fact follows.
+  hourly_budget: PLAN_STATE_HOURLY_BUDGET_SPENT,
   shortfall: 'Hard cap may be exceeded',
   swap_pending: 'Waiting for higher-priority device',
   swapped_out: 'Waiting for higher-priority device',
   insufficient_headroom: STARVATION_WAITING_FOR_POWER_COPY,
   cooldown: 'Waiting before retrying',
-  restore_throttled: 'Delaying restart after recent failed attempt',
-  activation_backoff: 'Delaying restart after recent failed attempt',
+  restore_throttled: RESTORE_THROTTLED_REASON_LABEL,
+  activation_backoff: TIMED_REASON_LABELS[PLAN_REASON_CODES.activationBackoff],
   inactive: 'No active service block',
   keep: 'No active service block',
-  restore: 'Resume pending',
+  restore: TIMED_REASON_LABELS[PLAN_REASON_CODES.restorePending],
   suppression_none: 'No active service block',
   invalid_observation: 'Observation invalid',
   sample_gap: 'Fresh observation missing',
@@ -196,7 +177,7 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     renderDeviceDiagnosticsEmpty('No diagnostics recorded yet.');
     return;
   }
-  const starvation = summary.starvation ?? createEmptyStarvationSummary();
+  const { starvation } = summary;
   const starvationStatus = formatCurrentStarvationStatus({
     isStarved: starvation.isStarved,
     starvedMs: starvation.starvedAccumulatedMs,
@@ -214,7 +195,7 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
 
   deviceDetailDiagnosticsCards.innerHTML = '';
   (Object.keys(DIAGNOSTICS_WINDOW_LABELS) as DeviceDiagnosticsWindowKey[]).forEach((windowKey) => {
-    const windowSummary = summary.windows[windowKey] ?? createEmptyWindowSummary();
+    const windowSummary = summary.windows[windowKey];
     const restoreToSetbackLabel = [
       formatCycleDuration(windowSummary.avgRestoreToSetbackMs),
       formatCycleDuration(windowSummary.minRestoreToSetbackMs),
@@ -293,11 +274,7 @@ export const resetDeviceDetailDiagnosticsRequests = () => {
   diagnosticsRequestSeq += 1;
 };
 
-export const refreshDeviceDetailDiagnostics = async (params: {
-  deviceId: string;
-  isCurrentDevice: () => boolean;
-  showLoading?: boolean;
-}) => {
+export const refreshDeviceDetailDiagnostics = async (deviceId: string, isCurrentDevice: () => boolean) => {
   const requestSeq = diagnosticsRequestSeq + 1;
   diagnosticsRequestSeq = requestSeq;
   // Honest not-supported state (multi-home locked decision 5): the payload is
@@ -305,19 +282,16 @@ export const refreshDeviceDetailDiagnostics = async (params: {
   // device's plan — so for one, "No diagnostics recorded yet" would read as a
   // healthy device nobody is worried about. Say the truth instead, and skip
   // the fetch the answer cannot come from.
-  if (isDeviceInMeterArea(params.deviceId)) {
+  if (isDeviceInMeterArea(deviceId)) {
     renderDeviceDiagnosticsEmpty(HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED);
     return;
   }
-  if (params.showLoading) {
-    showDeviceDetailDiagnosticsLoading();
-  }
   try {
     const payload = await getApiReadModel<SettingsUiDeviceDiagnosticsPayload>(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
-    if (!params.isCurrentDevice() || diagnosticsRequestSeq !== requestSeq) return;
-    renderDeviceDiagnosticsSummary(payload.diagnosticsByDeviceId[params.deviceId]);
+    if (!isCurrentDevice() || diagnosticsRequestSeq !== requestSeq) return;
+    renderDeviceDiagnosticsSummary(payload.diagnosticsByDeviceId[deviceId]);
   } catch (error) {
-    if (!params.isCurrentDevice() || diagnosticsRequestSeq !== requestSeq) return;
+    if (!isCurrentDevice() || diagnosticsRequestSeq !== requestSeq) return;
     renderDeviceDiagnosticsEmpty('Diagnostics unavailable.');
     await logSettingsError('Failed to load device diagnostics', error, 'device detail');
   }

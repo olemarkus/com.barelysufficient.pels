@@ -1,5 +1,6 @@
 import { h } from 'preact';
 import type { HTMLAttributes, ComponentChildren } from 'preact';
+import type { MdSwitchElement } from '../dom.ts';
 
 type MdBaseProps = HTMLAttributes<HTMLElement> & {
   children?: ComponentChildren;
@@ -18,6 +19,12 @@ export const MdSwitch = (props: MdBaseProps) => (
   h('md-switch', props as Record<string, unknown>)
 );
 
+
+// The `md-switch`'s `selected` after its change event: Material Web exposes the
+// state as a property, not an attribute.
+export const readSwitchSelected = (event: Event): boolean => (
+  (event.currentTarget as MdSwitchElement).selected
+);
 
 export const MdFilledTextField = (props: MdBaseProps) => (
   h('md-filled-text-field', props as Record<string, unknown>)

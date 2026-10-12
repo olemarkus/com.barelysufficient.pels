@@ -227,13 +227,6 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(payload.rows[0].targetValue).toBe(80);
   });
 
-  test('excludes plans with non-finite deadlineAtMs', () => {
-    const payload = buildSmartTasksWidgetPayload(buildInput({
-      bad: buildPlan({ deviceId: 'bad', deadlineAtMs: Number.NaN }),
-    }));
-    expect(payload.state).toBe('empty');
-  });
-
   test('renders row with null currentValue when device snapshot is missing', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput({
       dev: buildPlan({ deviceId: 'dev', deviceName: 'Lonely device' }),

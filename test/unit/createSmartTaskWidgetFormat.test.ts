@@ -63,22 +63,22 @@ describe('formatSmartTaskUnknownNowValueLine', () => {
 
 describe('formatSmartTaskGoalContextLine', () => {
   it('renders an arrow when the goal is above the current reading', () => {
-    expect(formatSmartTaskGoalContextLine({ goalValue: 80, currentValue: 42, unitSymbol: '%' }))
+    expect(formatSmartTaskGoalContextLine(80, 42, '%'))
       .toBe('from 42% → 80%');
   });
 
   it('renders the "Goal … · now …" form when the goal is at or below the reading', () => {
-    expect(formatSmartTaskGoalContextLine({ goalValue: 60, currentValue: 65, unitSymbol: '°C' }))
+    expect(formatSmartTaskGoalContextLine(60, 65, '°C'))
       .toBe('Goal 60 °C · now 65 °C');
   });
 
   it('collapses to "Goal <value>" when goal and reading render equal', () => {
-    expect(formatSmartTaskGoalContextLine({ goalValue: 65, currentValue: 65, unitSymbol: '°C' }))
+    expect(formatSmartTaskGoalContextLine(65, 65, '°C'))
       .toBe('Goal 65 °C');
   });
 
   it('collapses to "Goal <value>" when there is no current reading', () => {
-    expect(formatSmartTaskGoalContextLine({ goalValue: 80, currentValue: null, unitSymbol: '%' }))
+    expect(formatSmartTaskGoalContextLine(80, null, '%'))
       .toBe('Goal 80%');
   });
 });

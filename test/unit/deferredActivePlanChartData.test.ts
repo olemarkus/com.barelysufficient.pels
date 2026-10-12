@@ -51,9 +51,19 @@ const resolveChart = (
   options?: { nowMs?: number; currentValue?: number | null },
 ) => resolveActivePlanChartData(resolveActivePlanFixture(plan), options);
 
+// The chart of a plan that has one to draw.
+const resolveDrawnChart = (
+  plan: ActivePlanFixture,
+  options?: { nowMs?: number; currentValue?: number | null },
+) => {
+  const data = resolveChart(plan, options);
+  if (data === null) throw new Error('expected a chart to draw');
+  return data;
+};
+
 describe('resolveActivePlanChartData', () => {
   test('anchors the planned staircase at the observed value where booked heating starts, capped at target', () => {
-    const data = resolveChart(buildPlan());
+    const data = resolveDrawnChart(buildPlan());
     expect(data.mode).toBe('trajectory');
     expect(data.unit).toBe('°C');
     expect(data.windowStartMs).toBe(START_MS);
@@ -77,7 +87,7 @@ describe('resolveActivePlanChartData', () => {
   test('caps the planned staircase at the target (no overshoot past the goal)', () => {
     // 5 booked hours × 1 kWh ÷ 0.5 kWh/°C = +10 °C from start 50 → would reach
     // 60, but the target is 55, so the drawn plan must flatten at 55.
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       targetValue: 55,
       startProgressValue: 50,
       latest: {
@@ -97,7 +107,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('appends the live now reading past the last sample', () => {
-    const data = resolveChart(buildPlan(), {
+    const data = resolveDrawnChart(buildPlan(), {
       nowMs: START_MS + 2.5 * HOUR_MS,
       currentValue: 53,
     });
@@ -106,7 +116,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('anchors the measured line at the run start when the first sample lands later', () => {
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       startProgressValue: 50,
       // First sample an hour into the run — without anchoring the line would
       // begin mid-chart.
@@ -120,7 +130,7 @@ describe('resolveActivePlanChartData', () => {
 
   test('draws a cooling plan down to target from the observed value when booked work starts', () => {
     const coolingStart = START_MS + HOUR_MS;
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       targetValue: 40,
       startProgressValue: 65,
       latest: {
@@ -150,7 +160,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('does not invent a planned direction when the live direction is unknown', () => {
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       latest: { ...buildPlan().latest!, progressDirection: 'unknown' },
     }));
     expect(data.mode).toBe('trajectory');
@@ -163,7 +173,7 @@ describe('resolveActivePlanChartData', () => {
     // stitch delivered neither start progress nor samples (e.g. just after an app
     // restart), but the plan + rate are present and the device reports a live
     // value. The planned staircase must still render (anchored at the live value).
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       startProgressValue: null,
       progressSamples: undefined,
       targetValue: 65,
@@ -176,7 +186,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('maps observed samples to the kind value and sorts ascending', () => {
-    const data = resolveChart(buildPlan());
+    const data = resolveDrawnChart(buildPlan());
     expect(data.observed).toEqual([
       { atMs: START_MS, value: 50 },
       { atMs: START_MS + HOUR_MS, value: 52 },
@@ -184,7 +194,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('reads EV SoC progress + target in percent', () => {
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       objectiveKind: 'ev_soc',
       targetValue: 80,
       startProgressValue: 45,
@@ -200,7 +210,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('falls back to the learned-profile rate when latest.rateMean is absent', () => {
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       latest: { ...buildPlan().latest!, rateMean: undefined },
       kwhPerUnitProvenance: {
         source: 'learned',
@@ -215,7 +225,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('renders observed-only (no planned) when there is no usable rate but ≥2 samples', () => {
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       latest: { ...buildPlan().latest!, rateMean: 0 },
       kwhPerUnitProvenance: undefined,
     }));
@@ -224,29 +234,24 @@ describe('resolveActivePlanChartData', () => {
     expect(data.observed).toHaveLength(2);
   });
 
-  test('falls back to a chartless payload when no rate AND fewer than two samples', () => {
-    const data = resolveChart(buildPlan({
+  test('draws no chart when no rate AND fewer than two samples', () => {
+    expect(resolveChart(buildPlan({
       latest: { ...buildPlan().latest!, rateMean: 0 },
       kwhPerUnitProvenance: undefined,
       progressSamples: [{ atMs: START_MS, value: 50 }],
-    }));
-    expect(data.mode).toBe('legacy_kwh');
-    expect(data.plannedOriginal).toEqual([]);
-    expect(data.observed).toEqual([]);
-    // Target still surfaces so the caller can show it in the text lines.
-    expect(data.target).toBe(55);
+    }))).toBeNull();
   });
 
   test('resolves merged scheduled-run bands from the live schedule\'s booked hours', () => {
     // The fixture books two contiguous hours (+1h and +2h) → one merged band.
-    const data = resolveChart(buildPlan());
+    const data = resolveDrawnChart(buildPlan());
     expect(data.runBands).toEqual([
       { fromMs: START_MS + HOUR_MS, toMs: START_MS + 3 * HOUR_MS },
     ]);
   });
 
   test('keeps a gap between detached booked hours and skips zero-kWh hours', () => {
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       latest: {
         ...buildPlan().latest!,
         hours: [
@@ -264,7 +269,7 @@ describe('resolveActivePlanChartData', () => {
 
   test('still resolves bands when no usable rate suppresses the planned staircase', () => {
     // The booked WHEN is known independently of the rate-derived HOW MUCH.
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       latest: { ...buildPlan().latest!, rateMean: 0 },
       kwhPerUnitProvenance: undefined,
     }));
@@ -274,18 +279,8 @@ describe('resolveActivePlanChartData', () => {
     ]);
   });
 
-  test('emits no bands on the chartless fallback payload', () => {
-    const data = resolveChart(buildPlan({
-      latest: { ...buildPlan().latest!, rateMean: 0 },
-      kwhPerUnitProvenance: undefined,
-      progressSamples: [{ atMs: START_MS, value: 50 }],
-    }));
-    expect(data.mode).toBe('legacy_kwh');
-    expect(data.runBands).toEqual([]);
-  });
-
   test('drops non-finite / valueless samples', () => {
-    const data = resolveChart(buildPlan({
+    const data = resolveDrawnChart(buildPlan({
       progressSamples: [
         { atMs: START_MS, value: 50 },
         { atMs: Number.NaN, value: 51 },

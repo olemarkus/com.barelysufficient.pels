@@ -107,14 +107,31 @@ describe('coerceDeferredObjectiveActivePlans', () => {
   });
 
   it.each([
-    ['hours that are not an array', { hours: {} }],
-    ['an hour with no start', { hours: [null] }],
-    ['an hour with a non-finite start', { hours: [{ startsAtMs: Number.NaN }] }],
+    ['hours that are not an array', { planStatus: 'on_track', hours: {} }],
+    ['an hour with no start', { planStatus: 'on_track', hours: [null] }],
+    ['an hour with a non-finite start', { planStatus: 'on_track', hours: [{ startsAtMs: Number.NaN }] }],
+    // Not `null` (not yet planned): the smart-task row reads `latest.planStatus`.
+    ['no revision at all', undefined],
+    // The smart-task row would otherwise count it "on track".
+    ['a revision with no verdict', { hours: [] }],
+    ['a revision with an unknown verdict', { planStatus: 'toString', hours: [] }],
   ])('drops a plan with %s, which the Overview EV line would walk', (_case, latest) => {
     const raw = planFor('ev-1', 2);
     const tampered = {
       version: 1 as const,
       plansByDeviceId: { ...raw.plansByDeviceId, 'ev-bad': { ...raw.plansByDeviceId['ev-1'], latest } as unknown },
+    };
+    expect(Object.keys(coerceDeferredObjectiveActivePlans(tampered)?.plansByDeviceId ?? {})).toEqual(['ev-1']);
+  });
+
+  it('drops a plan with a non-finite deadline, which the Overview smart-task row shows', () => {
+    const raw = planFor('ev-1', 2);
+    const tampered = {
+      version: 1 as const,
+      plansByDeviceId: {
+        ...raw.plansByDeviceId,
+        'ev-bad': { ...raw.plansByDeviceId['ev-1'], deadlineAtMs: Number.NaN } as unknown,
+      },
     };
     expect(Object.keys(coerceDeferredObjectiveActivePlans(tampered)?.plansByDeviceId ?? {})).toEqual(['ev-1']);
   });

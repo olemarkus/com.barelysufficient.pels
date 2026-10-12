@@ -38,6 +38,8 @@ test('cannot-finish outranks steady and swaps Ready by → Due', async ({ page }
         dev_connected300: {
           pending: false,
           deviceName: 'Connected 300',
+          // The producer always writes the deadline (the row's Due time).
+          deadlineAtMs: Date.now() + 6 * 3_600_000,
           latest: {
             planStatus: 'cannot_meet',
             hours: [{ startsAtMs: Date.now() + 3_600_000, plannedKWh: 2 }],

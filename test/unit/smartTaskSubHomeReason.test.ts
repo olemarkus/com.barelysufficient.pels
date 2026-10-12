@@ -46,13 +46,10 @@ describe('device_in_sub_home active-task presentation', () => {
     expect(resolveSmartTaskListStatus({
       liveCompletion: { kind: 'unavailable' },
       pending: false,
-      pendingReason: undefined,
       diagnosticReasonCode: 'objective_device_in_sub_home',
-      planStatus: 'on_track',
-      firstActionAtMs: 1,
-      nowMs: 0,
-      carChargeLimit: null,
-    })).toBe('unavailable');
+      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1, plannedKWh: 1 }] },
+      targetValue: 55,
+    }, 0)).toBe('unavailable');
   });
 
   it('maps a never-revised separate-meter task to unavailable instead of building-plan', () => {
@@ -61,11 +58,9 @@ describe('device_in_sub_home active-task presentation', () => {
       pending: true,
       pendingReason: 'device_in_sub_home',
       diagnosticReasonCode: 'objective_device_in_sub_home',
-      planStatus: undefined,
-      firstActionAtMs: null,
-      nowMs: 0,
-      carChargeLimit: null,
-    })).toBe('unavailable');
+      latest: null,
+      targetValue: 55,
+    }, 0)).toBe('unavailable');
   });
 
   it('reuses the canonical separate-meter sentence in widget detail copy', () => {

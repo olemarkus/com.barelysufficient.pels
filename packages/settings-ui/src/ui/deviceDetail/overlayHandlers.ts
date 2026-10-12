@@ -162,12 +162,9 @@ const initDeviceDetailDiagnosticsHandler = (ctx: DeviceDetailOverlayHandlerConte
     }
 
     showDeviceDetailDiagnosticsLoading();
-    void refreshDeviceDetailDiagnostics({
-      deviceId,
-      isCurrentDevice: () => (
-        ctx.getCurrentDetailDeviceId() === deviceId && isDeviceDetailDiagnosticsExpanded()
-      ),
-    });
+    void refreshDeviceDetailDiagnostics(deviceId, () => (
+      ctx.getCurrentDetailDeviceId() === deviceId && isDeviceDetailDiagnosticsExpanded()
+    ));
   });
 };
 
@@ -195,12 +192,9 @@ const initDeviceDetailRefreshHandlers = (ctx: DeviceDetailOverlayHandlerContext)
 
     ctx.refreshOpenDeviceDetail();
     if (!isDeviceDetailDiagnosticsExpanded()) return;
-    void refreshDeviceDetailDiagnostics({
-      deviceId,
-      isCurrentDevice: () => (
-        ctx.getCurrentDetailDeviceId() === deviceId && isDeviceDetailDiagnosticsExpanded()
-      ),
-    });
+    void refreshDeviceDetailDiagnostics(deviceId, () => (
+      ctx.getCurrentDetailDeviceId() === deviceId && isDeviceDetailDiagnosticsExpanded()
+    ));
   });
 
   document.addEventListener('plan-updated', () => {
@@ -210,12 +204,9 @@ const initDeviceDetailRefreshHandlers = (ctx: DeviceDetailOverlayHandlerContext)
     // The live-status row tracks every plan push while the overlay is open.
     void renderDeviceDetailLiveStatus(deviceId);
     if (isDeviceDetailDiagnosticsExpanded()) {
-      void refreshDeviceDetailDiagnostics({
-        deviceId,
-        isCurrentDevice: () => (
-          ctx.getCurrentDetailDeviceId() === deviceId && isDeviceDetailDiagnosticsExpanded()
-        ),
-      });
+      void refreshDeviceDetailDiagnostics(deviceId, () => (
+        ctx.getCurrentDetailDeviceId() === deviceId && isDeviceDetailDiagnosticsExpanded()
+      ));
     }
     refreshDeviceDetailActivityLogIfExpanded(deviceId, ctx.getCurrentDetailDeviceId);
   });

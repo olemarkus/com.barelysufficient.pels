@@ -77,17 +77,14 @@ describe('external-off hold — the retired objective_device_left_off code', () 
   const retired = 'objective_device_left_off' as never;
   const cachedOnTrackPlan = {
     pending: false,
-    pendingReason: undefined,
-    planStatus: 'on_track' as const,
-    firstActionAtMs: null,
-    nowMs: 1_000_000,
-    carChargeLimit: null,
+    latest: { planStatus: 'on_track' as const, hours: [] },
+    targetValue: 55,
   };
 
   it('is ignored by every resolver', () => {
     expect(resolveSmartTaskListStatus({
       liveCompletion: { kind: 'unavailable' }, ...cachedOnTrackPlan, diagnosticReasonCode: retired,
-    })).toBe('on_track');
+    }, 1_000_000)).toBe('on_track');
     expect(resolveEffectivePlanStatus('on_track', {
       liveCompletion: { kind: 'unavailable' }, targetValue: 55, diagnosticReasonCode: retired,
     })).toBe('on_track');

@@ -61,7 +61,7 @@ export const resolveGridCellFromPixel = (
   return { columnIndex: Math.round(column), rowIndex: Math.round(row) };
 };
 
-type ChartReadoutState = {
+export type ChartReadoutState = {
   itemCount: number;
   defaultIndex: number;
   resolveContent: (index: number) => ChartReadoutContent | null;

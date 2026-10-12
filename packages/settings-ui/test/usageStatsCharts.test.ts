@@ -37,16 +37,16 @@ type DailyOptionShape = {
 const buildOption = (params: {
   kWhByDay: number[];
   budgetKWh?: number | null;
-}): DailyOptionShape => buildDailyHistoryOption({
-  ordered: params.kWhByDay.map((kWh, index) => ({
+}): DailyOptionShape => buildDailyHistoryOption(
+  params.kWhByDay.map((kWh, index) => ({
     date: `2026-06-${String(index + 1).padStart(2, '0')}`,
     kWh,
   })),
-  readouts: [],
-  timeZone: 'UTC',
+  [],
+  'UTC',
   palette,
-  budgetKWh: params.budgetKWh ?? null,
-}) as unknown as DailyOptionShape;
+  params.budgetKWh ?? null,
+) as unknown as DailyOptionShape;
 
 describe('resolveDailyHistorySegments', () => {
   it('tints ONLY the portion above the budget line amber', () => {

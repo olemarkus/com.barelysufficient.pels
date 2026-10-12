@@ -2,7 +2,8 @@ import type { EChartsOption, EChartsType, SeriesOption } from './echartsRegistry
 import { mountChart, resolveChartSize, type MountedChart } from './echartsMount.ts';
 import { logSettingsWarn } from './logging.ts';
 import {
-  formatAxisTick,
+  buildUsageCategoryXAxis,
+  buildUsageValueYAxis,
   formatHourAxisLabel,
   readChartPalette,
   resolveLabelEvery,
@@ -167,23 +168,23 @@ export type UsageDayStackSegments = {
 // split numbers).
 const MIN_SPLIT_RENDER_KWH = 0.05;
 
-export const resolveUsageDayStackSegments = (params: {
-  measuredKWh: number;
-  split: UsageDaySplit | null;
-  warn: boolean;
-}): UsageDayStackSegments => {
-  const measured = Number.isFinite(params.measuredKWh) ? Math.max(0, params.measuredKWh) : 0;
+export const resolveUsageDayStackSegments = (
+  measuredKWh: number,
+  split: UsageDaySplit | null,
+  warn: boolean,
+): UsageDayStackSegments => {
+  const measured = Number.isFinite(measuredKWh) ? Math.max(0, measuredKWh) : 0;
   const empty = { backgroundKWh: 0, managedKWh: 0, unattributedKWh: 0 };
   // Warn hours render as the established full-height amber bar: the bar
   // withholds the split CLAIM for an hour whose samples have gaps, while the
   // tapped readout still carries the Managed/Background numbers alongside
   // the "Unreliable — some readings missing this hour" consequence line
   // (`notes/ui-terminology.md` § Usage tab chart readouts).
-  if (!params.split || params.warn || measured <= MIN_SPLIT_RENDER_KWH) {
+  if (!split || warn || measured <= MIN_SPLIT_RENDER_KWH) {
     return { ...empty, fallbackKWh: measured };
   }
-  const managed = Number.isFinite(params.split.managedKWh) ? Math.max(0, params.split.managedKWh) : 0;
-  const background = Number.isFinite(params.split.backgroundKWh) ? Math.max(0, params.split.backgroundKWh) : 0;
+  const managed = Number.isFinite(split.managedKWh) ? Math.max(0, split.managedKWh) : 0;
+  const background = Number.isFinite(split.backgroundKWh) ? Math.max(0, split.backgroundKWh) : 0;
   const sum = managed + background;
   if (sum <= 0) return { ...empty, fallbackKWh: measured };
   if (splitCoversMeasured(sum, measured)) {
@@ -234,15 +235,14 @@ const bottomSegmentOf = (stack: UsageDayStackSegments): StackSegmentKind | null 
   return null;
 };
 
-const buildStackSegmentData = (params: {
-  stacks: UsageDayStackSegments[];
-  kind: StackSegmentKind;
-  color: string;
-  currentBucketIndex: number;
-  enabled: boolean;
-  palette: UsageDayPalette;
-}) => {
-  const { stacks, kind, color, currentBucketIndex, enabled, palette } = params;
+const buildStackSegmentData = (
+  stacks: UsageDayStackSegments[],
+  kind: StackSegmentKind,
+  color: string,
+  currentBucketIndex: number,
+  enabled: boolean,
+  palette: UsageDayPalette,
+) => {
   const valueOf = (stack: UsageDayStackSegments): number => {
     if (kind === 'background') return stack.backgroundKWh;
     if (kind === 'managed') return stack.managedKWh;
@@ -273,20 +273,13 @@ const buildStackSegmentData = (params: {
 // stacked column), and so do zero-value hours (future hours of the Today
 // view): the legend deliberately has no entry for a zero stub, so rendering
 // one would be unexplained ink.
-const buildMeasuredData = (params: {
-  bars: DayViewBar[];
-  stacks: UsageDayStackSegments[];
-  currentBucketIndex: number;
-  enabled: boolean;
-  palette: UsageDayPalette;
-}) => {
-  const {
-    bars,
-    stacks,
-    currentBucketIndex,
-    enabled,
-    palette,
-  } = params;
+const buildMeasuredData = (
+  bars: DayViewBar[],
+  stacks: UsageDayStackSegments[],
+  currentBucketIndex: number,
+  enabled: boolean,
+  palette: UsageDayPalette,
+) => {
   return bars.map((bar, index) => {
     const stack = stacks[index];
     // `??` must not resurrect a null fallback (null means "the stack renders
@@ -324,12 +317,7 @@ const getDataMax = (bars: DayViewBar[]): number => (
 
 const Y_AXIS_SPLIT_NUMBER = 4;
 
-const buildLegendData = (params: {
-  bars: DayViewBar[];
-  stacks: UsageDayStackSegments[];
-  hasWarnBars: boolean;
-}): string[] => {
-  const { bars, stacks, hasWarnBars } = params;
+const buildLegendData = (bars: DayViewBar[], stacks: UsageDayStackSegments[], hasWarnBars: boolean): string[] => {
   const hasSplitBars = stacks.some((stack) => stack.fallbackKWh === null);
   // A "Measured" legend entry is only needed for visible fallback bars
   // alongside a split (warn bars are covered by the "Warning" entry, and
@@ -355,15 +343,14 @@ const buildLegendData = (params: {
 // select to — colocated so the dispatch list can never drift from the series
 // ordering (the Warning legend-binder stub is excluded: it has no data and
 // select is disabled on it).
-const buildBarSeries = (params: {
-  bars: DayViewBar[];
-  stacks: UsageDayStackSegments[];
-  currentBucketIndex: number;
-  enabled: boolean;
-  palette: UsageDayPalette;
-  hasWarnBars: boolean;
-}): { series: SeriesOption[]; selectSeriesIndexes: number[] } => {
-  const { bars, stacks, currentBucketIndex, enabled, palette, hasWarnBars } = params;
+const buildBarSeries = (
+  bars: DayViewBar[],
+  stacks: UsageDayStackSegments[],
+  currentBucketIndex: number,
+  enabled: boolean,
+  palette: UsageDayPalette,
+  hasWarnBars: boolean,
+): { series: SeriesOption[]; selectSeriesIndexes: number[] } => {
   const shared = {
     type: 'bar' as const,
     stack: 'measured',
@@ -384,17 +371,13 @@ const buildBarSeries = (params: {
     {
       ...shared,
       name: SPLIT_BACKGROUND_LABEL,
-      data: buildStackSegmentData({
-        stacks, kind: 'background', color: palette.background, currentBucketIndex, enabled, palette,
-      }),
+      data: buildStackSegmentData(stacks, 'background', palette.background, currentBucketIndex, enabled, palette),
       itemStyle: { color: palette.background },
     },
     {
       ...shared,
       name: SPLIT_MANAGED_LABEL,
-      data: buildStackSegmentData({
-        stacks, kind: 'managed', color: palette.managed, currentBucketIndex, enabled, palette,
-      }),
+      data: buildStackSegmentData(stacks, 'managed', palette.managed, currentBucketIndex, enabled, palette),
       itemStyle: { color: palette.managed },
     },
     // Measured remainder the split does not attribute. Kept OFF the legend
@@ -404,15 +387,13 @@ const buildBarSeries = (params: {
     {
       ...shared,
       name: 'Unattributed',
-      data: buildStackSegmentData({
-        stacks, kind: 'unattributed', color: palette.unattributed, currentBucketIndex, enabled, palette,
-      }),
+      data: buildStackSegmentData(stacks, 'unattributed', palette.unattributed, currentBucketIndex, enabled, palette),
       itemStyle: { color: palette.unattributed },
     },
     {
       ...shared,
       name: 'Measured',
-      data: buildMeasuredData({ bars, stacks, currentBucketIndex, enabled, palette }),
+      data: buildMeasuredData(bars, stacks, currentBucketIndex, enabled, palette),
       barMinHeight: 2,
       itemStyle: { color: palette.measured },
     },
@@ -460,15 +441,20 @@ const buildOption = (params: UsageDayChartEchartsParams): {
   const labelEvery = resolveLabelEvery(bars.length);
   const hasWarnBars = bars.some((bar) => isWarnBar(bar));
   const yAxis = roundedAxisMaxToInterval(getDataMax(bars), Y_AXIS_SPLIT_NUMBER);
-  const stacks = bars.map((bar, index) => resolveUsageDayStackSegments({
-    measuredKWh: bar.value,
-    split: splits[index] ?? null,
-    warn: isWarnBar(bar),
-  }));
-  const { series, selectSeriesIndexes } = buildBarSeries({
-    bars, stacks, currentBucketIndex, enabled, palette, hasWarnBars,
-  });
-  const legendData = buildLegendData({ bars, stacks, hasWarnBars });
+  const stacks = bars.map((bar, index) => resolveUsageDayStackSegments(
+    bar.value,
+    splits[index] ?? null,
+    isWarnBar(bar),
+  ));
+  const { series, selectSeriesIndexes } = buildBarSeries(
+    bars,
+    stacks,
+    currentBucketIndex,
+    enabled,
+    palette,
+    hasWarnBars,
+  );
+  const legendData = buildLegendData(bars, stacks, hasWarnBars);
 
   const option: EChartsOption = {
     animation: false,
@@ -505,33 +491,8 @@ const buildOption = (params: UsageDayChartEchartsParams): {
       show: !prefersCoarsePointer(),
       formatter: buildTooltipFormatter(readouts, palette.warn),
     },
-    xAxis: {
-      type: 'category',
-      data: axisLabels,
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: palette.grid } },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (_label: string, index: number) => (
-          index % labelEvery !== 0 && index !== bars.length - 1 ? '' : axisLabels[index]
-        ),
-      },
-    },
-    yAxis: {
-      type: 'value',
-      min: 0,
-      max: yAxis.max,
-      interval: yAxis.interval,
-      axisTick: { show: false },
-      axisLine: { show: false },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (value: number) => formatAxisTick(value, yAxis.interval),
-      },
-      splitLine: { lineStyle: { color: palette.grid } },
-    },
+    xAxis: buildUsageCategoryXAxis(axisLabels, labelEvery, palette),
+    yAxis: buildUsageValueYAxis(yAxis, palette),
     series,
   };
   return { option, selectSeriesIndexes };

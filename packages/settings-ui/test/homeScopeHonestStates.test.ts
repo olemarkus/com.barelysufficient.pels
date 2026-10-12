@@ -97,7 +97,7 @@ describe('device-detail honest states for a meter-area device', () => {
     await primeMembership(homey);
     const { refreshDeviceDetailDiagnostics } = await import('../src/ui/deviceDetail/diagnostics.ts');
 
-    await refreshDeviceDetailDiagnostics({ deviceId: 'dev-rental-heater', isCurrentDevice: () => true });
+    await refreshDeviceDetailDiagnostics('dev-rental-heater', () => true);
 
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent)
       .toBe(HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED);
@@ -110,7 +110,7 @@ describe('device-detail honest states for a meter-area device', () => {
     await primeMembership(homey);
     const { refreshDeviceDetailDiagnostics } = await import('../src/ui/deviceDetail/diagnostics.ts');
 
-    await refreshDeviceDetailDiagnostics({ deviceId: 'dev-hall-heater', isCurrentDevice: () => true });
+    await refreshDeviceDetailDiagnostics('dev-hall-heater', () => true);
 
     expect(apiPathsCalled(homey)).toContain('/ui_device_diagnostics');
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent)
@@ -149,7 +149,7 @@ describe('device-detail honest states for a meter-area device', () => {
     await primeMembership(homey);
     const { refreshDeviceDetailDiagnostics } = await import('../src/ui/deviceDetail/diagnostics.ts');
 
-    await refreshDeviceDetailDiagnostics({ deviceId: 'dev-rental-heater', isCurrentDevice: () => true });
+    await refreshDeviceDetailDiagnostics('dev-rental-heater', () => true);
 
     expect(apiPathsCalled(homey)).toContain('/ui_device_diagnostics');
   });

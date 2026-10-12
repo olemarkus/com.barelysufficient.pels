@@ -10,7 +10,8 @@ import type { EChartsOption } from './echartsRegistry.ts';
 import {
   BUDGET_REFERENCE_MARGIN_PX,
   buildBudgetReferencePillLabel,
-  formatAxisTick,
+  buildUsageCategoryXAxis,
+  buildUsageValueYAxis,
   resolveLabelEvery,
   roundedAxisMaxToInterval,
   Y_AXIS_SPLIT_NUMBER,
@@ -23,7 +24,8 @@ import {
 } from './chartTooltipFormat.ts';
 import { prefersCoarsePointer } from './chartReadout.ts';
 import { formatDayFirstInTimeZone, getDateKeyStartMs } from './timezone.ts';
-import type { DailyHistoryPoint, UsageStatsPalette } from './usageStatsChartsEcharts.ts';
+import type { DailyHistoryPoint } from './powerStats.ts';
+import type { UsageStatsPalette } from './usageStatsChartsEcharts.ts';
 
 const BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0];
 
@@ -67,12 +69,12 @@ const buildBudgetMarkLine = (budgetKWh: number, palette: UsageStatsPalette) => (
   // Pill chip pinned in the reserved right margin at the line's end — never
   // over the bars (see `BUDGET_REFERENCE_MARGIN_PX`).
   label: {
-    ...buildBudgetReferencePillLabel({
-      text: `Budget\n${budgetKWh.toFixed(1)} kWh`,
-      borderColor: palette.budgetReference,
-      backgroundColor: palette.tooltipBackground,
-      textColor: palette.tooltipText,
-    }),
+    ...buildBudgetReferencePillLabel(
+      `Budget\n${budgetKWh.toFixed(1)} kWh`,
+      palette.budgetReference,
+      palette.tooltipBackground,
+      palette.tooltipText,
+    ),
     position: 'end' as const,
     distance: 6,
   },
@@ -86,14 +88,13 @@ const buildBudgetMarkLine = (budgetKWh: number, palette: UsageStatsPalette) => (
 
 // Exported for the option-level suite (headroom, partial amber tint, budget
 // pill placement).
-export const buildDailyHistoryOption = (params: {
-  ordered: DailyHistoryPoint[];
-  readouts: ChartReadoutContent[];
-  timeZone: string;
-  palette: UsageStatsPalette;
-  budgetKWh: number | null;
-}): EChartsOption => {
-  const { ordered, readouts, timeZone, palette, budgetKWh } = params;
+export const buildDailyHistoryOption = (
+  ordered: DailyHistoryPoint[],
+  readouts: ChartReadoutContent[],
+  timeZone: string,
+  palette: UsageStatsPalette,
+  budgetKWh: number | null,
+): EChartsOption => {
   const values = ordered.map((point) => point.kWh);
   const labels = ordered.map((point) => (
     formatDateKeyLabel(point.date, { month: 'short', day: 'numeric' }, timeZone)
@@ -130,38 +131,8 @@ export const buildDailyHistoryOption = (params: {
         return readoutToTooltipHtml(readout, { warnColor: palette.overBudget });
       },
     },
-    xAxis: {
-      type: 'category',
-      data: labels,
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: palette.grid } },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (_label: string, index: number) => (
-          index % labelEvery !== 0 && index !== labels.length - 1 ? '' : labels[index]
-        ),
-      },
-    },
-    yAxis: {
-      type: 'value',
-      min: 0,
-      max: yAxis.max,
-      interval: yAxis.interval,
-      axisTick: { show: false },
-      axisLine: { show: false },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (value: number) => formatAxisTick(value, yAxis.interval),
-      },
-      splitLine: {
-        lineStyle: {
-          color: palette.grid,
-          width: 1,
-        },
-      },
-    },
+    xAxis: buildUsageCategoryXAxis(labels, labelEvery, palette),
+    yAxis: buildUsageValueYAxis(yAxis, palette),
     series: [
       // Base segment: the day's usage up to the budget line, mint. Days with
       // an over-budget remainder hand their rounded top corners to the amber

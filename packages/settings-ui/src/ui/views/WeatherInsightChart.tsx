@@ -1,4 +1,5 @@
 import { encodeHtml, useEchartsMount, type EChartsOption, type SeriesOption } from '../echartsRegistry.ts';
+import { readChartPalette, readCssNumber } from '../dayViewChart.ts';
 import type {
   EnergySignatureFit,
   WeatherAdvisorPrediction,
@@ -36,24 +37,19 @@ export type WeatherChartPalette = {
   tooltipBorder: string;
 };
 
-const cssVar = (element: HTMLElement, variable: string, fallback = ''): string => (
-  getComputedStyle(element).getPropertyValue(variable).trim() || fallback
+const WEATHER_PALETTE_VARS = {
+  accent: '--color-role-accent',
+  muted: '--pels-text-supporting-color',
+  grid: '--pels-surface-outline',
+  text: '--text',
+  tooltipBackground: '--color-overlay-toast',
+  tooltipText: '--color-semantic-text-primary',
+  tooltipBorder: '--color-border-medium',
+} as const satisfies Record<keyof WeatherChartPalette, string>;
+
+const resolveWeatherPalette = (element: HTMLElement): WeatherChartPalette => (
+  readChartPalette<WeatherChartPalette>(element, WEATHER_PALETTE_VARS)
 );
-
-const cssNumber = (element: HTMLElement, variable: string, fallback: number): number => {
-  const parsed = Number.parseFloat(cssVar(element, variable));
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const resolveWeatherPalette = (element: HTMLElement): WeatherChartPalette => ({
-  accent: cssVar(element, '--color-role-accent'),
-  muted: cssVar(element, '--pels-text-supporting-color'),
-  grid: cssVar(element, '--pels-surface-outline'),
-  text: cssVar(element, '--text'),
-  tooltipBackground: cssVar(element, '--color-overlay-toast'),
-  tooltipText: cssVar(element, '--color-semantic-text-primary'),
-  tooltipBorder: cssVar(element, '--color-border-medium'),
-});
 
 // Must match `.weather-insight-chart` height in style.css (cold-mount fallback).
 const WEATHER_CHART_HEIGHT = 220;
@@ -326,7 +322,7 @@ export const WeatherScatterChart = (props: WeatherScatterChartProps) => {
       outlookDateKey,
       yesterdayDateKey,
       palette: resolveWeatherPalette(container),
-      labelFontSize: cssNumber(container, '--font-size-xs', 11),
+      labelFontSize: readCssNumber(container, '--font-size-xs', 11),
     }),
     resolveSize: resolveWeatherChartSize,
     deps: [scatter, recentDays, fit, prediction, outlookDateKey, yesterdayDateKey],

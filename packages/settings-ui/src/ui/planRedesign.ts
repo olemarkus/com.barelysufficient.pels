@@ -12,7 +12,6 @@ import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.t
 import { callApi, getApiReadModel } from './homey.ts';
 import { getHomeScope, readHomeMembership } from './homeScope.ts';
 import { setPlanUnmeasured } from './planMeasurementSignal.ts';
-import { hoursWithPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 import { readAreaSimulationPosture, readOverviewPlan } from './overviewPlanRead.ts';
 import { readOverviewDevices } from './overviewDevicesRead.ts';
 import type { OverviewDeviceRowsRead, SettingsUiOverviewDevice } from './overviewDeviceRows.ts';
@@ -31,10 +30,8 @@ import {
   type OverviewSmartTaskStatusInput,
 } from '../../../shared-domain/src/overviewSmartTaskRow.ts';
 import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../shared-domain/src/deferredPlanHistory.ts';
-import {
-  resolveReportedCarChargeLimit,
-  resolveSmartTaskListStatus,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
+import type { OverviewDeferredObjectiveActivePlan } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { PlanSnapshot } from './planTypes.ts';
 import { resolveEvCardStateLines } from './evCardStateLine.ts';
 import type { SetupPathRead } from './setupPathFacts.ts';
@@ -384,33 +381,20 @@ const formatRowTime = (ms: number): string => (
 // SAME state the device cards read (`state.deferredObjectiveActivePlans` +
 // `state.deferredObjectiveSettings`) via the SAME `resolveSmartTaskListStatus`
 // the Smart-tasks list card uses — one status vocabulary, two surfaces.
-const toRowStatus = (params: {
-  deviceId: string;
-  plan: NonNullable<typeof state.deferredObjectiveActivePlans>['plansByDeviceId'][string];
-  deadlineAtMs: number;
-  nowMs: number;
-}): OverviewSmartTaskStatusInput => {
-  const { deviceId, plan, deadlineAtMs, nowMs } = params;
+const toRowStatus = (
+  deviceId: string,
+  plan: OverviewDeferredObjectiveActivePlan,
+  nowMs: number,
+): OverviewSmartTaskStatusInput => {
   const planDevice = currentPlan?.devices?.find((dev) => dev.id === deviceId);
   return {
     deviceName: planDevice?.name ?? plan.deviceName ?? deviceId,
-    statusId: resolveSmartTaskListStatus({
-      pending: plan.pending || plan.latest === null,
-      pendingReason: plan.pendingReason,
-      diagnosticReasonCode: plan.diagnosticReasonCode,
-      planStatus: plan.latest?.planStatus,
-      firstActionAtMs: Array.isArray(plan.latest?.hours)
-        ? hoursWithPlannedEnergy(plan.latest.hours)[0]?.startsAtMs ?? null
-        : null,
-      nowMs,
-      carChargeLimit: resolveReportedCarChargeLimit(plan),
-      liveCompletion: plan.liveCompletion,
-    }),
-    // The status derives from the recorded PLAN, so the ETA prefers the
-    // plan's own deadline: after a deadline edit the settings blob reloads
-    // before the recorder replans, and mixing the fresh settings deadline
-    // with the old plan's status would pair a wrong time with the verdict.
-    deadlineAtMs: Number.isFinite(plan.deadlineAtMs) ? plan.deadlineAtMs : deadlineAtMs,
+    statusId: resolveSmartTaskListStatus(plan, nowMs),
+    // The status derives from the recorded PLAN, so the ETA is the plan's own
+    // deadline: after a deadline edit the settings blob reloads before the
+    // recorder replans, and mixing the fresh settings deadline with the old
+    // plan's status would pair a wrong time with the verdict.
+    deadlineAtMs: plan.deadlineAtMs,
   };
 };
 
@@ -421,7 +405,7 @@ const resolveRowStatuses = (nowMs: number): OverviewSmartTaskStatusInput[] => {
     const objective = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
     if (!objective?.enabled) continue;
     if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= nowMs) continue;
-    statuses.push(toRowStatus({ deviceId, plan, deadlineAtMs: objective.deadlineAtMs, nowMs }));
+    statuses.push(toRowStatus(deviceId, plan, nowMs));
   }
   return statuses;
 };

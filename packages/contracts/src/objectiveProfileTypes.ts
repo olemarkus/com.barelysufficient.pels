@@ -1,4 +1,3 @@
-export type ObjectiveProfileKind = 'temperature' | 'ev_soc';
 export type ObjectiveProfileProgressDirection = 'increasing' | 'decreasing';
 
 export type ObjectiveProfileConfidence = 'low' | 'medium' | 'high';

@@ -11,3 +11,11 @@ export const hasPlannedEnergy = (hour: { plannedKWh: number }): boolean => hour.
 export const hoursWithPlannedEnergy = <T extends { plannedKWh: number }>(hours: readonly T[]): T[] => (
   hours.filter(hasPlannedEnergy)
 );
+
+// When the device is first planned to run: the first hour of `revision` that
+// promises energy, or null with no revision or no such hour.
+export const resolveFirstPlannedHourMs = (
+  revision: { hours: readonly { startsAtMs: number; plannedKWh: number }[] } | null,
+): number | null => (
+  revision === null ? null : hoursWithPlannedEnergy(revision.hours)[0]?.startsAtMs ?? null
+);

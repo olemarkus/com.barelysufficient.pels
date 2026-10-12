@@ -1,9 +1,5 @@
-import { MdElevation, MdRipple } from './materialWebJSX.tsx';
-import { isDimmedDisplayStateKind } from '../../../../shared-domain/src/planCardGrammar.ts';
-import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
-import { cardActivationProps } from '../cardActivation.ts';
-import { DeadlineChip, PlanCardStatusChipView } from './PlanDeviceCards.tsx';
+import { PlanCardShell } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot } from '../planTypes.ts';
 
 // ─── Step rail ────────────────────────────────────────────────────────────────
@@ -61,40 +57,12 @@ export const PlanSteppedCard = ({
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const status = displayDev.status;
-  const stateKind = status.kind;
   const powerText = status.powerText;
   const factText = status.factText;
   const statusText = status.reason?.text ?? null;
 
-  const cardClasses = [
-    'pels-surface-card device-row plan-card plan-card--stepped clickable',
-    isDimmedDisplayStateKind(stateKind) ? 'plan-card--dim' : '',
-  ].filter(Boolean).join(' ');
-  const displayName = formatDisplayDeviceName(dev.name);
-
   return (
-    <div
-      class={cardClasses}
-      data-device-id={dev.id}
-      data-state-kind={stateKind}
-      tabIndex={0}
-      role="button"
-      aria-label={`Open device details for ${displayName}`}
-      {...cardActivationProps(dev.id)}
-    >
-      <MdElevation aria-hidden="true" />
-      <MdRipple aria-hidden="true" />
-
-      <div class="plan-card__header">
-        <div class="plan-card__title-wrap">
-          <h3 class="plan-card__title">{displayName}</h3>
-        </div>
-        <div class="plan-card__chips">
-          <PlanCardStatusChipView dev={displayDev} displayKind={stateKind} dryRun={dryRun} />
-          <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
-        </div>
-      </div>
-
+    <PlanCardShell dev={displayDev} dryRun={dryRun} nowMs={nowMs} kind="stepped" leadingChip={null}>
       <div class="plan-card__stepped-body">
         {/* Same anatomy as the generic/temperature cards: bold canonical state
             word + right-aligned power. The former "Level: 6 A" / "Off now"
@@ -114,6 +82,6 @@ export const PlanSteppedCard = ({
 
         {status.rail && <StepRail dev={displayDev} />}
       </div>
-    </div>
+    </PlanCardShell>
   );
 };

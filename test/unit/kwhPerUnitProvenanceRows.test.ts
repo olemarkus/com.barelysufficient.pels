@@ -19,11 +19,11 @@ const ONE_HOUR_MS = 60 * ONE_MIN_MS;
 
 describe('resolveKwhPerUnitProvenanceRows', () => {
   it('returns an empty list when provenance is absent', () => {
-    expect(resolveKwhPerUnitProvenanceRows({
-      provenance: undefined,
-      nowMs: ACCEPTED_AT_MS,
+    expect(resolveKwhPerUnitProvenanceRows(
+      undefined,
+      ACCEPTED_AT_MS,
       formatAcceptedAt,
-    })).toEqual([]);
+    )).toEqual([]);
   });
 
   it('renders a single "Starting estimate" source row for bootstrap provenance', () => {
@@ -34,11 +34,11 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: null,
       lastAcceptedAtMs: null,
     };
-    expect(resolveKwhPerUnitProvenanceRows({
+    expect(resolveKwhPerUnitProvenanceRows(
       provenance,
-      nowMs: ACCEPTED_AT_MS,
+      ACCEPTED_AT_MS,
       formatAcceptedAt,
-    })).toEqual([{ label: 'Source', value: 'Starting estimate', tone: null }]);
+    )).toEqual([{ label: 'Source', value: 'Starting estimate', tone: null }]);
   });
 
   it('renders source/samples/last-sample rows for fully-populated learned provenance — no duplicate "Learned rate" row', () => {
@@ -49,11 +49,11 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: 'medium',
       lastAcceptedAtMs: ACCEPTED_AT_MS,
     };
-    expect(resolveKwhPerUnitProvenanceRows({
+    expect(resolveKwhPerUnitProvenanceRows(
       provenance,
-      nowMs: ACCEPTED_AT_MS + 5 * ONE_MIN_MS,
+      ACCEPTED_AT_MS + 5 * ONE_MIN_MS,
       formatAcceptedAt,
-    })).toEqual([
+    )).toEqual([
       { label: 'Source', value: 'Learned from power readings', tone: null },
       { label: 'Readings used', value: '12 accepted power readings · medium confidence', tone: null },
       // `freshnessOfMs` mirrors `lastAcceptedAtMs` so the React view can
@@ -77,11 +77,11 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: 'low',
       lastAcceptedAtMs: ACCEPTED_AT_MS,
     };
-    const rows = resolveKwhPerUnitProvenanceRows({
+    const rows = resolveKwhPerUnitProvenanceRows(
       provenance,
-      nowMs: ACCEPTED_AT_MS + 15 * 1000,
+      ACCEPTED_AT_MS + 15 * 1000,
       formatAcceptedAt,
-    });
+    );
     expect(rows.find((row) => row.label === 'Latest reading used')?.value).toBe('Updated just now');
   });
 
@@ -93,11 +93,11 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: 'low',
       lastAcceptedAtMs: ACCEPTED_AT_MS,
     };
-    const rows = resolveKwhPerUnitProvenanceRows({
+    const rows = resolveKwhPerUnitProvenanceRows(
       provenance,
-      nowMs: ACCEPTED_AT_MS + 3 * ONE_HOUR_MS,
+      ACCEPTED_AT_MS + 3 * ONE_HOUR_MS,
       formatAcceptedAt,
-    });
+    );
     expect(rows.find((row) => row.label === 'Latest reading used')?.value).toBe('Updated 3 hours ago');
   });
 
@@ -109,11 +109,11 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: 'medium',
       lastAcceptedAtMs: ACCEPTED_AT_MS,
     };
-    const rows = resolveKwhPerUnitProvenanceRows({
+    const rows = resolveKwhPerUnitProvenanceRows(
       provenance,
-      nowMs: ACCEPTED_AT_MS + 48 * ONE_HOUR_MS,
+      ACCEPTED_AT_MS + 48 * ONE_HOUR_MS,
       formatAcceptedAt,
-    });
+    );
     expect(rows.find((row) => row.label === 'Latest reading used')?.value).toBe(`Stale — ${STUB_ACCEPTED_AT}`);
   });
 
@@ -131,11 +131,11 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: 'medium',
       lastAcceptedAtMs: ACCEPTED_AT_MS,
     };
-    const rows = resolveKwhPerUnitProvenanceRows({
+    const rows = resolveKwhPerUnitProvenanceRows(
       provenance,
-      nowMs: ACCEPTED_AT_MS + 48 * ONE_HOUR_MS,
+      ACCEPTED_AT_MS + 48 * ONE_HOUR_MS,
       formatAcceptedAt,
-    });
+    );
     const latest = rows.find((row) => row.label === 'Latest reading used');
     expect(latest?.tone).toBe('warn');
     // Sibling rows stay neutral — only the stale branch carries a tone.
@@ -151,12 +151,12 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: 'medium',
       lastAcceptedAtMs: ACCEPTED_AT_MS,
     };
-    const rows = resolveKwhPerUnitProvenanceRows({
+    const rows = resolveKwhPerUnitProvenanceRows(
       provenance,
       // Sit one minute short of the 24 h stale threshold — well inside fresh.
-      nowMs: ACCEPTED_AT_MS + 24 * ONE_HOUR_MS - ONE_MIN_MS,
+      ACCEPTED_AT_MS + 24 * ONE_HOUR_MS - ONE_MIN_MS,
       formatAcceptedAt,
-    });
+    );
     const latest = rows.find((row) => row.label === 'Latest reading used');
     expect(latest?.tone).toBeNull();
   });
@@ -169,11 +169,11 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: null,
       lastAcceptedAtMs: null,
     };
-    expect(resolveKwhPerUnitProvenanceRows({
+    expect(resolveKwhPerUnitProvenanceRows(
       provenance,
-      nowMs: ACCEPTED_AT_MS,
+      ACCEPTED_AT_MS,
       formatAcceptedAt,
-    })).toEqual([
+    )).toEqual([
       { label: 'Source', value: 'Learned from power readings', tone: null },
     ]);
   });
@@ -186,11 +186,11 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: 'low',
       lastAcceptedAtMs: null,
     };
-    const rows = resolveKwhPerUnitProvenanceRows({
+    const rows = resolveKwhPerUnitProvenanceRows(
       provenance,
-      nowMs: ACCEPTED_AT_MS,
+      ACCEPTED_AT_MS,
       formatAcceptedAt,
-    });
+    );
     const samples = rows.find((row) => row.label === 'Readings used');
     expect(samples?.value).toBe('1 accepted power reading · low confidence');
   });
@@ -203,11 +203,11 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       confidence: null,
       lastAcceptedAtMs: null,
     };
-    const rows = resolveKwhPerUnitProvenanceRows({
+    const rows = resolveKwhPerUnitProvenanceRows(
       provenance,
-      nowMs: ACCEPTED_AT_MS,
+      ACCEPTED_AT_MS,
       formatAcceptedAt,
-    });
+    );
     const samples = rows.find((row) => row.label === 'Readings used');
     expect(samples?.value).toBe('4 accepted power readings');
   });

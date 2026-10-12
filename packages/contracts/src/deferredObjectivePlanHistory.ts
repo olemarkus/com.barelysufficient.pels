@@ -453,11 +453,6 @@ export type ResolvedDeferredObjectivePlanHistoryEntry = DeferredObjectivePlanHis
   progressDirection: 'increasing' | 'decreasing' | 'unknown';
 };
 
-export type DeferredObjectivePlanHistoryV4 = {
-  version: 4;
-  entries: DeferredObjectivePlanHistoryEntry[];
-};
-
 export type DeferredObjectivePlanHistoryV6 = {
   version: 6;
   entries: DeferredObjectivePlanHistoryRecord[];

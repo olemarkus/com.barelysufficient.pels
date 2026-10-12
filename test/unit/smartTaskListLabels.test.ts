@@ -48,35 +48,35 @@ describe('formatConfidenceChipLabel', () => {
 
 describe('formatSmartTaskListConfidenceChipLabel', () => {
   it('suppresses confidence chips on cannot-finish cards', () => {
-    expect(formatSmartTaskListConfidenceChipLabel({
-      confidence: 'low',
-      statusId: 'cannot_meet',
-      learning: true,
-    })).toBeNull();
+    expect(formatSmartTaskListConfidenceChipLabel(
+      'low',
+      'cannot_meet',
+      true,
+    )).toBeNull();
   });
 
   it('keeps action-oriented confidence chips for recoverable list states while learning', () => {
-    expect(formatSmartTaskListConfidenceChipLabel({
-      confidence: 'medium',
-      statusId: 'at_risk',
-      learning: true,
-    })).toBe('Refining');
+    expect(formatSmartTaskListConfidenceChipLabel(
+      'medium',
+      'at_risk',
+      true,
+    )).toBe('Refining');
   });
 
   it('stays silent on on_track even while learning', () => {
-    expect(formatSmartTaskListConfidenceChipLabel({
-      confidence: 'low',
-      statusId: 'on_track',
-      learning: true,
-    })).toBeNull();
+    expect(formatSmartTaskListConfidenceChipLabel(
+      'low',
+      'on_track',
+      true,
+    )).toBeNull();
   });
 
   it('suppresses the chip for a learned (not cold-start) rate so a forever-low thermal band cannot nag', () => {
-    expect(formatSmartTaskListConfidenceChipLabel({
-      confidence: 'low',
-      statusId: 'at_risk',
-      learning: false,
-    })).toBeNull();
+    expect(formatSmartTaskListConfidenceChipLabel(
+      'low',
+      'at_risk',
+      false,
+    )).toBeNull();
   });
 });
 
@@ -125,113 +125,94 @@ describe('formatCheapestHoursCaption', () => {
     // caption reconciles count + picked average only. "of the N hours it can
     // use" names the chart's eligible pool without colliding with the hero's
     // hours-left figure (counted from now, can differ by one).
-    expect(formatCheapestHoursCaption({
-      plannedPrices: [0.1, 0.2],
-      allPrices: [0.1, 0.2, 0.8, 0.9],
-      unitLabel: 'kr/kWh',
-    })).toBe('Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh');
+    expect(formatCheapestHoursCaption([0.1, 0.2], [0.1, 0.2, 0.8, 0.9], 'kr/kWh'))
+      .toBe('Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh');
   });
 
   it('suppresses the caption when there are no planned hours or only one hour in the window', () => {
-    expect(formatCheapestHoursCaption({
-      plannedPrices: [],
-      allPrices: [0.1, 0.2, 0.8, 0.9],
-      unitLabel: 'kr/kWh',
-    })).toBeNull();
-    expect(formatCheapestHoursCaption({
-      plannedPrices: [0.1],
-      allPrices: [0.1],
-      unitLabel: 'kr/kWh',
-    })).toBeNull();
+    expect(formatCheapestHoursCaption([], [0.1, 0.2, 0.8, 0.9], 'kr/kWh')).toBeNull();
+    expect(formatCheapestHoursCaption([0.1], [0.1], 'kr/kWh')).toBeNull();
   });
 
   it('suppresses the caption when the price unit is missing or the neutral placeholder', () => {
-    const base = { plannedPrices: [0.1, 0.2], allPrices: [0.1, 0.2, 0.8, 0.9] };
-    expect(formatCheapestHoursCaption({ ...base, unitLabel: '' })).toBeNull();
-    expect(formatCheapestHoursCaption({ ...base, unitLabel: 'Price' })).toBeNull();
+    expect(formatCheapestHoursCaption([0.1, 0.2], [0.1, 0.2, 0.8, 0.9], '')).toBeNull();
+    expect(formatCheapestHoursCaption([0.1, 0.2], [0.1, 0.2, 0.8, 0.9], 'Price')).toBeNull();
   });
 });
 
 describe('live-page two-chart split copy', () => {
   it('readout: planned hour names the kind verb, energy, and measured tail', () => {
-    expect(formatSmartTaskHourReadoutPrimary({
-      timeLabel: '13:00',
-      priceLabel: '0.62 kr/kWh',
-      planned: true,
-      plannedKwh: 2,
-      kindVerb: 'Heating',
-      isNow: false,
-      nextStartLabel: null,
-      measuredKwh: null,
-    })).toBe('13:00 · 0.62 kr/kWh · Heating 2.0 kWh planned');
-    expect(formatSmartTaskHourReadoutPrimary({
-      timeLabel: '13:00',
-      priceLabel: '0.62 kr/kWh',
-      planned: true,
-      plannedKwh: 2,
-      kindVerb: 'Cooling',
-      isNow: false,
-      nextStartLabel: null,
-      measuredKwh: 1.8,
-    })).toBe('13:00 · 0.62 kr/kWh · Cooling 2.0 kWh planned · Measured 1.8 kWh');
-    expect(formatSmartTaskHourReadoutPrimary({
-      timeLabel: '13:00',
-      priceLabel: '0.62 kr/kWh',
-      planned: true,
-      plannedKwh: 2,
-      kindVerb: 'Charging',
-      isNow: false,
-      nextStartLabel: null,
-      measuredKwh: 1.8,
-    })).toBe('13:00 · 0.62 kr/kWh · Charging 2.0 kWh planned · Measured 1.8 kWh');
+    expect(formatSmartTaskHourReadoutPrimary(
+      '13:00',
+      '0.62 kr/kWh',
+      2,
+      'Heating',
+      false,
+      null,
+      null,
+    )).toBe('13:00 · 0.62 kr/kWh · Heating 2.0 kWh planned');
+    expect(formatSmartTaskHourReadoutPrimary(
+      '13:00',
+      '0.62 kr/kWh',
+      2,
+      'Cooling',
+      false,
+      null,
+      1.8,
+    )).toBe('13:00 · 0.62 kr/kWh · Cooling 2.0 kWh planned · Measured 1.8 kWh');
+    expect(formatSmartTaskHourReadoutPrimary(
+      '13:00',
+      '0.62 kr/kWh',
+      2,
+      'Charging',
+      false,
+      null,
+      1.8,
+    )).toBe('13:00 · 0.62 kr/kWh · Charging 2.0 kWh planned · Measured 1.8 kWh');
   });
 
   it('readout: idle current hour says when the run starts instead of claiming activity', () => {
     // The hero says "Heating from 08:00"; the readout must agree — never
     // claim "Heating" on an hour the plan left idle.
-    expect(formatSmartTaskHourReadoutPrimary({
-      timeLabel: 'Now',
-      priceLabel: '0.42 kr/kWh',
-      planned: false,
-      plannedKwh: 0,
-      kindVerb: 'Heating',
-      isNow: true,
-      nextStartLabel: '08:00',
-      measuredKwh: null,
-    })).toBe('Now · 0.42 kr/kWh · Idle — heating starts 08:00');
-    expect(formatSmartTaskHourReadoutPrimary({
-      timeLabel: 'Now',
-      priceLabel: '0.42 kr/kWh',
-      planned: false,
-      plannedKwh: 0,
-      kindVerb: 'Cooling',
-      isNow: true,
-      nextStartLabel: '08:00',
-      measuredKwh: null,
-    })).toBe('Now · 0.42 kr/kWh · Idle — cooling starts 08:00');
-    expect(formatSmartTaskHourReadoutPrimary({
-      timeLabel: 'Now',
-      priceLabel: '0.42 kr/kWh',
-      planned: false,
-      plannedKwh: 0,
-      kindVerb: 'Heating',
-      isNow: true,
-      nextStartLabel: null,
-      measuredKwh: null,
-    })).toBe('Now · 0.42 kr/kWh · Idle');
+    expect(formatSmartTaskHourReadoutPrimary(
+      'Now',
+      '0.42 kr/kWh',
+      0,
+      'Heating',
+      true,
+      '08:00',
+      null,
+    )).toBe('Now · 0.42 kr/kWh · Idle — heating starts 08:00');
+    expect(formatSmartTaskHourReadoutPrimary(
+      'Now',
+      '0.42 kr/kWh',
+      0,
+      'Cooling',
+      true,
+      '08:00',
+      null,
+    )).toBe('Now · 0.42 kr/kWh · Idle — cooling starts 08:00');
+    expect(formatSmartTaskHourReadoutPrimary(
+      'Now',
+      '0.42 kr/kWh',
+      0,
+      'Heating',
+      true,
+      null,
+      null,
+    )).toBe('Now · 0.42 kr/kWh · Idle');
   });
 
   it('readout: idle non-current hour reads Not scheduled', () => {
-    expect(formatSmartTaskHourReadoutPrimary({
-      timeLabel: '13:00',
-      priceLabel: '0.62 kr/kWh',
-      planned: false,
-      plannedKwh: 0,
-      kindVerb: 'Heating',
-      isNow: false,
-      nextStartLabel: '08:00',
-      measuredKwh: null,
-    })).toBe('13:00 · 0.62 kr/kWh · Not scheduled');
+    expect(formatSmartTaskHourReadoutPrimary(
+      '13:00',
+      '0.62 kr/kWh',
+      0,
+      'Heating',
+      false,
+      '08:00',
+      null,
+    )).toBe('13:00 · 0.62 kr/kWh · Not scheduled');
   });
 
   it('trajectory card title is kind-aware via the target unit', () => {
@@ -245,12 +226,12 @@ describe('live-page two-chart split copy', () => {
     // On the on-track branch the stateline caption drops the projected-ready
     // tail (the hero status row carries it above the fold, so it must not read
     // verbatim twice on one screen); the phrase moves to `verdict.supporting`.
-    expect(formatSmartTaskTrajectoryStatelineReady({
-      currentValuePhrase: '51.1 °C now',
-      statusWord: 'on track',
-      readyTimeLabel: 'Sun 02:00',
-      hoursBeforeDeadline: 7,
-    })).toEqual({
+    expect(formatSmartTaskTrajectoryStatelineReady(
+      '51.1 °C now',
+      'on track',
+      'Sun 02:00',
+      7,
+    )).toEqual({
       emphasis: '51.1 °C now',
       rest: 'on track',
       tone: 'ok',
@@ -258,12 +239,12 @@ describe('live-page two-chart split copy', () => {
     });
     // No status word (invalid plan): the stateline keeps the projected-ready
     // phrase in `rest` and carries no hero verdict.
-    expect(formatSmartTaskTrajectoryStatelineReady({
-      currentValuePhrase: '45% now',
-      statusWord: null,
-      readyTimeLabel: 'Mon 06:00',
-      hoursBeforeDeadline: 0.4,
-    })).toEqual({
+    expect(formatSmartTaskTrajectoryStatelineReady(
+      '45% now',
+      null,
+      'Mon 06:00',
+      0.4,
+    )).toEqual({
       emphasis: '45% now',
       rest: 'projected ready ≈ Mon 06:00, just before the deadline',
       tone: 'ok',
@@ -271,12 +252,12 @@ describe('live-page two-chart split copy', () => {
     });
     // Full time-unit words, singular-aware ("1 hour", never "1 h") — now on
     // the verdict's supporting phrase.
-    expect(formatSmartTaskTrajectoryStatelineReady({
-      currentValuePhrase: '45% now',
-      statusWord: 'on track',
-      readyTimeLabel: 'Mon 05:00',
-      hoursBeforeDeadline: 1.2,
-    }).verdict?.supporting).toBe('projected ready ≈ Mon 05:00, 1 hour before the deadline');
+    expect(formatSmartTaskTrajectoryStatelineReady(
+      '45% now',
+      'on track',
+      'Mon 05:00',
+      1.2,
+    ).verdict?.supporting).toBe('projected ready ≈ Mon 05:00, 1 hour before the deadline');
   });
 
   it.each([
@@ -284,12 +265,12 @@ describe('live-page two-chart split copy', () => {
     [2.9, '2 hours before the deadline'],
     [0.99, 'just before the deadline'],
   ])('does not overstate a %s-hour projected safety margin', (hoursBeforeDeadline, margin) => {
-    expect(formatSmartTaskTrajectoryStatelineReady({
-      currentValuePhrase: '45% now',
-      statusWord: 'on track',
-      readyTimeLabel: 'Mon 18:00',
+    expect(formatSmartTaskTrajectoryStatelineReady(
+      '45% now',
+      'on track',
+      'Mon 18:00',
       hoursBeforeDeadline,
-    }).verdict?.supporting).toBe(`projected ready ≈ Mon 18:00, ${margin}`);
+    ).verdict?.supporting).toBe(`projected ready ≈ Mon 18:00, ${margin}`);
   });
 
   it('reads an amount of energy as delivered and a level as now', () => {
@@ -578,44 +559,48 @@ describe('temperature labels follow the resolved progress direction', () => {
 // never produced by any runtime path). These cases are about the surrounding
 // precedence rules, not that lane.
 describe('resolveSmartTaskListStatus — blocked charger and plan-verdict precedence', () => {
-  const base = { pending: false, pendingReason: undefined, firstActionAtMs: null, nowMs: 0, carChargeLimit: null } as const;
+  const plan = (
+    planStatus: 'on_track' | 'at_risk' | 'cannot_meet' | 'satisfied',
+    firstHourMs: number | null,
+  ) => ({
+    pending: false,
+    liveCompletion: { kind: 'unavailable' as const },
+    targetValue: 55,
+    latest: { planStatus, hours: firstHourMs === null ? [] : [{ startsAtMs: firstHourMs, plannedKWh: 1 }] },
+  });
 
   it('maps objective_invalid_session to paused_unplugged, overriding an on_track plan', () => {
     expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' },
-      ...base,
-      diagnosticReasonCode: 'objective_invalid_session',
-      planStatus: 'on_track',
-    })).toBe('paused_unplugged');
+      ...plan('on_track', null), diagnosticReasonCode: 'objective_invalid_session',
+    }, 0)).toBe('paused_unplugged');
   });
 
   // The queued (future first action) branch must not mask a plan verdict:
   // `queued` renders the same green `On track` chip as `on_track`, so letting
   // it win would paint an at-risk / cannot-finish / already-satisfied plan as
   // healthy just because its first hour hasn't started yet.
-  const queued = { ...base, diagnosticReasonCode: undefined, firstActionAtMs: 10_000 } as const;
-
   it('keeps at_risk visible when the first hour is still ahead', () => {
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' }, ...queued, planStatus: 'at_risk' })).toBe('at_risk');
+    expect(resolveSmartTaskListStatus(plan('at_risk', 10_000), 0)).toBe('at_risk');
   });
 
   it('keeps cannot_meet visible when the first hour is still ahead', () => {
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' }, ...queued, planStatus: 'cannot_meet' })).toBe('cannot_meet');
+    expect(resolveSmartTaskListStatus(plan('cannot_meet', 10_000), 0)).toBe('cannot_meet');
   });
 
   it('keeps satisfied visible when the first hour is still ahead', () => {
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' }, ...queued, planStatus: 'satisfied' })).toBe('satisfied');
+    expect(resolveSmartTaskListStatus(plan('satisfied', 10_000), 0)).toBe('satisfied');
   });
 
   it('returns queued only for a healthy plan with a future first action', () => {
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' }, ...queued, planStatus: 'on_track' })).toBe('queued');
-    expect(resolveSmartTaskListStatus({
-      liveCompletion: { kind: 'unavailable' }, ...queued, firstActionAtMs: null, planStatus: 'on_track' }))
-      .toBe('on_track');
+    expect(resolveSmartTaskListStatus(plan('on_track', 10_000), 0)).toBe('queued');
+    expect(resolveSmartTaskListStatus(plan('on_track', null), 0)).toBe('on_track');
+  });
+
+  it('reads the first action off the first hour that promises energy', () => {
+    const zeroKWhFirst = plan('on_track', null);
+    zeroKWhFirst.latest.hours = [{ startsAtMs: 5_000, plannedKWh: 0 }, { startsAtMs: 10_000, plannedKWh: 1 }];
+    expect(resolveSmartTaskListStatus(zeroKWhFirst, 7_000)).toBe('queued');
+    expect(resolveSmartTaskListStatus(zeroKWhFirst, 10_000)).toBe('on_track');
   });
 });
 
@@ -623,11 +608,17 @@ describe('resolveEvCardStateLine — fallback branches', () => {
   const formatTime = (ms: number): string => `T${ms}`;
 
   it('falls back to plug-out-paused, then to none', () => {
-    expect(resolveEvCardStateLine({
-      hours: [], nowMs: 0, isPlugOutPaused: true, formatTime,
-    }).kind).toBe('plug_out_paused');
-    expect(resolveEvCardStateLine({
-      hours: [], nowMs: 0, isPlugOutPaused: false, formatTime,
-    }).kind).toBe('none');
+    expect(resolveEvCardStateLine(
+      [],
+      0,
+      true,
+      formatTime,
+    ).kind).toBe('plug_out_paused');
+    expect(resolveEvCardStateLine(
+      [],
+      0,
+      false,
+      formatTime,
+    ).kind).toBe('none');
   });
 });

@@ -489,17 +489,19 @@ function formatInsufficientHeadroomUserFacing(
   return suffix ? `Not enough available power to resume — ${suffix}` : 'Not enough available power to resume';
 }
 
-const TIMED_REASON_LABELS = {
+export const TIMED_REASON_LABELS = {
   [PLAN_REASON_CODES.cooldownShedding]: 'Waiting after limiting a device',
   [PLAN_REASON_CODES.meterSettling]: 'Waiting for power meter to stabilise',
   [PLAN_REASON_CODES.activationBackoff]: 'Delaying restart after recent failed attempt',
   [PLAN_REASON_CODES.restorePending]: 'Resume pending',
 } as const;
 
+export const RESTORE_THROTTLED_REASON_LABEL = 'Delaying restart to avoid rapid cycling';
+
 function formatStaticReasonUserFacing(reason: StaticReason): string {
   switch (reason.code) {
     case PLAN_REASON_CODES.restoreThrottled:
-      return 'Delaying restart to avoid rapid cycling';
+      return RESTORE_THROTTLED_REASON_LABEL;
     case PLAN_REASON_CODES.waitingForOtherDevices:
       return 'Waiting to resume — other devices are ahead';
     case PLAN_REASON_CODES.externalOffHold:

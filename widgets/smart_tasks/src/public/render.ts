@@ -66,10 +66,7 @@ const formatValuesLine = (row: SmartTasksWidgetRow): string => {
   return `${formatValue(row.currentValue, row.unitSymbol)} → ${target}`;
 };
 
-const formatRowEta = (row: SmartTasksWidgetRow): string => {
-  if (row.finishLabel === null) return '';
-  return `${row.etaVerb} ${row.finishLabel}`;
-};
+const formatRowEta = (row: SmartTasksWidgetRow): string => `${row.etaVerb} ${row.finishLabel}`;
 
 const targetSentence = (verb: string, targetValue: number, unitSymbol: '°C' | '%' | 'kWh'): string => (
   `${verb} ${formatValue(targetValue, unitSymbol)}`
@@ -85,7 +82,7 @@ const renderRow = (template: HTMLTemplateElement, row: SmartTasksWidgetRow): HTM
     button.dataset.deviceId = row.deviceId;
     button.setAttribute(
       'aria-label',
-      `${row.deviceName}, ${row.statusLabel}${row.finishLabel ? `, ${formatRowEta(row)}` : ''}`,
+      `${row.deviceName}, ${row.statusLabel}, ${formatRowEta(row)}`,
     );
   }
   const nameEl = li.querySelector('[data-row-name]');
@@ -222,8 +219,7 @@ const renderActiveDetail = (targets: RenderTargets, row: SmartTasksWidgetRow): v
   detailHeaderEl.textContent = row.deviceName;
   detailChipEl.textContent = row.statusLabel;
   detailChipEl.dataset.tone = row.tone;
-  const deadlineLabel = row.deadlineLongLabel ?? row.finishLabel;
-  setLine(detailDeadlineEl, deadlineLabel ? `${row.etaVerb} ${deadlineLabel}` : null);
+  setLine(detailDeadlineEl, `${row.etaVerb} ${row.deadlineLongLabel}`);
   // Detail target line repeats the action verb so it stands on its own.
   detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
   detailTargetEl.hidden = false;

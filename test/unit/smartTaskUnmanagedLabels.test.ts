@@ -21,13 +21,10 @@ describe('un-managed device: list status', () => {
     expect(resolveSmartTaskListStatus({
       liveCompletion: { kind: 'unavailable' },
       pending: false,
-      pendingReason: undefined,
       diagnosticReasonCode: 'objective_device_unmanaged',
-      planStatus: 'on_track',
-      firstActionAtMs: 1,
-      nowMs: 0,
-      carChargeLimit: null,
-    })).toBe('paused_unmanaged');
+      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1, plannedKWh: 1 }] },
+      targetValue: 55,
+    }, 0)).toBe('paused_unmanaged');
   });
 
   it('maps a never-revised paused task to the pause, not "Building plan…"', () => {
@@ -35,12 +32,9 @@ describe('un-managed device: list status', () => {
       liveCompletion: { kind: 'unavailable' },
       pending: true,
       pendingReason: 'device_unmanaged',
-      diagnosticReasonCode: undefined,
-      planStatus: undefined,
-      firstActionAtMs: null,
-      nowMs: 0,
-      carChargeLimit: null,
-    })).toBe('paused_unmanaged');
+      latest: null,
+      targetValue: 55,
+    }, 0)).toBe('paused_unmanaged');
   });
 });
 

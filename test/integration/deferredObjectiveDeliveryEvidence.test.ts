@@ -22,7 +22,6 @@ import type { DeferredObjectivePlanRevisionEvent } from '../../lib/objectives/de
 import type { TaskDeliveryControl } from '../../packages/contracts/src/taskDelivery';
 import { effectivePlanStatusOf } from '../../lib/objectives/deferredObjectives/effectivePlanStatusEvents';
 import {
-  resolveReportedCarChargeLimit,
   resolveSmartTaskListStatus,
   resolveSmartTaskWidgetDetailCopy,
 } from '../../packages/shared-domain/src/deadlineLabels';
@@ -266,12 +265,7 @@ describe('task delivery evidence at the device boundary', () => {
     // list chip and widget row say what the device needs, not "limited time".
     const plan = scenario.activePlan();
     expect(plan.diagnosticReasonCode).toBe('objective_not_accepting_energy');
-    const statusId = resolveSmartTaskListStatus({
-      pending: plan.pending, pendingReason: plan.pendingReason, diagnosticReasonCode: plan.diagnosticReasonCode,
-      planStatus: plan.latest?.planStatus, firstActionAtMs: null, nowMs: confirmedAt,
-      carChargeLimit: resolveReportedCarChargeLimit(plan),
-      liveCompletion: plan.liveCompletion,
-    });
+    const statusId = resolveSmartTaskListStatus(plan, confirmedAt);
     expect(statusId).toBe('at_risk');
     expect(effectivePlanStatusOf(plan)).toBe('at_risk');
     expect(resolveSmartTaskWidgetDetailCopy({ statusId, diagnosticReasonCode: plan.diagnosticReasonCode }))

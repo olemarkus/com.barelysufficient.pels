@@ -303,11 +303,11 @@ const renderCompose = (
   if (readyByInput.value !== readyByLocalTime) readyByInput.value = readyByLocalTime;
   // Anchor the goal against the current reading ("Goal 80% · now 42%" /
   // "from 42% → 80%") so the target isn't shown in a vacuum.
-  setLine(goalContextEl, goal === null ? null : formatSmartTaskGoalContextLine({
-    goalValue: goal,
-    currentValue: device.currentValue,
-    unitSymbol: device.unitSymbol,
-  }));
+  setLine(goalContextEl, goal === null ? null : formatSmartTaskGoalContextLine(
+    goal,
+    device.currentValue,
+    device.unitSymbol,
+  ));
   goalDecBtn.disabled = goal === null || goal <= device.goalMin;
   goalIncBtn.disabled = goal === null || goal >= device.goalMax;
   renderReadyByChips(targets, readyByLocalTime);

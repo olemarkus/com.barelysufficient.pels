@@ -5,14 +5,11 @@
 // the max-lines ceiling; this module owns every timeline-side resolution so
 // the view renders flat data only.
 import type { SettingsUiBootstrap } from '../../../contracts/src/settingsUiApi.ts';
-import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
-import type { DeferredObjectiveActivePlanRevisionReason } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   DEADLINE_MARKER_WORD,
   formatCheapestHoursCaption,
   formatSmartTaskHourReadoutPrimary,
   NOW_MARKER_WORD,
-  type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import {
@@ -20,19 +17,23 @@ import {
   planningPriceDivergesFromImport,
 } from '../../../shared-domain/src/price/planningPrice.ts';
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
-import { ONE_HOUR_MS, type HorizonHour } from './deadlinePlanData.ts';
-import type { CostDisplay } from './dailyBudgetCost.ts';
+import {
+  ONE_HOUR_MS,
+  type DeadlinePlanSchedule,
+  type HorizonHour,
+  type ObjectivePayloadReady,
+} from './deadlinePlanData.ts';
 import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
 const formatPrice = (total: number): string => total.toFixed(2);
 
-export const resolveActualDeviceKwh = (params: {
-  bootstrap: SettingsUiBootstrap;
-  deviceId: string;
-  startsAtMs: number;
-}): number | null => {
-  const bucketKey = new Date(params.startsAtMs).toISOString();
-  const value = params.bootstrap.power.tracker?.deviceBuckets?.[params.deviceId]?.[bucketKey];
+export const resolveActualDeviceKwh = (
+  bootstrap: SettingsUiBootstrap,
+  deviceId: string,
+  startsAtMs: number,
+): number | null => {
+  const bucketKey = new Date(startsAtMs).toISOString();
+  const value = bootstrap.power.tracker?.deviceBuckets?.[deviceId]?.[bucketKey];
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : null;
 };
 
@@ -63,21 +64,15 @@ const toCategoryAxisX = (hours: HorizonHour[], index: number, atMs: number): num
   return index - 0.5 + fraction;
 };
 
-export const buildTimeline = (params: {
-  device: ObservedDeviceState;
-  bootstrap: SettingsUiBootstrap;
-  deviceId: string;
-  hours: HorizonHour[];
-  originalChargeByStartMs: Map<number, number>;
-  currentChargeByStartMs: Map<number, number>;
-  latestRevisionReason: DeferredObjectiveActivePlanRevisionReason | null;
-  labels: DeadlineLabels;
-  deadlineAtMs: number;
-  nowMs: number;
-  costDisplay: CostDisplay;
-  priceUnitLabel: string;
-}): DeadlinePlanPayload['timeline'] => {
-  const ariaLabel = `Smart task schedule for ${formatDisplayDeviceName(params.device.name)}`;
+export const buildTimeline = (
+  input: ObjectivePayloadReady,
+  schedule: DeadlinePlanSchedule,
+): DeadlinePlanPayload['timeline'] => {
+  const { ctx, hours: horizon, costDisplay, priceUnitLabel } = input;
+  const { nowMs, deadlineAtMs } = ctx;
+  const { labels, originalChargeByStartMs, currentChargeByStartMs } = schedule;
+  const latestRevisionReason = ctx.activePlan.latest.reason;
+  const ariaLabel = `Smart task schedule for ${formatDisplayDeviceName(ctx.device.name)}`;
   // Empty price window: `lastIndex` would be -1 and `toCategoryAxisX` would
   // index `hours[-1]` (TypeError). The normal path can't reach here —
   // `prepareObjectivePayload` routes zero-hour windows to `awaiting_prices` —
@@ -85,45 +80,39 @@ export const buildTimeline = (params: {
   // an absent selection (`hours[effectiveIndex]` is optional-chained and the
   // chart builders handle empty arrays), with the markLines parked at the
   // first category edge and the caption suppressed.
-  if (params.hours.length === 0) {
+  if (horizon.length === 0) {
     return {
       ariaLabel,
       hours: [],
       nowIndex: 0,
       nowAxisX: -0.5,
       deadlineAxisX: -0.5,
-      deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(params.deadlineAtMs)}`,
+      deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(deadlineAtMs)}`,
       cheapestHoursCaption: null,
       planningPriceNote: null,
     };
   }
-  const nowIndex = resolveNowIndex(params.hours, params.nowMs);
+  const nowIndex = resolveNowIndex(horizon, nowMs);
   // First planned hour after the current one — the idle "heating starts
   // 08:00" readout names it so the readout never claims the kind verb is
   // active while the hero says it starts later.
-  const nextPlanned = params.hours.find((hour) => (
-    hour.startsAtMs > params.nowMs && (params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0
+  const nextPlanned = horizon.find((hour) => (
+    hour.startsAtMs > nowMs && (currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0
   ));
   const nextStartLabel = nextPlanned ? formatHourLabel(nextPlanned.startsAtMs) : null;
-  const hours = params.hours.map((hour, index) => {
-    const originalKwh = params.originalChargeByStartMs.get(hour.startsAtMs) ?? 0;
-    const currentKwh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
+  const hours = horizon.map((hour, index) => {
+    const originalKwh = originalChargeByStartMs.get(hour.startsAtMs) ?? 0;
+    const currentKwh = currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
     // The schedule "at what price" is a PLANNING surface — show the planning
     // price (`budgetPrice ?? total`) the scheduler ranked hours on, not the
     // import money price. Equals the import price for a non-prosumer, so this
     // is byte-identical outside a solar home. The hero's cost lines stay on the
     // import price (`hour.price`) via `resolveLiveCostAndDelivery`.
-    const displayPrice = hour.planningPrice / Math.max(1, params.costDisplay.divisor);
+    const displayPrice = hour.planningPrice / Math.max(1, costDisplay.divisor);
     const hourChanged = Math.abs(originalKwh - currentKwh) > 0.001;
     const planned = currentKwh > 0;
-    const measuredKwh = resolveActualDeviceKwh({
-      bootstrap: params.bootstrap,
-      deviceId: params.deviceId,
-      startsAtMs: hour.startsAtMs,
-    });
-    const revisionLine = hourChanged && params.latestRevisionReason !== null
-      ? (params.labels.revisionReasonTooltipLine[params.latestRevisionReason] ?? null)
-      : null;
+    const measuredKwh = resolveActualDeviceKwh(input.bootstrap, ctx.deviceId, hour.startsAtMs);
+    const revisionLine = hourChanged ? (labels.revisionReasonTooltipLine[latestRevisionReason] ?? null) : null;
     return {
       startsAtMs: hour.startsAtMs,
       time: formatHourLabel(hour.startsAtMs),
@@ -132,28 +121,27 @@ export const buildTimeline = (params: {
       planned,
       changed: hourChanged,
       readout: {
-        primary: formatSmartTaskHourReadoutPrimary({
-          timeLabel: index === nowIndex ? NOW_MARKER_WORD : formatHourLabel(hour.startsAtMs),
-          priceLabel: `${formatPrice(displayPrice)} ${params.priceUnitLabel}`,
-          planned,
-          plannedKwh: currentKwh,
-          kindVerb: params.labels.deviceSeriesName,
-          isNow: index === nowIndex,
+        primary: formatSmartTaskHourReadoutPrimary(
+          index === nowIndex ? NOW_MARKER_WORD : formatHourLabel(hour.startsAtMs),
+          `${formatPrice(displayPrice)} ${priceUnitLabel}`,
+          currentKwh,
+          labels.deviceSeriesName,
+          index === nowIndex,
           nextStartLabel,
           measuredKwh,
-        }),
+        ),
         secondary: revisionLine,
       },
     };
   });
-  const lastIndex = params.hours.length - 1;
+  const lastIndex = horizon.length - 1;
   return {
     ariaLabel,
     hours,
     nowIndex,
-    nowAxisX: toCategoryAxisX(params.hours, nowIndex, params.nowMs),
-    deadlineAxisX: toCategoryAxisX(params.hours, lastIndex, params.deadlineAtMs),
-    deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(params.deadlineAtMs)}`,
+    nowAxisX: toCategoryAxisX(horizon, nowIndex, nowMs),
+    deadlineAxisX: toCategoryAxisX(horizon, lastIndex, deadlineAtMs),
+    deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(deadlineAtMs)}`,
     // Trust caption read from the same already-scaled per-hour display prices
     // (the PLANNING price, øre→kr handled upstream by the CostDisplay divisor)
     // the chart renders. Every hour in the window is eligible (the window ends
@@ -163,19 +151,19 @@ export const buildTimeline = (params: {
     // (`resolveLiveCostAndDelivery`), so for a prosumer the caption's planning
     // average and the hero's money cost legitimately differ. Averaging +
     // phrasing live in shared-domain so this stays a thin projection.
-    cheapestHoursCaption: formatCheapestHoursCaption({
-      plannedPrices: hours.filter((hour) => hour.planned).map((hour) => hour.priceValue),
-      allPrices: hours.map((hour) => hour.priceValue),
-      unitLabel: params.priceUnitLabel,
-    }),
+    cheapestHoursCaption: formatCheapestHoursCaption(
+      hours.filter((hour) => hour.planned).map((hour) => hour.priceValue),
+      hours.map((hour) => hour.priceValue),
+      priceUnitLabel,
+    ),
     // Bridge the planning-vs-import gap: the schedule readout shows the planning
     // price while the hero's cost line stays on the import price, so when any
     // hour's planning price VISIBLY diverges (gated on the display divisor) the
     // `using your solar` reason line explains why the two figures differ. Null
     // for a non-prosumer, where every hour's planning price equals its import
     // price (byte-identical).
-    planningPriceNote: params.hours.some(
-      (hour) => planningPriceDivergesFromImport(hour.planningPrice, hour.price, params.costDisplay.divisor),
+    planningPriceNote: horizon.some(
+      (hour) => planningPriceDivergesFromImport(hour.planningPrice, hour.price, costDisplay.divisor),
     ) ? PLANNING_PRICE_REASON_LINE : null,
   };
 };

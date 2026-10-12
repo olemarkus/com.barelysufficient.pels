@@ -5,10 +5,9 @@
 // resolution (series points, axis bounds, stateline, shortfall) so the view
 // renders flat data only.
 import type {
+  DeferredObjectiveActivePlanStatusV1,
   ResolvedDeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlanRevisionV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   DEADLINE_MARKER_WORD,
   formatProgressValueForUnit,
@@ -23,7 +22,12 @@ import {
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
-import { ONE_HOUR_MS, type HorizonHour } from './deadlinePlanData.ts';
+import {
+  ONE_HOUR_MS,
+  type DeadlinePlanSchedule,
+  type ObjectivePayloadReady,
+} from './deadlinePlanData.ts';
+import { buildCoverStartByStartMs } from './deadlinePlanHourMaps.ts';
 import type { DeadlineTrajectoryPayload } from './views/DeadlinePlan.tsx';
 import type { DeferredObjectiveUnit } from '../../../contracts/src/deferredObjectiveSettings.ts';
 
@@ -58,22 +62,22 @@ export const collectPlannedRanges = (
 // `Array.prototype.sort` is stable, so on a timestamp collision the live
 // `currentValue` wins over a stored sample — the measured line then ends at
 // the same value the now-dot and stateline display.
-const collectMeasuredPoints = (params: {
-  activePlan: ResolvedDeferredObjectiveActivePlanV1;
-  nowMs: number;
-  currentValue: number;
-}): Array<[number, number]> => {
+const collectMeasuredPoints = (
+  activePlan: ResolvedDeferredObjectiveActivePlanV1,
+  nowMs: number,
+  currentValue: number,
+): Array<[number, number]> => {
   const points: Array<[number, number]> = [];
-  const start = params.activePlan.startProgressValue;
+  const start = activePlan.startProgressValue;
   if (typeof start === 'number' && Number.isFinite(start)) {
-    points.push([params.activePlan.startedAtMs, start]);
+    points.push([activePlan.startedAtMs, start]);
   }
-  for (const sample of params.activePlan.progressSamples ?? []) {
-    if (sample.value !== null && Number.isFinite(sample.value) && sample.atMs <= params.nowMs) {
+  for (const sample of activePlan.progressSamples ?? []) {
+    if (sample.value !== null && Number.isFinite(sample.value) && sample.atMs <= nowMs) {
       points.push([sample.atMs, sample.value]);
     }
   }
-  points.push([params.nowMs, params.currentValue]);
+  points.push([nowMs, currentValue]);
   points.sort((left, right) => left[0] - right[0]);
   return points.filter((point, index) => {
     const next = points[index + 1];
@@ -122,24 +126,24 @@ const remainingTowardTarget = (
   ? targetValue - currentValue
   : currentValue - targetValue;
 
-const buildPlannedStaircase = (params: {
-  hours: HorizonHour[];
-  currentChargeByStartMs: Map<number, number>;
-  currentCoverStartByStartMs: Map<number, number>;
-  currentValue: number;
-  targetValue: number;
-  progressDirection: 'increasing' | 'decreasing';
-  progressPerKWh: number;
-  unit: DeferredObjectiveUnit;
-  deadlineAtMs: number;
-  nowMs: number;
-}): { points: Array<[number, number]>; projected: number; readyAtMs: number | null } => {
-  const points: Array<[number, number]> = [[params.nowMs, params.currentValue]];
-  let projected = params.currentValue;
+const buildPlannedStaircase = (
+  input: ObjectivePayloadReady,
+  currentChargeByStartMs: Map<number, number>,
+): { points: Array<[number, number]>; projected: number; readyAtMs: number | null } => {
+  const { ctx, progress, energy } = input;
+  const { nowMs, deadlineAtMs } = ctx;
+  const { currentValue, targetValue, progressDirection, unit } = progress;
+  const energyNeededKWh = energy?.energyNeededKWh ?? 0;
+  const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
+  // Actual coverage start (`coversFromMs`) per booked hour, present only for
+  // buckets the planner already trimmed at a mid-hour revision.
+  const currentCoverStartByStartMs = buildCoverStartByStartMs(ctx.activePlan.latest);
+  const points: Array<[number, number]> = [[nowMs, currentValue]];
+  let projected = currentValue;
   let readyAtMs: number | null = null;
-  for (const hour of params.hours) {
-    if (hour.endMs <= params.nowMs) continue;
-    const plannedKwh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
+  for (const hour of input.hours) {
+    if (hour.endMs <= nowMs) continue;
+    const plannedKwh = currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
     if (plannedKwh <= 0) continue;
     // The staircase anchors at `currentValue`, which already includes the
     // progress made so far in the current hour — adding the in-progress
@@ -158,74 +162,57 @@ const buildPlannedStaircase = (params: {
     //   • hour fully ahead → fraction 1; hour fully elapsed → skipped above.
     // The span end clamps to the deadline, mirroring how the planner only
     // books energy up to `deadlineAtMs` within the final hour.
-    const coverStartMs = params.currentCoverStartByStartMs.get(hour.startsAtMs) ?? hour.startsAtMs;
-    const coverEndMs = Math.min(hour.endMs, params.deadlineAtMs);
+    const coverStartMs = currentCoverStartByStartMs.get(hour.startsAtMs) ?? hour.startsAtMs;
+    const coverEndMs = Math.min(hour.endMs, deadlineAtMs);
     const coveredSpanMs = coverEndMs - coverStartMs;
     const remainingFraction = coveredSpanMs > 0
-      ? Math.max(0, Math.min(1, (coverEndMs - Math.max(params.nowMs, coverStartMs)) / coveredSpanMs))
+      ? Math.max(0, Math.min(1, (coverEndMs - Math.max(nowMs, coverStartMs)) / coveredSpanMs))
       : 0;
     const remainingKwh = plannedKwh * remainingFraction;
     if (remainingKwh <= 0) continue;
-    const step = remainingKwh * params.progressPerKWh;
-    const next = applyDirectionalStep(params.progressDirection, projected, step, params.targetValue);
-    if (!movedInDirection(params.progressDirection, projected, next)) continue;
-    const riserX = Math.max(hour.startsAtMs, params.nowMs);
+    const step = remainingKwh * progressPerKWh;
+    const next = applyDirectionalStep(progressDirection, projected, step, targetValue);
+    if (!movedInDirection(progressDirection, projected, next)) continue;
+    const riserX = Math.max(hour.startsAtMs, nowMs);
     points.push([riserX, projected], [riserX, next]);
     projected = next;
     if (readyAtMs === null
-      && remainingTowardTarget(params.progressDirection, params.targetValue, projected)
-        < SHORTFALL_DISPLAY_EPSILON[params.unit]) {
-      readyAtMs = Math.min(hour.endMs, params.deadlineAtMs);
+      && remainingTowardTarget(progressDirection, targetValue, projected)
+        < SHORTFALL_DISPLAY_EPSILON[unit]) {
+      readyAtMs = Math.min(hour.endMs, deadlineAtMs);
     }
   }
   return { points, projected, readyAtMs };
 };
 
-export const buildTrajectory = (params: {
-  device: ObservedDeviceState;
-  activePlan: ResolvedDeferredObjectiveActivePlanV1;
-  planStatus: DeferredObjectiveActivePlanRevisionV1['planStatus'];
-  hours: HorizonHour[];
-  currentChargeByStartMs: Map<number, number>;
-  // Actual coverage start (`coversFromMs`) per booked hour, present only for
-  // buckets the planner already trimmed at a mid-hour revision. Drives the
-  // staircase's current-hour proration — see `buildPlannedStaircase`.
-  currentCoverStartByStartMs: Map<number, number>;
-  currentValue: number;
-  targetValue: number;
-  progressDirection: 'increasing' | 'decreasing';
-  progressPerKWh: number;
-  unit: DeferredObjectiveUnit;
-  deadlineAtMs: number;
-  nowMs: number;
-  // Scheduled-run band label — the kind verb ("Heating" / "Cooling" / "Charging") shared
-  // with the schedule chart's planned band via `labels.deviceSeriesName`, so
-  // the two cards' bands speak one word.
-  runBandLabel: string;
-}): DeadlineTrajectoryPayload => {
-  const { nowMs, targetValue, unit } = params;
-  const measuredPoints = collectMeasuredPoints({
-    activePlan: params.activePlan,
-    nowMs,
-    currentValue: params.currentValue,
-  });
-  const staircase = buildPlannedStaircase(params);
+export const buildTrajectory = (
+  input: ObjectivePayloadReady,
+  schedule: DeadlinePlanSchedule,
+): DeadlineTrajectoryPayload => {
+  const { ctx, progress } = input;
+  const { nowMs, deadlineAtMs } = ctx;
+  const { currentValue, targetValue, unit } = progress;
+  const { planStatus, currentChargeByStartMs } = schedule;
+  const measuredPoints = collectMeasuredPoints(ctx.activePlan, nowMs, currentValue);
+  const staircase = buildPlannedStaircase(input, currentChargeByStartMs);
   const { projected, readyAtMs } = staircase;
-  const xMaxMs = params.deadlineAtMs + 30 * 60 * 1000;
+  const xMaxMs = deadlineAtMs + 30 * 60 * 1000;
   // `collectMeasuredPoints` always ends with the now-point, so the first entry
   // exists; with none, `nowMs` is the earliest thing measured.
   const earliestMeasuredMs = measuredPoints[0]?.[0] ?? nowMs;
   const xMinMs = Math.min(earliestMeasuredMs, nowMs - 30 * 60 * 1000);
   const plannedPoints = [...staircase.points, [xMaxMs, projected] as [number, number]];
   const runBands = collectPlannedRanges(
-    params.hours.map((hour) => (
-      hour.endMs > xMinMs && (params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0
+    input.hours.map((hour) => (
+      hour.endMs > xMinMs && (currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0
     )),
-    params.runBandLabel,
+    // Same kind verb as the schedule chart's planned band — the two cards'
+    // bands speak one word ("Heating" / "Charging").
+    schedule.labels.deviceSeriesName,
   ).flatMap((range) => {
-    const fromHour = params.hours[range.from];
-    const toHour = params.hours[range.to];
-    // Ranges are indexes into `params.hours`, so both ends resolve; a band with
+    const fromHour = input.hours[range.from];
+    const toHour = input.hours[range.to];
+    // Ranges are indexes into `input.hours`, so both ends resolve; a band with
     // no hour at either end has nothing to draw.
     if (fromHour === undefined || toHour === undefined) return [];
     return [{
@@ -235,13 +222,13 @@ export const buildTrajectory = (params: {
     }];
   });
   const observedValues = measuredPoints.map((point) => point[1]);
-  const minValue = Math.min(targetValue, ...observedValues, params.currentValue);
+  const minValue = Math.min(targetValue, ...observedValues, currentValue);
   const pad = unit === '%' ? 5 : 2;
   // Only a temperature can sit below zero; a charge level or an amount of
   // energy delivered cannot.
   const yMin = unit === '°C' ? Math.floor(minValue - pad) : Math.max(0, Math.floor(minValue - pad));
   const yMax = Math.ceil(Math.max(targetValue, ...observedValues) + pad);
-  const shortBy = params.progressDirection === 'increasing'
+  const shortBy = progress.progressDirection === 'increasing'
     ? targetValue - projected
     : projected - targetValue;
   // A trajectory already at/within display tolerance of the target (e.g.
@@ -263,40 +250,40 @@ export const buildTrajectory = (params: {
   // produce a valid plan, which is neither "on track" nor "at risk" — claiming
   // either would fabricate a verdict. The formatter already supports a null
   // status word.
-  const STATELINE_STATUS_WORD: Record<typeof params.planStatus, string | null> = {
+  const STATELINE_STATUS_WORD: Record<DeferredObjectiveActivePlanStatusV1, string | null> = {
     on_track: SMART_TASK_STATELINE_ON_TRACK_WORD,
     satisfied: SMART_TASK_STATELINE_ON_TRACK_WORD,
     at_risk: SMART_TASK_STATELINE_AT_RISK_WORD,
     cannot_meet: SMART_TASK_STATELINE_AT_RISK_WORD,
     invalid: null,
   };
-  const statusWord = STATELINE_STATUS_WORD[params.planStatus];
+  const statusWord = STATELINE_STATUS_WORD[planStatus];
   const stateline = isShort
     ? formatSmartTaskTrajectoryStatelineShort({
       projectedValueLabel: formatProgressValueForUnit(projected, unit),
       shortAmountLabel: formatSmartTaskTrajectoryShortAmountLabel(Math.max(0, shortBy), unit),
     })
-    : formatSmartTaskTrajectoryStatelineReady({
-      currentValuePhrase: formatSmartTaskCurrentValuePhrase(
-        formatProgressValueForUnit(params.currentValue, unit),
+    : formatSmartTaskTrajectoryStatelineReady(
+      formatSmartTaskCurrentValuePhrase(
+        formatProgressValueForUnit(currentValue, unit),
         unit,
       ),
       statusWord,
-      readyTimeLabel: formatDeadlineFull(effectiveReadyAtMs!),
-      hoursBeforeDeadline: (params.deadlineAtMs - effectiveReadyAtMs!) / ONE_HOUR_MS,
-    });
+      formatDeadlineFull(effectiveReadyAtMs!),
+      (deadlineAtMs - effectiveReadyAtMs!) / ONE_HOUR_MS,
+    );
   return {
     cardTitle: formatSmartTaskTrajectoryCardTitle({ targetValue, targetUnit: unit }),
-    ariaLabel: `Smart task progress trajectory for ${formatDisplayDeviceName(params.device.name)}`,
+    ariaLabel: `Smart task progress trajectory for ${formatDisplayDeviceName(ctx.device.name)}`,
     measuredPoints,
-    nowPoint: [nowMs, params.currentValue],
+    nowPoint: [nowMs, currentValue],
     plannedPoints,
     runBands,
     targetValue,
     targetLabel: formatSmartTaskTargetLabel({ targetValue, targetUnit: unit }),
-    deadlineAtMs: params.deadlineAtMs,
+    deadlineAtMs: deadlineAtMs,
     deadlineMarkLabel: isShort
-      ? `${DEADLINE_MARKER_WORD} ${formatHourLabel(params.deadlineAtMs)}`
+      ? `${DEADLINE_MARKER_WORD} ${formatHourLabel(deadlineAtMs)}`
       : DEADLINE_MARKER_WORD,
     deadlineDanger: isShort,
     xMinMs,

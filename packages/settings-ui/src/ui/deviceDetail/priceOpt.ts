@@ -11,21 +11,10 @@ import {
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
-import { logSettingsError } from '../logging.ts';
-import {
-  renderPriceOptimization,
-  savePriceOptimizationSettings,
-} from '../priceOptimization.ts';
+import { renderPriceOptimization } from '../priceOptimization.ts';
 import { resolveManagedState, state, defaultPriceOptimizationConfig } from '../state.ts';
-import { showToastError } from '../toast.ts';
+import { savePriceOptimizationPatch } from './priceOptimizationPatch.ts';
 import { MAX_PRICE_ADJUSTMENT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
-
-const ensurePriceOptimizationConfig = (deviceId: string) => {
-  if (!state.priceOptimizationSettings[deviceId]) {
-    state.priceOptimizationSettings[deviceId] = { ...defaultPriceOptimizationConfig };
-  }
-  return state.priceOptimizationSettings[deviceId];
-};
 
 const parsePriceDeltaInput = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseFloat(value || '');
@@ -125,50 +114,27 @@ export const initDeviceDetailPriceOptHandlers = (params: {
     if (!supportsTemperatureAdjustments(device)) return;
 
     const { enabled, cheapDelta, expensiveDelta } = readPriceOptInputs();
-    // Snapshot only this device's three fields before the optimistic mutation
-    // so a failed Homey write can be rolled back. Replacing the whole map
-    // (the earlier approach) clobbered newer persisted edits from overlapping
-    // handlers.
-    const config = ensurePriceOptimizationConfig(deviceId);
-    const previousValues = {
-      enabled: config.enabled,
-      cheapDelta: config.cheapDelta,
-      expensiveDelta: config.expensiveDelta,
-      priceConfigured: config.priceConfigured,
-    };
-    config.enabled = enabled;
-    config.cheapDelta = cheapDelta;
-    config.expensiveDelta = expensiveDelta;
-    config.priceConfigured = true;
-
-    try {
-      await savePriceOptimizationSettings();
-      // Show what was saved: a typed "-3" is stored, and applied, as 3.
-      if (params.getCurrentDetailDeviceId() === deviceId) setDeviceDetailDeltaValues(deviceId);
-      renderPriceOptDependents();
-    } catch (error) {
-      // Roll back this device's fields only if a later successful save has
-      // not already overwritten them.
-      const current = state.priceOptimizationSettings[deviceId];
-      if (current
-        && current.enabled === enabled
-        && current.cheapDelta === cheapDelta
-        && current.expensiveDelta === expensiveDelta
-        && current.priceConfigured) {
-        Object.assign(current, previousValues);
-      }
-      // Re-bind the inputs and toggle only if the user is still on this
-      // device's detail panel. Otherwise the rollback would overwrite the
-      // visible inputs with values from the previous device.
-      if (params.getCurrentDetailDeviceId() === deviceId) {
-        setDeviceDetailDeltaValues(deviceId);
-        const restored = state.priceOptimizationSettings[deviceId];
-        if (deviceDetailPriceOpt) deviceDetailPriceOpt.selected = restored?.enabled ?? false;
-      }
-      renderPriceOptDependents();
-      await logSettingsError('Failed to save price optimization settings', error, 'device detail');
-      await showToastError(error, 'Failed to save price optimization settings.');
-    }
+    const saved = await savePriceOptimizationPatch(
+      deviceId,
+      { enabled, cheapDelta, expensiveDelta, priceConfigured: true },
+      defaultPriceOptimizationConfig,
+      'Failed to save price optimization settings',
+      () => {
+        // Re-bind the inputs and toggle only if the user is still on this
+        // device's detail panel. Otherwise the rollback would overwrite the
+        // visible inputs with values from the previous device.
+        if (params.getCurrentDetailDeviceId() === deviceId) {
+          setDeviceDetailDeltaValues(deviceId);
+          const restored = state.priceOptimizationSettings[deviceId];
+          if (deviceDetailPriceOpt) deviceDetailPriceOpt.selected = restored?.enabled ?? false;
+        }
+        renderPriceOptDependents();
+      },
+    );
+    if (!saved) return;
+    // Show what was saved: a typed "-3" is stored, and applied, as 3.
+    if (params.getCurrentDetailDeviceId() === deviceId) setDeviceDetailDeltaValues(deviceId);
+    renderPriceOptDependents();
   };
 
   deviceDetailPriceOpt?.addEventListener('change', autoSavePriceOpt);

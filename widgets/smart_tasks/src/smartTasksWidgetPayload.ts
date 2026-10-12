@@ -8,16 +8,15 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
-import type {
-  StateOfChargeObservedProbe,
-  TargetDeviceSnapshot,
-  TemperatureObservedProbe,
-} from '../../../packages/contracts/src/types';
-import { hasObservedTemperature } from '../../../packages/shared-domain/src/temperatureObservedState';
+import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
-import { hasObservedStateOfCharge } from '../../../packages/shared-domain/src/stateOfChargeObservedState';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import { resolveActivePlanChartData } from '../../../packages/shared-domain/src/deferredActivePlanChartData';
+import {
+  resolveSmartTaskRowFacts,
+  smartTaskScheduleNoLongerGoverns,
+  type SmartTaskRowFacts,
+} from '../../../packages/shared-domain/src/smartTaskRowFacts';
 import {
   formatPlanHistoryMissedReason,
   formatPlanHistoryProgressLine,
@@ -43,8 +42,6 @@ import {
   resolveMissedHistoryCarHint,
   resolveMissedHistoryRecourse,
   resolveSmartTaskLearning,
-  resolveSmartTaskListStatus,
-  resolveReportedCarChargeLimit,
   resolveSmartTaskWidgetDetailCopy,
   type SmartTaskCarChargeLimit,
   suppressesSmartTaskConfidenceChip,
@@ -99,53 +96,19 @@ const STATUS_TONE: Record<SmartTaskListStatusId, SmartTasksWidgetTone> = {
   satisfied: 'ok',
 };
 
-// A cached revision outlives the device leaving the planned set, whether by
-// meter reassignment (`unavailable`) or by the owner turning "Managed by PELS"
-// off. Those hours govern nothing, so no surface may expand into a schedule, an
-// estimate or a trajectory chart underneath a chip that says otherwise.
-// `paused_unplugged` is deliberately absent: that plan resumes on its own when
-// the car is plugged back in.
-const scheduleNoLongerGoverns = (statusId: SmartTaskListStatusId): boolean => (
-  statusId === 'unavailable' || statusId === 'paused_unmanaged'
-);
-
-// The widget only ever draws the `trajectory` shape; the producers' `legacy_kwh`
-// fallback (a kWh bar chart for old history entries) has no widget renderer. Map
-// it to null at the boundary so `row.chart` is non-null EXACTLY when there's a
-// trajectory to draw — matching the field's "null when nothing chartable" doc
-// and letting the renderer skip a legacy branch.
+// The widget only ever draws the `trajectory` shape; the history producer's
+// `legacy_kwh` fallback (a kWh bar chart for old history entries) has no widget
+// renderer. Map it to null at the boundary so `row.chart` is non-null EXACTLY
+// when there's a trajectory to draw — matching the field's "null when nothing
+// chartable" doc and letting the renderer skip a legacy branch.
 const toWidgetChart = (chart: DeferredPlanHistoryChartData): DeferredPlanHistoryChartData | null => (
   chart.mode === 'trajectory' ? chart : null
 );
 
-const resolveCurrentValue = (
-  // Probe-widened: the snapshot physically carries the observed temperature / SoC
-  // the base type omits; `hasObservedTemperature` / `hasObservedStateOfCharge`
-  // narrow it (present is finite by the producer invariant).
-  device: (TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe) | undefined,
-  plan: ResolvedDeferredObjectiveActivePlanV1,
-): number | null => {
-  // An energy task's current value is the energy fed so far, which the plan
-  // carries; the device has no reading this task is measured by.
-  if (plan.objectiveKind === 'energy') return plan.deliveredKWh;
-  const kind = plan.objectiveKind;
-  if (!device) return null;
-  if (kind === 'temperature') {
-    return hasObservedTemperature(device) ? device.temperature.currentTemperature : null;
-  }
-  // `level`, never the raw report: a bag with no level means PELS has no reading
-  // for this charger, and the percentage it last saw belongs to a car that has gone.
-  if (!hasObservedStateOfCharge(device)) return null;
-  const { level } = device.stateOfCharge;
-  return level.kind === 'known' ? level.percent : null;
-};
-
 const resolvePlannerEtaMs = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => {
   // The last hour the device is planned to run; a trailing 0 kWh booking promises nothing.
-  const hours = hoursWithPlannedEnergy(plan.latest?.hours ?? []);
-  const last = hours[hours.length - 1];
-  if (!last) return null;
-  return isFiniteNumber(last.startsAtMs) ? last.startsAtMs + 60 * 60 * 1000 : null;
+  const last = hoursWithPlannedEnergy(plan.latest?.hours ?? []).at(-1);
+  return last === undefined ? null : last.startsAtMs + 60 * 60 * 1000;
 };
 
 const formatDurationFromHours = (hours: number): string => {
@@ -214,11 +177,11 @@ const resolveConfidenceLabel = (
   provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined,
   statusId: SmartTaskListStatusId,
 ): string | null => (
-  formatSmartTaskListConfidenceChipLabel({
-    confidence: resolveChipConfidence(provenance),
+  formatSmartTaskListConfidenceChipLabel(
+    resolveChipConfidence(provenance),
     statusId,
-    learning: resolveSmartTaskLearning(provenance),
-  })
+    resolveSmartTaskLearning(provenance),
+  )
 );
 
 export type SmartTasksWidgetInput = {
@@ -254,22 +217,6 @@ const compareCandidates = (a: Candidate, b: Candidate): number => {
   return 0;
 };
 
-const resolveStatusId = (
-  plan: ResolvedDeferredObjectiveActivePlanV1,
-  nowMs: number,
-): SmartTaskListStatusId => (
-  resolveSmartTaskListStatus({
-    pending: plan.pending || plan.latest === null,
-    pendingReason: plan.pendingReason,
-    diagnosticReasonCode: plan.diagnosticReasonCode,
-    planStatus: plan.latest?.planStatus,
-    firstActionAtMs: hoursWithPlannedEnergy(plan.latest?.hours ?? [])[0]?.startsAtMs ?? null,
-    nowMs,
-    carChargeLimit: resolveReportedCarChargeLimit(plan),
-    liveCompletion: plan.liveCompletion,
-  })
-);
-
 // The producer-resolved copy/visibility decisions for one row, split out of
 // `buildRow` so that function stays under the complexity bar.
 type RowCopy = {
@@ -285,9 +232,10 @@ const withCarChargeLimit = (
 
 const resolveRowCopy = (
   plan: ResolvedDeferredObjectiveActivePlanV1,
-  statusId: SmartTaskListStatusId,
+  facts: SmartTaskRowFacts,
   firstPlannedTimeLabel: string | null,
 ): RowCopy => {
+  const { statusId } = facts;
   const detail = resolveSmartTaskWidgetDetailCopy({
     statusId,
     pendingReason: plan.pendingReason,
@@ -297,18 +245,18 @@ const resolveRowCopy = (
       ? { budgetContributedToShortfall: true as const }
       : {}),
     firstPlannedTimeLabel,
-    ...withCarChargeLimit(resolveReportedCarChargeLimit(plan)),
+    ...withCarChargeLimit(facts.carChargeLimit),
   });
   // Suppress the receipt-flavoured plan-meta line on a failing task: the
   // diagnosis ("why" + recourse) is what the distressed visitor came for, and
   // dropping the meta keeps the 220 px detail panel from pushing the recourse
   // below the fold (asymmetric-treatment thesis, notes/smart-task-ui).
-  const suppressPlanMeta = statusId === 'cannot_meet' || scheduleNoLongerGoverns(statusId) || !plan.latest;
+  const suppressPlanMeta = statusId === 'cannot_meet' || smartTaskScheduleNoLongerGoverns(statusId) || !plan.latest;
   // "Estimating" alongside a pending "why" line reads as two conflicting
   // blocked states; those reasons own the row. Routed through the shared
   // resolver so a record with no `pendingReason` is judged by the same rule the
   // copy above used — comparing the raw field here let the two disagree.
-  const suppressConfidence = scheduleNoLongerGoverns(statusId)
+  const suppressConfidence = smartTaskScheduleNoLongerGoverns(statusId)
     || (statusId === 'building_plan' && suppressesSmartTaskConfidenceChip(plan.pendingReason));
   return {
     planMetaLabel: suppressPlanMeta || plan.latest === null ? null : formatPlanMetaLabel(plan.latest),
@@ -320,75 +268,59 @@ const resolveRowCopy = (
   };
 };
 
-const buildRow = (params: {
-  deviceId: string;
-  plan: ResolvedDeferredObjectiveActivePlanV1;
-  device: TargetDeviceSnapshot | undefined;
-  targetValue: number;
-  statusId: SmartTaskListStatusId;
-  finishMs: number | null;
-  nowMs: number;
-  timeZone: string | null;
-}): SmartTasksWidgetRow => {
-  const { deviceId, plan, device, targetValue, statusId, finishMs, nowMs, timeZone } = params;
-  const finiteFinish = isFiniteNumber(finishMs) ? finishMs : null;
-  const firstHourMs = hoursWithPlannedEnergy(plan.latest?.hours ?? [])[0]?.startsAtMs ?? null;
-  const firstPlannedTimeLabel = isFiniteNumber(firstHourMs)
-    ? formatLocalHHMM(firstHourMs, timeZone)
-    : null;
-  const copy = resolveRowCopy(plan, statusId, firstPlannedTimeLabel);
-  const currentValue = resolveCurrentValue(device, plan);
+const buildRow = (
+  deviceId: string,
+  plan: ResolvedDeferredObjectiveActivePlanV1,
+  device: TargetDeviceSnapshot | undefined,
+  facts: SmartTaskRowFacts,
+  nowMs: number,
+  timeZone: string | null,
+): SmartTasksWidgetRow => {
+  const { statusId, firstActionAtMs, currentValue } = facts;
+  const firstPlannedTimeLabel = firstActionAtMs === null ? null : formatLocalHHMM(firstActionAtMs, timeZone);
+  const copy = resolveRowCopy(plan, facts, firstPlannedTimeLabel);
   return {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
     kind: plan.objectiveKind,
     unitSymbol: deadlineLabels(plan.objectiveKind).targetUnit,
     currentValue,
-    targetValue,
-    finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
+    targetValue: plan.targetValue,
+    finishLabel: formatLocalHHMM(plan.deadlineAtMs, timeZone),
     statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
     tone: STATUS_TONE[statusId],
-    etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === 'cannot_meet' || scheduleNoLongerGoverns(statusId)),
+    etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === 'cannot_meet' || smartTaskScheduleNoLongerGoverns(statusId)),
     targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(plan.objectiveKind),
     targetNoun: SMART_TASK_WIDGET_TARGET_NOUN,
-    deadlineLongLabel: finiteFinish !== null ? formatSmartTaskDeadlineLong(finiteFinish, nowMs, timeZone) : null,
+    deadlineLongLabel: formatSmartTaskDeadlineLong(plan.deadlineAtMs, nowMs, timeZone),
     planMetaLabel: copy.planMetaLabel,
     confidenceLabel: copy.confidenceLabel,
     whyLabel: copy.whyLabel,
     recourseHint: copy.recourseHint,
     // A committed plan may still carry a cached trajectory after the device left
     // the planned set. Suppress it: those hours no longer govern.
-    chart: scheduleNoLongerGoverns(statusId)
+    chart: smartTaskScheduleNoLongerGoverns(statusId)
       ? null
-      : toWidgetChart(resolveActivePlanChartData(plan, { nowMs, currentValue })),
+      : resolveActivePlanChartData(plan, { nowMs, currentValue }),
   };
 };
 
-const buildCandidate = (params: {
-  deviceId: string;
-  plan: ResolvedDeferredObjectiveActivePlanV1;
-  devicesById: Map<string, TargetDeviceSnapshot>;
-  nowMs: number;
-  timeZone: string | null;
-}): Candidate | null => {
-  const { deviceId, plan, devicesById, nowMs, timeZone } = params;
-  if (!isFiniteNumber(plan.deadlineAtMs)) return null;
-  const statusId = resolveStatusId(plan, nowMs);
-  if (statusId === 'satisfied') return null;
-  const targetValue = plan.targetValue;
-  if (targetValue === null) return null;
-  const etaMs = resolvePlannerEtaMs(plan);
-  const row = buildRow({
-    deviceId,
-    plan,
-    device: devicesById.get(deviceId),
-    targetValue,
-    statusId,
-    finishMs: plan.deadlineAtMs,
-    nowMs,
-    timeZone,
-  });
-  return { row, tier: STATUS_TIER[statusId], etaMs, deadlineMs: plan.deadlineAtMs };
+const buildCandidate = (
+  deviceId: string,
+  plan: ResolvedDeferredObjectiveActivePlanV1,
+  device: TargetDeviceSnapshot | undefined,
+  nowMs: number,
+  timeZone: string | null,
+): Candidate | null => {
+  const facts = resolveSmartTaskRowFacts(plan, device, nowMs);
+  if (facts.statusId === 'satisfied') return null;
+  const row = buildRow(deviceId, plan, device, facts, nowMs, timeZone);
+  return {
+    row,
+    tier: STATUS_TIER[facts.statusId],
+    etaMs: resolvePlannerEtaMs(plan),
+    deadlineMs: plan.deadlineAtMs,
+  };
 };
 
 const resolveEndedTarget = (entry: ResolvedDeferredObjectivePlanHistoryEntry): number | null => (
@@ -472,9 +404,7 @@ export const buildSmartTasksWidgetPayload = (input: SmartTasksWidgetInput): Smar
   const plans = input.activePlans?.plansByDeviceId;
   const candidates = plans
     ? Object.entries(plans)
-      .map(([deviceId, plan]) => (plan
-        ? buildCandidate({ deviceId, plan, devicesById, nowMs: input.nowMs, timeZone })
-        : null))
+      .map(([deviceId, plan]) => buildCandidate(deviceId, plan, devicesById.get(deviceId), input.nowMs, timeZone))
       .filter((candidate): candidate is Candidate => candidate !== null)
     : [];
 

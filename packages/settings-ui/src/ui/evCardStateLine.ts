@@ -19,12 +19,12 @@ export const resolveEvCardStateLines = (nowMs: number): ReadonlyMap<string, stri
     if (!objective.enabled || objective.kind !== 'ev_soc') continue;
     if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= nowMs) continue;
     const activePlan = state.deferredObjectiveActivePlans?.plansByDeviceId?.[deviceId];
-    const stateLine = resolveEvCardStateLine({
-      hours: hoursWithPlannedEnergy(activePlan?.latest?.hours ?? []),
+    const stateLine = resolveEvCardStateLine(
+      hoursWithPlannedEnergy(activePlan?.latest?.hours ?? []),
       nowMs,
-      isPlugOutPaused: activePlan?.diagnosticReasonCode === 'objective_invalid_session',
-      formatTime: formatEvCardTime,
-    });
+      activePlan?.diagnosticReasonCode === 'objective_invalid_session',
+      formatEvCardTime,
+    );
     if (stateLine.kind !== 'none') lines.set(deviceId, stateLine.text);
   }
   return lines;

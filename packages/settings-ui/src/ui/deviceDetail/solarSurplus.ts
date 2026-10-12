@@ -17,23 +17,16 @@ import {
 } from '../deviceUtils.ts';
 import { isEvDevice } from '../../../../shared-domain/src/commandableNow.ts';
 import { DEFAULT_SURPLUS_LIFT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
-import { logSettingsError } from '../logging.ts';
-import { savePriceOptimizationSettings } from '../priceOptimization.ts';
 import { resolveSurplusControlAvailable,
   resolveManagedState,
   state,
   defaultPriceOptimizationConfig,
-  type PriceOptimizationConfig, hasActiveDeadlineObjective } from '../state.ts';
-import { showToastError } from '../toast.ts';
+  hasActiveDeadlineObjective } from '../state.ts';
+import { savePriceOptimizationPatch, SURPLUS_ONLY_PRICE_OPTIMIZATION_CONFIG } from './priceOptimizationPatch.ts';
 import { resolveDeviceDetailControlMode } from '../deviceKind.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 
-const ensurePriceOptimizationConfig = (deviceId: string) => {
-  if (!state.priceOptimizationSettings[deviceId]) {
-    state.priceOptimizationSettings[deviceId] = { ...defaultPriceOptimizationConfig };
-  }
-  return state.priceOptimizationSettings[deviceId];
-};
+const SURPLUS_SAVE_FAILED = 'Failed to save solar surplus settings';
 
 const parseSurplusDeltaInput = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseFloat(value || '');
@@ -70,17 +63,17 @@ export const surplusControlVisibleFor = (deviceId: string): boolean => (
 // Why the boost field is inert right now. Applicable-but-unavailable renders
 // visible-but-disabled with this hint; only kind- or home-inapplicable states
 // (no temperature target, or no surplus pool to opt into) hide the section.
-const resolveSurplusGateHint = (params: {
-  canControlTemperature: boolean;
-  disabledHint: string;
-  isManaged: boolean;
-  selected: boolean;
-}): string | null => {
-  if (!params.canControlTemperature) {
-    return params.disabledHint;
+const resolveSurplusGateHint = (
+  canControlTemperature: boolean,
+  disabledHint: string,
+  isManaged: boolean,
+  selected: boolean,
+): string | null => {
+  if (!canControlTemperature) {
+    return disabledHint;
   }
-  if (!params.isManaged) return 'Turn on Managed by PELS in Setup to use solar surplus.';
-  if (!params.selected) {
+  if (!isManaged) return 'Turn on Managed by PELS in Setup to use solar surplus.';
+  if (!selected) {
     return 'Turn on Use solar surplus in Setup to lift the target while you export solar.';
   }
   return null;
@@ -107,14 +100,14 @@ export const updateSurplusSectionVisibility = (params: {
   // The surplus lift reaches only a device with a power reading
   // (`lib/plan/planSurplusAbsorb.ts`), unlike its mode target and price shift.
   const supportsPower = supportsPowerDevice(device);
-  const gateHint = resolveSurplusGateHint({
-    canControlTemperature: supportsPower && supportsTemperatureAdjustments(device),
-    disabledHint: supportsPower
+  const gateHint = resolveSurplusGateHint(
+    supportsPower && supportsTemperatureAdjustments(device),
+    supportsPower
       ? temperatureAdjustmentGateHint(device)
       : `Solar surplus needs a power reading: ${POWER_READING_REMEDY}.`,
     isManaged,
-    selected: deviceDetailSurplusOpt.selected,
-  });
+    deviceDetailSurplusOpt.selected,
+  );
   deviceDetailSurplusSection.style.display = 'block';
   if (deviceDetailSurplusDelta) deviceDetailSurplusDelta.disabled = gateHint !== null;
   if (deviceDetailSurplusGateHint) {
@@ -134,38 +127,26 @@ export const initDeviceDetailSurplusOptHandlers = (params: {
     if (!supportsTemperatureAdjustments(device)) return;
 
     const { surplusWilling, surplusDelta } = readSurplusInputs();
-    // Snapshot only this device's surplus fields before the optimistic mutation so
-    // a failed Homey write can be rolled back without clobbering newer edits.
-    const config = ensurePriceOptimizationConfig(deviceId);
-    const previousValues = { surplusWilling: config.surplusWilling, surplusDelta: config.surplusDelta };
-    config.surplusWilling = surplusWilling;
-    config.surplusDelta = surplusDelta;
-
-    try {
-      await savePriceOptimizationSettings();
-      // Only re-bind if the user is still on this device's panel — a late save for
-      // device A must not rewrite device B's open panel (mirrors priceOpt). Re-binds
-      // the delta input to the saved (snapped) value so an out-of-range entry doesn't
-      // leave the field showing a number we didn't persist, and re-evaluates the
-      // section's visibility against the current switch state.
-      if (params.getCurrentDetailDeviceId() === deviceId) {
-        setDeviceDetailSurplusValues(deviceId);
-        updateSurplusSectionVisibility({ currentDetailDeviceId: deviceId, getDeviceById: params.getDeviceById });
-      }
-    } catch (error) {
-      const current = state.priceOptimizationSettings[deviceId];
-      if (current
-        && current.surplusWilling === surplusWilling
-        && current.surplusDelta === surplusDelta) {
-        Object.assign(current, previousValues);
-      }
-      if (params.getCurrentDetailDeviceId() === deviceId) {
+    const saved = await savePriceOptimizationPatch(
+      deviceId,
+      { surplusWilling, surplusDelta },
+      defaultPriceOptimizationConfig,
+      SURPLUS_SAVE_FAILED,
+      () => {
+        if (params.getCurrentDetailDeviceId() !== deviceId) return;
         setDeviceDetailSurplusValues(deviceId);
         const restored = state.priceOptimizationSettings[deviceId];
         if (deviceDetailSurplusOpt) deviceDetailSurplusOpt.selected = restored?.surplusWilling ?? false;
-      }
-      await logSettingsError('Failed to save solar surplus settings', error, 'device detail');
-      await showToastError(error, 'Failed to save solar surplus settings.');
+      },
+    );
+    // Only re-bind if the user is still on this device's panel — a late save for
+    // device A must not rewrite device B's open panel (mirrors priceOpt). Re-binds
+    // the delta input to the saved (snapped) value so an out-of-range entry doesn't
+    // leave the field showing a number we didn't persist, and re-evaluates the
+    // section's visibility against the current switch state.
+    if (saved && params.getCurrentDetailDeviceId() === deviceId) {
+      setDeviceDetailSurplusValues(deviceId);
+      updateSurplusSectionVisibility({ currentDetailDeviceId: deviceId, getDeviceById: params.getDeviceById });
     }
   };
 
@@ -194,7 +175,7 @@ const hasActiveSmartTask = (deviceId: string): boolean => hasActiveDeadlineObjec
 // solar is a UI-offer concern, not a runtime one).
 const isDumpLoadDeviceShape = (
   device: SettingsUiDeviceDetailItem | null,
-  controlState: { supportsTemperature: boolean; isManaged: boolean; canManageDevice: boolean },
+  controlState: ReturnType<typeof resolveDeviceDetailControlState>,
 ): boolean => {
   if (!device) return false;
   if (!controlState.canManageDevice || !controlState.isManaged) return false;
@@ -275,26 +256,6 @@ export const setDeviceDetailDumpLoadControl = (params: {
   applyDumpLoadDisabledState(params.deviceId);
 };
 
-// The full valid blob entry a fresh dump-load opt-in writes: price-response off
-// and zero deltas (NOT the temperature defaults — a binary device has no
-// setpoint), with only `surplusWilling` carrying meaning. An existing entry
-// keeps its other fields and only flips `surplusWilling`.
-const buildDumpLoadConfig = (
-  existing: PriceOptimizationConfig | undefined,
-  surplusWilling: boolean,
-): PriceOptimizationConfig => (
-  existing
-    ? { ...existing, surplusWilling }
-    : {
-      enabled: false,
-      cheapDelta: 0,
-      expensiveDelta: 0,
-      priceConfigured: false,
-      surplusWilling,
-      surplusDelta: 0,
-    }
-);
-
 const initDeviceDetailDumpLoadHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
@@ -309,32 +270,20 @@ const initDeviceDetailDumpLoadHandlers = (params: {
     // be dead otherwise (`resolveSurplusControlAvailable` would reject the opt-out).
     if (!isDumpLoadDeviceShape(device, controlState)) return;
 
-    const surplusWilling = deviceDetailDumpLoadOpt.selected;
-    const previous = state.priceOptimizationSettings[deviceId];
-    state.priceOptimizationSettings[deviceId] = buildDumpLoadConfig(previous, surplusWilling);
-
-    try {
-      await savePriceOptimizationSettings();
+    // An existing entry keeps its other fields and only flips `surplusWilling`,
+    // the one field a dump load reads.
+    const rebind = (): void => {
       if (params.getCurrentDetailDeviceId() === deviceId) {
         setDeviceDetailDumpLoadControl({ deviceId, getDeviceById: params.getDeviceById });
       }
-    } catch (error) {
-      // Roll back only if no newer edit landed while the save was in flight
-      // (mirrors the temperature surplus handler above).
-      const current = state.priceOptimizationSettings[deviceId];
-      if (current && current.surplusWilling === surplusWilling) {
-        if (previous) {
-          state.priceOptimizationSettings[deviceId] = previous;
-        } else {
-          delete state.priceOptimizationSettings[deviceId];
-        }
-      }
-      if (params.getCurrentDetailDeviceId() === deviceId) {
-        setDeviceDetailDumpLoadControl({ deviceId, getDeviceById: params.getDeviceById });
-      }
-      await logSettingsError('Failed to save solar surplus settings', error, 'device detail');
-      await showToastError(error, 'Failed to save solar surplus settings.');
-    }
+    };
+    if (await savePriceOptimizationPatch(
+      deviceId,
+      { surplusWilling: deviceDetailDumpLoadOpt.selected },
+      SURPLUS_ONLY_PRICE_OPTIMIZATION_CONFIG,
+      SURPLUS_SAVE_FAILED,
+      rebind,
+    )) rebind();
   };
 
   deviceDetailDumpLoadOpt?.addEventListener('change', autoSaveDumpLoad);

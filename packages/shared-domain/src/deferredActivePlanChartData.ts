@@ -50,26 +50,6 @@ const pickObservedSamples = (
   return out.sort((a, b) => a.atMs - b.atMs);
 };
 
-const emptyChart = (
-  target: number | null,
-  windowStartMs: number,
-  windowEndMs: number,
-): DeferredPlanHistoryChartData => ({
-  mode: 'legacy_kwh',
-  unit: null,
-  windowStartMs,
-  windowEndMs,
-  plannedOriginal: [],
-  plannedFinal: null,
-  plannedVisible: [],
-  replanned: false,
-  observed: [],
-  runBands: [],
-  target,
-  metAtMs: null,
-  metMarkerValue: null,
-});
-
 // Where the live planned staircase should anchor. With a known run-start
 // reading, anchor at the observed value where booked work starts (the first
 // booked hour).
@@ -80,36 +60,20 @@ const emptyChart = (
 const resolveActivePlannedAnchor = (
   snapshot: Parameters<typeof resolveStaircaseAnchor>[0],
   withNow: readonly DeferredPlanHistoryChartPoint[],
-  live: {
-    startProgress: number | null;
-    currentValue: number | null;
-    windowStartMs: number;
-    nowMs: number | undefined;
-  },
+  startProgress: number | null,
+  currentValue: number | null,
+  windowStartMs: number,
+  nowMs: number | undefined,
 ): { value: number; atMs: number } | null => {
-  if (live.startProgress !== null) {
-    return resolveStaircaseAnchor(snapshot, withNow, live.startProgress, live.windowStartMs);
+  if (startProgress !== null) {
+    return resolveStaircaseAnchor(snapshot, withNow, startProgress, windowStartMs);
   }
-  if (live.currentValue !== null) {
-    return { value: live.currentValue, atMs: live.nowMs ?? live.windowStartMs };
+  if (currentValue !== null) {
+    return { value: currentValue, atMs: nowMs ?? windowStartMs };
   }
   return null;
 };
 
-/**
- * Composes the trajectory chart payload for an on-going smart task.
- *
- * The planned staircase is integrated from the live `latest.hours × rate`,
- * anchored at the run's start progress and clamped to the deadline — the same
- * math the finished-run "Planned trajectory" line uses. The observed line is
- * the 15-minute progress series captured so far. There is no revised/second line
- * and no "reached target" marker: the run is still in flight.
- *
- * Falls back to a chartless (`legacy_kwh`, empty) payload when there is nothing
- * honest to draw — no usable rate to anchor the plan AND fewer than two observed
- * points (a single point renders as a lone dot, which reads worse than no chart).
- * The renderer hides the chart container in that case and shows the text lines.
- */
 // Append the live "now" reading past the last bucketed sample so the measured
 // line extends to the present. No-op when there is no reading or a sample
 // already covers (or postdates) `nowMs`.
@@ -126,13 +90,27 @@ const appendNowReading = (
   return [...samples, { atMs: nowMs, value: currentValue }];
 };
 
+/**
+ * Composes the trajectory chart payload for an on-going smart task.
+ *
+ * The planned staircase is integrated from the live `latest.hours × rate`,
+ * anchored at the run's start progress and clamped to the deadline — the same
+ * math the finished-run "Planned trajectory" line uses. The observed line is
+ * the 15-minute progress series captured so far. There is no revised/second line
+ * and no "reached target" marker: the run is still in flight.
+ *
+ * Null when there is nothing honest to draw — no usable rate to anchor the plan
+ * AND fewer than two observed points (a single point renders as a lone dot,
+ * which reads worse than no chart). The renderer then hides the chart container
+ * and shows the text lines.
+ */
 export const resolveActivePlanChartData = (
   plan: ResolvedDeferredObjectiveActivePlanV1,
   // `nowMs` + `currentValue` (the device's live reading from the widget's device
   // snapshot) extend the measured line to "now" and give an active task a
   // "you are here" anchor even before two samples have been bucketed.
   options: { nowMs?: number; currentValue?: number | null } = {},
-): DeferredPlanHistoryChartData => {
+): DeferredPlanHistoryChartData | null => {
   const windowStartMs = plan.startedAtMs;
   const windowEndMs = plan.deadlineAtMs;
   const target = pickTarget(plan);
@@ -164,13 +142,11 @@ export const resolveActivePlanChartData = (
     : null;
   const anchor = snapshot === null
     ? null
-    : resolveActivePlannedAnchor(snapshot, withNow, { startProgress, currentValue, windowStartMs, nowMs });
+    : resolveActivePlannedAnchor(snapshot, withNow, startProgress, currentValue, windowStartMs, nowMs);
   const planned = snapshot !== null && anchor !== null
     ? integratePlannedStaircase(snapshot, anchor.value, anchor.atMs, windowEndMs, target)
     : [];
-  if (planned.length === 0 && observed.length < 2) {
-    return emptyChart(target, windowStartMs, windowEndMs);
-  }
+  if (planned.length === 0 && observed.length < 2) return null;
   return {
     mode: 'trajectory',
     unit: deadlineLabels(plan.objectiveKind).targetUnit,

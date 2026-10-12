@@ -141,11 +141,11 @@ const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {
 // stable slug instead of branching on `statusId`.
 const Card = ({ card }: { card: DeadlinesListCard }) => {
   const labels = deadlineLabels(card.kind, card.progressDirection);
-  const confidenceLabel = formatSmartTaskListConfidenceChipLabel({
-    confidence: card.confidence,
-    statusId: card.statusId,
-    learning: card.learning,
-  });
+  const confidenceLabel = formatSmartTaskListConfidenceChipLabel(
+    card.confidence,
+    card.statusId,
+    card.learning,
+  );
   const readyByTone = resolveSmartTaskListReadyByTone(card.statusId);
   const deadlineVerb = resolveSmartTaskListDeadlineVerb(card.statusId);
   // Inline status word for non-healthy states so the at-risk / cannot-finish /

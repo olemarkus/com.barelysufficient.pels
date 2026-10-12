@@ -23,7 +23,7 @@ import {
   type HomeLimitsStatus,
 } from '../../../../shared-domain/src/homeLimitsStatus.ts';
 import { composeHomeScopedTitle } from '../../../../shared-domain/src/homeScopeCopy.ts';
-import { MdFilledSelect, MdSelectOption, MdSwitch } from './materialWebJSX.tsx';
+import { MdFilledSelect, MdSelectOption, MdSwitch, readSwitchSelected } from './materialWebJSX.tsx';
 import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
 import type { SettingsUiCapacityPeak } from '../../../../contracts/src/settingsUiApi.ts';
 import { formatCapacityPeak } from '../capacityPeakRead.ts';
@@ -39,9 +39,6 @@ import { resolveCapacityPeriodMinutes } from '../../../../shared-domain/src/sett
 // All data + callbacks arrive as props (views/AGENTS.md); native input wrapped
 // in `.field`, md-switch per the Material interop pattern. Rendered into
 // `#home-limits-mount` above the static form by the homeLimits controller.
-
-/** md-switch exposes its state as a `.selected` property (Material Web interop). */
-type SwitchElement = HTMLElement & { selected: boolean };
 
 export type HomeLimitsEditorView = {
   /** The selected meter area's name — drives the simulation notice. */
@@ -170,7 +167,7 @@ const SimulationCard = ({ editor }: { editor: HomeLimitsEditorView }) => (
         aria-label={HOME_LIMITS_CONTROL_LABEL}
         {...(editor.runtimeActive && !editor.dryRun ? { selected: true } : {})}
         {...(editor.controlBusy || !editor.runtimeActive ? { disabled: true } : {})}
-        onChange={(event: Event) => editor.onControlToggle((event.currentTarget as SwitchElement).selected)}
+        onChange={(event: Event) => editor.onControlToggle(readSwitchSelected(event))}
       />
       <span class="md-switch-row__content">
         <span class="md-switch-row__label pels-text-settings-label">{HOME_LIMITS_CONTROL_LABEL}</span>

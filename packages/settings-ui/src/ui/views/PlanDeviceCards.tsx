@@ -1,4 +1,4 @@
-import { h } from 'preact';
+import { h, type ComponentChildren } from 'preact';
 import { useRef, useLayoutEffect, useState } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { chipModifierForTone } from './chipModifier.ts';
@@ -229,7 +229,7 @@ export const BudgetExemptChip = ({
 // renders the interactive two-step `BudgetExemptChip`; `status` renders a
 // plain toned chip. The Smart-task badge is an identity/route badge and may
 // coexist with this one chip.
-export const PlanCardStatusChipView = ({
+const PlanCardStatusChipView = ({
   dev,
   displayKind,
   dryRun,
@@ -287,6 +287,64 @@ const CooldownProgress = ({
   } as Record<string, unknown>);
 };
 
+// ─── Plan card shell ──────────────────────────────────────────────────────────
+
+const PLAN_CARD_KIND_CLASS = {
+  generic: 'plan-card',
+  temperature: 'plan-card plan-card--temperature',
+  stepped: 'plan-card plan-card--stepped',
+} as const;
+
+type PlanCardShellProps = {
+  // The live-display snapshot (`resolveDisplayPlanDeviceSnapshot`).
+  dev: PlanDeviceSnapshot;
+  dryRun: boolean;
+  nowMs: number;
+  kind: keyof typeof PLAN_CARD_KIND_CLASS;
+  // Header chip ahead of the status chip: the generic card's cooldown
+  // countdown, null on the other cards.
+  leadingChip: ComponentChildren;
+  // The card's body below the header: its state row and lines.
+  children: ComponentChildren;
+};
+
+// The frame every plan card shares: the surface that opens device details and
+// the header with the title, the status chip and the smart-task chip.
+export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, children }: PlanCardShellProps) => {
+  const stateKind = dev.status.kind;
+  const cardClasses = [
+    `pels-surface-card device-row ${PLAN_CARD_KIND_CLASS[kind]} clickable`,
+    isDimmedDisplayStateKind(stateKind) ? 'plan-card--dim' : '',
+  ].filter(Boolean).join(' ');
+  const displayName = formatDisplayDeviceName(dev.name);
+  return (
+    <div
+      class={cardClasses}
+      data-device-id={dev.id}
+      data-state-kind={stateKind}
+      tabIndex={0}
+      role="button"
+      aria-label={`Open device details for ${displayName}`}
+      {...cardActivationProps(dev.id)}
+    >
+      <MdElevation aria-hidden="true" />
+      <MdRipple aria-hidden="true" />
+
+      <div class="plan-card__header">
+        <div class="plan-card__title-wrap">
+          <h3 class="plan-card__title">{displayName}</h3>
+        </div>
+        <div class="plan-card__chips">
+          {leadingChip}
+          <PlanCardStatusChipView dev={dev} displayKind={stateKind} dryRun={dryRun} />
+          <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+};
+
 // ─── Generic plan card ────────────────────────────────────────────────────────
 
 export const PlanGenericCard = ({
@@ -305,63 +363,41 @@ export const PlanGenericCard = ({
   const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const presentation = displayDev.status;
 
-  const cardClasses = [
-    'pels-surface-card device-row plan-card clickable',
-    isDimmedDisplayStateKind(presentation.kind) ? 'plan-card--dim' : '',
-  ].filter(Boolean).join(' ');
-
   const countdown = presentation.reason?.countdown;
   const remainingSec = countdown ? Math.max(0, Math.ceil((countdown.endsAtMs - nowMs) / 1000)) : null;
   const baseSec = countdown?.totalSec ?? null;
   const hasTimer = baseSec !== null && remainingSec !== null && remainingSec > 0;
   const powerReadout: PowerReadout | null = presentation.powerText === null ? null
     : { text: presentation.powerText, variant: presentation.powerVariant };
-  const displayName = formatDisplayDeviceName(dev.name);
   // One reason line per card: the device's own reason wins; a charger's EV
   // smart-task line fills the slot only when no reason renders.
   const singleReason = presentation.reason?.text ?? evStateLine ?? '';
 
   return (
-    <div
-      class={cardClasses}
-      data-device-id={dev.id}
-      data-state-kind={presentation.kind}
-      tabIndex={0}
-      role="button"
-      aria-label={`Open device details for ${displayName}`}
-      {...cardActivationProps(dev.id)}
+    <PlanCardShell
+      dev={displayDev}
+      dryRun={dryRun}
+      nowMs={nowMs}
+      kind="generic"
+      // The state word lives in the below-title state row; the header chip
+      // returns only to anchor the cooldown countdown ring, which the state row
+      // cannot show.
+      leadingChip={hasTimer && (
+        <span class="plan-state-chip-wrap">
+          <span
+            class={`plan-chip plan-chip--${chipModifierForTone(presentation.tone)}`}
+            data-state-kind={presentation.kind}
+            data-state-tone={presentation.tone}
+            role="img"
+            aria-label={presentation.label}
+            data-tooltip={presentation.label}
+          >
+            {presentation.label}
+          </span>
+          <CooldownProgress remainingSec={remainingSec} baseSec={baseSec} tone={presentation.tone} />
+        </span>
+      )}
     >
-      <MdElevation aria-hidden="true" />
-      <MdRipple aria-hidden="true" />
-
-      <div class="plan-card__header">
-        <div class="plan-card__title-wrap">
-          <h3 class="plan-card__title">{displayName}</h3>
-        </div>
-        <div class="plan-card__chips">
-          {/* The state word lives in the below-title state row; the header
-              chip returns only to anchor the cooldown countdown ring, which
-              the state row cannot show. */}
-          {hasTimer && (
-            <span class="plan-state-chip-wrap">
-              <span
-                class={`plan-chip plan-chip--${chipModifierForTone(presentation.tone)}`}
-                data-state-kind={presentation.kind}
-                data-state-tone={presentation.tone}
-                role="img"
-                aria-label={presentation.label}
-                data-tooltip={presentation.label}
-              >
-                {presentation.label}
-              </span>
-              <CooldownProgress remainingSec={remainingSec} baseSec={baseSec} tone={presentation.tone} />
-            </span>
-          )}
-          <PlanCardStatusChipView dev={displayDev} displayKind={presentation.kind} dryRun={dryRun} />
-          <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
-        </div>
-      </div>
-
       {/* One anatomy for every card: the bold canonical state word sits below
           the title with the kW right-aligned on the same row. The state word
           is always the state vocabulary (never an action sentence) — in the
@@ -379,7 +415,7 @@ export const PlanGenericCard = ({
           home battery's charge level (and, in its own mode, its direction). */}
       {presentation.factText !== null && <span class="plan-card__secondary-line">{presentation.factText}</span>}
       {singleReason !== '' && <p class="plan-card__reason">{singleReason}</p>}
-    </div>
+    </PlanCardShell>
   );
 };
 
@@ -396,42 +432,13 @@ export const PlanTemperatureCard = ({
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(dev, nowMs);
   const presentation = displayDev.status;
-  const { kind } = presentation;
-
-  const cardClasses = [
-    'pels-surface-card device-row plan-card plan-card--temperature clickable',
-    isDimmedDisplayStateKind(kind) ? 'plan-card--dim' : '',
-  ].filter(Boolean).join(' ');
-
   const temperatureLine = presentation.factText;
   const reasonLine = presentation.reason?.text ?? null;
   const reasonTooltip = presentation.reason?.detail;
   const reasonTone = presentation.reason?.tone;
-  const displayName = formatDisplayDeviceName(dev.name);
 
   return (
-    <div
-      class={cardClasses}
-      data-device-id={dev.id}
-      data-state-kind={kind}
-      tabIndex={0}
-      role="button"
-      aria-label={`Open device details for ${displayName}`}
-      {...cardActivationProps(dev.id)}
-    >
-      <MdElevation aria-hidden="true" />
-      <MdRipple aria-hidden="true" />
-
-      <div class="plan-card__header">
-        <div class="plan-card__title-wrap">
-          <h3 class="plan-card__title">{displayName}</h3>
-        </div>
-        <div class="plan-card__chips">
-          <PlanCardStatusChipView dev={displayDev} displayKind={kind} dryRun={dryRun} />
-          <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
-        </div>
-      </div>
-
+    <PlanCardShell dev={displayDev} dryRun={dryRun} nowMs={nowMs} kind="temperature" leadingChip={null}>
       {/* Same anatomy as the generic/stepped cards: the state word distinguishes
           a quiet on-device (`Idle`) from affirmative binary-off evidence
           (`Off`), while a held thermostat reads `Limited` like every other
@@ -449,6 +456,6 @@ export const PlanTemperatureCard = ({
       {reasonLine !== null && (
         <p class="plan-card__temp-reason" data-tone={reasonTone} data-tooltip={reasonTooltip}>{reasonLine}</p>
       )}
-    </div>
+    </PlanCardShell>
   );
 };

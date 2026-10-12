@@ -267,72 +267,95 @@
       recourse: null
     };
   });
-  var deviceDataMissingResolver = (kind) => (ctx) => ({
-    headline: kind.headline,
-    body: kind.body,
-    headlineReason: `PELS can\u2019t read the ${kind.readingNoun} from ${ctx.deviceName.trim() || kind.fallbackDeviceNoun}.`,
+  var priceFeatureDisabledCopy = (kindNoun) => (() => ({
+    headline: "Price-aware optimisation is off",
+    body: `Enable price-aware optimisation in Settings \u2192 Electricity prices to compute a ${kindNoun}.`,
+    headlineReason: "Price-aware optimisation is off in Settings.",
+    recourse: { label: "Open Settings", targetTab: "settings" }
+  }));
+  var deviceDataMissingResolver = (headline, body, readingNoun, fallbackDeviceNoun) => (ctx) => ({
+    headline,
+    body,
+    headlineReason: `PELS can\u2019t read the ${readingNoun} from ${ctx.deviceName.trim() || fallbackDeviceNoun}.`,
     recourse: overviewDeviceRecourse(ctx.deviceId)
   });
   var [headlinePart, bodyFragment] = PENDING_REASON_MISSING_CAPACITY_COPY.split(" \u2014 ");
   var MISSING_CAPACITY_HEADLINE = headlinePart ?? PENDING_REASON_MISSING_CAPACITY_COPY;
   var MISSING_CAPACITY_BODY = bodyFragment === void 0 ? "" : `${bodyFragment.charAt(0).toUpperCase()}${bodyFragment.slice(1)}`;
-  var HEATER_DEVICE_DATA_MISSING = deviceDataMissingResolver({
-    headline: "Waiting for a reading from the device",
-    body: "PELS needs a current temperature, a useful capacity, or a recent observation from this heater before it can plan the smart task.",
-    readingNoun: "current temperature",
-    fallbackDeviceNoun: "the heater"
-  });
-  var COOLING_DEVICE_DATA_MISSING = deviceDataMissingResolver({
-    headline: "Waiting for a reading from the device",
-    body: "PELS needs a current temperature, useful capacity, or a recent observation from this cooling device before it can plan the smart task.",
-    readingNoun: "current temperature",
-    fallbackDeviceNoun: "the cooling device"
-  });
-  var TEMPERATURE_DEVICE_DATA_MISSING = deviceDataMissingResolver({
-    headline: "Waiting for a reading from the device",
-    body: "PELS needs a current temperature, useful capacity, or a recent observation from this device before it can plan the smart task.",
-    readingNoun: "current temperature",
-    fallbackDeviceNoun: "this device"
-  });
-  var EV_DEVICE_DATA_MISSING = deviceDataMissingResolver({
-    headline: "Waiting for a reading from the EV",
-    body: "PELS needs a current state of charge, a charge rate, or a recent observation from this EV before it can plan the smart task.",
-    readingNoun: "state of charge",
-    fallbackDeviceNoun: "the EV"
-  });
-  var ENERGY_DEVICE_DATA_MISSING = deviceDataMissingResolver({
-    headline: "Waiting for a power reading from the device",
-    body: "PELS counts the energy this device takes from its power readings, and needs one before it can plan the smart task.",
-    readingNoun: "power use",
-    fallbackDeviceNoun: "the device"
-  });
+  var HEATER_DEVICE_DATA_MISSING = deviceDataMissingResolver(
+    "Waiting for a reading from the device",
+    "PELS needs a current temperature, a useful capacity, or a recent observation from this heater before it can plan the smart task.",
+    "current temperature",
+    "the heater"
+  );
+  var COOLING_DEVICE_DATA_MISSING = deviceDataMissingResolver(
+    "Waiting for a reading from the device",
+    "PELS needs a current temperature, useful capacity, or a recent observation from this cooling device before it can plan the smart task.",
+    "current temperature",
+    "the cooling device"
+  );
+  var TEMPERATURE_DEVICE_DATA_MISSING = deviceDataMissingResolver(
+    "Waiting for a reading from the device",
+    "PELS needs a current temperature, useful capacity, or a recent observation from this device before it can plan the smart task.",
+    "current temperature",
+    "this device"
+  );
+  var EV_DEVICE_DATA_MISSING = deviceDataMissingResolver(
+    "Waiting for a reading from the EV",
+    "PELS needs a current state of charge, a charge rate, or a recent observation from this EV before it can plan the smart task.",
+    "state of charge",
+    "the EV"
+  );
+  var ENERGY_DEVICE_DATA_MISSING = deviceDataMissingResolver(
+    "Waiting for a power reading from the device",
+    "PELS counts the energy this device takes from its power readings, and needs one before it can plan the smart task.",
+    "power use",
+    "the device"
+  );
+  var KIND_INVARIANT_LIVE_STATE_CHIP_LABELS = {
+    building_plan: "Building plan\u2026",
+    queued: "On track",
+    unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
+    // Reachable on any kind: the owner can stop managing a heater too.
+    paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
+    // Only a charger reports the `ok` state; the other kinds never reach it and
+    // read the generic on-track copy if a stale value ever comes through.
+    ok: "On track"
+  };
+  var KIND_INVARIANT_LABELS = {
+    atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
+    cannotMeetChipLabel: "Cannot finish",
+    backgroundSeriesName: "Background usage",
+    planTooltipIdle: "Idle",
+    cannotMeetDailyBudgetExhausted: "Today's daily budget is fully booked. Lower it so future days reserve power earlier, or move the deadline.",
+    cannotMeetDailyBudgetContributed: "Today\u2019s daily budget is holding part of this back, but there is not enough time to finish even without it. Edit the task and turn on \u201CMay go over daily budget\u201D under Extra permissions to help; it will not be enough on its own.",
+    cannotMeetRecourse: CANNOT_MEET_RECOURSE,
+    resolveQueuedHeadlineReason,
+    completedHero: {
+      headline: "Smart task finished",
+      body: "See Smart tasks for the outcome."
+    },
+    planInputsMaxPowerRowLabel: "Device power used",
+    revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE
+  };
   var DEADLINE_LABELS = {
     temperature: {
+      ...KIND_INVARIANT_LABELS,
       kindChipLabel: "Temperature",
       activeChipLabel: "Heating",
       sectionLabel: "Heating smart task",
       liveStateChipLabel: {
+        ...KIND_INVARIANT_LIVE_STATE_CHIP_LABELS,
         active: "Heating",
-        building_plan: "Building plan\u2026",
-        queued: "On track",
-        unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
         // Thermal devices can't be unplugged; the variant is unreachable here
         // and falls back to the generic on-track copy if the resolver ever
         // hands a stale value through.
-        paused_unplugged: "On track",
-        // Reachable on any kind: the owner can stop managing a heater too.
-        paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
-        // Thermal devices aren't chargers; unreachable, same fallback as above.
-        ok: "On track"
+        paused_unplugged: "On track"
       },
-      atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
-      cannotMeetChipLabel: "Cannot finish",
       deviceSeriesName: "Heating",
       originalDeviceSeriesName: "Original Heating",
       actualDeviceSeriesName: "Measured Heating",
-      backgroundSeriesName: "Background usage",
       progressSeriesName: "Temperature",
-      planTooltipIdle: "Idle",
       // Thermal `invalid_session` is unreachable today (heaters can't be
       // unplugged); we map it to `device_data_missing` so a future diagnostic
       // can't leak EV-specific copy. `missing_capacity` is the cold-start
@@ -342,12 +365,7 @@
       pendingHeroByReason: {
         not_yet_planned: notYetPlannedCopy("heat plan"),
         awaiting_horizon_plan: awaitingHorizonCopy("heat plan"),
-        price_feature_disabled: () => ({
-          headline: "Price-aware optimisation is off",
-          body: "Enable price-aware optimisation in Settings \u2192 Electricity prices to compute a heat plan.",
-          headlineReason: "Price-aware optimisation is off in Settings.",
-          recourse: { label: "Open Settings", targetTab: "settings" }
-        }),
+        price_feature_disabled: priceFeatureDisabledCopy("heat plan"),
         device_data_missing: HEATER_DEVICE_DATA_MISSING,
         invalid_session: HEATER_DEVICE_DATA_MISSING,
         // Thermal devices aren't chargers; unreachable here, kept as a safety net
@@ -396,43 +414,26 @@
       // budget remedy is handled by the dedicated
       // `cannotMeetDailyBudgetExhausted` branch above.
       cannotMeetShortfall: () => "Not enough time for this target. Lower the target or move the deadline.",
-      cannotMeetDailyBudgetExhausted: "Today's daily budget is fully booked. Lower it so future days reserve power earlier, or move the deadline.",
-      cannotMeetDailyBudgetContributed: "Today\u2019s daily budget is holding part of this back, but there is not enough time to finish even without it. Edit the task and turn on \u201CMay go over daily budget\u201D under Extra permissions to help; it will not be enough on its own.",
-      cannotMeetRecourse: CANNOT_MEET_RECOURSE,
-      resolveQueuedHeadlineReason,
-      completedHero: {
-        headline: "Smart task finished",
-        body: "See Smart tasks for the outcome."
-      },
       targetUnit: "\xB0C",
       planInputsCardTitle: "What PELS has learned",
       planInputsRateRowLabel: "Energy needed per \xB0C",
-      planInputsMaxPowerRowLabel: "Device power used",
       perUnitRateUnit: "kWh/\xB0C",
-      planInputsRateBootstrapNote: null,
-      revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE
+      planInputsRateBootstrapNote: null
     },
     ev_soc: {
+      ...KIND_INVARIANT_LABELS,
       kindChipLabel: "EV",
       activeChipLabel: "Charging",
       sectionLabel: "EV smart task",
       liveStateChipLabel: {
+        ...KIND_INVARIANT_LIVE_STATE_CHIP_LABELS,
         active: "Charging",
-        building_plan: "Building plan\u2026",
-        queued: "On track",
-        unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
-        paused_unplugged: "Paused \u2014 unplugged",
-        paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
-        ok: "On track"
+        paused_unplugged: "Paused \u2014 unplugged"
       },
-      atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
-      cannotMeetChipLabel: "Cannot finish",
       deviceSeriesName: "Charging",
       originalDeviceSeriesName: "Original Charging",
       actualDeviceSeriesName: "Measured Charging",
-      backgroundSeriesName: "Background usage",
       progressSeriesName: "Charge level",
-      planTooltipIdle: "Idle",
       // EV `invalid_session` is the plugged-out / discharging pause state. The
       // body already says "PELS will resume…", the headlineReason restates the
       // *cause* at headline height, and recourse is null because plugging in
@@ -442,12 +443,7 @@
       pendingHeroByReason: {
         not_yet_planned: notYetPlannedCopy("charging plan"),
         awaiting_horizon_plan: awaitingHorizonCopy("charging plan"),
-        price_feature_disabled: () => ({
-          headline: "Price-aware optimisation is off",
-          body: "Enable price-aware optimisation in Settings \u2192 Electricity prices to compute a charging plan.",
-          headlineReason: "Price-aware optimisation is off in Settings.",
-          recourse: { label: "Open Settings", targetTab: "settings" }
-        }),
+        price_feature_disabled: priceFeatureDisabledCopy("charging plan"),
         device_data_missing: EV_DEVICE_DATA_MISSING,
         invalid_session: () => ({
           headline: "Charging paused \u2014 EV unplugged",
@@ -455,11 +451,6 @@
           headlineReason: "Charger reports the car isn\u2019t plugged in.",
           recourse: null
         }),
-        // Connected (plugged_in) with no confirmed charging session. Distinct from
-        // `invalid_session`: the car IS plugged in. PELS does command this charger
-        // on — `plugged_in` is commandable — so this must NOT read as "can't
-        // resume" or send the owner to check hardware PELS is mid-way through
-        // starting. What is true is narrower: no power is flowing yet, so the SoC
         missing_capacity: EV_DEVICE_DATA_MISSING,
         device_in_sub_home: separateMeterUnavailableResolver,
         device_unmanaged: deviceUnmanagedResolver
@@ -482,21 +473,11 @@
       // read it as "the car lost 30 % of charge") in favour of plain-language
       // recourse. The meta line continues to carry the energy/duration magnitude.
       cannotMeetShortfall: () => "Not enough time or charging power for this target. Lower the target or move the deadline.",
-      cannotMeetDailyBudgetExhausted: "Today's daily budget is fully booked. Lower it so future days reserve power earlier, or move the deadline.",
-      cannotMeetDailyBudgetContributed: "Today\u2019s daily budget is holding part of this back, but there is not enough time to finish even without it. Edit the task and turn on \u201CMay go over daily budget\u201D under Extra permissions to help; it will not be enough on its own.",
-      cannotMeetRecourse: CANNOT_MEET_RECOURSE,
-      resolveQueuedHeadlineReason,
-      completedHero: {
-        headline: "Smart task finished",
-        body: "See Smart tasks for the outcome."
-      },
       targetUnit: "%",
       planInputsCardTitle: "What PELS has learned",
       planInputsRateRowLabel: "Energy needed per %",
-      planInputsMaxPowerRowLabel: "Device power used",
       perUnitRateUnit: "kWh/%",
-      planInputsRateBootstrapNote: "Estimated \u2014 refining as PELS observes charging.",
-      revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE
+      planInputsRateBootstrapNote: "Estimated \u2014 refining as PELS observes charging."
     },
     // "Deliver N kWh to this device by the deadline." Only a pure on/off device
     // carries one (a relay switching a water heater, with no temperature reading),
@@ -505,36 +486,24 @@
     // unplugged: `invalid_session` / `paused_unplugged` are unreachable and fall
     // back as they do for heaters.
     energy: {
+      ...KIND_INVARIANT_LABELS,
       kindChipLabel: "Energy",
       activeChipLabel: "Running",
       sectionLabel: "Energy smart task",
       liveStateChipLabel: {
+        ...KIND_INVARIANT_LIVE_STATE_CHIP_LABELS,
         active: "Running",
-        building_plan: "Building plan\u2026",
-        queued: "On track",
-        unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
         // Unreachable on a pure on/off device; the generic on-track fallback.
-        paused_unplugged: "On track",
-        paused_unmanaged: SMART_TASK_LIST_STATUS_LABELS.paused_unmanaged,
-        ok: "On track"
+        paused_unplugged: "On track"
       },
-      atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
-      cannotMeetChipLabel: "Cannot finish",
       deviceSeriesName: "Running",
       originalDeviceSeriesName: "Original energy",
       actualDeviceSeriesName: "Measured energy",
-      backgroundSeriesName: "Background usage",
       progressSeriesName: "Energy delivered",
-      planTooltipIdle: "Idle",
       pendingHeroByReason: {
         not_yet_planned: notYetPlannedCopy("schedule"),
         awaiting_horizon_plan: awaitingHorizonCopy("schedule"),
-        price_feature_disabled: () => ({
-          headline: "Price-aware optimisation is off",
-          body: "Enable price-aware optimisation in Settings \u2192 Electricity prices to compute a schedule.",
-          headlineReason: "Price-aware optimisation is off in Settings.",
-          recourse: { label: "Open Settings", targetTab: "settings" }
-        }),
+        price_feature_disabled: priceFeatureDisabledCopy("schedule"),
         device_data_missing: ENERGY_DEVICE_DATA_MISSING,
         invalid_session: ENERGY_DEVICE_DATA_MISSING,
         missing_capacity: ENERGY_DEVICE_DATA_MISSING,
@@ -561,23 +530,13 @@
       // sentence says so, because "not enough time" alone would send the owner to
       // move a deadline that is not the problem.
       cannotMeetShortfall: () => "Not enough time or power for this amount of energy. Lower the target or move the deadline. If the device switches itself off when it is done, like a water heater that is already hot, it may already be full.",
-      cannotMeetDailyBudgetExhausted: "Today's daily budget is fully booked. Lower it so future days reserve power earlier, or move the deadline.",
-      cannotMeetDailyBudgetContributed: "Today\u2019s daily budget is holding part of this back, but there is not enough time to finish even without it. Edit the task and turn on \u201CMay go over daily budget\u201D under Extra permissions to help; it will not be enough on its own.",
-      cannotMeetRecourse: CANNOT_MEET_RECOURSE,
-      resolveQueuedHeadlineReason,
-      completedHero: {
-        headline: "Smart task finished",
-        body: "See Smart tasks for the outcome."
-      },
       targetUnit: "kWh",
       planInputsCardTitle: "What PELS uses",
       // The rate is exact (one kWh fed is one kWh of progress); the row exists
       // for the other kinds' learned rate and has nothing to teach here.
       planInputsRateRowLabel: "Energy needed per kWh",
-      planInputsMaxPowerRowLabel: "Device power used",
       perUnitRateUnit: "kWh/kWh",
-      planInputsRateBootstrapNote: null,
-      revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE
+      planInputsRateBootstrapNote: null
     }
   };
   var EV_CARD_HOUR_MS = 60 * 60 * 1e3;
@@ -1186,10 +1145,7 @@
     }
     return `${formatValue(row.currentValue, row.unitSymbol)} \u2192 ${target}`;
   };
-  var formatRowEta = (row) => {
-    if (row.finishLabel === null) return "";
-    return `${row.etaVerb} ${row.finishLabel}`;
-  };
+  var formatRowEta = (row) => `${row.etaVerb} ${row.finishLabel}`;
   var targetSentence = (verb, targetValue, unitSymbol) => `${verb} ${formatValue(targetValue, unitSymbol)}`;
   var renderRow = (template, row) => {
     const fragment = template.content.cloneNode(true);
@@ -1201,7 +1157,7 @@
       button.dataset.deviceId = row.deviceId;
       button.setAttribute(
         "aria-label",
-        `${row.deviceName}, ${row.statusLabel}${row.finishLabel ? `, ${formatRowEta(row)}` : ""}`
+        `${row.deviceName}, ${row.statusLabel}, ${formatRowEta(row)}`
       );
     }
     const nameEl = li.querySelector("[data-row-name]");
@@ -1318,8 +1274,7 @@
     detailHeaderEl.textContent = row.deviceName;
     detailChipEl.textContent = row.statusLabel;
     detailChipEl.dataset.tone = row.tone;
-    const deadlineLabel = row.deadlineLongLabel ?? row.finishLabel;
-    setLine(detailDeadlineEl, deadlineLabel ? `${row.etaVerb} ${deadlineLabel}` : null);
+    setLine(detailDeadlineEl, `${row.etaVerb} ${row.deadlineLongLabel}`);
     detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
     detailTargetEl.hidden = false;
     renderChart(detailChartEl, row.chart);

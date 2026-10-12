@@ -54,6 +54,20 @@ export const readChartPalette = <T extends Record<string, string>>(
   return palette as T;
 };
 
+// One CSS custom property off `element`, or `fallback` when it is empty (the
+// token is missing or renamed). Tokens ship with this code, so the fallback is
+// defense in depth rather than a normal path.
+export const readCssVar = (element: HTMLElement, variable: string, fallback = ''): string => (
+  getComputedStyle(element).getPropertyValue(variable).trim() || fallback
+);
+
+// A numeric CSS custom property (a font size in px), or `fallback` when it is
+// unset or does not parse.
+export const readCssNumber = (element: HTMLElement, variable: string, fallback: number): number => {
+  const parsed = Number.parseFloat(readCssVar(element, variable));
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 // Reserved right-hand grid margin (px) that hosts the budget-reference pill
 // chip on the Usage daily chart and the Budget progress chart. The pill is
 // pinned at the reference's right end, entirely off the data — sized for the
@@ -68,21 +82,21 @@ export const BUDGET_REFERENCE_MARGIN_PX = 72;
 // border) cannot drift between the two surfaces. `text` arrives pre-split
 // (`Budget\n12.0 kWh`) so the pill stays narrow enough for the reserved
 // margin at 320 px.
-export const buildBudgetReferencePillLabel = (params: {
-  text: string;
-  borderColor: string;
-  backgroundColor: string;
-  textColor: string;
-}) => ({
+export const buildBudgetReferencePillLabel = (
+  text: string,
+  borderColor: string,
+  backgroundColor: string,
+  textColor: string,
+) => ({
   show: true,
-  formatter: params.text,
-  color: params.textColor,
+  formatter: text,
+  color: textColor,
   fontSize: 10,
   lineHeight: 13,
   align: 'left' as const,
   verticalAlign: 'middle' as const,
-  backgroundColor: params.backgroundColor,
-  borderColor: params.borderColor,
+  backgroundColor,
+  borderColor,
   borderWidth: 1,
   borderRadius: 6,
   padding: [3, 6, 3, 6] as [number, number, number, number],
@@ -169,3 +183,46 @@ export const formatAxisTick = (value: number, interval: number): string => {
   if (Number.isInteger(rounded)) return String(rounded);
   return rounded.toFixed(decimals).replace(/\.?0+$/, '');
 };
+
+type UsageAxisPalette = { grid: string; muted: string };
+
+// The category x-axis of the Usage bar charts: no ticks, a grid-toned axis
+// line, and every `labelEvery`-th label (`resolveLabelEvery`) plus the last.
+export const buildUsageCategoryXAxis = (
+  labels: readonly string[],
+  labelEvery: number,
+  palette: UsageAxisPalette,
+) => ({
+  type: 'category' as const,
+  data: [...labels],
+  axisTick: { show: false },
+  axisLine: { lineStyle: { color: palette.grid } },
+  axisLabel: {
+    color: palette.muted,
+    fontSize: 11,
+    formatter: (_label: string, index: number) => (
+      index % labelEvery !== 0 && index !== labels.length - 1 ? '' : labels[index]
+    ),
+  },
+});
+
+// The value y-axis of the Usage bar charts: zero to the rounded max at its
+// interval (`roundedAxisMaxToInterval`), ticks labelled at that precision
+// (`formatAxisTick`), no axis line, grid-toned split lines.
+export const buildUsageValueYAxis = (
+  yAxis: { max: number; interval: number },
+  palette: UsageAxisPalette,
+) => ({
+  type: 'value' as const,
+  min: 0,
+  max: yAxis.max,
+  interval: yAxis.interval,
+  axisTick: { show: false },
+  axisLine: { show: false },
+  axisLabel: {
+    color: palette.muted,
+    fontSize: 11,
+    formatter: (value: number) => formatAxisTick(value, yAxis.interval),
+  },
+  splitLine: { lineStyle: { color: palette.grid, width: 1 } },
+});

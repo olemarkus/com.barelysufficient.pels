@@ -316,8 +316,8 @@ describe('card primitive: every surface walks the canonical `.pels-surface-card`
 
   it('device-row plan-card JSX consumers chain `pels-surface-card` (PlanDeviceCards / PlanSteppedCard)', () => {
     // We scan source for the exact class-string template each consumer uses.
-    // The four producers (PlanDeviceCards binary, PlanDeviceCards temperature,
-    // PlanSteppedCard, devices.ts imperative device-group card) MUST all
+    // The two producers (the shared `PlanCardShell` every plan card renders
+    // through, and the devices.ts imperative device-group card) MUST both
     // chain `pels-surface-card` on the host so the device-row card lights
     // up the canonical surface.
     const PLAN_DEVICE_CARDS = fs.readFileSync(
@@ -333,11 +333,12 @@ describe('card primitive: every surface walks the canonical `.pels-surface-card`
       'utf8',
     );
 
-    // PlanDeviceCards has two plan-card hosts (binary + temperature variants).
-    expect(PLAN_DEVICE_CARDS.match(/['"]pels-surface-card[^'"]*plan-card[^'"]*['"]/g) ?? [])
-      .toHaveLength(2);
-    expect(PLAN_STEPPED_CARD.match(/['"]pels-surface-card[^'"]*plan-card[^'"]*['"]/g) ?? [])
+    // PlanDeviceCards has the one plan-card host, `PlanCardShell`; the stepped
+    // card renders through it rather than a host of its own.
+    expect(PLAN_DEVICE_CARDS.match(/[`'"]pels-surface-card device-row \$\{PLAN_CARD_KIND_CLASS\[kind\]\} clickable[`'"]/g) ?? [])
       .toHaveLength(1);
+    expect(PLAN_STEPPED_CARD).toMatch(/<PlanCardShell [^>]*kind="stepped"/);
+    expect(PLAN_STEPPED_CARD).not.toMatch(/pels-surface-card/);
     expect(DEVICES_TS.match(/['"]pels-surface-card\s+plan-card[^'"]*['"]/g) ?? [])
       .toHaveLength(1);
   });

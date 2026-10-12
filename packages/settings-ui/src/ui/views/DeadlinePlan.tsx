@@ -12,7 +12,6 @@ import {
   formatSmartTaskGoalRangeHint,
   REVISION_PANEL_TITLE,
   SMART_TASK_EDIT_COPY,
-  REVISION_REASON_FALLBACK_WITH_DETAIL,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
   SMART_TASK_BANNER_UNAVAILABLE_TITLE,
@@ -33,14 +32,20 @@ import {
   type SmartTaskTrajectoryStateline,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
-import { attachHourScrub, resolveScrubHourIndex } from '../deadlineChartScrub.ts';
+import { readChartPalette, readCssNumber, readCssVar } from '../dayViewChart.ts';
+import {
+  attachHourScrub,
+  attachTimeAxisHourScrub,
+  selectionHairlineSeries,
+  setSelectionHairline,
+} from '../deadlineChartScrub.ts';
 import { resolveCategoryIndexFromPixel } from '../chartReadout.ts';
 import { formatAcceptedAt, formatHourLabel } from '../deadlinePlanFormatters.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
-import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
+import { DeadlinePlanHistoryDetail, PlanRevisionRow } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
-import { MdFilledButton, MdFilledTextField, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
+import { MdFilledButton, MdFilledTextField, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
 import type { SmartTaskEditPermissionKey, SmartTaskEditSnapshot } from '../smartTaskEdit.ts';
 import { CheckCircleIcon, ExpandMoreIcon } from './icons.tsx';
 import { logSettingsWarn } from '../logging.ts';
@@ -439,39 +444,29 @@ export type DeadlineChartPalette = {
   danger: string;
 };
 
-// `fallback` is consulted only when the computed value is empty (token missing
-// or renamed). Tokens are committed alongside this code, so this is defense in
-// depth rather than a normal code path.
-const cssVar = (element: HTMLElement, variable: string, fallback = ''): string => (
-  getComputedStyle(element).getPropertyValue(variable).trim() || fallback
-);
-
-const cssNumber = (element: HTMLElement, variable: string, fallback: number): number => {
-  const raw = cssVar(element, variable);
-  if (!raw) return fallback;
-  const parsed = Number.parseFloat(raw);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const resolvePalette = (element: HTMLElement): DeadlineChartPalette => ({
-  picked: cssVar(element, '--pels-chart-picked'),
+const DEADLINE_CHART_PALETTE_VARS = {
+  picked: '--pels-chart-picked',
   // Mint measured/delivered ink per the semantic viz palette — the trajectory
   // measured line, now dot, and run-band tint. (Previously the saturated
   // grass-green accent role, which sat outside the viz palette.)
-  accent: cssVar(element, '--pels-chart-actual'),
-  forecast: cssVar(element, '--pels-chart-forecast'),
-  muted: cssVar(element, '--pels-text-supporting-color'),
-  grid: cssVar(element, '--pels-surface-outline'),
-  text: cssVar(element, '--text'),
-  danger: cssVar(element, '--color-role-danger'),
-});
+  accent: '--pels-chart-actual',
+  forecast: '--pels-chart-forecast',
+  muted: '--pels-text-supporting-color',
+  grid: '--pels-surface-outline',
+  text: '--text',
+  danger: '--color-role-danger',
+} as const satisfies Record<keyof DeadlineChartPalette, string>;
+
+const resolvePalette = (element: HTMLElement): DeadlineChartPalette => (
+  readChartPalette<DeadlineChartPalette>(element, DEADLINE_CHART_PALETTE_VARS)
+);
 
 export type ChartTypography = {
   labelFontSize: number;
 };
 
 const resolveTypography = (element: HTMLElement): ChartTypography => ({
-  labelFontSize: cssNumber(element, '--font-size-xs', 11),
+  labelFontSize: readCssNumber(element, '--font-size-xs', 11),
 });
 
 // Container-specific sizers. Fallback heights must match the
@@ -840,20 +835,8 @@ export const buildTrajectoryChartOption = (
         symbolSize: 9,
         itemStyle: { color: palette.accent, borderColor: surfaceColor, borderWidth: 2 },
       },
-      {
-        // Selection hairline, fed imperatively from the shared scrub state.
-        id: 'selection-hairline',
-        type: 'line',
-        data: [],
-        silent: true,
-        markLine: {
-          silent: true,
-          symbol: 'none',
-          lineStyle: { color: palette.text, width: 1, opacity: 0.5 },
-          label: { show: false },
-          data: [],
-        },
-      },
+      // Selection hairline, fed imperatively from the shared scrub state.
+      selectionHairlineSeries(palette.text),
     ] satisfies SeriesOption[],
   };
 };
@@ -922,7 +905,7 @@ const TrajectoryChart = ({ payload, selectedHourMs, onSelect }: {
       resolveTypography(container),
       // Now-dot ring colour = the card surface behind the chart, so the dot
       // reads as punched out of the measured line.
-      cssVar(container, '--pels-surface-container-lowest', 'transparent'),
+      readCssVar(container, '--pels-surface-container-lowest', 'transparent'),
       // Width drives the time-axis label cadence (~3 labels at ≤360 px).
       // Same sizer the mount hook uses, so the cadence matches the rendered
       // width even on a cold mount inside a hidden panel.
@@ -932,35 +915,10 @@ const TrajectoryChart = ({ payload, selectedHourMs, onSelect }: {
     deps: [payload],
     onChartInit: (chart) => {
       chartHandle.current = chart;
-      attachHourScrub(
-        chart,
-        (x, y) => {
-          if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null;
-          // Scalar pixel for the single-axis finder (see ScheduleChart note).
-          const raw = chart.convertFromPixel({ xAxisIndex: 0 }, x);
-          const ms = Array.isArray(raw) ? raw[0] : raw;
-          if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
-          return resolveScrubHourIndex(hours, ms);
-        },
-        (index) => onSelectRef.current(index),
-      );
+      attachTimeAxisHourScrub(chart, hours, (index) => onSelectRef.current(index));
     },
   });
-  // Selection hairline at the selected hour's centre, merged onto the
-  // `selection-hairline` series by id. Only `markLine.data` changes; the
-  // line style was baked into the initial option with the live palette.
-  useEffect(() => {
-    const chart = chartHandle.current;
-    if (!chart || chart.isDisposed()) return;
-    chart.setOption({
-      series: [{
-        id: 'selection-hairline',
-        markLine: {
-          data: selectedHourMs === null ? [] : [{ xAxis: selectedHourMs + ONE_HOUR_MS / 2 }],
-        },
-      }],
-    });
-  }, [selectedHourMs, payload]);
+  useEffect(() => setSelectionHairline(chartHandle.current, selectedHourMs), [selectedHourMs, payload]);
   return <div ref={chartRef} class="deadline-trajectory-chart" role="img" aria-label={trajectory.ariaLabel} />;
 };
 
@@ -1086,11 +1044,11 @@ const renderProvenanceRowDisplay = (
   if (typeof row.freshnessOfMs !== 'number' || nowMs === null) {
     return { value: row.value, tone: row.tone };
   }
-  const fresh = formatLastSampleValue({
-    lastMs: row.freshnessOfMs,
+  const fresh = formatLastSampleValue(
+    row.freshnessOfMs,
     nowMs,
     formatAcceptedAt,
-  });
+  );
   return { value: fresh.text, tone: fresh.tone };
 };
 
@@ -1298,9 +1256,6 @@ const SmartTaskClearControl = ({
   );
 };
 
-/** md-switch exposes its state as a `.selected` property (Material Web interop). */
-type SwitchElement = HTMLElement & { selected: boolean };
-
 // One permission row, on the canonical `.md-switch-row` grammar every other
 // enable-toggle in PELS uses (label + hint leading, switch trailing) — no
 // page-local toggle primitive, per `views/AGENTS.md`. The `--disabled` modifier
@@ -1319,7 +1274,7 @@ const SmartTaskPermissionRow = ({ label, hint, selected, disabled, onToggle }: {
       aria-label={label}
       {...(selected ? { selected: true } : {})}
       {...(disabled ? { disabled: true } : {})}
-      onChange={(event: Event) => onToggle((event.currentTarget as SwitchElement).selected)}
+      onChange={(event: Event) => onToggle(readSwitchSelected(event))}
     />
     <span class="md-switch-row__content">
       <span class="md-switch-row__label pels-text-settings-label">{label}</span>
@@ -1696,24 +1651,7 @@ const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => 
         </summary>
         <ol class="plan-revision-log">
           {payload.revisionLog.map((row) => (
-            <li key={`${row.revision}-${row.timeLabel}`} class="plan-revision-row">
-              <span class="plan-revision-time">{row.timeLabel}</span>
-              <span class="plan-revision-reason">
-                {row.isFallback ? REVISION_REASON_FALLBACK_WITH_DETAIL : row.reason}
-              </span>
-              {/* Suppress the diff chip on fallback rows — the chip would
-                  otherwise misattribute the +/−Nh diff to a "Plan refreshed"
-                  line that says nothing about why the hours changed. */}
-              {row.hourDiff !== null && !row.isFallback && (
-                <span
-                  class="plan-revision-diff"
-                  title={row.hourDiffAriaLabel ?? undefined}
-                  aria-label={row.hourDiffAriaLabel ?? undefined}
-                >
-                  {row.hourDiff}
-                </span>
-              )}
-            </li>
+            <PlanRevisionRow key={`${row.revision}-${row.timeLabel}`} row={row} />
           ))}
         </ol>
       </details>

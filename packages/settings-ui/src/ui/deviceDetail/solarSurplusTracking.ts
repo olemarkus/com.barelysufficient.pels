@@ -10,15 +10,12 @@ import {
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
-import { logSettingsError } from '../logging.ts';
-import { savePriceOptimizationSettings } from '../priceOptimization.ts';
 import {
   hasActiveDeadlineObjective,
   resolveSurplusControlAvailable,
   state,
-  type PriceOptimizationConfig,
 } from '../state.ts';
-import { showToastError } from '../toast.ts';
+import { savePriceOptimizationPatch, SURPLUS_ONLY_PRICE_OPTIMIZATION_CONFIG } from './priceOptimizationPatch.ts';
 import { resolveDeviceDetailKind } from '../deviceKind.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { hasUsableSteppedLoadLadder } from '../../../../shared-domain/src/deviceControlProfiles.ts';
@@ -125,25 +122,6 @@ const applyTrackingCopy = (device: SettingsUiDeviceDetailItem): void => {
   }
 };
 
-// A fresh opt-in writes a full valid blob entry: price-response off and zero
-// deltas (a stepped load has no setpoint to shift), with only the surplus fields
-// carrying meaning. An existing entry keeps its other fields.
-const buildTrackingConfig = (
-  existing: PriceOptimizationConfig | undefined,
-  surplusWilling: boolean,
-): PriceOptimizationConfig => (
-  existing
-    ? { ...existing, surplusWilling }
-    : {
-      enabled: false,
-      cheapDelta: 0,
-      expensiveDelta: 0,
-      priceConfigured: false,
-      surplusWilling,
-      surplusDelta: 0,
-    }
-);
-
 export const initDeviceDetailSurplusTrackingHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
@@ -158,30 +136,19 @@ export const initDeviceDetailSurplusTrackingHandlers = (params: {
     // above is dead.
     if (!isSurplusTrackingDeviceShape(device, controlState)) return;
 
-    const previous = state.priceOptimizationSettings[deviceId];
-    state.priceOptimizationSettings[deviceId] = buildTrackingConfig(previous, surplusWilling);
-
-    try {
-      await savePriceOptimizationSettings();
+    // An existing entry keeps its other fields and only flips `surplusWilling`.
+    const rebind = (): void => {
       if (params.getCurrentDetailDeviceId() === deviceId) {
         setDeviceDetailSurplusTrackingControl({ deviceId, getDeviceById: params.getDeviceById });
       }
-    } catch (error) {
-      // Roll back only if no newer edit landed while the save was in flight.
-      const current = state.priceOptimizationSettings[deviceId];
-      if (current && current.surplusWilling === surplusWilling) {
-        if (previous) {
-          state.priceOptimizationSettings[deviceId] = previous;
-        } else {
-          delete state.priceOptimizationSettings[deviceId];
-        }
-      }
-      if (params.getCurrentDetailDeviceId() === deviceId) {
-        setDeviceDetailSurplusTrackingControl({ deviceId, getDeviceById: params.getDeviceById });
-      }
-      await logSettingsError('Failed to save solar surplus settings', error, 'device detail');
-      await showToastError(error, 'Failed to save solar surplus settings.');
-    }
+    };
+    if (await savePriceOptimizationPatch(
+      deviceId,
+      { surplusWilling },
+      SURPLUS_ONLY_PRICE_OPTIMIZATION_CONFIG,
+      'Failed to save solar surplus settings',
+      rebind,
+    )) rebind();
   };
 
   deviceDetailSurplusTrackOpt?.addEventListener('change', () => {

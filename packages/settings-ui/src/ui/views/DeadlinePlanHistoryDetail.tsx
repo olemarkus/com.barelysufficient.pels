@@ -50,9 +50,14 @@ import {
   buildHistoryDetailHero,
   type DeadlinePlanHistoryHeroPayload,
 } from '../deadlinePlanHistoryDetailHero.ts';
-import { attachHourScrub, resolveScrubHourIndex } from '../deadlineChartScrub.ts';
+import {
+  attachTimeAxisHourScrub,
+  selectionHairlineSeries,
+  setSelectionHairline,
+} from '../deadlineChartScrub.ts';
 import { buildUsageDayHref } from '../deadlineUrls.ts';
 import { encodeHtml, useEchartsMount, type EChartsOption, type EChartsType } from '../echartsRegistry.ts';
+import { readChartPalette } from '../dayViewChart.ts';
 import { MdSwitch } from './materialWebJSX.tsx';
 import type { DeferredObjectiveUnit } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 
@@ -165,22 +170,20 @@ type Palette = {
   tooltipBorder: string;
 };
 
-const cssVar = (element: HTMLElement, name: string, fallback = ''): string => (
-  getComputedStyle(element).getPropertyValue(name).trim() || fallback
-);
+const PALETTE_VARS = {
+  device: '--color-base-accent-default',
+  deviceMuted: '--pels-surface-container-high',
+  observed: '--color-role-good',
+  accent: '--color-role-accent',
+  text: '--text',
+  muted: '--pels-text-supporting-color',
+  grid: '--pels-surface-outline',
+  tooltipBackground: '--color-overlay-toast',
+  tooltipText: '--color-semantic-text-primary',
+  tooltipBorder: '--color-border-medium',
+} as const satisfies Record<keyof Palette, string>;
 
-const resolvePalette = (element: HTMLElement): Palette => ({
-  device: cssVar(element, '--color-base-accent-default'),
-  deviceMuted: cssVar(element, '--pels-surface-container-high'),
-  observed: cssVar(element, '--color-role-good'),
-  accent: cssVar(element, '--color-role-accent'),
-  text: cssVar(element, '--text'),
-  muted: cssVar(element, '--pels-text-supporting-color'),
-  grid: cssVar(element, '--pels-surface-outline'),
-  tooltipBackground: cssVar(element, '--color-overlay-toast'),
-  tooltipText: cssVar(element, '--color-semantic-text-primary'),
-  tooltipBorder: cssVar(element, '--color-border-medium'),
-});
+const resolvePalette = (element: HTMLElement): Palette => readChartPalette<Palette>(element, PALETTE_VARS);
 
 const resolveChartSize = (element: HTMLElement): { height: number; width: number } => {
   const parent = element.parentElement;
@@ -648,19 +651,7 @@ export const buildHistoryDetailTrajectoryOption = (
       }] : []),
       // Selection hairline, fed imperatively from the scrub state (same
       // primitive as the live page).
-      {
-        id: 'selection-hairline',
-        type: 'line' as const,
-        data: [],
-        silent: true,
-        markLine: {
-          silent: true,
-          symbol: 'none',
-          lineStyle: { color: palette.text, width: 1, opacity: 0.5 },
-          label: { show: false },
-          data: [],
-        },
-      },
+      selectionHairlineSeries(palette.text),
     ],
   };
 };
@@ -745,35 +736,10 @@ const HistoryTrajectoryChart = ({
     deps: [data, marker, runBands, showInitialPlan, timeZone],
     onChartInit: (chart) => {
       chartHandle.current = chart;
-      attachHourScrub(
-        chart,
-        (x, y) => {
-          if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null;
-          // Scalar pixel for the single-axis finder (see the live page's
-          // ScheduleChart note — an `[x, y]` pair makes ECharts return null).
-          const raw = chart.convertFromPixel({ xAxisIndex: 0 }, x);
-          const ms = Array.isArray(raw) ? raw[0] : raw;
-          if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
-          return resolveScrubHourIndex(hours, ms);
-        },
-        (index) => onSelectRef.current(index),
-      );
+      attachTimeAxisHourScrub(chart, hours, (index) => onSelectRef.current(index));
     },
   });
-  // Selection hairline at the selected hour's centre, merged onto the
-  // `selection-hairline` series by id — the live page's exact idiom.
-  useEffect(() => {
-    const chart = chartHandle.current;
-    if (!chart || chart.isDisposed()) return;
-    chart.setOption({
-      series: [{
-        id: 'selection-hairline',
-        markLine: {
-          data: selectedHourMs === null ? [] : [{ xAxis: selectedHourMs + ONE_HOUR_MS / 2 }],
-        },
-      }],
-    });
-  }, [selectedHourMs, data]);
+  useEffect(() => setSelectionHairline(chartHandle.current, selectedHourMs), [selectedHourMs, data]);
   return (
     <div
       ref={chartRef}
@@ -1076,6 +1042,28 @@ const sortRevisionsByAtMs = (
 
 type RevisionsCardRow = PlanHistoryRevisionLogRow & { atMs: number };
 
+// One revision-log row, shared with the live task's revision panel so both
+// surfaces narrate a revision identically. Fallback rows suppress the diff
+// chip: the `+/−Nh` would otherwise misattribute the diff to a vague
+// "Plan refreshed" line that says nothing about why the hours changed.
+export const PlanRevisionRow = ({ row }: { row: PlanHistoryRevisionLogRow }) => (
+  <li class="plan-revision-row">
+    <span class="plan-revision-time">{row.timeLabel}</span>
+    <span class="plan-revision-reason">
+      {row.isFallback ? REVISION_REASON_FALLBACK_WITH_DETAIL : row.reason}
+    </span>
+    {row.hourDiff !== null && !row.isFallback && (
+      <span
+        class="plan-revision-diff"
+        title={row.hourDiffAriaLabel ?? undefined}
+        aria-label={row.hourDiffAriaLabel ?? undefined}
+      >
+        {row.hourDiff}
+      </span>
+    )}
+  </li>
+);
+
 const RevisionsCard = ({ rows }: { rows: RevisionsCardRow[] }) => (
   <section class="pels-surface-card budget-redesign-card plan-history-detail__revisions-card">
     {/* Eyebrow distinguishes the post-finalization surface ("After this
@@ -1093,24 +1081,7 @@ const RevisionsCard = ({ rows }: { rows: RevisionsCardRow[] }) => (
         // written; revisions are at-most-one-per-replan and the recorder
         // guarantees monotonic ordering, so this is a stable per-row key
         // without us inventing a synthetic id field on the contract.
-        <li key={row.atMs} class="plan-revision-row">
-          <span class="plan-revision-time">{row.timeLabel}</span>
-          <span class="plan-revision-reason">
-            {row.isFallback ? REVISION_REASON_FALLBACK_WITH_DETAIL : row.reason}
-          </span>
-          {/* Suppress the diff chip on fallback rows for the same reason
-              the live panel does — the `+/−Nh` would otherwise misattribute
-              the diff to a vague "Plan refreshed" line. */}
-          {row.hourDiff !== null && !row.isFallback && (
-            <span
-              class="plan-revision-diff"
-              title={row.hourDiffAriaLabel ?? undefined}
-              aria-label={row.hourDiffAriaLabel ?? undefined}
-            >
-              {row.hourDiff}
-            </span>
-          )}
-        </li>
+        <PlanRevisionRow key={row.atMs} row={row} />
       ))}
     </ol>
   </section>

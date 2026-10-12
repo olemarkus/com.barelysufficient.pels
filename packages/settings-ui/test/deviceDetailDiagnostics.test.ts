@@ -139,9 +139,6 @@ describe('device detail diagnostics', () => {
         },
       },
     };
-    delete (diagnosticsPayload.diagnosticsByDeviceId['heater-1'].windows as Partial<
-      typeof diagnosticsPayload.diagnosticsByDeviceId['heater-1']['windows']
-    >)['21d'];
     vi.doMock('../src/ui/devices.ts', () => ({
       renderDevices: vi.fn(),
     }));

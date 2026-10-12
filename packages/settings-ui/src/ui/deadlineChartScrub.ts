@@ -3,7 +3,7 @@
 // history-detail trajectory chart reuses the exact interaction wiring instead
 // of cloning it (and so the import direction stays acyclic — the live view
 // already imports the history view).
-import type { EChartsType } from './echartsRegistry.ts';
+import type { EChartsType, SeriesOption } from './echartsRegistry.ts';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
@@ -62,4 +62,56 @@ export const resolveScrubHourIndex = (
     }
   }
   return best;
+};
+
+// Hour scrub for a time-axis trajectory chart (live page + history detail): a
+// plot-area position resolves to its hour in `hours` (`resolveScrubHourIndex`),
+// a tap outside the grid to null.
+export const attachTimeAxisHourScrub = (
+  chart: EChartsType,
+  hours: ReadonlyArray<{ startsAtMs: number }>,
+  onSelect: (index: number | null) => void,
+): void => attachHourScrub(
+  chart,
+  (x, y) => {
+    if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null;
+    // Scalar pixel for the single-axis finder: an `[x, y]` pair makes ECharts
+    // return null.
+    const raw = chart.convertFromPixel({ xAxisIndex: 0 }, x);
+    const ms = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
+    return resolveScrubHourIndex(hours, ms);
+  },
+  onSelect,
+);
+
+// The selection hairline series of both trajectory charts. Its line style is
+// baked into the initial option with the live palette; `setSelectionHairline`
+// then feeds only `markLine.data` from the shared scrub state.
+export const selectionHairlineSeries = (textColor: string): SeriesOption => ({
+  id: 'selection-hairline',
+  type: 'line',
+  data: [],
+  silent: true,
+  markLine: {
+    silent: true,
+    symbol: 'none',
+    lineStyle: { color: textColor, width: 1, opacity: 0.5 },
+    label: { show: false },
+    data: [],
+  },
+});
+
+// Moves the hairline to the selected hour's centre, merged onto the
+// `selection-hairline` series by id; none at the default (null) selection.
+export const setSelectionHairline = (chart: EChartsType | null, selectedHourMs: number | null): void => {
+  if (!chart || chart.isDisposed()) return;
+  chart.setOption({
+    series: [{
+      id: 'selection-hairline',
+      markLine: {
+        data: selectedHourMs === null ? [] : [{ xAxis: selectedHourMs + ONE_HOUR_MS / 2 }],
+      },
+    }],
+  });
 };

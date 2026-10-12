@@ -1,4 +1,5 @@
 import type { DeviceOverviewSnapshot } from './deviceOverview';
+import { isGrayStateDevice, isOnLikeState, normalizeDeviceState } from './deviceStatePredicates';
 
 export type PlanStateKind =
   | 'active'
@@ -102,7 +103,11 @@ export const PLAN_STATE_DAILY_BUDGET_STATUS = "Limited by today's daily budget";
 // Replaces the retired `Limited — this hour is near the hard cap`, which named a
 // ceiling on the card and misdescribed the trigger (the hour's kWh being spent,
 // not cap proximity).
-export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = "Waiting to resume — this capacity period's budget is spent";
+// The spent-period fact on its own, for a surface that already states the hold
+// ahead of it (the device-detail diagnostics status line).
+export const PLAN_STATE_HOURLY_BUDGET_SPENT = "This capacity period's budget is spent";
+export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = 'Waiting to resume — '
+  + `${PLAN_STATE_HOURLY_BUDGET_SPENT.charAt(0).toLowerCase()}${PLAN_STATE_HOURLY_BUDGET_SPENT.slice(1)}`;
 
 // Status line for `meterSilent` holds: the whole-home meter stopped reporting
 // for over 10 minutes and the fail-closed pass limited every managed device. It
@@ -166,26 +171,9 @@ export const PLAN_STATE_RESERVED_FOR_START_STATUS = 'Waiting for a scheduled dev
 // `planCardGrammar.ts`. Registered in `notes/ui-terminology.md`.
 export const PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS = 'Turned off elsewhere — turn it on to resume';
 
-const normalize = (value: string | undefined): string => (value ?? '').trim().toLowerCase();
-
 const isOffLike = (value: string | undefined): boolean => {
-  const normalized = normalize(value);
+  const normalized = normalizeDeviceState(value);
   return normalized === 'off' || normalized === 'unknown';
-};
-
-const isOnLike = (value: string | undefined): boolean => {
-  const normalized = normalize(value);
-  if (!normalized) return false;
-  return normalized !== 'off'
-    && normalized !== 'unknown'
-    && normalized !== 'not_applicable'
-    && normalized !== 'disappeared';
-};
-
-const isGray = (device: DeviceOverviewSnapshot): boolean => {
-  if (device.available === false) return true;
-  const normalized = normalize(device.currentState);
-  return normalized === 'unknown' || normalized === 'disappeared';
 };
 
 // Both ids come off the stepped cluster, which gates stepped-ness by its own
@@ -206,7 +194,7 @@ const hasSteppedRestorePending = (device: DeviceOverviewSnapshot): boolean => (
 );
 
 const isActiveState = (device: DeviceOverviewSnapshot): boolean => (
-  device.currentState === 'not_applicable' || isOnLike(device.currentState)
+  device.currentState === 'not_applicable' || isOnLikeState(device.currentState)
 );
 
 // A target-only device (`not_applicable` — no on/off axis) that has reached its
@@ -252,13 +240,13 @@ export const isSatisfiedTargetOnlyDevice = (device: DeviceOverviewSnapshot): boo
 
 export const resolvePlanStateKind = (device: DeviceOverviewSnapshot): PlanStateKind => {
   if (device.controllable === false) return 'manual';
-  if (isGray(device)) return device.available === false ? 'unavailable' : 'unknown';
+  if (isGrayStateDevice(device)) return device.available === false ? 'unavailable' : 'unknown';
   if (device.plannedState === 'inactive') return 'idle';
   if (device.plannedState === 'shed') return 'held';
   if (device.binaryCommandPending && isOffLike(device.currentState)) return 'resuming';
   if (hasSteppedRestorePending(device)) return 'resuming';
   if (isSatisfiedTargetOnlyDevice(device)) return 'idle';
   if (isActiveState(device)) return 'active';
-  if (!normalize(device.currentState)) return 'unknown';
+  if (!normalizeDeviceState(device.currentState)) return 'unknown';
   return 'idle';
 };

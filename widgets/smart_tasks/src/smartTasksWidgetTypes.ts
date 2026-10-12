@@ -13,9 +13,8 @@ export type SmartTasksWidgetRow = {
   unitSymbol: DeferredObjectiveUnit;
   currentValue: number | null;
   targetValue: number;
-  // Pre-formatted "HH:MM" local-time finish line, or null when no ETA / deadline
-  // is available (only happens for some edge pending states).
-  finishLabel: string | null;
+  // Pre-formatted "HH:MM" local-time deadline.
+  finishLabel: string;
   statusLabel: string;
   tone: SmartTasksWidgetTone;
   // Producer-resolved word sources (from shared-domain) so the renderer never
@@ -26,9 +25,8 @@ export type SmartTasksWidgetRow = {
   targetActionVerb: string;
   targetNoun: string;
   // Pre-formatted long deadline label (e.g. "Sat 16:00", "Today 16:00") used
-  // by the interactive detail panel. Falls back to `finishLabel` semantics
-  // when no deadline timestamp is on the plan — null in that edge case.
-  deadlineLongLabel: string | null;
+  // by the interactive detail panel.
+  deadlineLongLabel: string;
   // "≈3h 12m at 2.4 kW · ≈7.8 kWh" or range form "≈7.0–8.0 kWh". Null when
   // the planner hasn't produced a revision yet, when there's no rate, or when
   // duration/speed metrics are missing.

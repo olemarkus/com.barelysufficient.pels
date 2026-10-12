@@ -369,12 +369,12 @@ export const buildProgressOption = (params: {
             animation: false,
             itemStyle: { color: palette.budgetReference },
             label: {
-              ...buildBudgetReferencePillLabel({
-                text: endStop.label,
-                borderColor: palette.budgetReference,
-                backgroundColor: palette.tooltipBackground,
-                textColor: palette.tooltipText,
-              }),
+              ...buildBudgetReferencePillLabel(
+                endStop.label,
+                palette.budgetReference,
+                palette.tooltipBackground,
+                palette.tooltipText,
+              ),
               position: 'right' as const,
               distance: 6,
             },

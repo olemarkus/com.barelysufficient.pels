@@ -16,6 +16,8 @@ import {
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
 } from '../../shared-domain/src/deadlineLabels.ts';
 import { toResolvedActivePlan } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
+import type { DeadlinePlanSchedule, HorizonHour, ObjectivePayloadReady } from '../src/ui/deadlinePlanData.ts';
+import type { DeadlineProgress } from '../src/ui/deadlinePlanResolvers.ts';
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../shared-domain/src/objectiveWriteStrings.ts';
 
 const atLocalHour = (base: Date, hourOffset: number): Date => {
@@ -176,6 +178,57 @@ const buildBootstrap = (
     readings: { state: 'received', lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0) },
   },
   prices: pricesPayload(null),
+});
+
+// A ready live-page payload for driving one builder directly: the heater task
+// the page tests use, over `hours`, with 1 kWh per unit of progress (the energy
+// still needed equals the units still to go).
+const readyHeaterPayload = (
+  plan: DeferredObjectiveActivePlanV1 & { latest: DeferredObjectiveActivePlanRevisionV1 },
+  hours: HorizonHour[],
+  nowMs: number,
+  progress: DeadlineProgress,
+): ObjectivePayloadReady => ({
+  ctx: {
+    device: { available: true, id: 'heater', name: 'Connected 300', targets: [], binaryControl: { on: false } },
+    objective: {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: progress.targetValue,
+      deadlineAtMs: plan.deadlineAtMs,
+    },
+    deviceId: 'heater',
+    deadlineAtMs: plan.deadlineAtMs,
+    activePlan: { ...buildActivePlans(plan).plansByDeviceId.heater!, latest: plan.latest },
+    nowMs,
+  },
+  bootstrap: buildBootstrap({ capacity_limit_kw: 8 }),
+  progress,
+  hours,
+  energy: {
+    energyNeededKWh: progress.remainingUnits,
+    energyExpectedKWh: progress.remainingUnits,
+    confidence: 'high',
+    learning: false,
+  },
+  costDisplay: { unit: 'kr', divisor: 100 },
+  priceUnitLabel: 'kr/kWh',
+});
+
+const heaterSchedule = (currentChargeByStartMs: Map<number, number>): DeadlinePlanSchedule => ({
+  labels: deadlineLabels('temperature'),
+  planStatus: 'on_track',
+  originalChargeByStartMs: new Map(),
+  currentChargeByStartMs,
+});
+
+const heatingProgress = (currentValue: number): DeadlineProgress => ({
+  currentValue,
+  progressDirection: 'increasing',
+  remainingUnits: 22 - currentValue,
+  targetValue: 22,
+  unit: '°C',
 });
 
 describe('deadline plan page payload', () => {
@@ -3189,20 +3242,14 @@ describe('deadline plan page payload', () => {
   // exercises the guard directly.
   it('buildTimeline returns a flat empty timeline when the hour window is empty', async () => {
     const { buildTimeline } = await import('../src/ui/deadlinePlanTimeline.ts');
-    const timeline = buildTimeline({
-      device: { available: true, id: 'heater', name: 'Connected 300', targets: [], binaryControl: { on: false } },
-      bootstrap: buildBootstrap({ capacity_limit_kw: 8 }),
-      deviceId: 'heater',
-      hours: [],
-      originalChargeByStartMs: new Map(),
-      currentChargeByStartMs: new Map(),
-      latestRevisionReason: null,
-      labels: deadlineLabels('temperature'),
-      deadlineAtMs: new Date(2026, 0, 1, 19, 0, 0, 0).getTime(),
-      nowMs: new Date(2026, 0, 1, 13, 0, 0, 0).getTime(),
-      costDisplay: { unit: 'kr', divisor: 100 },
-      priceUnitLabel: 'kr/kWh',
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const plan = buildHeaterActivePlan({
+      now, deadline: new Date(2026, 0, 1, 19, 0, 0, 0), plannedHourOffsets: [], plannedKWhPerHour: 0,
     });
+    const timeline = buildTimeline(
+      readyHeaterPayload(plan, [], now.getTime(), heatingProgress(18)),
+      heaterSchedule(new Map()),
+    );
     expect(timeline.hours).toEqual([]);
     expect(timeline.nowIndex).toBe(0);
     // Markers park at the first category edge — the shape the chart builder
@@ -3223,20 +3270,13 @@ describe('deadline plan page payload', () => {
       { startsAtMs: hourStartMs, endMs: hourStartMs + HOUR, price: 100, planningPrice: 20 },
       { startsAtMs: hourStartMs + HOUR, endMs: hourStartMs + 2 * HOUR, price: 80, planningPrice: 80 },
     ];
-    const timeline = buildTimeline({
-      device: { available: true, id: 'heater', name: 'Connected 300', targets: [], binaryControl: { on: false } },
-      bootstrap: buildBootstrap({ capacity_limit_kw: 8 }),
-      deviceId: 'heater',
-      hours,
-      originalChargeByStartMs: new Map(),
-      currentChargeByStartMs: new Map([[hourStartMs, 2]]),
-      latestRevisionReason: null,
-      labels: deadlineLabels('temperature'),
-      deadlineAtMs: hourStartMs + 2 * HOUR,
-      nowMs: hourStartMs,
-      costDisplay: { unit: 'kr', divisor: 100 },
-      priceUnitLabel: 'kr/kWh',
+    const plan = buildHeaterActivePlan({
+      now: new Date(hourStartMs), deadline: new Date(hourStartMs + 2 * HOUR), plannedHourOffsets: [0], plannedKWhPerHour: 2,
     });
+    const timeline = buildTimeline(
+      readyHeaterPayload(plan, hours, hourStartMs, heatingProgress(18)),
+      heaterSchedule(new Map([[hourStartMs, 2]])),
+    );
     // Planning price scaled by the øre→kr divisor: 20/100 = 0.20, not 1.00.
     expect(timeline.hours[0].priceValue).toBeCloseTo(0.2, 5);
     expect(timeline.hours[0].price).toBe('0.20');
@@ -3255,20 +3295,13 @@ describe('deadline plan page payload', () => {
       { startsAtMs: hourStartMs, endMs: hourStartMs + HOUR, price: 100, planningPrice: 100 },
       { startsAtMs: hourStartMs + HOUR, endMs: hourStartMs + 2 * HOUR, price: 80, planningPrice: 80 },
     ];
-    const timeline = buildTimeline({
-      device: { available: true, id: 'heater', name: 'Connected 300', targets: [], binaryControl: { on: false } },
-      bootstrap: buildBootstrap({ capacity_limit_kw: 8 }),
-      deviceId: 'heater',
-      hours,
-      originalChargeByStartMs: new Map(),
-      currentChargeByStartMs: new Map([[hourStartMs, 2]]),
-      latestRevisionReason: null,
-      labels: deadlineLabels('temperature'),
-      deadlineAtMs: hourStartMs + 2 * HOUR,
-      nowMs: hourStartMs,
-      costDisplay: { unit: 'kr', divisor: 100 },
-      priceUnitLabel: 'kr/kWh',
+    const plan = buildHeaterActivePlan({
+      now: new Date(hourStartMs), deadline: new Date(hourStartMs + 2 * HOUR), plannedHourOffsets: [0], plannedKWhPerHour: 2,
     });
+    const timeline = buildTimeline(
+      readyHeaterPayload(plan, hours, hourStartMs, heatingProgress(18)),
+      heaterSchedule(new Map([[hourStartMs, 2]])),
+    );
     expect(timeline.planningPriceNote).toBeNull();
   });
 
@@ -3291,41 +3324,26 @@ describe('deadline plan page payload', () => {
     const buildParams = (overrides: {
       nowMs: number;
       currentChargeByStartMs: Map<number, number>;
-      currentCoverStartByStartMs?: Map<number, number>;
+      coversFromMs?: number;
       currentValue?: number;
-      progressDirection?: 'increasing' | 'decreasing';
       progressSamples?: Array<{ atMs: number; value: number | null }>;
-    }) => {
-      const resolved = buildActivePlans(buildHeaterActivePlan({
+    }): [ObjectivePayloadReady, DeadlinePlanSchedule] => {
+      const plan = buildHeaterActivePlan({
         now: hourStart,
         deadline,
         plannedHourOffsets: [0],
         plannedKWhPerHour: 2,
-      })).plansByDeviceId.heater!;
-      return {
-        device: { available: true, id: 'heater', name: 'Connected 300', targets: [] },
-        activePlan: overrides.progressSamples
-          ? { ...resolved, progressSamples: overrides.progressSamples }
-          : resolved,
-        planStatus: 'on_track' as const,
-        hours,
-        currentChargeByStartMs: overrides.currentChargeByStartMs,
-        currentCoverStartByStartMs: overrides.currentCoverStartByStartMs ?? new Map<number, number>(),
-        currentValue: overrides.currentValue ?? 18,
-        targetValue: 22,
-        progressDirection: overrides.progressDirection ?? 'increasing',
-        progressPerKWh: 1,
-        unit: '°C' as const,
-        deadlineAtMs: deadline.getTime(),
-        nowMs: overrides.nowMs,
-        runBandLabel: 'Heating',
-      };
+      });
+      if (overrides.coversFromMs !== undefined) plan.latest.hours[0]!.coversFromMs = overrides.coversFromMs;
+      const input = readyHeaterPayload(plan, hours, overrides.nowMs, heatingProgress(overrides.currentValue ?? 18));
+      if (overrides.progressSamples) input.ctx.activePlan.progressSamples = overrides.progressSamples;
+      return [input, heaterSchedule(overrides.currentChargeByStartMs)];
     };
 
     it('keeps the live now reading when a stored sample collides at exactly nowMs', async () => {
       const { buildTrajectory } = await import('../src/ui/deadlinePlanTrajectory.ts');
       const nowMs = hourMs(0) + 30 * 60 * 1000;
-      const trajectory = buildTrajectory(buildParams({
+      const trajectory = buildTrajectory(...buildParams({
         nowMs,
         currentChargeByStartMs: new Map([[hourMs(0), 2]]),
         currentValue: 19.8,
@@ -3345,7 +3363,7 @@ describe('deadline plan page payload', () => {
     it('prorates an untrimmed in-progress hour by its remaining fraction', async () => {
       const { buildTrajectory } = await import('../src/ui/deadlinePlanTrajectory.ts');
       const nowMs = hourMs(0) + 30 * 60 * 1000;
-      const trajectory = buildTrajectory(buildParams({
+      const trajectory = buildTrajectory(...buildParams({
         nowMs,
         currentChargeByStartMs: new Map([[hourMs(0), 2]]),
       }));
@@ -3361,12 +3379,12 @@ describe('deadline plan page payload', () => {
     it('adds a bucket already trimmed at this instant whole — no double-trim', async () => {
       const { buildTrajectory } = await import('../src/ui/deadlinePlanTrajectory.ts');
       const nowMs = hourMs(0) + 30 * 60 * 1000;
-      const trajectory = buildTrajectory(buildParams({
+      const trajectory = buildTrajectory(...buildParams({
         nowMs,
         currentChargeByStartMs: new Map([[hourMs(0), 2]]),
         // The planner trimmed this bucket to `[13:30, 14:00]` at a 13:30
         // revision — its 2 kWh are all still ahead of now.
-        currentCoverStartByStartMs: new Map([[hourMs(0), nowMs]]),
+        coversFromMs: nowMs,
       }));
       expect(trajectory.plannedPoints).toEqual([
         [nowMs, 18],
@@ -3379,10 +3397,10 @@ describe('deadline plan page payload', () => {
       const { buildTrajectory } = await import('../src/ui/deadlinePlanTrajectory.ts');
       const trimMs = hourMs(0) + 30 * 60 * 1000;
       const nowMs = hourMs(0) + 45 * 60 * 1000;
-      const trajectory = buildTrajectory(buildParams({
+      const trajectory = buildTrajectory(...buildParams({
         nowMs,
         currentChargeByStartMs: new Map([[hourMs(0), 2]]),
-        currentCoverStartByStartMs: new Map([[hourMs(0), trimMs]]),
+        coversFromMs: trimMs,
       }));
       // Covered span 13:30–14:00; 15 of those 30 minutes remain → 1 kWh ahead.
       expect(trajectory.plannedPoints).toEqual([
@@ -3398,7 +3416,7 @@ describe('deadline plan page payload', () => {
     it('treats an already-at-target reading with no booked hours as ready now, not short', async () => {
       const { buildTrajectory } = await import('../src/ui/deadlinePlanTrajectory.ts');
       const nowMs = hourMs(0) + 30 * 60 * 1000;
-      const trajectory = buildTrajectory(buildParams({
+      const trajectory = buildTrajectory(...buildParams({
         nowMs,
         currentChargeByStartMs: new Map(),
         currentValue: 21.96,
@@ -3419,7 +3437,7 @@ describe('deadline plan page payload', () => {
     it('still books risers and a real ready time when the reading is within tolerance', async () => {
       const { buildTrajectory } = await import('../src/ui/deadlinePlanTrajectory.ts');
       const nowMs = hourMs(0) + 30 * 60 * 1000;
-      const trajectory = buildTrajectory(buildParams({
+      const trajectory = buildTrajectory(...buildParams({
         nowMs,
         currentChargeByStartMs: new Map([[hourMs(0), 2]]),
         currentValue: 21.96,
@@ -3440,7 +3458,7 @@ describe('deadline plan page payload', () => {
     it('skips a fully elapsed hour and adds a fully ahead hour whole', async () => {
       const { buildTrajectory } = await import('../src/ui/deadlinePlanTrajectory.ts');
       const nowMs = hourMs(1) + 30 * 60 * 1000;
-      const trajectory = buildTrajectory(buildParams({
+      const trajectory = buildTrajectory(...buildParams({
         nowMs,
         currentChargeByStartMs: new Map([[hourMs(0), 2], [hourMs(2), 2]]),
       }));
@@ -3715,11 +3733,11 @@ describe('buildHeroChips', () => {
 
   it('omits any live-state chip — the active hero no longer renders state on the chip row', async () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
-    const chips = buildHeroChips({
+    const chips = buildHeroChips(
       labels,
-      statusChip: null,
-      confidenceChipText: null,
-    });
+      null,
+      null,
+    );
     // No chip text should equal any of the live-state labels: the
     // headline already says "Heating from HH:MM" / "On track …" / etc.
     const liveStateTexts = Object.values(labels.liveStateChipLabel);
@@ -3731,11 +3749,11 @@ describe('buildHeroChips', () => {
 
   it('adds the Cannot-finish chip when cannotMeet is true and keeps it in canonical order', async () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
-    const chips = buildHeroChips({
+    const chips = buildHeroChips(
       labels,
-      statusChip: { text: labels.cannotMeetChipLabel, tone: 'alert' },
-      confidenceChipText: null,
-    });
+      { text: labels.cannotMeetChipLabel, tone: 'alert' },
+      null,
+    );
     expect(chips.some((chip) => chip.text === labels.cannotMeetChipLabel && chip.tone === 'alert')).toBe(true);
     expect(chips.map((chip) => chip.text)).toEqual([
       labels.kindChipLabel,
@@ -3745,11 +3763,11 @@ describe('buildHeroChips', () => {
 
   it('keeps the canonical chip order kind → status → confidence when all are present', async () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
-    const chips = buildHeroChips({
+    const chips = buildHeroChips(
       labels,
-      statusChip: { text: labels.cannotMeetChipLabel, tone: 'alert' },
-      confidenceChipText: 'Estimating',
-    });
+      { text: labels.cannotMeetChipLabel, tone: 'alert' },
+      'Estimating',
+    );
     expect(chips.map((chip) => chip.text)).toEqual([
       labels.kindChipLabel,
       labels.cannotMeetChipLabel,
@@ -3759,17 +3777,17 @@ describe('buildHeroChips', () => {
 
   it('honours the supplied status chip text and tone', async () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
-    const alertChips = buildHeroChips({
+    const alertChips = buildHeroChips(
       labels,
-      statusChip: { text: labels.cannotMeetChipLabel, tone: 'alert' },
-      confidenceChipText: null,
-    });
+      { text: labels.cannotMeetChipLabel, tone: 'alert' },
+      null,
+    );
     expect(alertChips.find((chip) => chip.text === labels.cannotMeetChipLabel)?.tone).toBe('alert');
-    const warnChips = buildHeroChips({
+    const warnChips = buildHeroChips(
       labels,
-      statusChip: { text: labels.atRiskChipLabel, tone: 'warn' },
-      confidenceChipText: null,
-    });
+      { text: labels.atRiskChipLabel, tone: 'warn' },
+      null,
+    );
     expect(warnChips.find((chip) => chip.text === labels.atRiskChipLabel)?.tone).toBe('warn');
   });
 });
@@ -3903,40 +3921,40 @@ describe('energy estimate range (expected…planned, end-to-end through resolveR
 describe('resolveLiveHeroConfidenceChipText', () => {
   it('suppresses low-confidence copy for true cannot-meet heroes', async () => {
     const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveLiveHeroConfidenceChipText({
-      confidence: 'low',
-      planStatus: 'cannot_meet',
-      learning: true,
-    })).toBeNull();
+    expect(resolveLiveHeroConfidenceChipText(
+      'low',
+      'cannot_meet',
+      true,
+    )).toBeNull();
   });
 
   it('keeps low-confidence copy for at-risk heroes that are still learning', async () => {
     const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveLiveHeroConfidenceChipText({
-      confidence: 'low',
-      planStatus: 'at_risk',
-      learning: true,
-    })).toBe('Estimating');
+    expect(resolveLiveHeroConfidenceChipText(
+      'low',
+      'at_risk',
+      true,
+    )).toBe('Estimating');
   });
 
   it('stays silent on on_track even while learning (the steady case carries no signal)', async () => {
     const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveLiveHeroConfidenceChipText({
-      confidence: 'low',
-      planStatus: 'on_track',
-      learning: true,
-    })).toBeNull();
+    expect(resolveLiveHeroConfidenceChipText(
+      'low',
+      'on_track',
+      true,
+    )).toBeNull();
   });
 
   it('suppresses the chip for a learned (not cold-start) rate even at low confidence', async () => {
     const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
     // A learned thermal rate sits at `low` confidence forever from inherent
     // variance — that is not an "estimating" state and must not nag.
-    expect(resolveLiveHeroConfidenceChipText({
-      confidence: 'low',
-      planStatus: 'at_risk',
-      learning: false,
-    })).toBeNull();
+    expect(resolveLiveHeroConfidenceChipText(
+      'low',
+      'at_risk',
+      false,
+    )).toBeNull();
   });
 });
 
@@ -3962,46 +3980,46 @@ describe('resolveHeroHeadline', () => {
 
   it('suppresses the headline only on alert (cannot-finish) heroes', async () => {
     const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroHeadline({
+    expect(resolveHeroHeadline(
       labels,
-      firstChargingHour: queuedHour,
-      nowMs: queuedHour.startsAtMs - 60_000,
-      liveCause: null,
-      tone: 'alert',
-    })).toBeNull();
+      queuedHour,
+      queuedHour.startsAtMs - 60_000,
+      'alert',
+      null,
+    )).toBeNull();
   });
 
   it('preserves the "from HH:MM" live-state headline on at-risk heroes', async () => {
     const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroHeadline({
+    expect(resolveHeroHeadline(
       labels,
-      firstChargingHour: queuedHour,
-      nowMs: queuedHour.startsAtMs - 60_000,
-      liveCause: null,
-      tone: 'warn',
-    })).toBe('Heating from 16:00');
+      queuedHour,
+      queuedHour.startsAtMs - 60_000,
+      'warn',
+      null,
+    )).toBe('Heating from 16:00');
   });
 
   it('returns "Heating now" when the first scheduled hour has already started', async () => {
     const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroHeadline({
+    expect(resolveHeroHeadline(
       labels,
-      firstChargingHour: queuedHour,
-      nowMs: queuedHour.startsAtMs + 60_000,
-      liveCause: null,
-      tone: 'good',
-    })).toBe('Heating now');
+      queuedHour,
+      queuedHour.startsAtMs + 60_000,
+      'good',
+      null,
+    )).toBe('Heating now');
   });
 
   it('returns the on-track sentinel when no hour is scheduled', async () => {
     const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroHeadline({
+    expect(resolveHeroHeadline(
       labels,
-      firstChargingHour: undefined,
-      nowMs: queuedHour.startsAtMs,
-      liveCause: null,
-      tone: 'good',
-    })).toBe('On track — no action needed yet');
+      undefined,
+      queuedHour.startsAtMs,
+      'good',
+      null,
+    )).toBe('On track — no action needed yet');
   });
 
   it('suppresses the headline on an at-risk plan with no scheduled hour (feasible_above_floor)', async () => {
@@ -4009,37 +4027,37 @@ describe('resolveHeroHeadline', () => {
     // The `feasible_above_floor` verdict yields an at-risk (warn) plan with an
     // empty floor schedule — there is no live state to announce, so the
     // headline must NOT claim "On track" above the amber At-risk card.
-    expect(resolveHeroHeadline({
+    expect(resolveHeroHeadline(
       labels,
-      firstChargingHour: undefined,
-      nowMs: queuedHour.startsAtMs,
-      liveCause: null,
-      tone: 'warn',
-    })).toBeNull();
+      undefined,
+      queuedHour.startsAtMs,
+      'warn',
+      null,
+    )).toBeNull();
   });
 
   // "Heating now" from the booked hour would contradict a reason line saying the
   // device has stopped taking power.
   it('suppresses the live-state headline under a live cause', async () => {
     const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroHeadline({
+    expect(resolveHeroHeadline(
       labels,
-      firstChargingHour: queuedHour,
-      nowMs: queuedHour.startsAtMs + 60_000,
-      liveCause: resolveSmartTaskLiveCause('objective_not_accepting_energy', null, 'none'),
-      tone: 'warn',
-    })).toBeNull();
+      queuedHour,
+      queuedHour.startsAtMs + 60_000,
+      'warn',
+      resolveSmartTaskLiveCause('objective_not_accepting_energy', null, 'none'),
+    )).toBeNull();
   });
 
   it('keeps the live-state headline on a satisfied or healthy hero with a stale cause', async () => {
     const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroHeadline({
+    expect(resolveHeroHeadline(
       labels,
-      firstChargingHour: queuedHour,
-      nowMs: queuedHour.startsAtMs + 60_000,
-      liveCause: resolveSmartTaskLiveCause('objective_not_accepting_energy', null, 'none'),
-      tone: 'good',
-    })).toBe('Heating now');
+      queuedHour,
+      queuedHour.startsAtMs + 60_000,
+      'good',
+      resolveSmartTaskLiveCause('objective_not_accepting_energy', null, 'none'),
+    )).toBe('Heating now');
   });
 });
 
@@ -4063,55 +4081,55 @@ describe('resolveQueuedHeadlineReason', () => {
 
   it('returns null when the plan cannot meet (subline is suppressed on cannot-meet heroes)', async () => {
     const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveQueuedHeadlineReason({
+    expect(resolveQueuedHeadlineReason(
       labels,
-      firstChargingHour: baseHour,
-      nowMs: baseHour.startsAtMs - 60_000,
-      cannotMeet: true,
+      baseHour,
+      baseHour.startsAtMs - 60_000,
+      true,
       deadlineAtMs,
-      computedFromPricesUpTo: deadlineAtMs,
-      plannedWindowCheaperThanNow: true,
-    })).toBeNull();
+      deadlineAtMs,
+      true,
+    )).toBeNull();
   });
 
   it('returns null when no charging hour is queued (only "active now" cases reach here)', async () => {
     const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveQueuedHeadlineReason({
+    expect(resolveQueuedHeadlineReason(
       labels,
-      firstChargingHour: undefined,
-      nowMs: baseHour.startsAtMs - 60_000,
-      cannotMeet: false,
+      undefined,
+      baseHour.startsAtMs - 60_000,
+      false,
       deadlineAtMs,
-      computedFromPricesUpTo: deadlineAtMs,
-      plannedWindowCheaperThanNow: true,
-    })).toBeNull();
+      deadlineAtMs,
+      true,
+    )).toBeNull();
   });
 
   it('surfaces "Waiting for tomorrow\'s prices through HH:MM" when prices don\'t reach the deadline', async () => {
     const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
-    const out = resolveQueuedHeadlineReason({
+    const out = resolveQueuedHeadlineReason(
       labels,
-      firstChargingHour: baseHour,
-      nowMs: baseHour.startsAtMs - 60_000,
-      cannotMeet: false,
+      baseHour,
+      baseHour.startsAtMs - 60_000,
+      false,
       deadlineAtMs,
-      computedFromPricesUpTo: deadlineAtMs - 60 * 60 * 1000,
-      plannedWindowCheaperThanNow: true,
-    });
+      deadlineAtMs - 60 * 60 * 1000,
+      true,
+    );
     expect(out).toMatch(/Waiting for tomorrow.s prices/);
   });
 
   it('says "Cheaper than now — starts at HH:MM" only when the price comparison verified it', async () => {
     const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
-    const out = resolveQueuedHeadlineReason({
+    const out = resolveQueuedHeadlineReason(
       labels,
-      firstChargingHour: baseHour,
-      nowMs: baseHour.startsAtMs - 60_000,
-      cannotMeet: false,
+      baseHour,
+      baseHour.startsAtMs - 60_000,
+      false,
       deadlineAtMs,
-      computedFromPricesUpTo: deadlineAtMs,
-      plannedWindowCheaperThanNow: true,
-    });
+      deadlineAtMs,
+      true,
+    );
     expect(out).toMatch(/^Cheaper than now — starts at \d{2}:\d{2}\.$/);
   });
 
@@ -4121,15 +4139,15 @@ describe('resolveQueuedHeadlineReason', () => {
     // The fallback ("cheapest hours it can use") makes no comparison to now,
     // so no bar arrangement can contradict it.
     const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
-    const out = resolveQueuedHeadlineReason({
+    const out = resolveQueuedHeadlineReason(
       labels,
-      firstChargingHour: baseHour,
-      nowMs: baseHour.startsAtMs - 60_000,
-      cannotMeet: false,
+      baseHour,
+      baseHour.startsAtMs - 60_000,
+      false,
       deadlineAtMs,
-      computedFromPricesUpTo: deadlineAtMs,
-      plannedWindowCheaperThanNow: false,
-    });
+      deadlineAtMs,
+      false,
+    );
     expect(out).toMatch(
       /^Scheduled for the cheapest hours it can use — starts at \d{2}:\d{2}\.$/,
     );
@@ -4146,26 +4164,24 @@ describe('resolveCannotMeetRecourse', () => {
 
   it('returns null when the hero is not cannot-meet', async () => {
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetRecourse({
+    expect(resolveCannotMeetRecourse(
       labels,
-      cannotMeet: false,
-      planStatus: 'cannot_meet' as const,
-      budgetRole: 'none' as const,
-      liveCause: null,
-      deviceId: 'heater',
-    })).toBeNull();
+      'on_track' as const,
+      'none' as const,
+      null,
+      'heater',
+    )).toBeNull();
   });
 
   it('routes daily-budget-exhausted to "Open Budget" without a deviceId (no overlay to open)', async () => {
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
-    const out = resolveCannotMeetRecourse({
+    const out = resolveCannotMeetRecourse(
       labels,
-      cannotMeet: true,
-      planStatus: 'cannot_meet' as const,
-      budgetRole: 'sole' as const,
-      liveCause: null,
-      deviceId: 'heater',
-    });
+      'cannot_meet' as const,
+      'sole' as const,
+      null,
+      'heater',
+    );
     expect(out?.label).toBe('Open Budget');
     expect(out?.targetTab).toBe('budget');
     // Budget branch has no device-settings overlay — `deviceId` stays absent
@@ -4175,14 +4191,13 @@ describe('resolveCannotMeetRecourse', () => {
 
   it('routes every other cannot-meet cause to "Adjust device" with the active task deviceId', async () => {
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
-    const out = resolveCannotMeetRecourse({
+    const out = resolveCannotMeetRecourse(
       labels,
-      cannotMeet: true,
-      planStatus: 'cannot_meet' as const,
-      budgetRole: 'none' as const,
-      liveCause: null,
-      deviceId: 'heater',
-    });
+      'cannot_meet' as const,
+      'none' as const,
+      null,
+      'heater',
+    );
     expect(out?.label).toBe('Adjust device');
     expect(out?.targetTab).toBe('overview');
     // Device-side branch carries the deviceId so the click dispatcher can
@@ -4196,21 +4211,20 @@ describe('resolveCannotMeetRecourse', () => {
   // exemption. Navigating away from the named control is worse than no button.
   it('offers no recourse for a contributing budget cause — the toggle is on this panel', async () => {
     const { resolveCannotMeetRecourse, resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetRecourse({
+    expect(resolveCannotMeetRecourse(
       labels,
-      cannotMeet: true,
-      planStatus: 'cannot_meet' as const,
-      budgetRole: 'contributing' as const,
-      liveCause: null,
-      deviceId: 'heater',
-    })).toBeNull();
+      'cannot_meet' as const,
+      'contributing' as const,
+      null,
+      'heater',
+    )).toBeNull();
 
-    const meta = resolveCannotMeetMeta({
+    const meta = resolveCannotMeetMeta(
       labels,
-      planStatus: 'cannot_meet' as const,
-      budgetRole: 'contributing' as const,
-      liveCause: null,
-    });
+      'cannot_meet' as const,
+      'contributing' as const,
+      null,
+    );
     expect(meta).toBe(labels.cannotMeetDailyBudgetContributed);
     // Distinct from the sole-cause line, which promises a fix this case lacks.
     expect(meta).not.toBe(labels.cannotMeetDailyBudgetExhausted);
@@ -4226,21 +4240,20 @@ describe('resolveCannotMeetRecourse', () => {
     // settings hold it, and "Adjust device" would send the user looking for a
     // setting to change.
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetRecourse({
+    expect(resolveCannotMeetRecourse(
       labels,
-      cannotMeet: true,
-      planStatus: 'cannot_meet' as const,
-      budgetRole: 'sole' as const,
-      liveCause: stoppedTakingPower,
-      deviceId: 'heater',
-    })).toBeNull();
+      'cannot_meet' as const,
+      'sole' as const,
+      stoppedTakingPower,
+      'heater',
+    )).toBeNull();
   });
 
   it('explains a cannot-finish hero without a live cause by the time or the budget', async () => {
     const { resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'none' as const, liveCause: null }))
+    expect(resolveCannotMeetMeta(labels, 'cannot_meet' as const, 'none' as const, null))
       .toContain('Not enough time');
-    expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'sole' as const, liveCause: null }))
+    expect(resolveCannotMeetMeta(labels, 'cannot_meet' as const, 'sole' as const, null))
       .toContain('daily budget');
   });
 
@@ -4251,11 +4264,14 @@ describe('resolveCannotMeetRecourse', () => {
   ] as const)('explains a confirmed %s with its own reason and no settings button', async (code, reason) => {
     const { resolveCannotMeetRecourse, resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
     const liveCause = resolveSmartTaskLiveCause(code, null, 'none');
-    expect(resolveCannotMeetMeta({ labels, planStatus: 'cannot_meet' as const, budgetRole: 'sole' as const, liveCause })).toContain(reason);
-    expect(resolveCannotMeetRecourse({
-      labels, cannotMeet: true, planStatus: 'at_risk' as const, budgetRole: 'none' as const, liveCause,
-      deviceId: 'heater',
-    })).toBeNull();
+    expect(resolveCannotMeetMeta(labels, 'cannot_meet' as const, 'sole' as const, liveCause)).toContain(reason);
+    expect(resolveCannotMeetRecourse(
+      labels,
+      'at_risk' as const,
+      'none' as const,
+      liveCause,
+      'heater',
+    )).toBeNull();
   });
 
   // A time-only at-risk task is hedged and matches the widget row: no "Lower the
@@ -4263,14 +4279,22 @@ describe('resolveCannotMeetRecourse', () => {
   // budget cause keeps its own sentence and the Open Budget button.
   it('explains a time-only at-risk hero with the widget\'s hedged line and no button', async () => {
     const { resolveCannotMeetRecourse, resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetMeta({ labels, planStatus: 'at_risk', budgetRole: 'none', liveCause: null }))
+    expect(resolveCannotMeetMeta(labels, 'at_risk', 'none', null))
       .toBe('Limited time left before the deadline.');
-    expect(resolveCannotMeetRecourse({
-      labels, cannotMeet: true, planStatus: 'at_risk', budgetRole: 'none', liveCause: null, deviceId: 'heater',
-    })).toBeNull();
-    expect(resolveCannotMeetRecourse({
-      labels, cannotMeet: true, planStatus: 'at_risk', budgetRole: 'sole', liveCause: null, deviceId: 'heater',
-    })?.label).toBe('Open Budget');
+    expect(resolveCannotMeetRecourse(
+      labels,
+      'at_risk',
+      'none',
+      null,
+      'heater',
+    )).toBeNull();
+    expect(resolveCannotMeetRecourse(
+      labels,
+      'at_risk',
+      'sole',
+      null,
+      'heater',
+    )?.label).toBe('Open Budget');
   });
 
   it('emits an empty deviceId when none is available (cold-start / history-detail-only state)', async () => {
@@ -4279,14 +4303,13 @@ describe('resolveCannotMeetRecourse', () => {
     // bogus id either. Empty string is the agreed degraded value, mirroring
     // the history-detail `recourse.deviceId ?? ''` JSX expression.
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
-    const out = resolveCannotMeetRecourse({
+    const out = resolveCannotMeetRecourse(
       labels,
-      cannotMeet: true,
-      planStatus: 'cannot_meet' as const,
-      budgetRole: 'none' as const,
-      liveCause: null,
-      deviceId: '',
-    });
+      'cannot_meet' as const,
+      'none' as const,
+      null,
+      '',
+    );
     expect(out?.label).toBe('Adjust device');
     expect(out?.targetTab).toBe('overview');
     expect(out?.deviceId).toBe('');
@@ -4962,29 +4985,29 @@ describe('shared-domain hero-line formatters', () => {
 
   it('formatDeadlineDeliveredSoFarLine surfaces the start → current arrow when start is known', async () => {
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    const out = formatDeadlineDeliveredSoFarLine({
-      status: 'on_track_or_queued',
-      deliveredKWh: 1.8,
-      plannedTotalKWh: 4.2,
-      currentProgress: 42,
-      startProgress: 35,
-      targetValue: 65,
-      targetUnit: '°C',
-    });
+    const out = formatDeadlineDeliveredSoFarLine(
+      'on_track_or_queued',
+      1.8,
+      4.2,
+      42,
+      35,
+      65,
+      '°C',
+    );
     expect(out).toBe('Delivered 1.8 of 4.2 kWh · 35.0 °C → 42.0 °C of 65.0 °C target');
   });
 
   it('formatDeadlineDeliveredSoFarLine states an energy task once, from its own count', async () => {
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    const out = formatDeadlineDeliveredSoFarLine({
-      status: 'on_track_or_queued',
-      deliveredKWh: 3.2,
-      plannedTotalKWh: 6.6,
-      currentProgress: 3,
-      startProgress: null,
-      targetValue: 6,
-      targetUnit: 'kWh',
-    });
+    const out = formatDeadlineDeliveredSoFarLine(
+      'on_track_or_queued',
+      3.2,
+      6.6,
+      3,
+      null,
+      6,
+      'kWh',
+    );
     expect(out).toBe('Delivered 3.0 of 6.0 kWh');
   });
 
@@ -5011,15 +5034,15 @@ describe('shared-domain hero-line formatters', () => {
 
   it('formatDeadlineDeliveredSoFarLine collapses to `now …` when start equals current', async () => {
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    const out = formatDeadlineDeliveredSoFarLine({
-      status: 'on_track_or_queued',
-      deliveredKWh: 0,
-      plannedTotalKWh: 4.2,
-      currentProgress: 42,
-      startProgress: null,
-      targetValue: 65,
-      targetUnit: '°C',
-    });
+    const out = formatDeadlineDeliveredSoFarLine(
+      'on_track_or_queued',
+      0,
+      4.2,
+      42,
+      null,
+      65,
+      '°C',
+    );
     expect(out).toBe('Delivered 0.0 of 4.2 kWh · now 42.0 °C of 65.0 °C target');
   });
 
@@ -5031,15 +5054,15 @@ describe('shared-domain hero-line formatters', () => {
     // now compares the formatted labels post-rounding and falls through to
     // "now X" when they match.
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    const out = formatDeadlineDeliveredSoFarLine({
-      status: 'on_track_or_queued',
-      deliveredKWh: 0.4,
-      plannedTotalKWh: 4.2,
-      currentProgress: 45.4,
-      startProgress: 45.1,
-      targetValue: 80,
-      targetUnit: '%',
-    });
+    const out = formatDeadlineDeliveredSoFarLine(
+      'on_track_or_queued',
+      0.4,
+      4.2,
+      45.4,
+      45.1,
+      80,
+      '%',
+    );
     expect(out).toBe('Delivered 0.4 of 4.2 kWh · now 45% of 80% target');
     expect(out).not.toMatch(/45%\s*→\s*45%/);
   });
@@ -5051,43 +5074,43 @@ describe('shared-domain hero-line formatters', () => {
     // information-only. The `still` stem (vs the on-track `now`) keeps the
     // tonal pairing with the alert chip without re-asserting the failure.
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    const out = formatDeadlineDeliveredSoFarLine({
-      status: 'cannot_meet',
-      deliveredKWh: 1.8,
-      plannedTotalKWh: 4.2,
-      currentProgress: 35,
-      startProgress: null,
-      targetValue: 65,
-      targetUnit: '°C',
-    });
+    const out = formatDeadlineDeliveredSoFarLine(
+      'cannot_meet',
+      1.8,
+      4.2,
+      35,
+      null,
+      65,
+      '°C',
+    );
     expect(out).toBe('Delivered 1.8 of 4.2 kWh · still 35.0 °C of 65.0 °C target');
     expect(out).not.toMatch(/won.t reach/i);
   });
 
   it('formatDeadlineDeliveredSoFarLine returns null when planned kWh is zero', async () => {
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    expect(formatDeadlineDeliveredSoFarLine({
-      status: 'on_track_or_queued',
-      deliveredKWh: 0,
-      plannedTotalKWh: 0,
-      currentProgress: 18,
-      startProgress: null,
-      targetValue: 22,
-      targetUnit: '°C',
-    })).toBeNull();
+    expect(formatDeadlineDeliveredSoFarLine(
+      'on_track_or_queued',
+      0,
+      0,
+      18,
+      null,
+      22,
+      '°C',
+    )).toBeNull();
   });
 
   it('formatDeadlineDeliveredSoFarLine formats EV percent without decimals', async () => {
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    const out = formatDeadlineDeliveredSoFarLine({
-      status: 'on_track_or_queued',
-      deliveredKWh: 5,
-      plannedTotalKWh: 20,
-      currentProgress: 45.6,
-      startProgress: 30,
-      targetValue: 80,
-      targetUnit: '%',
-    });
+    const out = formatDeadlineDeliveredSoFarLine(
+      'on_track_or_queued',
+      5,
+      20,
+      45.6,
+      30,
+      80,
+      '%',
+    );
     expect(out).toBe('Delivered 5.0 of 20.0 kWh · 30% → 46% of 80% target');
   });
 });

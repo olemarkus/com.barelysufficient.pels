@@ -1,6 +1,5 @@
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
-import { hoursWithPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
@@ -16,13 +15,11 @@ import type {
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
-import type {
-  ObservedDeviceState,
-  ObservedStateOfChargeProbe,
-  TemperatureObservedProbe,
-} from '../../../contracts/src/types.ts';
-import { hasObservedTemperature } from '../../../shared-domain/src/temperatureObservedState.ts';
-import { hasObservedStateOfCharge } from '../../../shared-domain/src/stateOfChargeObservedState.ts';
+import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
+import {
+  resolveSmartTaskRowFacts,
+  smartTaskScheduleNoLongerGoverns,
+} from '../../../shared-domain/src/smartTaskRowFacts.ts';
 import { flattenPlanHistoryEntries } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
@@ -31,10 +28,8 @@ import {
   formatSmartTaskExtraPermissionsValue,
   formatSmartTaskCurrentValueLine,
   resolveChipConfidence,
-  resolveReportedCarChargeLimit,
   resolveSmartTaskBudgetRole,
   resolveSmartTaskLearning,
-  resolveSmartTaskListStatus,
   resolveSmartTaskLiveCause,
   SMART_TASK_LIST_LOAD_ERROR_COPY,
   type SmartTaskCarChargeLimit,
@@ -49,38 +44,6 @@ import {
   renderDeadlinesHistoryList,
   type DeadlinesHistoryListState,
 } from './views/DeadlinesHistoryList.tsx';
-
-// Resolves the device's current value (current temperature for thermal kinds,
-// state-of-charge for EV) by deviceId. Returns `null` when the value is not
-// reported — the chip + currently-X line are then suppressed at the renderer.
-//
-// Looked up by device id rather than plumbed through the plan because the
-// active-plan recorder doesn't carry live device readings; the snapshot
-// fetched from `/ui_devices` (Homey SDK) does.
-const resolveCurrentValue = (
-  // Probe-widened: the `/ui_devices` snapshot physically carries the observed
-  // temperature / SoC the base type omits; `hasObservedTemperature` /
-  // `hasObservedStateOfCharge` narrow it (a present reading is finite by the
-  // producer invariant — no re-check). SoC is the RESOLVED probe: what the
-  // payload serves is the level, so declaring the transport's bag here would let
-  // a `report.percent` read compile and then find `undefined` at runtime.
-  device: (ObservedDeviceState & TemperatureObservedProbe & ObservedStateOfChargeProbe) | undefined,
-  plan: ResolvedDeferredObjectiveActivePlanV1,
-): number | null => {
-  // An energy task's current value is the energy fed so far, which the plan
-  // carries; the device has no reading this task is measured by.
-  if (plan.objectiveKind === 'energy') return plan.deliveredKWh;
-  const kind = plan.objectiveKind;
-  if (!device) return null;
-  if (kind === 'temperature') {
-    return hasObservedTemperature(device) ? device.temperature.currentTemperature : null;
-  }
-  // `level`, never the raw report: a bag with no level means PELS has no reading
-  // for this charger, and the percentage it last saw belongs to a car that has gone.
-  if (!hasObservedStateOfCharge(device)) return null;
-  const { level } = device.stateOfCharge;
-  return level.kind === 'known' ? level.percent : null;
-};
 
 // The card's line beside the target: the same live cause the widget and the
 // detail hero name (stopped taking power, the car's own limit
@@ -97,37 +60,18 @@ const resolveListCauseLine = (
   return resolveSmartTaskLiveCause(plan.diagnosticReasonCode, carChargeLimit, budgetRole)?.listLine ?? null;
 };
 
-const buildCard = (params: {
-  deviceId: string;
-  plan: ResolvedDeferredObjectiveActivePlanV1;
-  objective: DeferredObjectiveSettingsV1['objectivesByDeviceId'][string] | undefined;
-  device: ObservedDeviceState | undefined;
-  nowMs: number;
-}): DeadlinesListCard => {
-  const { deviceId, plan, objective, device, nowMs } = params;
-  const pending = plan.pending || plan.latest === null;
-  const firstHour = hoursWithPlannedEnergy(plan.latest?.hours ?? [])[0]?.startsAtMs ?? null;
-  const carChargeLimit = resolveReportedCarChargeLimit(plan);
-  const statusId = resolveSmartTaskListStatus({
-    pending,
-    pendingReason: plan.pendingReason,
-    diagnosticReasonCode: plan.diagnosticReasonCode,
-    planStatus: plan.latest?.planStatus,
-    firstActionAtMs: firstHour,
-    nowMs,
-    carChargeLimit,
-    liveCompletion: plan.liveCompletion,
-  });
+const buildCard = (
+  deviceId: string,
+  plan: ResolvedDeferredObjectiveActivePlanV1,
+  objective: DeferredObjectiveSettingsV1['objectivesByDeviceId'][string] | undefined,
+  device: ObservedDeviceState | undefined,
+  nowMs: number,
+): DeadlinesListCard => {
+  const { statusId, firstActionAtMs, carChargeLimit, currentValue } = resolveSmartTaskRowFacts(plan, device, nowMs);
   // The hero's chip-confidence chain (`resolveEnergyNeededKWh` in
   // `deadlinePlanResolvers.ts`): the plan's own provenance, one resolver.
   const confidence = resolveChipConfidence(plan.kwhPerUnitProvenance);
   const learning = resolveSmartTaskLearning(plan.kwhPerUnitProvenance);
-  const currentValue = resolveCurrentValue(device, plan);
-  // A cached schedule stops governing the moment the device leaves the planned
-  // set, whether by meter reassignment (`unavailable`) or by the owner turning
-  // "Managed by PELS" off. `paused_unplugged` is deliberately NOT here: that
-  // plan resumes on its own when the car is plugged back in.
-  const scheduleNoLongerGoverns = statusId === 'unavailable' || statusId === 'paused_unmanaged';
   return {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
@@ -137,7 +81,7 @@ const buildCard = (params: {
     // A committed revision can outlive a meter reassignment or an un-manage.
     // Its cached first hour no longer governs the device, so those cards expose
     // only the user-set deadline and never advertise the stale schedule.
-    firstActionAtMs: scheduleNoLongerGoverns ? null : firstHour,
+    firstActionAtMs: smartTaskScheduleNoLongerGoverns(statusId) ? null : firstActionAtMs,
     deadlineAtMs: plan.deadlineAtMs,
     href: buildDeadlineHref(deviceId),
     statusId,
@@ -152,20 +96,19 @@ const buildCard = (params: {
   };
 };
 
-export const resolveDeadlinesListCards = (params: {
-  activePlans: ResolvedDeferredObjectiveActivePlansV1 | null;
-  objectiveSettings: DeferredObjectiveSettingsV1;
-  devices: readonly ObservedDeviceState[];
-  nowMs?: number;
-}): DeadlinesListCard[] => {
-  const nowMs = params.nowMs ?? Date.now();
-  const plans = params.activePlans?.plansByDeviceId ?? {};
-  const devicesById = new Map(params.devices.map((device) => [device.id, device]));
+export const resolveDeadlinesListCards = (
+  activePlans: ResolvedDeferredObjectiveActivePlansV1 | null,
+  objectiveSettings: DeferredObjectiveSettingsV1,
+  devices: readonly ObservedDeviceState[],
+  nowMs: number,
+): DeadlinesListCard[] => {
+  const plans = activePlans?.plansByDeviceId ?? {};
+  const devicesById = new Map(devices.map((device) => [device.id, device]));
   const cards: DeadlinesListCard[] = [];
   for (const [deviceId, plan] of Object.entries(plans)) {
-    const objective = params.objectiveSettings.objectivesByDeviceId[deviceId];
+    const objective = objectiveSettings.objectivesByDeviceId[deviceId];
     if (!objective?.enabled) continue;
-    cards.push(buildCard({ deviceId, plan, objective, device: devicesById.get(deviceId), nowMs }));
+    cards.push(buildCard(deviceId, plan, objective, devicesById.get(deviceId), nowMs));
   }
   cards.sort((a, b) => a.deadlineAtMs - b.deadlineAtMs);
   return cards;
@@ -367,11 +310,12 @@ export const refreshDeadlinesList = async (): Promise<void> => {
     const objectiveSettings = normalizeDeferredObjectiveSettings(
       bootstrap.settings.deferred_objectives,
     );
-    latestCards = resolveDeadlinesListCards({
-      activePlans: bootstrap.deferredObjectiveActivePlans,
+    latestCards = resolveDeadlinesListCards(
+      bootstrap.deferredObjectiveActivePlans,
       objectiveSettings,
-      devices: devicesPayload.devices,
-    });
+      devicesPayload.devices,
+      Date.now(),
+    );
     renderActiveReady();
   } catch (error) {
     await logSettingsError('Failed to load deadlines list', error, 'refreshDeadlinesList');

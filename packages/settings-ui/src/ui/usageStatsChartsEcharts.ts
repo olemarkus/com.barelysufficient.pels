@@ -1,7 +1,8 @@
 import type { EChartsOption, EChartsType } from './echartsRegistry.ts';
 import { mountChart, resolveChartSize, type MountedChart } from './echartsMount.ts';
 import {
-  formatAxisTick,
+  buildUsageCategoryXAxis,
+  buildUsageValueYAxis,
   readChartPalette,
   resolveLabelEvery,
   roundedAxisMaxToInterval,
@@ -18,10 +19,15 @@ import {
   buildHourlyPatternReadout,
   readoutToTooltipHtml,
   resolveTooltipDataIndex,
-  type ChartReadoutContent,
 } from './chartTooltipFormat.ts';
-import { attachChartReadout, prefersCoarsePointer, type ChartReadoutHandle } from './chartReadout.ts';
+import {
+  attachChartReadout,
+  prefersCoarsePointer,
+  type ChartReadoutHandle,
+  type ChartReadoutState,
+} from './chartReadout.ts';
 import { logSettingsWarn } from './logging.ts';
+import type { DailyHistoryPoint, HourlyPatternPoint } from './powerStats.ts';
 
 export type UsageStatsPalette = {
   bar: string;
@@ -40,16 +46,6 @@ export type UsageStatsPalette = {
   // a guideline, not a judgment (amber is reserved for the over-budget
   // portion of the bars).
   budgetReference: string;
-};
-
-export type HourlyPatternPoint = {
-  hour: number;
-  avg: number;
-};
-
-export type DailyHistoryPoint = {
-  date: string;
-  kWh: number;
 };
 
 type PlotState = {
@@ -148,26 +144,14 @@ const ensurePlot = (
 // selection (wiped by `notMerge`) and surface the row. The default selection
 // is the most informative point per chart — the peak hour on the typical-day
 // pattern, the most recent complete day on the daily history — so the row is
-// never empty.
-const updateReadout = (params: {
-  kind: PlotKind;
-  itemCount: number;
-  defaultIndex: number;
-  // Series the column select dispatches to. The daily history passes both
-  // stack series so the select border wraps the whole column (mint base +
-  // amber over segment); single-series charts omit it (defaults to series 0).
-  selectSeriesIndexes?: number[];
-  resolveContent: (index: number) => ChartReadoutContent | null;
-}) => {
-  const state = getPlotState(params.kind);
+// never empty. The daily history dispatches the column select to both stack
+// series so the border wraps the whole column (mint base + amber over segment);
+// the single-series pattern chart leaves it to series 0.
+const updateReadout = (kind: PlotKind, readout: ChartReadoutState) => {
+  const state = getPlotState(kind);
   if (!state.readout || !state.readoutHost) return;
   state.readoutHost.hidden = false;
-  state.readout.update({
-    itemCount: params.itemCount,
-    defaultIndex: params.defaultIndex,
-    selectSeriesIndexes: params.selectSeriesIndexes,
-    resolveContent: params.resolveContent,
-  });
+  state.readout.update(readout);
 };
 
 const peakIndex = (values: number[]): number => {
@@ -210,38 +194,8 @@ const buildHourlyPatternOption = (params: {
         return readoutToTooltipHtml(buildHourlyPatternReadout(point));
       },
     },
-    xAxis: {
-      type: 'category',
-      data: labels,
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: palette.grid } },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (_label: string, index: number) => (
-          index % labelEvery !== 0 && index !== labels.length - 1 ? '' : labels[index]
-        ),
-      },
-    },
-    yAxis: {
-      type: 'value',
-      min: 0,
-      max: yAxis.max,
-      interval: yAxis.interval,
-      axisTick: { show: false },
-      axisLine: { show: false },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (value: number) => formatAxisTick(value, yAxis.interval),
-      },
-      splitLine: {
-        lineStyle: {
-          color: palette.grid,
-          width: 1,
-        },
-      },
-    },
+    xAxis: buildUsageCategoryXAxis(labels, labelEvery, palette),
+    yAxis: buildUsageValueYAxis(yAxis, palette),
     series: [
       {
         name: 'Average',
@@ -280,8 +234,7 @@ export const renderHourlyPatternChartEcharts = (params: {
       points,
       palette: resolvePalette(container),
     }), { notMerge: true });
-    updateReadout({
-      kind: 'hourly',
+    updateReadout('hourly', {
       itemCount: points.length,
       defaultIndex: peakIndex(points.map((point) => point.avg)),
       resolveContent: (index) => {
@@ -336,13 +289,13 @@ export const renderDailyHistoryChartEcharts = (params: {
       budgetKWh,
       partialDay: leadingPartialDay && index === 0,
     }));
-    chart.setOption(buildDailyHistoryOption({
+    chart.setOption(buildDailyHistoryOption(
       ordered,
       readouts,
       timeZone,
-      palette: resolvePalette(container),
+      resolvePalette(container),
       budgetKWh,
-    }), { notMerge: true });
+    ), { notMerge: true });
     // Same segment resolution the option builder uses, so the select
     // dispatch list matches the rendered series count (base only, or base +
     // the amber over-budget series).
@@ -350,8 +303,7 @@ export const renderDailyHistoryChartEcharts = (params: {
       ordered.map((point) => point.kWh),
       budgetKWh !== null && Number.isFinite(budgetKWh) && budgetKWh > 0 ? budgetKWh : null,
     ).over.some((value) => value > 0);
-    updateReadout({
-      kind: 'daily',
+    updateReadout('daily', {
       itemCount: ordered.length,
       // Most recent complete day (the producer already excludes today) — a
       // 14-day-peak default would pin a stale date as the row's anchor.

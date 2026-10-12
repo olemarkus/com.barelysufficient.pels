@@ -1,14 +1,12 @@
-import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import {
   formatSmartTaskExtraPermissionsValue,
   resolveKwhPerUnitProvenanceRows,
   SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE,
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
-import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
-import type { DeferredObjectiveKwhPerUnitProvenanceV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type { DeadlinePlanSchedule, ObjectivePayloadReady } from './deadlinePlanData.ts';
 import { formatAcceptedAt } from './deadlinePlanFormatters.ts';
-import { resolveLowestActiveStepKw } from './deadlinePlanResolvers.ts';
+import { resolveDisplayRateAndSpeedMode, resolveLowestActiveStepKw } from './deadlinePlanResolvers.ts';
 import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
 const formatPerUnitRateLabel = (
@@ -27,44 +25,38 @@ const formatMaxPowerLabel = (kw: number | null): string | null => {
   return `${kw.toFixed(1)} kW`;
 };
 
-const resolvePlanInputPowerKw = (params: {
-  planningSpeedKw: number | null;
-  device: ObservedDeviceState;
-}): number | null => params.planningSpeedKw ?? resolveLowestActiveStepKw(params.device);
+const resolvePositiveNumber = (value: number | undefined): number | null => (
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+);
 
-export const buildPlanInputs = (params: {
-  labels: DeadlineLabels;
-  device: ObservedDeviceState;
-  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
-  // Pre-resolved by `resolveDisplayRateAndSpeedMode` (`deadlinePlanResolvers.ts`),
-  // which prefers the runtime producer's value (`resolveRateMean`,
+export const buildPlanInputs = (
+  input: ObjectivePayloadReady,
+  schedule: DeadlinePlanSchedule,
+): DeadlinePlanPayload['planInputs'] => {
+  const { device, objective, activePlan, nowMs } = input.ctx;
+  const { labels } = schedule;
+  // `resolveDisplayRateAndSpeedMode` (`deadlinePlanResolvers.ts`) prefers the
+  // runtime producer's value (`resolveRateMean`,
   // `lib/objectives/deferredObjectives/activePlanRevisionBuild.ts`) so this producer never
   // branches on the revision's `kwhPerUnitSource` / `objectiveKind` to pick
   // between the learned profile mean and the EV bootstrap fallback.
-  rateMean: number | null;
-  // Whether the bootstrap fallback drove `rateMean`. Drives the "Estimated —
-  // refining as PELS observes charging" note rendered next to the rate row;
-  // suppressed when the rate came from the learned profile.
-  usingBootstrap: boolean;
-  objective: DeferredObjectiveSettingsEntry;
-  planningSpeedKw: number | null;
-  nowMs: number;
-}): DeadlinePlanPayload['planInputs'] => {
+  // `usingBootstrap` (the bootstrap fallback drove `rateMean`) drives the
+  // "Estimated — refining as PELS observes charging" note next to the rate
+  // row; suppressed when the rate came from the learned profile.
+  const { rateMean, usingBootstrap } = resolveDisplayRateAndSpeedMode(activePlan);
+  const planningSpeedKw = resolvePositiveNumber(activePlan.initialPlanningSpeedKw ?? activePlan.latest.planningSpeedKw);
   return {
-    perUnitRateLabel: formatPerUnitRateLabel(params.rateMean, params.labels.perUnitRateUnit),
-    perUnitRateNote: params.usingBootstrap ? params.labels.planInputsRateBootstrapNote : null,
-    maxPowerLabel: formatMaxPowerLabel(resolvePlanInputPowerKw({
-      planningSpeedKw: params.planningSpeedKw,
-      device: params.device,
-    })),
-    maxPowerNote: params.objective.rescue?.limitLowerPriorityDevices
+    perUnitRateLabel: formatPerUnitRateLabel(rateMean, labels.perUnitRateUnit),
+    perUnitRateNote: usingBootstrap ? labels.planInputsRateBootstrapNote : null,
+    maxPowerLabel: formatMaxPowerLabel(planningSpeedKw ?? resolveLowestActiveStepKw(device)),
+    maxPowerNote: objective.rescue?.limitLowerPriorityDevices
       ? SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE
       : null,
-    extraPermissionsValue: formatSmartTaskExtraPermissionsValue(params.objective.rescue),
-    provenanceRows: resolveKwhPerUnitProvenanceRows({
-      provenance: params.provenance,
-      nowMs: params.nowMs,
+    extraPermissionsValue: formatSmartTaskExtraPermissionsValue(objective.rescue),
+    provenanceRows: resolveKwhPerUnitProvenanceRows(
+      activePlan.kwhPerUnitProvenance,
+      nowMs,
       formatAcceptedAt,
-    }),
+    ),
   };
 };

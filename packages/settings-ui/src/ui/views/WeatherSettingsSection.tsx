@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import type { WeatherDeviceReading } from '../../../../contracts/src/weatherAdvisorTypes.ts';
-import { MdSwitch } from './materialWebJSX.tsx';
+import { MdSwitch, readSwitchSelected } from './materialWebJSX.tsx';
 import {
   composeLastAutoApply,
   composeOutdoorReadingLine,
@@ -29,9 +29,6 @@ import {
 // be turned on from the UI; off ⇒ only the switch row shows.
 
 export type WeatherDeviceOption = { id: string; label: string };
-
-/** md-switch exposes its state as a `.selected` property (Material Web interop). */
-type SwitchElement = HTMLElement & { selected: boolean };
 
 /** Device-picker config — present only when the feature is enabled. */
 export type WeatherPickersProps = {
@@ -118,7 +115,7 @@ const MasterSwitch = ({ enabled, onEnabledChange }: {
       id="weather-enable-switch"
       aria-label={WEATHER_ENABLE_LABEL}
       {...(enabled ? { selected: true } : {})}
-      onChange={(event: Event) => onEnabledChange((event.currentTarget as SwitchElement).selected)}
+      onChange={(event: Event) => onEnabledChange(readSwitchSelected(event))}
     />
     <span class="md-switch-row__content">
       <span class="md-switch-row__label pels-text-settings-label">{WEATHER_ENABLE_LABEL}</span>
@@ -157,7 +154,7 @@ const AutoApplyRow = ({ pickers }: { pickers: WeatherPickersProps }) => (
       id="weather-auto-apply-switch"
       aria-label={WEATHER_AUTO_APPLY_LABEL}
       {...(pickers.autoApplyDailyBudget ? { selected: true } : {})}
-      onChange={(event: Event) => pickers.onAutoApplyChange((event.currentTarget as SwitchElement).selected)}
+      onChange={(event: Event) => pickers.onAutoApplyChange(readSwitchSelected(event))}
     />
     <span class="md-switch-row__content">
       <span class="md-switch-row__label pels-text-settings-label">{WEATHER_AUTO_APPLY_LABEL}</span>
