@@ -12,6 +12,7 @@ import {
   HOMEY_PRICES_CURRENCY,
   NETTLEIE_DATA,
   POWERHOUR_PRICES_DEVICE,
+  POWERHOUR_PRICES_TODAY,
   POWERHOUR_PRICES_TOMORROW,
 } from '../../lib/utils/settingsKeys';
 import { MockSettings } from '../mocks/homey';
@@ -276,6 +277,32 @@ describe('importLegacyPriceCaches: payload-fed sources', () => {
     getKeys.mockRestore();
     expect(priceData.readFlowPayload(FLOW_PRICES_TODAY)).toEqual(PAYLOAD);
     expect(settings.getKeys()).not.toContain(FLOW_PRICES_TODAY);
+  });
+});
+
+describe('createPriceDataStore: a Power by the Hour day without a row', () => {
+  const PAYLOAD = { dateKey: '2026-09-27', pricesByHour: { 0: 1.2 }, updatedAt: '2026-09-27T00:00:00.000Z' };
+  const rig = () => {
+    const settings = new MockSettings();
+    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    const { store } = open();
+    return { settings, priceData: createPriceDataStore(settings, store) };
+  };
+
+  // An empty key list is the SDK's flake, so the key itself has to answer: a
+  // `null` read is an unset key, `undefined` is no answer, and a value is a day
+  // the import skipped unread. Only the first is absence.
+  it('reads the day as absent while the key list is empty only when the key reads back null', () => {
+    const { settings, priceData } = rig();
+    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    expect(priceData.readPowerhourCache().today).toEqual({ kind: 'absent' });
+
+    settings.set(POWERHOUR_PRICES_TODAY, PAYLOAD);
+    expect(priceData.readPowerhourCache().today).toEqual({ kind: 'unreadable' });
+
+    const originalGet = settings.get.bind(settings);
+    vi.spyOn(settings, 'get').mockImplementation((key) => (key === POWERHOUR_PRICES_TODAY ? undefined : originalGet(key)));
+    expect(priceData.readPowerhourCache().today).toEqual({ kind: 'unreadable' });
   });
 });
 

@@ -440,6 +440,19 @@ describe('normalizePersistedPowerCalibration', () => {
     expect(result.snapshot.devices.hoiax.steps.max).toEqual(persistedStep(2.87, 3));
   });
 
+  // Steps the reset drops are dropped by rule, not as malformed, so they are
+  // counted before it: a value holding only those still imports.
+  it('reads a value whose only steps the reset drops as upgraded, not as malformed', () => {
+    expect(normalizePersistedPowerCalibration({
+      version: 1,
+      devices: { elbillader: { steps: { '6a': persistedStep(0.7878, 1.38) }, lastTouchedMs: 1_000 } },
+    })).toEqual({
+      kind: 'upgraded',
+      snapshot: { version: POWER_CALIBRATION_VERSION, devices: { elbillader: { steps: {}, lastTouchedMs: 1_000 } } },
+      resetSteps: [{ deviceId: 'elbillader', stepId: '6a', observedKw: 0.7878, nameplateAtSampleKw: 1.38 }],
+    });
+  });
+
   it('still reads a value without the mark as upgraded when nothing needs resetting', () => {
     const result = read({
       version: 1,

@@ -191,10 +191,10 @@ describe('importLegacyEvCarLinkState', () => {
     expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
   });
 
-  // The deferred boot linked the car, learned its limit and saw it charge past
-  // it, which clears the car's stops. The blob's older stops agree on the same
-  // limit: refilling them would qualify the disproven limit again.
-  it('never refills the stops of a car the store linked while the import was deferred', () => {
+  // The deferred boot voted on and linked the car, learned its limit and saw it
+  // charge past it, which clears the car's stops. The blob's older stops agree
+  // on the same limit: refilling them would qualify the disproven limit again.
+  it('never refills the stops of a car the store voted on while the import was deferred', () => {
     const { settings, repository } = rig();
     settings.set(EV_CAR_LINK_STATE, HISTORY);
     const originalGet = settings.get.bind(settings);
@@ -262,6 +262,57 @@ describe('importLegacyEvCarLinkState', () => {
     expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
     vi.spyOn(settings, 'getKeys').mockReturnValue([]);
     expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+  });
+
+  // The mark retires the key for good, so it must never land without the rows.
+  it('commits the import mark with the rows, or neither', () => {
+    const { settings, db, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, HISTORY);
+    db.exec("CREATE TRIGGER refuse_mark BEFORE INSERT ON meta BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(false);
+    expect(repository.read(NOW)).toBeNull();
+    expect(settings.get(EV_CAR_LINK_STATE)).toEqual(HISTORY);
+    expect(repository.hasImportedLegacy()).toBe(false);
+
+    db.exec('DROP TRIGGER refuse_mark');
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+    expect(repository.read(NOW)).toEqual(HISTORY);
+    expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
+    expect(repository.hasImportedLegacy()).toBe(true);
+  });
+
+  // An install that never had the blob, or retired it before imports were
+  // marked, has no import to mark it. A key list read without the key marks
+  // it instead, so a later boot whose list comes back empty still resolves.
+  it('marks a key list read without the blob, so a later empty key list still resolves', () => {
+    const { settings, repository } = rig();
+    expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+    expect(repository.hasImportedLegacy()).toBe(true);
+
+    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const capture = captureLogger();
+    try {
+      expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+      expect(capture.findEvent('legacy_ev_car_link_state_import_deferred'))
+        .toMatchObject({ level: 40, reason: 'key_list_unreadable' });
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it('says so when it cannot write or read the mark, and leaves the history unresolved', () => {
+    const { settings, repository } = rig();
+    vi.spyOn(repository, 'hasImportedLegacy').mockImplementation(() => { throw new Error('disk I/O error'); });
+    const capture = captureLogger();
+    try {
+      expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+      expect(capture.findEvent('legacy_ev_car_link_state_import_mark_failed')).toBeDefined();
+      vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+      expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(false);
+      expect(capture.findEvent('legacy_ev_car_link_state_import_mark_unreadable')).toBeDefined();
+    } finally {
+      capture.restore();
+    }
   });
 
   // A blob whose every entry is malformed is a failed read, not an empty

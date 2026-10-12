@@ -63,13 +63,22 @@ const toStoredFlowPayload = (payload: FlowPricePayload | null): StoredFlowPriceP
  * key may still be pending its one-shot import: the old key's own
  * classification, so the merge guards behave exactly as they did before the
  * move. A key that reads back `undefined` settles nothing (`unreadable`); a
- * listed `null` is absence, which is what the SDK answers for an unset key and
- * what reading it otherwise turned into a home that never got prices again.
+ * `null` is absence, which is what the SDK answers for an unset key and what
+ * reading it otherwise turned into a home that never got prices again.
+ *
+ * A value while the key list cannot be read settles nothing either. The
+ * import skips a key it cannot see listed, so the value is a day it has yet
+ * to take; read as absence, the merge would store the app's future-only
+ * answer as the whole day, and the next import would retire the key under
+ * that row with this morning's hours still in it.
  */
 const classifyPendingLegacyKey = (settings: SettingsPort, key: string): 'absent' | 'unreadable' => {
   try {
-    if (isLegacySettingsKeyListed(settings, key) === false) return 'absent';
-    return settings.get(key) === undefined ? 'unreadable' : 'absent';
+    const listed = isLegacySettingsKeyListed(settings, key);
+    if (listed === false) return 'absent';
+    const value = settings.get(key);
+    if (value === undefined) return 'unreadable';
+    return listed === null && value !== null ? 'unreadable' : 'absent';
   } catch {
     return 'unreadable';
   }

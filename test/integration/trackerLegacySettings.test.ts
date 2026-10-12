@@ -3,6 +3,7 @@ import { createTrackerStore } from '../../lib/power/trackerStore';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { MockSettings } from '../mocks/homey';
+import { captureLogger } from '../utils/loggerCapture';
 
 const HISTORY: PowerTrackerState = {
   lastPowerW: 900,
@@ -15,8 +16,9 @@ const HISTORY: PowerTrackerState = {
 
 const rig = () => {
   const settings = new MockSettings();
-  // A real install never has an empty key list here: the boot migrations
-  // set their markers first.
+  // An upgrading install lists its keys here. A fresh one's list is empty,
+  // since the userdata stores open before the boot migrations write
+  // anything, and an empty list imports nothing.
   settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
   const store = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   return { settings, store };
@@ -113,6 +115,21 @@ describe('importLegacyPowerTrackers', () => {
     // The boot that reads cleanly imports.
     expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: ['main'], retired: [], deferred: [] });
     expect(store.load('main')).toEqual(HISTORY);
+  });
+
+  // A fresh install's first boot opens the stores before any setting is
+  // written, so its key list is genuinely empty: no news, and no warning.
+  it('says at info that an empty key list imports nothing', () => {
+    const settings = new MockSettings();
+    const store = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+    const capture = captureLogger();
+    try {
+      expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: [] });
+      expect(capture.findEvent('legacy_power_tracker_import_deferred'))
+        .toMatchObject({ level: 30, reason: 'key_list_unreadable' });
+    } finally {
+      capture.restore();
+    }
   });
 
   it('a throwing key list or unset defers, and the next boot finds the home in the store', () => {

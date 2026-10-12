@@ -49,10 +49,16 @@ export type EvCarLinkRepository = {
     read(nowMs: number): EvCarLinkSnapshot | null;
     /** Persist `snapshot`, touching only the families that differ from what the store holds. */
     write(snapshot: EvCarLinkSnapshot): void;
-    /** Whether the legacy `ev_car_link_state` blob was imported into the store. Throws only on I/O. */
+    /**
+     * Whether the store holds everything the legacy `ev_car_link_state` blob
+     * could carry: the blob was imported, or a key list that was read did not
+     * list it. Throws only on I/O.
+     */
     hasImportedLegacy(): boolean;
     /** {@link write} the snapshot the legacy import made and mark the import, in one transaction. */
     writeLegacyImport(snapshot: EvCarLinkSnapshot): void;
+    /** Mark the import with nothing to write: a key list that was read does not list the blob. Throws only on I/O. */
+    markLegacyImported(): void;
 };
 
 export const createEvCarLinkRepository = (db: UserdataDatabase): EvCarLinkRepository => {
@@ -87,6 +93,7 @@ export const createEvCarLinkRepository = (db: UserdataDatabase): EvCarLinkReposi
             writeFamilies(snapshot);
             writeLegacyImportMark(db, EV_CAR_LINK_STATE);
         }),
+        markLegacyImported: () => writeLegacyImportMark(db, EV_CAR_LINK_STATE),
     };
 };
 
@@ -102,8 +109,12 @@ export const createEvCarLinkRepository = (db: UserdataDatabase): EvCarLinkReposi
  *
  * Answers whether the store holds the probe's whole history: not while a
  * suspect read, or a key list that could not be read, leaves the blob unread,
- * unless an import already completed. A blob with no snapshot in it, or whose
- * every entry is malformed, holds no history, so it does not count.
+ * unless the mark says the store holds it. The mark is written with an import,
+ * and once on a boot whose key list was read without the key, so an install
+ * that never had the blob, or retired it before imports were marked, does not
+ * lose its history to every later boot whose key list comes back empty. A blob
+ * with no snapshot in it, or whose every entry is malformed, holds no history,
+ * so it does not count.
  */
 export const importLegacyEvCarLinkState = (
     settings: SettingsPort,
@@ -111,10 +122,16 @@ export const importLegacyEvCarLinkState = (
     nowMs: number,
 ): boolean => {
     const listed = isLegacySettingsKeyListed(settings, EV_CAR_LINK_STATE);
-    if (listed === false) return true;
-    // An unreadable key list says nothing about the blob: retried next boot,
-    // and only a completed import says the store holds it.
-    if (listed === null) return hasImported(repository);
+    if (listed === false) {
+        markNothingToImport(repository);
+        return true;
+    }
+    if (listed === null) {
+        // An unreadable key list says nothing about the blob: retried next
+        // boot, and only the mark says the store holds it.
+        moduleLogger.warn({ event: 'legacy_ev_car_link_state_import_deferred', reason: 'key_list_unreadable' });
+        return hasImported(repository);
+    }
     const result = importLegacySettingsKey(settings, EV_CAR_LINK_STATE, {
         holds: () => repository.hasImportedLegacy(),
         adopt: (raw) => {
@@ -141,12 +158,26 @@ export const importLegacyEvCarLinkState = (
         || hasImported(repository);
 };
 
-/** Whether an import completed on an earlier boot; a store that cannot say has not shown one. */
+/** Whether the mark is there; a store that cannot say has not shown it. */
 const hasImported = (repository: EvCarLinkRepository): boolean => {
     try {
         return repository.hasImportedLegacy();
-    } catch {
+    } catch (error) {
+        moduleLogger.warn({ event: 'legacy_ev_car_link_state_import_mark_unreadable', err: normalizeError(error) });
         return false;
+    }
+};
+
+/**
+ * A key list that was read does not list the blob, so the store holds all the
+ * settings ever carried. Marked once, best-effort: a store that cannot take the
+ * mark is asked again next boot.
+ */
+const markNothingToImport = (repository: EvCarLinkRepository): void => {
+    try {
+        if (!repository.hasImportedLegacy()) repository.markLegacyImported();
+    } catch (error) {
+        moduleLogger.warn({ event: 'legacy_ev_car_link_state_import_mark_failed', err: normalizeError(error) });
     }
 };
 

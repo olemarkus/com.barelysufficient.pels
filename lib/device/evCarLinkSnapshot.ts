@@ -395,11 +395,14 @@ export const pruneEvCarLinkSnapshot = (
  * EMAs are independent keyed observations with no such overlap.
  *
  * A car the store holds a pair for is the store's to answer for, stops or
- * none: the probe has linked it since, and a limit its stops qualified and a
- * later charge disproved was cleared (`clearEvCarObservedStops`), which
- * absence cannot tell from "never stopped". Refilling it would qualify the
- * disproven limit again. A car with no stored pair was never linked, so it
- * can neither have banked a stop nor lost one, and takes the legacy stops.
+ * none: the probe has voted on it since. A charge past a limit its stops
+ * qualified clears them (`clearEvCarObservedStops`), and that takes a link,
+ * which the probe only makes for a car it votes on (a coincidence, or a prior
+ * from its votes). So every car a disproval cleared holds a pair, and absence
+ * there cannot tell a cleared limit from "never stopped": refilling it would
+ * qualify the disproven limit again. A car with no stored pair was never
+ * linked, so it can neither have banked a stop nor lost one, and takes the
+ * legacy stops.
  *
  * Sessions are deliberately NOT filled from the legacy side: the store's
  * absence cannot distinguish "never seen" from "cleared by an observed session
@@ -412,13 +415,13 @@ export const withLegacyEvCarLinkUnder = (
     stored: EvCarLinkSnapshot,
     legacy: EvCarLinkSnapshot,
 ): EvCarLinkSnapshot => {
-    const linkedCarIds = new Set(Object.keys(stored.pairs).map((key) => parseEvCarLinkPairKey(key)?.carId));
+    const votedCarIds = new Set(Object.keys(stored.pairs).map((key) => parseEvCarLinkPairKey(key)?.carId));
     return {
         version: EV_CAR_LINK_VERSION,
         pairs: { ...legacy.pairs, ...stored.pairs },
         cars: Object.fromEntries([
             ...Object.entries(stored.cars),
-            ...Object.entries(legacy.cars).filter(([carId]) => !(carId in stored.cars) && !linkedCarIds.has(carId)),
+            ...Object.entries(legacy.cars).filter(([carId]) => !(carId in stored.cars) && !votedCarIds.has(carId)),
         ].slice(0, EV_CAR_LINK_MAX_TRACKED_CARS)),
         sessions: { ...stored.sessions },
     };

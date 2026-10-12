@@ -353,6 +353,38 @@ describe('Power by the Hour price service', () => {
     expect(Object.keys(today?.pricesByHour ?? {})).toHaveLength(24);
   });
 
+  // An empty key list is the SDK's flake: the import skips the key unread, and
+  // the day it holds is not absent. Merged as absent, the app's future-only
+  // answer became the whole day, and the next import retired the key under
+  // that row with this morning's hours in it.
+  it('writes nothing over a pending day while the key list cannot be read', async () => {
+    const wholeToday = {
+      dateKey: todayKey,
+      pricesByHour: Object.fromEntries(Array.from({ length: 24 }, (_, hour) => [String(hour), hour])),
+      updatedAt: fixedNow.toISOString(),
+    };
+    mockHomeyInstance.settings.set(POWERHOUR_PRICES_TODAY, wholeToday);
+    priceCache.write(POWERHOUR_PRICES_DEVICE, 'no2-device');
+    setMockApiApp(POWERHOUR_APP_ID, {
+      installed: true,
+      get: async () => dapPrices(todayKey, 14, (hour) => hour),
+    });
+    const service = buildService();
+    const getKeys = vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockReturnValue([]);
+
+    await service.refreshSpotPrices(true);
+    getKeys.mockRestore();
+
+    expect(priceCache.read(POWERHOUR_PRICES_TODAY)).toBeNull();
+    expect(mockHomeyInstance.settings.get(POWERHOUR_PRICES_TODAY)).toEqual(wholeToday);
+
+    await service.refreshSpotPrices(true);
+    const today = priceCache.read(POWERHOUR_PRICES_TODAY) as { pricesByHour?: Record<string, number> };
+    expect(Object.keys(today?.pricesByHour ?? {})).toHaveLength(24);
+    expect(today?.pricesByHour?.['3']).toBe(3);
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain(POWERHOUR_PRICES_TODAY);
+  });
+
   it('keeps the elapsed hours when a stored day cannot be read', async () => {
     const nightKey = shiftDateKey(todayKey, -1);
     const fullDay = (dateKey: string) => ({

@@ -97,7 +97,10 @@ export const importLegacyPowerTrackers = (
   const result: LegacyTrackerImport = { imported: [], retired: [], deferred: [] };
   const keys = listLegacySettingsKeys(settings, (candidate) => legacyHomeId(candidate) !== null);
   if (keys === null) {
-    importLogger.warn({ event: 'legacy_power_tracker_import_deferred', reason: 'key_list_unreadable' });
+    // Info, not warn: the stores open before anything writes a setting, so a
+    // fresh install's first boot finds the list genuinely empty. Either way
+    // nothing is lost; the next boot imports whatever the settings hold.
+    importLogger.info({ event: 'legacy_power_tracker_import_deferred', reason: 'key_list_unreadable' });
     return result;
   }
   for (const key of keys) {

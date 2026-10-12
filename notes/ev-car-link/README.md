@@ -115,10 +115,13 @@ car is ticked, so the persisted `pairs` already record which charger each car ha
 vote time per matched charger), and the UI uses it to show a match before the owner ticks the
 car and gives up a working Flow-reported level. It carries no count: a session usually casts
 one vote on plug-in and another on unplug. The history covers the prune window (90 days). It
-is read per candidate from the probe's snapshot. While a suspect read at the upgrade boot leaves
-part of it in the legacy settings key for the next boot's import, the history is `unavailable`
-rather than empty, and the UI gives no match-based advice: an empty snapshot standing in for an
-unread one must not read as "never matched".
+is read per candidate from the probe's snapshot. While part of it may still be in the legacy
+settings key, the history is `unavailable` rather than empty, and the UI gives no match-based
+advice: an empty snapshot standing in for an unread one must not read as "never matched". That
+holds for the run of a boot whose suspect read left the key for the next boot's import, and of
+a boot whose settings key list came back empty, unless the store is marked as holding the
+blob. The mark is written with the import, or once on a boot whose key list was read without
+the key, so an install that never had the blob reads its history as resolved even then.
 
 **The charge reading is served with its timestamp and is not gated on the session start.**
 Cars publish `measure_battery` on change, so a session normally opens with the last pre-plug

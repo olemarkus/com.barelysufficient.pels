@@ -244,8 +244,9 @@ describe('importLegacyPowerCalibration', () => {
 
   const rig = () => {
     const settings = new MockSettings();
-    // A real install never has an empty key list here: the boot migrations
-    // set their markers first.
+    // An upgrading install lists its keys here. A fresh one's list is empty,
+    // since the userdata stores open before the boot migrations write
+    // anything, and an empty list imports nothing.
     settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
     const db = openUserdataDatabase(IN_MEMORY_DATABASE);
     return { settings, db, repository: createPowerCalibrationRepository(db) };
@@ -324,6 +325,23 @@ describe('importLegacyPowerCalibration', () => {
     }
     expect(settings.get(POWER_CALIBRATION)).toBeNull();
     expect(Object.keys(memoryStore(db).getSnapshot().devices)).toEqual(['hoiax-1']);
+  });
+
+  // The mark retires the key for good, so it must never land without the rows.
+  it('commits the import mark with the rows, or neither', () => {
+    const { settings, db, repository } = rig();
+    settings.set(POWER_CALIBRATION, markedBlob);
+    db.exec("CREATE TRIGGER refuse_mark BEFORE INSERT ON meta BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    importLegacyPowerCalibration(settings, repository);
+    expect(rowCount(db)).toBe(0);
+    expect(settings.get(POWER_CALIBRATION)).toEqual(markedBlob);
+    expect(repository.hasImportedLegacy()).toBe(false);
+
+    db.exec('DROP TRIGGER refuse_mark');
+    importLegacyPowerCalibration(settings, repository);
+    expect(Object.keys(memoryStore(db).getSnapshot().devices).sort()).toEqual(['elbillader', 'hoiax-1']);
+    expect(settings.get(POWER_CALIBRATION)).toBeNull();
+    expect(repository.hasImportedLegacy()).toBe(true);
   });
 
   // A blob whose every device is malformed is a failed read, not an empty
