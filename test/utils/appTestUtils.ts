@@ -8,6 +8,7 @@ import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import { createTrackerStore, type TrackerStore } from '../../lib/power/trackerStore';
 import fs from 'node:fs';
+import { afterAll } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import { openUserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -40,9 +41,23 @@ type CreateAppOptions = {
   userdataDatabase?: string;
 };
 
+// The per-test database never needs to survive a power cut, but closing it runs
+// SQLite's WAL checkpoint, which fsyncs. On a disk-backed temp directory that
+// fsync waits on whatever else the machine is writing: measured at up to 17.5 s
+// during an unrelated 5 GB write, which overran the 10 s `afterEach` budget in
+// `cleanupApps`. `/dev/shm` is tmpfs on Linux, where fsync returns at once;
+// hosts without a writable one keep the temp directory.
+const createTestUserdataDir = (): string => {
+  try {
+    return fs.mkdtempSync(path.join('/dev/shm', 'pels-userdata-'));
+  } catch {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'pels-userdata-'));
+  }
+};
+
 let testUserdataDir: string | undefined;
 const testUserdataDatabase = (): string => {
-  testUserdataDir ??= fs.mkdtempSync(path.join(os.tmpdir(), 'pels-userdata-'));
+  testUserdataDir ??= createTestUserdataDir();
   return path.join(testUserdataDir, 'pels.sqlite');
 };
 /** Drop the database and its directory so the next test boots on an empty store. */
@@ -225,3 +240,7 @@ export async function cleanupApps(): Promise<void> {
   mockHomeyInstance.app = null;
   removeTestUserdataDatabase();
 }
+// A file whose last test boots an app without `cleanupApps` would otherwise
+// leave its directory behind, and in `/dev/shm` that is memory. Uninit first,
+// so no connection is still open on the files being removed.
+afterAll(cleanupApps);

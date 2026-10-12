@@ -1,3 +1,4 @@
+import { render } from 'preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   renderDeadlinePlan,
@@ -66,13 +67,21 @@ const buildHistoryEntry = (
   ...overrides,
 });
 
+const mounts: HTMLElement[] = [];
+
 const mountIntoBody = (): HTMLElement => {
   const mount = document.createElement('div');
   document.body.appendChild(mount);
+  mounts.push(mount);
   return mount;
 };
 
 afterEach(() => {
+  // Unmount before clearing the DOM. Preact runs `useEffect` from a timer after
+  // paint, so a chart rendered by the file's last test would otherwise mount
+  // (and read `document`) after Vitest has torn the jsdom environment down.
+  // An unmounted component's pending effects are skipped.
+  for (const mount of mounts.splice(0)) render(null, mount);
   document.body.replaceChildren();
 });
 
