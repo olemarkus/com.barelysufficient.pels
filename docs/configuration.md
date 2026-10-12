@@ -231,7 +231,7 @@ Price support is optional, but it makes the app more useful for thermal loads, d
 
 | Setting | What it does |
 | --- | --- |
-| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy (dynamic prices)**, **Power by the Hour (app)**, or **Flow (prices from a Flow card)**. |
+| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy (dynamic prices)**, **Power by the Hour (app)**, or **Flow (prices from a Flow card)**. Until you choose, PELS uses **Norway (spot + grid tariff)** on a Homey in Norway and **Homey Energy** elsewhere, going by the country Homey reports for its location. |
 
 **Power by the Hour** reads prices straight from that app, with no Flow to build. Install
 [Power by the Hour](https://homey.app/a/com.gruijter.powerhour/) (version 8.10.0 or newer), add a price device
@@ -257,6 +257,8 @@ If you use external flow tags:
 ### Export price (prosumer)
 
 If you sell surplus solar back to the grid, turn on **Use an export price** and set a **share of the spot price** and/or a **fixed amount**.
+
+The fixed amount is in øre on the Norway source and in your currency on the others. When the price source changes, whether you pick another one or PELS moves a Homey outside Norway to Homey Energy, PELS turns the export price off rather than read a fixed amount in the wrong unit, so turn it back on and enter the amount again. A share of the spot price is set to 0 on a source without a spot price.
 
 On the **Homey Energy** price source you also get **Where the price comes from**:
 

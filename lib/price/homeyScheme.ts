@@ -11,13 +11,13 @@
 
 import type { SettingsPort } from '../ports/homeyRuntime';
 import {
-  EXPORT_PRICE_ENABLED, EXPORT_PRICE_SOURCE, HOMEY_PRICE_FORMULA, PRICE_SCHEME,
+  EXPORT_PRICE_ENABLED, EXPORT_PRICE_SOURCE, HOMEY_PRICE_FORMULA,
 } from '../utils/settingsKeys';
 import {
   isExportPriceSourceSetting,
   readExportPriceSourceSetting,
 } from '../../packages/shared-domain/src/settings/exportPriceSource';
-import type { CombinedPricePeriod } from './priceTypes';
+import type { CombinedPricePeriod, PriceScheme } from './priceTypes';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
 import type { HomeyWebApiGet } from './homeyWebApiPort';
 import {
@@ -56,9 +56,9 @@ export type { HomeyPriceResolution } from './homeyPriceFormula';
  * falls back to the second witness: mirrored terms exist only where the source
  * was Homey when they were written.
  */
-export const usesHomeyExportTerms = (settings: SettingsPort): boolean => {
+export const usesHomeyExportTerms = (settings: SettingsPort, scheme: PriceScheme): boolean => {
   if (settings.get(EXPORT_PRICE_ENABLED) !== true) return false;
-  if (settings.get(PRICE_SCHEME) !== 'homey') return false;
+  if (scheme !== 'homey') return false;
   const stored = settings.get(EXPORT_PRICE_SOURCE);
   if (isExportPriceSourceSetting(stored)) return stored === 'homey_energy';
   const listed = settings.getKeys().includes(EXPORT_PRICE_SOURCE);
@@ -76,10 +76,11 @@ export const usesHomeyExportTerms = (settings: SettingsPort): boolean => {
 export const syncHomeyPricing = async (
   webApiGet: HomeyWebApiGet,
   settings: SettingsPort,
+  scheme: PriceScheme,
   sinks: PriceServiceLoggingSinks,
 ): Promise<boolean> => {
   const formulaChanged = await syncHomeyPriceFormula(webApiGet, settings, sinks);
-  const exportChanged = usesHomeyExportTerms(settings)
+  const exportChanged = usesHomeyExportTerms(settings, scheme)
     && await syncHomeyExportTerms(webApiGet, settings, sinks);
   return formulaChanged || exportChanged;
 };
@@ -92,8 +93,9 @@ export const syncHomeyPricing = async (
 export const resolveHomeySeries = (
   periods: CombinedPricePeriod[],
   settings: SettingsPort,
+  scheme: PriceScheme,
 ): HomeyPriceResolution => {
-  if (!usesHomeyExportTerms(settings)) return resolveHomeyPriceSeries(periods, settings);
+  if (!usesHomeyExportTerms(settings, scheme)) return resolveHomeyPriceSeries(periods, settings);
   // Terms that are mirrored but unreadable right now would silently drop the
   // feed-in price out of an otherwise good series. Price the import side as
   // usual, but mark the build undecided so nothing persists the loss.
@@ -118,10 +120,11 @@ export const resolveHomeySeries = (
  */
 export const resolveExportConfigForScheme = (
   settings: SettingsPort,
+  scheme: PriceScheme,
   getRaw: (key: string) => unknown,
   getNumber: (key: string, fallback: number) => number,
 ): ExportPriceConfig => (
-  usesHomeyExportTerms(settings)
+  usesHomeyExportTerms(settings, scheme)
     ? EXPORT_PRICE_DISABLED
     : readExportPriceConfig({ getRaw, getNumber })
 );
@@ -165,17 +168,13 @@ export const keepsPersistedPrices = (
  */
 export const resolveHomeyPriceFormulaUiStatus = (
   settings: SettingsPort,
+  scheme: PriceScheme,
   resolution: HomeyPriceResolution,
 ): HomeyPriceFormulaUiStatus => {
-  const scheme = settings.get(PRICE_SCHEME);
-  // A listed scheme key that reads back unusable settles nothing — and saying
-  // "none" there would hide the very explanation this status exists to give,
-  // on a page the owner is looking at because prices are blank.
-  if (scheme !== 'homey') {
-    const unreadable = (scheme === undefined || scheme === null)
-      && settings.getKeys().includes(PRICE_SCHEME);
-    return unreadable ? { kind: 'unknown' } : { kind: 'none' };
-  }
+  // `scheme` is the source in force. A scheme key that reads back unusable
+  // keeps the source last in force (`PriceSchemeResolver`), so a home on Homey
+  // Energy still gets its explanation through a transient miss.
+  if (scheme !== 'homey') return { kind: 'none' };
   const stored = readStoredPriceFormula(settings);
   const expression = stored.kind === 'unsupported' ? stored.expression : '';
   if (stored.kind === 'unsupported') return { kind: 'unsupported', expression };

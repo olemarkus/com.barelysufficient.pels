@@ -57,7 +57,7 @@ export type PricePayloadKey =
 
 /** The caches this store holds, one row each. */
 export type PriceCacheKey =
-  | 'grid_tariff' | 'spot_prices' | 'spot_price_area'
+  | 'grid_tariff' | 'spot_prices' | 'spot_price_area' | 'price_scheme_resolution'
   | typeof COMBINED_PRICES
   | PricePayloadKey
   | typeof HOMEY_PRICES_CURRENCY | typeof POWERHOUR_PRICES_CURRENCY | typeof POWERHOUR_PRICES_DEVICE;

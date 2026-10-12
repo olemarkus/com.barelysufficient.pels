@@ -666,6 +666,7 @@ describe('settingsUiApi', () => {
       powerhourTomorrow: null,
       powerhourSource: { kind: 'unknown' },
       priceOptimizationSetup: { state: 'unavailable' },
+      priceSetup: { state: 'unavailable' },
     });
     expect(getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toEqual({
       generatedAt: 123456,

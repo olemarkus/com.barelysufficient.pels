@@ -8,7 +8,7 @@ import { PriceLevel } from '../../../lib/price/priceLevels';
 import {
   COMBINED_PRICES, FLOW_PRICES_TODAY, POWERHOUR_PRICES_TODAY, PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
-import { noHomeyWebApi } from '../../helpers/homeyWebApiStub';
+import { noHomeyWebApi, unknownHubMarket } from '../../helpers/homeyWebApiStub';
 
 // The price cache the service under test reads; each test starts on an empty one.
 let priceCache = createInMemoryPriceCache();
@@ -20,6 +20,7 @@ const createCoordinator = () => new PriceCoordinator({
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
   getPowerTracker: () => ({}),
   homeyWebApiGet: noHomeyWebApi,
+  readHubMarket: unknownHubMarket,
   getCurrentPriceLevel: () => PriceLevel.NORMAL,
   log: () => undefined,
   debugStructured: () => undefined,
@@ -88,6 +89,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
       homeyWebApiGet: noHomeyWebApi,
+      readHubMarket: unknownHubMarket,
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       log: () => undefined,
       debugStructured: () => undefined,
@@ -295,6 +297,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getPowerTracker: () => ({}),
       homeyWebApiGet: noHomeyWebApi,
+      readHubMarket: unknownHubMarket,
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       log: () => undefined,
       debugStructured: () => undefined,

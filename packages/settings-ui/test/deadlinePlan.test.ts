@@ -49,6 +49,7 @@ const pricesPayload = (combinedPrices: unknown): SettingsUiPricesPayload => ({
   powerhourTomorrow: null,
   powerhourSource: { kind: 'unknown' },
   priceOptimizationSetup: { state: 'unavailable' },
+  priceSetup: { state: 'unavailable' },
 });
 
 const expectReady = (result: ReturnType<typeof resolveRenderInput>) => {

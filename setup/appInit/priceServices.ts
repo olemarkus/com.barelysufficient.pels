@@ -5,6 +5,7 @@ import { createPriceOptimizationSettingsStore } from '../../lib/price/priceOptim
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createPriceCacheStore, importLegacyPriceCaches } from '../../lib/price/priceCacheStore';
 import { createHomeyWebApiGet } from '../homeyWebApi';
+import { createHubMarketRead } from './hubMarketRead';
 import type { AppContext } from '../../lib/app/appContext';
 import { requirePriceCoordinator } from './contextGuards';
 
@@ -18,6 +19,7 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     getTimeZone: () => ctx.getTimeZone(),
     getPowerTracker: () => ctx.powerTracker,
     homeyWebApiGet: createHomeyWebApiGet(),
+    readHubMarket: createHubMarketRead(),
     getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: getDebugEmitter('price', 'price'),

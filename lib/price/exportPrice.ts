@@ -1,5 +1,11 @@
 import { EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR } from '../utils/settingsKeys';
-import type { CombinedPriceFields } from './priceTypes';
+import type { SettingsPort } from '../ports/homeyRuntime';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
+import {
+  resolveExportSchemeChangePlan,
+  type ExportSchemeChangePlan,
+} from '../../packages/shared-domain/src/settings/exportPriceSchemeChange';
+import type { CombinedPriceFields, PriceScheme } from './priceTypes';
 
 /**
  * Export (feed-in) price model.
@@ -49,9 +55,49 @@ export const readExportPriceConfig = (read: {
   };
 };
 
-const finiteOr = (value: number | undefined, fallback: number): number => (
+export type ExportPriceSettlement =
+  | { readonly state: 'settled'; readonly plan: ExportSchemeChangePlan }
+  | { readonly state: 'unavailable' };
+
+const EXPORT_PRICE_KEYS = [EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, EXPORT_FIXED] as const;
+
+const finiteOr = (value: unknown, fallback: number): number => (
   typeof value === 'number' && Number.isFinite(value) ? value : fallback
 );
+
+/**
+ * Keep an export price from being read in another source's units when PELS
+ * switches source by itself. The same rule the settings UI applies when the
+ * owner switches source (`resolveExportSchemeChangePlan`), with the same
+ * follow-up write, answering the plan applied for the caller to log.
+ *
+ * A missed read of a saved amount would read as 0 and could let a fixed amount
+ * through in the wrong unit, so the settings are judged only when the key list
+ * answers and every listed export key reads back. Otherwise the export price is
+ * `unavailable` and the caller keeps the source it was entered under. A failed
+ * write throws, with the same consequence.
+ */
+export const settleExportPriceForSourceChange = (
+  settings: SettingsPort,
+  previousScheme: PriceScheme,
+  nextScheme: PriceScheme,
+): ExportPriceSettlement => {
+  const keys = readSettingsKeyList(settings);
+  if (keys.status !== 'resolved') return { state: 'unavailable' };
+  const stored = new Map<string, unknown>(EXPORT_PRICE_KEYS.map((key) => [key, settings.get(key)]));
+  const unreadable = EXPORT_PRICE_KEYS.some((key) => keys.keys.includes(key) && stored.get(key) == null);
+  if (unreadable) return { state: 'unavailable' };
+  const config = readExportPriceConfig({
+    getRaw: (key) => stored.get(key),
+    getNumber: (key, fallback) => finiteOr(stored.get(key), fallback),
+  });
+  const plan = resolveExportSchemeChangePlan(
+    previousScheme, nextScheme, config.enabled, config.spotFactorPercent, config.fixedInclVat,
+  );
+  if (plan === 'disable_export') settings.set(EXPORT_PRICE_ENABLED, false);
+  if (plan === 'normalize_share') settings.set(EXPORT_SPOT_FACTOR, 0);
+  return { state: 'settled', plan };
+};
 
 /**
  * Resolve the incl-VAT export price for one hour, or `undefined` when export is

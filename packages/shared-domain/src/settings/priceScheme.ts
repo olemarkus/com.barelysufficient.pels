@@ -32,10 +32,14 @@ import type { PriceSchemeSetting } from '../../../contracts/src/settingsUiApi.js
  * Read policy: RECOGNISE OR DEFAULT.
  *
  * A flat union with nothing to sanitize partially — a value is one of the four
- * or it is not. Anything else, absence included, reads as `norway`: the source
- * every home had before the key existed, so a never-written key still means
- * what it has always meant and an upgrade prices the home exactly as it did
- * yesterday. Every other source is therefore an explicit choice by the owner.
+ * or it is not. A recognised value is the owner's choice.
+ *
+ * Absence is not a choice, and which source is in force then is not this
+ * function's call: the runtime assumes one from the hub's country
+ * (`lib/price/priceSchemeResolution.ts`) and the settings UI shows the source
+ * the runtime reports. `readPriceSchemeSetting` answers `norway` for anything
+ * unrecognised, the source every home had before the key existed; it is the
+ * fallback for a reader that cannot ask the runtime.
  *
  * The settings UI keeps one reading of its own — the value of the `<select>`
  * element, which is not these bytes and defaults to whatever the form shows —

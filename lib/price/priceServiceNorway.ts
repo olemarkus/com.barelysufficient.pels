@@ -15,8 +15,24 @@ import {
   type PowerTrackerReadout,
 } from './priceServiceNorgespris';
 import type { CombinedHourlyPrice } from './priceTypes';
+import type { NorwayPriceModelSetting } from '../../packages/contracts/src/settingsUiApi';
 
-export type NorwayPriceModel = 'stromstotte' | 'norgespris';
+/** Declared once, in contracts, beside the settings UI read that reports it. */
+export type NorwayPriceModel = NorwayPriceModelSetting;
+
+/**
+ * The Norway source's settings keys, owned here so every reader that reports
+ * on them (the series build, the price-setup read, the source resolution)
+ * names the same keys.
+ */
+export const NORWAY_SETTING_KEYS = {
+  priceArea: 'price_area',
+  county: 'nettleie_fylke',
+  organizationNumber: 'nettleie_orgnr',
+  tariffGroup: 'nettleie_tariffgruppe',
+  pricingModel: NORWAY_PRICE_MODEL,
+  providerSurcharge: 'provider_surcharge',
+} as const;
 
 /** The Norway-scheme settings the combined-series build reads, with their defaults applied. */
 export type NorwaySchemeSettings = {
@@ -48,15 +64,15 @@ export const readNorwaySchemeSettings = (read: {
 }): NorwaySchemeSettings => {
   // One read per key: this runs on the combined-series build, which is the hot
   // path the surrounding change exists to make cheaper.
-  const organizationNumber = read.getRaw('nettleie_orgnr');
+  const organizationNumber = read.getRaw(NORWAY_SETTING_KEYS.organizationNumber);
   return {
-    priceArea: stringOr(read.getRaw('price_area'), 'NO1'),
-    countyCode: stringOr(read.getRaw('nettleie_fylke'), '03'),
+    priceArea: stringOr(read.getRaw(NORWAY_SETTING_KEYS.priceArea), 'NO1'),
+    countyCode: stringOr(read.getRaw(NORWAY_SETTING_KEYS.county), '03'),
     // Empty string means "not configured", same as absent — the grid-tariff
     // fetch keys its skip on `null`.
     organizationNumber: typeof organizationNumber === 'string' && organizationNumber ? organizationNumber : null,
-    tariffGroup: stringOr(read.getRaw('nettleie_tariffgruppe'), 'Husholdning'),
-    norwayPriceModel: read.getRaw(NORWAY_PRICE_MODEL) === 'norgespris' ? 'norgespris' : 'stromstotte',
+    tariffGroup: stringOr(read.getRaw(NORWAY_SETTING_KEYS.tariffGroup), 'Husholdning'),
+    norwayPriceModel: read.getRaw(NORWAY_SETTING_KEYS.pricingModel) === 'norgespris' ? 'norgespris' : 'stromstotte',
   };
 };
 

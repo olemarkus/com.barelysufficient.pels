@@ -772,6 +772,58 @@ export type SettingsUiPriceSourcePayloads = {
   powerhourTomorrow: unknown | null;
 };
 
+/**
+ * Why the price source in force is the one it is.
+ *
+ * - `chosen` — the owner saved it.
+ * - `hub_location` — never saved, so PELS assumed it from the hub's country:
+ *   Norway's own source in Norway, Homey Energy everywhere else.
+ * - `default` — never saved, and the hub's country is not known yet, so PELS
+ *   runs on the Norway source it has always defaulted to.
+ */
+export type PriceSchemeBasis =
+  | { readonly kind: 'chosen' }
+  | { readonly kind: 'hub_location'; readonly country: string }
+  | { readonly kind: 'default' };
+
+export type ResolvedPriceScheme = {
+  readonly scheme: PriceSchemeSetting;
+  readonly basis: PriceSchemeBasis;
+};
+
+/** A setting's value as PELS uses it, and whether the owner saved it or PELS assumed it. */
+export type PriceSettingChoice<T> = {
+  readonly value: T;
+  readonly chosen: boolean;
+};
+
+export type NorwayPriceModelSetting = 'stromstotte' | 'norgespris';
+
+/**
+ * The Norway source's settings as PELS uses them. With no grid company PELS
+ * leaves the grid tariff out of every price, which is a state of its own, not a
+ * missing value.
+ */
+export type NorwayPriceSetup = {
+  readonly county: PriceSettingChoice<string>;
+  readonly gridCompany:
+    | { readonly kind: 'chosen'; readonly organizationNumber: string }
+    | { readonly kind: 'none' };
+  readonly tariffGroup: PriceSettingChoice<string>;
+  readonly pricingModel: PriceSettingChoice<NorwayPriceModelSetting>;
+  readonly priceArea: PriceSettingChoice<string>;
+};
+
+/** Which prices PELS is running on, and which of them the owner actually chose. */
+export type PriceSetup = {
+  readonly source: ResolvedPriceScheme;
+  readonly norway: NorwayPriceSetup;
+};
+
+export type PriceSetupRead =
+  | { readonly state: 'resolved'; readonly setup: PriceSetup }
+  | { readonly state: 'unavailable' };
+
 export type SettingsUiPricesPayload = SettingsUiPriceSourcePayloads & {
   combinedPrices: unknown | null;
   priceArea: string | null;
@@ -783,6 +835,8 @@ export type SettingsUiPricesPayload = SettingsUiPriceSourcePayloads & {
   powerhourSource: PowerhourSourceUiStatus;
   /** Price-domain-classified setup facts; never a raw settings blob. */
   priceOptimizationSetup: PriceOptimizationSetupRead;
+  /** The price source and Norway settings in force, each marked chosen or assumed. */
+  priceSetup: PriceSetupRead;
 };
 
 export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPayload;

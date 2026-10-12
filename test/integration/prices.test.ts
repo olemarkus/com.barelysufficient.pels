@@ -32,7 +32,7 @@ import {
   getZonedParts,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { getHourStartInTimeZone } from '../../lib/utils/hourBuckets';
-import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { noHomeyWebApi, unknownHubMarket } from '../helpers/homeyWebApiStub';
 import { DEFAULT_SURPLUS_LIFT_C } from '../../packages/shared-domain/src/settings/priceOptimization';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
@@ -1300,6 +1300,7 @@ describe('Price optimization', () => {
     getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
     getPowerTracker: () => ({}),
     homeyWebApiGet: noHomeyWebApi,
+    readHubMarket: unknownHubMarket,
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
     log: () => undefined,
     debugStructured: () => undefined,

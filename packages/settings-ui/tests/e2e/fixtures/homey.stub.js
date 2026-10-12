@@ -1044,6 +1044,46 @@
     };
   };
 
+  // Mirrors `lib/price/priceSetupRead.ts` and `PriceSchemeResolver`: a saved
+  // source, or a saved Norway setting, is chosen; otherwise the source is
+  // assumed from the hub's country (`ui_hub_market_country`), or stays on the
+  // Norway default without one.
+  const buildPriceSetup = () => {
+    const savedScheme = settings.price_scheme;
+    const country = typeof settings.ui_hub_market_country === 'string' ? settings.ui_hub_market_country : null;
+    let source = { scheme: 'norway', basis: { kind: 'default' } };
+    const norwayKeys = ['price_area', 'provider_surcharge', 'norway_price_model',
+      'nettleie_fylke', 'nettleie_orgnr', 'nettleie_tariffgruppe'];
+    if (['norway', 'flow', 'homey', 'powerhour'].includes(savedScheme)) {
+      source = { scheme: savedScheme, basis: { kind: 'chosen' } };
+    } else if (norwayKeys.some((key) => Object.prototype.hasOwnProperty.call(settings, key))) {
+      source = { scheme: 'norway', basis: { kind: 'chosen' } };
+    } else if (country) {
+      source = { scheme: country === 'NO' ? 'norway' : 'homey', basis: { kind: 'hub_location', country } };
+    }
+    const isUsable = (key) => typeof settings[key] === 'string' && settings[key] !== '';
+    const choice = (key, fallback) => ({ value: isUsable(key) ? settings[key] : fallback, chosen: isUsable(key) });
+    const model = settings.norway_price_model;
+    return {
+      state: 'resolved',
+      setup: {
+        source,
+        norway: {
+          county: choice('nettleie_fylke', '03'),
+          gridCompany: isUsable('nettleie_orgnr')
+            ? { kind: 'chosen', organizationNumber: settings.nettleie_orgnr }
+            : { kind: 'none' },
+          tariffGroup: choice('nettleie_tariffgruppe', 'Husholdning'),
+          pricingModel: {
+            value: model === 'norgespris' ? 'norgespris' : 'stromstotte',
+            chosen: model === 'norgespris' || model === 'stromstotte',
+          },
+          priceArea: choice('price_area', 'NO1'),
+        },
+      },
+    };
+  };
+
   const buildPricesPayload = () => {
     const deviceSettings = settings.price_optimization_settings;
     const settingsRecord = deviceSettings && typeof deviceSettings === 'object' && !Array.isArray(deviceSettings)
@@ -1072,6 +1112,7 @@
             .map(([deviceId]) => deviceId),
         },
       },
+      priceSetup: buildPriceSetup(),
     };
   };
 

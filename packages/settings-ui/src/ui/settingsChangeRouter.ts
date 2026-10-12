@@ -245,6 +245,9 @@ const refreshPriceSettings = (key: string, context: 'settings.set' | 'settings.u
     );
   }
   if (key !== PRICE_SCHEME && key !== NORWAY_PRICE_MODEL && key !== POWERHOUR_DEVICE_ID) return;
+  // The page shows the source the runtime has in force, which the prices read
+  // carries; a cached read would show the source from before this change.
+  invalidateApiCache(SETTINGS_UI_PRICES_PATH);
   runLoggedTask(reloadPriceConfigSettings(), 'Failed to reload price settings', context);
   refreshPricesIfVisible(context);
 };

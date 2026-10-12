@@ -72,8 +72,6 @@ export type CombinedPricePeriod = CombinedPriceFields & {
  */
 export type PriceScheme = PriceSchemeSetting;
 
-/** That union's read policy, re-exported beside the type it resolves to. */
-export { readPriceSchemeSetting } from '../../packages/shared-domain/src/settings/priceScheme';
 
 /** One stored hour: the combined fields with the price as `total`, and its price tier. */
 export type CombinedPriceEntry = Omit<CombinedPriceFields, 'totalPrice'> & {

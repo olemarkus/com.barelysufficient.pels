@@ -3,7 +3,6 @@ import { state } from './state.ts';
 import {
   resolveChangedPriceSettingWrites,
   normalizeNorwayPriceModel,
-  normalizePriceSchemeSetting,
 } from './priceSettingsPersistence.ts';
 import { readExportPriceSettings } from './exportPriceSettings.ts';
 import {
@@ -20,6 +19,8 @@ import { normalizePvForecastSourceSetting } from '../../../shared-domain/src/set
 import { readPowerhourDeviceIdSetting } from '../../../shared-domain/src/settings/priceScheme.ts';
 import type { PriceConfigSettingsPatch, PriceSettingsSaveInput } from './priceConfigTypes.ts';
 import { classifyPriceOptimizationConfigMap } from './priceOptimizationConfig.ts';
+import { getPricesReadModel } from './prices.ts';
+import { resolveDisplayedPriceScheme } from './priceSetupRead.ts';
 
 /**
  * The settings-store side of the Electricity prices page: one batched read that
@@ -81,8 +82,7 @@ const numberSetting = (value: unknown, fallback: number): number => (
  * A save diffs against these rather than against the page's config state,
  * because that state runs ahead of the store: each handler that saves through
  * here patches it first, and a failed or rejected save leaves the edit there
- * unsaved, so the next save re-sends it. The scheme change also reads the persisted
- * scheme here (see `handleSchemeChange`).
+ * unsaved, so the next save re-sends it.
  */
 export const readCurrentPriceSettings = async (): Promise<PriceSettingsSaveInput> => {
   const [
@@ -93,6 +93,7 @@ export const readCurrentPriceSettings = async (): Promise<PriceSettingsSaveInput
     thresholdPercent,
     minDiffOre,
     powerhourDeviceId,
+    pricesReadModel,
   ] = await Promise.all([
     getSetting(PRICE_SCHEME),
     getSetting(NORWAY_PRICE_MODEL),
@@ -101,10 +102,14 @@ export const readCurrentPriceSettings = async (): Promise<PriceSettingsSaveInput
     getSetting(PRICE_THRESHOLD_PERCENT),
     getSetting(PRICE_MIN_DIFF_ORE),
     getSetting(POWERHOUR_DEVICE_ID),
+    getPricesReadModel(),
   ]);
 
   return {
-    priceScheme: normalizePriceSchemeSetting(priceScheme),
+    // The source in force, not the stored key: a home whose owner never chose
+    // one shows the source PELS assumed. The save never writes it back
+    // (`resolveChangedPriceSettingWrites`); only picking a source does.
+    priceScheme: resolveDisplayedPriceScheme(pricesReadModel.priceSetup, priceScheme),
     powerhourDeviceId: readPowerhourDeviceIdSetting(powerhourDeviceId),
     norwayPriceModel: normalizeNorwayPriceModel(norwayPriceModel),
     priceArea: stringSetting(priceArea, 'NO1'),

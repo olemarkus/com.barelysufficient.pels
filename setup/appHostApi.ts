@@ -24,6 +24,7 @@ import type {
   DeviceDescriptorRead,
 } from '../packages/contracts/src/types';
 import type {
+  PriceSetupRead,
   SettingsUiHardCapConfigurationRead,
   SettingsUiPlanSnapshot,
 } from '../packages/contracts/src/settingsUiApi';
@@ -109,6 +110,11 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public readPriceOptimizationSetup = (): PriceOptimizationSetupRead => {
     const coordinator = this.context.priceCoordinator;
     return coordinator ? coordinator.readPriceOptimizationSetup() : { state: 'unavailable' };
+  };
+
+  public readPriceSetup = (): PriceSetupRead => {
+    const coordinator = this.context.priceCoordinator;
+    return coordinator ? coordinator.readPriceSetup() : { state: 'unavailable' };
   };
 
   public getCurrentMonthCapacityPeakKw = (): number | null => resolveCurrentMonthQuarterPeakKw(

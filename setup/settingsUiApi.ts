@@ -385,6 +385,7 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
       homeyPriceFormula: { kind: 'unknown' },
       powerhourSource: { kind: 'unknown' },
       priceOptimizationSetup: { state: 'unavailable' },
+      priceSetup: { state: 'unavailable' },
     };
   }
   // The settings-UI client (`normalizeCombinedPrices`, `ui/combinedPrices.ts`) accepts
@@ -400,6 +401,7 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
     homeyPriceFormula: host.getHomeyPriceFormulaUiStatus(),
     powerhourSource: host.getPowerhourSourceUiStatus(),
     priceOptimizationSetup: host.readPriceOptimizationSetup(),
+    priceSetup: host.readPriceSetup(),
   };
 };
 

@@ -49,6 +49,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     replacePowerTrackerForUi: notWired('replacePowerTrackerForUi'),
     readHardCapConfiguration: () => ({ state: 'unavailable' }),
     readPriceOptimizationSetup: () => ({ state: 'unavailable' }),
+    readPriceSetup: () => ({ state: 'unavailable' }),
     previewDailyBudgetModel: notWired('previewDailyBudgetModel'),
     applyDailyBudgetModel: notWired('applyDailyBudgetModel'),
     getDeviceDiagnosticsUiPayload: () => ({ generatedAt: 0, windowDays: 21, diagnosticsByDeviceId: {} }),

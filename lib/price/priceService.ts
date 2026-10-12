@@ -7,10 +7,13 @@ import {
   HOMEY_PRICES_TOMORROW,
   POWERHOUR_PRICES_TODAY,
   POWERHOUR_PRICES_TOMORROW,
-  PRICE_SCHEME,
   PRICE_THRESHOLD_PERCENT,
   PRICE_MIN_DIFF_ORE,
 } from '../utils/settingsKeys';
+import type {
+  ResolvedPriceScheme,
+  SettingsUiHubMarketRead,
+} from '../../packages/contracts/src/settingsUiApi';
 import {
   addDays,
   fetchGridTariffWithDateFallback,
@@ -62,7 +65,7 @@ import {
   type PriceLevelLookahead,
 } from './priceLevelUtils';
 import { PriceLevel } from './priceLevels';
-import { readPriceSchemeSetting } from './priceTypes';
+import { PriceSchemeResolver, type PriceSourceSwitch } from './priceSchemeResolution';
 import type { CombinedHourlyPrice, CombinedPriceFields, CombinedPricePeriod, PriceScheme } from './priceTypes';
 import {
   keepsPersistedPrices, resolveExportConfigForScheme, resolveHomeySeries, syncHomeyPricing,
@@ -96,7 +99,11 @@ export default class PriceService {
      * spot — see `lib/price/priceFormula.ts`.
      */
     private readonly homeyWebApiGet: HomeyWebApiGet,
-  ) { }
+  ) {
+    this.priceSchemeResolver = new PriceSchemeResolver(homey.settings, priceDataStore);
+  }
+
+  private readonly priceSchemeResolver: PriceSchemeResolver;
 
   private onCombinedPricesUpdated?: (reason: string) => void;
   setOnCombinedPricesUpdated(listener: ((reason: string) => void) | undefined): void {
@@ -127,7 +134,17 @@ export default class PriceService {
   // PRICE_SCHEME→scheme mapping. Single source of truth for the early-returns
   // in refreshSpotPrices/getCombinedHourlyPrices.
   getPriceScheme(): PriceScheme {
-    return readPriceSchemeSetting(this.getSettingValue(PRICE_SCHEME));
+    return this.priceSchemeResolver.resolve().scheme;
+  }
+
+  /** The source in force and why: chosen by the owner, or assumed from the hub's country. */
+  getResolvedPriceScheme(): ResolvedPriceScheme {
+    return this.priceSchemeResolver.resolve();
+  }
+
+  /** A fresh read of the hub's country, and any switch of source PELS makes by itself. */
+  refreshPriceSource(market: SettingsUiHubMarketRead): PriceSourceSwitch {
+    return this.priceSchemeResolver.refresh(market);
   }
 
   // Public so app-level callers (e.g. the deferred-objective plan-preview cost
@@ -416,6 +433,7 @@ export default class PriceService {
   private withExportAndPlanningPrices<T extends CombinedPriceFields>(series: T[]): T[] {
     const exportConfig = resolveExportConfigForScheme(
       this.homey.settings,
+      this.getPriceScheme(),
       (key) => this.getSettingValue(key),
       (key, fallback) => this.getNumberSetting(key, fallback),
     );
@@ -451,7 +469,7 @@ export default class PriceService {
    */
   resolveHomeyPricePeriods(): HomeyPriceResolution {
     const raw = this.getPricePeriodsFromPayloads(HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW, 'Homey prices');
-    return resolveHomeySeries(raw, this.homey.settings);
+    return resolveHomeySeries(raw, this.homey.settings, this.getPriceScheme());
   }
 
   private getCombinedHourlyPricesNorway(): CombinedHourlyPrice[] {
@@ -610,7 +628,7 @@ export default class PriceService {
     // Before the cache check, because the cached path still rebuilds the
     // combined series: a formula the owner changed since the last refresh has
     // to be mirrored even on a day whose raw prices are already stored.
-    if (await syncHomeyPricing(this.homeyWebApiGet, this.homey.settings, this.sinks)) {
+    if (await syncHomeyPricing(this.homeyWebApiGet, this.homey.settings, this.getPriceScheme(), this.sinks)) {
       this.updateCombinedPrices();
     }
     const info = buildHomeyEnergyDateInfo(this.getTimeZone());

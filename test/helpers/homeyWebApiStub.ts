@@ -2,6 +2,7 @@ import type { HomeyWebApiGet } from '../../lib/price/homeyPriceFormula';
 import { HOMEY_PRICE_FORMULA } from '../../lib/utils/settingsKeys';
 import type { HomeyEnergyApi } from '../../lib/utils/homeyEnergy';
 import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
+import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
 
 /**
  * A Homey Web API read that answers everything with `null`.
@@ -32,6 +33,17 @@ export const homeyWebApiServing = (
     },
   };
 };
+
+/**
+ * A hub whose country Homey has not answered, so a never-chosen price source
+ * stays on the Norway default the price specs were written against.
+ */
+export const unknownHubMarket = async (): Promise<SettingsUiHubMarketRead> => ({ state: 'unavailable' });
+
+/** A hub Homey places in `country`. */
+export const hubMarketIn = (country: string) => async (): Promise<SettingsUiHubMarketRead> => (
+  { state: 'resolved', country }
+);
 
 /** The REST client before `initHomeyHttpClient` has run, or a hub that is unreachable. */
 export const unreachableHomeyWebApi: HomeyWebApiGet = async () => {

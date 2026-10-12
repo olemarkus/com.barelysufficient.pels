@@ -21,8 +21,12 @@ import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
 import type {
   HomeyPriceFormulaUiStatus,
   PowerhourSourceUiStatus,
+  PriceSetupRead,
+  SettingsUiHubMarketRead,
   SettingsUiPriceSourcePayloads,
 } from '../../packages/contracts/src/settingsUiApi';
+import { readPriceSetup } from './priceSetupRead';
+import type { PriceSourceSwitch } from './priceSchemeResolution';
 import type { BudgetPriceInputs } from './budgetPrice';
 import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
@@ -69,6 +73,11 @@ export type PriceCoordinatorDeps = {
    * layer's `homeyWebApiGet`.
    */
   homeyWebApiGet: import('./homeyPriceFormula').HomeyWebApiGet;
+  /**
+   * Where the hub is, from Homey's location-derived country. It decides the
+   * price source PELS assumes while the owner has not chosen one.
+   */
+  readHubMarket: () => Promise<SettingsUiHubMarketRead>;
   getCurrentPriceLevel: () => PriceLevel;
   log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
@@ -145,6 +154,11 @@ export class PriceCoordinator {
 
   readPriceOptimizationSetup(): PriceOptimizationSetupRead {
     return this.deps.priceOptimizationSettingsStore.readSetup();
+  }
+
+  /** The price source and Norway settings in force, each marked chosen or assumed. */
+  readPriceSetup(): PriceSetupRead {
+    return readPriceSetup(this.deps.homey.settings, this.priceService.getResolvedPriceScheme());
   }
 
   updatePriceOptimizationEnabled(logChange = false): void {
@@ -232,7 +246,11 @@ export class PriceCoordinator {
   async refreshSpotPrices(forceRefresh = false): Promise<void> {
     const stopSpan = startRuntimeSpan('price_refresh_spot');
     try {
-      await this.priceService.refreshSpotPrices(forceRefresh);
+      // The hub's country first: on a home whose owner never chose a source it
+      // decides which source this refresh fetches from.
+      const sourceSwitched = this.refreshPriceSource(await this.deps.readHubMarket());
+      await this.priceService.refreshSpotPrices(forceRefresh || sourceSwitched);
+      if (sourceSwitched) this.priceService.updateCombinedPrices();
     } catch (error) {
       throw this.reportPriceFetchFailure('spot', error);
     } finally {
@@ -253,6 +271,28 @@ export class PriceCoordinator {
 
   updateCombinedPrices(): void {
     this.priceService.updateCombinedPrices();
+  }
+
+  /** Answers whether PELS switched source, the cue to fetch prices from the new one. */
+  private refreshPriceSource(market: SettingsUiHubMarketRead): boolean {
+    const logger = this.deps.structuredLog ?? moduleLogger;
+    let sourceSwitch: PriceSourceSwitch;
+    try {
+      sourceSwitch = this.priceService.refreshPriceSource(market);
+    } catch (error) {
+      logger.error({ event: 'price_source_switch_failed', err: normalizeError(error) });
+      return false;
+    }
+    if (sourceSwitch.kind === 'held') {
+      logger.warn({ event: 'price_source_switch_held', ...sourceSwitch.resolution });
+      return false;
+    }
+    if (sourceSwitch.kind === 'none') return false;
+    logger.info({ event: 'price_source_switched', ...sourceSwitch.resolution });
+    if (sourceSwitch.exportPlan !== 'none') {
+      logger.info({ event: 'export_price_settled_for_source_change', plan: sourceSwitch.exportPlan });
+    }
+    return true;
   }
 
   /**
@@ -320,6 +360,7 @@ export class PriceCoordinator {
   getHomeyPriceFormulaUiStatus(): HomeyPriceFormulaUiStatus {
     return resolveHomeyPriceFormulaUiStatus(
       this.deps.homey.settings,
+      this.priceService.getPriceScheme(),
       this.priceService.resolveHomeyPricePeriods(),
     );
   }

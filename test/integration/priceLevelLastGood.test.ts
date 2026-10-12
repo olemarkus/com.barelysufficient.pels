@@ -5,7 +5,7 @@ import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
-import { noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { noHomeyWebApi, unknownHubMarket } from '../helpers/homeyWebApiStub';
 
 const createCoordinator = (): PriceCoordinator => new PriceCoordinator({
   homey: mockHomeyInstance as never,
@@ -14,6 +14,7 @@ const createCoordinator = (): PriceCoordinator => new PriceCoordinator({
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
   getPowerTracker: () => ({}),
   homeyWebApiGet: noHomeyWebApi,
+  readHubMarket: unknownHubMarket,
   getCurrentPriceLevel: () => PriceLevel.NORMAL,
   log: () => undefined,
   debugStructured: () => undefined,

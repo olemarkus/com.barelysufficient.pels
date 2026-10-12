@@ -14,6 +14,7 @@ const homeyMocks = vi.hoisted(() => ({
   setSetting: vi.fn(),
   callApi: vi.fn(),
   getApiReadModel: vi.fn(),
+  invalidateApiCache: vi.fn(),
   primeApiCache: vi.fn(),
   getHomeyTimezone: vi.fn(() => 'UTC'),
 }));
@@ -42,6 +43,10 @@ import {
 } from '../src/ui/exportPriceSettings.ts';
 
 import { EXPORT_PRICE_SOURCE } from '../../shared-domain/src/settings/settingsKeys.ts';
+import {
+  SETTINGS_UI_PRICES_PATH,
+  type PriceSchemeSetting as PriceScheme,
+} from '../../contracts/src/settingsUiApi.ts';
 
 const setSettingMock = setSetting as Mock;
 const getSettingMock = getSetting as Mock;
@@ -234,49 +239,38 @@ describe('createExportPriceHandlers — numeric saves', () => {
 });
 
 describe('resolveExportSchemeChangePlan', () => {
-  const base = { exportPriceEnabled: true, exportSpotFactor: 90, exportFixed: -5 };
+  // Export on, a 90 % share of spot and a −5 fixed amount.
+  const plan = (previous: PriceScheme, next: PriceScheme, enabled = true, spotFactor = 90, fixed = -5) => (
+    resolveExportSchemeChangePlan(previous, next, enabled, spotFactor, fixed)
+  );
 
   it('never acts when export pricing is off or the scheme keeps its unit meaning', () => {
-    expect(resolveExportSchemeChangePlan({ previousScheme: 'norway', nextScheme: 'norway', ...base })).toBe('none');
-    expect(resolveExportSchemeChangePlan({
-      previousScheme: 'flow', nextScheme: 'norway', ...base, exportPriceEnabled: false,
-    })).toBe('none');
+    expect(plan('norway', 'norway')).toBe('none');
+    expect(plan('flow', 'norway', false)).toBe('none');
   });
 
   it('disables export when a fixed amount would cross the unit boundary — in either direction', () => {
     // øre/kWh (divisor 100) does not translate into the flow/homey source
     // unit (divisor 1) — the fixed-amount case must turn export off, even
     // when a share is also set.
-    expect(resolveExportSchemeChangePlan({ previousScheme: 'norway', nextScheme: 'flow', ...base })).toBe('disable_export');
-    expect(resolveExportSchemeChangePlan({
-      previousScheme: 'norway', nextScheme: 'homey', ...base, exportSpotFactor: 0,
-    })).toBe('disable_export');
+    expect(plan('norway', 'flow')).toBe('disable_export');
+    expect(plan('norway', 'homey', true, 0)).toBe('disable_export');
     // Entering Norway: a source-unit fixed amount (e.g. 0.50 NOK/kWh) must
     // not be re-read as øre/kWh (100× off) — the mirror of the exit case.
-    expect(resolveExportSchemeChangePlan({
-      previousScheme: 'flow', nextScheme: 'norway', ...base, exportSpotFactor: 0, exportFixed: 0.5,
-    })).toBe('disable_export');
+    expect(plan('flow', 'norway', true, 0, 0.5)).toBe('disable_export');
   });
 
   it('normalizes a pure share config (fixed 0) when entering a spot-less scheme only', () => {
-    expect(resolveExportSchemeChangePlan({
-      previousScheme: 'norway', nextScheme: 'flow', ...base, exportFixed: 0,
-    })).toBe('normalize_share');
+    expect(plan('norway', 'flow', true, 90, 0)).toBe('normalize_share');
     // A stale share moving between the two spot-less sources still settles.
-    expect(resolveExportSchemeChangePlan({
-      previousScheme: 'flow', nextScheme: 'homey', ...base, exportFixed: 0,
-    })).toBe('normalize_share');
+    expect(plan('flow', 'homey', true, 90, 0)).toBe('normalize_share');
     // Entering Norway a stored share is meaningful again (a unitless percent
     // of the spot — it crosses the boundary safely): no action.
-    expect(resolveExportSchemeChangePlan({
-      previousScheme: 'flow', nextScheme: 'norway', ...base, exportFixed: 0,
-    })).toBe('none');
+    expect(plan('flow', 'norway', true, 90, 0)).toBe('none');
   });
 
   it('does nothing for an already-settled config', () => {
-    expect(resolveExportSchemeChangePlan({
-      previousScheme: 'norway', nextScheme: 'flow', exportPriceEnabled: true, exportSpotFactor: 0, exportFixed: 0,
-    })).toBe('none');
+    expect(plan('norway', 'flow', true, 0, 0)).toBe('none');
   });
 });
 
@@ -368,9 +362,11 @@ describe('handleSchemeChange export transition (via priceConfig)', () => {
     document.body.replaceChildren();
   });
 
-  const bootPricesView = async (stored: Record<string, unknown>) => {
+  const bootPricesView = async (stored: Record<string, unknown>, pricesReadModel: unknown = null) => {
     getSettingMock.mockImplementation(async (key: string) => stored[key]);
-    getApiReadModelMock.mockResolvedValue(null);
+    getApiReadModelMock.mockImplementation(async (uri: string) => (
+      uri === SETTINGS_UI_PRICES_PATH ? pricesReadModel : null
+    ));
     const { initElectricityPricesView } = await import('../src/ui/priceConfig.ts');
     const surface = document.createElement('div');
     document.body.appendChild(surface);
@@ -508,6 +504,49 @@ describe('handleSchemeChange export transition (via priceConfig)', () => {
     expect(setSettingMock).not.toHaveBeenCalledWith('export_spot_factor', 0);
     // Toggle renders off → the fields are structurally absent.
     await vi.waitFor(() => expect(surface.querySelector('#electricity-prices-export-fixed')).toBeNull());
+  });
+
+  it('judges a switch from an assumed source against the source PELS has in force', async () => {
+    // Never chosen: the runtime assumed Homey Energy from the hub's country, so
+    // the 0.50 was entered in Homey Energy's currency and cannot become øre.
+    const surface = await bootPricesView({
+      export_price_enabled: true,
+      export_spot_factor: 0,
+      export_fixed: 0.5,
+    }, {
+      priceSetup: {
+        state: 'resolved',
+        setup: {
+          source: { scheme: 'homey', basis: { kind: 'hub_location', country: 'NL' } },
+          norway: {
+            county: { value: '03', chosen: false },
+            gridCompany: { kind: 'none' },
+            tariffGroup: { value: 'Husholdning', chosen: false },
+            pricingModel: { value: 'stromstotte', chosen: false },
+            priceArea: { value: 'NO1', chosen: false },
+          },
+        },
+      },
+    });
+    switchScheme(surface, 'norway');
+    await vi.waitFor(() => expect(showToast).toHaveBeenCalledWith(EXPORT_DISABLED_ON_SCHEME_CHANGE_TOAST, 'ok'));
+
+    expect(setSettingMock).toHaveBeenCalledWith('price_scheme', 'norway');
+    expect(setSettingMock).toHaveBeenCalledWith('export_price_enabled', false);
+  });
+
+  it('writes nothing when it cannot read which source PELS has in force', async () => {
+    // Without the runtime's read the page only guesses Norway, and judging the
+    // switch against that guess could leave a Homey Energy amount enabled.
+    const surface = await bootPricesView({
+      export_price_enabled: true,
+      export_spot_factor: 0,
+      export_fixed: 0.5,
+    });
+    switchScheme(surface, 'flow');
+    await vi.waitFor(() => expect(showToastError).toHaveBeenCalled());
+
+    expect(setSettingMock).not.toHaveBeenCalled();
   });
 
   const exportSection = (surface: HTMLElement) => surface.querySelector('#electricity-prices-export-section');

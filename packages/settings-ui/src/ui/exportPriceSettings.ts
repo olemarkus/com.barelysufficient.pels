@@ -87,41 +87,19 @@ export type ExportPriceStatePatch = Partial<{
 
 // ─── Scheme-change transition ────────────────────────────────────────────────
 //
-// Crossing the Norway unit boundary changes what an enabled export config
-// means — in EITHER direction:
-//   • A non-zero fixed amount was entered in the unit of the scheme that was
-//     active at the time: øre/kWh (divisor 100) on Norway, the source unit
-//     (divisor 1) on flow/homey. Carried raw across the boundary, "−5 øre"
-//     becomes "−5 source-units" and "0.50 NOK" is re-read as "0.50 øre"
-//     (100× off). Export pricing turns OFF instead; the stored numbers stay
-//     inert so returning to the entry scheme only needs a re-enable.
-//   • A pure spot-share config (fixed = 0) is a unitless percent, so it
-//     crosses safely — but a spot-linked share without an isolatable spot
-//     yields NO export price at all (lib/price/exportPrice.ts), so entering
-//     a spot-less scheme normalizes the share to 0. Entering Norway a stored
-//     share is meaningful again: no action.
-// The resolver is pure (unit-testable); the executor performs the follow-up
-// write and hands the orchestrator the matching state patch + toast. Both
-// writes run only AFTER the scheme save itself lands (see handleSchemeChange).
-// `previousScheme` must be the PERSISTED scheme (the stored fixed amount's
-// unit follows the scheme active when it was entered) — after a failed save
-// the optimistic UI scheme can diverge from the store.
+// The rule lives in shared-domain because the runtime applies it too, when it
+// switches the source it assumed from the hub's country. Here the executor
+// performs the follow-up write and hands the orchestrator the matching state
+// patch + toast. Both writes run only AFTER the scheme save itself lands (see
+// handleSchemeChange). `previousScheme` must be the source the stored amounts
+// were entered under, not the optimistic UI one: after a failed save the two
+// can diverge.
 
-export type ExportSchemeChangePlan = 'none' | 'disable_export' | 'normalize_share';
-
-export const resolveExportSchemeChangePlan = (params: {
-  previousScheme: string;
-  nextScheme: string;
-  exportPriceEnabled: boolean;
-  exportSpotFactor: number;
-  exportFixed: number;
-}): ExportSchemeChangePlan => {
-  if (!params.exportPriceEnabled) return 'none';
-  const crossesUnitBoundary = (params.previousScheme === 'norway') !== (params.nextScheme === 'norway');
-  if (crossesUnitBoundary && params.exportFixed !== 0) return 'disable_export';
-  if (params.nextScheme !== 'norway' && params.exportSpotFactor !== 0) return 'normalize_share';
-  return 'none';
-};
+export {
+  resolveExportSchemeChangePlan,
+  type ExportSchemeChangePlan,
+} from '../../../shared-domain/src/settings/exportPriceSchemeChange.ts';
+import type { ExportSchemeChangePlan } from '../../../shared-domain/src/settings/exportPriceSchemeChange.ts';
 
 export const EXPORT_DISABLED_ON_SCHEME_CHANGE_TOAST = 'Price settings saved. Export price turned off — '
   + 'its units differ between price sources; re-enter it under Electricity prices.';
@@ -156,6 +134,9 @@ const rollBackSchemeOnExportFailure = async (
 ): Promise<boolean> => {
   if (previousScheme === nextScheme) return false;
   try {
+    // `previousScheme` is the source that was in force. When the runtime had
+    // only assumed it, this write saves it as the owner's choice: the same
+    // source either way, which is all a rollback has to restore.
     await setSetting(PRICE_SCHEME, previousScheme);
     return true;
   } catch (rollbackError) {
@@ -175,11 +156,11 @@ const rollBackSchemeOnExportFailure = async (
 export const recoverFromSchemeChangeFailure = async (params: {
   scheme: string;
   currentScheme: string;
-  previousScheme: string | undefined;
+  previousScheme: string;
   schemePersisted: boolean;
 }): Promise<boolean> => {
   const { scheme, currentScheme, previousScheme, schemePersisted } = params;
-  if (currentScheme !== scheme || previousScheme === undefined) return false;
+  if (currentScheme !== scheme) return false;
   if (!schemePersisted) return true; // scheme save failed: revert optimistic UI only
   return rollBackSchemeOnExportFailure(previousScheme, scheme);
 };

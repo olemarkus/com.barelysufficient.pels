@@ -20,6 +20,7 @@ import type {
   PowerhourCache, PowerhourCacheDevice, PowerhourCachedDay, PowerhourDay,
 } from './powerhourScheme';
 import type { CombinedPricesV2 } from './priceTypes';
+import type { ResolvedPriceScheme } from '../../packages/contracts/src/settingsUiApi';
 import {
   importPendingLegacyPriceCache,
   isUsableLegacyPriceValue,
@@ -198,6 +199,9 @@ export type PriceDataStore = {
   writeSpotPrices(prices: SpotPriceEntry[]): void;
   readSpotPriceArea(): unknown;
   writeSpotPriceArea(area: string): void;
+  /** The price source last in force, so a boot whose first reads fail starts from it. */
+  readPriceSchemeResolution(): unknown;
+  writePriceSchemeResolution(resolution: ResolvedPriceScheme): void;
   readNettleie(): unknown;
   writeNettleie(data: Array<Record<string, unknown>>): void;
   readFlowPayload(key: PricePayloadKey): unknown;
@@ -240,6 +244,8 @@ export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheSt
     writeSpotPrices: (prices) => cache.write('spot_prices', prices),
     readSpotPriceArea: () => cache.read('spot_price_area'),
     writeSpotPriceArea: (area) => cache.write('spot_price_area', area),
+    readPriceSchemeResolution: () => cache.read('price_scheme_resolution'),
+    writePriceSchemeResolution: (resolution) => cache.write('price_scheme_resolution', resolution),
     readNettleie: () => cache.read('grid_tariff'),
     writeNettleie: (data) => cache.write('grid_tariff', data),
     readFlowPayload,

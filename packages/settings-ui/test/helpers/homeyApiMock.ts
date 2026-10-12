@@ -332,6 +332,7 @@ const buildUiPrices = async (homey: MockHomeyClient) => {
     homeyPriceFormula: { kind: 'unknown' },
     powerhourSource: { kind: 'unknown' },
     priceOptimizationSetup: { state: 'unavailable' },
+    priceSetup: { state: 'unavailable' },
   };
 };
 
