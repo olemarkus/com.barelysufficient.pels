@@ -8,6 +8,7 @@ import { DeadlineChip } from '../src/ui/views/PlanDeviceCards.tsx';
 import { state } from '../src/ui/state.ts';
 import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import { budgetOverviewProps } from './helpers/budgetOverviewProps.ts';
+import { mockDeviceListCollaborators } from './helpers/deviceListCollaborators.ts';
 
 /* -------------------------------------------------------------------------- *
  * Chip primitive rebind regression tests.
@@ -248,20 +249,7 @@ describe('chip primitive: every surface walks the canonical `.plan-chip`', () =>
 
   it('device-list state chip rebinds to `.plan-chip plan-chip--muted` with `data-tone="muted"`', async () => {
     vi.resetModules();
-    vi.doMock('../src/ui/modes.ts', () => ({ renderPriorities: vi.fn() }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/plan.ts', () => ({ refreshPlan: vi.fn() }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-      logSettingsWarn: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceListCollaborators();
 
     const setupListDom = () => {
       const root = document.body;

@@ -3,6 +3,7 @@ import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes';
 import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../shared-domain/src/settings/settingsKeys';
 import { createHomeyMock } from './helpers/homeyApiMock';
+import { mockDeviceListCollaborators } from './helpers/deviceListCollaborators.ts';
 
 /* Meter-area badges on Devices, and owner filtering on the Modes list. */
 
@@ -67,23 +68,6 @@ const setupModesDom = () => {
     <p id="priority-empty" hidden></p>
     <md-filled-text-field id="mode-new"></md-filled-text-field>
   `;
-};
-
-const mockDeviceListPeers = () => {
-  vi.doMock('../src/ui/modes.ts', () => ({ renderPriorities: vi.fn() }));
-  vi.doMock('../src/ui/priceOptimization.ts', () => ({
-    renderPriceOptimization: vi.fn(),
-    savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-  }));
-  vi.doMock('../src/ui/plan.ts', () => ({ refreshPlan: vi.fn() }));
-  vi.doMock('../src/ui/toast.ts', () => ({
-    showToast: vi.fn().mockResolvedValue(undefined),
-    showToastError: vi.fn().mockResolvedValue(undefined),
-  }));
-  vi.doMock('../src/ui/logging.ts', () => ({
-    logSettingsError: vi.fn().mockResolvedValue(undefined),
-    logSettingsWarn: vi.fn().mockResolvedValue(undefined),
-  }));
 };
 
 /** Wire the Homey client and prime the badge index from a `ui_homes` payload. */
@@ -378,7 +362,7 @@ describe('devices list home badges', () => {
   beforeEach(() => {
     vi.resetModules();
     setupDevicesDom();
-    mockDeviceListPeers();
+    mockDeviceListCollaborators();
   });
 
   it('badges every row after fetching membership independently of the device payload', async () => {

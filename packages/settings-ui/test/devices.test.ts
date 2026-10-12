@@ -1,5 +1,6 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import { mockDeviceListCollaborators } from './helpers/deviceListCollaborators.ts';
 
 const setupDom = () => {
   const root = document.body;
@@ -13,27 +14,6 @@ const setupDom = () => {
   const refreshBtn = document.createElement('button');
   refreshBtn.id = 'refresh-button';
   root.append(deviceListEl, cardListEl, emptyStateEl, refreshBtn);
-};
-
-const mockSharedModules = () => {
-  vi.doMock('../src/ui/modes.ts', () => ({
-    renderPriorities: vi.fn(),
-  }));
-  vi.doMock('../src/ui/priceOptimization.ts', () => ({
-    renderPriceOptimization: vi.fn(),
-    savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-  }));
-  vi.doMock('../src/ui/plan.ts', () => ({
-    refreshPlan: vi.fn(),
-  }));
-  vi.doMock('../src/ui/toast.ts', () => ({
-    showToast: vi.fn().mockResolvedValue(undefined),
-    showToastError: vi.fn().mockResolvedValue(undefined),
-  }));
-  vi.doMock('../src/ui/logging.ts', () => ({
-    logSettingsError: vi.fn().mockResolvedValue(undefined),
-    logSettingsWarn: vi.fn().mockResolvedValue(undefined),
-  }));
 };
 
 const buildDevice = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => (withDescriptorIdentity<SettingsUiDeviceSnapshot>({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
@@ -52,24 +32,7 @@ describe('devices render', () => {
   });
 
   it('renders unavailable devices with a gray badge', async () => {
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/plan.ts', () => ({
-      refreshPlan: vi.fn(),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-      logSettingsWarn: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceListCollaborators();
 
     const { renderDevices } = await import('../src/ui/devices.ts');
     const { state } = await import('../src/ui/state.ts');
@@ -88,24 +51,7 @@ describe('devices render', () => {
   });
 
   it('renders budget-exempt devices with a gray badge', async () => {
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/plan.ts', () => ({
-      refreshPlan: vi.fn(),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToast: vi.fn().mockResolvedValue(undefined),
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-      logSettingsWarn: vi.fn().mockResolvedValue(undefined),
-    }));
+    mockDeviceListCollaborators();
 
     const { renderDevices } = await import('../src/ui/devices.ts');
     const { state } = await import('../src/ui/state.ts');
@@ -128,7 +74,7 @@ describe('devices render — redesign shell', () => {
   beforeEach(() => {
     vi.resetModules();
     setupDom();
-    mockSharedModules();
+    mockDeviceListCollaborators();
   });
 
   const importDevicesInRedesign = async () => {
