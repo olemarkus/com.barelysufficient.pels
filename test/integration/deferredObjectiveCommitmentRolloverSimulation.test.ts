@@ -166,12 +166,12 @@ const runSimulation = (params: {
   let needKWh = params.initialNeedKWh;
   for (let hourIndex = 0; hourIndex < params.hours; hourIndex += 1) {
     const nowMs = BASE_HOUR + hourIndex * HOUR_MS + SCHEDULE_SETTLE_OFFSET_MS;
-    const committedHours = resolveCommittedHours({
-      activePlans: recorder.getActivePlansSnapshot(),
-      deviceId: DEVICE_ID,
-      objective: settingsEntry(deadlineAtMs),
-      progressDirection: 'increasing',
-    });
+    const committedHours = resolveCommittedHours(
+      DEVICE_ID,
+      settingsEntry(deadlineAtMs),
+      'increasing',
+      recorder.getActivePlansSnapshot(),
+    );
     const plan = planDeferredObjectiveHorizon({
       powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       aheadOfHourMilestone: false,
@@ -185,12 +185,12 @@ const runSimulation = (params: {
     });
     recorder.observe([diagnosticFor(plan, deadlineAtMs, needKWh)], nowMs);
 
-    const committedAfter = resolveCommittedHours({
-      activePlans: recorder.getActivePlansSnapshot(),
-      deviceId: DEVICE_ID,
-      objective: settingsEntry(deadlineAtMs),
-      progressDirection: 'increasing',
-    }) ?? [];
+    const committedAfter = resolveCommittedHours(
+      DEVICE_ID,
+      settingsEntry(deadlineAtMs),
+      'increasing',
+      recorder.getActivePlansSnapshot(),
+    ) ?? [];
     records.push({
       hourIndex,
       status: plan.status,

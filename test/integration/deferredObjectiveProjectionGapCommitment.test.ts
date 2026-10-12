@@ -208,7 +208,7 @@ const buildCombinedPrices = (): CombinedPricesV2 => ({
 });
 
 const resolveDeadline = (): number => {
-  const r = resolveDeferredObjectiveDeadline({ nowMs: START_MS, timeZone: 'UTC', deadlineLocalTime: '06:00' });
+  const r = resolveDeferredObjectiveDeadline(START_MS, 'UTC', '06:00');
   if (r.deadlineAtMs === null) throw new Error('failed to resolve deadline');
   return r.deadlineAtMs;
 };
@@ -232,7 +232,7 @@ const buildSettings = () => normalizeDeferredObjectiveSettings({
 const buildDiagnostic = (
   nowMs: number,
   device: MeteredPlanInputDevice & { thermalDirection: 'heating' },
-  activePlans: DeferredObjectiveActivePlansV1 | null,
+  activePlans: DeferredObjectiveActivePlansV1,
 ): DeferredObjectiveDiagnostic | undefined => buildFixtureDiagnostics({
   hasSolarProduction: false,
   resolveDeviceExclusion: noDeviceExclusion,

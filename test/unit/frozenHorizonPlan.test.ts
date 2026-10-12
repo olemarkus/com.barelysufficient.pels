@@ -25,15 +25,15 @@ const build = (overrides: {
   // a revision saved before exact segments resolves to.
   drawWindows?: FrozenDrawWindow[];
   nowMs?: number;
-}) => buildFrozenHorizonPlan({
-  nowMs: overrides.nowMs ?? NOW_MS,
-  deviceId: 'dev',
-  objective: partialDouble<DeferredObjectiveSettingsEntry>({
+}) => buildFrozenHorizonPlan(
+  overrides.nowMs ?? NOW_MS,
+  'dev',
+  partialDouble<DeferredObjectiveSettingsEntry>({
     kind: overrides.objectiveKind ?? 'temperature',
     enforcement: 'soft',
     deadlineAtMs: NOW_MS + 6 * HOUR_MS,
   }),
-  frozenRead: {
+  {
     hours: overrides.committedHours,
     floorShortfallCause: overrides.floorShortfallCause ?? 'none',
     budgetContributedToShortfall: false,
@@ -42,10 +42,10 @@ const build = (overrides: {
       .filter((hour) => hour.plannedKWh > 0)
       .map((hour) => ({ startMs: hour.startsAtMs, endMs: hour.startsAtMs + HOUR_MS, plannedKWh: hour.plannedKWh })),
   },
-  energyNeededKWh: 3,
-  aheadOfHourMilestone: overrides.aheadOfHourMilestone ?? false,
-  steps: STEPS,
-});
+  3,
+  overrides.aheadOfHourMilestone ?? false,
+  STEPS,
+);
 
 describe('buildFrozenHorizonPlan', () => {
   it('builds currentBucket + plannedBuckets from the frozen commitment and carries the persisted status', () => {

@@ -1,14 +1,8 @@
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
-import type { TaskReservationReader } from './taskDeliveryState';
-import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
-import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import { gridImportTargetKw } from '../../../packages/shared-domain/src/settings/powerLimits';
 import type { PowerLimitAxis, PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import type { PowerTrackerState } from '../../power/tracker';
-import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
-import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
 import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,
@@ -17,80 +11,37 @@ import type {
   DeferredObjectivePlanPreviewUnavailableReason,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import { priceRateLabelToAmountUnit } from '../../../packages/shared-domain/src/price/priceUnitLabel';
-import { resolveObjectiveDeviceInputs, type ObjectiveDeviceSource } from '../../objectives/types';
-import type { ThermalDirection } from '../../../packages/contracts/src/types';
-import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { roundKWh } from './activePlanMath';
 import { buildHoursFromHorizonPlan, resolveProjectedFinishAtMs } from './activePlanSchedule';
 import {
   buildDeferredObjectiveDiagnostics,
-  type BuildPriceHorizon,
   type DeferredObjectiveDiagnostic,
+  type TaskEvaluationReaders,
+  type TaskEvaluationSnapshot,
 } from './diagnosticsBridge';
 import {
   buildDeferredObjectivePolicyBucketPrices,
   buildDeferredObjectivePolicyWindowPrices,
 } from './policyHorizon';
-import type {
-  DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsV1,
-} from '../../../packages/contracts/src/deferredObjectiveSettings';
-import type { DeliveredEnergyReader } from './energyDelivery';
+import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
+import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
-
-export type PreviewDeferredObjectivePlanParams = {
-  getThermalDirection: (deviceId: string) => ThermalDirection;
-  nowMs: number;
-  timeZone: string;
-  deviceId: string;
-  candidate: DeferredObjectivePlanPreviewCandidate;
-  powerTracker: PowerTrackerState;
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-  // Price-layer allocation-horizon producer, injected by the wiring layer. The
-  // daily-budget snapshot is the budget overlay only (and still feeds the
-  // preview's price-curve / cost readers pending the preview migration).
-  buildPriceHorizon: BuildPriceHorizon;
-  priceOptimizationEnabled: boolean;
-  // The persisted power-limit settings, which carry BOTH readings this producer
-  // needs: the planning ceiling the probes run at (resolved by the policy
-  // horizon) and the level `atPowerLimitNow` is measured against
-  // (`resolvePressedAt`). Handed over unresolved so the derivation happens here,
-  // in the domain, not in the wiring layer.
-  capacitySettings: PowerLimitSettings;
-  // Whether the home has solar production, as the live plan cycle reads it: a PV
-  // home's preview is not cut at the grid import target.
-  hasSolarProduction: boolean;
-  // The main-home planning inputs and objectives: the candidate is planned
-  // against the live roster, so the preview is priority-aware. The candidate's
-  // own device (already produced by `toPlanDevice`) is among `devices` when it
-  // is in the current snapshot; when it is not, the projection comes back
-  // `unavailable`, matching the planner's `objective_missing_device` path.
-  devices: ObjectiveDeviceSource[];
-  settings: DeferredObjectiveSettingsV1;
-  activePlans: DeferredObjectiveActivePlansV1 | null;
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
-  resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
-  // Idle-classifier reader, so a higher task stalled at its target reserves
-  // nothing against the candidate here either — the same reservation ledger the
-  // live allocation uses (`buildDeferredObjectiveDiagnostics`).
-  getStallClassification: DeferredObjectiveStallClassificationReader;
-  // Energy fed under each live energy task. A candidate that re-arms the task
-  // already running (same device, same deadline) keeps what it has fed; any
-  // other candidate starts from nothing.
-  getDeliveredEnergyKWh: DeliveredEnergyReader;
-  isReservationSuppressed: TaskReservationReader;
-  // The price-RATE label from the price store (e.g. "øre/kWh", "NOK",
-  // "price units"). It is converted to a total-amount money unit before being
-  // attached to the (total) `costEstimate`, so a UI never renders a total as a
-  // per-kWh rate.
-  priceRateLabel: string;
-};
 
 /**
  * Instant estimate of the plan the planner WOULD produce for a candidate that
  * is not persisted. The candidate joins the live device/objective roster, so
  * higher-priority tasks are allocated first and it sees only their residual
  * capacity.
+ *
+ * The snapshot is the main home's, built by the same `TaskEvaluationSource` the
+ * live lanes read: the candidate is planned against the live roster, so the
+ * preview is priority-aware. The candidate's own device (already produced by
+ * `toPlanDevice`) is among its devices when it is in the current snapshot; when
+ * it is not, the projection comes back `unavailable`, matching the planner's
+ * `objective_missing_device` path. The readers are that source's too: a higher
+ * task stalled at its target reserves nothing against the candidate, and a
+ * candidate that re-arms the energy task already running (same device, same
+ * deadline) keeps what it has fed while any other starts from nothing.
  *
  * Fidelity comes from reuse, not re-implementation: this builds a diagnostic
  * through the exact `buildDeferredObjectiveDiagnostics` pipeline the live plan
@@ -100,46 +51,39 @@ export type PreviewDeferredObjectivePlanParams = {
  * the same `buildHoursFromHorizonPlan` / `resolveProjectedFinishAtMs` helpers
  * the active-plan recorder calls. The candidate is always solved fresh; higher
  * tasks may keep their settled commitments. Preview never mutates them.
+ *
+ * `priceRateLabel` is the price-RATE label from the price store (e.g.
+ * "øre/kWh", "NOK", "price units"). It is converted to a total-amount money unit
+ * before being attached to the (total) `costEstimate`, so a UI never renders a
+ * total as a per-kWh rate.
  */
 export const previewDeferredObjectivePlan = (
-  params: PreviewDeferredObjectivePlanParams,
+  snapshot: TaskEvaluationSnapshot,
+  readers: TaskEvaluationReaders,
+  deviceId: string,
+  candidate: DeferredObjectivePlanPreviewCandidate,
+  priceRateLabel: string,
 ): DeferredObjectivePlanPreviewEstimate => {
-  const objective = withEnabled(params.candidate);
   // The candidate joins the live roster, so the tasks ahead of it reserve first
   // and it sees only their residual capacity. It is always in the result: the
   // batch returns every enabled objective, excluded ones included.
   const diag = buildDeferredObjectiveDiagnostics({
-    nowMs: params.nowMs,
-    timeZone: params.timeZone,
-    devices: resolveObjectiveDeviceInputs(params.devices, params.getThermalDirection),
+    ...snapshot,
     settings: {
-      ...params.settings,
+      ...snapshot.settings,
       objectivesByDeviceId: {
-        ...params.settings.objectivesByDeviceId,
-        [params.deviceId]: objective,
+        ...snapshot.settings.objectivesByDeviceId,
+        [deviceId]: withEnabled(candidate),
       },
     },
-    powerTracker: params.powerTracker,
-    dailyBudgetSnapshot: params.dailyBudgetSnapshot,
-    priceOptimizationEnabled: params.priceOptimizationEnabled,
-    activePlans: params.activePlans,
-    powerLimits: params.capacitySettings,
-    hasSolarProduction: params.hasSolarProduction,
-  }, {
-    buildPriceHorizon: params.buildPriceHorizon,
-    getPrioritiesForDevices: params.getPrioritiesForDevices,
-    resolveDeviceExclusion: params.resolveDeviceExclusion,
-    getStallClassification: params.getStallClassification,
-    getDeliveredEnergyKWh: params.getDeliveredEnergyKWh,
-    isReservationSuppressed: params.isReservationSuppressed,
-  },
+  }, readers,
   // A preview keeps no device history between requests: a tracker that has seen
   // nothing reserves a missing device only on its persisted commitment.
   new PriorityAllocationTracker(),
-  { kind: 'preview', candidateDeviceId: params.deviceId },
-  ).find((diagnostic) => diagnostic.deviceId === params.deviceId);
-  if (!diag) throw new Error(`Preview candidate ${params.deviceId} missing from its own roster`);
-  return buildEstimateFromDiagnostic(diag, params);
+  { kind: 'preview', candidateDeviceId: deviceId },
+  ).find((diagnostic) => diagnostic.deviceId === deviceId);
+  if (!diag) throw new Error(`Preview candidate ${deviceId} missing from its own roster`);
+  return buildEstimateFromDiagnostic(diag, snapshot, candidate, priceRateLabel);
 };
 
 // Reflect the (already-gated) candidate rescue permissions onto a flat
@@ -159,18 +103,18 @@ const resolveGrantedRescuePermissions = (
   };
 };
 
-export const buildUnavailableDeferredObjectivePlanEstimate = (params: {
-  reason: DeferredObjectivePlanPreviewUnavailableReason;
-  candidate: DeferredObjectivePlanPreviewCandidate;
-  includeGrantedRescuePermissions?: boolean;
-}): DeferredObjectivePlanPreviewEstimate => {
-  const grantedRescuePermissions = params.includeGrantedRescuePermissions === false
-    ? undefined
-    : resolveGrantedRescuePermissions(params.candidate.rescue);
+export const buildUnavailableDeferredObjectivePlanEstimate = (
+  reason: DeferredObjectivePlanPreviewUnavailableReason,
+  candidate: DeferredObjectivePlanPreviewCandidate,
+  includeGrantedRescuePermissions: boolean,
+): DeferredObjectivePlanPreviewEstimate => {
+  const grantedRescuePermissions = includeGrantedRescuePermissions
+    ? resolveGrantedRescuePermissions(candidate.rescue)
+    : undefined;
   return {
     status: 'unavailable',
     budgetRole: 'none',
-    unavailableReason: params.reason,
+    unavailableReason: reason,
     scheduledHours: [],
     projectedFinishAtMs: null,
     energyEstimateKWh: null,
@@ -211,10 +155,13 @@ const resolvePressedAt = (settings: PowerLimitSettings): { limit: PowerLimitAxis
 // line's to second-guess.
 const resolveAtPowerLimitNow = (
   scheduledHours: readonly DeferredObjectivePlanPreviewHour[],
-  request: PreviewDeferredObjectivePlanParams,
+  snapshot: TaskEvaluationSnapshot,
 ): PowerLimitAxis | undefined => {
-  const { nowMs, powerTracker } = request;
-  const pressedAt = resolvePressedAt(request.capacitySettings);
+  const { nowMs, powerTracker } = snapshot;
+  // The power-limit settings carry the level `atPowerLimitNow` is measured
+  // against; the probes ran at the planning ceiling the policy horizon resolved
+  // from the same settings.
+  const pressedAt = resolvePressedAt(snapshot.powerLimits);
   if (pressedAt === null) return undefined;
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   const runsCurrentHour = scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
@@ -279,15 +226,12 @@ const isThermalObservationGap = (diag: DeferredObjectiveDiagnostic): boolean => 
 
 const buildEstimateFromDiagnostic = (
   diag: DeferredObjectiveDiagnostic,
-  request: PreviewDeferredObjectivePlanParams,
+  snapshot: TaskEvaluationSnapshot,
+  candidate: DeferredObjectivePlanPreviewCandidate,
+  priceRateLabel: string,
 ): DeferredObjectivePlanPreviewEstimate => {
-  const { dailyBudgetSnapshot, priceRateLabel, nowMs } = request;
-  const { deadlineAtMs } = request.candidate;
-  // The candidate handed to this producer is ALREADY gated by the caller
-  // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
-  // is the surviving permission set — reflect it onto the estimate verbatim.
-  const { rescue } = request.candidate;
-  const grantedRescuePermissions = resolveGrantedRescuePermissions(rescue);
+  const { dailyBudgetSnapshot, nowMs } = snapshot;
+  const { deadlineAtMs } = candidate;
   // No horizon plan attached → the planner could not project (missing prices,
   // missing device reading, price feature off, …). Surface `unavailable` with
   // null numerics rather than inventing a plan. When the cause is specifically a
@@ -295,23 +239,17 @@ const buildEstimateFromDiagnostic = (
   // tag it so the UI can say "PELS must observe this device first" instead of
   // falsely blaming prices.
   if (!diag.horizonPlan) {
-    return {
-      status: 'unavailable',
-      budgetRole: 'none',
-      unavailableReason: resolvePreviewUnavailableReason(diag),
-      scheduledHours: [],
-      projectedFinishAtMs: null,
-      energyEstimateKWh: null,
-      energyExpectedKWh: null,
-      costEstimate: null,
-      ...(grantedRescuePermissions ? { grantedRescuePermissions } : {}),
-    };
+    return buildUnavailableDeferredObjectivePlanEstimate(resolvePreviewUnavailableReason(diag), candidate, true);
   }
+  // The candidate handed to this producer is ALREADY gated by the caller
+  // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
+  // is the surviving permission set — reflect it onto the estimate verbatim.
+  const grantedRescuePermissions = resolveGrantedRescuePermissions(candidate.rescue);
   // The hours the device is planned to run; a 0 kWh booking promises nothing to show.
   const scheduledHours: DeferredObjectivePlanPreviewHour[] = hoursWithPlannedEnergy(
     buildHoursFromHorizonPlan(diag.evaluation) ?? [],
   );
-  const cost = resolveCostEstimate({ diag, dailyBudgetSnapshot });
+  const cost = resolveCostEstimate(diag.horizonPlan, dailyBudgetSnapshot);
   // `costEstimate` is a TOTAL amount (Σ kWh × price), so it must be labelled
   // with the money unit, never the per-kWh rate label `priceRateLabel` carries.
   const costUnit = priceRateLabelToAmountUnit(priceRateLabel);
@@ -320,7 +258,7 @@ const buildEstimateFromDiagnostic = (
   // the same basis as `scheduledHours`, so the widget joins them by `startsAtMs`.
   const priceSeries = buildDeferredObjectivePolicyWindowPrices(dailyBudgetSnapshot, nowMs, deadlineAtMs)
     .map((point) => ({ startsAtMs: point.startMs, price: point.price }));
-  const atPowerLimitNow = resolveAtPowerLimitNow(scheduledHours, request);
+  const atPowerLimitNow = resolveAtPowerLimitNow(scheduledHours, snapshot);
   const floorShortfallCause = resolveFloorShortfallCause(diag.horizonPlan.statusDetail);
   let budgetRole: DeferredObjectivePlanPreviewEstimate['budgetRole'] = 'none';
   if (floorShortfallCause === 'budget') budgetRole = 'sole';
@@ -386,13 +324,11 @@ const resolveEnergyExpectedKWh = (diag: DeferredObjectiveDiagnostic): number | n
 // raw planned buckets (not the hour-collapsed schedule) so a bucket split at
 // `planningEndMs` still prices against its own source bucket. Returns null when
 // nothing is planned or no price is available for any planned bucket.
-const resolveCostEstimate = (params: {
-  diag: DeferredObjectiveDiagnostic;
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-}): number | null => {
-  const horizonPlan = params.diag.horizonPlan;
-  if (!horizonPlan) return null;
-  const pricesByBucketId = buildDeferredObjectivePolicyBucketPrices(params.dailyBudgetSnapshot);
+const resolveCostEstimate = (
+  horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>,
+  dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+): number | null => {
+  const pricesByBucketId = buildDeferredObjectivePolicyBucketPrices(dailyBudgetSnapshot);
   if (pricesByBucketId.size === 0) return null;
   let cost = 0;
   let pricedAny = false;

@@ -193,10 +193,9 @@ const pickRevisionForFinal = (
 };
 
 export const findPlanForRecord = (
-  plans: DeferredObjectiveActivePlansV1 | null,
+  plans: DeferredObjectiveActivePlansV1,
   record: { deviceId: string; deadlineAtMs: number },
 ): DeferredObjectiveActivePlanV1 | undefined => {
-  if (!plans) return undefined;
   const plan = plans.plansByDeviceId[record.deviceId];
   if (!plan) return undefined;
   // A persisted plan with a different deadline belongs to a different run.

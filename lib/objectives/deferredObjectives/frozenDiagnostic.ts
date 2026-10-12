@@ -7,14 +7,15 @@ import type {
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
 import type { DeferredObjectiveProgressResolution } from './diagnosticProgress';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
-import { buildFrozenHorizonPlan, type FrozenDrawWindow, type FrozenReadInputs } from './frozenHorizonPlan';
+import type { FrozenDrawWindow, FrozenReadInputs } from './frozenHorizonPlan';
 import {
   buildDeferredObjectivePolicyHorizon,
   type DeferredObjectivePolicyHorizonInputs,
   type DeferredObjectivePolicyHorizonResult,
 } from './policyHorizon';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import type { DeferredObjectiveStep } from './types';
+import type { DeferredObjectiveHorizonPlan } from './types';
+import type { OrderedDeferredObjective } from './priorityAllocation';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import type { ObjectiveProgressDirectionRead } from '../../objectives/types';
 import {
@@ -56,21 +57,21 @@ const toKnownFloorShortfallCause = (
 // caller decides whether to use this vs re-plan — re-planning runs the allocator only at
 // the `:58` settle AND when the price horizon is available, so a committed device
 // is never dropped to inactive on a transient horizon gap.
-const resolveFrozenReadInputs = (params: {
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  progressDirection: ObjectiveProgressDirectionRead;
-  nowMs: number;
-}): FrozenReadInputs | null => {
-  const activePlan = resolveActiveCommittedPlan({
-    activePlans: params.activePlans,
-    deviceId: params.deviceId,
-    objective: params.objective,
-    progressDirection: params.progressDirection,
-  });
+const resolveFrozenReadInputs = (
+  deviceId: string,
+  objective: DeferredObjectiveSettingsEntry,
+  progressDirection: ObjectiveProgressDirectionRead,
+  nowMs: number,
+  activePlans: DeferredObjectiveActivePlansV1,
+): FrozenReadInputs | null => {
+  const activePlan = resolveActiveCommittedPlan(
+    deviceId,
+    objective,
+    progressDirection,
+    activePlans,
+  );
   if (activePlan === undefined) return null;
-  const currentHourStartMs = Math.floor(params.nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   if (!activePlan.commitmentHours.some((hour) => hour.startsAtMs >= currentHourStartMs)) return null;
   const { latest } = activePlan;
   return {
@@ -81,7 +82,7 @@ const resolveFrozenReadInputs = (params: {
     // already rejected legacy/corrupt shapes without a latest revision, so the
     // frozen path never falls back to the commitment floor for control data.
     hours: latest.hours,
-    drawWindows: resolveDrawWindows(latest, params.objective.deadlineAtMs),
+    drawWindows: resolveDrawWindows(latest, objective.deadlineAtMs),
   };
 };
 
@@ -100,14 +101,16 @@ const resolveDrawWindows = (
   return hour.plannedKWh > 0 && endMs > startMs ? [{ startMs, endMs, plannedKWh: hour.plannedKWh }] : [];
 });
 
-export const resolveDeadlineBoundFrozenReadInputs = (params: {
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  progressDirection: ObjectiveProgressDirectionRead;
-  nowMs: number;
-}): FrozenReadInputs | null => (
-  params.objective.deadlineAtMs > params.nowMs ? resolveFrozenReadInputs(params) : null
+export const resolveDeadlineBoundFrozenReadInputs = (
+  deviceId: string,
+  objective: DeferredObjectiveSettingsEntry,
+  progressDirection: ObjectiveProgressDirectionRead,
+  nowMs: number,
+  activePlans: DeferredObjectiveActivePlansV1,
+): FrozenReadInputs | null => (
+  objective.deadlineAtMs > nowMs
+    ? resolveFrozenReadInputs(deviceId, objective, progressDirection, nowMs, activePlans)
+    : null
 );
 
 // Stand-in for the frozen mid-hour path, where the allocator is skipped so the
@@ -125,36 +128,23 @@ export const buildDeadlineAwarePolicyHorizon = (
   params.deadlineAtMs <= params.nowMs ? EMPTY_POLICY_HORIZON : buildDeferredObjectivePolicyHorizon(params)
 );
 
-// Assemble the diagnostic from the persisted commitment + live measured value
-// (folded into `aheadOfHourMilestone`), skipping the allocator. Mirrors the shape
-// `buildDiagnosticWithPolicyHorizon` returns on the fresh path.
-export const buildFrozenDiagnostic = (params: {
-  nowMs: number;
-  base: DeferredObjectiveDiagnostic;
-  progress: Extract<DeferredObjectiveProgressResolution, { reasonCode: null }>;
-  objective: DeferredObjectiveSettingsEntry;
-  deviceId: string;
-  profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
-  aheadOfHourMilestone: boolean;
-  steps: DeferredObjectiveStep[];
-  frozenRead: FrozenReadInputs;
+// Assemble the diagnostic from the plan `buildFrozenHorizonPlan` replayed off the
+// persisted commitment + live measured value (folded into
+// `aheadOfHourMilestone`), skipping the allocator. Mirrors `buildFreshDiagnostic`,
+// the shape `buildDiagnosticWithPolicyHorizon` returns on the fresh path.
+export const buildFrozenDiagnostic = (
+  task: OrderedDeferredObjective,
+  base: DeferredObjectiveDiagnostic,
+  progress: Extract<DeferredObjectiveProgressResolution, { reasonCode: null }>,
+  profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>,
+  frozenRead: FrozenReadInputs,
+  horizonPlan: DeferredObjectiveHorizonPlan,
   // Log-visibility marker (see `diagnosticTypes.ts`): this frozen serve bridges a
-  // live step-ladder gap, so `steps` is empty and `expectedStepId` resolves null.
-  liveStepsUnavailable?: boolean;
-}): DeferredObjectiveDiagnostic => {
-  const {
-    nowMs, base, progress, objective, deviceId,
-    profileEnergy, aheadOfHourMilestone, steps, frozenRead,
-  } = params;
-  const horizonPlan = buildFrozenHorizonPlan({
-    nowMs,
-    deviceId,
-    objective,
-    frozenRead,
-    energyNeededKWh: profileEnergy.energyNeededKWh,
-    aheadOfHourMilestone,
-    steps,
-  });
+  // live step-ladder gap, so the plan was replayed with no steps and
+  // `expectedStepId` resolves null.
+  liveStepsUnavailable: boolean,
+): DeferredObjectiveDiagnostic => {
+  const { deviceId, objective } = task;
   const evaluation = buildAllocatedTaskEvaluation(deviceId, objective, progress, horizonPlan);
   return {
     ...mergeProgressFields(base, progress.currentValue),
@@ -165,7 +155,7 @@ export const buildFrozenDiagnostic = (params: {
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: frozenRead.hours.length,
     expectedStepId: horizonPlan.expectedStepId,
-    ...(params.liveStepsUnavailable === true ? { liveStepsUnavailable: true as const } : {}),
+    ...(liveStepsUnavailable ? { liveStepsUnavailable: true as const } : {}),
     budgetExemptApplied: evaluation.permissions.budgetExempt
       && evaluation.planning.kind === 'allocated' && evaluation.planning.plan.currentHourClaim === 'claimed',
     limitLowerPriorityApplied: evaluation.permissions.limitLowerPriority,

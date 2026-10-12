@@ -45,24 +45,23 @@ const computeShortfall = (diagnostic: DeferredObjectiveDiagnostic): {
   return { shortfallKwh, shortfallText: null };
 };
 
-const buildSnapshot = (params: {
-  diagnostic: DeferredObjectiveDiagnostic;
-  status: DeferredObjectivePublishedStatus;
-  previousStatus: DeferredObjectiveStatusSnapshot['previousStatus'];
-  deadlineMissed: boolean;
-}): DeferredObjectiveStatusSnapshot => {
-  const { diagnostic } = params;
+const buildSnapshot = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  status: DeferredObjectivePublishedStatus,
+  previousStatus: DeferredObjectiveStatusSnapshot['previousStatus'],
+  deadlineMissed: boolean,
+): DeferredObjectiveStatusSnapshot => {
   const shortfall = computeShortfall(diagnostic);
   return {
     deviceId: diagnostic.deviceId,
     deviceName: diagnostic.deviceName ?? null,
     kind: diagnostic.objectiveKind,
-    status: params.status,
-    previousStatus: params.previousStatus,
+    status,
+    previousStatus,
     targetText: formatTargetText(diagnostic),
     deadlineLocalTime: diagnostic.deadlineLocalTime,
     deadlineAtMs: diagnostic.deadlineAtMs,
-    deadlineMissed: params.deadlineMissed,
+    deadlineMissed,
     shortfallKwh: shortfall.shortfallKwh,
     shortfallText: shortfall.shortfallText,
   };
@@ -72,13 +71,12 @@ const buildSnapshot = (params: {
 // forward across status transitions so we never re-fire deadline_missed for the
 // same objective. The flag clears when the objective becomes satisfied or when
 // the deadline moves to a future time (e.g. user reschedules via flow).
-const computeMissedTransition = (params: {
-  diagnostic: DeferredObjectiveDiagnostic;
-  previous: DeferredObjectiveStatusSnapshot | null;
-  nextStatus: DeferredObjectivePublishedStatus;
-  nowMs: number;
-}): { deadlineMissed: boolean } => {
-  const { diagnostic, previous, nextStatus, nowMs } = params;
+const computeMissedTransition = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  previous: DeferredObjectiveStatusSnapshot | null,
+  nextStatus: DeferredObjectivePublishedStatus,
+  nowMs: number,
+): { deadlineMissed: boolean } => {
   const previousMissed = previous?.deadlineMissed === true;
   const deadlineInFuture = diagnostic.deadlineAtMs !== null
     && nowMs < diagnostic.deadlineAtMs;
@@ -92,25 +90,19 @@ const computeMissedTransition = (params: {
   return { deadlineMissed: carriedMissed || deadlineJustPassed };
 };
 
-const processDiagnosticTransition = (params: {
-  diagnostic: DeferredObjectiveDiagnostic;
-  statusBus: DeferredObjectiveStatusBus;
-  nowMs: number;
-}): void => {
-  const { diagnostic, statusBus, nowMs } = params;
+const processDiagnosticTransition = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  statusBus: DeferredObjectiveStatusBus,
+  nowMs: number,
+): void => {
   const previous = statusBus.getCurrent(diagnostic.deviceId);
   const previousStatus = previous?.status ?? 'none';
   // The publish boundary, and the only place a missing verdict becomes the
   // `'unknown'` the UI shows. Inside the module it stays a separate arm, so no
   // consumer can read it as a trajectory claim.
   const nextStatus: DeferredObjectivePublishedStatus = resolvedTrajectoryStatus(diagnostic) ?? 'unknown';
-  const { deadlineMissed } = computeMissedTransition({
-    diagnostic,
-    previous,
-    nextStatus,
-    nowMs,
-  });
-  const snapshot = buildSnapshot({ diagnostic, status: nextStatus, previousStatus, deadlineMissed });
+  const { deadlineMissed } = computeMissedTransition(diagnostic, previous, nextStatus, nowMs);
+  const snapshot = buildSnapshot(diagnostic, nextStatus, previousStatus, deadlineMissed);
   // When the status transitions we notify listeners; otherwise we still refresh
   // the stored snapshot so future ticks see the latest deadlineAtMs and missed
   // flag (e.g. when the user reschedules without changing status).
@@ -132,14 +124,13 @@ export type DeferredObjectiveLifecycleHooks = {
 };
 
 /** Execute lifecycle transitions without coupling them to optional UI state. */
-export const emitDeferredObjectiveLifecycleTransitions = (params: {
-  diagnostics: DeferredObjectiveDiagnostic[];
-  knownDeviceIds: ReadonlySet<string>;
-  nowMs: number;
-} & DeferredObjectiveLifecycleHooks): Set<string> => {
-  const {
-    diagnostics, knownDeviceIds, nowMs, onSatisfied, onDeadlineReached, onFallbackInactive,
-  } = params;
+export const emitDeferredObjectiveLifecycleTransitions = (
+  diagnostics: DeferredObjectiveDiagnostic[],
+  knownDeviceIds: ReadonlySet<string>,
+  nowMs: number,
+  hooks: DeferredObjectiveLifecycleHooks,
+): Set<string> => {
+  const { onSatisfied, onDeadlineReached, onFallbackInactive } = hooks;
   const seen = new Set<string>();
   for (const diagnostic of diagnostics) {
     seen.add(diagnostic.deviceId);
@@ -158,16 +149,15 @@ export const emitDeferredObjectiveLifecycleTransitions = (params: {
   return seen;
 };
 
-export const emitDeferredObjectiveStatusTransitions = (params: {
-  diagnostics: DeferredObjectiveDiagnostic[];
-  statusBus: DeferredObjectiveStatusBus;
-  nowMs: number;
-}): void => {
-  const { diagnostics, statusBus, nowMs } = params;
+export const emitDeferredObjectiveStatusTransitions = (
+  diagnostics: DeferredObjectiveDiagnostic[],
+  statusBus: DeferredObjectiveStatusBus,
+  nowMs: number,
+): void => {
   const seen = new Set<string>();
   for (const diagnostic of diagnostics) {
     seen.add(diagnostic.deviceId);
-    processDiagnosticTransition({ diagnostic, statusBus, nowMs });
+    processDiagnosticTransition(diagnostic, statusBus, nowMs);
   }
   for (const known of statusBus.listDeviceIds()) {
     if (!seen.has(known)) {

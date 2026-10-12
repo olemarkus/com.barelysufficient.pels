@@ -6,11 +6,15 @@ const HOUR_MS = 60 * 60 * 1000;
 const HOUR_START = Date.UTC(2026, 0, 1, 17);
 const NOW_MS = HOUR_START + 20 * 60 * 1000; // 17:20, mid-hour
 
-type IsAheadParams = Omit<Parameters<typeof isAheadOfHourMilestone>[0], 'progressDirection'>;
-const isAhead = (params: IsAheadParams): boolean => isAheadOfHourMilestone({
-  ...params,
-  progressDirection: 'increasing',
-});
+type IsAheadParams = {
+  energyNeededKWh: number;
+  measuredValue?: number | null;
+  committedHours: readonly DeferredObjectiveActivePlanHourV1[];
+  nowMs: number;
+};
+const isAhead = (params: IsAheadParams): boolean => isAheadOfHourMilestone(
+  params.energyNeededKWh, 'increasing', params.committedHours, params.nowMs, params.measuredValue,
+);
 
 const futureHours = (
   kWhPerHour: number[],
@@ -234,19 +238,7 @@ describe('isAheadOfHourMilestone — unit trajectory (bug 1)', () => {
       { startsAtMs: HOUR_START + HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 23 },
       { startsAtMs: HOUR_START + 2 * HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 22 },
     ];
-    expect(isAheadOfHourMilestone({
-      energyNeededKWh: 999,
-      measuredValue: 24,
-      progressDirection: 'decreasing',
-      committedHours,
-      nowMs: NOW_MS,
-    })).toBe(true);
-    expect(isAheadOfHourMilestone({
-      energyNeededKWh: 0,
-      measuredValue: 26,
-      progressDirection: 'decreasing',
-      committedHours,
-      nowMs: NOW_MS,
-    })).toBe(false);
+    expect(isAheadOfHourMilestone(999, 'decreasing', committedHours, NOW_MS, 24)).toBe(true);
+    expect(isAheadOfHourMilestone(0, 'decreasing', committedHours, NOW_MS, 26)).toBe(false);
   });
 });

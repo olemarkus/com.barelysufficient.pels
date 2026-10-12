@@ -73,41 +73,41 @@ const evDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedP
 describe('objective profiles', () => {
   it('learns cooling rates in the decreasing direction and resets its window on a mode change', () => {
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({ currentTemperature: 26, thermalDirection: 'cooling' })],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
+      [temperatureDevice({ currentTemperature: 26, thermalDirection: 'cooling' })],
+      startMs,
+      () => undefined,
+      undefined,
+    );
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 24,
         thermalDirection: 'cooling',
         lastFreshDataMs: startMs + hourMs,
       })],
-      nowMs: startMs + hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + hourMs,
+      () => undefined,
+      undefined,
+    );
 
     const coolingProfile = state.objectiveProfiles?.['heater-1'];
     expect(coolingProfile?.acceptedSamples).toBe(1);
     expect(coolingProfile?.kwhPerUnit?.mean).toBeCloseTo(1, 3);
     expect(coolingProfile?.samples?.[0]?.progressDirection).toBe('decreasing');
 
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 52,
         thermalDirection: 'heating',
         lastFreshDataMs: startMs + 2 * hourMs,
       })],
-      nowMs: startMs + 2 * hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + 2 * hourMs,
+      () => undefined,
+      undefined,
+    );
 
     const afterModeChange = state.objectiveProfiles?.['heater-1'];
     expect(afterModeChange?.acceptedSamples).toBe(1);
@@ -117,24 +117,18 @@ describe('objective profiles', () => {
 
   it('learns compact kWh-per-degree and degree-per-hour stats for temperature devices', () => {
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(state, [temperatureDevice()], startMs, () => undefined, undefined);
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice()],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
-      state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 52,
         lastFreshDataMs: startMs + hourMs,
         measuredPowerKw: 2,
       })],
-      nowMs: startMs + hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + hourMs,
+      () => undefined,
+      undefined,
+    );
 
     const profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.acceptedSamples).toBe(1);
@@ -146,18 +140,18 @@ describe('objective profiles', () => {
   it('retains a bounded ring buffer of recent samples for band fitting', () => {
     let profile: DeviceObjectiveProfile | undefined;
     for (let index = 0; index < 6; index += 1) {
-      profile = updateDeviceObjectiveProfile({
-        previous: profile,
-        sample: {
+      profile = updateDeviceObjectiveProfile(
+        profile,
+        {
           observedAtMs: startMs + index * hourMs,
           value: 50 + index,
           crediblePowerW: 1000,
         },
-        deviceId: 'dev',
-        deviceName: 'Device',
-        debugStructured: () => undefined,
-        outdoorTemperatureC: undefined,
-      });
+        'dev',
+        'Device',
+        () => undefined,
+        undefined,
+      );
     }
 
     expect(profile?.acceptedSamples).toBe(5);
@@ -178,18 +172,18 @@ describe('objective profiles', () => {
     let profile: DeviceObjectiveProfile | undefined;
     for (let index = 0; index < 20; index += 1) {
       const isCheap = index < 10;
-      profile = updateDeviceObjectiveProfile({
-        previous: profile,
-        sample: {
+      profile = updateDeviceObjectiveProfile(
+        profile,
+        {
           observedAtMs: startMs + index * hourMs,
           value: 30 + index,
           crediblePowerW: isCheap ? 1000 : 3000,
         },
-        deviceId: 'dev',
-        deviceName: 'Device',
-        debugStructured: () => undefined,
-        outdoorTemperatureC: undefined,
-      });
+        'dev',
+        'Device',
+        () => undefined,
+        undefined,
+      );
     }
 
     expect(profile?.acceptedSamples).toBe(19);
@@ -213,18 +207,18 @@ describe('objective profiles', () => {
     let profile: DeviceObjectiveProfile | undefined;
     for (let index = 0; index < 20; index += 1) {
       const isCheap = index < 10;
-      profile = updateDeviceObjectiveProfile({
-        previous: profile,
-        sample: {
+      profile = updateDeviceObjectiveProfile(
+        profile,
+        {
           observedAtMs: startMs + index * hourMs,
           value: 30 + index,
           crediblePowerW: isCheap ? 1000 : 3000,
         },
+        'dev',
+        'Device',
         debugStructured,
-        deviceId: 'dev',
-        deviceName: 'Device',
-        outdoorTemperatureC: undefined,
-      });
+        undefined,
+      );
     }
     expect(profile?.bands?.length ?? 0).toBeGreaterThanOrEqual(2);
     // Every accepted sample carries both fields, never `undefined`.
@@ -242,34 +236,30 @@ describe('objective profiles', () => {
     const lastPayload = recordedPayloads.at(-1);
     const kwhPerUnit = profile?.kwhPerUnit;
     expect(kwhPerUnit).toBeDefined();
-    const expected = resolveProfileConfidence({
-      sampleCount: kwhPerUnit!.sampleCount,
-      mean: kwhPerUnit!.mean,
-      m2: kwhPerUnit!.m2,
-    });
+    const expected = resolveProfileConfidence(kwhPerUnit!.sampleCount, kwhPerUnit!.mean, kwhPerUnit!.m2);
     expect(lastPayload?.globalEnergyConfidence).toBe(expected);
   });
 
   it('does not update energy conversion when credible energy evidence is missing', () => {
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({ measuredPowerKw: undefined })],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
+      [temperatureDevice({ measuredPowerKw: undefined })],
+      startMs,
+      () => undefined,
+      undefined,
+    );
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 52,
         lastFreshDataMs: startMs + hourMs,
         measuredPowerKw: undefined,
       })],
-      nowMs: startMs + hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + hourMs,
+      () => undefined,
+      undefined,
+    );
 
     const profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.acceptedSamples).toBe(1);
@@ -294,30 +284,30 @@ describe('objective profiles', () => {
       ],
     };
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         measuredPowerKw,
         steppedLoadProfile: steppedProfile,
         reportedStepId: 'low',
       })],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
+      startMs,
+      () => undefined,
+      undefined,
+    );
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 51,
         lastFreshDataMs: startMs + hourMs,
         measuredPowerKw,
         steppedLoadProfile: steppedProfile,
         reportedStepId: 'low',
       })],
-      nowMs: startMs + hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + hourMs,
+      () => undefined,
+      undefined,
+    );
 
     const profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.kwhPerUnit).toBeUndefined();
@@ -332,17 +322,17 @@ describe('objective profiles', () => {
       index: number,
       deviceId: string,
       debugStructured: (payload: Record<string, unknown>) => void = () => undefined,
-    ): DeviceObjectiveProfile => updateDeviceObjectiveProfile({
+    ): DeviceObjectiveProfile => updateDeviceObjectiveProfile(
       previous,
-      deviceId,
-      deviceName: 'Termostat Synne',
-      sample: {
+      {
         observedAtMs: startMs + index * hourMs,
         value: 30 + index,
       },
+      deviceId,
+      'Termostat Synne',
       debugStructured,
-      outdoorTemperatureC: undefined,
-    });
+      undefined,
+    );
 
     it('emits objective_profile_no_power_source once after the threshold of consecutive accepted samples without crediblePowerW', () => {
       const debugStructured = vi.fn();
@@ -412,18 +402,18 @@ describe('objective profiles', () => {
       // not the closed window's `kwhPerUnit`, so a single valid sample is enough
       // to reset the counter — even though the just-closed window still bills at
       // the silent baseline and therefore yields `kwhPerUnit = undefined`.
-      profile = updateDeviceObjectiveProfile({
-        previous: profile,
-        deviceId: 'no-power-recovers',
-        deviceName: 'Termostat Synne',
-        sample: {
+      profile = updateDeviceObjectiveProfile(
+        profile,
+        {
           observedAtMs: startMs + (OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1) * hourMs,
           value: 30 + OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1,
           crediblePowerW: 1000,
         },
+        'no-power-recovers',
+        'Termostat Synne',
         debugStructured,
-        outdoorTemperatureC: undefined,
-      });
+        undefined,
+      );
 
       for (let extra = 0; extra < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; extra += 1) {
         const index = OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 2 + extra;
@@ -438,18 +428,18 @@ describe('objective profiles', () => {
       const debugStructured = vi.fn();
       let profile: DeviceObjectiveProfile | undefined;
       for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 5; index += 1) {
-        profile = updateDeviceObjectiveProfile({
-          previous: profile,
-          deviceId: 'no-power-always-resolved',
-          sample: {
+        profile = updateDeviceObjectiveProfile(
+          profile,
+          {
             observedAtMs: startMs + index * hourMs,
             value: 30 + index,
             crediblePowerW: 1000,
           },
+          'no-power-always-resolved',
+          'Device',
           debugStructured,
-          deviceName: 'Device',
-          outdoorTemperatureC: undefined,
-        });
+          undefined,
+        );
       }
       expect(debugStructured.mock.calls
         .filter(([payload]) => (payload as Record<string, unknown>).event === 'objective_profile_no_power_source')
@@ -475,23 +465,23 @@ describe('objective profiles', () => {
   it('rejects small falling temperature samples and reseeds the baseline so future rises measure from the new low', () => {
     const debugStructured = vi.fn();
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({ currentTemperature: 52 })],
-      nowMs: startMs,
+      [temperatureDevice({ currentTemperature: 52 })],
+      startMs,
       debugStructured,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
+      undefined,
+    );
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 51.5,
         lastFreshDataMs: startMs + hourMs,
       })],
-      nowMs: startMs + hourMs,
+      startMs + hourMs,
       debugStructured,
-      outdoorTemperatureC: undefined,
-    });
+      undefined,
+    );
 
     const profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.acceptedSamples).toBe(0);
@@ -512,20 +502,20 @@ describe('objective profiles', () => {
     vi.setSystemTime(Date.UTC(2027, 0, 1, 0, 0, 0));
     try {
       const debugStructured = vi.fn();
-      const previousState = updateObjectiveProfilesFromSnapshot({
-        state: {},
-        devices: [
+      const previousState = updateObjectiveProfilesFromSnapshot(
+        {},
+        [
           temperatureDevice({ id: 'heater-1', currentTemperature: 52 }),
           temperatureDevice({ id: 'heater-2', currentTemperature: 52 }),
         ],
-        nowMs: startMs,
-        debugStructured: () => undefined,
-        outdoorTemperatureC: undefined,
-      });
+        startMs,
+        () => undefined,
+        undefined,
+      );
 
-      updateObjectiveProfilesFromSnapshot({
-        state: previousState,
-        devices: [
+      updateObjectiveProfilesFromSnapshot(
+        previousState,
+        [
           temperatureDevice({
             id: 'heater-1',
             currentTemperature: 51.5,
@@ -537,10 +527,10 @@ describe('objective profiles', () => {
             lastFreshDataMs: startMs + hourMs,
           }),
         ],
-        nowMs: startMs + hourMs,
+        startMs + hourMs,
         debugStructured,
-        outdoorTemperatureC: undefined,
-      });
+        undefined,
+      );
 
       expect(debugStructured).toHaveBeenCalledTimes(1);
       expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
@@ -554,33 +544,33 @@ describe('objective profiles', () => {
 
   it('keeps the accepted baseline after too-frequent samples so later readings can be accepted', () => {
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({ currentTemperature: 50 })],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
+      [temperatureDevice({ currentTemperature: 50 })],
+      startMs,
+      () => undefined,
+      undefined,
+    );
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 51,
         lastFreshDataMs: startMs + 60 * 1000,
       })],
-      nowMs: startMs + 60 * 1000,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
+      startMs + 60 * 1000,
+      () => undefined,
+      undefined,
+    );
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 52,
         lastFreshDataMs: startMs + 10 * 60 * 1000,
       })],
-      nowMs: startMs + 10 * 60 * 1000,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + 10 * 60 * 1000,
+      () => undefined,
+      undefined,
+    );
 
     const profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.acceptedSamples).toBe(1);
@@ -591,33 +581,33 @@ describe('objective profiles', () => {
 
   it('keeps the accepted baseline after small rises so cumulative progress can be accepted', () => {
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({ currentTemperature: 50 })],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
+      [temperatureDevice({ currentTemperature: 50 })],
+      startMs,
+      () => undefined,
+      undefined,
+    );
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 50.1,
         lastFreshDataMs: startMs + 30 * 60 * 1000,
       })],
-      nowMs: startMs + 30 * 60 * 1000,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
+      startMs + 30 * 60 * 1000,
+      () => undefined,
+      undefined,
+    );
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 50.5,
         lastFreshDataMs: startMs + hourMs,
       })],
-      nowMs: startMs + hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + hourMs,
+      () => undefined,
+      undefined,
+    );
 
     const profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.acceptedSamples).toBe(1);
@@ -628,23 +618,23 @@ describe('objective profiles', () => {
 
   it('reseeds the baseline after an overlong sample gap so future samples can be accepted', () => {
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({ currentTemperature: 50 })],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
+      [temperatureDevice({ currentTemperature: 50 })],
+      startMs,
+      () => undefined,
+      undefined,
+    );
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 55,
         lastFreshDataMs: startMs + 7 * hourMs,
       })],
-      nowMs: startMs + 7 * hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + 7 * hourMs,
+      () => undefined,
+      undefined,
+    );
 
     let profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.acceptedSamples).toBe(0);
@@ -652,16 +642,16 @@ describe('objective profiles', () => {
     expect(profile?.lastSample.value).toBe(55);
     expect(profile?.updatedAtMs).toBe(startMs + 7 * hourMs);
 
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 56,
         lastFreshDataMs: startMs + 8 * hourMs,
       })],
-      nowMs: startMs + 8 * hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + 8 * hourMs,
+      () => undefined,
+      undefined,
+    );
 
     profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.acceptedSamples).toBe(1);
@@ -672,22 +662,16 @@ describe('objective profiles', () => {
 
   it('learns kWh-per-percent for EVs only from fresh SoC with credible power evidence', () => {
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(state, [evDevice()], startMs, () => undefined, undefined);
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [evDevice()],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    state = updateObjectiveProfilesFromSnapshot({
-      state,
-      devices: [evDevice({
+      [evDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 50, observedAtMs: startMs + hourMs }),
       })],
-      nowMs: startMs + hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + hourMs,
+      () => undefined,
+      undefined,
+    );
 
     const profile = state.objectiveProfiles?.['ev-1'];
     expect(profile?.acceptedSamples).toBe(1);
@@ -696,15 +680,15 @@ describe('objective profiles', () => {
   });
 
   it('seeds the baseline from the first EV SoC sample', () => {
-    const state = updateObjectiveProfilesFromSnapshot({
-      state: {},
-      devices: [evDevice({
+    const state = updateObjectiveProfilesFromSnapshot(
+      {},
+      [evDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: startMs - 60_000 }),
       })],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs,
+      () => undefined,
+      undefined,
+    );
 
     expect(state.objectiveProfiles?.['ev-1']?.acceptedSamples).toBe(0);
     expect(state.objectiveProfiles?.['ev-1']?.lastSample.value).toBe(40);
@@ -725,66 +709,66 @@ describe('objective profiles', () => {
   it('bounds retained device profiles to protect persisted size and RSS', () => {
     const profiles: NonNullable<PowerTrackerState['objectiveProfiles']> = {};
     for (let index = 0; index < OBJECTIVE_PROFILE_MAX_DEVICES + 10; index += 1) {
-      profiles[`dev-${index}`] = updateDeviceObjectiveProfile({
-        sample: {
+      profiles[`dev-${index}`] = updateDeviceObjectiveProfile(
+        undefined,
+        {
           observedAtMs: startMs + index,
           value: 50,
         },
-        previous: undefined,
-        deviceId: 'dev',
-        deviceName: 'Device',
-        debugStructured: () => undefined,
-        outdoorTemperatureC: undefined,
-      });
+        'dev',
+        'Device',
+        () => undefined,
+        undefined,
+      );
     }
 
-    const state = updateObjectiveProfilesFromSnapshot({
-      state: { objectiveProfiles: profiles },
-      devices: [],
-      nowMs: startMs + hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+    const state = updateObjectiveProfilesFromSnapshot(
+      { objectiveProfiles: profiles },
+      [],
+      startMs + hourMs,
+      () => undefined,
+      undefined,
+    );
 
     expect(Object.keys(state.objectiveProfiles ?? {})).toHaveLength(OBJECTIVE_PROFILE_MAX_DEVICES);
   });
 
   it('prunes expired profiles even when no new samples are recorded', () => {
-    const retained = updateDeviceObjectiveProfile({
-      sample: {
+    const retained = updateDeviceObjectiveProfile(
+      undefined,
+      {
         observedAtMs: startMs,
         value: 50,
       },
-      previous: undefined,
-      deviceId: 'dev',
-      deviceName: 'Device',
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
-    const expired = updateDeviceObjectiveProfile({
-      sample: {
+      'dev',
+      'Device',
+      () => undefined,
+      undefined,
+    );
+    const expired = updateDeviceObjectiveProfile(
+      undefined,
+      {
         observedAtMs: startMs - OBJECTIVE_PROFILE_RETENTION_MS - 1,
         value: 50,
       },
-      previous: undefined,
-      deviceId: 'dev',
-      deviceName: 'Device',
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      'dev',
+      'Device',
+      () => undefined,
+      undefined,
+    );
 
-    const state = updateObjectiveProfilesFromSnapshot({
-      state: {
+    const state = updateObjectiveProfilesFromSnapshot(
+      {
         objectiveProfiles: {
           retained,
           expired,
         },
       },
-      devices: [],
-      nowMs: startMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      [],
+      startMs,
+      () => undefined,
+      undefined,
+    );
 
     expect(Object.keys(state.objectiveProfiles ?? {})).toEqual(['retained']);
   });
@@ -806,23 +790,16 @@ describe('objective profiles', () => {
 
     it('suppresses non_monotonic_time rejection on exact (observedAtMs, value) duplicates', () => {
       const debugStructured = vi.fn();
-      const seed = updateDeviceObjectiveProfile({
-        previous: undefined,
-        sample: seedSample,
-        deviceId: 'dev',
-        deviceName: 'Device',
-        debugStructured: () => undefined,
-        outdoorTemperatureC: undefined,
-      });
+      const seed = updateDeviceObjectiveProfile(undefined, seedSample, 'dev', 'Device', () => undefined, undefined);
       debugStructured.mockClear();
-      const result = updateDeviceObjectiveProfile({
-        previous: seed,
-        sample: { ...seedSample },
-        deviceId: 'heater-1',
+      const result = updateDeviceObjectiveProfile(
+        seed,
+        { ...seedSample },
+        'heater-1',
+        'Device',
         debugStructured,
-        deviceName: 'Device',
-        outdoorTemperatureC: undefined,
-      });
+        undefined,
+      );
 
       expect(result).toBe(seed);
       expect(result.rejectedSamples).toBe(seed.rejectedSamples);
@@ -831,25 +808,18 @@ describe('objective profiles', () => {
 
     it('suppresses non_monotonic_time rejection when observedAtMs slips backwards but value is unchanged', () => {
       const debugStructured = vi.fn();
-      const seed = updateDeviceObjectiveProfile({
-        previous: undefined,
-        sample: seedSample,
-        deviceId: 'dev',
-        deviceName: 'Device',
-        debugStructured: () => undefined,
-        outdoorTemperatureC: undefined,
-      });
+      const seed = updateDeviceObjectiveProfile(undefined, seedSample, 'dev', 'Device', () => undefined, undefined);
       debugStructured.mockClear();
-      const result = updateDeviceObjectiveProfile({
-        previous: seed,
+      const result = updateDeviceObjectiveProfile(
+        seed,
         // `intervalMs === -4`: a capability aged out of the `Math.max` floor
         // and the next-newest `lastUpdated` is a few ms older.
-        sample: { ...seedSample, observedAtMs: seedSample.observedAtMs - 4 },
-        deviceId: 'heater-1',
+        { ...seedSample, observedAtMs: seedSample.observedAtMs - 4 },
+        'heater-1',
+        'Device',
         debugStructured,
-        deviceName: 'Device',
-        outdoorTemperatureC: undefined,
-      });
+        undefined,
+      );
 
       expect(result).toBe(seed);
       expect(result.rejectedSamples).toBe(seed.rejectedSamples);
@@ -858,29 +828,22 @@ describe('objective profiles', () => {
 
     it('still emits non_monotonic_time rejection when observedAtMs slips backwards and value changed', () => {
       const debugStructured = vi.fn();
-      const seed = updateDeviceObjectiveProfile({
-        previous: undefined,
-        sample: seedSample,
-        deviceId: 'dev',
-        deviceName: 'Device',
-        debugStructured: () => undefined,
-        outdoorTemperatureC: undefined,
-      });
+      const seed = updateDeviceObjectiveProfile(undefined, seedSample, 'dev', 'Device', () => undefined, undefined);
       debugStructured.mockClear();
-      const result = updateDeviceObjectiveProfile({
-        previous: seed,
+      const result = updateDeviceObjectiveProfile(
+        seed,
         // Same `intervalMs === -4` but the value moved, so the suppression
         // must not swallow the rejection.
-        sample: {
+        {
           ...seedSample,
           observedAtMs: seedSample.observedAtMs - 4,
           value: seedSample.value + 0.3,
         },
-        deviceId: 'heater-1',
+        'heater-1',
+        'Device',
         debugStructured,
-        deviceName: 'Device',
-        outdoorTemperatureC: undefined,
-      });
+        undefined,
+      );
 
       expect(result.rejectedSamples).toBe(seed.rejectedSamples + 1);
       expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({

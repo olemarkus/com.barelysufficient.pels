@@ -80,24 +80,24 @@ export const hasPriceHorizonAdvanced = (
 // than the resulting schedule change. Otherwise the split between
 // `prices_revised` and `schedule_revised` depends on whether the price horizon
 // actually advanced.
-export const resolveReplanReason = (params: {
-  objectiveChanged: boolean;
-  directionChanged: boolean;
-  rescuePermissionOnlyChanged: boolean;
-  sourceRefined: boolean;
+export const resolveReplanReason = (
+  objectiveChanged: boolean,
+  directionChanged: boolean,
+  rescuePermissionOnlyChanged: boolean,
+  sourceRefined: boolean,
   // The live learned per-unit energy rate diverged from the rate the committed
   // plan was built against. The common slow-delivery case is "learned rate
   // drifts → planner adds later buckets → schedule changes", so the deviation
   // and a schedule change frequently fire together; the deviation is the root
   // cause and must win the label over `schedule_revised`.
-  measuredDeviation: boolean;
-  pricesAdvanced: boolean;
-}): DeferredObjectiveActivePlanRevisionReason => {
-  if (params.rescuePermissionOnlyChanged) return 'flow_permission_changed';
-  if (params.directionChanged) return 'direction_changed';
-  if (params.objectiveChanged) return 'objective_changed';
-  if (params.sourceRefined) return 'rate_refined';
-  if (params.measuredDeviation) return 'measured_deviation';
-  if (params.pricesAdvanced) return 'prices_revised';
+  measuredDeviation: boolean,
+  pricesAdvanced: boolean,
+): DeferredObjectiveActivePlanRevisionReason => {
+  if (rescuePermissionOnlyChanged) return 'flow_permission_changed';
+  if (directionChanged) return 'direction_changed';
+  if (objectiveChanged) return 'objective_changed';
+  if (sourceRefined) return 'rate_refined';
+  if (measuredDeviation) return 'measured_deviation';
+  if (pricesAdvanced) return 'prices_revised';
   return 'schedule_revised';
 };

@@ -76,12 +76,12 @@ import {
   hasMetadataDriftedWithinSchedule,
   isFrozenServedDiagnostic,
   MAX_HISTORY_REVISIONS,
-  notifyRevisionWrittenIfPubliclyObservable,
   reportedPlanStatus,
   resolveCommitment,
   resolveInitialKwhPerUnit,
   resolveLearnedRateKwh,
   resolvePendingReason,
+  resolvePublicRevisionWrittenEvent,
   resolveProvenance,
   resolveSourceTransition,
   shouldWriteReplanRevision,
@@ -265,9 +265,7 @@ export class DeferredObjectiveActivePlanRecorder {
       publishOverlayOnlyStatusChange(this.deps, this.plans[diag.deviceId] ?? backfilled, previousEffective);
       return;
     }
-    if (this.maybeWriteReplanRevision({
-      diag, signature, hours: candidateHours, current: backfilled, nowMs, previousEffective,
-    })) {
+    if (this.maybeWriteReplanRevision(diag, signature, candidateHours, backfilled, nowMs, previousEffective)) {
       this.markReplanSettled(diag.deviceId, nowMs);
       return;
     }
@@ -390,7 +388,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // the frozen `cheaperHourAhead` flag here too so the first committed hours
     // carry it from the start.
     const hours = stampCheaperHourAhead(stampUnitMilestones(rawHours, diag, nowMs), diag);
-    const revision = buildRevision({ diag, hours, revision: 1, reason, nowMs });
+    const revision = buildRevision(diag, hours, 1, reason, nowMs);
     const firstDiagnosticReasonCode = resolveDiagnosticReasonCode(diag);
     const previous = this.plans[diag.deviceId];
     const previousWasPending = previous !== undefined && (previous.pending || previous.latest === null);
@@ -501,17 +499,14 @@ export class DeferredObjectiveActivePlanRecorder {
     }
   }
 
-  private maybeWriteReplanRevision(params: {
-    diag: DeferredObjectiveDiagnostic;
-    signature: string;
-    hours: DeferredObjectiveActivePlanHourV1[];
-    current: DeferredObjectiveActivePlanV1;
-    nowMs: number;
-    previousEffective: DeferredObjectiveActivePlanStatusV1 | null;
-  }): boolean {
-    const {
-      diag, signature, hours, current, nowMs, previousEffective,
-    } = params;
+  private maybeWriteReplanRevision(
+    diag: DeferredObjectiveDiagnostic,
+    signature: string,
+    hours: DeferredObjectiveActivePlanHourV1[],
+    current: DeferredObjectiveActivePlanV1,
+    nowMs: number,
+    previousEffective: DeferredObjectiveActivePlanStatusV1 | null,
+  ): boolean {
     // Caller (`observeDiagnostic`) already returns early when `current.latest`
     // is null, so we can dereference it directly here.
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
@@ -531,12 +526,15 @@ export class DeferredObjectiveActivePlanRecorder {
     // or downstream milestones understate the target and the gate mis-releases.
     // Both stamps freeze per hour at the booking revision and carry through later
     // merges via `{ ...c }`. See `stampUnitMilestones` / `stampCheaperHourAhead`.
-    const scheduleUpdate = resolveCoordinatedScheduleUpdate({
-      diag, objectiveChanged, latest, nowMs,
-      committedHours: current.commitment?.hours ?? [],
-      liveHours: hours,
-      metadataDrifted: hasMetadataDriftedWithinSchedule({ latest, horizonPlan, diag }),
-    });
+    const scheduleUpdate = resolveCoordinatedScheduleUpdate(
+      diag,
+      objectiveChanged,
+      current.commitment?.hours ?? [],
+      latest,
+      hours,
+      nowMs,
+      hasMetadataDriftedWithinSchedule(latest, horizonPlan, diag),
+    );
     const { replaceCommitment, effectiveHours, scheduleChanged, metadataDriftedWithinSchedule } = scheduleUpdate;
     // Same charging hours but consumer-visible status fields drifted — see
     // `hasMetadataDriftedWithinSchedule` for the field list. Covers
@@ -567,27 +565,31 @@ export class DeferredObjectiveActivePlanRecorder {
     // A `device_unavailable` trigger belongs alongside this one, but it cannot
     // be wired until device-level metering distinguishes "unreachable" from a
     // slow reading.
-    const measuredDeviation = hasLearnedRateDeviated({ current, diag, objectiveChanged });
-    if (!shouldWriteReplanRevision({
+    const measuredDeviation = hasLearnedRateDeviated(current, diag, objectiveChanged);
+    if (!shouldWriteReplanRevision(
       objectiveChanged,
       scheduleChanged,
       metadataDriftedWithinSchedule,
       sourceChanged,
       measuredDeviation,
-    })) return false;
-    const reason = resolveReplanReason({
+    )) return false;
+    const reason = resolveReplanReason(
       objectiveChanged,
-      directionChanged: sigDiff.directionOnly,
-      rescuePermissionOnlyChanged: sigDiff.rescueOnly,
+      sigDiff.directionOnly,
+      sigDiff.rescueOnly,
       sourceRefined,
       measuredDeviation,
-      pricesAdvanced: hasPriceHorizonAdvanced(latest, diag.evaluation),
-    });
-    const revision = buildRevision({
-      diag, hours: effectiveHours, revision: latest.revision + 1, reason, nowMs,
-      previousReservationSegments: replaceCommitment ? undefined : latest.reservationSegments,
-      previousPricesUpTo: latest.computedFromPricesUpTo,
-    });
+      hasPriceHorizonAdvanced(latest, diag.evaluation),
+    );
+    const revision = buildRevision(
+      diag,
+      effectiveHours,
+      latest.revision + 1,
+      reason,
+      nowMs,
+      latest.computedFromPricesUpTo,
+      replaceCommitment ? undefined : latest.reservationSegments,
+    );
     const provenance = resolveProvenance(diag);
     // Provenance updates are best-effort; preserve the existing snapshot when
     // the new diagnostic didn't resolve a profile so we don't clobber useful
@@ -596,7 +598,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // accepted-sample counts and confidence are kind-specific.
     const nextProvenance = provenance
       ?? (current.objectiveKind === diag.objectiveKind ? current.kwhPerUnitProvenance : undefined);
-    const snapshot = resolvePlanLevelDurationSnapshot({ current, revision, reason });
+    const snapshot = resolvePlanLevelDurationSnapshot(current, revision, reason);
     // Drop the prior snapshot fields from `...current` so the
     // `objective_changed` reset path can genuinely omit them when the new
     // revision has no usable planning speed. `toPersistedPlanLevelDurationFields`
@@ -605,9 +607,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // explicit-undefined idiom while the in-memory shape no longer exposes
     // `undefined` keys that violate `exactOptionalPropertyTypes`-style
     // contracts.
-    const nextInitialKwhPerUnit = resolveInitialKwhPerUnit({
-      current, diag, objectiveChanged, measuredDeviation,
-    });
+    const nextInitialKwhPerUnit = resolveInitialKwhPerUnit(current, diag, objectiveChanged, measuredDeviation);
     const {
       initialPlanningSpeedKw: _droppedSnapshotSpeed,
       initialEstimatedDurationText: _droppedSnapshotDurationText,
@@ -627,13 +627,7 @@ export class DeferredObjectiveActivePlanRecorder {
       // is unchanged, preserve the existing commitment (including its
       // original `committedAtMs`) so within-schedule metadata drift doesn't
       // visibly reshape the commitment timestamp.
-      commitment: resolveCommitment({
-        objectiveChanged: replaceCommitment,
-        scheduleChanged,
-        effectiveHours,
-        previous: current.commitment,
-        nowMs,
-      }),
+      commitment: resolveCommitment(replaceCommitment, scheduleChanged, effectiveHours, current.commitment, nowMs),
       ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
       ...toPersistedPlanLevelDurationFields(snapshot),
       ...toInitialKwhPerUnitField(nextInitialKwhPerUnit),
@@ -675,22 +669,21 @@ export class DeferredObjectiveActivePlanRecorder {
       hoursWithPlannedEnergy(effectiveHours).length,
       reportedPlanStatus(diag, horizonPlan),
     );
-    notifyRevisionWrittenIfPubliclyObservable({
-      deps: this.deps,
+    const event = resolvePublicRevisionWrittenEvent(
       diag,
       current,
-      latest,
       revision,
       reason,
       allocationChanged,
-      previousEffectivePlanStatus: previousEffective ?? latest.planStatus,
+      previousEffective ?? latest.planStatus,
       // The overlay is refreshed before the settle, so the plan on record already
       // carries this cycle's live causes. Read the plan just WRITTEN, not
       // `current`: an objective edit changes `targetValue`, and the car-limit
       // overlay compares the car's limit against it, so the pre-edit plan would
       // publish a status the list, the hero and the Flow condition never show.
-      effectivePlanStatus: resolveEffectivePlanStatus(revision.planStatus, this.plans[diag.deviceId] ?? current),
-    });
+      resolveEffectivePlanStatus(revision.planStatus, this.plans[diag.deviceId] ?? current),
+    );
+    if (event) this.deps.onRevisionWritten?.(event);
     return true;
   }
 

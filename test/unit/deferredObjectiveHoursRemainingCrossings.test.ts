@@ -51,7 +51,7 @@ const setup = () => {
   const events: DeferredObjectiveHoursRemainingEvent[] = [];
   bus.onCrossing((event) => events.push(event));
   const observe = (diagnostics: DeferredObjectiveDiagnostic[], nowMs: number): void => {
-    tracker.observe({ diagnostics, nowMs, bus });
+    tracker.observe(diagnostics, nowMs, bus);
   };
   return { bus, tracker, events, observe };
 };
@@ -170,7 +170,7 @@ describe('deferred-objective hours-remaining crossings', () => {
     tracker.forgetDevice('ev-1');
     // Same deadline, still 2h out: without re-arm this would be silent; after
     // forget it emits fresh.
-    tracker.observe({ diagnostics: diag, nowMs: deadlineAtMs - 2 * HOUR_MS, bus });
+    tracker.observe(diag, deadlineAtMs - 2 * HOUR_MS, bus);
     expect(events).toHaveLength(2);
     expect(events[1]).toMatchObject({ hoursRemaining: 2, previousHoursRemaining: null });
   });
@@ -195,13 +195,13 @@ describe('deferred-objective hours-remaining crossings', () => {
     const deadlineAtMs = 100 * HOUR_MS;
     // deviceName omitted on the diagnostic -> event carries null.
     const diag = [baseDiagnostic({ deviceId: 'ev-1', deadlineAtMs, deviceName: undefined })];
-    tracker.observe({ diagnostics: diag, nowMs: deadlineAtMs - 2 * HOUR_MS, bus });
+    tracker.observe(diag, deadlineAtMs - 2 * HOUR_MS, bus);
     expect(events).toHaveLength(1);
     expect(events[0]!.deviceName).toBeNull();
 
     unsubscribe();
     tracker.forgetDevice('ev-1');
-    tracker.observe({ diagnostics: diag, nowMs: deadlineAtMs - 2 * HOUR_MS, bus });
+    tracker.observe(diag, deadlineAtMs - 2 * HOUR_MS, bus);
     expect(events).toHaveLength(1); // listener removed; no further delivery
   });
 
@@ -220,7 +220,7 @@ describe('deferred-objective hours-remaining crossings', () => {
         save: (latch) => { store.value = latch; },
       });
       const observe = (diagnostics: DeferredObjectiveDiagnostic[], nowMs: number): void => {
-        tracker.observe({ diagnostics, nowMs, bus });
+        tracker.observe(diagnostics, nowMs, bus);
       };
       return { bus, tracker, events, observe, store };
     };
@@ -356,11 +356,7 @@ describe('deferred-objective hours-remaining crossings', () => {
         save: (latch) => { writes.push(latch); },
       });
       const deadlineAtMs = 100 * HOUR_MS;
-      tracker.observe({
-        diagnostics: [baseDiagnostic({ deviceId: 'ev-1', deadlineAtMs })],
-        nowMs: deadlineAtMs - 1.5 * HOUR_MS,
-        bus,
-      });
+      tracker.observe([baseDiagnostic({ deviceId: 'ev-1', deadlineAtMs })], deadlineAtMs - 1.5 * HOUR_MS, bus);
       expect(events).toHaveLength(1);
       // The subsequent save() still runs so the next restart can read it.
       expect(writes.at(-1)?.entriesByDeviceId['ev-1']).toEqual({
@@ -383,14 +379,14 @@ describe('deferred-objective hours-remaining crossings', () => {
       const deadlineAtMs = 100 * HOUR_MS;
       const diag = [baseDiagnostic({ deviceId: 'ev-1', deadlineAtMs })];
       // First observation arms and emits → one write.
-      tracker.observe({ diagnostics: diag, nowMs: deadlineAtMs - 2 * HOUR_MS, bus });
+      tracker.observe(diag, deadlineAtMs - 2 * HOUR_MS, bus);
       expect(writes).toHaveLength(1);
       // Next two observations still inside the same hour → no new write.
-      tracker.observe({ diagnostics: diag, nowMs: deadlineAtMs - 1.9 * HOUR_MS, bus });
-      tracker.observe({ diagnostics: diag, nowMs: deadlineAtMs - 1.5 * HOUR_MS, bus });
+      tracker.observe(diag, deadlineAtMs - 1.9 * HOUR_MS, bus);
+      tracker.observe(diag, deadlineAtMs - 1.5 * HOUR_MS, bus);
       expect(writes).toHaveLength(1);
       // Drop below the next boundary → one more write.
-      tracker.observe({ diagnostics: diag, nowMs: deadlineAtMs - 0.5 * HOUR_MS, bus });
+      tracker.observe(diag, deadlineAtMs - 0.5 * HOUR_MS, bus);
       expect(writes).toHaveLength(2);
     });
   });

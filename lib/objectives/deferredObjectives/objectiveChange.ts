@@ -83,10 +83,9 @@ const seedFromEntry = (
  * misclassify a run that actually reached its deadline.
  */
 export const applyDeferredObjectiveChange = (
-  params: DeferredObjectiveChangeInput & {
-    planHistoryRecorder: DeferredObjectivePlanHistoryRecorder;
-    activePlanRecorder: DeferredObjectiveActivePlanRecorder;
-  },
+  change: DeferredObjectiveChangeInput,
+  planHistoryRecorder: DeferredObjectivePlanHistoryRecorder,
+  activePlanRecorder: DeferredObjectiveActivePlanRecorder,
 ): void => {
   const {
     deviceId,
@@ -94,10 +93,8 @@ export const applyDeferredObjectiveChange = (
     prevEntry,
     nextEntry,
     nowMs,
-    planHistoryRecorder,
-    activePlanRecorder,
     previousEvaluation,
-  } = params;
+  } = change;
 
   const prevActive = isActive(prevEntry);
   const nextActive = isActive(nextEntry);

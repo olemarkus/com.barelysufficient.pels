@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { buildFixtureDiagnostics, type TaskEvaluationFixture } from '../helpers/taskEvaluationFixture';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
@@ -79,11 +80,11 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 const expectClaimMatchesReportedCause = (diag: DeferredObjectiveDiagnostic | undefined): void => {
   const plan = diag?.horizonPlan;
   expect(plan).toBeDefined();
-  expect(plan?.currentHourClaim).toBe(resolveCurrentHourClaim({
-    currentHourBooking: resolveCurrentHourBooking(plan?.currentBucket ?? null),
-    facts: plan?.currentHourFacts ?? { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false },
-    floorShortfallCause: resolveFloorShortfallCause(diag?.reasonCode),
-  }));
+  expect(plan?.currentHourClaim).toBe(resolveCurrentHourClaim(
+    resolveCurrentHourBooking(plan?.currentBucket ?? null),
+    plan?.currentHourFacts ?? { aheadOfHourMilestone: false, cheaperHourAhead: false, coldStartFeasible: false },
+    resolveFloorShortfallCause(diag?.reasonCode),
+  ));
 };
 
 const buildDevice = (
@@ -157,11 +158,7 @@ const buildTemperatureDevice = (
 }))) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
-  const resolution = resolveDeferredObjectiveDeadline({
-    nowMs,
-    timeZone: 'UTC',
-    deadlineLocalTime,
-  });
+  const resolution = resolveDeferredObjectiveDeadline(nowMs, 'UTC', deadlineLocalTime);
   if (resolution.deadlineAtMs === null) throw new Error('Failed to resolve test deadline');
   return resolution.deadlineAtMs;
 };
@@ -414,7 +411,7 @@ const buildDeferredObjectiveDiagnostics = (
   const combined = combinedFromSnapshot(params.dailyBudgetSnapshot);
   return buildFixtureDiagnostics({
     ...params,
-    activePlans: params.activePlans ?? null,
+    activePlans: params.activePlans ?? createEmptyActivePlans(),
     resolveDeviceExclusion: params.resolveDeviceExclusion ?? (() => null),
     getStallClassification: params.getStallClassification ?? (() => undefined),
     isReservationSuppressed: params.isReservationSuppressed ?? noReservationSuppression,
@@ -431,7 +428,7 @@ const buildReportedDiagnostics = (
 ): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => reportStalledTasksAsSatisfied(
   buildDeferredObjectiveDiagnostics(params),
   params.getStallClassification ?? (() => undefined),
-  params.activePlans ?? null,
+  params.activePlans ?? createEmptyActivePlans(),
 );
 
 // Wrapper: inject the `priceHorizon` derived from the same snapshot the test
@@ -565,11 +562,7 @@ describe('deferred objective settings', () => {
 
 describe('resolveDeferredObjectiveDeadline', () => {
   it('chooses the next repeated local time during DST fall-back', () => {
-    const deadline = resolveDeferredObjectiveDeadline({
-      nowMs: Date.UTC(2026, 10, 1, 6, 15, 0),
-      timeZone: 'America/New_York',
-      deadlineLocalTime: '01:30',
-    });
+    const deadline = resolveDeferredObjectiveDeadline(Date.UTC(2026, 10, 1, 6, 15, 0), 'America/New_York', '01:30');
 
     expect(deadline).toEqual({
       deadlineAtMs: Date.UTC(2026, 10, 1, 6, 30, 0),
@@ -592,11 +585,7 @@ describe('resolveDeferredObjectiveDeadline', () => {
     // ever flips to the later candidate, the production fall-back policy has
     // changed and the change should be intentional — not an accidental
     // sort/filter regression in resolveAllLocalDateTimeMs.
-    const deadline = resolveDeferredObjectiveDeadline({
-      nowMs: Date.UTC(2026, 9, 24, 23, 0, 0),
-      timeZone: 'Europe/Oslo',
-      deadlineLocalTime: '02:30',
-    });
+    const deadline = resolveDeferredObjectiveDeadline(Date.UTC(2026, 9, 24, 23, 0, 0), 'Europe/Oslo', '02:30');
 
     expect(deadline).toEqual({
       deadlineAtMs: Date.UTC(2026, 9, 25, 0, 30, 0),
@@ -1033,21 +1022,13 @@ describe('PriorityAllocationTracker', () => {
     const tracker = new PriorityAllocationTracker();
     const high = buildDevice({ id: 'high', priority: 1 });
     const low = buildDevice({ id: 'low', priority: 2 });
-    tracker.observe({ devices: [high, low], nowMs: NOW_MS, isDeviceExcluded: () => false });
+    tracker.observe([high, low], NOW_MS, () => false);
 
-    tracker.observe({ devices: [low], nowMs: NOW_MS + 30_000, isDeviceExcluded: () => false });
-    expect(tracker.shouldReserveMissingDevice({
-      deviceId: 'high',
-      nowMs: NOW_MS + 30_000,
-      hasPersistedCommitment: false,
-    })).toBe(true);
+    tracker.observe([low], NOW_MS + 30_000, () => false);
+    expect(tracker.shouldReserveMissingDevice('high', NOW_MS + 30_000, false)).toBe(true);
 
-    tracker.observe({ devices: [low], nowMs: NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS, isDeviceExcluded: () => false });
-    expect(tracker.shouldReserveMissingDevice({
-      deviceId: 'high',
-      nowMs: NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS,
-      hasPersistedCommitment: false,
-    })).toBe(false);
+    tracker.observe([low], NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS, () => false);
+    expect(tracker.shouldReserveMissingDevice('high', NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS, false)).toBe(false);
   });
 
   it('drops a relocated device IMMEDIATELY — membership is authoritative, no abandon grace', () => {
@@ -1060,29 +1041,17 @@ describe('PriorityAllocationTracker', () => {
     const tracker = new PriorityAllocationTracker();
     const relocated = buildDevice({ id: 'relocated', priority: 1 });
     const stays = buildDevice({ id: 'stays', priority: 1 });
-    tracker.observe({ devices: [relocated, stays], nowMs: NOW_MS, isDeviceExcluded: () => false });
+    tracker.observe([relocated, stays], NOW_MS, () => false);
 
     // Seconds later the device is pinned into a sub-home. It leaves
     // `params.devices` for the same reason an SDK miss would, but must be
     // treated differently.
-    tracker.observe({
-      devices: [stays],
-      nowMs: NOW_MS + 30_000,
-      isDeviceExcluded: (deviceId) => deviceId === 'relocated',
-    });
+    tracker.observe([stays], NOW_MS + 30_000, (deviceId) => deviceId === 'relocated');
 
-    expect(tracker.shouldReserveMissingDevice({
-      deviceId: 'relocated',
-      nowMs: NOW_MS + 30_000,
-      hasPersistedCommitment: false,
-    })).toBe(false);
+    expect(tracker.shouldReserveMissingDevice('relocated', NOW_MS + 30_000, false)).toBe(false);
     // A device that merely went missing in the same cycle still gets its grace.
-    tracker.observe({ devices: [], nowMs: NOW_MS + 60_000, isDeviceExcluded: () => false });
-    expect(tracker.shouldReserveMissingDevice({
-      deviceId: 'stays',
-      nowMs: NOW_MS + 60_000,
-      hasPersistedCommitment: false,
-    })).toBe(true);
+    tracker.observe([], NOW_MS + 60_000, () => false);
+    expect(tracker.shouldReserveMissingDevice('stays', NOW_MS + 60_000, false)).toBe(true);
   });
 });
 
@@ -1383,7 +1352,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // lower device id sorting lexically before it.
     const low = buildDevice({ id: 'a-low', name: 'Lower EV', priority: 1 });
     const tracker = new PriorityAllocationTracker();
-    tracker.observe({ devices: [high, { ...low, priority: 2 }], nowMs: NOW_MS - 30_000, isDeviceExcluded: () => false });
+    tracker.observe([high, { ...low, priority: 2 }], NOW_MS - 30_000, () => false);
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
       hasSolarProduction: false,
@@ -1500,7 +1469,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const high = buildDevice({ priority: 1 });
     const low = buildDevice({ id: 'ev-2', name: 'Second EV', priority: 2 });
     const tracker = new PriorityAllocationTracker();
-    tracker.observe({ devices: [high, low], nowMs: NOW_MS, isDeviceExcluded: () => false });
+    tracker.observe([high, low], NOW_MS, () => false);
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
       hasSolarProduction: false,
@@ -1599,14 +1568,14 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       activePlans,
       powerLimits: capacityOnlyPowerLimits(10),
     });
-    const [reservation] = buildPriorityReservations({
-      evaluation: diagnostic!.evaluation,
+    const [reservation] = buildPriorityReservations(
+      diagnostic!.evaluation,
       objective,
       device,
       activePlans,
-      powerLimits: capacityOnlyPowerLimits(10),
-      nowMs: NOW_MS,
-    });
+      capacityOnlyPowerLimits(10),
+      NOW_MS,
+    );
 
     expect(reservation?.admissionPowerKw).toBe(2);
     expect(reservation?.energySegments).toEqual([{
@@ -1687,14 +1656,14 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       activePlans,
       powerLimits: capacityOnlyPowerLimits(10),
     });
-    const reserve = (reservationDevice: typeof device | undefined) => buildPriorityReservations({
-      evaluation: diagnostic!.evaluation,
+    const reserve = (reservationDevice: typeof device | undefined) => buildPriorityReservations(
+      diagnostic!.evaluation,
       objective,
-      device: reservationDevice,
+      reservationDevice,
       activePlans,
-      powerLimits: capacityOnlyPowerLimits(10),
+      capacityOnlyPowerLimits(10),
       nowMs,
-    }).flatMap((reservation) => reservation.energySegments);
+    ).flatMap((reservation) => reservation.energySegments);
     const minutes = (ms: number) => ms / (60 * 1000);
 
     expect(reserve(device).map((segment) => [minutes(segment.startMs - NOW_MS), minutes(segment.endMs - NOW_MS)]))
@@ -2083,7 +2052,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
       priceOptimizationEnabled: true,
-      activePlans: null,
+      activePlans: createEmptyActivePlans(),
     });
     const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
     expect(buckets.length).toBeGreaterThan(0);
@@ -2162,14 +2131,14 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Frozen read mid-hour ⇒ current bucket reflects the SETTLED 3 kWh, not the stale 1.
     expect(diagnostic?.horizonPlan?.plannedBuckets.every((b) => b.id.startsWith('frozen-'))).toBe(true);
     expect(diagnostic?.horizonPlan?.currentBucket?.plannedUsefulEnergyKWh).toBe(3);
-    const [reservation] = buildPriorityReservations({
-      evaluation: diagnostic!.evaluation,
-      objective: settings.objectivesByDeviceId['ev-1']!,
-      device: buildDevice(),
+    const [reservation] = buildPriorityReservations(
+      diagnostic!.evaluation,
+      settings.objectivesByDeviceId['ev-1']!,
+      buildDevice(),
       activePlans,
-      powerLimits: capacityOnlyPowerLimits(10),
-      nowMs: NOW_MS,
-    });
+      capacityOnlyPowerLimits(10),
+      NOW_MS,
+    );
     expect(reservation?.plannedKWh).toBe(3);
   });
 
@@ -2947,9 +2916,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: false,
     });
 
-    recorder.observe([satisfied!], NOW_MS, null);
-    recorder.observe([staleBelowTarget!], NOW_MS + HOUR_MS, null);
-    recorder.observe([], deadlineAtMs, null);
+    recorder.observe([satisfied!], NOW_MS, createEmptyActivePlans());
+    recorder.observe([staleBelowTarget!], NOW_MS + HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], deadlineAtMs, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -4499,12 +4468,12 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
     const emitted: Record<string, unknown>[] = [];
     let announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
     for (let tick = 0; tick < ticks; tick += 1) {
-      announced = emitDeferredObjectiveDiagnostics({
+      announced = emitDeferredObjectiveDiagnostics(
         diagnostics,
-        debugStructured: (payload) => { emitted.push(payload); },
-        nowMs: NOW_MS + tick * TICK_MS,
+        NOW_MS + tick * TICK_MS,
         announced,
-      });
+        (payload) => { emitted.push(payload); },
+      );
     }
     return emitted;
   };
@@ -4537,16 +4506,12 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
     const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
 
     const unplugged = unpluggedDiagnostics();
-    announced = emitDeferredObjectiveDiagnostics({
-      diagnostics: unplugged, debugStructured: collect, nowMs: NOW_MS, announced,
-    });
+    announced = emitDeferredObjectiveDiagnostics(unplugged, NOW_MS, announced, collect);
     const stale = unplugged.map((diagnostic) => ({
       ...diagnostic,
       trajectory: { kind: 'unavailable' as const, reasonCode: 'objective_progress_stale' as const },
     }));
-    emitDeferredObjectiveDiagnostics({
-      diagnostics: stale, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
-    });
+    emitDeferredObjectiveDiagnostics(stale, NOW_MS + TICK_MS, announced, collect);
 
     expect(emitted).toHaveLength(2);
   });
@@ -4560,13 +4525,9 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
     const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
 
     const base = unpluggedDiagnostics();
-    announced = emitDeferredObjectiveDiagnostics({
-      diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announced,
-    });
+    announced = emitDeferredObjectiveDiagnostics(base, NOW_MS, announced, collect);
     const exempt = base.map((diagnostic) => ({ ...diagnostic, budgetExemptApplied: true }));
-    emitDeferredObjectiveDiagnostics({
-      diagnostics: exempt, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
-    });
+    emitDeferredObjectiveDiagnostics(exempt, NOW_MS + TICK_MS, announced, collect);
 
     expect(emitted).toHaveLength(2);
     expect(emitted[1]?.budgetExemptApplied).toBe(true);
@@ -4626,16 +4587,12 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
     const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
 
     const base = plannedDiagnostics();
-    announced = emitDeferredObjectiveDiagnostics({
-      diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announced,
-    });
+    announced = emitDeferredObjectiveDiagnostics(base, NOW_MS, announced, collect);
     const retargeted = base.map((diagnostic) => ({
       ...diagnostic,
       targetValue: (diagnostic.targetValue ?? 0) + 5,
     }));
-    emitDeferredObjectiveDiagnostics({
-      diagnostics: retargeted, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
-    });
+    emitDeferredObjectiveDiagnostics(retargeted, NOW_MS + TICK_MS, announced, collect);
 
     expect(emitted).toHaveLength(2);
   });
@@ -4646,13 +4603,9 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
     const collect = (payload: Record<string, unknown>): void => { emitted.push(payload); };
 
     const base = plannedDiagnostics();
-    announced = emitDeferredObjectiveDiagnostics({
-      diagnostics: base, debugStructured: collect, nowMs: NOW_MS, announced,
-    });
+    announced = emitDeferredObjectiveDiagnostics(base, NOW_MS, announced, collect);
     const exempt = base.map((diagnostic) => ({ ...diagnostic, budgetExemptApplied: true }));
-    emitDeferredObjectiveDiagnostics({
-      diagnostics: exempt, debugStructured: collect, nowMs: NOW_MS + TICK_MS, announced,
-    });
+    emitDeferredObjectiveDiagnostics(exempt, NOW_MS + TICK_MS, announced, collect);
 
     expect(emitted).toHaveLength(2);
     expect(emitted[1]?.budgetExemptApplied).toBe(true);

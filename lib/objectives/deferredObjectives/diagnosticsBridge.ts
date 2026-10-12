@@ -6,16 +6,18 @@ import {
 } from './taskEvaluationCoordinator';
 
 export {
+  buildTaskEvaluationSnapshot,
   LIVE_LANE,
   type TaskEvaluationLane,
   type TaskEvaluationReaders,
   type TaskEvaluationSnapshot,
+  type TaskEvaluationSource,
 } from './taskEvaluationCoordinator';
 import type { PriorityAllocationTracker } from './priorityAllocation';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import type { TaskEvaluation } from './taskEvaluation';
 
-export type { BuildPriceHorizon, DeferredObjectiveDiagnostic } from './diagnosticTypes';
+export type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 export { progressCurrentValue } from './diagnosticFields';
 export { reportStalledTasksAsSatisfied, resolveTaskCompletionDiagnostic }
   from './completionDiagnostic';

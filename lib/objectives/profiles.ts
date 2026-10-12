@@ -80,14 +80,13 @@ type ProfileSampleRejection = {
 };
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-export function updateObjectiveProfilesFromSnapshot(params: {
-  state: PowerTrackerState;
-  devices: ObjectiveSampleDevice[];
-  nowMs: number;
-  debugStructured: ObjectiveProfileDebugEmitter;
-  outdoorTemperatureC: number | undefined;
-}): PowerTrackerState {
-  const { state, devices, nowMs, debugStructured, outdoorTemperatureC } = params;
+export function updateObjectiveProfilesFromSnapshot(
+  state: PowerTrackerState,
+  devices: ObjectiveSampleDevice[],
+  nowMs: number,
+  debugStructured: ObjectiveProfileDebugEmitter,
+  outdoorTemperatureC: number | undefined,
+): PowerTrackerState {
   const previousProfiles = state.objectiveProfiles ?? {};
   let nextProfiles: Record<string, DeviceObjectiveProfile> = previousProfiles;
   let changed = false;
@@ -104,14 +103,14 @@ export function updateObjectiveProfilesFromSnapshot(params: {
     const sample = buildObjectiveProfileSample(device, nowMs);
 
     const previous = previousProfiles[device.id];
-    const next = updateDeviceObjectiveProfile({
+    const next = updateDeviceObjectiveProfile(
       previous,
       sample,
-      deviceId: device.id,
-      deviceName: device.name,
+      device.id,
+      device.name,
       debugStructured,
       outdoorTemperatureC,
-    });
+    );
     if (next !== previous) {
       ensureMutable()[device.id] = next;
     }
@@ -122,11 +121,7 @@ export function updateObjectiveProfilesFromSnapshot(params: {
     || hasTooManyObjectiveProfiles(previousProfiles)
     || hasExpiredObjectiveProfiles(previousProfiles, nowMs)
   ) {
-    const pruned = pruneObjectiveProfiles({
-      profiles: nextProfiles,
-      activeDeviceIds: new Set(devices.map((device) => device.id)),
-      nowMs,
-    });
+    const pruned = pruneObjectiveProfiles(nextProfiles, new Set(devices.map((device) => device.id)), nowMs);
     if (pruned !== nextProfiles) {
       nextProfiles = pruned;
       changed = true;
@@ -141,15 +136,14 @@ export function updateObjectiveProfilesFromSnapshot(params: {
 }
 /* eslint-enable functional/immutable-data */
 
-export function updateDeviceObjectiveProfile(params: {
-  previous: DeviceObjectiveProfile | undefined;
-  sample: DeviceObjectiveProfileSample;
-  deviceId: string;
-  deviceName: string;
-  debugStructured: ObjectiveProfileDebugEmitter;
-  outdoorTemperatureC: number | undefined;
-}): DeviceObjectiveProfile {
-  const { previous, sample, deviceId, deviceName, debugStructured, outdoorTemperatureC } = params;
+export function updateDeviceObjectiveProfile(
+  previous: DeviceObjectiveProfile | undefined,
+  sample: DeviceObjectiveProfileSample,
+  deviceId: string,
+  deviceName: string,
+  debugStructured: ObjectiveProfileDebugEmitter,
+  outdoorTemperatureC: number | undefined,
+): DeviceObjectiveProfile {
   if (!previous) return buildInitialProfile(sample);
 
   const previousSample = previous.lastSample;
@@ -184,32 +178,17 @@ export function updateDeviceObjectiveProfile(params: {
   // re-anchors a later, mid-step moment instead.
   if (previous.baselineMidStep === true && intervalMs > 0) {
     const rejection: ProfileSampleRejection = { reason: 'objective_profile_baseline_mid_step', openWindow: 'void' };
-    emitRejectedProfileSample({ deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection });
-    return buildRejectedProfileSample({ previous, sample, rejection });
+    emitRejectedProfileSample(deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection);
+    return buildRejectedProfileSample(previous, sample, rejection);
   }
 
   // Timing checks (non-monotonic time, too-short/too-long intervals) run first:
   // a stale or out-of-order sample has no window to bill energy across, so it
   // must never reach the value or energy verdicts, let alone reset the baseline.
-  const intervalRejection = resolveProfileIntervalRejection({
-    previousSample,
-    sample,
-    intervalMs,
-  });
+  const intervalRejection = resolveProfileIntervalRejection(previousSample, sample, intervalMs);
   if (intervalRejection) {
-    emitRejectedProfileSample({
-      deviceId,
-      deviceName,
-      debugStructured,
-      intervalMs,
-      valueDelta,
-      rejection: intervalRejection,
-    });
-    return buildRejectedProfileSample({
-      previous,
-      sample,
-      rejection: intervalRejection,
-    });
+    emitRejectedProfileSample(deviceId, deviceName, debugStructured, intervalMs, valueDelta, intervalRejection);
+    return buildRejectedProfileSample(previous, sample, intervalRejection);
   }
 
   // Energy across the open baseline→sample window, accumulated per sub-interval
@@ -233,38 +212,17 @@ export function updateDeviceObjectiveProfile(params: {
   // progress step integrates the true
   // per-step power profile.
   if (rejection?.reason === 'objective_profile_progress_too_small') {
-    emitRejectedProfileSample({
-      deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection,
-    });
+    emitRejectedProfileSample(deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection);
     return { ...accrueSubInterval({ previous, sample }), rejectedSamples: previous.rejectedSamples + 1 };
   }
   if (rejection) {
-    emitRejectedProfileSample({
-      deviceId,
-      deviceName,
-      debugStructured,
-      intervalMs,
-      valueDelta,
-      rejection,
-    });
-    return buildRejectedProfileSample({
-      previous,
-      sample,
-      rejection,
-    });
+    emitRejectedProfileSample(deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection);
+    return buildRejectedProfileSample(previous, sample, rejection);
   }
 
-  return buildAcceptedProfileSample({
-    previous,
-    sample,
-    deviceId,
-    deviceName,
-    debugStructured,
-    intervalMs,
-    valueDelta,
-    windowEnergyKwh,
-    outdoorTemperatureC,
-  });
+  return buildAcceptedProfileSample(
+    previous, sample, deviceId, deviceName, debugStructured, windowEnergyKwh, outdoorTemperatureC,
+  );
 }
 
 // Close the open sub-interval at its left-edge power into `pendingEnergyKWh`,
@@ -302,28 +260,31 @@ function accrueSubInterval(params: {
 }
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-function buildAcceptedProfileSample(params: {
-  previous: DeviceObjectiveProfile;
-  sample: DeviceObjectiveProfileSample;
-  deviceId: string;
-  deviceName: string;
-  debugStructured: ObjectiveProfileDebugEmitter;
-  intervalMs: number;
-  valueDelta: number;
-  windowEnergyKwh: number | undefined;
-  outdoorTemperatureC: number | undefined;
-}): DeviceObjectiveProfile {
-  const {
-    previous, sample, deviceId, deviceName, debugStructured,
-    intervalMs, valueDelta, windowEnergyKwh, outdoorTemperatureC,
-  } = params;
+// `windowEnergyKwh` is the figure the energy verdict already judged, so the
+// recorded value rests on the same number; the interval and the progress across
+// the window follow from the baseline and the sample themselves.
+function buildAcceptedProfileSample(
+  previous: DeviceObjectiveProfile,
+  sample: DeviceObjectiveProfileSample,
+  deviceId: string,
+  deviceName: string,
+  debugStructured: ObjectiveProfileDebugEmitter,
+  windowEnergyKwh: number | undefined,
+  outdoorTemperatureC: number | undefined,
+): DeviceObjectiveProfile {
   const previousSample = previous.lastSample;
+  const intervalMs = getProfileIntervalMs(previousSample, sample);
+  const valueDelta = getProfileValueDelta(previousSample, sample);
   const unitPerHour = calculateUnitPerHour({ intervalMs, valueDelta });
   const energyKwh = windowEnergyKwh;
   const kwhPerUnit = energyKwh !== undefined ? calculateKwhPerUnit({ energyKwh, valueDelta }) : undefined;
-  const learnedRateUpdate = resolveLearnedRateUpdate({
-    previous, previousSample, sample, kwhPerUnit, outdoorTemperatureC,
-  });
+  const learnedRateUpdate = resolveLearnedRateUpdate(
+    previous,
+    previousSample,
+    sample,
+    kwhPerUnit,
+    outdoorTemperatureC,
+  );
   const nextProfile = {
     ...previous,
     updatedAtMs: sample.observedAtMs,
@@ -342,7 +303,9 @@ function buildAcceptedProfileSample(params: {
   // overrides `kwhPerUnit.confidence`, so `globalEnergyConfidence` below
   // stays comparable with pre-Step-2 log dumps for the same device.
   const globalEnergyConfidence = nextProfile.kwhPerUnit
-    ? resolveProfileConfidence(nextProfile.kwhPerUnit)
+    ? resolveProfileConfidence(
+      nextProfile.kwhPerUnit.sampleCount, nextProfile.kwhPerUnit.mean, nextProfile.kwhPerUnit.m2,
+    )
     : null;
   // Once the bands are merged in, re-resolve the overall kWh/unit confidence
   // against the pooled within-band residual (Step 2 of the banded-confidence
@@ -372,20 +335,16 @@ function buildAcceptedProfileSample(params: {
     bufferedSamples: nextProfile.samples?.length ?? 0,
     bandsCount: nextProfile.bands?.length ?? 0,
   });
-  emitObjectiveProfileNoPowerSourceIfNeeded({
-    deviceId, deviceName, sample, debugStructured,
-    acceptedSamples: nextProfile.acceptedSamples,
-  });
+  emitObjectiveProfileNoPowerSourceIfNeeded(deviceId, deviceName, nextProfile.acceptedSamples, sample, debugStructured);
   return nextProfile;
 }
 /* eslint-enable functional/immutable-data */
 
-function buildRejectedProfileSample(params: {
-  previous: DeviceObjectiveProfile;
-  sample: DeviceObjectiveProfileSample;
-  rejection: ProfileSampleRejection;
-}): DeviceObjectiveProfile {
-  const { previous, sample, rejection } = params;
+function buildRejectedProfileSample(
+  previous: DeviceObjectiveProfile,
+  sample: DeviceObjectiveProfileSample,
+  rejection: ProfileSampleRejection,
+): DeviceObjectiveProfile {
   if (rejection.openWindow === 'void') {
     return {
       ...previous,
@@ -405,22 +364,14 @@ function buildRejectedProfileSample(params: {
   };
 }
 
-function emitRejectedProfileSample(params: {
-  deviceId: string;
-  deviceName: string;
-  debugStructured: ObjectiveProfileDebugEmitter;
-  intervalMs: number;
-  valueDelta: number;
-  rejection: ProfileSampleRejection;
-}): void {
-  const {
-    deviceId,
-    deviceName,
-    debugStructured,
-    intervalMs,
-    valueDelta,
-    rejection,
-  } = params;
+function emitRejectedProfileSample(
+  deviceId: string,
+  deviceName: string,
+  debugStructured: ObjectiveProfileDebugEmitter,
+  intervalMs: number,
+  valueDelta: number,
+  rejection: ProfileSampleRejection,
+): void {
   const rejectionReason = rejection.reason;
   if (!shouldEmitRejectedProfileSample({ deviceId, rejectionReason })) return;
   debugStructured({
@@ -456,12 +407,11 @@ function resolveProfileValueOrEnergyRejection(
     ?? resolveProfileEnergyRejection(previous, observedAtMs, valueDelta, windowEnergyKwh, progressDirection);
 }
 
-function resolveProfileIntervalRejection(params: {
-  previousSample: DeviceObjectiveProfileSample;
-  sample: DeviceObjectiveProfileSample;
-  intervalMs: number;
-}): ProfileSampleRejection | null {
-  const { previousSample, sample, intervalMs } = params;
+function resolveProfileIntervalRejection(
+  previousSample: DeviceObjectiveProfileSample,
+  sample: DeviceObjectiveProfileSample,
+  intervalMs: number,
+): ProfileSampleRejection | null {
   // Out of order: the baseline must not follow this sample backwards in time.
   if (sample.observedAtMs <= previousSample.observedAtMs) {
     return { reason: 'objective_profile_non_monotonic_time', openWindow: 'keep' };
@@ -567,14 +517,13 @@ function calculateKwhPerUnit(params: { energyKwh: number; valueDelta: number }):
 // taken back out of it, and `resolveProfileEnergy` sizes every smart task from
 // that statistic. Returning a partial Pick lets the caller spread the update
 // inline without branching twice on whether kWh/unit is known.
-function resolveLearnedRateUpdate(params: {
-  previous: DeviceObjectiveProfile;
-  previousSample: DeviceObjectiveProfileSample;
-  sample: DeviceObjectiveProfileSample;
-  kwhPerUnit: number | undefined;
-  outdoorTemperatureC: number | undefined;
-}): Partial<Pick<DeviceObjectiveProfile, 'samples' | 'bands' | 'kwhPerUnit'>> {
-  const { previous, previousSample, sample, kwhPerUnit, outdoorTemperatureC } = params;
+function resolveLearnedRateUpdate(
+  previous: DeviceObjectiveProfile,
+  previousSample: DeviceObjectiveProfileSample,
+  sample: DeviceObjectiveProfileSample,
+  kwhPerUnit: number | undefined,
+  outdoorTemperatureC: number | undefined,
+): Partial<Pick<DeviceObjectiveProfile, 'samples' | 'bands' | 'kwhPerUnit'>> {
   if (kwhPerUnit === undefined) return {};
   // Tag the sample by the midpoint of the change so the band layout reflects
   // where the energy was actually deposited, not just the end value.
@@ -646,21 +595,21 @@ function buildInitialProfile(sample: DeviceObjectiveProfileSample): DeviceObject
 
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-function pruneObjectiveProfiles(params: {
-  profiles: Record<string, DeviceObjectiveProfile>;
-  activeDeviceIds: Set<string>;
-  nowMs: number;
-}): Record<string, DeviceObjectiveProfile> {
-  const entries = Object.entries(params.profiles)
+function pruneObjectiveProfiles(
+  profiles: Record<string, DeviceObjectiveProfile>,
+  activeDeviceIds: Set<string>,
+  nowMs: number,
+): Record<string, DeviceObjectiveProfile> {
+  const entries = Object.entries(profiles)
     .filter(([deviceId, profile]) => (
-      params.activeDeviceIds.has(deviceId)
-      || params.nowMs - profile.updatedAtMs <= OBJECTIVE_PROFILE_RETENTION_MS
+      activeDeviceIds.has(deviceId)
+      || nowMs - profile.updatedAtMs <= OBJECTIVE_PROFILE_RETENTION_MS
     ));
   if (
-    entries.length === Object.keys(params.profiles).length
+    entries.length === Object.keys(profiles).length
     && entries.length <= OBJECTIVE_PROFILE_MAX_DEVICES
   ) {
-    return params.profiles;
+    return profiles;
   }
   if (entries.length <= OBJECTIVE_PROFILE_MAX_DEVICES) {
     return Object.fromEntries(entries);

@@ -55,9 +55,7 @@ describe('applyDeferredObjectiveChange', () => {
       prevEntry: undefined,
       nextEntry: tempEntry(),
       nowMs: 0,
-      planHistoryRecorder,
-      activePlanRecorder,
-    });
+    }, planHistoryRecorder, activePlanRecorder);
 
     expect(finalizeSpy).not.toHaveBeenCalled();
     expect(clearSpy).not.toHaveBeenCalled();
@@ -83,9 +81,7 @@ describe('applyDeferredObjectiveChange', () => {
       prevEntry: tempEntry({ deadlineAtMs: 4 * HOUR_MS }),
       nextEntry: tempEntry({ deadlineAtMs: 8 * HOUR_MS }),
       nowMs: HOUR_MS,
-      planHistoryRecorder,
-      activePlanRecorder,
-    });
+    }, planHistoryRecorder, activePlanRecorder);
 
     expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced', undefined);
     expect(clearSpy).not.toHaveBeenCalled();
@@ -106,9 +102,7 @@ describe('applyDeferredObjectiveChange', () => {
       prevEntry: tempEntry({ targetTemperatureC: 60 }),
       nextEntry: tempEntry({ targetTemperatureC: 70 }),
       nowMs: HOUR_MS,
-      planHistoryRecorder,
-      activePlanRecorder,
-    });
+    }, planHistoryRecorder, activePlanRecorder);
 
     expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced', undefined);
     expect(clearSpy).not.toHaveBeenCalled();
@@ -131,9 +125,7 @@ describe('applyDeferredObjectiveChange', () => {
       prevEntry: tempEntry(),
       nextEntry: tempEntry(),
       nowMs: HOUR_MS,
-      planHistoryRecorder,
-      activePlanRecorder,
-    });
+    }, planHistoryRecorder, activePlanRecorder);
 
     expect(finalizeSpy).not.toHaveBeenCalled();
     expect(markSpy).not.toHaveBeenCalled();
@@ -152,9 +144,7 @@ describe('applyDeferredObjectiveChange', () => {
       prevEntry: tempEntry(),
       nextEntry: undefined,
       nowMs: HOUR_MS,
-      planHistoryRecorder,
-      activePlanRecorder,
-    });
+    }, planHistoryRecorder, activePlanRecorder);
 
     expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'abandoned', undefined);
     expect(clearSpy).toHaveBeenCalledWith('dev');
@@ -172,9 +162,7 @@ describe('applyDeferredObjectiveChange', () => {
       prevEntry: tempEntry(),
       nextEntry: evEntry(),
       nowMs: HOUR_MS,
-      planHistoryRecorder,
-      activePlanRecorder,
-    });
+    }, planHistoryRecorder, activePlanRecorder);
 
     expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced', undefined);
   });
@@ -190,9 +178,7 @@ describe('applyDeferredObjectiveChange', () => {
       prevEntry: tempEntry({ enabled: false }),
       nextEntry: tempEntry({ targetTemperatureC: 70 }),
       nowMs: HOUR_MS,
-      planHistoryRecorder,
-      activePlanRecorder,
-    });
+    }, planHistoryRecorder, activePlanRecorder);
 
     expect(finalizeSpy).not.toHaveBeenCalled();
   });
@@ -221,9 +207,7 @@ describe('applyDeferredObjectiveChange', () => {
         prevEntry: tempEntry({ deadlineAtMs: 6 * HOUR_MS }),
         nextEntry: tempEntry({ deadlineAtMs: 12 * HOUR_MS }),
         nowMs: 6 * HOUR_MS,
-        planHistoryRecorder,
-        activePlanRecorder,
-      });
+      }, planHistoryRecorder, activePlanRecorder);
 
       expect(userChangeSpy).not.toHaveBeenCalled();
       expect(elapsedSpy).toHaveBeenCalledWith('dev', 6 * HOUR_MS);
@@ -244,9 +228,7 @@ describe('applyDeferredObjectiveChange', () => {
         prevEntry: tempEntry({ deadlineAtMs: 6 * HOUR_MS }),
         nextEntry: tempEntry({ deadlineAtMs: 12 * HOUR_MS }),
         nowMs: 6 * HOUR_MS + 1,
-        planHistoryRecorder,
-        activePlanRecorder,
-      });
+      }, planHistoryRecorder, activePlanRecorder);
 
       expect(userChangeSpy).not.toHaveBeenCalled();
       expect(elapsedSpy).toHaveBeenCalledWith('dev', 6 * HOUR_MS + 1);
@@ -266,9 +248,7 @@ describe('applyDeferredObjectiveChange', () => {
         prevEntry: tempEntry({ deadlineAtMs: 6 * HOUR_MS }),
         nextEntry: undefined,
         nowMs: 6 * HOUR_MS,
-        planHistoryRecorder,
-        activePlanRecorder,
-      });
+      }, planHistoryRecorder, activePlanRecorder);
 
       expect(userChangeSpy).not.toHaveBeenCalled();
       expect(elapsedSpy).toHaveBeenCalledWith('dev', 6 * HOUR_MS);
@@ -288,9 +268,7 @@ describe('applyDeferredObjectiveChange', () => {
         prevEntry: tempEntry({ deadlineAtMs: 6 * HOUR_MS + 1 }),
         nextEntry: tempEntry({ deadlineAtMs: 12 * HOUR_MS }),
         nowMs: 6 * HOUR_MS,
-        planHistoryRecorder,
-        activePlanRecorder,
-      });
+      }, planHistoryRecorder, activePlanRecorder);
 
       expect(userChangeSpy).toHaveBeenCalledWith('dev', 6 * HOUR_MS, 'replaced', undefined);
       expect(elapsedSpy).not.toHaveBeenCalled();

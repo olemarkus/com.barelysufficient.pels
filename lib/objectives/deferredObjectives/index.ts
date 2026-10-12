@@ -1,6 +1,7 @@
 export { planDeferredObjectiveHorizon } from './horizonPlanner';
 export {
   buildDeferredObjectiveDiagnostics,
+  buildTaskEvaluationSnapshot,
 } from './diagnosticsBridge';
 export { createDeferredObjectiveStatusBus } from './statusBus';
 export { createDeferredObjectivePlanRevisionBus } from './planRevisionBus';
@@ -80,8 +81,8 @@ export {
   PriorityAllocationTracker,
 } from './priorityAllocation';
 export type {
-  BuildPriceHorizon,
   DeferredObjectiveDiagnostic,
+  TaskEvaluationSource,
 } from './diagnosticsBridge';
 export type {
   DeferredObjectiveRescueMode,

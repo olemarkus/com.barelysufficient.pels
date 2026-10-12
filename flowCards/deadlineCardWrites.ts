@@ -60,11 +60,7 @@ export const validateNumberInRange = (
 
 export const resolveReadyByToDeadlineAtMs = (deps: FlowCardDeps, deadlineLocalTime: string): number => {
   const nowMs = deps.getNow().getTime();
-  const resolution = resolveDeferredObjectiveDeadline({
-    nowMs,
-    timeZone: deps.getTimeZone(),
-    deadlineLocalTime,
-  });
+  const resolution = resolveDeferredObjectiveDeadline(nowMs, deps.getTimeZone(), deadlineLocalTime);
   if (resolution.deadlineAtMs === null || resolution.deadlineAtMs <= nowMs) {
     throw new Error(`Could not resolve "${deadlineLocalTime}" to a future moment in time.`);
   }

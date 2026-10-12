@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { inertPlanHistoryDeps, createInertEnergyDelivery } from '../helpers/deferredObjectiveWiringFixtures';
@@ -526,8 +527,8 @@ describe('app init plan service wiring', () => {
       currentDrawKw: null,
       horizonBucketCount: 6,
       expectedStepId: null,
-    })], 0, null);
-    recorder.observe([], 6 * 60 * 60 * 1000, null); // deadline-passed → finalized → dirty
+    })], 0, createEmptyActivePlans());
+    recorder.observe([], 6 * 60 * 60 * 1000, createEmptyActivePlans()); // deadline-passed → finalized → dirty
     expect(recorder.flushIfDirty()).toBe(false);
     expect(recorder.isDirty()).toBe(true);
 
@@ -591,7 +592,7 @@ describe('app init plan service wiring', () => {
       observeDeferredObjectivePlanHistory: (
         diagnostics: readonly unknown[],
         nowMs: number,
-        activePlans: null,
+        activePlans: ReturnType<typeof createEmptyActivePlans>,
       ) => void;
     }).observeDeferredObjectivePlanHistory;
 
@@ -602,15 +603,15 @@ describe('app init plan service wiring', () => {
 
     // First idle observe — closure-state `lastWatermarkPersistMs` is 0, the difference vs a
     // real-clock nowMs is far above the threshold, so the watermark advances on this first tick.
-    observe([], baseMs, null);
+    observe([], baseMs, createEmptyActivePlans());
     expect(countWatermarkWrites()).toBe(1);
 
     // Second observe one minute later, still idle. Below the 5-minute throttle → no write.
-    observe([], baseMs + 60_000, null);
+    observe([], baseMs + 60_000, createEmptyActivePlans());
     expect(countWatermarkWrites()).toBe(1);
 
     // Third observe past the throttle threshold → second write.
-    observe([], baseMs + 60_000 + 5 * 60_000 + 1, null);
+    observe([], baseMs + 60_000 + 5 * 60_000 + 1, createEmptyActivePlans());
     expect(countWatermarkWrites()).toBe(2);
   });
 
@@ -633,7 +634,7 @@ describe('app init plan service wiring', () => {
       observeDeferredObjectivePlanHistory: (
         diagnostics: readonly DeferredObjectiveDiagnostic[],
         nowMs: number,
-        activePlans: null,
+        activePlans: ReturnType<typeof createEmptyActivePlans>,
       ) => void;
     }).observeDeferredObjectivePlanHistory;
     const baseMs = 1_000_000_000_000;
@@ -670,7 +671,7 @@ describe('app init plan service wiring', () => {
       expectedStepId: null,
     });
 
-    for (let tick = 0; tick < 6; tick += 1) observe([drawing], baseMs + tick * 30_000, null);
+    for (let tick = 0; tick < 6; tick += 1) observe([drawing], baseMs + tick * 30_000, createEmptyActivePlans());
 
     const watermarkWrites = setSpy.mock.calls.filter(
       ([key]) => key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
@@ -721,8 +722,8 @@ describe('app init plan service wiring', () => {
       currentDrawKw: null,
       horizonBucketCount: 6,
       expectedStepId: null,
-    })], 0, null);
-    recorder.observe([], 1_000, null);
+    })], 0, createEmptyActivePlans());
+    recorder.observe([], 1_000, createEmptyActivePlans());
     expect(recorder.isDirty()).toBe(true);
     ctx.deferredObjectivePlanHistoryRecorder = recorder;
     setSpy.mockClear();
@@ -734,12 +735,12 @@ describe('app init plan service wiring', () => {
       observeDeferredObjectivePlanHistory: (
         diagnostics: readonly unknown[],
         nowMs: number,
-        activePlans: null,
+        activePlans: ReturnType<typeof createEmptyActivePlans>,
       ) => void;
     }).observeDeferredObjectivePlanHistory;
 
-    observe([], 1_000_000_000_000, null);
-    observe([], 1_000_000_000_000 + 10 * 60_000, null);
+    observe([], 1_000_000_000_000, createEmptyActivePlans());
+    observe([], 1_000_000_000_000 + 10 * 60_000, createEmptyActivePlans());
     const watermarkWrites = setSpy.mock.calls.filter(
       ([key]) => key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
     ).length;

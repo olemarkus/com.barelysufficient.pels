@@ -45,18 +45,18 @@ const MILESTONE_AHEAD_MARGIN = 0.02;
 // a wrong learned rate). Falls back to the energy comparison above for legacy
 // commitments (or hours booked before a rate/anchor was available), so behaviour
 // is unchanged for those. See notes/deferred-load-objectives/execution-adaptation.md.
-export const isAheadOfHourMilestone = (params: {
-  energyNeededKWh: number;
+export const isAheadOfHourMilestone = (
+  energyNeededKWh: number,
+  progressDirection: ObjectiveProgressDirection,
+  committedHours: readonly DeferredObjectiveActivePlanHourV1[],
+  nowMs: number,
   // Live measured progress in the objective's own unit (°C / %). Drives the
   // preferred unit-based comparison. Optional/back-compat: absent → energy gate.
-  measuredValue?: number | null;
-  progressDirection: ObjectiveProgressDirection;
-  committedHours: readonly DeferredObjectiveActivePlanHourV1[];
-  nowMs: number;
-}): boolean => {
-  const byUnit = resolveAheadByUnitMilestone(params);
+  measuredValue?: number | null,
+): boolean => {
+  const byUnit = resolveAheadByUnitMilestone(progressDirection, committedHours, nowMs, measuredValue);
   if (byUnit !== null) return byUnit;
-  return resolveAheadByEnergy(params);
+  return resolveAheadByEnergy(energyNeededKWh, committedHours, nowMs);
 };
 
 // Hours strictly after the current clock hour. Use the floored clock-hour boundary
@@ -82,13 +82,12 @@ const nextHourStart = (nowMs: number): number => Math.floor(nowMs / ONE_HOUR_MS)
 // END-of-hour target and we check it against measured at the START of the hour,
 // which already requires being a full booked hour ahead before releasing
 // (early-is-safer); the shed/restore cooldowns absorb threshold jitter.
-const resolveAheadByUnitMilestone = (params: {
-  measuredValue?: number | null;
-  progressDirection: ObjectiveProgressDirection;
-  committedHours: readonly DeferredObjectiveActivePlanHourV1[];
-  nowMs: number;
-}): boolean | null => {
-  const { measuredValue, committedHours, nowMs } = params;
+const resolveAheadByUnitMilestone = (
+  progressDirection: ObjectiveProgressDirection,
+  committedHours: readonly DeferredObjectiveActivePlanHourV1[],
+  nowMs: number,
+  measuredValue?: number | null,
+): boolean | null => {
   if (typeof measuredValue !== 'number' || !Number.isFinite(measuredValue)) return null;
   const boundaryMs = nextHourStart(nowMs);
   // This hour's frozen target = the end-of-hour milestone of the LATEST committed
@@ -112,7 +111,7 @@ const resolveAheadByUnitMilestone = (params: {
   const currentHourMilestone = latestStartedHour?.plannedUnitMilestone;
   if (typeof currentHourMilestone !== 'number' || !Number.isFinite(currentHourMilestone)) return null;
   if (futureBookedKWh <= 0) return false; // no future committed hours to defer into → keep the device active
-  return params.progressDirection === 'increasing'
+  return progressDirection === 'increasing'
     ? measuredValue >= currentHourMilestone
     : measuredValue <= currentHourMilestone;
 };
@@ -120,12 +119,11 @@ const resolveAheadByUnitMilestone = (params: {
 // Legacy energy comparison: `energyNeededKWh ≤ futureCommittedKWh × (1 − margin)`,
 // both in the buffered-energy currency. Used when the commitment has no persisted
 // unit milestones (older records, or hours booked before a rate was learned).
-const resolveAheadByEnergy = (params: {
-  energyNeededKWh: number;
-  committedHours: readonly DeferredObjectiveActivePlanHourV1[];
-  nowMs: number;
-}): boolean => {
-  const { energyNeededKWh, committedHours, nowMs } = params;
+const resolveAheadByEnergy = (
+  energyNeededKWh: number,
+  committedHours: readonly DeferredObjectiveActivePlanHourV1[],
+  nowMs: number,
+): boolean => {
   if (!Number.isFinite(energyNeededKWh) || energyNeededKWh < 0) return false;
   const boundaryMs = nextHourStart(nowMs);
   let futureCommittedKWh = 0;

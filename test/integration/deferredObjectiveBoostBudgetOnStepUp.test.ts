@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
@@ -275,18 +276,17 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
       { id: STEP_DEVICE_ID, priority: 1 },
       { id: LOWER_PRIORITY_ID, priority: 2 },
     ]),
-    getDeferredObjectiveSettings: () => buildSettings(),
     getTimeZone: () => 'UTC',
     getPowerTracker: () => powerTracker,
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (start, deadline) => buildPriceHorizonFromCombined(buildCombinedPrices(), start, deadline),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: LIMIT_KW, marginKw: 0, periodMinutes: 60 }),
-    getDeferredObjectiveActivePlans: () => null,
+    getDeferredObjectiveActivePlans: createEmptyActivePlans,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  });
+  }, () => buildSettings());
 
   const state = createPlanEngineState();
   state.shedDecisions.lastPlannedShedIds = new Set([LOWER_PRIORITY_ID]);

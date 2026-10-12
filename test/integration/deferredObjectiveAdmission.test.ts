@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
@@ -210,18 +211,17 @@ const buildBuilder = (
     getThermalDirection: () => 'heating',
     getPrioritiesForDevices: (deviceIds) => new ModePriorityCatalog(overrides.priorityByModeRef?.current)
       .getOrder(overrides.modeRef?.current ?? 'Home', deviceIds, () => false),
-    getDeferredObjectiveSettings: () => buildSettings(),
     getTimeZone: () => 'UTC',
     getPowerTracker: () => powerTrackerRef.current,
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
     getCapacitySettings: () => capacitySettings,
-    getDeferredObjectiveActivePlans: () => null,
+    getDeferredObjectiveActivePlans: createEmptyActivePlans,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  });
+  }, () => buildSettings());
   return new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
@@ -354,18 +354,17 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
-      getDeferredObjectiveSettings: () => buildSettings(),
       getTimeZone: () => 'UTC',
       getPowerTracker: () => powerTrackerRef.current,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
-      getDeferredObjectiveActivePlans: () => null,
+      getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    });
+    }, () => buildSettings());
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
@@ -603,29 +602,28 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
-      getDeferredObjectiveSettings: () => ({
-        version: 1,
-        objectivesByDeviceId: {
-          [DEVICE_ID]: {
-            enabled: false,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: TARGET_C,
-            deadlineAtMs: DEADLINE_AT_MS,
-          },
-        },
-      }),
       getTimeZone: () => 'UTC',
       getPowerTracker: () => powerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
-      getDeferredObjectiveActivePlans: () => null,
+      getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    });
+    }, () => ({
+      version: 1,
+      objectivesByDeviceId: {
+        [DEVICE_ID]: {
+          enabled: false,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: TARGET_C,
+          deadlineAtMs: DEADLINE_AT_MS,
+        },
+      },
+    }));
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,

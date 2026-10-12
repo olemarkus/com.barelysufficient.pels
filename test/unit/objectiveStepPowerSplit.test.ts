@@ -60,11 +60,11 @@ describe('smart-task step power: learned for energy, nameplate for room', () => 
     expect(floorStep?.id).toBe('6a');
     if (!floorStep) return;
 
-    const buckets = normalizeHorizonBuckets({
-      nowMs: NOW,
-      deadlineAtMs: NOW + 3 * HOUR_MS,
-      deadlineMarginMs: 0,
-      buckets: [
+    const buckets = normalizeHorizonBuckets(
+      NOW,
+      NOW + 3 * HOUR_MS,
+      0,
+      [
         { id: 'open', startMs: NOW, endMs: NOW + HOUR_MS, price: 1 },
         // A higher-priority task draws here at the same time and leaves 1.0 kW of
         // room: enough for the learned 0.79 kW, not for a rung that may draw 1.38.
@@ -77,13 +77,8 @@ describe('smart-task step power: learned for energy, nameplate for room', () => 
           higherPriorityAdmissionPowerKw: 1.6,
         },
       ],
-    });
-    const result = allocateEnergyToBuckets({
-      buckets,
-      stepForBucket: () => floorStep,
-      energyNeededKWh: 5,
-      epsilonKWh: 0.001,
-    });
+    );
+    const result = allocateEnergyToBuckets(buckets, () => floorStep, 5, 0.001);
     const byId = new Map(result.plannedBuckets.map((bucket) => [bucket.id, bucket]));
 
     // Energy at the rate the rung really delivers; the claim on the hour at

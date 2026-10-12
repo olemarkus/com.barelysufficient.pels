@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { buildPriorityReservations } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
@@ -38,9 +39,14 @@ it('keeps admission, reservations and requested completion independent of report
     if (operational.progress.kind !== 'known') throw new Error('Fixture requires known task progress');
     return {
       admission: [...applyDeferredObjectiveAdmission([operational])],
-      reservations: buildPriorityReservations({
-        evaluation: operational, objective, device: undefined, activePlans: null, powerLimits: capacityOnlyPowerLimits(10), nowMs: 0,
-      }),
+      reservations: buildPriorityReservations(
+        operational,
+        objective,
+        undefined,
+        createEmptyActivePlans(),
+        capacityOnlyPowerLimits(10),
+        0,
+      ),
       completion: resolveTaskCompletion({
         currentValue: operational.progress.value, requestedTarget: operational.requestedTarget,
         direction: operational.progress.direction, thermalEvidence: { kind: 'none' },
@@ -77,14 +83,17 @@ it('caps a higher task booking at the current device maximum step', () => {
       { id: 'max', planningPowerW: 3000 },
     ] },
   });
-  const reservations = buildPriorityReservations({
+  const reservations = buildPriorityReservations(
     evaluation,
-    objective: {
+    {
       enabled: true, kind: 'temperature', enforcement: 'soft',
       targetTemperatureC: 60, deadlineAtMs: 3_600_000,
     },
-    device, activePlans: null, powerLimits: capacityOnlyPowerLimits(9.5), nowMs: 0,
-  });
+    device,
+    createEmptyActivePlans(),
+    capacityOnlyPowerLimits(9.5),
+    0,
+  );
   expect(reservations).toMatchObject([{ admissionPowerKw: 3 }]);
   expect(reservations[0]?.energySegments[0]?.endMs).toBe(1_200_000);
 });

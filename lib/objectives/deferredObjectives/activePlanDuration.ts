@@ -44,19 +44,19 @@ export type PlanLevelDurationSnapshot = {
   initialEstimatedDurationText: string | undefined;
 };
 
-export const resolvePlanLevelDurationSnapshot = (params: {
-  current: DeferredObjectiveActivePlanV1;
-  revision: DeferredObjectiveActivePlanRevisionV1;
-  reason: DeferredObjectiveActivePlanRevisionReason;
-}): PlanLevelDurationSnapshot => {
-  const reset = params.reason === 'objective_changed';
+export const resolvePlanLevelDurationSnapshot = (
+  current: DeferredObjectiveActivePlanV1,
+  revision: DeferredObjectiveActivePlanRevisionV1,
+  reason: DeferredObjectiveActivePlanRevisionReason,
+): PlanLevelDurationSnapshot => {
+  const reset = reason === 'objective_changed';
   return {
     initialPlanningSpeedKw: reset
-      ? params.revision.planningSpeedKw
-      : (params.current.initialPlanningSpeedKw ?? params.revision.planningSpeedKw),
+      ? revision.planningSpeedKw
+      : (current.initialPlanningSpeedKw ?? revision.planningSpeedKw),
     initialEstimatedDurationText: reset
-      ? params.revision.estimatedDurationText
-      : (params.current.initialEstimatedDurationText ?? params.revision.estimatedDurationText),
+      ? revision.estimatedDurationText
+      : (current.initialEstimatedDurationText ?? revision.estimatedDurationText),
   };
 };
 

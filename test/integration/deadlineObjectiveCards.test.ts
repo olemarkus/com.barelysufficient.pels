@@ -311,8 +311,8 @@ const buildDeps = (overrides: {
     reportSteppedLoadActualStep: () => 'unchanged' as never,
     setExpectedOverride: () => false,
     storeFlowPriceData: () => ({ dateKey: '', storedCount: 0, missingHours: [] }),
-    upsertDeferredObjectiveForDevice: (params: Parameters<typeof upsertObjectiveForDevice>[1]) => (
-      upsertObjectiveForDevice(buildWriteDeps(), params)
+    upsertDeferredObjectiveForDevice: (params: Parameters<FlowCardDeps['upsertDeferredObjectiveForDevice']>[0]) => (
+      upsertObjectiveForDevice(buildWriteDeps(), params.deviceId, params.deviceName, params.entry, params.rescue)
     ),
     clearDeferredObjectiveForDevice: (params: Parameters<typeof clearObjectiveForDevice>[1]) => (
       clearObjectiveForDevice(buildWriteDeps(), params)
@@ -1609,20 +1609,20 @@ describe('deadline objective flow cards', () => {
     const diagnostics = [buildHoursRemainingDiagnostic({ deviceId: 'ev-1', deadlineAtMs })];
 
     await setCard.run!({ device: 'ev-1', target_percent: 80, ready_by: '07:00' });
-    hoursRemainingTracker.observe({ diagnostics, nowMs, bus: hoursRemainingBus });
+    hoursRemainingTracker.observe(diagnostics, nowMs, hoursRemainingBus);
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     let state = trigger.trigger.mock.calls[0]![1];
     expect(await trigger.run!({ device: 'ev-1', hours: 2 }, state)).toBe(true);
 
     await clearCard.run!({ device: 'ev-1' });
     await setCard.run!({ device: 'ev-1', target_percent: 80, ready_by: '07:00' });
-    hoursRemainingTracker.observe({ diagnostics, nowMs, bus: hoursRemainingBus });
+    hoursRemainingTracker.observe(diagnostics, nowMs, hoursRemainingBus);
     expect(trigger.trigger).toHaveBeenCalledTimes(2);
     state = trigger.trigger.mock.calls[1]![1];
     expect(state).toEqual({ deviceId: 'ev-1', hoursRemaining: 2, previousHoursRemaining: null });
     expect(await trigger.run!({ device: 'ev-1', hours: 2 }, state)).toBe(true);
 
-    hoursRemainingTracker.observe({ diagnostics, nowMs, bus: hoursRemainingBus });
+    hoursRemainingTracker.observe(diagnostics, nowMs, hoursRemainingBus);
     expect(trigger.trigger).toHaveBeenCalledTimes(2);
   });
 
@@ -1745,11 +1745,11 @@ describe('deadline objective flow cards', () => {
     const deadlineAtMs = HH_MM_TO_UTC_MS(7, 0);
     const diagnostics = [buildHoursRemainingDiagnostic({ deviceId: 'ev-1', deadlineAtMs })];
     // Pre-restart cycle: ev-1 crosses the 2h boundary, fires once.
-    before.deps.deferredObjectiveHoursRemainingTracker.observe({
+    before.deps.deferredObjectiveHoursRemainingTracker.observe(
       diagnostics,
-      nowMs: deadlineAtMs - 2 * 60 * 60 * 1000,
-      bus: before.deps.deferredObjectiveHoursRemainingBus,
-    });
+      deadlineAtMs - 2 * 60 * 60 * 1000,
+      before.deps.deferredObjectiveHoursRemainingBus,
+    );
     expect(beforeTrigger.trigger).toHaveBeenCalledTimes(1);
 
     // ---- Boot 2: post-restart ----
@@ -1767,11 +1767,11 @@ describe('deadline objective flow cards', () => {
     });
     registerDeadlineObjectiveCards(after.deps);
     const afterTrigger = after.mock.triggers.get('smart_task_hours_remaining')!;
-    after.deps.deferredObjectiveHoursRemainingTracker.observe({
+    after.deps.deferredObjectiveHoursRemainingTracker.observe(
       diagnostics,
-      nowMs: deadlineAtMs - (60 * 60 * 1000), // 1h remaining now
-      bus: after.deps.deferredObjectiveHoursRemainingBus,
-    });
+      deadlineAtMs - (60 * 60 * 1000),
+      after.deps.deferredObjectiveHoursRemainingBus,
+    );
     // The 1h boundary IS a fresh crossing (1 < 2), so the bus does publish
     // — what we're checking is the run-listener's gate for a 2h-threshold
     // flow.

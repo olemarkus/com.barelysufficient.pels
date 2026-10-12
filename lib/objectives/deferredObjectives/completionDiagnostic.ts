@@ -18,12 +18,12 @@ import {
 // than reusing `findPlanForRecord` to avoid a diagnosticsBridge↔planHistory
 // import cycle.
 export const hasEstablishedActivePlan = (
-  activePlans: DeferredObjectiveActivePlansV1 | null | undefined,
+  activePlans: DeferredObjectiveActivePlansV1,
   deviceId: string,
   deadlineAtMs: number | null,
 ): boolean => {
   if (deadlineAtMs === null) return false;
-  const plan = activePlans?.plansByDeviceId[deviceId];
+  const plan = activePlans.plansByDeviceId[deviceId];
   return plan?.deadlineAtMs === deadlineAtMs && plan?.latest != null;
 };
 
@@ -68,7 +68,7 @@ export const completionFromEvaluation = (
 export const reportStalledTasksAsSatisfied = (
   diagnostics: readonly DeferredObjectiveDiagnostic[],
   getStallClassification: DeferredObjectiveStallClassificationReader,
-  activePlans: DeferredObjectiveActivePlansV1 | null,
+  activePlans: DeferredObjectiveActivePlansV1,
 ): DeferredObjectiveDiagnostic[] => diagnostics.map((diagnostic) => resolveTaskCompletionDiagnostic(
   diagnostic,
   getStallClassification(diagnostic.deviceId),

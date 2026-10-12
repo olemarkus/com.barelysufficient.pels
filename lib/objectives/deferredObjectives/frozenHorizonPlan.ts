@@ -132,18 +132,15 @@ const buildFrozenPlannedBuckets = (
 //     cheaper window?" is the allocator's `:58` call, recorded in the committed
 //     current-hour kWh (0 ⇒ deferred). The frozen read just delivers up to whatever
 //     the commitment booked (current hour 0 ⇒ idle).
-export const buildFrozenHorizonPlan = (params: {
-  nowMs: number;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  frozenRead: FrozenReadInputs;
-  energyNeededKWh: number;
-  aheadOfHourMilestone: boolean;
-  steps: DeferredObjectiveStep[];
-}): DeferredObjectiveHorizonPlan => {
-  const {
-    nowMs, deviceId, objective, frozenRead, energyNeededKWh, aheadOfHourMilestone, steps,
-  } = params;
+export const buildFrozenHorizonPlan = (
+  nowMs: number,
+  deviceId: string,
+  objective: DeferredObjectiveSettingsEntry,
+  frozenRead: FrozenReadInputs,
+  energyNeededKWh: number,
+  aheadOfHourMilestone: boolean,
+  steps: DeferredObjectiveStep[],
+): DeferredObjectiveHorizonPlan => {
   const { deadlineAtMs } = objective;
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   // Every saved hour is a booking; its kWh is what it promises, possibly 0.
@@ -164,12 +161,12 @@ export const buildFrozenHorizonPlan = (params: {
     : undefined;
   const currentBookedKWh = currentWindow?.plannedKWh ?? 0;
   const requestedStep = currentWindow
-    ? selectMinimumStepForEnergy({
+    ? selectMinimumStepForEnergy(
       steps,
-      energyKWh: currentWindow.plannedKWh,
-      durationHours: (currentWindow.endMs - currentWindow.startMs) / ONE_HOUR_MS,
-      epsilonKWh: FROZEN_EPSILON_KWH,
-    })
+      currentWindow.plannedKWh,
+      (currentWindow.endMs - currentWindow.startMs) / ONE_HOUR_MS,
+      FROZEN_EPSILON_KWH,
+    )
     : null;
   const currentBucket = currentHour
     ? {
@@ -222,11 +219,11 @@ export const buildFrozenHorizonPlan = (params: {
     // Resolved through the SAME function as the fresh path, on the settle's
     // persisted verdict — so the mid-hour answer cannot drift from the one the
     // allocator reached, and cannot move within the hour.
-    currentHourClaim: resolveCurrentHourClaim({
-      currentHourBooking: resolveCurrentHourBooking(currentBucket),
-      facts: currentHourFacts,
-      floorShortfallCause: frozenRead.floorShortfallCause,
-    }),
+    currentHourClaim: resolveCurrentHourClaim(
+      resolveCurrentHourBooking(currentBucket),
+      currentHourFacts,
+      frozenRead.floorShortfallCause,
+    ),
     // Declares "no new allocation here" to the recorder — see the field doc on
     // `DeferredObjectiveHorizonPlan`.
     frozenRead: true,

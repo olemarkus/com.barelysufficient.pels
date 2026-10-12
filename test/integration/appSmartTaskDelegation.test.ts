@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import type MyApp from '../../app.ts';
 import { partialDouble } from '../helpers/partialDouble';
 import { createInertEnergyDelivery, noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
@@ -66,7 +67,7 @@ const buildHistoryEntry = (
 });
 
 const buildAppWithRecorders = (options: {
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
+  activePlans?: DeferredObjectiveActivePlansV1;
   history?: DeferredObjectivePlanHistoryV6;
 } = {}) => {
   const app = createApp();
@@ -95,10 +96,8 @@ const buildAppWithRecorders = (options: {
       configurable: true,
     });
   }
-  // The recorder contracts promise a snapshot; these doubles surface the
-  // test-declared absence exactly as the untyped stubs did at runtime.
   app.deferredObjectiveActivePlanRecorder = partialDouble<MyApp['deferredObjectiveActivePlanRecorder']>({
-    getActivePlansSnapshot: () => (options.activePlans ?? null) as DeferredObjectiveActivePlansV1,
+    getActivePlansSnapshot: () => options.activePlans ?? createEmptyActivePlans(),
   });
   app.deferredObjectivePlanHistoryRecorder = partialDouble<MyApp['deferredObjectivePlanHistoryRecorder']>({
     getHistorySnapshot: () => options.history as DeferredObjectivePlanHistoryV6,
@@ -123,8 +122,10 @@ describe('PelsApp smart-task delegation stubs', () => {
     expect(payload?.plansByDeviceId[DEVICE_ID]?.targetValue).toBe(65);
   });
 
-  it('returns null from getDeferredObjectiveActivePlansUiPayload when no snapshot exists', () => {
-    expect(buildAppWithRecorders().getDeferredObjectiveActivePlansUiPayload()).toBeNull();
+  it('returns null from getDeferredObjectiveActivePlansUiPayload before the active-plan recorder exists', () => {
+    const app = buildAppWithRecorders();
+    app.deferredObjectiveActivePlanRecorder = undefined;
+    expect(app.getDeferredObjectiveActivePlansUiPayload()).toBeNull();
   });
 
   it('routes getDeferredObjectivePlanHistoryUiPayload to the unbounded history payload', () => {
@@ -230,6 +231,26 @@ describe('AppSmartTaskApi boot-window invariants', () => {
   it('throws instead of previewing without the active-plan recorder', () => {
     const app = wirePreviewDependencies(buildAppWithRecorders());
     app.deferredObjectiveActivePlanRecorder = undefined;
+
+    expect(() => app.previewDeferredObjectivePlan(DEVICE_ID, {
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 65,
+      deadlineAtMs: Date.now() + 5_000,
+    })).toThrow(/DeferredObjectiveActivePlanRecorder must be initialized/);
+  });
+
+  it('reports a missing active-plan recorder even when the roster read is unavailable', () => {
+    const app = wirePreviewDependencies(buildAppWithRecorders());
+    app.deferredObjectiveActivePlanRecorder = undefined;
+    app.homey.settings.set(`deferred_objective.${DEVICE_ID}`, {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 60,
+      deadlineAtMs: Date.now() + 60_000,
+    });
+    app.homey.settings.getKeys = () => [];
 
     expect(() => app.previewDeferredObjectivePlan(DEVICE_ID, {
       kind: 'temperature',

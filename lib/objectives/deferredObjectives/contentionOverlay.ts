@@ -11,18 +11,17 @@ const CONTENTION_EPSILON_KWH = 0.001;
  * tasks above and the maximum steps reserved for devices above, only when
  * removing that load fits.
  */
-export const resolveHigherPriorityContentionEvaluation = (params: {
-  evaluation: TaskEvaluation;
-  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[];
-  higherPriorityUnbookedPowerKw: number;
-  buildWithoutReservations: () => TaskEvaluation;
-}): TaskEvaluation => {
-  const { evaluation } = params;
+export const resolveHigherPriorityContentionEvaluation = (
+  evaluation: TaskEvaluation,
+  higherPriorityReservations: readonly DeferredObjectivePriorityReservation[],
+  higherPriorityUnbookedPowerKw: number,
+  buildWithoutReservations: () => TaskEvaluation,
+): TaskEvaluation => {
   if (evaluation.planning.kind === 'inactive') return evaluation;
-  if (params.higherPriorityReservations.length === 0 && params.higherPriorityUnbookedPowerKw <= 0) return evaluation;
+  if (higherPriorityReservations.length === 0 && higherPriorityUnbookedPowerKw <= 0) return evaluation;
   const { plan } = evaluation.planning;
   if (plan.frozenRead || plan.unplannedUsefulEnergyKWh <= CONTENTION_EPSILON_KWH) return evaluation;
-  const control = params.buildWithoutReservations();
+  const control = buildWithoutReservations();
   if (control.planning.kind === 'inactive'
     || control.planning.plan.unplannedUsefulEnergyKWh > CONTENTION_EPSILON_KWH) return evaluation;
   // Cause, bookings and claim change together, so the saved hours and the frozen
@@ -34,11 +33,11 @@ export const resolveHigherPriorityContentionEvaluation = (params: {
     ...plan.currentBucket,
     booked: plannedBuckets.find((bucket) => bucket.current)?.booked === true,
   };
-  const currentHourClaim = resolveCurrentHourClaim({
-    currentHourBooking: resolveCurrentHourBooking(currentBucket),
-    facts: plan.currentHourFacts,
+  const currentHourClaim = resolveCurrentHourClaim(
+    resolveCurrentHourBooking(currentBucket),
+    plan.currentHourFacts,
     floorShortfallCause,
-  });
+  );
   return {
     ...evaluation,
     planning: { kind: 'allocated', plan: {

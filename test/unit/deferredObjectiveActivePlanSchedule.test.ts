@@ -359,22 +359,22 @@ describe('shouldFireNotification', () => {
 // cap drifts across the climbed band, so `planStatus` and `floorShortfallCause`
 // both hold and ONLY this flag moves. Omit it from the drift comparison and the
 // recorder writes nothing, so the surface never learns.
-type Params = Parameters<typeof hasMetadataDriftedWithinSchedule>[0];
+type DriftParams = Parameters<typeof hasMetadataDriftedWithinSchedule>;
 
 describe('hasMetadataDriftedWithinSchedule — budget contribution', () => {
-  const revision = (budgetContributedToShortfall?: true) => partialDouble<Params['latest']>({
+  const revision = (budgetContributedToShortfall?: true) => partialDouble<DriftParams[0]>({
     planStatus: 'cannot_meet',
     floorShortfallCause: 'time_capacity',
     ...(budgetContributedToShortfall ? { budgetContributedToShortfall } : {}),
   });
-  const plan = (budgetContributedToShortfall: boolean) => partialDouble<Params['horizonPlan']>({
+  const plan = (budgetContributedToShortfall: boolean) => partialDouble<DriftParams[1]>({
     status: 'cannot_meet',
     statusDetail: 'target_cannot_be_met',
     budgetContributedToShortfall,
   });
   // Operational progress remains below the requested target. The forecast and
   // persisted status stay identical, isolating budget-contribution metadata.
-  const diag = (horizonPlan: Params['horizonPlan']) => withTaskDiagnosticFixture(
+  const diag = (horizonPlan: DriftParams[1]) => withTaskDiagnosticFixture(
     partialDouble<Parameters<typeof withTaskDiagnosticFixture>[0]>({
       deviceId: 'heater', objectiveId: 'heater:temperature', objectiveKind: 'temperature',
       deadlineAtMs: TWELVE, progressDirection: 'increasing', currentValue: 50, targetValue: 65,
@@ -388,7 +388,7 @@ describe('hasMetadataDriftedWithinSchedule — budget contribution', () => {
   const drifted = (
     latest: ReturnType<typeof revision>,
     horizonPlan: ReturnType<typeof plan>,
-  ): boolean => hasMetadataDriftedWithinSchedule({ latest, horizonPlan, diag: diag(horizonPlan) });
+  ): boolean => hasMetadataDriftedWithinSchedule(latest, horizonPlan, diag(horizonPlan));
 
   it('drifts when the budget starts contributing on an otherwise unchanged plan', () => {
     expect(drifted(revision(), plan(true))).toBe(true);

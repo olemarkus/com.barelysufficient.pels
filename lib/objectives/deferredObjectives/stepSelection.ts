@@ -75,18 +75,12 @@ export const getActiveObjectiveSteps = (
   steps.filter((step) => step.usefulPowerKw > 0)
 );
 
-export const selectMinimumStepForEnergy = (params: {
-  steps: DeferredObjectiveStep[];
-  energyKWh: number;
-  durationHours: number;
-  epsilonKWh: number;
-}): DeferredObjectiveStep | null => {
-  const {
-    steps,
-    energyKWh,
-    durationHours,
-    epsilonKWh,
-  } = params;
+export const selectMinimumStepForEnergy = (
+  steps: DeferredObjectiveStep[],
+  energyKWh: number,
+  durationHours: number,
+  epsilonKWh: number,
+): DeferredObjectiveStep | null => {
   // Positive booked energy always needs an active step, even in the last
   // seconds of a bucket. Epsilon only tolerates a small delivery shortfall.
   if (energyKWh <= 0 || durationHours <= 0) return null;

@@ -66,7 +66,7 @@ const buildContext = (app: Partial<AppMock>) => ({
 });
 
 const expectedDeadline = (localTime: string): number => {
-  const resolution = resolveDeferredObjectiveDeadline({ nowMs: NOW_MS, timeZone: TIME_ZONE, deadlineLocalTime: localTime });
+  const resolution = resolveDeferredObjectiveDeadline(NOW_MS, TIME_ZONE, localTime);
   if (resolution.deadlineAtMs === null) throw new Error('failed to resolve test deadline');
   return resolution.deadlineAtMs;
 };

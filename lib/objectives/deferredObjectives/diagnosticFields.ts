@@ -4,7 +4,6 @@ import type { PowerTrackerState } from '../../power/tracker';
 import {
   resolveProfileEnergy,
   type DeferredObjectiveEnergyResolution,
-  type DeferredObjectiveKwhPerUnitSource,
 } from './profileEnergyResolution';
 import {
   resolveObjectiveProgressDirectionRead,
@@ -69,23 +68,23 @@ export const canReportFreshProgressWhileUnknown = (
 // Single entry point for resolving learned/buffered energy from progress, so
 // both diagnostic paths pass the objective's enforcement (which sets the
 // variance buffer `k`) and current value identically.
-export const resolveProgressEnergy = (params: {
-  powerTracker: PowerTrackerState;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  remainingUnits: number;
-  progress: ResolvedProgress;
-}): DeferredObjectiveEnergyResolution => {
-  const input = progressCurrentValue({ progress: params.progress, objectiveKind: params.objective.kind });
-  return resolveProfileEnergy({
-    powerTracker: params.powerTracker,
-    deviceId: params.deviceId,
-    objectiveKind: params.objective.kind,
-    enforcement: params.objective.enforcement,
-    remainingUnits: params.remainingUnits,
-    progressDirection: params.progress.progressDirection,
-    ...(input.kind === 'level' ? { currentValue: input.value } : {}),
-  });
+export const resolveProgressEnergy = (
+  powerTracker: PowerTrackerState,
+  deviceId: string,
+  objective: DeferredObjectiveSettingsEntry,
+  remainingUnits: number,
+  progress: ResolvedProgress,
+): DeferredObjectiveEnergyResolution => {
+  const input = progressCurrentValue({ progress, objectiveKind: objective.kind });
+  return resolveProfileEnergy(
+    powerTracker,
+    deviceId,
+    objective.kind,
+    objective.enforcement,
+    remainingUnits,
+    progress.progressDirection,
+    input.kind === 'level' ? input.value : undefined,
+  );
 };
 
 // Variant-preserving merge of the progress reading onto an existing diagnostic.
@@ -103,92 +102,72 @@ export const mergeProgressFields = (
   return { ...base, currentPercent: currentValue, currentValue };
 };
 
-// The progress fields of a diagnostic that has not resolved its objective's
-// progress (yet): the trajectory builders fill them in once it has.
-export const UNRESOLVED_PROGRESS = {
-  currentValue: null,
-  energyNeededKWh: null,
-  kWhPerUnitBanded: null,
-  rateConfidence: null,
-  displayConfidence: null,
-  kwhPerUnitSource: null,
-} as const;
-
-export const buildDiagnosticBase = (params: {
-  deviceId: string;
+// The diagnostic of a task whose progress is not resolved (yet): its progress
+// fields are empty, and the trajectory builders fill them in once it is.
+export const buildDiagnosticBase = (
+  deviceId: string,
   // `undefined` when the device is missing from this tick's roster.
-  device: ObjectiveDeviceInput | undefined;
-  objective: DeferredObjectiveSettingsEntry;
-  timeZone: string;
-  powerTracker: PowerTrackerState;
-  // The reading in the task's own unit; the variant places it.
-  currentValue: number | null;
-  energyNeededKWh: number | null;
-  kWhPerUnitBanded: number | null;
-  rateConfidence: string | null;
-  displayConfidence: 'low' | 'medium' | 'high' | null;
-  kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
-}): DeferredObjectiveDiagnostic => {
-  const deadlineAtMs = Number.isFinite(params.objective.deadlineAtMs) && params.objective.deadlineAtMs > 0
-    ? params.objective.deadlineAtMs
+  device: ObjectiveDeviceInput | undefined,
+  objective: DeferredObjectiveSettingsEntry,
+  timeZone: string,
+  powerTracker: PowerTrackerState,
+): DeferredObjectiveDiagnostic => {
+  const deadlineAtMs = Number.isFinite(objective.deadlineAtMs) && objective.deadlineAtMs > 0
+    ? objective.deadlineAtMs
     : null;
-  const profileSnapshot = resolveProfileSnapshot({
-    powerTracker: params.powerTracker,
-    deviceId: params.deviceId,
-    objectiveKind: params.objective.kind,
-  });
+  const profileSnapshot = resolveProfileSnapshot(powerTracker, deviceId);
   const common: BaseDeferredObjectiveDiagnostic = {
-    deviceId: params.deviceId,
-    evaluation: { ...inactiveTaskEvaluation(params.deviceId, params.objective.deadlineAtMs,
-      resolveObjectiveTargetValue(params.objective)),
-      permissions: taskPermissionsForObjective(params.objective) },
+    deviceId: deviceId,
+    evaluation: { ...inactiveTaskEvaluation(deviceId, objective.deadlineAtMs,
+      resolveObjectiveTargetValue(objective)),
+      permissions: taskPermissionsForObjective(objective) },
     progressDirection: resolveObjectiveProgressDirectionRead({
-      objectiveKind: params.objective.kind,
-      thermalDirection: params.device?.thermalDirection ?? 'unknown',
+      objectiveKind: objective.kind,
+      thermalDirection: device?.thermalDirection ?? 'unknown',
     }),
-    deviceName: params.device?.name,
-    objectiveId: `${params.deviceId}:${params.objective.kind}`,
-    enforcement: params.objective.enforcement,
-    ...(params.objective.rescue ? { rescue: params.objective.rescue } : {}),
+    deviceName: device?.name,
+    objectiveId: `${deviceId}:${objective.kind}`,
+    enforcement: objective.enforcement,
+    ...(objective.rescue ? { rescue: objective.rescue } : {}),
     trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
     reasonCode: 'objective_progress_stale',
     actuationSatisfied: false,
     completion: { kind: 'inactive' },
-    targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
-    currentPercent: params.objective.kind === 'ev_soc' ? params.currentValue : null,
+    targetPercent: objective.kind === 'ev_soc' ? objective.targetPercent : null,
+    currentPercent: null,
     // Unit-agnostic pair, in the task's own unit for every kind.
-    currentValue: params.currentValue,
-    targetValue: resolveObjectiveTargetValue(params.objective),
-    reachableTargetValue: resolveReachableTargetValue(params.objective, params.device),
+    currentValue: null,
+    targetValue: resolveObjectiveTargetValue(objective),
+    reachableTargetValue: resolveReachableTargetValue(objective, device),
     deadlineAtMs,
-    deadlineLocalTime: deadlineAtMs !== null ? formatDeadlineLocalTime(deadlineAtMs, params.timeZone) : '',
-    energyNeededKWh: params.energyNeededKWh,
-    kWhPerUnitBanded: params.kWhPerUnitBanded,
+    deadlineLocalTime: deadlineAtMs !== null ? formatDeadlineLocalTime(deadlineAtMs, timeZone) : '',
+    energyNeededKWh: null,
+    kWhPerUnitBanded: null,
     // Base default; resolved diagnostics override via `buildKnownEnergyFields`.
     kwhPerUnitLearnedMean: null,
-    rateConfidence: params.rateConfidence,
-    displayConfidence: params.displayConfidence,
-    kwhPerUnitSource: params.kwhPerUnitSource,
+    rateConfidence: null,
+    displayConfidence: null,
+    kwhPerUnitSource: null,
     kwhPerUnitAcceptedSamples: profileSnapshot.acceptedSamples,
     kwhPerUnitLastAcceptedAtMs: profileSnapshot.lastAcceptedAtMs,
-    planningSpeedKw: resolvePlanningSpeedKw(params.device),
-    currentDrawKw: params.device === undefined ? null : params.device.currentDrawKw,
+    planningSpeedKw: resolvePlanningSpeedKw(device),
+    currentDrawKw: device === undefined ? null : device.currentDrawKw,
     horizonBucketCount: 0,
     expectedStepId: null,
   };
-  if (params.objective.kind === 'temperature') {
+  if (objective.kind === 'temperature') {
     return {
       ...common,
       objectiveKind: 'temperature',
-      targetTemperatureC: params.objective.targetTemperatureC,
-      currentTemperatureC: params.currentValue,
+      targetTemperatureC: objective.targetTemperatureC,
+      currentTemperatureC: null,
     };
   }
-  if (params.objective.kind === 'energy') {
+  if (objective.kind === 'energy') {
     return {
       ...common,
       objectiveKind: 'energy',
-      targetEnergyKWh: params.objective.targetEnergyKWh,
+      targetEnergyKWh: objective.targetEnergyKWh,
     };
   }
   return {
@@ -198,14 +177,13 @@ export const buildDiagnosticBase = (params: {
 };
 
 // Pulls accepted-sample provenance from the active learned profile. Returns
-// zeros / nulls when no profile or the profile's kind doesn't match the
-// objective so legacy callers see safe defaults.
-const resolveProfileSnapshot = (params: {
-  powerTracker: PowerTrackerState;
-  deviceId: string;
-  objectiveKind: DeferredObjectiveSettingsEntry['kind'];
-}): { acceptedSamples: number; lastAcceptedAtMs: number | null } => {
-  const profile = params.powerTracker.objectiveProfiles?.[params.deviceId];
+// zeros / nulls when the device has no profile so legacy callers see safe
+// defaults.
+const resolveProfileSnapshot = (
+  powerTracker: PowerTrackerState,
+  deviceId: string,
+): { acceptedSamples: number; lastAcceptedAtMs: number | null } => {
+  const profile = powerTracker.objectiveProfiles?.[deviceId];
   if (!profile) {
     return { acceptedSamples: 0, lastAcceptedAtMs: null };
   }

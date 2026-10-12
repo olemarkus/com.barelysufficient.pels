@@ -112,7 +112,7 @@ const buildRelay = (
 );
 
 const resolveDeadline = (): number => {
-  const resolution = resolveDeferredObjectiveDeadline({ nowMs: START_MS, timeZone: 'UTC', deadlineLocalTime: '06:00' });
+  const resolution = resolveDeferredObjectiveDeadline(START_MS, 'UTC', '06:00');
   if (resolution.deadlineAtMs === null) throw new Error('failed to resolve deadline');
   return resolution.deadlineAtMs;
 };

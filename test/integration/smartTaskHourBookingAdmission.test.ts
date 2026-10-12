@@ -183,12 +183,7 @@ const runTask = (
     const nowMs = BASE_MS + hourIndex * HOUR_MS;
     // Producer trajectory gate, computed exactly as `diagnosticsBridge` does in
     // production — never hand-set.
-    const aheadOfHourMilestone = isAheadOfHourMilestone({
-      energyNeededKWh: remainingKWh,
-      progressDirection: 'increasing',
-      committedHours: [],
-      nowMs,
-    });
+    const aheadOfHourMilestone = isAheadOfHourMilestone(remainingKWh, 'increasing', [], nowMs);
     const plan = planDeferredObjectiveHorizon({
       powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,
       nowMs,

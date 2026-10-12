@@ -33,21 +33,13 @@ const deviceStates = new Map<string, DeviceState>();
 // The one-shot semantic prevents spam: once the user has been told a device
 // has no power source, repeating it adds nothing. A flipping device only fires
 // the diagnostic once per process lifetime; restarts re-arm.
-export function emitObjectiveProfileNoPowerSourceIfNeeded(params: {
-  deviceId?: string;
-  deviceName?: string;
-  acceptedSamples: number;
-  sample: DeviceObjectiveProfileSample;
-  debugStructured?: NoPowerSourceDiagnosticEmitter;
-}): void {
-  const {
-    deviceId,
-    deviceName,
-    acceptedSamples,
-    sample,
-    debugStructured,
-  } = params;
-  if (!debugStructured || !deviceId) return;
+export function emitObjectiveProfileNoPowerSourceIfNeeded(
+  deviceId: string,
+  deviceName: string,
+  acceptedSamples: number,
+  sample: DeviceObjectiveProfileSample,
+  debugStructured: NoPowerSourceDiagnosticEmitter,
+): void {
   const hasCrediblePower = typeof sample.crediblePowerW === 'number'
     && Number.isFinite(sample.crediblePowerW)
     && sample.crediblePowerW > 0;

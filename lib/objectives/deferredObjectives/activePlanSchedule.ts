@@ -143,32 +143,32 @@ const overlayLiveAdmissionPower = (params: {
     : previous;
 });
 
-const selectExactSegmentsForHour = (params: {
-  hour: DeferredObjectiveActivePlanHourV1;
-  live: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
-  previous: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
-}): readonly DeferredObjectiveActivePlanReservationSegmentV1[] => {
-  if (params.live.length === 0) return params.previous;
-  if (params.previous.length === 0) {
+const selectExactSegmentsForHour = (
+  hour: DeferredObjectiveActivePlanHourV1,
+  live: readonly DeferredObjectiveActivePlanReservationSegmentV1[],
+  previous: readonly DeferredObjectiveActivePlanReservationSegmentV1[],
+): readonly DeferredObjectiveActivePlanReservationSegmentV1[] => {
+  if (live.length === 0) return previous;
+  if (previous.length === 0) {
     // A legacy hour may carry a full-hour commitment floor but have no exact
     // segment shape yet. A late-hour live plan covers only the remaining
     // minutes; scaling the full floor into that short interval would fabricate
     // an extreme physical claim. Fall through to the synthetic full-hour shape
     // when the live energy cannot represent the committed floor.
-    return params.hour.plannedKWh > totalSegmentKWh(params.live) + PLANNED_EPSILON_KWH
+    return hour.plannedKWh > totalSegmentKWh(live) + PLANNED_EPSILON_KWH
       ? []
-      : params.live;
+      : live;
   }
-  const liveDistance = Math.abs(totalSegmentKWh(params.live) - params.hour.plannedKWh);
-  const previousDistance = Math.abs(totalSegmentKWh(params.previous) - params.hour.plannedKWh);
+  const liveDistance = Math.abs(totalSegmentKWh(live) - hour.plannedKWh);
+  const previousDistance = Math.abs(totalSegmentKWh(previous) - hour.plannedKWh);
   // A tie means the commitment floor did not need new topology. Retaining the
   // prior exact shape avoids turning the moving current-hour trim into a new
   // persisted physical claim on every settle. Fresh admission power is still
   // authoritative for the unelapsed overlap: a step increase must immediately
   // reserve the larger physical draw for lower-priority tasks and restarts.
   return previousDistance <= liveDistance
-    ? overlayLiveAdmissionPower({ previous: params.previous, live: params.live })
-    : params.live;
+    ? overlayLiveAdmissionPower({ previous, live })
+    : live;
 };
 
 // Persist the allocator's exact source-bucket geometry alongside the legacy
@@ -178,27 +178,22 @@ const selectExactSegmentsForHour = (params: {
 // plan dropped a floored hour entirely, retain that hour's prior exact topology;
 // only legacy revisions with no exact shape fall back to a clipped synthetic
 // hour segment whose hourly admission is necessarily conservative.
-export const buildReservationSegmentsFromHorizonPlan = (params: {
-  diag: DeferredObjectiveDiagnostic;
-  effectiveHours: readonly DeferredObjectiveActivePlanHourV1[];
-  previousSegments?: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
-}): DeferredObjectiveActivePlanReservationSegmentV1[] => {
-  const liveSegments = params.diag.evaluation.planning.kind === 'allocated'
-    ? buildLiveReservationSegments(params.diag.evaluation.planning.plan)
+export const buildReservationSegmentsFromHorizonPlan = (
+  diag: DeferredObjectiveDiagnostic,
+  effectiveHours: readonly DeferredObjectiveActivePlanHourV1[],
+  previousSegments: readonly DeferredObjectiveActivePlanReservationSegmentV1[] = [],
+): DeferredObjectiveActivePlanReservationSegmentV1[] => {
+  const liveSegments = diag.evaluation.planning.kind === 'allocated'
+    ? buildLiveReservationSegments(diag.evaluation.planning.plan)
     : [];
-  const previousSegments = params.previousSegments ?? [];
-  return params.effectiveHours.flatMap((hour) => {
+  return effectiveHours.flatMap((hour) => {
     if (hour.plannedKWh <= 0) return [];
     const liveForHour = liveSegments.filter((segment) => segmentHourStart(segment) === hour.startsAtMs);
     const previousForHour = previousSegments.filter((segment) => segmentHourStart(segment) === hour.startsAtMs);
-    const exactSegments = selectExactSegmentsForHour({
-      hour,
-      live: liveForHour,
-      previous: previousForHour,
-    });
+    const exactSegments = selectExactSegmentsForHour(hour, liveForHour, previousForHour);
     if (exactSegments.length > 0) return scaleSegmentsToHour({ segments: exactSegments, hour });
     const startMs = hour.coversFromMs ?? hour.startsAtMs;
-    const endMs = Math.min(hour.startsAtMs + ONE_HOUR_MS, params.diag.deadlineAtMs ?? Number.POSITIVE_INFINITY);
+    const endMs = Math.min(hour.startsAtMs + ONE_HOUR_MS, diag.deadlineAtMs ?? Number.POSITIVE_INFINITY);
     if (endMs <= startMs) return [];
     const durationHours = (endMs - startMs) / ONE_HOUR_MS;
     const admissionPowerKw = hour.plannedAdmissionPowerKw ?? hour.plannedKWh / durationHours;
@@ -415,39 +410,39 @@ const sameAdmissionAllocation = (
   return true;
 };
 
-export const resolveCoordinatedScheduleUpdate = (params: {
-  diag: DeferredObjectiveDiagnostic;
-  objectiveChanged: boolean;
-  committedHours: readonly DeferredObjectiveActivePlanHourV1[];
-  latest: DeferredObjectiveActivePlanRevisionV1;
-  liveHours: DeferredObjectiveActivePlanHourV1[];
-  nowMs: number;
-  metadataDrifted: boolean;
-}): {
+export const resolveCoordinatedScheduleUpdate = (
+  diag: DeferredObjectiveDiagnostic,
+  objectiveChanged: boolean,
+  committedHours: readonly DeferredObjectiveActivePlanHourV1[],
+  latest: DeferredObjectiveActivePlanRevisionV1,
+  liveHours: DeferredObjectiveActivePlanHourV1[],
+  nowMs: number,
+  metadataDrifted: boolean,
+): {
   replaceCommitment: boolean;
   effectiveHours: DeferredObjectiveActivePlanHourV1[];
   scheduleChanged: boolean;
   metadataDriftedWithinSchedule: boolean;
 } => {
   const replaceCommitment = [
-    params.objectiveChanged,
-    params.diag.replaceCommitment === true,
+    objectiveChanged,
+    diag.replaceCommitment === true,
   ].includes(true);
   const mergedHours = replaceCommitment
-    ? params.liveHours
-    : mergeHoursPreservingCommitment(params.committedHours, params.liveHours, params.nowMs);
+    ? liveHours
+    : mergeHoursPreservingCommitment(committedHours, liveHours, nowMs);
   const effectiveHours = stampCheaperHourAhead(
-    stampUnitMilestones(mergedHours, params.diag, params.nowMs),
-    params.diag,
+    stampUnitMilestones(mergedHours, diag, nowMs),
+    diag,
   );
-  const scheduleChanged = !sameHourSchedule(params.latest.hours, effectiveHours);
-  const priorityAllocationChanged = !samePriorityAllocation(params.latest.hours, effectiveHours);
-  const coordinatedAllocationChanged = !sameAdmissionAllocation(params.latest.hours, effectiveHours)
-    || (params.diag.replaceCommitment === true && priorityAllocationChanged);
+  const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);
+  const priorityAllocationChanged = !samePriorityAllocation(latest.hours, effectiveHours);
+  const coordinatedAllocationChanged = !sameAdmissionAllocation(latest.hours, effectiveHours)
+    || (diag.replaceCommitment === true && priorityAllocationChanged);
   const metadataDriftedWithinSchedule = !scheduleChanged && [
-    params.latest.allocationContextSignature !== params.diag.allocationContextSignature,
+    latest.allocationContextSignature !== diag.allocationContextSignature,
     coordinatedAllocationChanged,
-    params.metadataDrifted,
+    metadataDrifted,
   ].includes(true);
   return { replaceCommitment, effectiveHours, scheduleChanged, metadataDriftedWithinSchedule };
 };

@@ -3,6 +3,7 @@ import {
   allocateEnergyToBuckets,
   normalizeHorizonBuckets,
   type BucketAllocationResult,
+  type NormalizedBucket,
   type StepForBucket,
 } from './bucketAllocation';
 import {
@@ -58,44 +59,21 @@ export const planDeferredObjectiveHorizon = (
     input.objective.energyExpectedKWh,
     energyNeededKWh,
   );
-  const deadlineMarginMs = input.objective.deadlineMarginMs;
-  const invalidDetail = resolveInvalidDetail({
-    nowMs: input.nowMs,
-    deadlineAtMs: input.objective.deadlineAtMs,
-    energyNeededKWh,
-  });
+  const invalidDetail = resolveInvalidDetail(input.nowMs, input.objective.deadlineAtMs, energyNeededKWh);
   if (invalidDetail) {
-    return buildEmptyPlan({ input, deadlineMarginMs, energyNeededKWh, status: 'invalid', statusDetail: invalidDetail });
+    return buildEmptyPlan(input, energyNeededKWh, 'invalid', invalidDetail);
   }
   if (energyNeededKWh <= epsilonKWh) {
-    return buildEmptyPlan({
-      input,
-      deadlineMarginMs,
-      energyNeededKWh,
-      status: 'satisfied',
-      statusDetail: 'energy_already_met',
-    });
+    return buildEmptyPlan(input, energyNeededKWh, 'satisfied', 'energy_already_met');
   }
   if (input.objective.deadlineAtMs <= input.nowMs) {
-    return buildEmptyPlan({
-      input,
-      deadlineMarginMs,
-      energyNeededKWh,
-      status: 'cannot_meet',
-      statusDetail: 'deadline_passed',
-    });
+    return buildEmptyPlan(input, energyNeededKWh, 'cannot_meet', 'deadline_passed');
   }
 
   const steps = normalizeObjectiveSteps(input.steps);
   const deviceSteps = getActiveObjectiveSteps(steps);
   if (!hasObjectiveSteps(deviceSteps)) {
-    return buildEmptyPlan({
-      input,
-      deadlineMarginMs,
-      energyNeededKWh,
-      status: 'invalid',
-      statusDetail: 'missing_active_step',
-    });
+    return buildEmptyPlan(input, energyNeededKWh, 'invalid', 'missing_active_step');
   }
   // The ladder the plan books from is the rungs live admission can let run: under
   // a grid import limit a rung above its target never does
@@ -103,29 +81,14 @@ export const planDeferredObjectiveHorizon = (
   // capacity-only home keeps its whole ladder.
   const activeSteps = admitUnderPowerLimit(deviceSteps, input.powerLimit);
   if (!hasObjectiveSteps(activeSteps)) {
-    return buildEmptyPlan({
-      input,
-      deadlineMarginMs,
-      energyNeededKWh,
-      status: 'cannot_meet',
-      statusDetail: 'no_bucket_capacity',
-    });
+    return buildEmptyPlan(input, energyNeededKWh, 'cannot_meet', 'no_bucket_capacity');
   }
 
-  const buckets = normalizeHorizonBuckets({
-    nowMs: input.nowMs,
-    deadlineAtMs: input.objective.deadlineAtMs,
-    deadlineMarginMs,
-    buckets: input.buckets,
-  });
+  const buckets = normalizeHorizonBuckets(
+    input.nowMs, input.objective.deadlineAtMs, input.objective.deadlineMarginMs, input.buckets,
+  );
   if (buckets.length === 0) {
-    return buildEmptyPlan({
-      input,
-      deadlineMarginMs,
-      energyNeededKWh,
-      status: 'cannot_meet',
-      statusDetail: 'no_bucket_capacity',
-    });
+    return buildEmptyPlan(input, energyNeededKWh, 'cannot_meet', 'no_bucket_capacity');
   }
 
   // Floor commitment: by default the lowest active step is the only level we
@@ -145,48 +108,33 @@ export const planDeferredObjectiveHorizon = (
   const stepForBucket: StepForBucket = (bucket) => (
     resolveStepForBucket(bucket, activeSteps, fullyReserved, input.powerLimit)
   );
-  const allocation = resolveAllocation({
-    stepForBucket,
-    buckets,
-    commitment: input.commitment,
-    energyNeededKWh,
-    epsilonKWh,
-  });
-  const { feasibleOnClimbedBand, budgetRole } = resolveFloorFeasibility({
+  const allocation = resolveAllocation(stepForBucket, buckets, input.commitment, energyNeededKWh, epsilonKWh);
+  const floorFeasibility = resolveFloorFeasibility(
     activeSteps,
     buckets,
-    commitment: input.commitment,
+    input.commitment,
     energyNeededKWh,
     epsilonKWh,
-    floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
+    allocation.unplannedUsefulEnergyKWh,
     stepForBucket,
-  });
+  );
   const currentBucket = allocation.plannedBuckets.find((bucket) => bucket.current);
   const currentHourFacts: DeferredObjectiveCurrentHourFacts = {
     aheadOfHourMilestone: input.aheadOfHourMilestone,
     cheaperHourAhead: currentBucket !== undefined
       && hasCheaperEnergyHourAhead(allocation.plannedBuckets, currentBucket, epsilonKWh),
-    coldStartFeasible: resolveColdStartFeasible({
-      objectiveKind: input.objective.kind,
+    coldStartFeasible: resolveColdStartFeasible(
+      input.objective.kind,
       buckets,
       stepForBucket,
-      climbStep: topObjectiveStep(activeSteps),
+      topObjectiveStep(activeSteps),
       energyNeededKWh,
       epsilonKWh,
-    }),
+    ),
   };
-  return buildPlanFromAllocation({
-    input,
-    deadlineMarginMs,
-    energyNeededKWh,
-    varianceMarginKWh,
-    steps,
-    allocation,
-    epsilonKWh,
-    feasibleOnClimbedBand,
-    budgetRole,
-    currentHourFacts,
-  });
+  return buildPlanFromAllocation(
+    input, energyNeededKWh, varianceMarginKWh, steps, allocation, floorFeasibility, currentHourFacts,
+  );
 };
 
 // Resolve both floor-feasibility signals together: whether the target fits by
@@ -194,17 +142,23 @@ export const planDeferredObjectiveHorizon = (
 // daily budget accounts for what remains (`budgetRole`). The role probe
 // consumes `feasibleOnClimbedBand`, so they are resolved here in one pass to keep
 // `planDeferredObjectiveHorizon` lean.
-const resolveFloorFeasibility = (params: {
-  activeSteps: NonEmptyObjectiveSteps;
-  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  commitment: DeferredObjectiveHorizonInput['commitment'];
-  energyNeededKWh: number;
-  epsilonKWh: number;
-  floorUnplannedKWh: number;
-  stepForBucket: StepForBucket;
-}): { feasibleOnClimbedBand: boolean; budgetRole: BudgetShortfallRole } => {
-  const climbedBand = resolveClimbedBandFeasibility(params);
-  const budgetRole = resolveBudgetBoundFeasibility({ ...params, climbedBand });
+type FloorFeasibility = { feasibleOnClimbedBand: boolean; budgetRole: BudgetShortfallRole };
+
+const resolveFloorFeasibility = (
+  activeSteps: NonEmptyObjectiveSteps,
+  buckets: NormalizedBucket[],
+  commitment: DeferredObjectiveHorizonInput['commitment'],
+  energyNeededKWh: number,
+  epsilonKWh: number,
+  floorUnplannedKWh: number,
+  stepForBucket: StepForBucket,
+): FloorFeasibility => {
+  const climbedBand = resolveClimbedBandFeasibility(
+    activeSteps, buckets, commitment, energyNeededKWh, epsilonKWh, floorUnplannedKWh, stepForBucket,
+  );
+  const budgetRole = resolveBudgetBoundFeasibility(
+    activeSteps, buckets, commitment, energyNeededKWh, epsilonKWh, floorUnplannedKWh, climbedBand,
+  );
   return { feasibleOnClimbedBand: climbedBand.feasible, budgetRole };
 };
 
@@ -216,33 +170,27 @@ const resolveFloorFeasibility = (params: {
 // the same allocator can also run a climbed-band feasibility probe (see
 // `resolveClimbedBandFeasibility`) without re-introducing optimism into the
 // commitment.
-const resolveAllocation = (params: {
-  stepForBucket: StepForBucket;
-  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  commitment: DeferredObjectiveHorizonInput['commitment'];
-  energyNeededKWh: number;
-  epsilonKWh: number;
-}): BucketAllocationResult => {
-  const { stepForBucket } = params;
+const resolveAllocation = (
+  stepForBucket: StepForBucket,
+  buckets: NormalizedBucket[],
+  commitment: DeferredObjectiveHorizonInput['commitment'],
+  energyNeededKWh: number,
+  epsilonKWh: number,
+): BucketAllocationResult => {
   // Branch on commitment kind, not hours.length. An active commitment
   // with zero allocated hours (e.g. a previously stored `cannot_meet` plan)
   // must stay on the committed-replan path so the allocator cannot silently
   // recover by re-running the fresh optimizer against the new horizon.
-  if (params.commitment.kind === 'committed') {
-    return allocateCommittedEnergyToBuckets({
-      buckets: params.buckets,
+  if (commitment.kind === 'committed') {
+    return allocateCommittedEnergyToBuckets(
+      buckets,
       stepForBucket,
-      energyNeededKWh: params.energyNeededKWh,
-      epsilonKWh: params.epsilonKWh,
-      committedHours: params.commitment.hours,
-    });
+      energyNeededKWh,
+      epsilonKWh,
+      commitment.hours,
+    );
   }
-  return allocateEnergyToBuckets({
-    buckets: params.buckets,
-    stepForBucket,
-    energyNeededKWh: params.energyNeededKWh,
-    epsilonKWh: params.epsilonKWh,
-  });
+  return allocateEnergyToBuckets(buckets, stepForBucket, energyNeededKWh, epsilonKWh);
 };
 
 // A floor-step shortfall is not necessarily a miss: the executor climbs to
@@ -267,48 +215,48 @@ const resolveAllocation = (params: {
 // floor pass it would credit the budget for every kWh climbing unlocked.
 type ClimbedBandProbe = { feasible: boolean; cappedUnplannedKWh: number };
 
-const resolveClimbedBandFeasibility = (params: {
-  activeSteps: NonEmptyObjectiveSteps;
-  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  commitment: DeferredObjectiveHorizonInput['commitment'];
-  energyNeededKWh: number;
-  epsilonKWh: number;
-  floorUnplannedKWh: number;
+const resolveClimbedBandFeasibility = (
+  activeSteps: NonEmptyObjectiveSteps,
+  buckets: NormalizedBucket[],
+  commitment: DeferredObjectiveHorizonInput['commitment'],
+  energyNeededKWh: number,
+  epsilonKWh: number,
+  floorUnplannedKWh: number,
   // Per-bucket floor step resolver used by the floor pass. With per-bucket
   // promotion, different buckets land at different steps; the probe runs
   // at the highest step each bucket's own headroom forecast admits, which is
   // the feasibility upper bound the executor could actually reach there. The
   // probe is skipped when no bucket would gain capacity by climbing.
-  stepForBucket: StepForBucket;
-}): ClimbedBandProbe => {
+  stepForBucket: StepForBucket,
+): ClimbedBandProbe => {
   // Climbing gains nothing here, so the floor pass IS the capped-climbed result.
-  const climbChangesNothing = { feasible: false, cappedUnplannedKWh: params.floorUnplannedKWh };
-  if (params.floorUnplannedKWh <= params.epsilonKWh) return climbChangesNothing;
-  const topStep = topObjectiveStep(params.activeSteps);
+  const climbChangesNothing = { feasible: false, cappedUnplannedKWh: floorUnplannedKWh };
+  if (floorUnplannedKWh <= epsilonKWh) return climbChangesNothing;
+  const topStep = topObjectiveStep(activeSteps);
   // Highest rung each bucket's own headroom admits; the top rung when it has no
   // forecast. `resolveBucketStepCapacityKWh` ZEROES a bucket whose step draws more
   // than its headroom, so probing the uniform top rung answered "does not fit" for
   // every device whose ladder reaches past the hard cap, whatever the budget did.
   const climbStepFor = (bucket: { reservedHeadroomKw?: number | undefined }): DeferredObjectiveStep => (
-    resolveHighestStepWithinHeadroom(params.activeSteps, bucket.reservedHeadroomKw) ?? topStep
+    resolveHighestStepWithinHeadroom(activeSteps, bucket.reservedHeadroomKw) ?? topStep
   );
   // No bucket can gain capacity if its climb step doesn't exceed its floor step.
   // (For non-fully-reserved / single-step devices the floor is always
   // `activeSteps[0]`, so this short-circuits on a single-rung ladder — and now
   // also when every bucket's headroom already pins the climb back to the floor.)
-  const climbAddsCapacity = params.buckets.some(
-    (bucket) => climbStepFor(bucket).usefulPowerKw > params.stepForBucket(bucket).usefulPowerKw,
+  const climbAddsCapacity = buckets.some(
+    (bucket) => climbStepFor(bucket).usefulPowerKw > stepForBucket(bucket).usefulPowerKw,
   );
   if (!climbAddsCapacity) return climbChangesNothing;
-  const climbed = resolveAllocation({
-    stepForBucket: climbStepFor,
-    buckets: params.buckets,
-    commitment: params.commitment,
-    energyNeededKWh: params.energyNeededKWh,
-    epsilonKWh: params.epsilonKWh,
-  });
+  const climbed = resolveAllocation(
+    climbStepFor,
+    buckets,
+    commitment,
+    energyNeededKWh,
+    epsilonKWh,
+  );
   const cappedUnplannedKWh = climbed.unplannedUsefulEnergyKWh;
-  return { feasible: cappedUnplannedKWh <= params.epsilonKWh, cappedUnplannedKWh };
+  return { feasible: cappedUnplannedKWh <= epsilonKWh, cappedUnplannedKWh };
 };
 
 // Per-bucket floor step selection for fully-reserved smart tasks. By default
@@ -381,82 +329,61 @@ const resolveStepForBucket = (
 // the surface gains the one fact it was missing.
 type BudgetShortfallRole = 'none' | 'contributing' | 'sole';
 
-const resolveBudgetBoundFeasibility = (params: {
-  activeSteps: NonEmptyObjectiveSteps;
-  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  commitment: DeferredObjectiveHorizonInput['commitment'];
-  energyNeededKWh: number;
-  epsilonKWh: number;
-  floorUnplannedKWh: number;
-  climbedBand: ClimbedBandProbe;
-}): BudgetShortfallRole => {
+const resolveBudgetBoundFeasibility = (
+  activeSteps: NonEmptyObjectiveSteps,
+  buckets: NormalizedBucket[],
+  commitment: DeferredObjectiveHorizonInput['commitment'],
+  energyNeededKWh: number,
+  epsilonKWh: number,
+  floorUnplannedKWh: number,
+  climbedBand: ClimbedBandProbe,
+): BudgetShortfallRole => {
   // No shortfall, or climbing within the budget already fits — neither is a
   // budget-bound classification.
-  if (params.floorUnplannedKWh <= params.epsilonKWh || params.climbedBand.feasible) {
+  if (floorUnplannedKWh <= epsilonKWh || climbedBand.feasible) {
     return 'none';
   }
-  const uncappedBuckets = params.buckets.map((bucket) => ({
+  const uncappedBuckets = buckets.map((bucket) => ({
     ...bucket,
     budgetCapPolicy: 'lifted' as const,
   }));
-  const uncapped = resolveAllocation({
+  const uncapped = resolveAllocation(
     // Same per-bucket climb as the band probe, for the same reason.
-    stepForBucket: (bucket) => resolveHighestStepWithinHeadroom(
-      params.activeSteps,
+    (bucket) => resolveHighestStepWithinHeadroom(
+      activeSteps,
       bucket.reservedHeadroomKw,
-    ) ?? topObjectiveStep(params.activeSteps),
-    buckets: uncappedBuckets,
-    commitment: params.commitment,
-    energyNeededKWh: params.energyNeededKWh,
-    epsilonKWh: params.epsilonKWh,
-  });
-  if (uncapped.unplannedUsefulEnergyKWh <= params.epsilonKWh) return 'sole';
+    ) ?? topObjectiveStep(activeSteps),
+    uncappedBuckets,
+    commitment,
+    energyNeededKWh,
+    epsilonKWh,
+  );
+  if (uncapped.unplannedUsefulEnergyKWh <= epsilonKWh) return 'sole';
   // Uncapping planned strictly more and STILL missed: the budget is not the whole
   // story, but it is part of it. Compared against the CAPPED CLIMBED residue so
   // the only difference between the two allocations is the per-bucket cap.
-  const uncappingHelped = uncapped.unplannedUsefulEnergyKWh + params.epsilonKWh
-    < params.climbedBand.cappedUnplannedKWh;
+  const uncappingHelped = uncapped.unplannedUsefulEnergyKWh + epsilonKWh
+    < climbedBand.cappedUnplannedKWh;
   return uncappingHelped ? 'contributing' : 'none';
 };
 
-const buildPlanFromAllocation = (params: {
-  input: DeferredObjectiveHorizonInput;
-  deadlineMarginMs: number;
-  energyNeededKWh: number;
-  steps: DeferredObjectiveStep[];
-  allocation: BucketAllocationResult;
-  epsilonKWh: number;
-  feasibleOnClimbedBand: boolean;
-  budgetRole: BudgetShortfallRole;
-  varianceMarginKWh: number;
-  currentHourFacts: DeferredObjectiveCurrentHourFacts;
-}): DeferredObjectiveHorizonPlan => {
-  const {
-    input,
-    deadlineMarginMs,
-    energyNeededKWh,
-    steps,
-    allocation,
-    epsilonKWh,
-    feasibleOnClimbedBand,
-    budgetRole,
-    varianceMarginKWh,
-    currentHourFacts,
-  } = params;
-  const statusResult = resolveStatus({
-    allocation,
-    epsilonKWh,
-    feasibleOnClimbedBand,
-    budgetRole,
-    varianceMarginKWh,
-  });
+const buildPlanFromAllocation = (
+  input: DeferredObjectiveHorizonInput,
+  energyNeededKWh: number,
+  varianceMarginKWh: number,
+  steps: DeferredObjectiveStep[],
+  allocation: BucketAllocationResult,
+  floorFeasibility: FloorFeasibility,
+  currentHourFacts: DeferredObjectiveCurrentHourFacts,
+): DeferredObjectiveHorizonPlan => {
+  const { deadlineMarginMs } = input.objective;
+  const { budgetRole } = floorFeasibility;
+  const statusResult = resolveStatus(
+    allocation, ENERGY_EPSILON_KWH, floorFeasibility.feasibleOnClimbedBand, budgetRole, varianceMarginKWh,
+  );
   const floorShortfallCause = resolveFloorShortfallCause(statusResult.statusDetail);
   const plannedBuckets = bookBuckets(allocation.plannedBuckets, needsEveryHour(floorShortfallCause));
-  const currentBucket = resolveCurrentBucketPlan({
-    plannedBuckets,
-    steps,
-    epsilonKWh,
-  });
+  const currentBucket = resolveCurrentBucketPlan(plannedBuckets, steps, ENERGY_EPSILON_KWH);
 
   return {
     objectiveId: input.objective.id,
@@ -479,32 +406,27 @@ const buildPlanFromAllocation = (params: {
     currentHourFacts,
     // The cause is the same signal the recorder persists onto the revision, so the
     // frozen mid-hour read replays exactly this verdict instead of recomputing one.
-    currentHourClaim: resolveCurrentHourClaim({
-      currentHourBooking: resolveCurrentHourBooking(currentBucket),
-      facts: currentHourFacts,
+    currentHourClaim: resolveCurrentHourClaim(
+      resolveCurrentHourBooking(currentBucket),
+      currentHourFacts,
       floorShortfallCause,
-    }),
+    ),
   };
 };
 
-const resolveCurrentBucketPlan = (params: {
-  plannedBuckets: DeferredObjectivePlannedBucket[];
-  steps: DeferredObjectiveStep[];
-  epsilonKWh: number;
-}): DeferredObjectiveCurrentBucketPlan | null => {
-  const {
-    plannedBuckets,
-    steps,
-    epsilonKWh,
-  } = params;
+const resolveCurrentBucketPlan = (
+  plannedBuckets: DeferredObjectivePlannedBucket[],
+  steps: DeferredObjectiveStep[],
+  epsilonKWh: number,
+): DeferredObjectiveCurrentBucketPlan | null => {
   const currentBucket = plannedBuckets.find((bucket) => bucket.current) ?? null;
   if (!currentBucket) return null;
-  const requestedStep = selectMinimumStepForEnergy({
+  const requestedStep = selectMinimumStepForEnergy(
     steps,
-    energyKWh: currentBucket.plannedUsefulEnergyKWh,
-    durationHours: currentBucket.durationHours,
+    currentBucket.plannedUsefulEnergyKWh,
+    currentBucket.durationHours,
     epsilonKWh,
-  });
+  );
   return {
     bucketId: currentBucket.id,
     sourceBucketId: currentBucket.sourceBucketId,
@@ -514,20 +436,13 @@ const resolveCurrentBucketPlan = (params: {
   };
 };
 
-const resolveStatus = (params: {
-  allocation: BucketAllocationResult;
-  epsilonKWh: number;
-  feasibleOnClimbedBand: boolean;
-  budgetRole: BudgetShortfallRole;
-  varianceMarginKWh: number;
-}): { status: DeferredObjectiveHorizonStatus; statusDetail: DeferredObjectiveHorizonStatusDetail } => {
-  const {
-    allocation,
-    epsilonKWh,
-    feasibleOnClimbedBand,
-    budgetRole,
-    varianceMarginKWh,
-  } = params;
+const resolveStatus = (
+  allocation: BucketAllocationResult,
+  epsilonKWh: number,
+  feasibleOnClimbedBand: boolean,
+  budgetRole: BudgetShortfallRole,
+  varianceMarginKWh: number,
+): { status: DeferredObjectiveHorizonStatus; statusDetail: DeferredObjectiveHorizonStatusDetail } => {
   if (allocation.unplannedUsefulEnergyKWh > epsilonKWh) {
     // The guaranteed floor cannot fit the target. Only call it impossible when
     // climbing to a higher step would not fit it either; otherwise the device
@@ -565,20 +480,13 @@ const resolveStatus = (params: {
   return { status: 'on_track', statusDetail: 'planned_with_margin' };
 };
 
-const buildEmptyPlan = (params: {
-  input: DeferredObjectiveHorizonInput;
-  deadlineMarginMs: number;
-  energyNeededKWh: number;
-  status: DeferredObjectiveHorizonStatus;
-  statusDetail: DeferredObjectiveHorizonStatusDetail;
-}): DeferredObjectiveHorizonPlan => {
-  const {
-    input,
-    deadlineMarginMs,
-    energyNeededKWh,
-    status,
-    statusDetail,
-  } = params;
+const buildEmptyPlan = (
+  input: DeferredObjectiveHorizonInput,
+  energyNeededKWh: number,
+  status: DeferredObjectiveHorizonStatus,
+  statusDetail: DeferredObjectiveHorizonStatusDetail,
+): DeferredObjectiveHorizonPlan => {
+  const { deadlineMarginMs } = input.objective;
   return {
     objectiveId: input.objective.id,
     kind: input.objective.kind,
@@ -606,16 +514,11 @@ const buildEmptyPlan = (params: {
   };
 };
 
-const resolveInvalidDetail = (params: {
-  nowMs: number;
-  deadlineAtMs: number;
-  energyNeededKWh: number;
-}): DeferredObjectiveHorizonStatusDetail | null => {
-  const {
-    nowMs,
-    deadlineAtMs,
-    energyNeededKWh,
-  } = params;
+const resolveInvalidDetail = (
+  nowMs: number,
+  deadlineAtMs: number,
+  energyNeededKWh: number,
+): DeferredObjectiveHorizonStatusDetail | null => {
   if (!Number.isFinite(nowMs)) return 'invalid_now';
   if (!Number.isFinite(deadlineAtMs)) return 'invalid_deadline';
   if (!Number.isFinite(energyNeededKWh)) return 'invalid_energy';

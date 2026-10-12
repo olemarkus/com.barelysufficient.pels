@@ -112,13 +112,7 @@ const sampleStdDev = (stat: { m2: number; sampleCount: number }): number => (
   stat.sampleCount > 1 ? Math.sqrt(Math.max(0, stat.m2 / (stat.sampleCount - 1))) : 0
 );
 
-const bufferedRate = (params: {
-  mean: number;
-  sigma: number;
-  sampleCount: number;
-  k: number;
-}): number => {
-  const { mean, sigma, sampleCount, k } = params;
+const bufferedRate = (mean: number, sigma: number, sampleCount: number, k: number): number => {
   if (sampleCount < MIN_SAMPLES_FOR_BUFFER || sigma <= 0) return mean;
   // Standard error of the mean: shrinks as √n grows, so the buffer fades with
   // learning rather than persisting (and jittering) on a high-σ device.
@@ -126,24 +120,24 @@ const bufferedRate = (params: {
   return Math.min(mean + k * standardError, mean * MAX_BUFFER_MULTIPLIER);
 };
 
-export const resolveProfileEnergy = (params: {
-  powerTracker: PowerTrackerState;
-  deviceId: string;
-  objectiveKind: DeferredObjectiveKind;
-  enforcement: DeferredObjectiveEnforcement;
-  remainingUnits: number;
-  currentValue?: number;
-  progressDirection: ObjectiveProgressDirection;
-}): DeferredObjectiveEnergyResolution => {
+export const resolveProfileEnergy = (
+  powerTracker: PowerTrackerState,
+  deviceId: string,
+  objectiveKind: DeferredObjectiveKind,
+  enforcement: DeferredObjectiveEnforcement,
+  remainingUnits: number,
+  progressDirection: ObjectiveProgressDirection,
+  currentValue?: number,
+): DeferredObjectiveEnergyResolution => {
   // An energy task's remaining units are kWh. The device's learned profile is
   // a rate per °C or per % and has nothing to say about it — reading it here
   // would size a 6 kWh task as 6 × (kWh per °C) — so the exact rate short-
   // circuits before the profile is consulted, and there is no variance to
   // buffer: the energy still owed is the energy still owed.
-  if (params.objectiveKind === 'energy') {
+  if (objectiveKind === 'energy') {
     return {
-      energyNeededKWh: params.remainingUnits,
-      energyExpectedKWh: params.remainingUnits,
+      energyNeededKWh: remainingUnits,
+      energyExpectedKWh: remainingUnits,
       kWhPerUnit: 1,
       kWhPerUnitBuffered: 1,
       // Not a learned mean: the deviation detector has no drift to watch.
@@ -154,18 +148,18 @@ export const resolveProfileEnergy = (params: {
       reasonCode: null,
     };
   }
-  const profile = params.powerTracker.objectiveProfiles?.[params.deviceId];
-  const directionProfile = resolveDirectionProfile(profile, params.progressDirection);
+  const profile = powerTracker.objectiveProfiles?.[deviceId];
+  const directionProfile = resolveDirectionProfile(profile, progressDirection);
   const kWhPerUnit = directionProfile?.kwhPerUnit;
   if (kWhPerUnit && Number.isFinite(kWhPerUnit.mean) && kWhPerUnit.mean > 0) {
-    return buildLearnedResolution({
-      profile: directionProfile,
+    return buildLearnedResolution(
+      directionProfile,
       kWhPerUnit,
-      remainingUnits: params.remainingUnits,
-      currentValue: params.currentValue,
-      progressDirection: params.progressDirection,
-      k: resolveBufferK(params.enforcement),
-    });
+      remainingUnits,
+      currentValue,
+      progressDirection,
+      resolveBufferK(enforcement),
+    );
   }
   // Bootstrap fallback for EV SoC objectives: SoC reporting depends on a
   // plugged-in charge session, so a learned `kwhPerUnit` often isn't available
@@ -173,8 +167,8 @@ export const resolveProfileEnergy = (params: {
   // the planner can produce a useful allocation immediately; the very next
   // accepted profile sample takes over and an automatic `rate_refined`
   // revision is written when the allocation shifts.
-  if (params.objectiveKind === 'ev_soc') {
-    const bootstrapEnergyKWh = params.remainingUnits * BOOTSTRAP_EV_SOC_KWH_PER_PERCENT;
+  if (objectiveKind === 'ev_soc') {
+    const bootstrapEnergyKWh = remainingUnits * BOOTSTRAP_EV_SOC_KWH_PER_PERCENT;
     return {
       // No learned σ yet, so the planned and expected figures coincide — the
       // bootstrap constant is already conservative-high.
@@ -230,28 +224,18 @@ const resolveDirectionProfile = (
   return undefined;
 };
 
-const buildLearnedResolution = (params: {
-  profile: Pick<DeviceObjectiveProfile, 'bands'> | undefined;
-  kWhPerUnit: ObjectiveProfileStat;
-  remainingUnits: number;
-  currentValue: number | undefined;
-  progressDirection: ObjectiveProgressDirection;
-  k: number;
-}): DeferredObjectiveEnergyResolution => {
-  const { profile, kWhPerUnit, remainingUnits, currentValue, progressDirection, k } = params;
+const buildLearnedResolution = (
+  profile: Pick<DeviceObjectiveProfile, 'bands'> | undefined,
+  kWhPerUnit: ObjectiveProfileStat,
+  remainingUnits: number,
+  currentValue: number | undefined,
+  progressDirection: ObjectiveProgressDirection,
+  k: number,
+): DeferredObjectiveEnergyResolution => {
   const globalMean = kWhPerUnit.mean;
   const globalSigma = sampleStdDev(kWhPerUnit);
   const globalSampleCount = kWhPerUnit.sampleCount;
-  const banded = integrateBands({
-    bands: profile?.bands,
-    globalMean,
-    globalSigma,
-    globalSampleCount,
-    remainingUnits,
-    currentValue,
-    progressDirection,
-    k,
-  });
+  const banded = integrateBands(profile?.bands, kWhPerUnit, remainingUnits, currentValue, progressDirection, k);
   // `banded` is now null for exactly one reason — no usable `currentValue`, so
   // there is no interval to integrate over. It used to ALSO be null whenever the
   // profile had no bands, which made these `??`s look like a choice between two
@@ -259,7 +243,7 @@ const buildLearnedResolution = (params: {
   // the unbanded case itself through its uncovered-units tail.
   const energyExpectedKWh = banded?.energyExpectedKWh ?? remainingUnits * globalMean;
   const energyNeededKWh = banded?.energyPlannedKWh
-    ?? remainingUnits * bufferedRate({ mean: globalMean, sigma: globalSigma, sampleCount: globalSampleCount, k });
+    ?? remainingUnits * bufferedRate(globalMean, globalSigma, globalSampleCount, k);
   // Displayed learned rate stays at the *expected* mean (integrated total over
   // remainingUnits) so "Energy needed per °C" reflects what PELS measured, not
   // the planning buffer; for the unbanded fallback this collapses to globalMean.
@@ -276,13 +260,13 @@ const buildLearnedResolution = (params: {
     // Stable cross-time statistic for measured_deviation (see the type comment).
     kWhPerUnitMean: globalMean,
     rateConfidence: kWhPerUnit.confidence,
-    displayConfidence: resolveDisplayConfidence({
-      bands: profile?.bands,
-      globalConfidence: kWhPerUnit.confidence,
+    displayConfidence: resolveDisplayConfidence(
+      profile?.bands,
+      kWhPerUnit.confidence,
       remainingUnits,
       currentValue,
       progressDirection,
-    }),
+    ),
     kwhPerUnitSource: 'learned',
     reasonCode: null,
   };
@@ -300,14 +284,13 @@ const buildLearnedResolution = (params: {
 // Producer-side per `feedback_layering_resolution_in_producer.md`: the UI
 // consumes the flat value and never branches on bands or per-band fields.
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-export const resolveDisplayConfidence = (params: {
-  bands: ObjectiveProfileBand[] | undefined;
-  globalConfidence: ObjectiveProfileConfidence;
-  remainingUnits: number;
-  currentValue: number | undefined;
-  progressDirection: ObjectiveProgressDirection;
-}): ObjectiveProfileConfidence => {
-  const { bands, globalConfidence, remainingUnits, currentValue, progressDirection } = params;
+export const resolveDisplayConfidence = (
+  bands: ObjectiveProfileBand[] | undefined,
+  globalConfidence: ObjectiveProfileConfidence,
+  remainingUnits: number,
+  currentValue: number | undefined,
+  progressDirection: ObjectiveProgressDirection,
+): ObjectiveProfileConfidence => {
   if (!bands || bands.length === 0) return globalConfidence;
   if (typeof currentValue !== 'number' || !Number.isFinite(currentValue)) return globalConfidence;
   if (remainingUnits <= 0) return globalConfidence;
@@ -370,19 +353,18 @@ const minConfidence = (values: ObjectiveProfileConfidence[]): ObjectiveProfileCo
 // energy figure on untrustworthy progress. That guard is doing three jobs at
 // once (no band dimension for `generic_energy`, untrustworthy progress, missing
 // measurement) and wants splitting into three distinct answers.
-const integrateBands = (params: {
-  bands: ObjectiveProfileBand[] | undefined;
-  globalMean: number;
-  globalSigma: number;
-  globalSampleCount: number;
-  remainingUnits: number;
-  currentValue: number | undefined;
-  progressDirection: ObjectiveProgressDirection;
-  k: number;
-}): { energyExpectedKWh: number; energyPlannedKWh: number } | null => {
-  const {
-    bands, globalMean, globalSigma, globalSampleCount, remainingUnits, currentValue, progressDirection, k,
-  } = params;
+const integrateBands = (
+  bands: ObjectiveProfileBand[] | undefined,
+  // The global learned rate: the fallback for every slice the bands can't support.
+  kWhPerUnit: ObjectiveProfileStat,
+  remainingUnits: number,
+  currentValue: number | undefined,
+  progressDirection: ObjectiveProgressDirection,
+  k: number,
+): { energyExpectedKWh: number; energyPlannedKWh: number } | null => {
+  const globalMean = kWhPerUnit.mean;
+  const globalSigma = sampleStdDev(kWhPerUnit);
+  const globalSampleCount = kWhPerUnit.sampleCount;
   if (typeof currentValue !== 'number' || !Number.isFinite(currentValue)) return null;
   if (remainingUnits <= 0) return { energyExpectedKWh: 0, energyPlannedKWh: 0 };
   const targetValue = currentValue + (progressDirection === 'increasing' ? remainingUnits : -remainingUnits);
@@ -401,16 +383,14 @@ const integrateBands = (params: {
     const sigma = useBand ? sampleStdDev(band) : globalSigma;
     const sampleCount = useBand ? band.sampleCount : globalSampleCount;
     expected += overlap * mean;
-    planned += overlap * bufferedRate({ mean, sigma, sampleCount, k });
+    planned += overlap * bufferedRate(mean, sigma, sampleCount, k);
     coveredUnits += overlap;
   }
   // Bands may not cover the entire interval between current and target — any
   // portion outside the observed range gets the global mean (buffered for the plan).
   const uncoveredUnits = Math.max(0, remainingUnits - coveredUnits);
   expected += uncoveredUnits * globalMean;
-  planned += uncoveredUnits * bufferedRate({
-    mean: globalMean, sigma: globalSigma, sampleCount: globalSampleCount, k,
-  });
+  planned += uncoveredUnits * bufferedRate(globalMean, globalSigma, globalSampleCount, k);
   return { energyExpectedKWh: expected, energyPlannedKWh: planned };
 };
 

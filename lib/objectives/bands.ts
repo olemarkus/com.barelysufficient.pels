@@ -117,7 +117,7 @@ export function resolveKwhPerUnitStat(
     m2,
     min: Math.min(...rates),
     max: Math.max(...rates),
-    confidence: resolveProfileConfidence({ sampleCount, mean, m2 }),
+    confidence: resolveProfileConfidence(sampleCount, mean, m2),
     lastUpdatedMs,
   };
 }
@@ -285,7 +285,7 @@ function buildBandFromSlice(
     sampleCount,
     mean,
     m2,
-    confidence: resolveProfileConfidence({ sampleCount, mean, m2 }),
+    confidence: resolveProfileConfidence(sampleCount, mean, m2),
   };
 }
 

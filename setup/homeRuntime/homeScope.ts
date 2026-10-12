@@ -1,4 +1,3 @@
-import { requireDeferredObjectivePlanHistoryRecorder } from '../appInit/deferredRecorders';
 /**
  * Per-home closure bundle for the plan factories
  * (`setup/appInit/createPlanEngine.ts`, `setup/appInit/createPlanService.ts`)
@@ -31,7 +30,6 @@ import { requireDeferredObjectivePlanHistoryRecorder } from '../appInit/deferred
  */
 import { requireBatteryControl, requirePlanService } from '../appInit/contextGuards';
 import { mainStorageLane } from '../appInit/createBatteryControl';
-import { requireDeferredObjectiveEnergyDelivery } from '../appInit/deferredRecorders';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import type { PendingTargetObservationSource, PlanInputDevice } from '../../lib/plan/planTypes';
@@ -47,8 +45,7 @@ import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingB
 // exports the plan factories, which import this module — going through the
 // barrel would create a module cycle.
 import { buildHomePlanDevices } from './planDevicePrePass';
-import { createObjectivePriceHorizonBuilder } from '../appInit/objectivePriceHorizon';
-import { resolveSmartTaskDeviceExclusion } from '../appInit/smartTaskHomeScope';
+import { buildTaskEvaluationSource } from '../appInit/taskEvaluationSource';
 import {
   createTrustedDeferredObjectiveSettingsReader,
   DeferredObjectiveDecorationController,
@@ -206,56 +203,22 @@ export function buildMainHomeScope(
   isHomeWideFenced: () => boolean,
 ): HomeScope {
   const homeId: HomeId = MAIN_HOME_ID;
-  const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   // Smart-task controller: lives in the app-wiring layer so the planner engine
   // (lib/plan) imports nothing from lib/objectives. The engine receives only the
   // opaque `decorateDeferredObjectives` closure below, keeping the planner's
   // input path free of smart-task imports. Lifecycle fallback reaches the
   // executor through a separate setup-wired port. Constructed here
   // (the scope build site) so a sub-home scope can omit it wholesale; every
-  // controller dep is a lazy getter, so building it before the price/plan
+  // source member is a lazy getter, so building it before the price/plan
   // services exist is safe.
-  const deferredObjectiveController = new DeferredObjectiveDecorationController({
-    getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
-    getDeferredObjectiveSettings: () => {
-      // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
-      // migration: idempotent + marker-gated (a cheap single `get` once done), so
-      // retrying on the plan cycle makes legacy objectives visible within seconds
-      // instead of staying invisible (planner + UI) until the next app restart.
-      return readTrustedObjectiveSettings();
-    },
-    getDeferredObjectiveActivePlans: () => (
-      ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
-    ),
-    getTimeZone: () => ctx.getTimeZone(),
-    getPowerTracker: () => ctx.powerTracker,
-    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
-    getCapacitySettings: () => ctx.capacitySettings,
-    hasSolarProduction: () => ctx.deviceReads.hasProductionCandidate(),
-    getPrioritiesForDevices,
-    // Allocation-horizon price source, resolved from the price layer; shared
-    // single source of truth so the objectives subsystem stays free of `lib/price`.
-    buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
-    // A device out of the main planning lane resolves to its own dedicated
-    // unknown diagnostic (never planned) instead of masquerading as a missing
-    // device: `objective_device_in_sub_home` for multi-home v1 scope,
-    // `objective_device_unmanaged` when the owner turned "Managed by PELS" off.
-    // Membership absent (boot window / bare test contexts) with no sub-homes and
-    // no explicit opt-out → `null` for every device, preserving exact
-    // single-home behavior.
-    resolveDeviceExclusion: (deviceId) => resolveSmartTaskDeviceExclusion(ctx, deviceId),
-    // The same idle-classifier reader the lifecycle emitter gets, so both lanes
-    // allocate lower-priority tasks against the same reservation ledger.
-    isReservationSuppressed: (deviceId, deadlineAtMs) => (
-      requireDeferredObjectivePlanHistoryRecorder(ctx).isReservationSuppressed(deviceId, deadlineAtMs)
-    ),
-    getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
-    // The count the lifecycle clock books, read lazily: the tracker is built
-    // with the plan runtime, after this scope.
-    getDeliveredEnergyKWh: (deviceId, deadlineAtMs) => (
-      requireDeferredObjectiveEnergyDelivery(ctx).getDeliveredKWh(deviceId, deadlineAtMs)
-    ),
-  });
+  const deferredObjectiveController = new DeferredObjectiveDecorationController(
+    buildTaskEvaluationSource(ctx, getPrioritiesForDevices),
+    // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
+    // migration: idempotent + marker-gated (a cheap single `get` once done), so
+    // retrying on the plan cycle makes legacy objectives visible within seconds
+    // instead of staying invisible (planner + UI) until the next app restart.
+    createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings),
+  );
   const binaryCommandReachability = createHomeCommandReachability(ctx, homeId, (trigger) => {
     void requirePlanService(ctx).rebuildPlanFromCache(trigger);
   });

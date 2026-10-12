@@ -64,10 +64,13 @@ describe('resolveObjectiveProgress under a car limit', () => {
     );
     expect(progress.reasonCode).toBeNull();
     if (progress.reasonCode !== null) throw new Error('Expected trusted EV progress');
-    const energy = resolveProgressEnergy({
-      powerTracker: partialDouble<PowerTrackerState>({ objectiveProfiles: {} }),
-      deviceId: 'ev', objective: evTask, remainingUnits: progress.remainingUnits, progress,
-    });
+    const energy = resolveProgressEnergy(
+      partialDouble<PowerTrackerState>({ objectiveProfiles: {} }),
+      'ev',
+      evTask,
+      progress.remainingUnits,
+      progress,
+    );
     expect(progress.remainingUnits).toBe(80);
     expect(energy.energyNeededKWh).toBe(80);
     expect(energy.energyExpectedKWh).toBe(80);

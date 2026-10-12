@@ -2,7 +2,7 @@ import { getDebugEmitter } from '../../lib/logging/logger';
 import type { AppContext } from '../../lib/app/appContext';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
-import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
+import { buildTaskEvaluationSource } from './taskEvaluationSource';
 import {
   resolveSmartTaskDeviceExclusion,
   resolveSmartTaskHomeScope,
@@ -216,6 +216,7 @@ export function createDeferredObjectiveLifecycleEmitter(
   let lastWatermarkPersistMs = 0;
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   return new DeferredObjectiveLifecycleEmitter({
+    source: buildTaskEvaluationSource(ctx, getPrioritiesForDevices),
     getDeferredObjectiveSettings: () => {
       // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
       // migration: idempotent + marker-gated (a cheap single `get` once done),
@@ -223,26 +224,8 @@ export function createDeferredObjectiveLifecycleEmitter(
       // seconds instead of staying invisible until the next app restart.
       return readTrustedObjectiveSettings();
     },
-    getTimeZone: () => ctx.getTimeZone(),
     getDevices: () => requirePlanService(ctx).getPlanDevices(),
-    getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
-    getPowerTracker: () => ctx.powerTracker,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
-    // Allocation-horizon price source, resolved from the price layer; shared
-    // single source of truth (see `createObjectivePriceHorizonBuilder`).
-    buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
-    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
-    getDeferredObjectiveActivePlans: () => (
-      ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
-    ),
-    getCapacitySettings: () => ctx.capacitySettings,
-    hasSolarProduction: () => ctx.deviceReads.hasProductionCandidate(),
-    getPrioritiesForDevices,
-    // An excluded task's lifecycle diagnostics carry the dedicated code for
-    // their exclusion (relocated → `objective_device_in_sub_home`, unmanaged →
-    // `objective_device_unmanaged`), and the eligible-count denominator
-    // excludes it (see the dep's doc on the emitter).
-    resolveDeviceExclusion: (deviceId) => resolveSmartTaskDeviceExclusion(ctx, deviceId),
     getDeferredObjectiveDebugStructured: () => (
       getDebugEmitter('deferred_objectives', 'deferred_objectives')
     ),
@@ -295,11 +278,7 @@ export function createDeferredObjectiveLifecycleEmitter(
       recorder.observe(diagnostics, nowMs);
       recorder.flushIfDirty();
     },
-    getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
     energyDelivery: requireDeferredObjectiveEnergyDelivery(ctx),
-    isReservationSuppressed: (deviceId, deadlineAtMs) => (
-      requireDeferredObjectivePlanHistoryRecorder(ctx).isReservationSuppressed(deviceId, deadlineAtMs)
-    ),
     getDeliveryEvidence: (deviceId, deadlineAtMs) => (
       requireDeferredObjectivePlanHistoryRecorder(ctx).getDeliveryEvidence(deviceId, deadlineAtMs)
     ),

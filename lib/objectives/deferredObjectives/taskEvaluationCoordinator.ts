@@ -13,7 +13,12 @@ import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/daily
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { ObjectiveDeviceInput } from '../../objectives/types';
+import {
+  resolveObjectiveDeviceInputs,
+  type ObjectiveDeviceInput,
+  type ObjectiveDeviceSource,
+} from '../../objectives/types';
+import type { ThermalDirection } from '../../../packages/contracts/src/types';
 import type { DeliveredEnergyReader } from './energyDelivery';
 import { resolveHighestObjectiveAdmissionPowerKw, resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
@@ -61,7 +66,6 @@ import {
   buildKnownEnergyFields,
   mergeProgressFields,
   resolveProgressEnergy,
-  UNRESOLVED_PROGRESS,
   withUnavailableTrajectory,
   ZERO_ENERGY_RESOLUTION,
 } from './diagnosticFields';
@@ -71,16 +75,13 @@ import {
   EMPTY_POLICY_HORIZON,
   resolveDeadlineBoundFrozenReadInputs,
 } from './frozenDiagnostic';
-import type { FrozenReadInputs } from './frozenHorizonPlan';
+import { buildFrozenHorizonPlan, type FrozenReadInputs } from './frozenHorizonPlan';
 import {
   buildFreshDiagnostic,
   buildHorizonUnavailableDiagnostic,
 } from './freshDiagnostic';
 
-export type {
-  BuildPriceHorizon,
-  DeferredObjectiveDiagnostic,
-} from './diagnosticTypes';
+export type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export type TaskEvaluationReport = { evaluation: TaskEvaluation; diagnostic: DeferredObjectiveDiagnostic };
 
@@ -97,7 +98,7 @@ const holdsHigherPriorityLoad = (
 
 const canAcceptThermalCompletion = (
   objective: DeferredObjectiveSettingsEntry,
-  activePlans: DeferredObjectiveActivePlansV1 | null,
+  activePlans: DeferredObjectiveActivePlansV1,
   deviceId: string,
 ): boolean => objective.kind === 'temperature'
   && hasEstablishedActivePlan(activePlans, deviceId, objective.deadlineAtMs);
@@ -123,7 +124,7 @@ export type TaskEvaluationSnapshot = {
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
-  activePlans: DeferredObjectiveActivePlansV1 | null;
+  activePlans: DeferredObjectiveActivePlansV1;
   // The house's power-limit settings; the policy horizon and the reservation
   // ledger resolve the planning ceiling from them.
   powerLimits: PowerLimitSettings;
@@ -154,6 +155,49 @@ export type TaskEvaluationReaders = {
   getDeliveredEnergyKWh: DeliveredEnergyReader;
   isReservationSuppressed: TaskReservationReader;
 };
+
+// Everything one home's task evaluations read, bound once by the wiring layer:
+// the readers each evaluation consults, and the live household facts a cycle's
+// snapshot captures. The decoration lane, the lifecycle clock and the
+// create-task preview all evaluate through it, so they differ only in the
+// per-cycle inputs they hand `buildTaskEvaluationSnapshot`.
+export type TaskEvaluationSource = TaskEvaluationReaders & {
+  getTimeZone: () => string;
+  getThermalDirection: (deviceId: string) => ThermalDirection;
+  getPowerTracker: () => PowerTrackerState;
+  getPriceOptimizationEnabled: () => boolean;
+  getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1;
+  // The persisted power-limit settings. The planning ceiling is derived in the
+  // domain from them: `lib/power` owns the ceiling, and `setup/` answers no
+  // power question.
+  getCapacitySettings: () => PowerLimitSettings;
+  // Whether the home has solar production (a role-detected PV device): export can
+  // lift live grid headroom past the grid import target, so the plan is not cut
+  // at that target in a PV home.
+  hasSolarProduction: () => boolean;
+};
+
+// One cycle's snapshot: the lane supplies the clock, its device roster, the
+// objective roster it read and the daily-budget overlay; the source supplies the
+// rest of the household as it stands now.
+export const buildTaskEvaluationSnapshot = (
+  source: TaskEvaluationSource,
+  nowMs: number,
+  devices: readonly ObjectiveDeviceSource[],
+  settings: DeferredObjectiveSettingsV1,
+  dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+): TaskEvaluationSnapshot => ({
+  nowMs,
+  timeZone: source.getTimeZone(),
+  devices: resolveObjectiveDeviceInputs(devices, source.getThermalDirection),
+  settings,
+  powerTracker: source.getPowerTracker(),
+  dailyBudgetSnapshot,
+  priceOptimizationEnabled: source.getPriceOptimizationEnabled(),
+  activePlans: source.getDeferredObjectiveActivePlans(),
+  powerLimits: source.getCapacitySettings(),
+  hasSolarProduction: source.hasSolarProduction(),
+});
 
 // Which lane evaluates. The live lanes (lifecycle emitter, decoration) serve
 // settled commitments between settles. A preview solves its candidate fresh while
@@ -237,16 +281,16 @@ export const buildDeferredObjectiveTaskResults = (
   const { nowMs, activePlans } = snapshot;
   const deviceById = new Map(snapshot.devices.map((device) => [device.id, device]));
   const isDeviceExcluded = buildObjectiveDeviceExclusionPredicate(readers.resolveDeviceExclusion);
-  tracker.observe({ devices: snapshot.devices, nowMs, isDeviceExcluded });
-  const ordered = orderDeferredObjectives({
-    settings: snapshot.settings,
+  tracker.observe(snapshot.devices, nowMs, isDeviceExcluded);
+  const ordered = orderDeferredObjectives(
+    snapshot.settings,
     deviceById,
     isDeviceExcluded,
     tracker,
     activePlans,
     nowMs,
-    getPrioritiesForDevices: readers.getPrioritiesForDevices,
-  });
+    readers.getPrioritiesForDevices,
+  );
   const reservations: DeferredObjectivePriorityReservation[] = [];
   let higherTaskBootstrapped = false;
   const knownLoadHigherDeviceIds = new Set<string>();
@@ -262,7 +306,7 @@ export const buildDeferredObjectiveTaskResults = (
       rosterSignature,
       higherPriorityReservations: reservations,
     });
-    const latestSignature = activePlans?.plansByDeviceId[deviceId]?.latest?.allocationContextSignature;
+    const latestSignature = activePlans.plansByDeviceId[deviceId]?.latest?.allocationContextSignature;
     // Legacy single-task revisions have no coordination signature, but their
     // frozen commitment is still safe to serve until the ordinary :58 settle.
     // Legacy lower tasks must replan immediately to prevent residual overbooking.
@@ -283,14 +327,14 @@ export const buildDeferredObjectiveTaskResults = (
       isPreviewCandidate(lane, deviceId),
     );
     const diagnostic = buildDeferredObjectiveDiagnostic(snapshot, readers, task, reservations, forceFreshAllocation);
-    const contentionEvaluation = resolveHigherPriorityContentionEvaluation({
-      evaluation: diagnostic.evaluation,
-      higherPriorityReservations: reservations,
-      higherPriorityUnbookedPowerKw: task.higherPriorityUnbookedPowerKw,
-      buildWithoutReservations: () => buildDeferredObjectiveDiagnostic(
+    const contentionEvaluation = resolveHigherPriorityContentionEvaluation(
+      diagnostic.evaluation,
+      reservations,
+      task.higherPriorityUnbookedPowerKw,
+      () => buildDeferredObjectiveDiagnostic(
         snapshot, readers, { ...task, higherPriorityUnbookedPowerKw: 0 }, [], true,
       ).evaluation,
-    });
+    );
     const contentionResolved = reportHigherPriorityContention(diagnostic, contentionEvaluation);
     const freshAllocation = contentionEvaluation.planning.kind === 'allocated'
       && contentionEvaluation.planning.plan.frozenRead !== true;
@@ -313,14 +357,14 @@ export const buildDeferredObjectiveTaskResults = (
     const governs = holdsBookings && governsItsDevice(task, evaluationResult, nowMs);
     if (reservesItsBookings(holdsBookings, governs, device)) {
       const previousReservationCount = reservations.length;
-      reservations.push(...buildPriorityReservations({
-        evaluation: coordinated.evaluation,
+      reservations.push(...buildPriorityReservations(
+        coordinated.evaluation,
         objective,
         device,
         activePlans,
-        powerLimits: snapshot.powerLimits,
+        snapshot.powerLimits,
         nowMs,
-      }));
+      ));
       if (freshAllocation && reservations.length > previousReservationCount) {
         higherTaskBootstrapped = true;
       }
@@ -352,14 +396,10 @@ const buildExcludedObjectiveDiagnostics = (
     // The device may well be present (or planner scoping may have dropped it)
     // — either way the honest story is the exclusion itself ("out of the main
     // home's meter scope", "not managed"), never "missing device".
-    return exclusion === null ? [] : [withUnavailableTrajectory(buildDiagnosticBase({
-      deviceId,
-      device: deviceById.get(deviceId),
-      objective,
-      timeZone,
-      powerTracker,
-      ...UNRESOLVED_PROGRESS,
-    }), OBJECTIVE_EXCLUSION_REASON_CODES[exclusion])];
+    return exclusion === null ? [] : [withUnavailableTrajectory(
+      buildDiagnosticBase(deviceId, deviceById.get(deviceId), objective, timeZone, powerTracker),
+      OBJECTIVE_EXCLUSION_REASON_CODES[exclusion],
+    )];
   })
 );
 /* eslint-enable functional/immutable-data */
@@ -376,14 +416,9 @@ const hasDevice = (task: CoordinatedDeferredObjective): task is PresentDeferredO
 const buildTaskDiagnosticBase = (
   snapshot: TaskEvaluationSnapshot,
   task: CoordinatedDeferredObjective,
-): DeferredObjectiveDiagnostic => buildDiagnosticBase({
-  deviceId: task.deviceId,
-  device: task.device,
-  objective: task.objective,
-  timeZone: snapshot.timeZone,
-  powerTracker: snapshot.powerTracker,
-  ...UNRESOLVED_PROGRESS,
-});
+): DeferredObjectiveDiagnostic => buildDiagnosticBase(
+  task.deviceId, task.device, task.objective, snapshot.timeZone, snapshot.powerTracker,
+);
 
 // One objective, given the reservations of the tasks ahead of it. Every caller
 // goes through `buildDeferredObjectiveTaskResults`, which supplies that ledger.
@@ -435,13 +470,13 @@ const buildDeferredObjectiveDiagnostic = (
   // to inactive for want of a live horizon (transient price/budget-snapshot gap, or
   // a gap that coincides with the settle window). See
   // notes/deferred-load-objectives/execution-adaptation.md.
-  const frozenFallback = resolveDeadlineBoundFrozenReadInputs({
-    activePlans,
+  const frozenFallback = resolveDeadlineBoundFrozenReadInputs(
     deviceId,
     objective,
-    progressDirection: progress.progressDirection,
+    progress.progressDirection,
     nowMs,
-  });
+    activePlans,
+  );
   const rawPolicyHorizon = buildDeadlineAwarePolicyHorizon(horizonInputs);
   // Price optimization turned OFF is a deliberate config state, not a transient data
   // gap: the deferred objective is price-dependent, so it goes inactive (the device
@@ -526,7 +561,7 @@ const buildDiagnosticWithPolicyHorizon = (
   if (progress.reasonCode) return unknownWithProgress(progress.reasonCode);
 
   const profileEnergy: DeferredObjectiveEnergyResolution = progress.remainingUnits > 0
-    ? resolveProgressEnergy({ powerTracker, deviceId, objective, remainingUnits: progress.remainingUnits, progress })
+    ? resolveProgressEnergy(powerTracker, deviceId, objective, progress.remainingUnits, progress)
     : ZERO_ENERGY_RESOLUTION;
   if (profileEnergy.reasonCode) return unknownWithProgress(profileEnergy.reasonCode);
 
@@ -549,12 +584,12 @@ const buildDiagnosticWithPolicyHorizon = (
     return unknownWithProgress('objective_missing_charge_rate', buildKnownEnergyFields({ objective, profileEnergy }));
   }
 
-  const activeCommittedPlan = resolveActiveCommittedPlan({
-    activePlans: snapshot.activePlans,
+  const activeCommittedPlan = resolveActiveCommittedPlan(
     deviceId,
     objective,
-    progressDirection: progress.progressDirection,
-  });
+    progress.progressDirection,
+    snapshot.activePlans,
+  );
   const commitment = activeCommittedPlan?.commitmentHours;
   const milestoneHours = effectiveFrozenRead ? effectiveFrozenRead.hours : (activeCommittedPlan?.latest.hours ?? []);
   // Trajectory gate for mid-execution price deferral. Resolved here (not in the
@@ -571,16 +606,16 @@ const buildDiagnosticWithPolicyHorizon = (
   // `energyNeededKWh` is the buffered floor for the current remaining units. A
   // stale read returns `remainingUnits: 0 ⇒ energyNeededKWh: 0`, which would
   // falsely read "ahead" — so the gate must never be relocated past that guard.
-  const aheadOfHourMilestone = isAheadOfHourMilestone({
-    energyNeededKWh: profileEnergy.energyNeededKWh,
+  const aheadOfHourMilestone = isAheadOfHourMilestone(
+    profileEnergy.energyNeededKWh,
+    progress.progressDirection,
+    milestoneHours,
+    nowMs,
     // Live measured progress in the objective's own unit — drives the preferred
     // unit-milestone comparison (rate-free); `energyNeededKWh` is the legacy
     // fallback for commitments without persisted `plannedUnitMilestone`.
-    measuredValue: progress.currentValue,
-    progressDirection: progress.progressDirection,
-    committedHours: milestoneHours,
-    nowMs,
-  });
+    progress.currentValue,
+  );
   // Mid-hour frozen read: assemble from the persisted commitment + the live measured
   // value (folded into `aheadOfHourMilestone`), skipping the allocator. The caller
   // sets `frozenRead` exactly when it has decided to serve frozen rather than
@@ -589,18 +624,12 @@ const buildDiagnosticWithPolicyHorizon = (
   // milestone; whether the current hour was booked at all is the allocator's `:58`
   // decision, read off the commitment).
   if (effectiveFrozenRead) {
-    return buildFrozenDiagnostic({
-      nowMs,
-      base,
-      progress,
-      objective,
-      deviceId,
-      profileEnergy,
-      aheadOfHourMilestone,
-      steps,
-      frozenRead: effectiveFrozenRead,
-      liveStepsUnavailable,
-    });
+    const frozenPlan = buildFrozenHorizonPlan(
+      nowMs, deviceId, objective, effectiveFrozenRead, profileEnergy.energyNeededKWh, aheadOfHourMilestone, steps,
+    );
+    return buildFrozenDiagnostic(
+      task, base, progress, profileEnergy, effectiveFrozenRead, frozenPlan, liveStepsUnavailable,
+    );
   }
   const horizonPlan = resolveHorizonPlanWithRescue(
     task, profileEnergy, steps, commitment, aheadOfHourMilestone, policyHorizon, horizonInputs,

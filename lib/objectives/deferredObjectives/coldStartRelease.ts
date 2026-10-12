@@ -1,4 +1,4 @@
-import { allocateEnergyToBuckets, type StepForBucket } from './bucketAllocation';
+import { allocateEnergyToBuckets, type NormalizedBucket, type StepForBucket } from './bucketAllocation';
 import { isMeaningfullyCheaper } from './priceBand';
 import type { DeferredObjectiveKind, DeferredObjectiveStep } from './types';
 
@@ -31,23 +31,23 @@ import type { DeferredObjectiveKind, DeferredObjectiveStep } from './types';
 // capacity-shed in the cheaper hours, so releasing on that upper bound could keep
 // deferring until the window can no longer finish — excluded until observed-rate
 // feasibility lands.
-export const resolveColdStartFeasible = (params: {
-  objectiveKind: DeferredObjectiveKind;
-  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  stepForBucket: StepForBucket;
-  climbStep: DeferredObjectiveStep;
-  energyNeededKWh: number;
-  epsilonKWh: number;
-}): boolean => {
-  if (params.objectiveKind !== 'temperature') return false;
-  const current = params.buckets.find((bucket) => bucket.current);
+export const resolveColdStartFeasible = (
+  objectiveKind: DeferredObjectiveKind,
+  buckets: NormalizedBucket[],
+  stepForBucket: StepForBucket,
+  climbStep: DeferredObjectiveStep,
+  energyNeededKWh: number,
+  epsilonKWh: number,
+): boolean => {
+  if (objectiveKind !== 'temperature') return false;
+  const current = buckets.find((bucket) => bucket.current);
   // No current bucket, or a current hour with no comparable price, cannot anchor a
   // relative-price release.
   if (!current || current.price == null) return false;
   // Only a device that can climb above the current hour's floor can finish faster
   // than the floor allocation assumes; otherwise the floor booking is real.
-  if (params.climbStep.usefulPowerKw <= params.stepForBucket(current).usefulPowerKw) return false;
-  const futureCheaper = params.buckets.filter((bucket) => (
+  if (climbStep.usefulPowerKw <= stepForBucket(current).usefulPowerKw) return false;
+  const futureCheaper = buckets.filter((bucket) => (
     !bucket.current
     && !bucket.reserve
     && bucket.startMs >= current.endMs
@@ -55,11 +55,11 @@ export const resolveColdStartFeasible = (params: {
     && isMeaningfullyCheaper(bucket.price, current.price)
   ));
   if (futureCheaper.length === 0) return false;
-  const climbed = allocateEnergyToBuckets({
-    buckets: futureCheaper,
-    stepForBucket: () => params.climbStep,
-    energyNeededKWh: params.energyNeededKWh,
-    epsilonKWh: params.epsilonKWh,
-  });
-  return climbed.unplannedUsefulEnergyKWh <= params.epsilonKWh;
+  const climbed = allocateEnergyToBuckets(
+    futureCheaper,
+    () => climbStep,
+    energyNeededKWh,
+    epsilonKWh,
+  );
+  return climbed.unplannedUsefulEnergyKWh <= epsilonKWh;
 };

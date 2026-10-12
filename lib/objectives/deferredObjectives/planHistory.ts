@@ -209,7 +209,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   observe(
     diagnostics: readonly DeferredObjectiveDiagnostic[],
     nowMs: number,
-    activePlans: DeferredObjectiveActivePlansV1 | null,
+    activePlans: DeferredObjectiveActivePlansV1,
   ): void {
     const seenKeys = new Set<InProgressKey>();
     for (const diag of diagnostics) {
@@ -264,7 +264,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     rawDiagnostic: DeferredObjectiveDiagnostic,
     key: InProgressKey,
     nowMs: number,
-    activePlans: DeferredObjectiveActivePlansV1 | null,
+    activePlans: DeferredObjectiveActivePlansV1,
   ): void {
     const existing = this.inProgress.get(key);
     const diag = resolveTaskCompletionDiagnostic(rawDiagnostic,

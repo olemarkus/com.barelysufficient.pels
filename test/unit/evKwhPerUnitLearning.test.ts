@@ -59,19 +59,19 @@ const ingestEvSample = (params: {
   debugStructured?: (payload: Record<string, unknown>) => void;
 }): PowerTrackerState => {
   const { state, percent, atMs, measuredPowerKw, deviceId, debugStructured = () => undefined } = params;
-  return updateObjectiveProfilesFromSnapshot({
+  return updateObjectiveProfilesFromSnapshot(
     state,
-    devices: [
+    [
       evDevice({
         ...(deviceId ? { id: deviceId } : {}),
         ...(measuredPowerKw !== undefined ? { measuredPowerKw } : {}),
         stateOfCharge: stateOfChargeFixture({ percent, observedAtMs: atMs }),
       }),
     ],
-    nowMs: atMs,
+    atMs,
     debugStructured,
-    outdoorTemperatureC: undefined,
-  });
+    undefined,
+  );
 };
 
 const resolveEv = (params: {
@@ -79,15 +79,15 @@ const resolveEv = (params: {
   remainingUnits: number;
   currentValue?: number;
   deviceId?: string;
-}) => resolveProfileEnergy({
-  powerTracker: params.state,
-  deviceId: params.deviceId ?? 'ev-1',
-  objectiveKind: 'ev_soc',
-      progressDirection: 'increasing',
-  enforcement: 'hard',
-  remainingUnits: params.remainingUnits,
-  currentValue: params.currentValue,
-});
+}) => resolveProfileEnergy(
+  params.state,
+  params.deviceId ?? 'ev-1',
+  'ev_soc',
+  'hard',
+  params.remainingUnits,
+  'increasing',
+  params.currentValue,
+);
 
 describe('EV kWhPerUnit learning', () => {
   // The rejection-log throttle (`lib/objectives/rejectionLogging.ts`) keys

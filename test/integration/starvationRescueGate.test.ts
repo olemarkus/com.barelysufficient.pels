@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
@@ -202,18 +203,17 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     hasSolarProduction: () => false,
     getThermalDirection: () => 'heating',
     getPrioritiesForDevices: createFixturePriorityQuery(),
-    getDeferredObjectiveSettings: () => buildSettings(rescue),
     getTimeZone: () => 'UTC',
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getPriceOptimizationEnabled: () => true,
     buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(hoursInDay), nowMs, deadlineAtMs),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
-    getDeferredObjectiveActivePlans: () => null,
+    getDeferredObjectiveActivePlans: createEmptyActivePlans,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  });
+  }, () => buildSettings(rescue));
   return new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,

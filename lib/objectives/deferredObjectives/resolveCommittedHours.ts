@@ -21,19 +21,19 @@ const objectiveSignatureFor = (
 // committed smart-task control. Raw persisted plans are deliberately loose for
 // legacy/pending compatibility; this accessor keeps that defensive handling in
 // one place so callers never mix `commitment` and `latest` independently.
-export const resolveActiveCommittedPlan = (params: {
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  progressDirection: ObjectiveProgressDirectionRead;
-}): ResolvedActiveCommittedPlan | undefined => {
-  const plan = params.activePlans?.plansByDeviceId[params.deviceId];
+export const resolveActiveCommittedPlan = (
+  deviceId: string,
+  objective: DeferredObjectiveSettingsEntry,
+  progressDirection: ObjectiveProgressDirectionRead,
+  activePlans: DeferredObjectiveActivePlansV1,
+): ResolvedActiveCommittedPlan | undefined => {
+  const plan = activePlans.plansByDeviceId[deviceId];
   if (!plan || plan.pending || !plan.commitment || plan.latest == null) return undefined;
-  if (plan.deadlineAtMs !== params.objective.deadlineAtMs) return undefined;
-  if (plan.objectiveKind !== params.objective.kind) return undefined;
+  if (plan.deadlineAtMs !== objective.deadlineAtMs) return undefined;
+  if (plan.objectiveKind !== objective.kind) return undefined;
   if (compareObjectiveSignatures(
     plan.objectiveSignature,
-    objectiveSignatureFor(params.objective, params.progressDirection),
+    objectiveSignatureFor(objective, progressDirection),
   ).changed) return undefined;
   return {
     commitmentHours: plan.commitment.hours,
@@ -49,11 +49,11 @@ export const resolveActiveCommittedPlan = (params: {
 // when there is an active commitment. The caller distinguishes "no commitment"
 // from "commitment with no hours" via the `undefined` vs `[]` boundary;
 // downstream consumers must not collapse the two cases.
-export const resolveCommittedHours = (params: {
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  progressDirection: ObjectiveProgressDirectionRead;
-}): DeferredObjectiveActivePlanHourV1[] | undefined => (
-  resolveActiveCommittedPlan(params)?.commitmentHours
+export const resolveCommittedHours = (
+  deviceId: string,
+  objective: DeferredObjectiveSettingsEntry,
+  progressDirection: ObjectiveProgressDirectionRead,
+  activePlans: DeferredObjectiveActivePlansV1,
+): DeferredObjectiveActivePlanHourV1[] | undefined => (
+  resolveActiveCommittedPlan(deviceId, objective, progressDirection, activePlans)?.commitmentHours
 );

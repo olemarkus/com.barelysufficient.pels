@@ -16,12 +16,7 @@ export function applyBandedConfidence(
   if (!stat || !bands || bands.length === 0) return stat;
   return {
     ...stat,
-    confidence: resolveBandedProfileConfidence({
-      sampleCount: stat.sampleCount,
-      mean: stat.mean,
-      m2: stat.m2,
-      bands,
-    }),
+    confidence: resolveBandedProfileConfidence(stat.sampleCount, stat.mean, stat.m2, bands),
   };
 }
 
@@ -52,17 +47,12 @@ export function updateProfileStat(
     m2,
     min: Math.min(previous.min, value),
     max: Math.max(previous.max, value),
-    confidence: resolveProfileConfidence({ sampleCount, mean, m2 }),
+    confidence: resolveProfileConfidence(sampleCount, mean, m2),
     lastUpdatedMs: observedAtMs,
   };
 }
 
-export function resolveProfileConfidence(params: {
-  sampleCount: number;
-  mean: number;
-  m2: number;
-}): ObjectiveProfileConfidence {
-  const { sampleCount, mean, m2 } = params;
+export function resolveProfileConfidence(sampleCount: number, mean: number, m2: number): ObjectiveProfileConfidence {
   if (sampleCount < 4) return 'low';
   const variance = sampleCount > 1 ? m2 / (sampleCount - 1) : 0;
   const relativeStdDev = mean > 0 ? Math.sqrt(Math.max(0, variance)) / mean : Number.POSITIVE_INFINITY;
@@ -80,20 +70,19 @@ export function resolveProfileConfidence(params: {
 // tightly within each step). Falls back to the non-banded resolver when no
 // bands exist; the per-band resolver itself is unchanged because each band's
 // own m2 is already the within-band noise.
-export function resolveBandedProfileConfidence(params: {
-  sampleCount: number;
-  mean: number;
-  m2: number;
-  bands: ObjectiveProfileBand[] | undefined;
-}): ObjectiveProfileConfidence {
-  const { sampleCount, mean, m2, bands } = params;
+export function resolveBandedProfileConfidence(
+  sampleCount: number,
+  mean: number,
+  m2: number,
+  bands: ObjectiveProfileBand[] | undefined,
+): ObjectiveProfileConfidence {
   if (!bands || bands.length === 0) {
-    return resolveProfileConfidence({ sampleCount, mean, m2 });
+    return resolveProfileConfidence(sampleCount, mean, m2);
   }
   const bandSampleTotal = bands.reduce((sum, band) => sum + band.sampleCount, 0);
   const residualDof = bandSampleTotal - bands.length;
   if (residualDof <= 0) {
-    return resolveProfileConfidence({ sampleCount, mean, m2 });
+    return resolveProfileConfidence(sampleCount, mean, m2);
   }
   // Use the *sample-weighted band mean* as the RSD reference, not the lifetime
   // running `mean`. Pooled `m2` is computed from buffered samples (≤ 64); when
@@ -109,7 +98,7 @@ export function resolveBandedProfileConfidence(params: {
   ) / bandSampleTotal;
   const referenceMean = weightedBandMean > 0 ? weightedBandMean : mean;
   if (referenceMean <= 0) {
-    return resolveProfileConfidence({ sampleCount, mean, m2 });
+    return resolveProfileConfidence(sampleCount, mean, m2);
   }
   const pooledM2 = bands.reduce((sum, band) => sum + band.m2, 0);
   const pooledVariance = pooledM2 / residualDof;

@@ -152,13 +152,12 @@ type AnnounceDecision =
 
 // Resolved per diagnostic outside the emit loop so the allocations here are not
 // loop-body spreads (`no-restricted-syntax`).
-const decideAnnounce = (params: {
-  signature: string;
-  reannounceMs: number;
-  nowMs: number;
-  previous: DeferredObjectiveAnnounce | undefined;
-}): AnnounceDecision => {
-  const { signature, reannounceMs, nowMs, previous } = params;
+const decideAnnounce = (
+  signature: string,
+  reannounceMs: number,
+  nowMs: number,
+  previous: DeferredObjectiveAnnounce | undefined,
+): AnnounceDecision => {
   const unchanged = previous !== undefined && previous.signature === signature;
   if (unchanged && nowMs - previous.announcedAtMs < reannounceMs) {
     return {
@@ -188,28 +187,25 @@ const buildPayload = (
   return suppressedTicks > 0 ? { ...payload, suppressedTicks } : payload;
 };
 
-export const emitDeferredObjectiveDiagnostics = (params: {
-  diagnostics: DeferredObjectiveDiagnostic[];
-  debugStructured?: StructuredDebugEmitter;
-  nowMs: number;
-  announced: ReadonlyMap<string, DeferredObjectiveAnnounce>;
-}): ReadonlyMap<string, DeferredObjectiveAnnounce> => {
-  const {
-    diagnostics, debugStructured, nowMs, announced,
-  } = params;
+export const emitDeferredObjectiveDiagnostics = (
+  diagnostics: DeferredObjectiveDiagnostic[],
+  nowMs: number,
+  announced: ReadonlyMap<string, DeferredObjectiveAnnounce>,
+  debugStructured?: StructuredDebugEmitter,
+): ReadonlyMap<string, DeferredObjectiveAnnounce> => {
   const emit = debugStructured ?? ((payload: Record<string, unknown>) => { logger.debug(payload); });
   const nextAnnounced = new Map<string, DeferredObjectiveAnnounce>();
   for (const diagnostic of diagnostics) {
     const { trajectory } = diagnostic;
     const unavailable = trajectory.kind === 'unavailable';
-    const decision = decideAnnounce({
-      signature: unavailable
+    const decision = decideAnnounce(
+      unavailable
         ? unavailableSignature(diagnostic, trajectory.reasonCode)
         : plannedSignature(diagnostic),
-      reannounceMs: unavailable ? UNKNOWN_REANNOUNCE_MS : PLANNED_REANNOUNCE_MS,
+      unavailable ? UNKNOWN_REANNOUNCE_MS : PLANNED_REANNOUNCE_MS,
       nowMs,
-      previous: announced.get(diagnostic.objectiveId),
-    });
+      announced.get(diagnostic.objectiveId),
+    );
     nextAnnounced.set(diagnostic.objectiveId, decision.next);
     if (decision.emit) emit(buildPayload(diagnostic, decision.suppressedTicks));
   }

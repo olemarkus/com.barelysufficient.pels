@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { buildFixtureDiagnostics, type TaskEvaluationFixture } from '../helpers/taskEvaluationFixture';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
@@ -7,7 +8,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
   DeferredObjectiveActivePlanRecorder,
-  previewDeferredObjectivePlan as previewDeferredObjectivePlanRaw,
+  buildTaskEvaluationSnapshot,
+  previewDeferredObjectivePlan,
+  type TaskEvaluationSource,
   resolveDeferredObjectiveDeadline,
   type DeferredObjectivePlanPreviewCandidate,
 } from '../../lib/objectives/deferredObjectives';
@@ -121,7 +124,7 @@ const buildTemperatureDevice = (
 })) as unknown as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
-  const resolution = resolveDeferredObjectiveDeadline({ nowMs, timeZone: 'UTC', deadlineLocalTime });
+  const resolution = resolveDeferredObjectiveDeadline(nowMs, 'UTC', deadlineLocalTime);
   if (resolution.deadlineAtMs === null) throw new Error('Failed to resolve test deadline');
   return resolution.deadlineAtMs;
 };
@@ -250,13 +253,6 @@ const priceHorizonBuilderFor = (snapshot: DailyBudgetUiPayload | null) => {
   return (nowMs: number, deadlineAtMs: number) => buildPriceHorizonFromCombined(combined, nowMs, deadlineAtMs);
 };
 
-const previewDeferredObjectivePlan = (
-  params: Omit<Parameters<typeof previewDeferredObjectivePlanRaw>[0], 'buildPriceHorizon'>,
-): ReturnType<typeof previewDeferredObjectivePlanRaw> => previewDeferredObjectivePlanRaw({
-  ...params,
-  buildPriceHorizon: priceHorizonBuilderFor(params.dailyBudgetSnapshot),
-});
-
 type RawDiagnosticsParams = TaskEvaluationFixture;
 // Fixture defaults for the live-wiring inputs: no committed plans, no excluded
 // devices, and no device parked at its target.
@@ -272,7 +268,7 @@ const buildDeferredObjectiveDiagnostics = (
     & Partial<Pick<RawDiagnosticsParams, DefaultedDiagnosticsParam>>,
 ): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => buildFixtureDiagnostics({
   ...params,
-  activePlans: params.activePlans ?? null,
+  activePlans: params.activePlans ?? createEmptyActivePlans(),
   resolveDeviceExclusion: params.resolveDeviceExclusion ?? noDeviceExclusion,
   getStallClassification: params.getStallClassification ?? noStallEvidence,
   isReservationSuppressed: params.isReservationSuppressed ?? noReservationSuppression,
@@ -308,7 +304,7 @@ type PreviewContext = {
   device: MeteredPlanInputDevice | undefined;
   devices?: MeteredPlanInputDevice[];
   settings?: DeferredObjectiveSettingsV1;
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
+  activePlans?: DeferredObjectiveActivePlansV1;
   getPrioritiesForDevices?: ReturnType<typeof createFixturePriorityQuery>;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
@@ -337,30 +333,36 @@ const runPreview = (params: {
   deviceId: string;
   candidate: DeferredObjectivePlanPreviewCandidate;
   ctx: PreviewContext;
-}) => previewDeferredObjectivePlan({
-  hasSolarProduction: params.ctx.hasSolarProduction ?? false,
-  nowMs: NOW_MS,
-  timeZone: 'UTC',
-  getThermalDirection: () => 'heating',
-  deviceId: params.deviceId,
-  candidate: params.candidate,
+}) => {
   // A context without a roster is the candidate's device alone (or nothing,
   // when the device is in neither snapshot) and no other smart task.
-  devices: params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : []),
-  settings: params.ctx.settings ?? { version: 1, objectivesByDeviceId: {} },
-  activePlans: params.ctx.activePlans ?? null,
-  resolveDeviceExclusion: noDeviceExclusion,
-  getStallClassification: noStallEvidence,
-  isReservationSuppressed: noReservationSuppression,
-  getDeliveredEnergyKWh: noDeliveredEnergy,
-  getPrioritiesForDevices: params.ctx.getPrioritiesForDevices
-    ?? createFixturePriorityQuery(params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : [])),
-  powerTracker: params.ctx.powerTracker,
-  dailyBudgetSnapshot: params.ctx.dailyBudgetSnapshot,
-  priceOptimizationEnabled: params.ctx.priceOptimizationEnabled,
-  capacitySettings: previewPowerLimits(params.ctx.capacitySettings),
-  priceRateLabel: params.ctx.priceRateLabel ?? 'øre/kWh',
-});
+  const devices = params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : []);
+  const source: TaskEvaluationSource = {
+    hasSolarProduction: () => params.ctx.hasSolarProduction ?? false,
+    getTimeZone: () => 'UTC',
+    getThermalDirection: () => 'heating',
+    getPowerTracker: () => params.ctx.powerTracker,
+    getPriceOptimizationEnabled: () => params.ctx.priceOptimizationEnabled,
+    getDeferredObjectiveActivePlans: () => params.ctx.activePlans ?? createEmptyActivePlans(),
+    getCapacitySettings: () => previewPowerLimits(params.ctx.capacitySettings),
+    buildPriceHorizon: priceHorizonBuilderFor(params.ctx.dailyBudgetSnapshot),
+    getPrioritiesForDevices: params.ctx.getPrioritiesForDevices ?? createFixturePriorityQuery(devices),
+    resolveDeviceExclusion: noDeviceExclusion,
+    getStallClassification: noStallEvidence,
+    isReservationSuppressed: noReservationSuppression,
+    getDeliveredEnergyKWh: noDeliveredEnergy,
+  };
+  const snapshot = buildTaskEvaluationSnapshot(
+    source,
+    NOW_MS,
+    devices,
+    params.ctx.settings ?? { version: 1, objectivesByDeviceId: {} },
+    params.ctx.dailyBudgetSnapshot,
+  );
+  return previewDeferredObjectivePlan(
+    snapshot, source, params.deviceId, params.candidate, params.ctx.priceRateLabel ?? 'øre/kWh',
+  );
+};
 
 // Deadlines chosen against NOW_MS (2026-01-01 17:00 UTC) to land each planner
 // verdict deterministically — verified via the diagnostic path:
@@ -419,7 +421,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: snapshot,
       priceOptimizationEnabled: true,
-      activePlans: null,
+      activePlans: createEmptyActivePlans(),
       powerLimits: capacityOnlyPowerLimits(1.5),
     });
     // kWh the high task promises per hour; a 0 kWh booking reserves nothing.
@@ -473,7 +475,7 @@ describe('previewDeferredObjectivePlan', () => {
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: snapshot,
       priceOptimizationEnabled: true,
-      activePlans: null,
+      activePlans: createEmptyActivePlans(),
       powerLimits: previewPowerLimits(capacitySettings),
     });
     const highKWhByHour = new Map(hoursWithPlannedEnergy(buildHoursFromHorizonPlan(highDiagnostic!.evaluation) ?? [])
@@ -1087,7 +1089,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
         powerTracker,
         dailyBudgetSnapshot,
         priceOptimizationEnabled: true,
-        activePlans: null,
+        activePlans: createEmptyActivePlans(),
         powerLimits: previewPowerLimits(capacitySettings),
       });
       expect(diagnostics).toHaveLength(1);

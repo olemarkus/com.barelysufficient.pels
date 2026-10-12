@@ -4,25 +4,27 @@ import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
-type ClaimParams = Parameters<typeof resolveCurrentHourClaim>[0];
-const NO_RELEASE_FACTS: ClaimParams['facts'] = {
+type ClaimParams = Parameters<typeof resolveCurrentHourClaim>;
+type ClaimCase = { currentHourBooking: ClaimParams[0]; facts: ClaimParams[1]; floorShortfallCause: ClaimParams[2] };
+const NO_RELEASE_FACTS: ClaimParams[1] = {
   aheadOfHourMilestone: false,
   cheaperHourAhead: false,
   coldStartFeasible: false,
 };
-const PRICE_DEFERRAL_FACTS: ClaimParams['facts'] = {
+const PRICE_DEFERRAL_FACTS: ClaimParams[1] = {
   ...NO_RELEASE_FACTS,
   aheadOfHourMilestone: true,
   cheaperHourAhead: true,
 };
-const claim = (overrides: Partial<ClaimParams> = {}) => (
-  resolveCurrentHourClaim({
+const claim = (overrides: Partial<ClaimCase> = {}) => {
+  const params: ClaimCase = {
     currentHourBooking: 'booked_with_energy',
     facts: NO_RELEASE_FACTS,
     floorShortfallCause: 'none',
     ...overrides,
-  })
-);
+  };
+  return resolveCurrentHourClaim(params.currentHourBooking, params.facts, params.floorShortfallCause);
+};
 
 describe('resolveCurrentHourClaim', () => {
   it('claims a booked hour, also one booked at 0 kWh', () => {

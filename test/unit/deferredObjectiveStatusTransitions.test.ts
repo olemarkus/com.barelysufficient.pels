@@ -55,7 +55,7 @@ const emitLifecycle = (params: {
   ) => void;
   onFallbackInactive?: (deviceId: string) => void;
 }): void => {
-  emitDeferredObjectiveLifecycleTransitions({ ...params, knownDeviceIds: new Set() });
+  emitDeferredObjectiveLifecycleTransitions(params.diagnostics, new Set(), params.nowMs, params);
 };
 
 describe('emitDeferredObjectiveStatusTransitions', () => {
@@ -65,12 +65,12 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     bus.onTransition((snapshot) => transitions.push(snapshot.status));
 
     const diag = baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'on_track' } });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1 });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 2 });
+    emitDeferredObjectiveStatusTransitions([diag], bus, 1);
+    emitDeferredObjectiveStatusTransitions([diag], bus, 2);
     expect(transitions).toEqual(['on_track']);
 
     const next = baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'at_risk' } });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [next], statusBus: bus, nowMs: 3 });
+    emitDeferredObjectiveStatusTransitions([next], bus, 3);
     expect(transitions).toEqual(['on_track', 'at_risk']);
   });
 
@@ -84,7 +84,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       currentTemperatureC: 26,
     });
 
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1 });
+    emitDeferredObjectiveStatusTransitions([diag], bus, 1);
 
     expect(bus.getCurrent('cooler-1')?.shortfallText).toBe('4 °C above target');
   });
@@ -99,7 +99,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       currentTemperatureC: 20,
     });
 
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1 });
+    emitDeferredObjectiveStatusTransitions([diag], bus, 1);
 
     expect(bus.getCurrent('cooler-1')?.shortfallText).toBeNull();
   });
@@ -181,7 +181,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     });
 
     emitLifecycle({ diagnostics: [diag], nowMs: 999, onSatisfied });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 999 });
+    emitDeferredObjectiveStatusTransitions([diag], bus, 999);
 
     expect(onSatisfied).not.toHaveBeenCalled();
     expect(bus.getCurrent('heater-1')?.status).toBe('satisfied');
@@ -198,11 +198,11 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       trajectory: { kind: 'resolved', status: 'at_risk' },
       deadlineAtMs: 1_000,
     });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 999 });
+    emitDeferredObjectiveStatusTransitions([diag], bus, 999);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(false);
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1_000 });
+    emitDeferredObjectiveStatusTransitions([diag], bus, 1_000);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1_500 });
+    emitDeferredObjectiveStatusTransitions([diag], bus, 1_500);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
   });
 
@@ -213,7 +213,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       trajectory: { kind: 'resolved', status: 'satisfied' },
       deadlineAtMs: 1_000,
     });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 5_000 });
+    emitDeferredObjectiveStatusTransitions([diag], bus, 5_000);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(false);
   });
 
@@ -225,7 +225,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       trajectory: { kind: 'resolved', status: 'at_risk' },
       deadlineAtMs: 1_000,
     });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [atRisk], statusBus: bus, nowMs: 1_500 });
+    emitDeferredObjectiveStatusTransitions([atRisk], bus, 1_500);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
 
     const cannotMeet = baseDiagnostic({
@@ -233,10 +233,10 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       trajectory: { kind: 'resolved', status: 'cannot_meet' },
       deadlineAtMs: 1_000,
     });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [cannotMeet], statusBus: bus, nowMs: 1_600 });
+    emitDeferredObjectiveStatusTransitions([cannotMeet], bus, 1_600);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
 
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [cannotMeet], statusBus: bus, nowMs: 1_700 });
+    emitDeferredObjectiveStatusTransitions([cannotMeet], bus, 1_700);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
   });
 
@@ -248,7 +248,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       trajectory: { kind: 'resolved', status: 'at_risk' },
       deadlineAtMs: 1_000,
     });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [initialDeadline], statusBus: bus, nowMs: 1_500 });
+    emitDeferredObjectiveStatusTransitions([initialDeadline], bus, 1_500);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
 
     // User reschedules to a future time without changing status.
@@ -257,11 +257,11 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       trajectory: { kind: 'resolved', status: 'at_risk' },
       deadlineAtMs: 5_000,
     });
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [rescheduled], statusBus: bus, nowMs: 2_000 });
+    emitDeferredObjectiveStatusTransitions([rescheduled], bus, 2_000);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(false);
 
     // Once the new deadline elapses without satisfaction, the sticky flag flips back on.
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [rescheduled], statusBus: bus, nowMs: 5_000 });
+    emitDeferredObjectiveStatusTransitions([rescheduled], bus, 5_000);
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
   });
 
@@ -306,13 +306,13 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
 
   it('forgets devices no longer present in diagnostics', () => {
     const bus = createDeferredObjectiveStatusBus();
-    emitDeferredObjectiveStatusTransitions({
-      diagnostics: [baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'on_track' } })],
-      statusBus: bus,
-      nowMs: 0,
-    });
+    emitDeferredObjectiveStatusTransitions(
+      [baseDiagnostic({ deviceId: 'heater-1', trajectory: { kind: 'resolved', status: 'on_track' } })],
+      bus,
+      0,
+    );
     expect(bus.hasActive('heater-1')).toBe(true);
-    emitDeferredObjectiveStatusTransitions({ diagnostics: [], statusBus: bus, nowMs: 1 });
+    emitDeferredObjectiveStatusTransitions([], bus, 1);
     expect(bus.hasActive('heater-1')).toBe(false);
   });
 });

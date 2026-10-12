@@ -171,12 +171,7 @@ const runCycle = (params: {
 
   // Producer trajectory gate — computed from measured need vs the committed
   // future, exactly as `diagnosticsBridge` does in production.
-  const ahead = isAheadOfHourMilestone({
-    energyNeededKWh: params.energyNeededKWh,
-      progressDirection: 'increasing',
-    committedHours,
-    nowMs,
-  });
+  const ahead = isAheadOfHourMilestone(params.energyNeededKWh, 'increasing', committedHours, nowMs);
 
   const plan = planDeferredObjectiveHorizon({
     powerLimit: CAPACITY_ONLY_HORIZON_LIMIT,

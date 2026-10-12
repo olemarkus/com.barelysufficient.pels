@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/deferredObjectiveValues';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
@@ -130,11 +131,7 @@ describe('device-scoped write op: sub-home gate', () => {
     const h = buildDeviceDeps(store, (deviceId) => (
       deviceId === 'heater-sub' ? 'sub_home' : 'main'
     ));
-    const outcome = upsertObjectiveForDevice(h.deps, {
-      deviceId: 'heater-sub',
-      deviceName: 'Cabin heater',
-      entry: heaterEntry,
-    });
+    const outcome = upsertObjectiveForDevice(h.deps, 'heater-sub', 'Cabin heater', heaterEntry);
     expect(outcome).toEqual({ persisted: false, reason: 'device_in_sub_home' });
     expect(readObjectiveForDevice(store, 'heater-sub')).toBeUndefined();
     expect(h.activePlanRecorder.markPending).not.toHaveBeenCalled();
@@ -151,16 +148,12 @@ describe('device-scoped write op: sub-home gate', () => {
   it('upsert persists unchanged for a main-home device and when the dep is absent (single-home identity)', () => {
     const gatedStore = buildStore();
     const gated = buildDeviceDeps(gatedStore, () => 'main');
-    expect(upsertObjectiveForDevice(gated.deps, {
-      deviceId: 'heater-main', deviceName: 'Hall heater', entry: heaterEntry,
-    })).toEqual({ persisted: true });
+    expect(upsertObjectiveForDevice(gated.deps, 'heater-main', 'Hall heater', heaterEntry)).toEqual({ persisted: true });
     expect(readObjectiveForDevice(gatedStore, 'heater-main')).toEqual(heaterEntry);
 
     const bareStore = buildStore();
     const bare = buildDeviceDeps(bareStore);
-    expect(upsertObjectiveForDevice(bare.deps, {
-      deviceId: 'heater-main', deviceName: 'Hall heater', entry: heaterEntry,
-    })).toEqual({ persisted: true });
+    expect(upsertObjectiveForDevice(bare.deps, 'heater-main', 'Hall heater', heaterEntry)).toEqual({ persisted: true });
     expect(readObjectiveForDevice(bareStore, 'heater-main')).toEqual(heaterEntry);
   });
 
@@ -175,11 +168,7 @@ describe('device-scoped write op: sub-home gate', () => {
   it('upsert refuses provisional authority as retryable ownership_unavailable', () => {
     const store = buildStore();
     const h = buildDeviceDeps(store, () => 'unavailable');
-    const outcome = upsertObjectiveForDevice(h.deps, {
-      deviceId: 'heater-main',
-      deviceName: 'Hall heater',
-      entry: heaterEntry,
-    });
+    const outcome = upsertObjectiveForDevice(h.deps, 'heater-main', 'Hall heater', heaterEntry);
     expect(outcome).toEqual({ persisted: false, reason: 'ownership_unavailable' });
     expect(readObjectiveForDevice(store, 'heater-main')).toBeUndefined();
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
@@ -194,11 +183,7 @@ describe('device-scoped write op: sub-home gate', () => {
   it('upsert durably refuses an active meter source as device_not_planned', () => {
     const store = buildStore();
     const h = buildDeviceDeps(store, () => 'source_device');
-    const outcome = upsertObjectiveForDevice(h.deps, {
-      deviceId: 'meter-main',
-      deviceName: 'Whole-home meter',
-      entry: heaterEntry,
-    });
+    const outcome = upsertObjectiveForDevice(h.deps, 'meter-main', 'Whole-home meter', heaterEntry);
     expect(outcome).toEqual({ persisted: false, reason: 'device_not_planned' });
     expect(readObjectiveForDevice(store, 'meter-main')).toBeUndefined();
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
@@ -254,7 +239,7 @@ const buildDiagnosticsParams = (overrides: {
   dailyBudgetSnapshot: null,
   buildPriceHorizon: () => [],
   priceOptimizationEnabled: true,
-  activePlans: null,
+  activePlans: createEmptyActivePlans(),
   getStallClassification: noStallEvidence,
   isReservationSuppressed: noReservationSuppression,
   getDeliveredEnergyKWh: noDeliveredEnergy,
@@ -822,21 +807,20 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
-      getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings({
-        version: 1,
-        objectivesByDeviceId: { 'heater-sub': heaterEntry },
-      }),
       getTimeZone: () => 'UTC',
       getPowerTracker: () => ({ lastTimestamp: NOW_MS }),
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
       getCapacitySettings: () => capacityOnlyPowerLimits(10),
       resolveDeviceExclusion,
-      getDeferredObjectiveActivePlans: () => null,
+      getDeferredObjectiveActivePlans: createEmptyActivePlans,
       getStallClassification: noStallEvidence,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    });
+    }, () => normalizeDeferredObjectiveSettings({
+      version: 1,
+      objectivesByDeviceId: { 'heater-sub': heaterEntry },
+    }));
     const bundle = controller.decorate({
       devices: [buildHeaterDevice()],
       dailyBudgetSnapshot: null,

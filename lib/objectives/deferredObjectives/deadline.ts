@@ -8,6 +8,16 @@ import {
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 
+// A wall-clock date and time in the deadline's time zone.
+type LocalDateTime = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+};
+
 export type DeferredObjectiveDeadlineResolution = {
   deadlineAtMs: number;
   localDateKey: string;
@@ -18,19 +28,13 @@ export type DeferredObjectiveDeadlineResolution = {
   rollsToNextDay: boolean;
 };
 
-export const resolveDeferredObjectiveDeadline = (params: {
-  nowMs: number;
-  timeZone: string;
-  deadlineLocalTime: string;
-}): DeferredObjectiveDeadlineResolution => {
-  const { nowMs, timeZone, deadlineLocalTime } = params;
+export const resolveDeferredObjectiveDeadline = (
+  nowMs: number,
+  timeZone: string,
+  deadlineLocalTime: string,
+): DeferredObjectiveDeadlineResolution => {
   const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
-  const todayDeadline = resolveLocalDateTimeMs({
-    dateKey: todayKey,
-    localTime: deadlineLocalTime,
-    timeZone,
-    earliestAfterMs: nowMs,
-  });
+  const todayDeadline = resolveLocalDateTimeMs(todayKey, deadlineLocalTime, timeZone, nowMs);
   if (typeof todayDeadline === 'number' && todayDeadline > nowMs) {
     return {
       deadlineAtMs: todayDeadline,
@@ -41,11 +45,7 @@ export const resolveDeferredObjectiveDeadline = (params: {
 
   const tomorrowKey = shiftDateKey(todayKey, 1);
   return {
-    deadlineAtMs: resolveLocalDateTimeMs({
-      dateKey: tomorrowKey,
-      localTime: deadlineLocalTime,
-      timeZone,
-    }),
+    deadlineAtMs: resolveLocalDateTimeMs(tomorrowKey, deadlineLocalTime, timeZone),
     localDateKey: tomorrowKey,
     rollsToNextDay: true,
   };
@@ -65,25 +65,20 @@ export const formatDeadlineLocalTime = (deadlineAtMs: number, timeZone: string):
   return `${hh}:${mm}`;
 };
 
-const resolveLocalDateTimeMs = (params: {
-  dateKey: string;
-  localTime: string;
-  timeZone: string;
-  earliestAfterMs?: number;
-}): number | null => {
-  const candidates = resolveAllLocalDateTimeMs(params);
+const resolveLocalDateTimeMs = (
+  dateKey: string,
+  localTime: string,
+  timeZone: string,
+  earliestAfterMs?: number,
+): number | null => {
+  const candidates = resolveAllLocalDateTimeMs(dateKey, localTime, timeZone);
   return candidates.find((candidateMs) => (
-    params.earliestAfterMs === undefined
-    || candidateMs > params.earliestAfterMs
+    earliestAfterMs === undefined
+    || candidateMs > earliestAfterMs
   )) ?? null;
 };
 
-const resolveAllLocalDateTimeMs = (params: {
-  dateKey: string;
-  localTime: string;
-  timeZone: string;
-}): number[] => {
-  const { dateKey, localTime, timeZone } = params;
+const resolveAllLocalDateTimeMs = (dateKey: string, localTime: string, timeZone: string): number[] => {
   const dateParts = parseDateKey(dateKey);
   const timeParts = parseLocalTime(localTime);
   if (!dateParts || !timeParts) return [];
@@ -102,26 +97,14 @@ const resolveAllLocalDateTimeMs = (params: {
     0,
     0,
   );
-  return resolveLocalDateTimeCandidates({
-    approximateUtcMs,
-    target,
-    timeZone,
-  });
+  return resolveLocalDateTimeCandidates(approximateUtcMs, target, timeZone);
 };
 
-const resolveLocalDateTimeCandidates = (params: {
-  approximateUtcMs: number;
-  target: {
-    year: number;
-    month: number;
-    day: number;
-    hour: number;
-    minute: number;
-    second: number;
-  };
-  timeZone: string;
-}): number[] => {
-  const { approximateUtcMs, target, timeZone } = params;
+const resolveLocalDateTimeCandidates = (
+  approximateUtcMs: number,
+  target: LocalDateTime,
+  timeZone: string,
+): number[] => {
   const offsets = collectCandidateOffsets(approximateUtcMs, timeZone);
   const candidates = new Set<number>();
   for (const offsetMinutes of offsets) {
@@ -147,14 +130,7 @@ const collectCandidateOffsets = (approximateUtcMs: number, timeZone: string): Se
 
 const matchesLocalTarget = (
   candidateMs: number,
-  target: {
-    year: number;
-    month: number;
-    day: number;
-    hour: number;
-    minute: number;
-    second: number;
-  },
+  target: LocalDateTime,
   timeZone: string,
 ): boolean => {
   const parts = getZonedParts(new Date(candidateMs), timeZone);

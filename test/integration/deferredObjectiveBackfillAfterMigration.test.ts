@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -117,7 +118,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
     ctx.deferredObjectivePlanHistoryRecorder = recorder;
     ctx.deferredObjectiveActivePlanRecorder = {
-      getActivePlansSnapshot: () => null,
+      getActivePlansSnapshot: createEmptyActivePlans,
       observe: vi.fn(),
       flushIfDirty: vi.fn(() => false),
       // The migrated task's elapsed deadline fires `onDeadlineReached` → disarm →
@@ -188,7 +189,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
     ctx.deferredObjectivePlanHistoryRecorder = recorder;
     ctx.deferredObjectiveActivePlanRecorder = {
-      getActivePlansSnapshot: () => null,
+      getActivePlansSnapshot: createEmptyActivePlans,
       observe: vi.fn(),
       flushIfDirty: vi.fn(() => false),
       // The migrated task's elapsed deadline fires `onDeadlineReached` → disarm →
@@ -244,7 +245,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
     ctx.deferredObjectivePlanHistoryRecorder = recorder;
     ctx.deferredObjectiveActivePlanRecorder = {
-      getActivePlansSnapshot: () => null,
+      getActivePlansSnapshot: createEmptyActivePlans,
       observe: vi.fn(),
       flushIfDirty: vi.fn(() => false),
       // The migrated task's elapsed deadline fires `onDeadlineReached` → disarm →
@@ -344,7 +345,7 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
     const nextRecorder = createDeferredObjectivePlanHistoryRecorder(nextCtx);
     nextCtx.deferredObjectivePlanHistoryRecorder = nextRecorder;
     nextCtx.deferredObjectiveActivePlanRecorder = {
-      getActivePlansSnapshot: () => null,
+      getActivePlansSnapshot: createEmptyActivePlans,
       observe: vi.fn(),
       flushIfDirty: vi.fn(() => false),
       // The migrated task's elapsed deadline fires `onDeadlineReached` → disarm →

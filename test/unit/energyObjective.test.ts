@@ -94,14 +94,7 @@ describe('energy task rate', () => {
         },
       },
     };
-    expect(resolveProfileEnergy({
-      powerTracker: tracker,
-      deviceId: 'relay',
-      objectiveKind: 'energy',
-      enforcement: 'soft',
-      remainingUnits: 9.5,
-      progressDirection: 'increasing',
-    })).toEqual({
+    expect(resolveProfileEnergy(tracker, 'relay', 'energy', 'soft', 9.5, 'increasing')).toEqual({
       energyNeededKWh: 9.5,
       energyExpectedKWh: 9.5,
       kWhPerUnit: 1,

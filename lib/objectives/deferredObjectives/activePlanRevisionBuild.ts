@@ -32,7 +32,10 @@ import {
 } from './replanReason';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
-import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
+import type {
+  DeferredObjectivePlanRevisionEvent,
+  DeferredObjectivePlanRevisionWrittenEvent,
+} from './planRevisionBus';
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import {
@@ -71,14 +74,14 @@ export type ActivePlanFlowCardSeed = {
   rescue?: DeferredObjectiveRescuePermissions;
 };
 
-export const notifyRevisionWrittenIfPubliclyObservable = (params: {
-  deps: ActivePlanPersistDeps;
-  diag: DeferredObjectiveDiagnostic;
-  current: DeferredObjectiveActivePlanV1;
-  latest: DeferredObjectiveActivePlanRevisionV1;
-  revision: DeferredObjectiveActivePlanRevisionV1;
-  reason: DeferredObjectiveActivePlanRevisionReason;
-  allocationChanged: boolean;
+// The event a written revision publishes, or null when neither its allocation
+// nor the task's public status moved: an automation then hears nothing.
+export const resolvePublicRevisionWrittenEvent = (
+  diag: DeferredObjectiveDiagnostic,
+  current: DeferredObjectiveActivePlanV1,
+  revision: DeferredObjectiveActivePlanRevisionV1,
+  reason: DeferredObjectiveActivePlanRevisionReason,
+  allocationChanged: boolean,
   /**
    * The status the task PUBLICLY had before this cycle — the committed verdict
    * with any live overlay already applied. Differs from `latest.planStatus`
@@ -86,26 +89,26 @@ export const notifyRevisionWrittenIfPubliclyObservable = (params: {
    * misreports the transition's origin and can suppress a real one (a device
    * turned back on during the same cycle that settles looks like no change).
    */
-  previousEffectivePlanStatus: DeferredObjectiveActivePlanStatusV1;
+  previousEffectivePlanStatus: DeferredObjectiveActivePlanStatusV1,
   /** The status it publicly has after this cycle. */
-  effectivePlanStatus: DeferredObjectiveActivePlanStatusV1;
-}): void => {
-  const publicStatusChanged = params.previousEffectivePlanStatus !== params.effectivePlanStatus;
-  if (!params.allocationChanged && !publicStatusChanged) return;
-  params.deps.onRevisionWritten?.({
+  effectivePlanStatus: DeferredObjectiveActivePlanStatusV1,
+): DeferredObjectivePlanRevisionWrittenEvent | null => {
+  const publicStatusChanged = previousEffectivePlanStatus !== effectivePlanStatus;
+  if (!allocationChanged && !publicStatusChanged) return null;
+  return {
     eventType: 'revision_written',
-    deviceId: params.diag.deviceId,
-    deviceName: params.diag.deviceName ?? params.current.deviceName,
-    objectiveKind: params.diag.objectiveKind,
-    revision: params.revision,
-    reason: params.reason,
-    progressDirection: params.diag.progressDirection,
-    previousPlanStatus: params.previousEffectivePlanStatus,
+    deviceId: diag.deviceId,
+    deviceName: diag.deviceName ?? current.deviceName,
+    objectiveKind: diag.objectiveKind,
+    revision,
+    reason,
+    progressDirection: diag.progressDirection,
+    previousPlanStatus: previousEffectivePlanStatus,
     previousWasPending: false,
-    allocationChanged: params.allocationChanged,
-    projectedFinishAtMs: resolveProjectedFinishAtMs(params.diag),
-    effectivePlanStatus: params.effectivePlanStatus,
-  });
+    allocationChanged,
+    projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
+    effectivePlanStatus,
+  };
 };
 
 export const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic): string | null => {
@@ -268,33 +271,33 @@ const resolveSpeedMode = (
   source: NonNullable<DeferredObjectiveDiagnostic['kwhPerUnitSource']>,
 ): 'auto' | 'learning' => (source === 'bootstrap' ? 'learning' : 'auto');
 
-export const buildRevision = (params: {
-  diag: DeferredObjectiveDiagnostic;
-  hours: DeferredObjectiveActivePlanHourV1[];
-  revision: number;
-  reason: DeferredObjectiveActivePlanRevisionReason;
-  nowMs: number;
+export const buildRevision = (
+  diag: DeferredObjectiveDiagnostic,
+  hours: DeferredObjectiveActivePlanHourV1[],
+  revision: number,
+  reason: DeferredObjectiveActivePlanRevisionReason,
+  nowMs: number,
   // The prior revision's price-availability watermark, carried forward when this
   // diagnostic stamped none (a frozen mid-hour read or a transient prices-missing
   // cycle that still wrote a revision). Resetting it to `null` would blind the
   // NEXT fresh revision's advance check (`previous === null ⇒ not an advance`)
   // and re-mislabel a genuine Nordpool publish as `schedule_revised`. Undefined
   // for the first revision (no prior watermark to preserve).
-  previousPricesUpTo?: number | null;
-  previousReservationSegments?: DeferredObjectiveActivePlanReservationSegmentV1[];
-}): DeferredObjectiveActivePlanRevisionV1 => {
+  previousPricesUpTo?: number | null,
+  previousReservationSegments?: DeferredObjectiveActivePlanReservationSegmentV1[],
+): DeferredObjectiveActivePlanRevisionV1 => {
   // Callers only invoke buildRevision after `buildHoursFromHorizonPlan` returned
   // allocated, which guarantees a complete operational plan.
-  const horizonPlan = allocatedTaskPlan(params.diag.evaluation);
+  const horizonPlan = allocatedTaskPlan(diag.evaluation);
   // Persist `kwhPerUnitSource` only when the diagnostic actually consulted a
   // profile (or its bootstrap fallback). `null` means the resolver short-
   // circuited (e.g. target already met) — omit the field rather than write
   // a misleading value.
-  const source = params.diag.kwhPerUnitSource;
+  const source = diag.kwhPerUnitSource;
   // Producer-resolved flat display rate (kWh/°C or kWh/%). Suppressed (left
   // null) when the resolver short-circuited or the value isn't usable; see
   // `resolveRateMean`.
-  const rateMean = resolveRateMean(params.diag);
+  const rateMean = resolveRateMean(diag);
   // Producer-resolved floor-shortfall verdict. Suppress `none` so steady
   // on-track plans stay byte-stable. `budget` is now the ONLY budget signal a
   // consumer gets: the per-hour share either binds or it doesn't, and there is
@@ -305,28 +308,24 @@ export const buildRevision = (params: {
   // Mean-based expected energy, rounded to match `energyNeededKWh`. Persisted
   // only when it differs from the buffered figure, so steady devices stay
   // byte-stable across revisions and the UI's range collapses to one number.
-  const energyExpectedKWhRaw = params.diag.energyExpectedKWh;
+  const energyExpectedKWhRaw = diag.energyExpectedKWh;
   const energyExpectedKWh = typeof energyExpectedKWhRaw === 'number' ? roundKWh(energyExpectedKWhRaw) : null;
-  const planningSpeedKw = params.diag.planningSpeedKw;
+  const planningSpeedKw = diag.planningSpeedKw;
   // Estimated duration is a derived field — the recorder is the right place
   // to format it so the hero meta line and any downstream consumer (flow
   // tokens) agree on the rounding/unit conventions.
   const estimatedDurationText = formatEstimatedDuration(energyNeededKWh, planningSpeedKw);
-  const reservationSegments = buildReservationSegmentsFromHorizonPlan({
-    diag: params.diag,
-    effectiveHours: params.hours,
-    previousSegments: params.previousReservationSegments,
-  });
+  const reservationSegments = buildReservationSegmentsFromHorizonPlan(diag, hours, previousReservationSegments);
   return {
-    revision: params.revision,
-    revisedAtMs: params.nowMs,
+    revision,
+    revisedAtMs: nowMs,
     computedFromPricesUpTo: resolvePersistedPricesUpTo(
-      resolveHorizonPriceWatermark(params.diag.evaluation),
-      params.previousPricesUpTo,
+      resolveHorizonPriceWatermark(diag.evaluation),
+      previousPricesUpTo,
     ),
-    reason: params.reason,
-    progressDirection: params.diag.progressDirection,
-    hours: params.hours,
+    reason,
+    progressDirection: diag.progressDirection,
+    hours,
     reservationSegments,
     // Round to milliWh to match `plannedKWh`. Without rounding,
     // floating-point accumulation in the kWh/unit-band integrator (or the
@@ -337,7 +336,7 @@ export const buildRevision = (params: {
     ...(energyExpectedKWh !== null && energyExpectedKWh !== energyNeededKWh
       ? { energyExpectedKWh }
       : {}),
-    planStatus: reportedPlanStatus(params.diag, horizonPlan),
+    planStatus: reportedPlanStatus(diag, horizonPlan),
     ...(source !== null ? { kwhPerUnitSource: source } : {}),
     // Producer-resolved flat display fields (see `resolveRateMean` /
     // `resolveSpeedMode`). Gated on `source !== null` alongside
@@ -359,8 +358,8 @@ export const buildRevision = (params: {
       : {}),
     ...(typeof planningSpeedKw === 'number' && planningSpeedKw > 0 ? { planningSpeedKw } : {}),
     ...(estimatedDurationText !== null ? { estimatedDurationText } : {}),
-    ...(params.diag.allocationContextSignature
-      ? { allocationContextSignature: params.diag.allocationContextSignature }
+    ...(diag.allocationContextSignature
+      ? { allocationContextSignature: diag.allocationContextSignature }
       : {}),
   };
 };
@@ -416,12 +415,11 @@ const isProvenanceConfidence = (
 // don't thrash on the first cycle after upgrade. Per-cycle drift in
 // `plannedKWh` / `energyNeededKWh` is intentionally NOT a persist trigger —
 // an actively charging EV shrinks `energyNeededKWh` monotonically every cycle.
-export const hasMetadataDriftedWithinSchedule = (params: {
-  latest: DeferredObjectiveActivePlanRevisionV1;
-  horizonPlan: DeferredObjectiveHorizonPlan;
-  diag: DeferredObjectiveDiagnostic;
-}): boolean => {
-  const { latest, horizonPlan, diag } = params;
+export const hasMetadataDriftedWithinSchedule = (
+  latest: DeferredObjectiveActivePlanRevisionV1,
+  horizonPlan: DeferredObjectiveHorizonPlan,
+  diag: DeferredObjectiveDiagnostic,
+): boolean => {
   const floorShortfallCause = resolveFloorShortfallCause(horizonPlan.statusDetail);
   return latest.planStatus !== reportedPlanStatus(diag, horizonPlan)
     || (latest.floorShortfallCause ?? 'none') !== floorShortfallCause
@@ -478,14 +476,14 @@ export const resolveLearnedRateKwh = (diag: DeferredObjectiveDiagnostic): number
 // live-power swings, EV nameplate cold-starts, and bootstrap estimates from
 // ever reaching here. An objective change owns its own stronger reason and
 // invalidates the cross-objective comparison, so it suppresses this.
-export const hasLearnedRateDeviated = (params: {
-  current: DeferredObjectiveActivePlanV1;
-  diag: DeferredObjectiveDiagnostic;
-  objectiveChanged: boolean;
-}): boolean => {
-  if (params.objectiveChanged) return false;
-  const live = resolveLearnedRateKwh(params.diag);
-  const baseline = params.current.initialKwhPerUnit;
+export const hasLearnedRateDeviated = (
+  current: DeferredObjectiveActivePlanV1,
+  diag: DeferredObjectiveDiagnostic,
+  objectiveChanged: boolean,
+): boolean => {
+  if (objectiveChanged) return false;
+  const live = resolveLearnedRateKwh(diag);
+  const baseline = current.initialKwhPerUnit;
   if (live === null || typeof baseline !== 'number' || !Number.isFinite(baseline) || baseline <= 0) {
     return false;
   }
@@ -500,15 +498,15 @@ export const hasLearnedRateDeviated = (params: {
 // the previous revision's per-cycle snapshot, so an unrelated null-rate or
 // below-threshold revision can neither corrupt the baseline nor break the
 // debounce.
-export const resolveInitialKwhPerUnit = (params: {
-  current: DeferredObjectiveActivePlanV1;
-  diag: DeferredObjectiveDiagnostic;
-  objectiveChanged: boolean;
-  measuredDeviation: boolean;
-}): number | undefined => {
-  const live = resolveLearnedRateKwh(params.diag) ?? undefined;
-  if (params.objectiveChanged || params.measuredDeviation) return live;
-  return params.current.initialKwhPerUnit ?? live;
+export const resolveInitialKwhPerUnit = (
+  current: DeferredObjectiveActivePlanV1,
+  diag: DeferredObjectiveDiagnostic,
+  objectiveChanged: boolean,
+  measuredDeviation: boolean,
+): number | undefined => {
+  const live = resolveLearnedRateKwh(diag) ?? undefined;
+  if (objectiveChanged || measuredDeviation) return live;
+  return current.initialKwhPerUnit ?? live;
 };
 
 // Spreadable persisted fragment for the committed learned-rate baseline:
@@ -521,16 +519,16 @@ export const toInitialKwhPerUnitField = (
   value !== undefined ? { initialKwhPerUnit: value } : {}
 );
 
-export const shouldWriteReplanRevision = (params: {
-  objectiveChanged: boolean;
-  scheduleChanged: boolean;
-  metadataDriftedWithinSchedule: boolean;
-  sourceChanged: boolean;
-  measuredDeviation: boolean;
-}): boolean => (
-  params.objectiveChanged || params.scheduleChanged
-    || params.metadataDriftedWithinSchedule || params.sourceChanged
-    || params.measuredDeviation
+export const shouldWriteReplanRevision = (
+  objectiveChanged: boolean,
+  scheduleChanged: boolean,
+  metadataDriftedWithinSchedule: boolean,
+  sourceChanged: boolean,
+  measuredDeviation: boolean,
+): boolean => (
+  objectiveChanged || scheduleChanged
+    || metadataDriftedWithinSchedule || sourceChanged
+    || measuredDeviation
 );
 
 // Bounded most-recent-first log of past revisions kept on the active plan
@@ -552,18 +550,18 @@ export const MAX_HISTORY_REVISIONS = 20;
 // expansion grew the commitment) advances `committedAtMs` and persists the
 // merged `effectiveHours`. Otherwise the existing commitment is preserved
 // so within-schedule metadata drift doesn't visibly reshape the timestamp.
-export const resolveCommitment = (params: {
-  objectiveChanged: boolean;
-  scheduleChanged: boolean;
-  effectiveHours: DeferredObjectiveActivePlanHourV1[];
-  previous: DeferredObjectiveActivePlanV1['commitment'];
-  nowMs: number;
-}): DeferredObjectiveActivePlanV1['commitment'] => {
+export const resolveCommitment = (
+  objectiveChanged: boolean,
+  scheduleChanged: boolean,
+  effectiveHours: DeferredObjectiveActivePlanHourV1[],
+  previous: DeferredObjectiveActivePlanV1['commitment'],
+  nowMs: number,
+): DeferredObjectiveActivePlanV1['commitment'] => {
   // `effectiveHours` carries the stamped unit milestones (for objectiveChanged it
   // is the freshly-stamped live hours; for scheduleChanged the stamped merge), so
   // the persisted commitment matches `latest.hours` exactly.
-  if (params.objectiveChanged || params.scheduleChanged) {
-    return { committedAtMs: params.nowMs, hours: params.effectiveHours };
+  if (objectiveChanged || scheduleChanged) {
+    return { committedAtMs: nowMs, hours: effectiveHours };
   }
-  return params.previous;
+  return previous;
 };

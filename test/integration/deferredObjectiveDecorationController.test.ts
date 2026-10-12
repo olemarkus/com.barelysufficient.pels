@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
@@ -50,18 +51,17 @@ describe('DeferredObjectiveDecorationController', () => {
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
-      getDeferredObjectiveSettings: () => settings,
       getTimeZone: () => 'UTC',
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
       getCapacitySettings: () => capacityOnlyPowerLimits(10),
-      getDeferredObjectiveActivePlans: () => null,
+      getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    });
+    }, () => settings);
 
     const bundle = controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs: deadlineAtMs + delayMs });
 
@@ -84,18 +84,17 @@ describe('DeferredObjectiveDecorationController', () => {
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
-      getDeferredObjectiveSettings,
       getTimeZone: () => 'UTC',
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
       getCapacitySettings: () => capacityOnlyPowerLimits(10),
-      getDeferredObjectiveActivePlans: () => null,
+      getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    });
+    }, getDeferredObjectiveSettings);
 
     controller.decorate({ devices: [buildDevice()], dailyBudgetSnapshot: null, nowTs: Date.now() });
 
@@ -112,18 +111,6 @@ describe('DeferredObjectiveDecorationController', () => {
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
-      getDeferredObjectiveSettings: () => ({
-        version: 1,
-        objectivesByDeviceId: {
-          dev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 80,
-            deadlineAtMs: Date.now() + 4 * 60 * 60 * 1000,
-          },
-        },
-      }),
       getTimeZone: () => 'UTC',
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
@@ -132,9 +119,20 @@ describe('DeferredObjectiveDecorationController', () => {
       getStallClassification,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-      getDeferredObjectiveActivePlans: () => null,
+      getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
-    });
+    }, () => ({
+      version: 1,
+      objectivesByDeviceId: {
+        dev: {
+          enabled: true,
+          kind: 'ev_soc',
+          enforcement: 'soft',
+          targetPercent: 80,
+          deadlineAtMs: Date.now() + 4 * 60 * 60 * 1000,
+        },
+      },
+    }));
 
     controller.decorate({ devices: [buildDevice()], dailyBudgetSnapshot: null, nowTs: Date.now() });
 
@@ -150,14 +148,13 @@ describe('DeferredObjectiveDecorationController', () => {
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: () => [],
       getCapacitySettings: () => capacityOnlyPowerLimits(10),
-      getDeferredObjectiveSettings: () => undefined,
-      getDeferredObjectiveActivePlans: () => null,
+      getDeferredObjectiveActivePlans: createEmptyActivePlans,
       getTimeZone: () => 'UTC',
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    });
+    }, () => undefined);
     const devices = [buildDevice()];
 
     const bundle = controller.decorate({ devices, dailyBudgetSnapshot: null, nowTs: Date.now() });

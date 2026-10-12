@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noDeliveryEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import {
@@ -15,6 +16,7 @@ import {
   DeferredObjectiveLifecycleEmitter,
   type DeferredObjectiveLifecycleEmitterDeps,
 } from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
+import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -71,33 +73,58 @@ const buildEvSettings = (deadlineAtMs: number): DeferredObjectiveSettingsV1 => (
   },
 });
 
-const buildDeps = (
-  overrides: Partial<DeferredObjectiveLifecycleEmitterDeps> = {},
-): DeferredObjectiveLifecycleEmitterDeps => ({
-  hasSolarProduction: () => false,
-  getDeferredObjectiveSettings: () => ({ version: 1, objectivesByDeviceId: {} } as DeferredObjectiveSettingsV1),
-  getTimeZone: () => 'UTC',
-  getDevices: () => [],
-  getThermalDirection: () => 'heating',
-  getPowerTracker: () => ({ lastTimestamp: Date.now() } as PowerTrackerState),
-  getDailyBudgetSnapshot: () => null,
-  buildPriceHorizon: () => [],
-  getPriceOptimizationEnabled: () => false,
-  getDeferredObjectiveActivePlans: () => null,
-  getCapacitySettings: () => capacityOnlyPowerLimits(10),
-  getPrioritiesForDevices: createFixturePriorityQuery(),
-  resolveDeviceExclusion: noDeviceExclusion,
-  getStallClassification: noStallEvidence,
-  energyDelivery: createInertEnergyDelivery(),
-  isReservationSuppressed: noReservationSuppression,
-  getDeliveryEvidence: noDeliveryEvidence,
-  observeDeferredObjectivePlanHistory: () => undefined,
-  observeDeferredObjectiveActivePlans: () => undefined,
-  deferredObjectiveStatusBus: createDeferredObjectiveStatusBus(),
-  deferredObjectiveHoursRemainingBus: createDeferredObjectiveHoursRemainingBus(),
-  deferredObjectiveHoursRemainingTracker: createDeferredObjectiveHoursRemainingTracker(),
-  ...overrides,
-});
+// The flat shape these specs override: the emitter's own deps and its
+// evaluation source's members side by side.
+type LifecycleFixture = Partial<Omit<DeferredObjectiveLifecycleEmitterDeps, 'source'> & TaskEvaluationSource>;
+
+const buildDeps = (overrides: LifecycleFixture = {}): DeferredObjectiveLifecycleEmitterDeps => {
+  const {
+    hasSolarProduction = () => false,
+    getTimeZone = () => 'UTC',
+    getThermalDirection = () => 'heating',
+    getPowerTracker = () => ({ lastTimestamp: Date.now() } as PowerTrackerState),
+    buildPriceHorizon = () => [],
+    getPriceOptimizationEnabled = () => false,
+    getDeferredObjectiveActivePlans = createEmptyActivePlans,
+    getCapacitySettings = () => capacityOnlyPowerLimits(10),
+    getPrioritiesForDevices = createFixturePriorityQuery(),
+    resolveDeviceExclusion = noDeviceExclusion,
+    getStallClassification = noStallEvidence,
+    isReservationSuppressed = noReservationSuppression,
+    energyDelivery = createInertEnergyDelivery(),
+    // The lifecycle clock books the count it reads.
+    getDeliveredEnergyKWh = energyDelivery.getDeliveredKWh,
+    ...deps
+  } = overrides;
+  return {
+    source: {
+      hasSolarProduction,
+      getTimeZone,
+      getThermalDirection,
+      getPowerTracker,
+      buildPriceHorizon,
+      getPriceOptimizationEnabled,
+      getDeferredObjectiveActivePlans,
+      getCapacitySettings,
+      getPrioritiesForDevices,
+      resolveDeviceExclusion,
+      getStallClassification,
+      isReservationSuppressed,
+      getDeliveredEnergyKWh,
+    },
+    energyDelivery,
+    getDeferredObjectiveSettings: () => ({ version: 1, objectivesByDeviceId: {} } as DeferredObjectiveSettingsV1),
+    getDevices: () => [],
+    getDailyBudgetSnapshot: () => null,
+    getDeliveryEvidence: noDeliveryEvidence,
+    observeDeferredObjectivePlanHistory: () => undefined,
+    observeDeferredObjectiveActivePlans: () => undefined,
+    deferredObjectiveStatusBus: createDeferredObjectiveStatusBus(),
+    deferredObjectiveHoursRemainingBus: createDeferredObjectiveHoursRemainingBus(),
+    deferredObjectiveHoursRemainingTracker: createDeferredObjectiveHoursRemainingTracker(),
+    ...deps,
+  };
+};
 
 describe('DeferredObjectiveLifecycleEmitter', () => {
   it('evaluates and forwards each tick to the plan-history recorder', () => {

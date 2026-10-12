@@ -1,14 +1,4 @@
-import type { TaskReservationReader } from './taskDeliveryState';
-import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
-import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
-import { resolveObjectiveDeviceInputs } from '../types';
-import type { ThermalDirection } from '../../../packages/contracts/src/types';
-import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
-import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
-import type { PowerTrackerState } from '../../power/tracker';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
-import type { BuildPriceHorizon } from './diagnosticsBridge';
-import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredDecorationBundle,
   DeferredDecorationInput,
@@ -22,49 +12,15 @@ import {
   buildDeferredReleaseIntents,
   type DeferredAdmissionDecision,
 } from './admission';
-import { buildDeferredObjectiveEvaluations, LIVE_LANE, type TaskEvaluationReaders } from './diagnosticsBridge';
+import {
+  buildDeferredObjectiveEvaluations,
+  buildTaskEvaluationSnapshot,
+  LIVE_LANE,
+  type TaskEvaluationSource,
+} from './diagnosticsBridge';
 import type { TaskEvaluation } from './taskEvaluation';
 import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
-import type { DeliveredEnergyReader } from './energyDelivery';
-
-export type DeferredObjectiveDecorationControllerDeps = {
-  getThermalDirection: (deviceId: string) => ThermalDirection;
-  getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1 | undefined;
-  getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
-  getTimeZone: () => string;
-  getPowerTracker: () => PowerTrackerState;
-  getPriceOptimizationEnabled: () => boolean;
-  // The persisted power-limit settings. The planning ceiling is derived here,
-  // in the domain, rather than in the wiring layer that reads the settings:
-  // `lib/power` owns the ceiling, and `setup/` answers no power question.
-  getCapacitySettings: () => PowerLimitSettings;
-  // Whether the home has solar production (a role-detected PV device): export can
-  // lift live grid headroom past the grid import target, so the plan is not cut
-  // at that target in a PV home.
-  hasSolarProduction: () => boolean;
-  /** Complete priority order from the current mode's catalog owner. */
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
-  // Price-layer allocation-horizon producer, injected by the wiring layer. The
-  // daily-budget snapshot (threaded via `decorate(input)`) is now only the
-  // budget overlay.
-  buildPriceHorizon: BuildPriceHorizon;
-  // Durable device-exclusion resolver (wiring-injected): names why the task's
-  // device is out of the main planning lane — a separate-meter sub-home, or the
-  // owner turning "Managed by PELS" off. The diagnostic resolves to that
-  // exclusion's dedicated unknown code and the task never governs the device.
-  resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
-  // Idle-classifier reader. Read only for the priority reservation ledger — a
-  // task stalled at its target reserves nothing against lower-priority tasks —
-  // so this path allocates them against the same ledger the lifecycle emitter
-  // commits. It does not resolve the status here: admission keeps reading the
-  // raw trajectory status.
-  getStallClassification: DeferredObjectiveStallClassificationReader;
-  // Energy fed under each energy task so far; the lifecycle clock counts it, and
-  // this path reads the same count so admission plans from the same progress.
-  getDeliveredEnergyKWh: DeliveredEnergyReader;
-  isReservationSuppressed: TaskReservationReader;
-};
 
 /**
  * Smart-task (deferred-objective) controller decoration stage. Owns the
@@ -76,25 +32,19 @@ export type DeferredObjectiveDecorationControllerDeps = {
  * written on the lifecycle clock, not here; this stage only reads the committed
  * plan to decorate.
  *
- * Construction-time getters supply the live household context (power tracker,
- * price-optimization flag, hard cap, time zone, settings, active plans) so the
- * planner does not thread smart-task concerns through its own dependency surface.
+ * The home's `TaskEvaluationSource` supplies the live household context (power
+ * tracker, price-optimization flag, power limits, time zone, active plans) and
+ * the objective roster comes from its own reader, so the planner does not
+ * thread smart-task concerns through its own dependency surface. The daily-budget
+ * snapshot arrives with `decorate(input)` and is only the budget overlay.
  */
 export class DeferredObjectiveDecorationController {
   private readonly priorityAllocationTracker = new PriorityAllocationTracker();
 
-  private readonly readers: TaskEvaluationReaders;
-
-  constructor(private readonly deps: DeferredObjectiveDecorationControllerDeps) {
-    this.readers = {
-      buildPriceHorizon: deps.buildPriceHorizon,
-      getPrioritiesForDevices: deps.getPrioritiesForDevices,
-      resolveDeviceExclusion: deps.resolveDeviceExclusion,
-      getStallClassification: deps.getStallClassification,
-      getDeliveredEnergyKWh: deps.getDeliveredEnergyKWh,
-      isReservationSuppressed: deps.isReservationSuppressed,
-    };
-  }
+  constructor(
+    private readonly source: TaskEvaluationSource,
+    private readonly getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1 | undefined,
+  ) {}
 
   public decorate(input: DeferredDecorationInput): DeferredDecorationBundle {
     const { devices, dailyBudgetSnapshot, nowTs } = input;
@@ -129,23 +79,14 @@ export class DeferredObjectiveDecorationController {
     const start = Date.now();
     const rssBefore = safeRss();
     try {
-      const settings = this.deps.getDeferredObjectiveSettings();
+      const settings = this.getDeferredObjectiveSettings();
       if (!settings) return [];
       // The lifecycle clock may not have disarmed an elapsed task yet. Its
       // terminal fallback belongs to that clock; it has no admission claims.
-      return buildDeferredObjectiveEvaluations({
-        nowMs: nowTs,
-        timeZone: this.deps.getTimeZone(),
-        devices: resolveObjectiveDeviceInputs(devices, this.deps.getThermalDirection),
-        settings,
-        powerTracker: this.deps.getPowerTracker(),
-        dailyBudgetSnapshot,
-        priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
-        activePlans: this.deps.getDeferredObjectiveActivePlans(),
-        powerLimits: this.deps.getCapacitySettings(),
-        hasSolarProduction: this.deps.hasSolarProduction(),
-      }, this.readers, this.priorityAllocationTracker, LIVE_LANE)
-        .filter((evaluation) => evaluation.deadlineAtMs > nowTs);
+      return buildDeferredObjectiveEvaluations(
+        buildTaskEvaluationSnapshot(this.source, nowTs, devices, settings, dailyBudgetSnapshot),
+        this.source, this.priorityAllocationTracker, LIVE_LANE,
+      ).filter((evaluation) => evaluation.deadlineAtMs > nowTs);
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);
       recordOpRssDelta('evaluate_deferred_objectives_ms', rssBefore, safeRss());

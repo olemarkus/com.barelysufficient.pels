@@ -1,3 +1,4 @@
+import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
 import { inactiveTaskEvaluation, type TaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
@@ -169,8 +170,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     const deadlineAtMs = 6 * HOUR_MS;
 
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })], 3 * HOUR_MS, null);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })], 3 * HOUR_MS, createEmptyActivePlans());
 
     const trajectory = recorder.getInProgressTrajectory('dev');
     expect(trajectory).not.toBeNull();
@@ -189,16 +190,16 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     const deadlineAtMs = 6 * HOUR_MS;
 
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60 })], 3 * HOUR_MS, null);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60 })], 3 * HOUR_MS, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs,
       currentTemperatureC: 65,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 4 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null); // deadline-passed sweep
+    })], 4 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans()); // deadline-passed sweep
     recorder.flushIfDirty();
 
     const persisted = saved();
@@ -216,22 +217,22 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     const deadlineAtMs = 6 * HOUR_MS;
 
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs,
       currentTemperatureC: 65,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 3 * HOUR_MS, null);
+    })], 3 * HOUR_MS, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs,
       currentTemperatureC: 60,
       trajectory: { kind: 'resolved', status: 'on_track' },
       horizonPlan: makeHorizon({ status: 'on_track', statusDetail: 'planned_with_margin' }),
-    })], 5 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 5 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -251,7 +252,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       currentTemperatureC: 65,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 0, null);
+    })], 0, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs,
@@ -259,8 +260,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_price_horizon' },
       reasonCode: 'objective_missing_price_horizon',
       horizonPlan: undefined,
-    })], 5 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 5 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -280,7 +281,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       currentTemperatureC: 65,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 0, null);
+    })], 0, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs,
@@ -288,8 +289,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       trajectory: { kind: 'unavailable', reasonCode: 'objective_price_feature_disabled' },
       reasonCode: 'objective_price_feature_disabled',
       horizonPlan: undefined,
-    })], 5 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 5 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -309,7 +310,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       currentTemperatureC: 65,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 0, null);
+    })], 0, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs,
@@ -317,8 +318,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
       reasonCode: 'objective_progress_stale',
       horizonPlan: undefined,
-    })], 5 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 5 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -332,29 +333,29 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     const deadlineAtMs = 6 * HOUR_MS;
 
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs,
       currentTemperatureC: 65,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 2 * HOUR_MS, null);
+    })], 2 * HOUR_MS, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs,
       currentTemperatureC: 60,
       trajectory: { kind: 'resolved', status: 'on_track' },
       horizonPlan: makeHorizon({ status: 'on_track', statusDetail: 'planned_with_margin' }),
-    })], 3 * HOUR_MS, null);
+    })], 3 * HOUR_MS, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs,
       currentTemperatureC: 66,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 5 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 5 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -386,13 +387,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         evaluation: { ...rest.evaluation, targetControl: { kind: 'none' } } };
     };
 
-    recorder.observe([energyDiag(0)], 0, null);
-    recorder.observe([energyDiag(8)], 3 * HOUR_MS, null);
+    recorder.observe([energyDiag(0)], 0, createEmptyActivePlans());
+    recorder.observe([energyDiag(8)], 3 * HOUR_MS, createEmptyActivePlans());
     recorder.observe([energyDiag(16, {
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 5 * HOUR_MS, null);
-    recorder.observe([], deadlineAtMs, null);
+    })], 5 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], deadlineAtMs, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -409,9 +410,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     const deadlineAtMs = 6 * HOUR_MS;
 
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })], 3 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null); // deadline-passed sweep, target was 65 °C
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })], 3 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans()); // deadline-passed sweep, target was 65 °C
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -441,9 +442,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         reachableTargetValue: 22,
       });
 
-      recorder.observe([coolingDiag(26)], 0, null);
-      recorder.observe([coolingDiag(currentTemperatureC)], 5 * HOUR_MS, null);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([coolingDiag(26)], 0, createEmptyActivePlans());
+      recorder.observe([coolingDiag(currentTemperatureC)], 5 * HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       expect(saved()!.entries[0]!.outcome).toBe(expectedOutcome);
@@ -473,9 +474,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       reachableTargetValue: 22,
     });
 
-    recorder.observe([coolingDiag(26)], 0, null);
-    recorder.observe([coolingDiag(25)], 5 * HOUR_MS, null);
-    recorder.observe([], deadlineAtMs, null);
+    recorder.observe([coolingDiag(26)], 0, createEmptyActivePlans());
+    recorder.observe([coolingDiag(25)], 5 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], deadlineAtMs, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     expect(saved()!.entries[0]!.outcome).toBe('missed');
@@ -499,19 +500,19 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     // met: hits target during the run.
     recorder.observe([makeDiag({
       deviceId: 'met-dev', deadlineAtMs, trajectory: { kind: 'resolved', status: 'satisfied' }, currentTemperatureC: 70,
-    })], HOUR_MS, null);
+    })], HOUR_MS, createEmptyActivePlans());
     // missed: progress stays below target until the deadline sweep.
     recorder.observe([makeDiag({
       deviceId: 'missed-dev', deadlineAtMs, currentTemperatureC: 55,
-    })], HOUR_MS, null);
+    })], HOUR_MS, createEmptyActivePlans());
     // abandoned-via-user: cleared explicitly.
-    recorder.observe([makeDiag({ deviceId: 'abandoned-dev', deadlineAtMs })], HOUR_MS, null);
+    recorder.observe([makeDiag({ deviceId: 'abandoned-dev', deadlineAtMs })], HOUR_MS, createEmptyActivePlans());
     recorder.finalizeForUserChange('abandoned-dev', 2 * HOUR_MS, 'abandoned');
     // replaced-via-user: must NOT publish (run continues under new params).
-    recorder.observe([makeDiag({ deviceId: 'replaced-dev', deadlineAtMs })], HOUR_MS, null);
+    recorder.observe([makeDiag({ deviceId: 'replaced-dev', deadlineAtMs })], HOUR_MS, createEmptyActivePlans());
     recorder.finalizeForUserChange('replaced-dev', 2 * HOUR_MS, 'replaced');
     // Deadline sweep finalizes the met and missed runs.
-    recorder.observe([], 6 * HOUR_MS, null);
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
 
     expect(events).toEqual([
       { deviceId: 'abandoned-dev', outcome: 'abandoned' },
@@ -534,9 +535,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     const deadlineAtMs = 6 * HOUR_MS;
 
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0, null);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], 0, createEmptyActivePlans());
     // Diagnostic stops appearing at hour 1; abandon grace is 1 hour, so by hour 3 the run is abandoned.
-    recorder.observe([], 3 * HOUR_MS, null);
+    recorder.observe([], 3 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -549,19 +550,19 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
     const deadlineAtMs = 6 * HOUR_MS;
 
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
     // Two cycles of unknown — should refresh lastSeenAtMs so the abandon grace doesn't trip.
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' }, horizonPlan: undefined,
-    })], HOUR_MS, null);
+    })], HOUR_MS, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' }, horizonPlan: undefined,
-    })], 2 * HOUR_MS, null);
+    })], 2 * HOUR_MS, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, currentTemperatureC: 65, trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 3 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 3 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entries = saved()!.entries;
@@ -574,15 +575,15 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
 
     // Day 1: deadline at 6h, goal met.
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, currentTemperatureC: 50 })], 0, null);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, currentTemperatureC: 65, trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 4 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null); // first run finalized.
+    })], 4 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans()); // first run finalized.
     // Day 2: new deadline at 30h, goal missed.
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS, currentTemperatureC: 50 })], 24 * HOUR_MS, null);
-    recorder.observe([], 30 * HOUR_MS, null);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS, currentTemperatureC: 50 })], 24 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 30 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entries = saved()!.entries;
@@ -599,8 +600,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     for (let i = 0; i < 35; i += 1) {
       const dayStart = i * 24 * HOUR_MS;
       const deadline = dayStart + 6 * HOUR_MS;
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: deadline })], dayStart, null);
-      recorder.observe([], deadline, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: deadline })], dayStart, createEmptyActivePlans());
+      recorder.observe([], deadline, createEmptyActivePlans());
     }
     recorder.flushIfDirty();
 
@@ -621,7 +622,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 5 * HOUR_MS,
-    })], 6 * HOUR_MS, null);
+    })], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     expect(saved()).toBeNull();
@@ -639,12 +640,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, currentTemperatureC: 19, trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
       reasonCode: 'objective_missing_price_horizon', horizonPlan: undefined,
-    })], 0, null);
+    })], 0, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, currentTemperatureC: 22, trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
       reasonCode: 'objective_missing_price_horizon', horizonPlan: undefined,
-    })], 3 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 3 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entries = saved()!.entries;
@@ -669,11 +670,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, trajectory: { kind: 'resolved', status: 'cannot_meet' },
       reasonCode: 'objective_progress_stale',
-    })], 0, null);
+    })], 0, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, currentTemperatureC: 18, trajectory: { kind: 'resolved', status: 'cannot_meet' },
-    })], 2 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 2 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entry = saved()!.entries[0]!;
@@ -694,12 +695,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, trajectory: { kind: 'resolved', status: 'cannot_meet' },
       reasonCode: 'objective_progress_stale',
-    })], 0, null);
+    })], 0, createEmptyActivePlans());
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51, trajectory: { kind: 'resolved', status: 'cannot_meet' },
       reasonCode: 'objective_progress_stale',
-    })], 3 * HOUR_MS, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 3 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     expect(saved()!.entries[0]!.startProgressValue).toBeNull();
@@ -713,8 +714,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev', deadlineAtMs, currentTemperatureC: 66, trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
       reasonCode: 'objective_missing_price_horizon', horizonPlan: undefined,
-    })], 0, null);
-    recorder.observe([], 6 * HOUR_MS, null);
+    })], 0, createEmptyActivePlans());
+    recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans());
     recorder.flushIfDirty();
 
     const entries = saved()!.entries;
@@ -811,8 +812,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       deviceId: 'dev', deadlineAtMs: deadlineA, currentTemperatureC: 65,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], deadlineA - HOUR_MS, null);
-    recorder.observe([], deadlineA, null);
+    })], deadlineA - HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], deadlineA, createEmptyActivePlans());
     recorder.backfillFromConfig(
       [{
         deviceId: 'dev',
@@ -842,8 +843,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       },
     });
     const deadlineAtMs = 6 * HOUR_MS;
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
-    recorder.observe([], deadlineAtMs, null);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
+    recorder.observe([], deadlineAtMs, createEmptyActivePlans());
     expect(recorder.isDirty()).toBe(true);
     expect(recorder.flushIfDirty()).toBe(false);
     expect(recorder.isDirty()).toBe(true);
@@ -994,8 +995,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       currentTemperatureC: 70,
       trajectory: { kind: 'resolved', status: 'satisfied' },
       horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 2 * HOUR_MS, null);
-    recorder.observe([], deadlineAtMs, null);
+    })], 2 * HOUR_MS, createEmptyActivePlans());
+    recorder.observe([], deadlineAtMs, createEmptyActivePlans());
 
     expect(recorder.flushIfDirty()).toBe(false);
     recovered = true;
@@ -1044,7 +1045,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const originalDeadline = 6 * HOUR_MS;
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: originalDeadline, currentTemperatureC: 50 })], 0, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: originalDeadline, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
       recorder.finalizeForUserChange('dev', 2 * HOUR_MS, 'replaced');
       recorder.flushIfDirty();
 
@@ -1066,7 +1067,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         deadlineAtMs,
         targetTemperatureC: 60,
         currentTemperatureC: 50,
-      })], 0, null);
+      })], 0, createEmptyActivePlans());
       recorder.finalizeForUserChange('dev', HOUR_MS, 'replaced');
       // Next cycle: new diagnostic with the bumped target starts a fresh in-progress record.
       recorder.observe([makeDiag({
@@ -1074,8 +1075,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         deadlineAtMs,
         targetTemperatureC: 70,
         currentTemperatureC: 52,
-      })], HOUR_MS, null);
-      recorder.observe([], 6 * HOUR_MS, null); // deadline sweep finalizes the bumped run as `missed`
+      })], HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], 6 * HOUR_MS, createEmptyActivePlans()); // deadline sweep finalizes the bumped run as `missed`
       recorder.flushIfDirty();
 
       const entries = saved()!.entries;
@@ -1092,7 +1093,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
       recorder.finalizeForUserChange('dev', 30 * 60 * 1000, 'abandoned');
       recorder.flushIfDirty();
 
@@ -1106,14 +1107,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
       recorder.observe([makeDiag({
         deviceId: 'dev',
         deadlineAtMs,
         currentTemperatureC: 65,
         trajectory: { kind: 'resolved', status: 'satisfied' },
         horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-      })], 2 * HOUR_MS, null);
+      })], 2 * HOUR_MS, createEmptyActivePlans());
       recorder.finalizeForUserChange('dev', 3 * HOUR_MS, 'replaced');
       recorder.flushIfDirty();
 
@@ -1138,8 +1139,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       });
       const deadlineAtMs = 6 * HOUR_MS;
       const initial = makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: scenario.initial });
-      recorder.observe([initial], 0, null);
-      recorder.observe([initial], 30_000, null);
+      recorder.observe([initial], 0, createEmptyActivePlans());
+      recorder.observe([initial], 30_000, createEmptyActivePlans());
       // Current observer state is read at the edit, before the next recorder tick.
       const current = makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: scenario.current });
       recorder.finalizeForUserChange('dev', 35_000, 'replaced', {
@@ -1159,8 +1160,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       }
       // Reusing the same deadline with a higher target starts a separate run.
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs,
-        targetTemperatureC: 75, currentTemperatureC: 55 })], 40_000, null);
-      recorder.observe([], deadlineAtMs, null);
+        targetTemperatureC: 75, currentTemperatureC: 55 })], 40_000, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
       expect(saved()!.entries[1]!.outcome).toBe('missed');
     });
@@ -1172,12 +1173,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const olderDeadline = 6 * HOUR_MS;
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: olderDeadline,
-        targetTemperatureC: 75, currentTemperatureC: 55 })], 0, null);
+        targetTemperatureC: 75, currentTemperatureC: 55 })], 0, createEmptyActivePlans());
       // An unreadable clear cannot identify the old settings entry to finalize it.
       // The subsequent task appears while that history record is still in its grace period.
       const current = makeDiag({ deviceId: 'dev', deadlineAtMs: 7 * HOUR_MS,
         targetTemperatureC: 65, currentTemperatureC: 55 });
-      recorder.observe([current], 30_000, null);
+      recorder.observe([current], 30_000, createEmptyActivePlans());
       const reached = makeDiag({ deviceId: 'dev', deadlineAtMs: 7 * HOUR_MS,
         targetTemperatureC: 65, currentTemperatureC: 65 });
       recorder.finalizeForUserChange('dev', 35_000, 'replaced', reached.evaluation);
@@ -1198,7 +1199,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
         const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS,
           trajectory: { kind: 'resolved', status }, horizonPlan: makeHorizon({ status }) });
-        recorder.observe([diag], 0, null);
+        recorder.observe([diag], 0, createEmptyActivePlans());
         recorder.finalizeForUserChange('dev', 5_000, 'replaced', diag.evaluation);
         recorder.flushIfDirty();
         expect(saved()!.entries[0]!.outcome).toBe('replaced');
@@ -1222,7 +1223,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([
         makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 }),
         makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 40 }),
-      ], 0, null);
+      ], 0, createEmptyActivePlans());
       recorder.finalizeForUserChange('dev-a', HOUR_MS, 'abandoned');
       recorder.flushIfDirty();
 
@@ -1239,7 +1240,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
       recorder.finalizeElapsedDeadline('dev', deadlineAtMs);
       recorder.flushIfDirty();
 
@@ -1256,14 +1257,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
       recorder.observe([makeDiag({
         deviceId: 'dev',
         deadlineAtMs,
         currentTemperatureC: 65,
         trajectory: { kind: 'resolved', status: 'satisfied' },
         horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-      })], 2 * HOUR_MS, null);
+      })], 2 * HOUR_MS, createEmptyActivePlans());
       recorder.finalizeElapsedDeadline('dev', deadlineAtMs);
       recorder.flushIfDirty();
 
@@ -1276,7 +1277,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const futureDeadline = 6 * HOUR_MS;
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: futureDeadline, currentTemperatureC: 50 })], 0, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: futureDeadline, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
       recorder.flushIfDirty();
       recorder.finalizeElapsedDeadline('dev', HOUR_MS);
 
@@ -1301,7 +1302,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([
         makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 }),
         makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 40 }),
-      ], 0, null);
+      ], 0, createEmptyActivePlans());
       recorder.finalizeElapsedDeadline('dev-a', deadlineAtMs);
       recorder.flushIfDirty();
 
@@ -1372,7 +1373,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         revisedPlans,
       );
       // Deadline sweep finalizes the run.
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1457,7 +1458,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentPercent: 30 })], 0, skinnyPlans);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentPercent: 35 })], HOUR_MS, richPlans);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentPercent: 40 })], 7 * HOUR_MS, collapsedPlans);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1474,8 +1475,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1494,7 +1495,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
       const plans = buildActivePlans({ deviceId: 'dev', deadlineAtMs, originalKwh: 1.0, latestKwh: 2.0 });
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1509,8 +1510,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const deadlineAtMs = 6 * HOUR_MS;
 
       // No `activePlans` argument: recorder never sees a revision.
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       expect(saved()!.entries[0]!.revisionCount).toBeUndefined();
@@ -1524,8 +1525,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([
         makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 }),
         makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 40 }),
-      ], 0, null);
-      recorder.observe([], deadlineAtMs, null); // both finalize on the same sweep
+      ], 0, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans()); // both finalize on the same sweep
       recorder.flushIfDirty();
 
       const entries = saved()!.entries;
@@ -1560,14 +1561,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_temperature' },
         reasonCode: 'objective_missing_temperature',
         horizonPlan: undefined,
-      })], 0, null);
+      })], 0, createEmptyActivePlans());
       // Second cycle: device is back, planner produces a real allocation.
       recorder.observe([makeDiag({
         deviceId: 'dev',
         deadlineAtMs,
         currentTemperatureC: 52,
         trajectory: { kind: 'resolved', status: 'on_track' },
-      })], HOUR_MS, null);
+      })], HOUR_MS, createEmptyActivePlans());
       // Third cycle: continues with a richer reading — must NOT overwrite the
       // back-filled start value (start is "first real reading", not "latest").
       recorder.observe([makeDiag({
@@ -1575,8 +1576,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         deadlineAtMs,
         currentTemperatureC: 60,
         trajectory: { kind: 'resolved', status: 'on_track' },
-      })], 3 * HOUR_MS, null);
-      recorder.observe([], deadlineAtMs, null);
+      })], 3 * HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1593,13 +1594,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // Start with a real reading.
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, trajectory: { kind: 'resolved', status: 'on_track' },
-      })], 0, null);
+      })], 0, createEmptyActivePlans());
       // Mid-run SDK miss.
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: null, trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
         reasonCode: 'objective_progress_stale', horizonPlan: undefined,
-      })], HOUR_MS, null);
-      recorder.observe([], deadlineAtMs, null);
+      })], HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       expect(saved()!.entries[0]!.startProgressValue).toBe(50);
@@ -1625,7 +1626,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
         reasonCode: 'objective_progress_stale',
         horizonPlan: undefined,
-      })], 0, null);
+      })], 0, createEmptyActivePlans());
       // Second cycle: SoC is now fresh.
       recorder.observe([makeDiag({
         deviceId: 'ev',
@@ -1637,7 +1638,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         targetPercent: 80,
         currentPercent: 35,
         trajectory: { kind: 'resolved', status: 'on_track' },
-      })], HOUR_MS, null);
+      })], HOUR_MS, createEmptyActivePlans());
       recorder.observe([makeDiag({
         deviceId: 'ev',
         deadlineAtMs,
@@ -1648,8 +1649,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         targetPercent: 80,
         currentPercent: 70,
         trajectory: { kind: 'resolved', status: 'on_track' },
-      })], 6 * HOUR_MS, null);
-      recorder.observe([], deadlineAtMs, null);
+      })], 6 * HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1670,13 +1671,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: null,
         trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' }, reasonCode: 'objective_missing_temperature',
         horizonPlan: undefined,
-      })], 0, null);
+      })], 0, createEmptyActivePlans());
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: 48,
         trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' }, reasonCode: 'objective_missing_price_horizon',
         horizonPlan: undefined,
-      })], HOUR_MS, null);
-      recorder.observe([], deadlineAtMs, null);
+      })], HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       expect(saved()!.entries[0]!.startProgressValue).toBe(48);
@@ -1760,12 +1761,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const MIN_MS = 60 * 1000;
       // Cycles in distinct 15-minute buckets each produce a sample; two
       // cycles in the same quarter-hour collapse to the most recent reading.
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51 })], 5 * MIN_MS, null);
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })], 30 * MIN_MS, null);
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })], HOUR_MS, null);
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60 })], 2 * HOUR_MS, null);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51 })], 5 * MIN_MS, createEmptyActivePlans());
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })], 30 * MIN_MS, createEmptyActivePlans());
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })], HOUR_MS, createEmptyActivePlans());
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60 })], 2 * HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1795,9 +1796,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       for (let i = 0; i < cycles; i += 1) {
         recorder.observe([makeDiag({
           deviceId: 'dev', deadlineAtMs, currentTemperatureC: 20 + i * 0.1,
-        })], i * QUARTER_MS, null);
+        })], i * QUARTER_MS, createEmptyActivePlans());
       }
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1824,9 +1825,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
       // One sample before the diagnostic stops appearing.
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
       // Abandon grace (ABANDON_GRACE_MS = 1h) elapses → run finalized as `abandoned`.
-      recorder.observe([], 2 * HOUR_MS, null);
+      recorder.observe([], 2 * HOUR_MS, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1850,23 +1851,23 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // Cycle 1: fresh reading. Lands in the ring.
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50,
-      })], 0, null);
+      })], 0, createEmptyActivePlans());
       // Cycle 2: the sensor has gone stale. Must NOT land in the ring (no
       // new 0:30 bucket entry, no overwrite of anything).
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: 99,
         reasonCode: 'objective_progress_stale',
-      })], 30 * 60 * 1000, null);
+      })], 30 * 60 * 1000, createEmptyActivePlans());
       // Cycle 3: still stale on another bucket. Must NOT add a new sample.
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: 99,
         reasonCode: 'objective_progress_stale',
-      })], HOUR_MS, null);
+      })], HOUR_MS, createEmptyActivePlans());
       // Cycle 4: fresh again. Lands in the ring on hour 2.
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55,
-      })], 2 * HOUR_MS, null);
-      recorder.observe([], deadlineAtMs, null);
+      })], 2 * HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1895,7 +1896,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         kwhPerUnit: 0.59,
       });
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1916,7 +1917,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         // No kwhPerUnit passed → no provenance on the plan.
       });
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1939,7 +1940,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         latestFloorShortfallCause: 'budget',
       });
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -1959,7 +1960,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         latestFloorShortfallCause: 'none',
       });
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       expect(saved()!.entries[0]!.finalPlan?.floorShortfallCause).toBeUndefined();
@@ -2001,7 +2002,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         originalHourStarts: [0],
         kwhPerUnit: 0.5,
       }));
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -2042,7 +2043,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51 })], HOUR_MS, plans);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })], 2 * HOUR_MS, plans);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -2062,7 +2063,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         kwhPerUnit: 0.5,
       });
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       expect(saved()!.entries[0]!.revisions).toBeUndefined();
@@ -2079,7 +2080,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       currentDrawKw: number | null,
       overrides: Partial<Parameters<typeof makeDiag>[0]> = {},
     ): void => {
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentDrawKw, ...overrides })], nowMs, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentDrawKw, ...overrides })], nowMs, createEmptyActivePlans());
     };
 
     const run = (params: {
@@ -2225,8 +2226,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       beforeRestart.flushIfDirty();
 
       const afterRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
-      afterRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 4 })], 11 * 60_000, null);
-      afterRestart.observe([], deadlineAtMs, null);
+      afterRestart.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 4 })], 11 * 60_000, createEmptyActivePlans());
+      afterRestart.observe([], deadlineAtMs, createEmptyActivePlans());
       afterRestart.flushIfDirty();
       expect(persisted.saved()!.entries[0]).toMatchObject({
         initialEnergyExpectedKWh: 10, deliveredKWh: 6, outcome: 'missed',
@@ -2245,11 +2246,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         costDisplay: null, deliveryPriceComplete: true, hourlyContributions: [], hourStartBookings: [],
       }]);
       const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 4 })], 10 * 60_000, null);
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 3 })], 11 * 60_000, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 4 })], 10 * 60_000, createEmptyActivePlans());
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, energyExpectedKWh: 3 })], 11 * 60_000, createEmptyActivePlans());
       recorder.flushIfDirty();
       expect(persisted.savedMeteredDelivery()[0]!.commitment).toEqual({ kind: 'unknown' });
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
       expect(persisted.saved()!.entries[0]!.initialEnergyExpectedKWh).toBeUndefined();
       expect(persisted.saved()!.entries[0]!.deliveredKWh).toBe(0);
@@ -2463,7 +2464,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
       // The first tick after a restart only re-anchors: PELS was not running.
       const afterRestart = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
-      afterRestart.observe([], 6 * 60_000, null);
+      afterRestart.observe([], 6 * 60_000, createEmptyActivePlans());
       expect(afterRestart.flushIfDirty()).toBe(false);
       expect(persisted.savedMeteredDelivery()[0]?.deliveredKWh).toBeCloseTo(1 / 6, 6);
       tick(afterRestart, 10 * 60_000, deadlineAtMs, 2);
@@ -2492,7 +2493,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
       afterRestart.observe([
         makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 }),
-      ], 11 * 60_000, null);
+      ], 11 * 60_000, createEmptyActivePlans());
       afterRestart.flushIfDirty();
 
       expect(persisted.saved()!.entries).toHaveLength(1);
@@ -2845,7 +2846,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       // 3 hours in: device has plateaued near setpoint; the classifier
       // reports `near_target_idle`. The horizon planner still says
@@ -2853,7 +2854,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
         3 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
       // 5 hours in: tank drifts down a bit (post-stall cooling). Without
       // the freeze, `finalProgressC` would track this drift; with the
@@ -2861,9 +2862,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.4 })],
         5 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -2900,14 +2901,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 40.9 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 40.6 })],
         3 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -2932,14 +2933,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
         3 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -2963,13 +2964,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       // Plateau reached; classifier promotes the run to met(stalled).
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
         3 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
       // Post-stall cooling observed every 15 minutes.
       const coast = [61.6, 61.3, 61.1, 60.8];
@@ -2977,10 +2978,10 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         recorder.observe(
           [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: temperature })],
           3 * HOUR_MS + (i + 1) * QUARTER_MS,
-          null,
+          createEmptyActivePlans(),
         );
       });
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3019,13 +3020,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         horizonPlan: makeHorizon({ status: 'cannot_meet', statusDetail: 'target_cannot_be_met' }),
       });
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })], 0, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })], 0, createEmptyActivePlans());
       recorder.observe(
         [resolvedDiag(61.8)],
         3 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3051,13 +3052,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         targetPercent: 80,
         reachableTargetValue: 70,
       };
-      recorder.observe([makeDiag({ ...ev, currentPercent: 53 })], 0, null);
+      recorder.observe([makeDiag({ ...ev, currentPercent: 53 })], 0, createEmptyActivePlans());
       recorder.observe([makeDiag({
         ...ev,
         currentPercent: 70,
         trajectory: { kind: 'resolved', status: 'satisfied' },
         horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-      })], 6 * HOUR_MS, null);
+      })], 6 * HOUR_MS, createEmptyActivePlans());
       // A tick that cannot plan but still reads 70 %: at the target it can reach.
       recorder.observe([makeDiag({
         ...ev,
@@ -3065,15 +3066,15 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_price_horizon' },
         reasonCode: 'objective_missing_price_horizon',
         horizonPlan: undefined,
-      })], 6 * HOUR_MS + 60_000, null);
+      })], 6 * HOUR_MS + 60_000, createEmptyActivePlans());
       recorder.observe([makeDiag({
         ...ev,
         currentPercent: null,
         trajectory: { kind: 'unavailable', reasonCode: 'objective_invalid_session' },
         reasonCode: 'objective_invalid_session',
         horizonPlan: undefined,
-      })], 7 * HOUR_MS, null);
-      recorder.observe([], deadlineAtMs, null);
+      })], 7 * HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3103,9 +3104,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         currentPercent: 70,
         trajectory: { kind: 'resolved', status: 'satisfied' },
         horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-      })], 0, null);
-      recorder.observe([makeDiag({ ...ev, currentPercent: 72 })], HOUR_MS, null);
-      recorder.observe([], deadlineAtMs, null);
+      })], 0, createEmptyActivePlans());
+      recorder.observe([makeDiag({ ...ev, currentPercent: 72 })], HOUR_MS, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3131,8 +3132,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         currentPercent: 85,
         trajectory: { kind: 'resolved', status: 'satisfied' },
         horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
-      })], 0, null);
-      recorder.observe([], deadlineAtMs, null);
+      })], 0, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3145,7 +3146,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, null);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, createEmptyActivePlans());
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',
@@ -3155,9 +3156,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
         })],
         3 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3174,14 +3175,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 20 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 20 })],
         3 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3207,14 +3208,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
         3 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3241,12 +3242,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
         HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
         2 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
       // Classifier exits capped_idle (e.g. user lowered PELS target);
       // the already-promoted record must not retract.
@@ -3254,9 +3255,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
         4 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3279,14 +3280,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
         HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
       // Second tick: existing record, classifier still reports
       // near_target_idle → promotion fires here.
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
         2 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
       // Classifier subsequently exits idle (tank cooled below the
       // hysteresis exit threshold) — the live acceptance must reopen.
@@ -3294,9 +3295,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
         4 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3324,15 +3325,15 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       // Subsequent tick: classification is fresh and authoritative.
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51 })],
         HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3358,7 +3359,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       // Second tick: classifier says near_target_idle, but the diag
       // arrives with status='unknown' (non-plannable). The live reading
@@ -3377,9 +3378,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           horizonPlan: undefined,
         })],
         HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3403,9 +3404,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3425,12 +3426,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
         HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
         2 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
       recorder.finalizeForUserChange('dev', 3 * HOUR_MS, 'replaced');
       recorder.flushIfDirty();
@@ -3486,14 +3487,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
         CAPPED_IDLE_MIN_WINDOW_MS + tickMs,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3570,7 +3571,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         0,
         plans,
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
       return recorder;
     };
@@ -3730,7 +3731,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         plans,
       );
       // Sweep at the deadline to finalize as `missed`.
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       // 1. The entry carries the anchored commitment, and the snapshot still
@@ -3778,7 +3779,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           energyExpectedKWh: null,
         })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
 
       // Cycle 2: the profile resolved. This is the run's committed requirement.
@@ -3791,7 +3792,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           energyExpectedKWh: 3.0,
         })],
         HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
 
       // Cycle 3: the remainder has shrunk. The commitment must NOT follow it —
@@ -3805,10 +3806,10 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           energyExpectedKWh: 1.1,
         })],
         2 * HOUR_MS,
-        null,
+        createEmptyActivePlans(),
       );
 
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
@@ -3821,11 +3822,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const deadlineAtMs = 6 * HOUR_MS;
       recorder.observe([makeDiag({ currentDrawKw: 0,
         deviceId: 'dev', deadlineAtMs, energyNeededKWh: null, energyExpectedKWh: null,
-      })], 0, null);
+      })], 0, createEmptyActivePlans());
       recorder.observe([makeDiag({ currentDrawKw: 0,
         deviceId: 'dev', deadlineAtMs, energyNeededKWh: 5, energyExpectedKWh: 3,
-      })], 5 * 60_000, null);
-      recorder.observe([], deadlineAtMs, null);
+      })], 5 * 60_000, createEmptyActivePlans());
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       expect(saved()!.entries[0]!.deliveredKWh).toBe(0);
@@ -3858,7 +3859,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           energyExpectedKWh: null,
         })],
         0,
-        null,
+        createEmptyActivePlans(),
       );
       // The real meter records delivery while the profile is still unresolved,
       // before any commitment could be stated.
@@ -3871,7 +3872,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           energyExpectedKWh: null,
         })],
         HOUR_MS + 5 * 60_000,
-        null,
+        createEmptyActivePlans(),
       );
       // Cycle 3: the profile resolves, but its figure is now a remainder.
       recorder.observe(
@@ -3883,9 +3884,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           energyExpectedKWh: 1.5,
         })],
         2 * HOUR_MS + 5 * 60_000,
-        null,
+        createEmptyActivePlans(),
       );
-      recorder.observe([], deadlineAtMs, null);
+      recorder.observe([], deadlineAtMs, createEmptyActivePlans());
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;

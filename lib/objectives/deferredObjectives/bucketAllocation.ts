@@ -9,7 +9,7 @@ import { hasPlannedEnergy } from '../../../packages/shared-domain/src/deferredPl
 
 const HOUR_MS = 60 * 60 * 1000;
 
-type NormalizedBucket = Omit<DeferredObjectiveAllocatedBucket,
+export type NormalizedBucket = Omit<DeferredObjectiveAllocatedBucket,
 | 'plannedUsefulEnergyKWh'
 | 'plannedAdmissionPowerKw'
 | 'usefulEnergyCapacityKWh'
@@ -70,29 +70,17 @@ export type BucketAllocationResult = {
 };
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-export const normalizeHorizonBuckets = (params: {
-  nowMs: number;
-  deadlineAtMs: number;
-  deadlineMarginMs: number;
-  buckets: DeferredObjectiveHorizonBucket[];
-}): NormalizedBucket[] => {
-  const {
-    nowMs,
-    deadlineAtMs,
-    deadlineMarginMs,
-    buckets,
-  } = params;
+export const normalizeHorizonBuckets = (
+  nowMs: number,
+  deadlineAtMs: number,
+  deadlineMarginMs: number,
+  buckets: DeferredObjectiveHorizonBucket[],
+): NormalizedBucket[] => {
   const planningEndMs = Math.max(nowMs, deadlineAtMs - deadlineMarginMs);
   const normalized: NormalizedBucket[] = [];
 
   for (const bucket of buckets) {
-    appendNormalizedBucketSegments({
-      bucket,
-      nowMs,
-      deadlineAtMs,
-      planningEndMs,
-      normalized,
-    });
+    appendNormalizedBucketSegments(bucket, nowMs, deadlineAtMs, planningEndMs, normalized);
   }
 
   return normalized.sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
@@ -102,18 +90,12 @@ export const normalizeHorizonBuckets = (params: {
 // Epsilon decides whether the remaining task need is satisfied, not whether a
 // bucket is booked. A positive sliver at hour-end still carries an active claim;
 // dropping it would release the device just before the next booked hour.
-export const allocateEnergyToBuckets = (params: {
-  buckets: NormalizedBucket[];
-  stepForBucket: StepForBucket;
-  energyNeededKWh: number;
-  epsilonKWh: number;
-}): BucketAllocationResult => {
-  const {
-    buckets,
-    stepForBucket,
-    energyNeededKWh,
-    epsilonKWh,
-  } = params;
+export const allocateEnergyToBuckets = (
+  buckets: NormalizedBucket[],
+  stepForBucket: StepForBucket,
+  energyNeededKWh: number,
+  epsilonKWh: number,
+): BucketAllocationResult => {
   const plannedByBucketId = new Map<string, number>();
   let remainingKWh = Math.max(0, energyNeededKWh);
   let plannedUsefulEnergyKWh = 0;
@@ -132,7 +114,7 @@ export const allocateEnergyToBuckets = (params: {
   }
 
   return {
-    plannedBuckets: buildPlannedBuckets({ buckets, stepForBucket, plannedByBucketId }),
+    plannedBuckets: buildPlannedBuckets(buckets, stepForBucket, plannedByBucketId),
     plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: Math.max(0, remainingKWh),
     usesDeadlineReserve,
@@ -157,20 +139,13 @@ export const allocateEnergyToBuckets = (params: {
 // Phase-2 expansion still adds new future uncommitted hours when even all
 // committed hours filled to step capacity cannot absorb the demand — the
 // genuine "primary's hour cannot deliver enough; we need more hours" case.
-export const allocateCommittedEnergyToBuckets = (params: {
-  buckets: NormalizedBucket[];
-  stepForBucket: StepForBucket;
-  energyNeededKWh: number;
-  epsilonKWh: number;
-  committedHours: readonly DeferredObjectiveCommittedHour[];
-}): BucketAllocationResult => {
-  const {
-    buckets,
-    stepForBucket,
-    energyNeededKWh,
-    epsilonKWh,
-    committedHours,
-  } = params;
+export const allocateCommittedEnergyToBuckets = (
+  buckets: NormalizedBucket[],
+  stepForBucket: StepForBucket,
+  energyNeededKWh: number,
+  epsilonKWh: number,
+  committedHours: readonly DeferredObjectiveCommittedHour[],
+): BucketAllocationResult => {
   const committedHourSet = buildCommittedHourSet(committedHours);
   const plannedByBucketId = new Map<string, number>();
   let remainingKWh = Math.max(0, energyNeededKWh);
@@ -210,21 +185,16 @@ export const allocateCommittedEnergyToBuckets = (params: {
   //        need now exceeds committed step capacity × committed hours).
   //        Expansion adds the missing hours; commitment grows on persist.
   if (remainingKWh > epsilonKWh) {
-    const expansion = expandCommittedAllocation({
-      buckets,
-      stepForBucket,
-      epsilonKWh,
-      remainingKWh,
-      plannedByBucketId,
-      committedHours,
-    });
+    const expansion = expandCommittedAllocation(
+      buckets, stepForBucket, epsilonKWh, remainingKWh, plannedByBucketId, committedHours,
+    );
     plannedUsefulEnergyKWh += expansion.plannedUsefulEnergyKWh;
     remainingKWh = expansion.remainingKWh;
     usesDeadlineReserve = usesDeadlineReserve || expansion.usesDeadlineReserve;
   }
 
   return {
-    plannedBuckets: buildPlannedBuckets({ buckets, stepForBucket, plannedByBucketId }),
+    plannedBuckets: buildPlannedBuckets(buckets, stepForBucket, plannedByBucketId),
     plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: Math.max(0, remainingKWh),
     usesDeadlineReserve,
@@ -274,22 +244,19 @@ export const allocateCommittedEnergyToBuckets = (params: {
 // empty (target was already met at task creation, then real-world load —
 // e.g. a hot-water draw — created a new need). Mutates `plannedByBucketId`
 // in place; returns updated running totals.
-const expandCommittedAllocation = (params: {
-  buckets: NormalizedBucket[];
-  stepForBucket: StepForBucket;
-  epsilonKWh: number;
-  remainingKWh: number;
-  plannedByBucketId: Map<string, number>;
-  committedHours: readonly DeferredObjectiveCommittedHour[];
-}): {
+const expandCommittedAllocation = (
+  buckets: NormalizedBucket[],
+  stepForBucket: StepForBucket,
+  epsilonKWh: number,
+  residualKWh: number,
+  plannedByBucketId: Map<string, number>,
+  committedHours: readonly DeferredObjectiveCommittedHour[],
+): {
   plannedUsefulEnergyKWh: number;
   remainingKWh: number;
   usesDeadlineReserve: boolean;
 } => {
-  const {
-    buckets, stepForBucket, epsilonKWh, plannedByBucketId, committedHours,
-  } = params;
-  let remainingKWh = params.remainingKWh;
+  let remainingKWh = residualKWh;
   let plannedUsefulEnergyKWh = 0;
   let usesDeadlineReserve = false;
   const committedHourSet = buildCommittedHourSet(committedHours);
@@ -336,20 +303,13 @@ const buildCommittedHourSet = (
 };
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-const appendNormalizedBucketSegments = (params: {
-  bucket: DeferredObjectiveHorizonBucket;
-  nowMs: number;
-  deadlineAtMs: number;
-  planningEndMs: number;
-  normalized: NormalizedBucket[];
-}): void => {
-  const {
-    bucket,
-    nowMs,
-    deadlineAtMs,
-    planningEndMs,
-    normalized,
-  } = params;
+const appendNormalizedBucketSegments = (
+  bucket: DeferredObjectiveHorizonBucket,
+  nowMs: number,
+  deadlineAtMs: number,
+  planningEndMs: number,
+  normalized: NormalizedBucket[],
+): void => {
   if (!isValidBucket(bucket)) return;
   const startMs = Math.max(bucket.startMs, nowMs);
   const endMs = Math.min(bucket.endMs, deadlineAtMs);
@@ -359,73 +319,36 @@ const appendNormalizedBucketSegments = (params: {
     ? planningEndMs
     : null;
   if (splitAtMs === null) {
-    normalized.push(buildBucketSegment({
-      bucket,
-      startMs,
-      endMs,
-      reserve: startMs >= planningEndMs,
-      nowMs,
-      segmentId: bucket.id,
-      originalStartMs: bucket.startMs,
-      originalEndMs: bucket.endMs,
-    }));
+    normalized.push(buildBucketSegment(bucket, startMs, endMs, startMs >= planningEndMs, nowMs, bucket.id));
     return;
   }
-  normalized.push(buildBucketSegment({
-    bucket,
-    startMs,
-    endMs: splitAtMs,
-    reserve: false,
-    nowMs,
-    segmentId: `${bucket.id}:primary`,
-    originalStartMs: bucket.startMs,
-    originalEndMs: bucket.endMs,
-  }));
-  normalized.push(buildBucketSegment({
-    bucket,
-    startMs: splitAtMs,
-    endMs,
-    reserve: true,
-    nowMs,
-    segmentId: `${bucket.id}:reserve`,
-    originalStartMs: bucket.startMs,
-    originalEndMs: bucket.endMs,
-  }));
+  normalized.push(buildBucketSegment(bucket, startMs, splitAtMs, false, nowMs, `${bucket.id}:primary`));
+  normalized.push(buildBucketSegment(bucket, splitAtMs, endMs, true, nowMs, `${bucket.id}:reserve`));
 };
 /* eslint-enable functional/immutable-data */
 
-const buildBucketSegment = (params: {
-  bucket: DeferredObjectiveHorizonBucket;
-  startMs: number;
-  endMs: number;
-  reserve: boolean;
-  nowMs: number;
-  segmentId: string;
-  originalStartMs: number;
-  originalEndMs: number;
-}): BucketSegment => {
-  const {
-    bucket,
-    startMs,
-    endMs,
-    reserve,
-    nowMs,
-    segmentId,
-    originalStartMs,
-    originalEndMs,
-  } = params;
+// One segment of `bucket` (the whole of it, or its primary or reserve part).
+// The bucket's own bounds scale its energy cap onto the segment.
+const buildBucketSegment = (
+  bucket: DeferredObjectiveHorizonBucket,
+  startMs: number,
+  endMs: number,
+  reserve: boolean,
+  nowMs: number,
+  segmentId: string,
+): BucketSegment => {
   const durationHours = (endMs - startMs) / HOUR_MS;
-  const originalDurationMs = Math.max(1, originalEndMs - originalStartMs);
-  const usefulEnergyCapKWh = resolveSegmentUsefulEnergyCapKWh({
-    maxUsefulEnergyKWh: bucket.maxUsefulEnergyKWh,
-    segmentDurationMs: endMs - startMs,
+  const originalDurationMs = Math.max(1, bucket.endMs - bucket.startMs);
+  const usefulEnergyCapKWh = resolveSegmentUsefulEnergyCapKWh(
+    bucket.maxUsefulEnergyKWh,
+    endMs - startMs,
     originalDurationMs,
-  });
-  const higherPriorityReservedKWh = resolveOverlappingReservedEnergyKWh({
-    reservations: bucket.higherPriorityEnergyReservations,
+  );
+  const higherPriorityReservedKWh = resolveOverlappingReservedEnergyKWh(
+    bucket.higherPriorityEnergyReservations,
     startMs,
     endMs,
-  });
+  );
   // `reservedHeadroomKw` is a per-source-bucket rate forecast (kW), not an
   // integral — segment splits inherit the same rate. The per-hour ceiling
   // applies it as `rate × segmentDurationHours` so the primary/reserve
@@ -447,18 +370,18 @@ const buildBucketSegment = (params: {
   };
 };
 
-const resolveOverlappingReservedEnergyKWh = (params: {
-  reservations: DeferredObjectiveHorizonBucket['higherPriorityEnergyReservations'];
-  startMs: number;
-  endMs: number;
-}): number => {
+const resolveOverlappingReservedEnergyKWh = (
+  reservations: DeferredObjectiveHorizonBucket['higherPriorityEnergyReservations'],
+  startMs: number,
+  endMs: number,
+): number => {
   let reservedKWh = 0;
-  for (const reservation of params.reservations ?? []) {
+  for (const reservation of reservations ?? []) {
     const durationMs = reservation.endMs - reservation.startMs;
     if (durationMs <= 0 || reservation.plannedKWh <= 0) continue;
     const overlapMs = Math.max(
       0,
-      Math.min(params.endMs, reservation.endMs) - Math.max(params.startMs, reservation.startMs),
+      Math.min(endMs, reservation.endMs) - Math.max(startMs, reservation.startMs),
     );
     reservedKWh += reservation.plannedKWh * (overlapMs / durationMs);
   }
@@ -492,16 +415,11 @@ const isValidBucket = (bucket: DeferredObjectiveHorizonBucket): boolean => (
   && bucket.endMs > bucket.startMs
 );
 
-const resolveSegmentUsefulEnergyCapKWh = (params: {
-  maxUsefulEnergyKWh: number | undefined;
-  segmentDurationMs: number;
-  originalDurationMs: number;
-}): number => {
-  const {
-    maxUsefulEnergyKWh,
-    segmentDurationMs,
-    originalDurationMs,
-  } = params;
+const resolveSegmentUsefulEnergyCapKWh = (
+  maxUsefulEnergyKWh: number | undefined,
+  segmentDurationMs: number,
+  originalDurationMs: number,
+): number => {
   if (typeof maxUsefulEnergyKWh !== 'number' || !Number.isFinite(maxUsefulEnergyKWh)) {
     return Number.POSITIVE_INFINITY;
   }
@@ -604,16 +522,11 @@ const resolveBucketStepCapacityKWh = (
   return Math.max(0, Math.min(stepCapacityKWh, energyAfterReservationsKWh, headroomCapKWh));
 };
 
-const buildPlannedBuckets = (params: {
-  buckets: NormalizedBucket[];
-  stepForBucket: StepForBucket;
-  plannedByBucketId: ReadonlyMap<string, number>;
-}): DeferredObjectiveAllocatedBucket[] => {
-  const {
-    buckets,
-    stepForBucket,
-    plannedByBucketId,
-  } = params;
+const buildPlannedBuckets = (
+  buckets: NormalizedBucket[],
+  stepForBucket: StepForBucket,
+  plannedByBucketId: ReadonlyMap<string, number>,
+): DeferredObjectiveAllocatedBucket[] => {
   return buckets.map((bucket) => {
     const step = stepForBucket(bucket);
     const plannedUsefulEnergyKWh = plannedByBucketId.get(bucket.id) ?? 0;

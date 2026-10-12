@@ -106,11 +106,7 @@ export const resolveSmartTaskRequestDeadline = (
   timeZone: string,
   nowMs: number,
 ): number | null => {
-  const resolution = resolveDeferredObjectiveDeadline({
-    nowMs,
-    timeZone,
-    deadlineLocalTime: request.readyByLocalTime,
-  });
+  const resolution = resolveDeferredObjectiveDeadline(nowMs, timeZone, request.readyByLocalTime);
   if (resolution.deadlineAtMs === null || resolution.deadlineAtMs <= nowMs) return null;
   return resolution.deadlineAtMs;
 };

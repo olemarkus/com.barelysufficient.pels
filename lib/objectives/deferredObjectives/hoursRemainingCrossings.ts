@@ -33,11 +33,11 @@ export type PersistedHoursRemainingLatch = {
 export const HOURS_REMAINING_LATCH_VERSION = 1 as const;
 
 export type DeferredObjectiveHoursRemainingTracker = {
-  observe: (params: {
-    diagnostics: DeferredObjectiveDiagnostic[];
-    nowMs: number;
-    bus: DeferredObjectiveHoursRemainingBus;
-  }) => void;
+  observe: (
+    diagnostics: DeferredObjectiveDiagnostic[],
+    nowMs: number,
+    bus: DeferredObjectiveHoursRemainingBus,
+  ) => void;
   forgetDevice: (deviceId: string) => void;
 };
 
@@ -156,17 +156,16 @@ export const createDeferredObjectiveHoursRemainingTracker = (
     applyMutation(() => latchByDeviceId.delete(deviceId));
   };
 
-  const observe = (params: {
-    diagnostics: DeferredObjectiveDiagnostic[];
-    nowMs: number;
-    bus: DeferredObjectiveHoursRemainingBus;
-  }): void => {
-    const { diagnostics, nowMs, bus } = params;
+  const observe = (
+    diagnostics: DeferredObjectiveDiagnostic[],
+    nowMs: number,
+    bus: DeferredObjectiveHoursRemainingBus,
+  ): void => {
     applyMutation(() => {
       let changed = false;
       const seen = new Set<string>();
       for (const diagnostic of diagnostics) {
-        const result = observeDiagnostic({ diagnostic, nowMs, latchByDeviceId });
+        const result = observeDiagnostic(diagnostic, nowMs, latchByDeviceId);
         seen.add(diagnostic.deviceId);
         if (result.latchChanged) changed = true;
         if (result.event) bus.publish(result.event);
@@ -195,12 +194,11 @@ type ObserveDiagnosticResult = {
   latchChanged: boolean;
 };
 
-const observeDiagnostic = (params: {
-  diagnostic: DeferredObjectiveDiagnostic;
-  nowMs: number;
-  latchByDeviceId: Map<string, CrossingLatchEntry>;
-}): ObserveDiagnosticResult => {
-  const { diagnostic, nowMs, latchByDeviceId } = params;
+const observeDiagnostic = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  nowMs: number,
+  latchByDeviceId: Map<string, CrossingLatchEntry>,
+): ObserveDiagnosticResult => {
   const { deviceId, deadlineAtMs } = diagnostic;
   if (deadlineAtMs === null || !Number.isFinite(deadlineAtMs)) {
     // No usable deadline — drop any stale latch so the device re-arms cleanly

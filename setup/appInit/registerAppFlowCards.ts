@@ -106,7 +106,7 @@ export function registerAppFlowCards(
     // read-modify-write + notify/flush path.
     upsertDeferredObjectiveForDevice: (params) => upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),
-      params,
+      params.deviceId, params.deviceName, params.entry, params.rescue,
     ),
     clearDeferredObjectiveForDevice: (params) => clearObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),

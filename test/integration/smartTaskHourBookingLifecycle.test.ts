@@ -213,7 +213,7 @@ const buildCombinedPrices = (): CombinedPricesV2 => ({
 });
 
 const resolveDeadline = (): number => {
-  const r = resolveDeferredObjectiveDeadline({ nowMs: START_MS, timeZone: 'UTC', deadlineLocalTime: '06:00' });
+  const r = resolveDeferredObjectiveDeadline(START_MS, 'UTC', '06:00');
   if (r.deadlineAtMs === null) throw new Error('failed to resolve deadline');
   return r.deadlineAtMs;
 };

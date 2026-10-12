@@ -1,24 +1,18 @@
-import type { TaskReservationReader } from './taskDeliveryState';
 import { reportTaskDeliveryStatus, type TaskDeliveryReader } from './deliveryEvidence';
-import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
-import type { PowerTrackerState } from '../../power/tracker';
-import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
-import type { ResolveObjectiveDeviceExclusion } from './deviceExclusion';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
-import type { BuildPriceHorizon } from './diagnosticsBridge';
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import { resolveObjectiveDeviceInputs, type ObjectiveDeviceSource } from '../types';
-import type { ThermalDirection } from '../../../packages/contracts/src/types';
+import type { ObjectiveDeviceSource } from '../types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { EnergyTaskDeliveryTracker } from './energyDelivery';
 import {
   buildDeferredObjectiveDiagnostics,
+  buildTaskEvaluationSnapshot,
   emitDeferredObjectiveDiagnostics,
   LIVE_LANE,
   reportStalledTasksAsSatisfied,
   type DeferredObjectiveDiagnostic,
   type DeferredObjectiveAnnounce,
-  type TaskEvaluationReaders,
+  type TaskEvaluationSource,
 } from './diagnosticsBridge';
 import {
   emitDeferredObjectiveLifecycleTransitions,
@@ -28,9 +22,8 @@ import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import { isDeferredObjectiveExpired, type DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
+import { isDeferredObjectiveExpired } from './diagnosticTypes';
 import { PriorityAllocationTracker } from './priorityAllocation';
-
 
 /**
  * Clock-driven smart-task lifecycle emission.
@@ -65,28 +58,17 @@ import { PriorityAllocationTracker } from './priorityAllocation';
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
 export type DeferredObjectiveLifecycleEmitterDeps = {
-  getThermalDirection: (deviceId: string) => ThermalDirection;
+  // The home's evaluation source. Its device-exclusion resolver gives THIS
+  // lane's diagnostics (the sole writers of plan-history/active-plan records and
+  // the drivers of the status buses) the dedicated unknown code for a device out
+  // of the main planning lane, and keeps an excluded task out of the
+  // priority-allocation roster so it cannot shrink the runnable tasks' shares.
+  source: TaskEvaluationSource;
   getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1 | undefined;
-  getTimeZone: () => string;
   /** Live device inputs (the same source the plan loop reads via getPlanDevices). */
   getDevices: () => ObjectiveDeviceSource[];
-  getPowerTracker: () => PowerTrackerState;
+  // The budget overlay; the allocation horizon's prices come from the source.
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
-  // Price-layer allocation-horizon producer, injected by the wiring layer. The
-  // daily-budget snapshot is now only the budget overlay.
-  buildPriceHorizon: BuildPriceHorizon;
-  getPriceOptimizationEnabled: () => boolean;
-  getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
-  // The persisted power-limit settings. The planning ceiling is derived here,
-  // in the domain, rather than in the wiring layer that reads the settings:
-  // `lib/power` owns the ceiling, and `setup/` answers no power question.
-  getCapacitySettings: () => PowerLimitSettings;
-  // Whether the home has solar production (a role-detected PV device): export can
-  // lift live grid headroom past the grid import target, so the plan is not cut
-  // at that target in a PV home.
-  hasSolarProduction: () => boolean;
-  /** Complete priority order from the current mode's catalog owner. */
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   getDeferredObjectiveDebugStructured?: () => StructuredDebugEmitter | undefined;
   deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
   deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus;
@@ -118,7 +100,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   observeDeferredObjectivePlanHistory: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
-    activePlans: DeferredObjectiveActivePlansV1 | null,
+    activePlans: DeferredObjectiveActivePlansV1,
   ) => void;
   /**
    * Active-plan commitment RECORD. Settles replan revisions on the clock — the
@@ -132,22 +114,11 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
   ) => void;
-  getStallClassification: DeferredObjectiveStallClassificationReader;
-  // Durable device-exclusion resolver (wiring-injected): names why a task's
-  // device is out of the main planning lane (separate-meter sub-home, or not
-  // managed by PELS), so THIS lane's diagnostics — the sole writers of
-  // plan-history/active-plan records and the drivers of the status buses —
-  // resolve to that exclusion's dedicated unknown code, and the
-  // priority-allocation roster excludes the task (an excluded reserved task
-  // must not shrink the runnable tasks' shares). Answering `null` everywhere
-  // changes nothing.
-  resolveDeviceExclusion: ResolveObjectiveDeviceExclusion;
   // Counts the energy fed under each energy task. This clock is its only
   // booking clock: the tick books the draw before it builds the diagnostics, so
   // an energy task's progress is current as of this tick.
   energyDelivery: EnergyTaskDeliveryTracker;
   getDeliveryEvidence: TaskDeliveryReader;
-  isReservationSuppressed: TaskReservationReader;
 };
 
 export class DeferredObjectiveLifecycleEmitter {
@@ -159,50 +130,35 @@ export class DeferredObjectiveLifecycleEmitter {
   // emission from the live diagnostics, so it cannot retain a dead objective.
   private announced: ReadonlyMap<string, DeferredObjectiveAnnounce> = new Map();
 
-  private readonly readers: TaskEvaluationReaders;
-
-  constructor(private readonly deps: DeferredObjectiveLifecycleEmitterDeps) {
-    this.readers = {
-      buildPriceHorizon: deps.buildPriceHorizon,
-      getPrioritiesForDevices: deps.getPrioritiesForDevices,
-      resolveDeviceExclusion: deps.resolveDeviceExclusion,
-      getStallClassification: deps.getStallClassification,
-      getDeliveredEnergyKWh: deps.energyDelivery.getDeliveredKWh,
-      isReservationSuppressed: deps.isReservationSuppressed,
-    };
-  }
+  constructor(private readonly deps: DeferredObjectiveLifecycleEmitterDeps) {}
 
   /** Evaluate the lifecycle at `nowMs` and emit/observe its facts. Pure side-effects. */
   tick(nowMs: number): void {
     const settings = this.deps.getDeferredObjectiveSettings();
     if (!settings) return;
 
-    // Read the active-plan recorder snapshot ONCE per tick and reuse it for the
-    // diagnostics build and the plan-history observe. NOTE: the active-plan WRITE
-    // below mutates the recorder later in this same tick, so the snapshot
-    // forwarded to plan-history is the PRE-write state — plan-history correlates
-    // against the previous tick's commitment (a ≤30 s lag, immaterial for the
-    // history record). The read itself is in-memory (no SDK call).
-    const activePlans = this.deps.getDeferredObjectiveActivePlans();
-
-    const devices = resolveObjectiveDeviceInputs(this.deps.getDevices(), this.deps.getThermalDirection);
-    this.deps.energyDelivery.observe(devices, settings, nowMs);
+    // The snapshot reads the active-plan recorder ONCE per tick; its
+    // `activePlans` serves the diagnostics build and the plan-history observe.
+    // NOTE: the active-plan WRITE below mutates the recorder later in this same
+    // tick, so the snapshot forwarded to plan-history is the PRE-write state —
+    // plan-history correlates against the previous tick's commitment (a ≤30 s
+    // lag, immaterial for the history record). The read itself is in-memory (no
+    // SDK call).
+    const { source } = this.deps;
+    const snapshot = buildTaskEvaluationSnapshot(
+      source, nowMs, this.deps.getDevices(), settings, this.deps.getDailyBudgetSnapshot(),
+    );
+    const { activePlans } = snapshot;
+    this.deps.energyDelivery.observe(snapshot.devices, settings, nowMs);
     // Resolve the user-facing status to `satisfied` for parked/stalled devices
     // so the status chip, notifications, Flows (active-plan recorder) and the
     // postmortem all agree. The decoration/actuation path builds its own
     // diagnostics WITHOUT this, keeping admission on the raw trajectory status.
-    let diagnostics = reportStalledTasksAsSatisfied(buildDeferredObjectiveDiagnostics({
-      nowMs,
-      timeZone: this.deps.getTimeZone(),
-      devices,
-      settings,
-      powerTracker: this.deps.getPowerTracker(),
-      dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
-      priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
+    let diagnostics = reportStalledTasksAsSatisfied(
+      buildDeferredObjectiveDiagnostics(snapshot, source, this.priorityAllocationTracker, LIVE_LANE),
+      source.getStallClassification,
       activePlans,
-      powerLimits: this.deps.getCapacitySettings(),
-      hasSolarProduction: this.deps.hasSolarProduction(),
-    }, this.readers, this.priorityAllocationTracker, LIVE_LANE), this.deps.getStallClassification, activePlans);
+    );
 
     // Plan-history record, using this tick's (pre-write) snapshot.
     this.deps.observeDeferredObjectivePlanHistory(diagnostics, nowMs, activePlans);
@@ -219,14 +175,9 @@ export class DeferredObjectiveLifecycleEmitter {
     // See notes/state-management/deferred-objective-lifecycle-carveout.md.
     this.deps.observeDeferredObjectiveActivePlans(diagnostics, nowMs);
 
-    this.lifecycleDeviceIds = emitDeferredObjectiveLifecycleTransitions({
-      diagnostics,
-      knownDeviceIds: this.lifecycleDeviceIds,
-      nowMs,
-      onSatisfied: this.deps.onSatisfied,
-      onDeadlineReached: this.deps.onDeadlineReached,
-      onFallbackInactive: this.deps.onFallbackInactive,
-    });
+    this.lifecycleDeviceIds = emitDeferredObjectiveLifecycleTransitions(
+      diagnostics, this.lifecycleDeviceIds, nowMs, this.deps,
+    );
 
     // Finalization and terminal fallback still observe expired tasks. Their
     // history outcome is authoritative; no live verdict survives the deadline.
@@ -236,18 +187,13 @@ export class DeferredObjectiveLifecycleEmitter {
     // debug topic to investigate a task always yields its current state on the
     // next tick instead of silence left over from the last time it was on.
     this.announced = debugStructured
-      ? emitDeferredObjectiveDiagnostics({
-        diagnostics: liveDiagnostics,
-        debugStructured,
-        nowMs,
-        announced: this.announced,
-      })
+      ? emitDeferredObjectiveDiagnostics(liveDiagnostics, nowMs, this.announced, debugStructured)
       : new Map();
-    emitDeferredObjectiveStatusTransitions({
-      diagnostics: liveDiagnostics, statusBus: this.deps.deferredObjectiveStatusBus, nowMs,
-    });
-    this.deps.deferredObjectiveHoursRemainingTracker.observe({
-      diagnostics: liveDiagnostics, nowMs, bus: this.deps.deferredObjectiveHoursRemainingBus,
-    });
+    emitDeferredObjectiveStatusTransitions(liveDiagnostics, this.deps.deferredObjectiveStatusBus, nowMs);
+    this.deps.deferredObjectiveHoursRemainingTracker.observe(
+      liveDiagnostics,
+      nowMs,
+      this.deps.deferredObjectiveHoursRemainingBus,
+    );
   }
 }

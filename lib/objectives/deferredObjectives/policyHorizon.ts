@@ -173,12 +173,7 @@ export const buildDeferredObjectivePolicyHorizon = (
   if (!priceOptimizationEnabled) {
     return unavailable('objective_price_feature_disabled');
   }
-  const sourceBuckets = collectPriceBuckets({
-    nowMs,
-    deadlineAtMs,
-    priceHorizon,
-    dailyBudgetSnapshot,
-  });
+  const sourceBuckets = collectPriceBuckets(nowMs, deadlineAtMs, priceHorizon, dailyBudgetSnapshot);
   if (!sourceBuckets || sourceBuckets.length === 0) {
     return unavailable('objective_missing_price_horizon');
   }
@@ -313,18 +308,12 @@ const NO_BUDGET_OVERLAY: BudgetOverlay = {
 // and overlay the OPTIONAL daily-budget snapshot for the budget fields only.
 // Returns null when the price horizon is empty or does not cover
 // `[nowMs, deadlineAtMs)`.
-const collectPriceBuckets = (params: {
-  nowMs: number;
-  deadlineAtMs: number;
-  priceHorizon: PriceHorizonEntry[];
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-}): PolicyBucketSource[] | null => {
-  const {
-    nowMs,
-    deadlineAtMs,
-    priceHorizon,
-    dailyBudgetSnapshot,
-  } = params;
+const collectPriceBuckets = (
+  nowMs: number,
+  deadlineAtMs: number,
+  priceHorizon: PriceHorizonEntry[],
+  dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+): PolicyBucketSource[] | null => {
   const budgetByHour = buildBudgetOverlayByHour(dailyBudgetSnapshot);
   const allBuckets = priceHorizon.flatMap((entry) => {
     // `entry.startMs` is the RAW price-hour start instant (NOT clipped to `nowMs`,
@@ -361,7 +350,7 @@ const collectPriceBuckets = (params: {
     }];
   });
   if (allBuckets.length === 0) return null;
-  if (!coversHorizon({ buckets: allBuckets, nowMs, deadlineAtMs })) return null;
+  if (!coversHorizon(allBuckets, nowMs, deadlineAtMs)) return null;
   return allBuckets;
 };
 
@@ -505,12 +494,7 @@ const resolveBucketEndMs = (starts: string[], index: number, startIso: string): 
   return new Date(startIso).getTime() + 60 * 60 * 1000;
 };
 
-const coversHorizon = (params: {
-  buckets: PolicyBucketSource[];
-  nowMs: number;
-  deadlineAtMs: number;
-}): boolean => {
-  const { buckets, nowMs, deadlineAtMs } = params;
+const coversHorizon = (buckets: PolicyBucketSource[], nowMs: number, deadlineAtMs: number): boolean => {
   let coveredUntilMs = nowMs;
   for (const bucket of buckets) {
     if (bucket.startMs > coveredUntilMs) return false;

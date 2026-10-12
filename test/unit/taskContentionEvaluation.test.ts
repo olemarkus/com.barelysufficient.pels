@@ -29,10 +29,7 @@ const reservations = [partialDouble<DeferredObjectivePriorityReservation>({})];
 describe('operational task contention', () => {
   it('attributes competing claims only after the unconstrained control allocation fits', () => {
     const constrained = evaluation(1);
-    const result = resolveHigherPriorityContentionEvaluation({
-      evaluation: constrained, higherPriorityReservations: reservations, higherPriorityUnbookedPowerKw: 0,
-      buildWithoutReservations: () => evaluation(0),
-    });
+    const result = resolveHigherPriorityContentionEvaluation(constrained, reservations, 0, () => evaluation(0));
     expect(result.planning).toMatchObject({ kind: 'allocated', plan: {
       status: 'at_risk', statusDetail: 'limited_by_higher_priority_task', currentHourClaim: 'claimed',
     } });
@@ -50,12 +47,12 @@ describe('operational task contention', () => {
   it('keeps a booked hour it would price-defer once contention leaves it short, but still cold-start releases', () => {
     const booked = { bucketId: 'h0', sourceBucketId: 'h0', plannedUsefulEnergyKWh: 1, booked: true, expectedStepId: 'low' };
     const claimUnderContention = (facts: DeferredObjectiveHorizonPlan['currentHourFacts']) => {
-      const result = resolveHigherPriorityContentionEvaluation({
-        evaluation: evaluation(1, false, { currentBucket: booked, currentHourFacts: facts }),
-        higherPriorityReservations: reservations,
-        higherPriorityUnbookedPowerKw: 0,
-        buildWithoutReservations: () => evaluation(0),
-      });
+      const result = resolveHigherPriorityContentionEvaluation(
+        evaluation(1, false, { currentBucket: booked, currentHourFacts: facts }),
+        reservations,
+        0,
+        () => evaluation(0),
+      );
       return result.planning.kind === 'allocated' ? result.planning.plan.currentHourClaim : null;
     };
     // Short only because of a higher-priority task (`time_capacity`): coasting would
@@ -67,10 +64,12 @@ describe('operational task contention', () => {
 
   it('attributes a shortfall to the maximum step reserved for a device above, with no bookings', () => {
     const constrained = evaluation(1);
-    const attribute = (higherPriorityUnbookedPowerKw: number) => resolveHigherPriorityContentionEvaluation({
-      evaluation: constrained, higherPriorityReservations: [], higherPriorityUnbookedPowerKw,
-      buildWithoutReservations: () => evaluation(0),
-    });
+    const attribute = (higherPriorityUnbookedPowerKw: number) => resolveHigherPriorityContentionEvaluation(
+      constrained,
+      [],
+      higherPriorityUnbookedPowerKw,
+      () => evaluation(0),
+    );
     expect(attribute(2).planning).toMatchObject({ kind: 'allocated', plan: {
       status: 'at_risk', statusDetail: 'limited_by_higher_priority_task',
     } });
@@ -80,20 +79,19 @@ describe('operational task contention', () => {
   it('keeps the original allocation when the control still falls short or is inactive', () => {
     const constrained = evaluation(1);
     for (const control of [evaluation(0.5), inactiveTaskEvaluation('lower-task', 3_600_000, 65)]) {
-      expect(resolveHigherPriorityContentionEvaluation({
-        evaluation: constrained, higherPriorityReservations: reservations, higherPriorityUnbookedPowerKw: 0,
-        buildWithoutReservations: () => control,
-      })).toBe(constrained);
+      expect(resolveHigherPriorityContentionEvaluation(
+        constrained,
+        reservations,
+        0,
+        () => control,
+      )).toBe(constrained);
     }
   });
 
   it('keeps frozen commitment truth without running a fresh attribution probe', () => {
     const frozen = evaluation(1, true);
     const buildWithoutReservations = vi.fn(() => evaluation(0));
-    expect(resolveHigherPriorityContentionEvaluation({
-      evaluation: frozen, higherPriorityReservations: reservations, higherPriorityUnbookedPowerKw: 0,
-      buildWithoutReservations,
-    })).toBe(frozen);
+    expect(resolveHigherPriorityContentionEvaluation(frozen, reservations, 0, buildWithoutReservations)).toBe(frozen);
     expect(buildWithoutReservations).not.toHaveBeenCalled();
   });
 });

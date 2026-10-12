@@ -483,17 +483,18 @@ describe('recordPowerSampleForApp', () => {
     // `currentDrawKw`, not a raw `measuredPowerKw`, and the objectives seam
     // receives the quantity without any observation time.
     const updateProfiles: UpdateObjectiveProfiles = (params) => (
-      updateObjectiveProfilesFromSnapshot({
-        ...params,
-        devices: params.devices.flatMap((device) => {
+      updateObjectiveProfilesFromSnapshot(
+        params.state,
+        params.devices.flatMap((device) => {
           const observedQuantity = resolveObjectiveObservedQuantity(device);
           return observedQuantity === null
             ? []
             : [{ ...withHeadroomCurrentOn(device), observedQuantity, thermalDirection: 'heating' as const }];
         }),
+        params.nowMs,
         debugStructured,
-        outdoorTemperatureC: undefined,
-      })
+        undefined,
+      )
     );
 
     await recordPowerSampleForApp({

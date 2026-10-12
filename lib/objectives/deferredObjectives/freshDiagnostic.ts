@@ -35,7 +35,7 @@ export const buildPolicyGatedKnownInputs = (
 
   const profileEnergy = !progress.reasonCode && remainingUnits > 0
     && policyReasonCode === 'objective_missing_price_horizon'
-    ? resolveProgressEnergy({ powerTracker, deviceId, objective, remainingUnits, progress })
+    ? resolveProgressEnergy(powerTracker, deviceId, objective, remainingUnits, progress)
     : null;
 
   const withProgress = mergeProgressFields(base, progress.reasonCode ? null : progress.currentValue);

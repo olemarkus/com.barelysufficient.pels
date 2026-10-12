@@ -121,17 +121,17 @@ const applyWindow = (
   previous: DeviceObjectiveProfile,
   valueDelta: number,
   debugStructured: (payload: Record<string, unknown>) => void = () => undefined,
-): DeviceObjectiveProfile => updateDeviceObjectiveProfile({
+): DeviceObjectiveProfile => updateDeviceObjectiveProfile(
   previous,
-  sample: sampleAt(
+  sampleAt(
     previous.lastSample.observedAtMs + hourMs,
     previous.lastSample.value + valueDelta,
   ),
-  deviceId: 'heater-1',
-  deviceName: 'Device',
+  'heater-1',
+  'Device',
   debugStructured,
-  outdoorTemperatureC: undefined,
-});
+  undefined,
+);
 
 const bandAt = (
   nowMs: number,
@@ -199,14 +199,14 @@ describe('objective profile energy band', () => {
     // window it used to arm needed a no-progress counter and a 24h safety
     // timeout to let go of such a device; there is no window to let go of now.
     const previous = profileWithHistory(ORDINARY_HISTORY);
-    const afterFall = updateDeviceObjectiveProfile({
+    const afterFall = updateDeviceObjectiveProfile(
       previous,
-      sample: sampleAt(startMs + hourMs, previous.lastSample.value - 8),
-      deviceId: 'heater-1',
-      deviceName: 'Device',
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      sampleAt(startMs + hourMs, previous.lastSample.value - 8),
+      'heater-1',
+      'Device',
+      () => undefined,
+      undefined,
+    );
     expect(afterFall.rejectedSamples).toBe(1);
     // The fall reseeded the baseline; the next ordinary rise is measured from
     // the new low and learned at once, still far below the pre-drop value.
@@ -247,16 +247,16 @@ describe('objective profile energy band', () => {
     // would restart it on every poll and no window would ever reach the minimum
     // interval.
     const previous = profileWithHistory(ORDINARY_HISTORY);
-    const next = updateDeviceObjectiveProfile({
+    const next = updateDeviceObjectiveProfile(
       previous,
-      sample: sampleAt(startMs + 60 * 1000, previous.lastSample.value + 4),
+      sampleAt(startMs + 60 * 1000, previous.lastSample.value + 4),
       // Its own id: the rejection log throttles per (device, reason), and the
       // spec below asserts that same reason is emitted for `heater-1`.
-      deviceId: 'heater-2',
-      deviceName: 'Device',
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      'heater-2',
+      'Device',
+      () => undefined,
+      undefined,
+    );
 
     expect(next.rejectedSamples).toBe(1);
     expect(next.lastSample).toEqual(previous.lastSample);
@@ -278,16 +278,16 @@ describe('objective profile energy band', () => {
   it('refuses a timing-invalid sample before it is ever priced', () => {
     const previous = profileWithHistory(ORDINARY_HISTORY);
     const debugStructured = vi.fn();
-    const next = updateDeviceObjectiveProfile({
+    const next = updateDeviceObjectiveProfile(
       previous,
       // One minute after the baseline — below the minimum sampling interval, so
       // there is no window to bill and no energy verdict to reach.
-      sample: sampleAt(startMs + 60 * 1000, previous.lastSample.value + 4),
-      deviceId: 'heater-1',
+      sampleAt(startMs + 60 * 1000, previous.lastSample.value + 4),
+      'heater-1',
+      'Device',
       debugStructured,
-      deviceName: 'Device',
-      outdoorTemperatureC: undefined,
-    });
+      undefined,
+    );
 
     expect(next.rejectedSamples).toBe(1);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
@@ -386,15 +386,15 @@ describe('the learned rate follows the same horizon as admission', () => {
     // Two weeks and change later the tank is on a different rate entirely. Its
     // history has aged out, so the window is admitted...
     const lateMs = startMs + OBJECTIVE_PROFILE_SAMPLE_HORIZON_MS + hourMs;
-    const next = updateDeviceObjectiveProfile({
-      previous: { ...previous, lastSample: sampleAt(lateMs, 50) },
+    const next = updateDeviceObjectiveProfile(
+      { ...previous, lastSample: sampleAt(lateMs, 50) },
       // 2 kWh over 1.25 °C = 1.6 kWh/°C, more than three times the old rate.
-      sample: sampleAt(lateMs + hourMs, 51.25),
-      deviceId: 'heater-3',
-      deviceName: 'Device',
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      sampleAt(lateMs + hourMs, 51.25),
+      'heater-3',
+      'Device',
+      () => undefined,
+      undefined,
+    );
 
     expect(next.acceptedSamples).toBe(11);
     // ...and the stat the planner reads is the new rate alone, not an average
@@ -424,45 +424,45 @@ describe('objective profiles through the snapshot pipeline', () => {
     // costs far more per degree than this tank has ever needed.
     let state: PowerTrackerState = {};
     for (let hour = 0; hour <= 10; hour += 1) {
-      state = updateObjectiveProfilesFromSnapshot({
+      state = updateObjectiveProfilesFromSnapshot(
         state,
-        devices: [temperatureDevice({
+        [temperatureDevice({
           // 4 °C an hour at 2 kW: 0.5 kWh/°C, every hour.
           currentTemperature: 30 + hour * 4,
           lastFreshDataMs: startMs + hour * hourMs,
         })],
-        nowMs: startMs + hour * hourMs,
-        debugStructured: () => undefined,
-        outdoorTemperatureC: undefined,
-      });
+        startMs + hour * hourMs,
+        () => undefined,
+        undefined,
+      );
     }
     const learned = state.objectiveProfiles?.['heater-1'];
     expect(learned?.acceptedSamples).toBe(10);
     expect(learned?.kwhPerUnit?.mean).toBeCloseTo(0.5, 6);
 
     // The draw: a sharp fall reseeds the baseline and teaches nothing.
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 40,
         lastFreshDataMs: startMs + 11 * hourMs,
       })],
-      nowMs: startMs + 11 * hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + 11 * hourMs,
+      () => undefined,
+      undefined,
+    );
     // The refill: 2 kWh buys 0.8 °C at the sensor while the tank re-heats the
     // cold water underneath it.
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [temperatureDevice({
+      [temperatureDevice({
         currentTemperature: 40.8,
         lastFreshDataMs: startMs + 12 * hourMs,
       })],
-      nowMs: startMs + 12 * hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + 12 * hourMs,
+      () => undefined,
+      undefined,
+    );
 
     const profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.acceptedSamples).toBe(10);
@@ -478,50 +478,50 @@ describe('objective profiles through the snapshot pipeline', () => {
     // to be.
     let state: PowerTrackerState = {};
     for (let hour = 0; hour <= 10; hour += 1) {
-      state = updateObjectiveProfilesFromSnapshot({
+      state = updateObjectiveProfilesFromSnapshot(
         state,
-        devices: [evDevice({
+        [evDevice({
           // 7 kWh an hour for 10 % — 0.7 kWh per unit, every hour.
           stateOfCharge: stateOfChargeFixture({
             percent: 10 + hour * 10,
             observedAtMs: startMs + hour * hourMs,
           }),
         })],
-        nowMs: startMs + hour * hourMs,
-        debugStructured: () => undefined,
-        outdoorTemperatureC: undefined,
-      });
+        startMs + hour * hourMs,
+        () => undefined,
+        undefined,
+      );
     }
     const learned = state.objectiveProfiles?.['ev-1'];
     expect(learned?.acceptedSamples).toBe(10);
     expect(learned?.kwhPerUnit?.mean).toBeCloseTo(0.7, 6);
 
     // Recalibration: the reported level drops, which reseeds the baseline...
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [evDevice({
+      [evDevice({
         stateOfCharge: stateOfChargeFixture({
           percent: 60,
           observedAtMs: startMs + 11 * hourMs,
         }),
       })],
-      nowMs: startMs + 11 * hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + 11 * hourMs,
+      () => undefined,
+      undefined,
+    );
     // ...then steps back 50 points on 7 kWh, at 0.14 kWh per unit.
-    state = updateObjectiveProfilesFromSnapshot({
+    state = updateObjectiveProfilesFromSnapshot(
       state,
-      devices: [evDevice({
+      [evDevice({
         stateOfCharge: stateOfChargeFixture({
           percent: 110,
           observedAtMs: startMs + 12 * hourMs,
         }),
       })],
-      nowMs: startMs + 12 * hourMs,
-      debugStructured: () => undefined,
-      outdoorTemperatureC: undefined,
-    });
+      startMs + 12 * hourMs,
+      () => undefined,
+      undefined,
+    );
 
     const profile = state.objectiveProfiles?.['ev-1'];
     expect(profile?.acceptedSamples).toBe(10);

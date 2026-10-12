@@ -21,15 +21,21 @@ const band = (overrides: Partial<ObjectiveProfileBand>): ObjectiveProfileBand =>
 
 describe('resolveBandedProfileConfidence', () => {
   it('falls back to the non-banded resolver when no bands are present', () => {
-    expect(resolveBandedProfileConfidence({
-      sampleCount: 200, mean: 0.27, m2: 5.0, bands: undefined,
-    })).toBe(resolveProfileConfidence({ sampleCount: 200, mean: 0.27, m2: 5.0 }));
+    expect(resolveBandedProfileConfidence(
+      200,
+      0.27,
+      5.0,
+      undefined,
+    )).toBe(resolveProfileConfidence(200, 0.27, 5.0));
   });
 
   it('falls back to the non-banded resolver when the bands array is empty', () => {
-    expect(resolveBandedProfileConfidence({
-      sampleCount: 200, mean: 0.27, m2: 5.0, bands: [],
-    })).toBe(resolveProfileConfidence({ sampleCount: 200, mean: 0.27, m2: 5.0 }));
+    expect(resolveBandedProfileConfidence(
+      200,
+      0.27,
+      5.0,
+      [],
+    )).toBe(resolveProfileConfidence(200, 0.27, 5.0));
   });
 
   it('reaches `high` from tight within-band noise even when the global m2 is inflated', () => {
@@ -40,28 +46,32 @@ describe('resolveBandedProfileConfidence', () => {
     // 198 dof) → RSD≈0.083 → 'high'. This is exactly the banded-confidence
     // gap — the global model can't reach `high` even on a converged,
     // banded profile; the band-aware model can.
-    const globalConfidence = resolveProfileConfidence({ sampleCount: 200, mean: 0.27, m2: 5.0 });
+    const globalConfidence = resolveProfileConfidence(200, 0.27, 5.0);
     expect(globalConfidence).toBe('medium');
-    const banded = resolveBandedProfileConfidence({
-      sampleCount: 200, mean: 0.27, m2: 5.0,
-      bands: [
+    const banded = resolveBandedProfileConfidence(
+      200,
+      0.27,
+      5.0,
+      [
         band({ sampleCount: 100, mean: 0.20, m2: 0.05, confidence: 'high' }),
         band({ sampleCount: 100, mean: 0.34, m2: 0.05, confidence: 'high' }),
       ],
-    });
+    );
     expect(banded).toBe('high');
   });
 
   it('returns `medium` when pooled within-band RSD sits in the medium band', () => {
     // pooled m2 = 0.2 over residualDof 18 → variance≈0.0111 → RSD≈0.39 →
     // > 0.20 but ≤ 0.75 → 'medium'. bandSampleTotal=20 still qualifies the n≥10 gate.
-    expect(resolveBandedProfileConfidence({
-      sampleCount: 20, mean: 0.27, m2: 1.0,
-      bands: [
+    expect(resolveBandedProfileConfidence(
+      20,
+      0.27,
+      1.0,
+      [
         band({ sampleCount: 10, mean: 0.25, m2: 0.1 }),
         band({ sampleCount: 10, mean: 0.29, m2: 0.1 }),
       ],
-    })).toBe('medium');
+    )).toBe('medium');
   });
 
   it(`returns 'medium' for mildly-different bands with non-trivial within-band noise`, () => {
@@ -73,49 +83,57 @@ describe('resolveBandedProfileConfidence', () => {
     // returned 'high', over-promoting a profile whose bands are only mildly
     // different. Outer `sampleCount`/`mean`/`m2` are aggregate stats used by
     // the lifetime-mean fallback; they don't influence the banded RSD here.
-    expect(resolveBandedProfileConfidence({
-      sampleCount: 20, mean: 0.27, m2: 0.5,
-      bands: [
+    expect(resolveBandedProfileConfidence(
+      20,
+      0.27,
+      0.5,
+      [
         band({ sampleCount: 10, mean: 0.25, m2: 0.07 }),
         band({ sampleCount: 10, mean: 0.30, m2: 0.07 }),
       ],
-    })).toBe('medium');
+    )).toBe('medium');
   });
 
   it('stays `low` when within-band noise is genuinely high', () => {
     // pooled m2 = 2.0 over 18 dof → variance≈0.111 → RSD≈1.23 → > 0.75 → 'low'.
     // Confirms the band-aware path doesn't manufacture confidence out of noisy bands.
-    expect(resolveBandedProfileConfidence({
-      sampleCount: 20, mean: 0.27, m2: 5.0,
-      bands: [
+    expect(resolveBandedProfileConfidence(
+      20,
+      0.27,
+      5.0,
+      [
         band({ sampleCount: 10, m2: 1.0 }),
         band({ sampleCount: 10, m2: 1.0 }),
       ],
-    })).toBe('low');
+    )).toBe('low');
   });
 
   it('falls back when residual dof is non-positive (every band carries 1 sample)', () => {
-    const banded = resolveBandedProfileConfidence({
-      sampleCount: 2, mean: 0.27, m2: 0.01,
-      bands: [
+    const banded = resolveBandedProfileConfidence(
+      2,
+      0.27,
+      0.01,
+      [
         band({ sampleCount: 1, mean: 0.20, m2: 0 }),
         band({ sampleCount: 1, mean: 0.34, m2: 0 }),
       ],
-    });
-    expect(banded).toBe(resolveProfileConfidence({ sampleCount: 2, mean: 0.27, m2: 0.01 }));
+    );
+    expect(banded).toBe(resolveProfileConfidence(2, 0.27, 0.01));
   });
 
   it('falls back when no positive reference mean is available (lifetime and every band mean are zero)', () => {
     // Degenerate: there is no positive central tendency to anchor RSD against,
     // so neither the weighted band mean nor the lifetime mean can serve as the
     // denominator and the resolver must fall back to the non-banded model.
-    expect(resolveBandedProfileConfidence({
-      sampleCount: 20, mean: 0, m2: 0.01,
-      bands: [
+    expect(resolveBandedProfileConfidence(
+      20,
+      0,
+      0.01,
+      [
         band({ sampleCount: 10, mean: 0, m2: 0.001 }),
         band({ sampleCount: 10, mean: 0, m2: 0.001 }),
       ],
-    })).toBe(resolveProfileConfidence({ sampleCount: 20, mean: 0, m2: 0.01 }));
+    )).toBe(resolveProfileConfidence(20, 0, 0.01));
   });
 
   it('uses the weighted band mean as the RSD reference when the lifetime stat mean is zero but bands carry positive means', () => {
@@ -123,13 +141,15 @@ describe('resolveBandedProfileConfidence', () => {
     // yet caught up (e.g. early-life seeding) but the bands have established
     // positive means, the weighted band mean is the honest reference rather
     // than triggering a non-banded fallback against a zero global mean.
-    expect(resolveBandedProfileConfidence({
-      sampleCount: 20, mean: 0, m2: 0.01,
-      bands: [
+    expect(resolveBandedProfileConfidence(
+      20,
+      0,
+      0.01,
+      [
         band({ sampleCount: 10, mean: 0.27, m2: 0.001 }),
         band({ sampleCount: 10, mean: 0.27, m2: 0.001 }),
       ],
-    })).toBe('high');
+    )).toBe('high');
   });
 
   it('uses the sample-weighted band mean (not the lifetime running mean) so a drifted buffer is judged honestly', () => {
@@ -140,11 +160,13 @@ describe('resolveBandedProfileConfidence', () => {
     // the lifetime mean (0.30) ≈ 0.167 → `high` — the falsely-tight answer that
     // would result from dividing pooled within-band σ by an unrelated lifetime
     // reference when the buffer has drifted toward a lower-rate band.
-    expect(resolveProfileConfidence({ sampleCount: 200, mean: 0.30, m2: 15 })).toBe('low');
-    expect(resolveBandedProfileConfidence({
-      sampleCount: 200, mean: 0.30, m2: 15,
-      bands: [band({ sampleCount: 159, mean: 0.10, m2: 0.395 })],
-    })).toBe('medium');
+    expect(resolveProfileConfidence(200, 0.30, 15)).toBe('low');
+    expect(resolveBandedProfileConfidence(
+      200,
+      0.30,
+      15,
+      [band({ sampleCount: 159, mean: 0.10, m2: 0.395 })],
+    )).toBe('medium');
   });
 });
 

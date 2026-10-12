@@ -85,9 +85,9 @@ const CAUSES_THAT_BLOCK_PRICE_DEFERRAL: ReadonlySet<DeferredObjectiveActivePlanF
  *   real element (cold-start release). Hold the device in its configured release
  *   posture.
  */
-export const resolveCurrentHourClaim = (params: {
-  currentHourBooking: CurrentHourBooking;
-  facts: DeferredObjectiveCurrentHourFacts;
+export const resolveCurrentHourClaim = (
+  currentHourBooking: CurrentHourBooking,
+  facts: DeferredObjectiveCurrentHourFacts,
   // The producer's verdict on what bound the floor schedule. Deliberately the
   // SETTLED, hour-boundary-paced signal rather than a live energy comparison: the
   // fresh path derives it from the status detail it just resolved, and the frozen
@@ -98,20 +98,18 @@ export const resolveCurrentHourClaim = (params: {
   // cross back and forth mid-hour and the device would bang between released and
   // claimed with no cooldown able to damp it (a lifecycle release never stamps
   // `lastInstabilityMs`, so the 60-300 s restore back-off never engages).
-  floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause;
-}): DeferredObjectiveCurrentHourClaim => {
-  const { facts, floorShortfallCause } = params;
+  floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause,
+): DeferredObjectiveCurrentHourClaim => {
   // Proves the whole remaining need fits the cheaper hours at the real element, so
   // it carries its own justification and outranks the booking and the cause.
   if (facts.coldStartFeasible) return 'released';
-  const booking = params.currentHourBooking;
-  if (booking === 'unbooked' && !needsEveryHour(floorShortfallCause)) return 'released';
+  if (currentHourBooking === 'unbooked' && !needsEveryHour(floorShortfallCause)) return 'released';
   // Price deferral: already ahead of this hour's milestone, and a later hour carrying
   // energy is meaningfully cheaper, so that hour carries the load instead. Only an
   // hour with energy can be deferred: a booking without energy promises nothing to
   // move, and its milestone does not advance, so "ahead" would be true by
   // construction and switch the device off in exactly the hour it was booked to run.
-  const priceDeferral = booking === 'booked_with_energy'
+  const priceDeferral = currentHourBooking === 'booked_with_energy'
     && facts.aheadOfHourMilestone && facts.cheaperHourAhead
     && !CAUSES_THAT_BLOCK_PRICE_DEFERRAL.has(floorShortfallCause);
   return priceDeferral ? 'released' : 'claimed';

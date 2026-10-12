@@ -207,20 +207,21 @@ export class PowerSamplePipeline {
   // The objectives owner resolves its progress quantity and observer direction
   // from this power-scoped view. No observation time travels with the sample.
   private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => (
-    updateObjectiveProfilesFromSnapshot({
-      ...params,
+    updateObjectiveProfilesFromSnapshot(
+      params.state,
       // Devices with nothing to sample are dropped here rather than passed with an
       // empty quantity: `ObjectiveSampleDevice` then means "a device with a reading"
       // and nothing downstream carries an absence. Profile retention is unaffected —
       // `pruneObjectiveProfiles` keeps anything touched inside its retention window,
       // so a device that simply goes quiet for a cycle does not lose what it learned.
-      devices: resolveObjectiveSampleDevices(
+      resolveObjectiveSampleDevices(
         params.devices.map(withHeadroomCurrentOn),
         (deviceId) => this.deps.getThermalDirection(deviceId),
       ),
-      debugStructured: getDebugEmitter('objective_profiles', 'objective_profiles'),
-      outdoorTemperatureC: this.deps.getOutdoorTemperatureC?.(),
-    })
+      params.nowMs,
+      getDebugEmitter('objective_profiles', 'objective_profiles'),
+      this.deps.getOutdoorTemperatureC?.(),
+    )
   );
 
   constructor(private readonly deps: PowerSamplePipelineDeps) {

@@ -1,4 +1,3 @@
-import { requireDeferredObjectivePlanHistoryRecorder } from './appInit/deferredRecorders';
 import type { AppContext } from '../lib/app/appContext';
 import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 import type { DailyBudgetUiPayload } from '../packages/contracts/src/dailyBudgetTypes';
@@ -11,6 +10,7 @@ import {
 } from '../packages/shared-domain/src/smartTaskDeviceKind';
 import {
   hasOpenDeferredObjective,
+  buildTaskEvaluationSnapshot,
   buildUnavailableDeferredObjectivePlanEstimate,
   migrateBlobToPerKeyIfNeeded,
   readDeferredObjectiveRoster,
@@ -19,6 +19,7 @@ import {
   upsertObjectiveForDevice,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveSettingsEntry,
+  type TaskEvaluationSource,
 } from '../lib/objectives/deferredObjectives';
 import {
   normalizeDeferredObjectiveSettingsEntry,
@@ -30,12 +31,11 @@ import {
 } from './appInit';
 import type { CancelDeferredObjectiveOutcome } from '../lib/app/pelsHost';
 import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
-import { createObjectivePriceHorizonBuilder } from './appInit/objectivePriceHorizon';
+import { buildTaskEvaluationSource } from './appInit/taskEvaluationSource';
 import { requirePlanService } from './appInit/contextGuards';
-import { requireDeferredObjectiveEnergyDelivery } from './appInit/deferredRecorders';
+import { requireDeferredObjectiveActivePlanRecorder } from './appInit/deferredRecorders';
 import { resolveObjectiveTargetValue } from '../packages/shared-domain/src/deferredObjectiveValues';
 import {
-  resolveSmartTaskDeviceExclusion,
   mapObjectiveWriteRefusalReason,
   resolveSmartTaskHomeScope,
 } from './appInit/smartTaskHomeScope';
@@ -77,10 +77,16 @@ type SmartTaskWriteRejectReason = Extract<WidgetObjectiveWriteResult, { ok: fals
  * takes the context directly rather than a bespoke dependency bag.
  */
 export class AppSmartTaskApi {
+  // The main home's evaluation source: the preview reads the household through
+  // the same binding as the live lanes.
+  private readonly taskEvaluationSource: TaskEvaluationSource;
+
   constructor(
     private readonly ctx: AppContext,
     private readonly getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
-  ) {}
+  ) {
+    this.taskEvaluationSource = buildTaskEvaluationSource(ctx, getPrioritiesForDevices);
+  }
 
   // Open-task predicate; semantics documented on the store helper.
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
@@ -117,13 +123,6 @@ export class AppSmartTaskApi {
     return service.getSnapshot();
   }
 
-  private requireActivePlanRecorder(): NonNullable<AppContext['deferredObjectiveActivePlanRecorder']> {
-    const recorder = this.ctx.deferredObjectiveActivePlanRecorder;
-    if (!recorder) {
-      throw new Error('DeferredObjectiveActivePlanRecorder must be initialized before previewing a smart task.');
-    }
-    return recorder;
-  }
 
 
   // Preview the plan the starvation rescue would actually persist. A rescue only
@@ -168,14 +167,10 @@ export class AppSmartTaskApi {
     const dailyBudgetSnapshot = this.requireDailyBudgetSnapshot();
     const priceRateLabel = this.requirePriceRateLabel();
     const planService = requirePlanService(this.ctx);
-    const activePlanRecorder = this.requireActivePlanRecorder();
+    requireDeferredObjectiveActivePlanRecorder(this.ctx);
     const roster = readDeferredObjectiveRoster(this.ctx.homey.settings);
     if (roster.status === 'unavailable') {
-      return buildUnavailableDeferredObjectivePlanEstimate({
-        reason: 'settings_unavailable',
-        candidate,
-        includeGrantedRescuePermissions: false,
-      });
+      return buildUnavailableDeferredObjectivePlanEstimate('settings_unavailable', candidate, false);
     }
     // Preview uses the same configuration + Observer inputs as runtime planning.
     const snapshotDevice = this.ctx.getPlanInputSnapshot().find((device) => device.id === deviceId);
@@ -200,36 +195,17 @@ export class AppSmartTaskApi {
       ...device,
       priority: previewPriorities.getPriority(device.id),
     }));
-    return previewDeferredObjectivePlan({
-      nowMs: this.ctx.getNow().getTime(),
-      timeZone: this.ctx.getTimeZone(),
-      getThermalDirection: (id) => this.ctx.getThermalDirection(id),
-      deviceId,
-      candidate: gatedCandidate,
-      // Converted through the same metered producer the plan cycle uses so
-      // the projected steps/power match the live planner. The projection is a
-      // pure read projection (no live-state mutation), so the preview is
-      // read-only by construction. A candidate device in neither snapshot is
-      // absent here → projection comes back `unavailable`.
-      devices,
-      settings: roster.settings,
-      activePlans: activePlanRecorder.getActivePlansSnapshot(),
-      getPrioritiesForDevices: this.getPrioritiesForDevices,
-      resolveDeviceExclusion: (id) => resolveSmartTaskDeviceExclusion(this.ctx, id),
-      isReservationSuppressed: requireDeferredObjectivePlanHistoryRecorder(this.ctx).isReservationSuppressed,
-      getStallClassification: (id) => planService.getStallEvidence(id),
-      getDeliveredEnergyKWh: requireDeferredObjectiveEnergyDelivery(this.ctx).getDeliveredKWh,
-      powerTracker: this.ctx.powerTracker,
-      dailyBudgetSnapshot,
-      buildPriceHorizon: createObjectivePriceHorizonBuilder(this.ctx),
-      priceOptimizationEnabled: this.ctx.priceOptimizationEnabled,
-      // See `homeScope.ts`: probes pace against what the guard admits.
-      capacitySettings: this.ctx.capacitySettings,
-      hasSolarProduction: this.ctx.deviceReads.hasProductionCandidate(),
-      // The price store exposes a per-kWh RATE label; `previewDeferredObjectivePlan`
-      // converts it to a money unit for the total `costEstimate`.
-      priceRateLabel,
-    });
+    // Converted through the same metered producer the plan cycle uses so the
+    // projected steps/power match the live planner. The projection is a pure
+    // read projection (no live-state mutation), so the preview is read-only by
+    // construction. A candidate device in neither snapshot is absent here →
+    // projection comes back `unavailable`.
+    const snapshot = buildTaskEvaluationSnapshot(
+      this.taskEvaluationSource, this.ctx.getNow().getTime(), devices, roster.settings, dailyBudgetSnapshot,
+    );
+    // The price store exposes a per-kWh RATE label; `previewDeferredObjectivePlan`
+    // converts it to a money unit for the total `costEstimate`.
+    return previewDeferredObjectivePlan(snapshot, this.taskEvaluationSource, deviceId, gatedCandidate, priceRateLabel);
   }
 
   // Shared validation for both objective-write lanes (`createDeferredObjective`
@@ -366,7 +342,7 @@ export class AppSmartTaskApi {
     // success so the widget can re-offer the create.
     const outcome = upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, this.ctx.getNow().getTime()),
-      { deviceId, deviceName: device.name ?? null, entry, rescue: rescuePolicy },
+      deviceId, device.name ?? null, entry, rescuePolicy,
     );
     // Refusal → reject union mapping (durable scope reasons stay typed; the
     // transient refusals collapse to the retryable `write_refused` lane).
@@ -390,7 +366,7 @@ export class AppSmartTaskApi {
     }
     const outcome = createObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, this.ctx.getNow().getTime()),
-      { deviceId, deviceName: device.name ?? null, entry, rescue: 'replace' },
+      deviceId, device.name ?? null, entry, 'replace',
     );
     if (outcome.persisted) return { ok: true };
     if (outcome.reason === 'open_task_exists') return { ok: false, reason: 'task_exists' };

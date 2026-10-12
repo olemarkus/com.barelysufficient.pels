@@ -84,7 +84,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
   it('upsert writes the device key and runs notify→flush for a fresh create', () => {
     const store = buildStore();
     const h = buildDeviceDeps(store);
-    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
     expect(readObjectiveForDevice(store, 'ev-1')).toEqual(evEntry);
     expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
@@ -95,7 +95,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
   it('PER-KEY ISOLATION: writing device A never touches device B\'s key (clobber-immunity proof)', () => {
     const store = buildStore({ 'ev-1': evEntry });
     const h = buildDeviceDeps(store);
-    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-2', deviceName: 'Garage', entry: evEntry });
+    upsertObjectiveForDevice(h.deps, 'ev-2', 'Garage', evEntry);
     // Both keys present; ev-1's entry is byte-for-byte untouched.
     expect(readObjectiveForDevice(store, 'ev-1')).toEqual(evEntry);
     expect(readObjectiveForDevice(store, 'ev-2')).toEqual(evEntry);
@@ -150,7 +150,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore();
     store.raw.set(keyFor('ev-1'), undefined); // flaky read of an existing key
     const h = buildDeviceDeps(store);
-    const outcome = upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    const outcome = upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
     expect(outcome).toEqual({ persisted: false, reason: 'untrusted_absence' });
     expect(store.raw.get(keyFor('ev-1'))).toBeUndefined(); // NOT overwritten
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
@@ -168,9 +168,12 @@ describe('device-scoped objective ops (per-device-key)', () => {
       expect(objective).toEqual(evEntry);
       return evaluation;
     });
-    upsertObjectiveForDevice({ ...h.deps, readCurrentTaskEvaluation }, {
-      deviceId: 'ev-1', deviceName: 'Driveway', entry: { ...evEntry, targetPercent: 90 },
-    });
+    upsertObjectiveForDevice(
+      { ...h.deps, readCurrentTaskEvaluation },
+      'ev-1',
+      'Driveway',
+      { ...evEntry, targetPercent: 90 },
+    );
     expect(readCurrentTaskEvaluation).toHaveBeenCalledOnce();
     expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith(
       'ev-1', NOW_MS, 'replaced', evaluation,
@@ -189,9 +192,12 @@ describe('device-scoped objective ops (per-device-key)', () => {
       getStallClassification: () => undefined,
       hasObservedTask,
     });
-    upsertObjectiveForDevice({ ...h.deps, readCurrentTaskEvaluation }, {
-      deviceId: 'ev-1', deviceName: 'Driveway', entry: { ...evEntry, targetPercent: 90 },
-    });
+    upsertObjectiveForDevice(
+      { ...h.deps, readCurrentTaskEvaluation },
+      'ev-1',
+      'Driveway',
+      { ...evEntry, targetPercent: 90 },
+    );
     expect(hasObservedTask).toHaveBeenCalledWith('ev-1', evEntry);
     expect(getDevices).not.toHaveBeenCalled();
     expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'replaced', undefined);
@@ -202,16 +208,19 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const h = buildDeviceDeps(store);
     store.raw.set('deferred_objectives_perkey_migrated', true);
     const set = vi.fn(() => { throw new Error('write failed'); });
-    expect(() => upsertObjectiveForDevice({ ...h.deps, store: { ...store, set } }, {
-      deviceId: 'ev-1', deviceName: 'Driveway', entry: { ...evEntry, targetPercent: 90 },
-    })).toThrow('write failed');
+    expect(() => upsertObjectiveForDevice(
+      { ...h.deps, store: { ...store, set } },
+      'ev-1',
+      'Driveway',
+      { ...evEntry, targetPercent: 90 },
+    )).toThrow('write failed');
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
   });
 
   it('upsert finalizes the prior run as replaced when overwriting an active objective', () => {
     const store = buildStore({ 'ev-1': { ...evEntry, targetPercent: 50 } });
     const h = buildDeviceDeps(store);
-    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
     expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'replaced', expect.objectContaining({ completion: { kind: 'inactive' } }));
     expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
   });
@@ -222,7 +231,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     });
     const h = buildDeviceDeps(store);
     // Widget-style re-create: a bare goal/deadline entry with no rescue field.
-    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
     expect(readObjectiveForDevice(store, 'ev-1')).toEqual({
       ...evEntry,
       rescue: { exemptFromBudget: 'always' },
@@ -232,9 +241,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
   it('upsert with rescue:"replace" writes the entry rescue verbatim (clearing it)', () => {
     const store = buildStore({ 'ev-1': { ...evEntry, rescue: { exemptFromBudget: 'always' } } });
     const h = buildDeviceDeps(store);
-    upsertObjectiveForDevice(h.deps, {
-      deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry, rescue: 'replace',
-    });
+    upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry, 'replace');
     expect(readObjectiveForDevice(store, 'ev-1')).toEqual(evEntry);
     expect(readObjectiveForDevice(store, 'ev-1')!.rescue).toBeUndefined();
   });
@@ -244,9 +251,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
   it('create REFUSES (no write, no notify) a device with an open task', () => {
     const store = buildStore({ 'ev-1': { ...evEntry, targetPercent: 50 } });
     const h = buildDeviceDeps(store);
-    const outcome = createObjectiveForDevice(h.deps, {
-      deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry, rescue: 'replace',
-    });
+    const outcome = createObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry, 'replace');
     expect(outcome).toEqual({ persisted: false, reason: 'open_task_exists' });
     expect(readObjectiveForDevice(store, 'ev-1')).toEqual({ ...evEntry, targetPercent: 50 });
     expect(h.activePlanRecorder.markPending).not.toHaveBeenCalled();
@@ -258,7 +263,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
   it('create REFUSES a paused task whose ready-by is still ahead, which is still open', () => {
     const store = buildStore({ 'ev-1': { ...evEntry, enabled: false } });
     const h = buildDeviceDeps(store);
-    expect(createObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry }))
+    expect(createObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry, 'preserve'))
       .toEqual({ persisted: false, reason: 'open_task_exists' });
   });
 
@@ -267,9 +272,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
       'ev-1': { ...evEntry, enabled: false, deadlineAtMs: NOW_MS - 60_000, rescue: { exemptFromBudget: 'always' } },
     });
     const h = buildDeviceDeps(store);
-    const outcome = createObjectiveForDevice(h.deps, {
-      deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry, rescue: 'replace',
-    });
+    const outcome = createObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry, 'replace');
     expect(outcome).toEqual({ persisted: true });
     expect(readObjectiveForDevice(store, 'ev-1')).toEqual(evEntry);
   });
@@ -279,7 +282,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
   it('upsert returns { persisted: true } on a successful write', () => {
     const store = buildStore();
     const h = buildDeviceDeps(store);
-    const outcome = upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    const outcome = upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
     expect(outcome).toEqual({ persisted: true });
   });
 
@@ -296,7 +299,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore({ 'ev-1': evEntry });
     const flaky = { ...store, getKeys: () => [] };
     const h = buildDeviceDeps(flaky);
-    const outcome = upsertObjectiveForDevice(h.deps, { deviceId: 'ev-2', deviceName: 'Garage', entry: evEntry });
+    const outcome = upsertObjectiveForDevice(h.deps, 'ev-2', 'Garage', evEntry);
     expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
   });
@@ -309,7 +312,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore();
     store.raw.set(keyFor('ev-1'), undefined); // flaky read of an existing key
     const h = buildDeviceDeps(store);
-    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
     expect(h.debugStructured).toHaveBeenCalledWith({
       event: 'objective_write_refused', op: 'upsert', deviceId: 'ev-1', reason: 'untrusted_absence',
     });
@@ -327,7 +330,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
   it('does NOT emit objective_write_refused on a successful write', () => {
     const store = buildStore();
     const h = buildDeviceDeps(store);
-    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
     expect(h.debugStructured).not.toHaveBeenCalled();
   });
 });
