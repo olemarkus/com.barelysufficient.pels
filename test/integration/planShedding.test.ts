@@ -15,6 +15,7 @@ import type {
   TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { reasonText } from '../utils/deviceReasonTestUtils';
@@ -80,6 +81,38 @@ const buildDevice = (
     currentOn: resolveFixtureCurrentOn(merged),
   }) as MeteredPlanInputDevice;
 };
+
+// The Connected 300's step ladder: off, then 1, 2 and 3 kW.
+const connected300Ladder = (): SteppedLoadProfile => ({
+  steps: [
+    { id: 'off', planningPowerW: 0 },
+    { id: 'low', planningPowerW: 1000 },
+    { id: 'mid', planningPowerW: 2000 },
+    { id: 'max', planningPowerW: 3000 },
+  ],
+});
+
+type DeviceFixture = Parameters<typeof buildDevice>[0];
+
+// The Connected 300 water heater as an on, controllable stepped load. A case
+// states its ladder, the step it is at and what it draws.
+const connected300 = (fields: DeviceFixture): MeteredPlanInputDevice => buildDevice({
+  id: 'connected-300',
+  name: 'Connected 300',
+  controlModel: 'stepped_load',
+  binaryControl: { on: true },
+  controllable: true,
+  ...fields,
+});
+
+// The bathroom thermostat: an on, controllable load beside the stepped heater.
+const bathThermostat = (fields: Pick<NonNullable<DeviceFixture>, 'currentDrawKw'>): MeteredPlanInputDevice => buildDevice({
+  id: 'bath',
+  name: 'Bathroom thermostat',
+  ...fields,
+  binaryControl: { on: true },
+  controllable: true,
+});
 
 // The frame and the measurement are two objects now (`PlanContext` carries no
 // measurement; `MeasuredPower` exists only on a measured cycle). The spec keeps
@@ -784,30 +817,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'max',
         currentDrawKw: 2.8,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -840,33 +855,15 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'max',
         // A managed stepped device always has a reading now; the descent is
         // priced from the step ladder, not from this number directly.
         currentDrawKw: 3,
         expectedPowerKw: 3,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -899,10 +896,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
+      connected300({
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -913,16 +907,8 @@ describe('buildSheddingPlan', () => {
         selectedStepId: 'max',
         currentDrawKw: 0,
         expectedPowerKw: 3,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -956,10 +942,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
+      connected300({
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -970,17 +953,9 @@ describe('buildSheddingPlan', () => {
         selectedStepId: 'low',
         currentDrawKw: 0,
         expectedPowerKw: 1,
-        binaryControl: { on: true },
-        controllable: true,
         binaryCapabilityId: 'onoff',
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -1012,18 +987,8 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         // selectedStepId stuck at 'max' because the device reports no step
         selectedStepId: 'max',
         // Previous cycle already commanded step-down to 'mid'
@@ -1031,16 +996,8 @@ describe('buildSheddingPlan', () => {
         stepCommandPending: true,
         currentDrawKw: 3,
         expectedPowerKw: 3,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -1072,30 +1029,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'max',
         currentDrawKw: 2.8,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -1138,30 +1077,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'mid',
         currentDrawKw: 1.9,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -1199,22 +1120,10 @@ describe('buildSheddingPlan', () => {
     state.actuation.lastDeviceShedMs.gang = Date.now() - 60_000;
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'max',
         currentDrawKw: 2.9,
-        binaryControl: { on: true },
-        controllable: true,
       }),
       buildDevice({
         id: 'gang',
@@ -1260,22 +1169,10 @@ describe('buildSheddingPlan', () => {
     state.actuation.lastDeviceRestoreMs.gang = Date.now() - 30_000;
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'max',
         currentDrawKw: 2.9,
-        binaryControl: { on: true },
-        controllable: true,
       }),
       buildDevice({
         id: 'gang',
@@ -1319,30 +1216,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'low',
         currentDrawKw: 0.9,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -1379,10 +1258,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
+      connected300({
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -1392,8 +1268,6 @@ describe('buildSheddingPlan', () => {
         },
         selectedStepId: 'low',
         currentDrawKw: 0.9,
-        binaryControl: { on: true },
-        controllable: true,
       }),
     ];
 
@@ -1429,10 +1303,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
+      connected300({
         steppedLoadProfile: {
           steps: [
             { id: 'low', planningPowerW: 1250 },
@@ -1443,9 +1314,7 @@ describe('buildSheddingPlan', () => {
         selectedStepId: 'low',
         currentDrawKw: 1.193,
         expectedPowerKw: 1.25,
-        binaryControl: { on: true },
         binaryCapabilityId: 'onoff',
-        controllable: true,
         budgetExempt: false,
       }),
     ];
@@ -1479,33 +1348,15 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'max',
         desiredStepId: 'mid',
         stepCommandPending: true,
         stepCommandStatus: 'pending',
         currentDrawKw: 2.8,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -1543,25 +1394,13 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'max',
         desiredStepId: 'low',
         stepCommandPending: true,
         stepCommandStatus: 'pending',
         currentDrawKw: 2.9,
-        binaryControl: { on: true },
-        controllable: true,
       }),
       buildDevice({
         id: 'hall',
@@ -1608,33 +1447,15 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'max',
         desiredStepId: 'low',
         stepCommandPending: true,
         stepCommandStatus: 'pending',
         currentDrawKw: 2.8,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -1673,33 +1494,15 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         selectedStepId: 'max',
         desiredStepId: 'mid',
         stepCommandPending: false,
         stepCommandStatus: 'stale',
         currentDrawKw: 2.8,
-        binaryControl: { on: true },
-        controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -1821,13 +1624,7 @@ describe('buildSheddingPlan', () => {
         binaryControl: { on: true },
         controllable: true,
       }),
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
     ];
 
     const capacityGuard = capacityGuardSpy();
@@ -2140,13 +1937,7 @@ describe('buildSheddingPlan', () => {
     };
 
     const devices = [
-      buildDevice({
-        id: 'bath',
-        name: 'Bathroom thermostat',
-        currentDrawKw: 1.2,
-        binaryControl: { on: true },
-        controllable: true,
-      }),
+      bathThermostat({ currentDrawKw: 1.2 }),
       buildDevice({
         id: 'hall',
         name: 'Hall thermostat',
@@ -2190,10 +1981,7 @@ describe('buildSheddingPlan', () => {
     };
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
+      connected300({
         steppedLoadProfile: {
           steps: [
             { id: 'low', planningPowerW: 1250 },
@@ -2204,9 +1992,7 @@ describe('buildSheddingPlan', () => {
         selectedStepId: 'low',
         currentDrawKw: 1.193,
         expectedPowerKw: 1.25,
-        binaryControl: { on: true },
         binaryCapabilityId: 'onoff',
-        controllable: true,
       }),
       buildDevice({
         id: 'hall',
@@ -2712,25 +2498,13 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const devices = [
-      buildDevice({
-        id: 'connected-300',
-        name: 'Connected 300',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: {
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1000 },
-            { id: 'mid', planningPowerW: 2000 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
+      connected300({
+        steppedLoadProfile: connected300Ladder(),
         // Device is at 'low', but a restore to 'max' is pending
         selectedStepId: 'low',
         desiredStepId: 'max',
         stepCommandPending: true,
         currentDrawKw: 0.9,
-        binaryControl: { on: true },
-        controllable: true,
       }),
     ];
 
