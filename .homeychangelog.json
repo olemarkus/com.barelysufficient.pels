@@ -613,5 +613,8 @@
   },
   "3.12.1": {
     "en": "You can now set a Grid import limit independently of the Capacity limit. PELS leaves a small margin below the grid limit and reduces flexible loads as measured import approaches it. You can use either limit, both, or neither. The settings and Overview show which limit is active, and daily budget and Smart task plans follow the limits you have turned on. Price settings and Smart tasks still work when both limits are off. If the whole-home meter stops reporting, the existing meter-outage protection still applies and may limit managed devices."
+  },
+  "3.12.2": {
+    "en": "A smart task now leaves room for the full power of higher-priority devices that have no active task, so it no longer plans on power those devices may need. PELS now keeps learned power steps and EV charger history in its own storage instead of app settings, and does less processing when it updates the daily budget."
   }
 }
