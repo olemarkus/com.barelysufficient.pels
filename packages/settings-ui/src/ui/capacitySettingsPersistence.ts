@@ -12,7 +12,7 @@ import {
   CAPACITY_PERIOD_MINUTES,
   GRID_IMPORT_ENABLED,
   GRID_IMPORT_LIMIT_KW,
-} from '../../../contracts/src/settingsKeys.ts';
+} from '../../../shared-domain/src/settings/settingsKeys.ts';
 
 /**
  * The WebView's read and write of the persisted capacity block. Values arrive
