@@ -98,6 +98,7 @@ README.it.txt
 README.sv.txt
 README.de.txt
 README.da.txt
+README.fi.txt
 
 # Sourcemaps and .d.ts files are NOT excluded here, deliberately. Every one of
 # them lives under node_modules, and Homey installs production dependencies

@@ -14,7 +14,8 @@
     "it": "PELS Gestione energia",
     "sv": "PELS Energistyrning",
     "de": "PELS Energiemanager",
-    "da": "PELS Energistyring"
+    "da": "PELS Energistyring",
+    "fi": "PELS Energianhallinta"
   },
   "description": {
     "en": "Lower peaks, cheaper charging and more of your own solar, with your whole home working together.",
@@ -24,7 +25,8 @@
     "it": "Ricarica, riscaldamento e acqua calda in equilibrio con la potenza di casa.",
     "sv": "Billigare laddning och uppvärmning, med hela hemmets elförbrukning i samma plan.",
     "de": "Günstig laden, Solarstrom selbst nutzen und Wärmepumpe, Warmwasser und Speicher gemeinsam steuern.",
-    "da": "Billige timer til elbil, varme og varmt vand, med samlet styring af hjemmets strøm."
+    "da": "Billige timer til elbil, varme og varmt vand, med samlet styring af hjemmets strøm.",
+    "fi": "Lataa auto ja lämmitä koti sekä käyttövesi pörssisähkön edullisilla jaksoilla."
   },
   "brandColor": "#22c55e",
   "category": [
@@ -78,7 +80,9 @@
       "battery",
       "time-of-use",
       "Smart tasks",
-      "Power by the Hour"
+      "Power by the Hour",
+      "Sessy",
+      "Marstek"
     ],
     "no": [
       "effektledd",
@@ -96,7 +100,6 @@
       "spotpris",
       "enovastøtte",
       "pris- og effektstyrt energilagringssystem",
-      "Norgespris",
       "strømstøtte",
       "Tibber Pulse",
       "AMS",
@@ -114,7 +117,9 @@
       "smartlading",
       "Easee",
       "Zaptec",
-      "hjemmebatteri"
+      "hjemmebatteri",
+      "Sessy",
+      "Marstek"
     ],
     "nl": [
       "zonnepanelen",
@@ -134,7 +139,6 @@
       "Homey Energy",
       "teruglevering",
       "terugleverkosten",
-      "salderingsregeling",
       "laadpaal",
       "elektrische auto laden",
       "slim laden",
@@ -155,12 +159,13 @@
       "airco",
       "Zaptec",
       "batterij",
-      "Power by the Hour"
+      "Power by the Hour",
+      "Sessy",
+      "Marstek"
     ],
     "fr": [
       "heures creuses",
       "heures pleines",
-      "Tempo",
       "puissance souscrite",
       "gestion de charge",
       "batterie domestique",
@@ -193,7 +198,9 @@
       "gestion de l'énergie",
       "pompe à chaleur",
       "climatisation",
-      "Power by the Hour"
+      "Power by the Hour",
+      "Sessy",
+      "Marstek"
     ],
     "it": [
       "gestione carichi",
@@ -202,7 +209,6 @@
       "prelievo dalla rete",
       "bilanciamento carichi",
       "contatore",
-      "3 kW",
       "ricarica auto elettrica",
       "wallbox",
       "riscaldamento",
@@ -217,7 +223,9 @@
       "Homey Energy",
       "Power by the Hour",
       "Easee",
-      "Zaptec"
+      "Zaptec",
+      "Sessy",
+      "Marstek"
     ],
     "sv": [
       "elpris",
@@ -248,7 +256,9 @@
       "Homey Energy",
       "Power by the Hour",
       "Easee",
-      "Zaptec"
+      "Zaptec",
+      "Sessy",
+      "Marstek"
     ],
     "de": [
       "dynamischer Stromtarif",
@@ -282,7 +292,9 @@
       "Homey Energy",
       "Power by the Hour",
       "Easee",
-      "Zaptec"
+      "Zaptec",
+      "Sessy",
+      "Marstek"
     ],
     "da": [
       "elpris",
@@ -312,7 +324,43 @@
       "Homey Energy",
       "Power by the Hour",
       "Easee",
-      "Zaptec"
+      "Zaptec",
+      "Sessy",
+      "Marstek"
+    ],
+    "fi": [
+      "pörssisähkö",
+      "sähkön hinta",
+      "spot-hinta",
+      "tuntihinta",
+      "varttihinta",
+      "halvat tunnit",
+      "sähköauton lataus",
+      "latausasema",
+      "älykäs lataus",
+      "sähkölämmitys",
+      "lämpöpumppu",
+      "lämminvesivaraaja",
+      "käyttövesi",
+      "lattialämmitys",
+      "termostaatti",
+      "tehomaksu",
+      "kulutushuippu",
+      "tehoraja",
+      "kuormanhallinta",
+      "aurinkosähkö",
+      "omakäyttö",
+      "aurinkosähkön ylijäämä",
+      "kotiakku",
+      "energiabudjetti",
+      "energianhallinta",
+      "Smart tasks",
+      "Homey Energy",
+      "Power by the Hour",
+      "Easee",
+      "Zaptec",
+      "Sessy",
+      "Marstek"
     ]
   },
   "permissions": [
