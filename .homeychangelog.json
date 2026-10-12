@@ -604,5 +604,8 @@
   },
   "3.11.5": {
     "en": "PELS now uses noticeably less memory while running, which helps it run steadily over long periods."
+  },
+  "3.11.6": {
+    "en": "PELS now does less processing on each power reading and plan update. The settings page no longer keeps redrawing the Overview while you are on another tab."
   }
 }
