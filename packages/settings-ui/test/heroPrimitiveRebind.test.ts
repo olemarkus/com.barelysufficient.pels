@@ -9,6 +9,7 @@ import {
   type DeadlinePlanPendingPayload,
 } from '../src/ui/views/DeadlinePlan.tsx';
 import { deadlineLabels } from '../../shared-domain/src/deadlineLabels.ts';
+import { budgetOverviewProps } from './helpers/budgetOverviewProps.ts';
 
 /* -------------------------------------------------------------------------- *
  * Hero primitive rebind regression tests.
@@ -132,57 +133,12 @@ describe('index.html panel headers consume the shared hero primitive', () => {
 // Minimal stub props for `renderBudgetOverview` — only the header shape is
 // asserted; the chart, adjust view, and chip rendering paths are exercised
 // elsewhere. Building a focused stub keeps this regression narrow and stable.
-const buildBudgetProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOverviewProps => ({
-  localView: 'plan',
-  view: 'today',
-  hero: {
-    headlineLabel: null,
-    comparison: 'Daily budget off',
-    delta: null,
-    budgetRemainingLine: null,
-  estimatedCost: null,
-  recourse: null,
-    split: null,
-    priceTagline: null,
-    exportPriceLine: null,
-    decision: null,
-    heroTone: 'ok',
-  },
-  chart: null,
-  confidence: null,
-  adjust: {
-    draft: { enabled: false, dailyBudgetKWh: 60, priceShaping: false, controlledWeight: 0, priceFlexShare: 0.6 },
-    active: { enabled: false, dailyBudgetKWh: 60, priceShaping: false, controlledWeight: 0, priceFlexShare: 0.6 },
-    candidate: null,
-    activeChart: null,
-    candidateChart: null,
-    comparisonDayView: 'today',
-    comparisonDayLabel: 'Today',
-    comparisonShowPrice: false,
-    status: 'clean',
-    busy: false,
-    powerLimitForm: {
-      capacityEnabled: true, gridImportEnabled: false, limitKw: 12, marginKw: 1, gridImportLimitKw: null,
-    },
-    planningCeiling: { limit: 'capacity', kw: 11 },
-  },
-  allocationWarning: null,
-  priceLevelChip: null,
-  weatherInsight: null,
-  mainHomeScopeLine: null,
-  adjustReturnTarget: 'plan',
-  onReturnToSettings: () => {},
-  onShowUsage: () => {},
-  onLocalViewChange: () => {},
-  onDayChange: () => {},
-  onChartModeChange: () => {},
-  onChartUnitChange: () => {},
-  onAdjustFieldChange: () => {},
-  onPreview: () => {},
-  onApply: () => {},
-  onDiscard: () => {},
-  ...overrides,
-});
+const buildBudgetProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOverviewProps => budgetOverviewProps({
+    localView: 'plan',
+    hero: { headlineLabel: null, comparison: 'Daily budget off', split: null },
+    budget: { enabled: false, dailyBudgetKWh: 60 },
+    weatherInsight: null,
+  }, overrides);
 
 describe('BudgetOverview panel header consumes the shared hero primitive', () => {
   it('renders a .plan-hero.pels-hero shell with canonical eyebrow + headline (no chip rail)', () => {

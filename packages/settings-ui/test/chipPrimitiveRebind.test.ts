@@ -7,6 +7,7 @@ import { renderDeadlinesList } from '../src/ui/views/DeadlinesList.tsx';
 import { DeadlineChip } from '../src/ui/views/PlanDeviceCards.tsx';
 import { state } from '../src/ui/state.ts';
 import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import { budgetOverviewProps } from './helpers/budgetOverviewProps.ts';
 
 /* -------------------------------------------------------------------------- *
  * Chip primitive rebind regression tests.
@@ -302,54 +303,9 @@ describe('chip primitive: every surface walks the canonical `.plan-chip`', () =>
 
 // ─── Stub props for BudgetOverview ───────────────────────────────────────────
 
-const buildBudgetProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOverviewProps => ({
-  localView: 'plan',
-  view: 'today',
-  hero: {
-    headlineLabel: null,
-    comparison: 'Daily budget off',
-    delta: null,
-    budgetRemainingLine: null,
-  estimatedCost: null,
-  recourse: null,
-    split: null,
-    priceTagline: null,
-    exportPriceLine: null,
-    decision: null,
-    heroTone: 'ok',
-  },
-  chart: null,
-  confidence: null,
-  adjust: {
-    draft: { enabled: false, dailyBudgetKWh: 60, priceShaping: false, controlledWeight: 0, priceFlexShare: 0.6 },
-    active: { enabled: false, dailyBudgetKWh: 60, priceShaping: false, controlledWeight: 0, priceFlexShare: 0.6 },
-    candidate: null,
-    activeChart: null,
-    candidateChart: null,
-    comparisonDayView: 'today',
-    comparisonDayLabel: 'Today',
-    comparisonShowPrice: false,
-    status: 'clean',
-    busy: false,
-    powerLimitForm: {
-      capacityEnabled: true, gridImportEnabled: false, limitKw: 12, marginKw: 1, gridImportLimitKw: null,
-    },
-    planningCeiling: { limit: 'capacity', kw: 11 },
-  },
-  allocationWarning: null,
-  priceLevelChip: null,
-  weatherInsight: null,
-  mainHomeScopeLine: null,
-  adjustReturnTarget: 'plan',
-  onReturnToSettings: () => {},
-  onShowUsage: () => {},
-  onLocalViewChange: () => {},
-  onDayChange: () => {},
-  onChartModeChange: () => {},
-  onChartUnitChange: () => {},
-  onAdjustFieldChange: () => {},
-  onPreview: () => {},
-  onApply: () => {},
-  onDiscard: () => {},
-  ...overrides,
-});
+const buildBudgetProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOverviewProps => budgetOverviewProps({
+    localView: 'plan',
+    hero: { headlineLabel: null, comparison: 'Daily budget off', split: null },
+    budget: { enabled: false, dailyBudgetKWh: 60 },
+    weatherInsight: null,
+  }, overrides);

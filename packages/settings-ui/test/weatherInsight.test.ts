@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderBudgetOverview, type BudgetOverviewProps } from '../src/ui/views/BudgetOverview.tsx';
+import { budgetOverviewProps } from './helpers/budgetOverviewProps.ts';
 import {
   renderWeatherSettingsSection,
   type WeatherPickersProps,
@@ -126,57 +127,12 @@ const buildReadout = (
   ...overrides,
 });
 
-const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOverviewProps => ({
-  localView: 'plan',
-  view: 'today',
-  hero: {
-    headlineLabel: null,
-    comparison: 'On budget',
-    delta: null,
-    budgetRemainingLine: null,
-  estimatedCost: null,
-  recourse: null,
-    split: null,
-    priceTagline: null,
-    exportPriceLine: null,
-    decision: null,
-    heroTone: 'ok',
-  },
-  chart: null,
-  confidence: null,
-  adjust: {
-    draft: { enabled: true, dailyBudgetKWh: 50, priceShaping: false, controlledWeight: 0, priceFlexShare: 0.6 },
-    active: { enabled: true, dailyBudgetKWh: 50, priceShaping: false, controlledWeight: 0, priceFlexShare: 0.6 },
-    candidate: null,
-    activeChart: null,
-    candidateChart: null,
-    comparisonDayView: 'today',
-    comparisonDayLabel: 'Today',
-    comparisonShowPrice: false,
-    status: 'clean',
-    busy: false,
-    powerLimitForm: {
-      capacityEnabled: true, gridImportEnabled: false, limitKw: 12, marginKw: 1, gridImportLimitKw: null,
-    },
-    planningCeiling: { limit: 'capacity', kw: 11 },
-  },
-  allocationWarning: null,
-  priceLevelChip: null,
-  weatherInsight: { readout: buildReadout(), fetchFailed: false },
-  mainHomeScopeLine: null,
-  adjustReturnTarget: 'plan',
-  onReturnToSettings: () => {},
-  onShowUsage: () => {},
-  onLocalViewChange: () => {},
-  onDayChange: () => {},
-  onChartModeChange: () => {},
-  onChartUnitChange: () => {},
-  onAdjustFieldChange: () => {},
-  onPreview: () => {},
-  onApply: () => {},
-  onDiscard: () => {},
-  ...overrides,
-});
+const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOverviewProps => budgetOverviewProps({
+    localView: 'plan',
+    hero: { headlineLabel: null, comparison: 'On budget', split: null },
+    budget: { enabled: true, dailyBudgetKWh: 50 },
+    weatherInsight: { readout: buildReadout(), fetchFailed: false },
+  }, overrides);
 
 const mountIntoBody = (): HTMLElement => {
   const mount = document.createElement('div');

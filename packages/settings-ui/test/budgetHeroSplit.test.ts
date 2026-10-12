@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderBudgetOverview, type BudgetOverviewProps } from '../src/ui/views/BudgetOverview.tsx';
 import { HOME_SCOPE_BUDGET_MAIN_ONLY_LINE } from '../../shared-domain/src/homeScopeCopy.ts';
+import { budgetOverviewProps } from './helpers/budgetOverviewProps.ts';
 
 /* -------------------------------------------------------------------------- *
  * Budget hero managed/background split bar.
@@ -12,59 +13,18 @@ import { HOME_SCOPE_BUDGET_MAIN_ONLY_LINE } from '../../shared-domain/src/homeSc
  * kWh values with the same swatch colours the Hourly plan chart stacks with.
  * -------------------------------------------------------------------------- */
 
-const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOverviewProps => ({
-  localView: 'plan',
-  view: 'today',
-  hero: {
-    headlineLabel: 'Projected today',
-    comparison: '9.0 / 12.0 kWh',
-    delta: null,
-    budgetRemainingLine: null,
-  estimatedCost: null,
-  recourse: null,
-    split: {
-      managedKWh: 1.8, backgroundKWh: 2.7, beforeSolar: false, budgetKWh: 12, usedKWh: 4.5,
+const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOverviewProps => budgetOverviewProps({
+    localView: 'plan',
+    hero: {
+      headlineLabel: 'Projected today',
+      comparison: '9.0 / 12.0 kWh',
+      split: {
+        managedKWh: 1.8, backgroundKWh: 2.7, beforeSolar: false, budgetKWh: 12, usedKWh: 4.5,
+      },
     },
-    priceTagline: null,
-    exportPriceLine: null,
-    decision: null,
-    heroTone: 'ok',
-  },
-  chart: null,
-  confidence: null,
-  adjust: {
-    draft: { enabled: true, dailyBudgetKWh: 60, priceShaping: false, controlledWeight: 0, priceFlexShare: 0.6 },
-    active: { enabled: true, dailyBudgetKWh: 60, priceShaping: false, controlledWeight: 0, priceFlexShare: 0.6 },
-    candidate: null,
-    activeChart: null,
-    candidateChart: null,
-    comparisonDayView: 'today',
-    comparisonDayLabel: 'Today',
-    comparisonShowPrice: false,
-    status: 'clean',
-    busy: false,
-    powerLimitForm: {
-      capacityEnabled: true, gridImportEnabled: false, limitKw: 12, marginKw: 1, gridImportLimitKw: null,
-    },
-    planningCeiling: { limit: 'capacity', kw: 11 },
-  },
-  allocationWarning: null,
-  priceLevelChip: null,
-  weatherInsight: null,
-  mainHomeScopeLine: null,
-  adjustReturnTarget: 'plan',
-  onReturnToSettings: () => {},
-  onShowUsage: () => {},
-  onLocalViewChange: () => {},
-  onDayChange: () => {},
-  onChartModeChange: () => {},
-  onChartUnitChange: () => {},
-  onAdjustFieldChange: () => {},
-  onPreview: () => {},
-  onApply: () => {},
-  onDiscard: () => {},
-  ...overrides,
-});
+    budget: { enabled: true, dailyBudgetKWh: 60 },
+    weatherInsight: null,
+  }, overrides);
 
 const withSplit = (
   split: BudgetOverviewProps['hero']['split'],
