@@ -36,6 +36,7 @@ import {
 } from '../utils/swapLedgerFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { applyRestorePlan as applyRestorePlanFromPlanState } from '../../lib/plan/restore';
+import type { RestoreDeps } from '../../lib/plan/restore/types';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 
 import { resolveMeterSettlingReason } from '../../lib/plan/restore/timing';
@@ -111,6 +112,14 @@ const buildContext = (overrides: PlanCycleSpec = {}): { context: PlanContext; po
   buildPlanCycle({ total: FIXTURE_TOTAL_KW, headroom: 1, hourBucketKey: '1970-01-01T00', ...overrides })
 );
 
+// The restore deps a case is not about: no temperature setpoints, and every
+// device sheds by turning off. A case states when the power tracker last read.
+const restoreDeps = (lastTimestamp: number): RestoreDeps => ({
+  powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp }),
+  temperatureSetpoints: new Map(),
+  getShedBehavior: () => ({ action: 'turn_off' }),
+});
+
 // Restore-decision events resolve their own `plan`-topic emitter
 // (`emitRestoreDebugEventOnChange`), so the capture is how a spec observes them.
 // The swap events still take a threaded emitter and stay on a spy. The capture
@@ -176,12 +185,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
     let now = Date.UTC(2024, 0, 1, 0, 0, 0);
 
-    const deps = {
-      powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-      temperatureSetpoints: new Map(),
-      getShedBehavior: () => ({ action: 'turn_off' as const }),
-      log: vi.fn(),
-    };
+    const deps = { ...restoreDeps(123), log: vi.fn() };
 
     const step = (advanceMs: number): number => {
       now += advanceMs;
@@ -212,12 +216,7 @@ describe('restore cooldown backoff', () => {
     const state = createPlanEngineState();
     let now = Date.UTC(2024, 0, 1, 0, 0, 0);
 
-    const deps = {
-      powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-      temperatureSetpoints: new Map(),
-      getShedBehavior: () => ({ action: 'turn_off' as const }),
-      log: vi.fn(),
-    };
+    const deps = { ...restoreDeps(123), log: vi.fn() };
 
     const triggerInstability = (): void => {
       state.actuation.lastRestoreMs = now - 2 * 60 * 1000;
@@ -261,12 +260,7 @@ describe('restore cooldown backoff', () => {
       targetId: 'stale-target', donorIds: ['dev-on'], servedSinceMs: now - SWAP_TIMEOUT_MS - 1000,
     });
 
-    const deps = {
-      powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
-      temperatureSetpoints: new Map(),
-      getShedBehavior: () => ({ action: 'turn_off' as const }),
-      log: vi.fn(),
-    };
+    const deps = { ...restoreDeps(321), log: vi.fn() };
 
     const result = applyRestorePlan({
       storageLevers: {},
@@ -295,12 +289,7 @@ describe('restore cooldown backoff', () => {
 
   it('can swap out a turn-off stepped device for a higher-priority restore', () => {
     const state = createPlanEngineState();
-    const deps = {
-      powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
-      temperatureSetpoints: new Map(),
-      getShedBehavior: () => ({ action: 'turn_off' as const }),
-      log: vi.fn(),
-    };
+    const deps = { ...restoreDeps(321), log: vi.fn() };
 
     const result = applyRestorePlan({
       storageLevers: {},
@@ -343,8 +332,7 @@ describe('restore cooldown backoff', () => {
   it('does not swap out a set-step stepped device for a higher-priority restore', () => {
     const state = createPlanEngineState();
     const deps = {
-      powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
-      temperatureSetpoints: new Map(),
+      ...restoreDeps(321),
       getShedBehavior: () => ({ action: 'set_step' as const }),
       log: vi.fn(),
     };
@@ -387,12 +375,7 @@ describe('restore cooldown backoff', () => {
 
   it('does not swap out a stepped device without binary control', () => {
     const state = createPlanEngineState();
-    const deps = {
-      powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
-      temperatureSetpoints: new Map(),
-      getShedBehavior: () => ({ action: 'turn_off' as const }),
-      log: vi.fn(),
-    };
+    const deps = { ...restoreDeps(321), log: vi.fn() };
 
     const result = applyRestorePlan({
       storageLevers: {},
@@ -458,11 +441,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
@@ -505,11 +484,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
@@ -564,11 +539,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
@@ -611,11 +582,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
@@ -714,11 +681,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
@@ -896,11 +859,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
@@ -932,11 +891,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
@@ -969,11 +924,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const restored = firstRestore.planDevices.find((device) => device.id === 'dev-step');
@@ -1002,11 +953,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     expect(secondRestore.planDevices.find((device) => device.id === 'dev-step')?.desiredStepId).toBe('medium');
@@ -1043,11 +990,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
@@ -1084,11 +1027,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
@@ -1126,11 +1065,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
@@ -1167,11 +1102,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
@@ -1202,11 +1133,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(state.actuation.lastRestoreMs + 1),
     });
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
@@ -1239,11 +1166,7 @@ describe('restore cooldown backoff', () => {
       ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(state.actuation.lastRestoreMs + 1),
     });
 
     expect(result.planDevices.map((device) => device.reason.code))
@@ -1274,11 +1197,7 @@ describe('restore cooldown backoff', () => {
       ...buildContext({ headroomRaw: -0.04, headroom: -0.04 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(state.actuation.lastRestoreMs + 1),
     });
 
     expect(result.timing.activeOvershoot).toBe(true);
@@ -1307,11 +1226,7 @@ describe('restore cooldown backoff', () => {
       ...buildContext({ headroomRaw: 0.1, headroom: 0.1 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(state.actuation.lastRestoreMs + 1),
     });
 
     expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
@@ -1337,11 +1252,7 @@ describe('restore cooldown backoff', () => {
       ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(state.actuation.lastRestoreMs + 1),
     });
 
     expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
@@ -1379,11 +1290,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(state.actuation.lastRestoreMs + 1),
     });
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
@@ -1437,11 +1344,7 @@ describe('restore cooldown backoff', () => {
       ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(state.actuation.lastRestoreMs + 1),
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
@@ -1539,11 +1442,7 @@ describe('restore cooldown backoff', () => {
       ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(state.actuation.lastRestoreMs + 1),
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
@@ -1594,11 +1493,7 @@ describe('restore cooldown backoff', () => {
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(state.actuation.lastRestoreMs + 1),
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
@@ -2014,11 +1909,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const restoredDevice = result.planDevices.find((device) => device.id === 'dev-restored');
@@ -2060,11 +1951,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const restoredDevice = result.planDevices.find((device) => device.id === 'dev-restored');
@@ -2149,11 +2036,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-off');
@@ -2185,11 +2068,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-off');
@@ -2221,11 +2100,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step');
@@ -2258,11 +2133,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step');
@@ -2295,11 +2166,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step-off');
@@ -2333,11 +2200,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step-off');
@@ -2371,11 +2234,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step-off');
@@ -2408,11 +2267,7 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-off');
@@ -2458,12 +2313,7 @@ describe('restore cooldown backoff', () => {
 });
 
 // Shared deps factory for restore tests below
-const makeDeps = () => ({
-  powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-  temperatureSetpoints: new Map(),
-  getShedBehavior: () => ({ action: 'turn_off' as const }),
-  log: vi.fn(),
-});
+const makeDeps = () => ({ ...restoreDeps(123), log: vi.fn() });
 
 
 describe('restore → overshoot attribution → penalty → re-restore block', () => {
@@ -3422,11 +3272,7 @@ describe('restore admission — headroom and penalty gates', () => {
       state,
       sheddingActive: false,
       guardInShortfall: true,
-      deps: {
-        powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(now - 1_000),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-off');
@@ -3493,11 +3339,7 @@ describe('restore admission — headroom and penalty gates', () => {
       state,
       sheddingActive: false,
       guardInShortfall: true,
-      deps: {
-        powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(now - 1_000),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step');
@@ -3512,12 +3354,6 @@ describe('restore admission — the device need is the whole bar', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  const makeDepsFloor = () => ({
-    powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-    temperatureSetpoints: new Map(),
-    getShedBehavior: () => ({ action: 'turn_off' as const }),
-  });
-
   it('rejects binary restore one watt short of the device need', () => {
     const state = createPlanEngineState();
     // needed = 1.2kW (expected=1 + buffer=0.2) and nothing is withheld on top,
@@ -3528,7 +3364,7 @@ describe('restore admission — the device need is the whole bar', () => {
       ...buildContext({ headroomRaw: 1.199, headroom: 1.199 }),
       state,
       sheddingActive: false,
-      deps: makeDepsFloor(),
+      deps: restoreDeps(123),
     });
     expect(result.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('shed');
   });
@@ -3542,7 +3378,7 @@ describe('restore admission — the device need is the whole bar', () => {
       ...buildContext({ headroomRaw: 1.2, headroom: 1.2 }),
       state,
       sheddingActive: false,
-      deps: makeDepsFloor(),
+      deps: restoreDeps(123),
     });
     expect(result.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('keep');
   });
@@ -4340,11 +4176,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 5, headroom: 5 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
@@ -4385,11 +4217,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 1.975, headroom: 1.975 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'stepped-high-priority');
@@ -4431,11 +4259,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 1.975, headroom: 1.975 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const binaryDev = result.planDevices.find((d) => d.id === 'binary-high-priority');
@@ -4477,11 +4301,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 1, headroom: 1 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const binaryDev = result.planDevices.find((d) => d.id === 'binary-low-priority');
@@ -4520,11 +4340,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
@@ -4581,11 +4397,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
@@ -4634,11 +4446,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
@@ -4704,11 +4512,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
@@ -4756,11 +4560,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const result = applyRestorePlan({
@@ -4794,11 +4594,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
@@ -4838,11 +4634,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
@@ -4885,11 +4677,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
@@ -4933,11 +4721,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 0.4, headroom: 0.4 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
@@ -4978,11 +4762,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(123),
     });
 
     // An approval records every clock the reservation's lifetime is decided on,
@@ -5037,11 +4817,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(200),
     });
 
     // Swap admission must be deferred — no new pendingTarget, no source shed-out, watermark
@@ -5084,11 +4860,7 @@ describe('stepped-load shed invariant', () => {
       ...buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
       state,
       sheddingActive: false,
-      deps: {
-        powerTracker: { lastTimestamp: 201 } as PowerTrackerState,
-        temperatureSetpoints: new Map(),
-        getShedBehavior: () => ({ action: 'turn_off' as const }),
-      },
+      deps: restoreDeps(201),
     });
 
     const freshTarget = freshResult.planDevices.find((d) => d.id === 'dev-step');
@@ -5103,12 +4875,6 @@ describe('stepped-load shed invariant', () => {
 describe('a restore decision is made once, and logged once', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
-
-  const swapDeps = () => ({
-    powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-    temperatureSetpoints: new Map(),
-    getShedBehavior: () => ({ action: 'turn_off' as const }),
-  });
 
   // An off device wanting more than the house has, plus one lower-priority
   // device the swap may consider pausing.
@@ -5137,7 +4903,7 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(),
+      deps: restoreDeps(123),
     });
     run();
     run();
@@ -5158,7 +4924,7 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(),
+      deps: restoreDeps(123),
     });
 
     expect(capture.findEvents('restore_swap_approved')).toContainEqual(expect.objectContaining({
@@ -5178,7 +4944,7 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(),
+      deps: restoreDeps(123),
     });
 
     // One line, from the direct path, carrying the available power the card
@@ -5225,7 +4991,7 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(),
+      deps: restoreDeps(123),
     });
 
     expect(capture.findEvents('restore_stepped_rejected')).toContainEqual(expect.objectContaining({
@@ -5245,7 +5011,7 @@ describe('a restore decision is made once, and logged once', () => {
       state,
       sheddingActive: false,
       deps: {
-        ...swapDeps(),
+        ...restoreDeps(123),
         // No reading yet: `buildRestoreTiming` resolves `measurementTs` from the
         // tracker, so a tracker with no timestamp is a cold start.
         powerTracker: { lastTimestamp: undefined } as unknown as PowerTrackerState,
@@ -5273,7 +5039,7 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(),
+      deps: restoreDeps(123),
     });
     const result = applyRestorePlan({
       storageLevers: {},
@@ -5281,7 +5047,7 @@ describe('a restore decision is made once, and logged once', () => {
       ...buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
       state,
       sheddingActive: false,
-      deps: swapDeps(),
+      deps: restoreDeps(123),
     });
 
     expect(result.planDevices.find((d) => d.id === 'dev')?.reason).toEqual(
