@@ -91,12 +91,7 @@ const ladderFor = (
   device: MeteredPlanInputDevice,
   profile: SteppedLoadProfile,
   shedAction: 'turn_off' | 'set_step',
-) => resolveSteppedShedLadder({
-  device,
-  profile,
-  initialTargetStep: initialTargetFor(device, shedAction),
-  shedAction,
-});
+) => resolveSteppedShedLadder(device, profile, initialTargetFor(device, shedAction), shedAction);
 
 describe('stepped shed ladder pricing', () => {
   it('descends to the off step when every active rung prices at zero relief', () => {

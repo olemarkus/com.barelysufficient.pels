@@ -19,7 +19,7 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import { isCooldownBlockedReason } from '../planContract/planDecisionSemantics';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import { isMeteredPlanDevice } from './planMeteredDevice';
-import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import { planStillWantsPendingTarget } from './planTargetControl';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
@@ -109,7 +109,7 @@ export class OvershootTracker {
     const overshootTimingFields = this.buildOvershootTimingFields(nowTs, lastPowerUpdateMs);
     if (overshootActive && !prevOvershoot) {
       incident.enter(nowTs);
-      const overshootDiagnostics = buildOvershootEntryDiagnostics({
+      const overshootDiagnostics = buildOvershootEntryDiagnostics(
         // From the CONTEXT, not the display bundle. This delta gates
         // `attributeOvershootToRecentRestores`, which calls
         // `recordActivationSetback` and so changes future restore admission —
@@ -117,12 +117,12 @@ export class OvershootTracker {
         // `PlanContext`. `drawKw` is the successor to the `context.total`
         // this read used before the display bundle existed; the display members
         // stay for the outward meta writes below.
-        drawKw: power.drawKw,
+        power.drawKw,
         nowTs,
         lastPowerUpdateMs,
-        previous: this.lastPlan,
-        currentDevicesById: trackedPlanDevicesById,
-      });
+        this.lastPlan,
+        trackedPlanDevicesById,
+      );
       this.deps.structuredLog?.info({
         event: 'overshoot_entered',
         reasonCode: 'active_overshoot',
@@ -287,22 +287,15 @@ type OvershootEntryDiagnostics = {
   };
 };
 
-function buildOvershootEntryDiagnostics(params: {
+function buildOvershootEntryDiagnostics(
   /** The whole-home draw behind this cycle (always a number — the carried reading). */
-  drawKw: number;
-  nowTs: number;
-  lastPowerUpdateMs: number;
+  drawKw: number,
+  nowTs: number,
+  lastPowerUpdateMs: number,
   /** The previous build, or null on a true cold start. */
-  previous: LastPlanSnapshot | null;
-  currentDevicesById: Record<string, OvershootTrackedPlanDevice>;
-}): OvershootEntryDiagnostics {
-  const {
-    drawKw,
-    nowTs,
-    lastPowerUpdateMs,
-    previous,
-    currentDevicesById,
-  } = params;
+  previous: LastPlanSnapshot | null,
+  currentDevicesById: Record<string, OvershootTrackedPlanDevice>,
+): OvershootEntryDiagnostics {
   const previousDevicesById = previous === null ? {} : previous.devicesById;
   const contributors = Object.values(currentDevicesById)
     .map((device) => buildOvershootContributor(device, previousDevicesById[device.id]))
@@ -317,19 +310,15 @@ function buildOvershootEntryDiagnostics(params: {
   const totalDeltaKw = previous === null ? null : roundOvershootKw(drawKw - previous.totalKw);
   const attributedDeltaKw = roundOvershootKw(contributors.reduce((sum, contributor) => sum + contributor.deltaKw, 0));
   const unattributedDeltaKw = totalDeltaKw === null ? null : roundOvershootKw(totalDeltaKw - attributedDeltaKw);
-  const attributionReason = resolveOvershootAttributionReason({
+  const attributionReason = resolveOvershootAttributionReason(
     contributors,
     totalDeltaKw,
-    hasPriorPlanBaseline: previous !== null,
+    previous !== null,
     // A confident cause may only be emitted when the attribution inputs were
     // COMPLETE this cycle. Any uncertainty collapses to one honest
     // `attribution_inputs_incomplete` reason rather than a confident-but-wrong cause.
-    attributionInputsComplete: areAttributionInputsComplete({
-      totalDeltaKw,
-      currentDevicesById,
-      previousDevicesById,
-    }),
-  });
+    areAttributionInputsComplete(totalDeltaKw, currentDevicesById, previousDevicesById),
+  );
 
   return {
     totalDeltaKw,
@@ -354,18 +343,12 @@ function buildOvershootEntryDiagnostics(params: {
 // completeness assessment; any uncertainty collapses to one honest
 // `attribution_inputs_incomplete` reason. Every emitted value is provably true from
 // the diff inputs in scope.
-function resolveOvershootAttributionReason(params: {
-  contributors: OvershootEntryContributor[];
-  totalDeltaKw: number | null;
-  hasPriorPlanBaseline: boolean;
-  attributionInputsComplete: boolean;
-}): OvershootAttributionReason | null {
-  const {
-    contributors,
-    totalDeltaKw,
-    hasPriorPlanBaseline,
-    attributionInputsComplete,
-  } = params;
+function resolveOvershootAttributionReason(
+  contributors: OvershootEntryContributor[],
+  totalDeltaKw: number | null,
+  hasPriorPlanBaseline: boolean,
+  attributionInputsComplete: boolean,
+): OvershootAttributionReason | null {
   if (contributors.length > 0) return null;
   // Reserve `no_previous_snapshot` for a TRUE cold start (no prior plan baseline at
   // all). It is the only reason emitted when nothing could be diffed for a reason
@@ -393,12 +376,11 @@ function resolveOvershootAttributionReason(params: {
 // (a) guards the undiffable-previous-total case; (b) guards the undiffable
 // managed-or-uncontrolled device and the zero-current newcomer (whose 0/off current
 // read could not have caused the rise, so its undiffability is harmless).
-function areAttributionInputsComplete(params: {
-  totalDeltaKw: number | null;
-  currentDevicesById: Record<string, OvershootTrackedPlanDevice>;
-  previousDevicesById: Record<string, OvershootTrackedPlanDevice>;
-}): boolean {
-  const { totalDeltaKw, currentDevicesById, previousDevicesById } = params;
+function areAttributionInputsComplete(
+  totalDeltaKw: number | null,
+  currentDevicesById: Record<string, OvershootTrackedPlanDevice>,
+  previousDevicesById: Record<string, OvershootTrackedPlanDevice>,
+): boolean {
   if (totalDeltaKw === null) return false;
   return !hasUndiffablePlausibleContributor(currentDevicesById, previousDevicesById);
 }
@@ -486,7 +468,7 @@ function trackPlanDeviceForOvershoot(
     pendingBinaryOffCommand: pendingBinaryCommandStore.hasActiveTurnOff(device.id),
     stepCommandPending: device.stepCommandPending,
     reason: device.reason,
-    pendingTargetCommand: shouldExposePendingTargetCommand(device, state),
+    pendingTargetCommand: hasWantedPendingTargetCommand(device, state),
   };
 }
 
@@ -505,17 +487,12 @@ function trackPlanDevicesForOvershoot(
   );
 }
 
-function shouldExposePendingTargetCommand(
+function hasWantedPendingTargetCommand(
   device: DevicePlanDevice,
   state: PlanEngineState,
 ): boolean {
   const pending = state.pendingTargetCommands[device.id];
-  return Boolean(
-    pending
-    && isTemperaturePlanDevice(device)
-    && device.plannedTarget !== device.currentTarget
-    && device.plannedTarget === pending.desired,
-  );
+  return pending !== undefined && planStillWantsPendingTarget(device, pending);
 }
 
 function resolveOvershootDevicePower(

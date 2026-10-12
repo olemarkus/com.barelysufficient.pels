@@ -17,27 +17,9 @@ import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ShedDecisions } from '../shedDecisions';
 import type { StorageLeverState } from '../planState';
-import { buildCountdownTiming, buildShedCooldownReason } from './timing';
+import { buildCountdownTiming, buildShedCooldownReason, type RestoreTiming } from './timing';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
-
-/**
- * The timing facts `resolveOffDeviceReason` arbitrates between. A structural
- * subset of `RestoreTiming` (`restore/timing.ts`), named here because two lanes
- * now consume it: the binary stay-off lane below and the setpoint hold lane
- * (`planReasonsHoldDecisions.ts`).
- */
-export type OffDeviceReasonTiming = {
-  activeOvershoot: boolean;
-  inCooldown: boolean;
-  inStartupStabilization: boolean;
-  restoreCooldownSeconds: number;
-  shedCooldownRemainingSec: number | null;
-  shedCooldownStartedAtMs?: number | null;
-  shedCooldownTotalSec?: number | null;
-  restoreCooldownStartedAtMs?: number | null;
-  restoreCooldownTotalSec?: number | null;
-};
 
 export type RestoreCandidate =
   | { kind: 'binary' | 'stepped'; device: MeteredDevicePlanDevice }
@@ -300,45 +282,6 @@ export function resolveInactiveRestoreUpdate(dev: DevicePlanDevice): Partial<Dev
   return reason ? { plannedState: 'inactive', reason } : null;
 }
 
-export function markOffDevicesStayOff(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  timing: OffDeviceReasonTiming;
-  setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
-  reasonOverride?: (dev: DevicePlanDevice) => DeviceReason;
-  blockedPlannedState?: 'shed' | 'keep';
-  getLastControlledMs?: (deviceId: string) => number | undefined;
-  deviceFilter?: (dev: DevicePlanDevice) => boolean;
-}): void {
-  const {
-    deviceMap,
-    timing,
-    setDevice,
-    reasonOverride,
-    blockedPlannedState = 'shed',
-    getLastControlledMs,
-    deviceFilter,
-  } = params;
-  const offDevices = Array.from(deviceMap.values())
-    .filter((device) => isOffBinaryRestoreHoldCandidate(device))
-    .filter((device) => deviceFilter?.(device) ?? true);
-  for (const dev of offDevices) {
-    const inactiveUpdate = resolveInactiveRestoreUpdate(dev);
-    if (inactiveUpdate) {
-      setDevice(dev.id, inactiveUpdate);
-      continue;
-    }
-    const defaultReason = dev.reason;
-    const nextReason = reasonOverride
-      ? reasonOverride(dev)
-      : resolveOffDeviceReason(timing, defaultReason, getLastControlledMs?.(dev.id));
-    if (nextReason === null) {
-      setDevice(dev.id, { plannedState: 'shed', reason: NEUTRAL_STARTUP_HOLD_REASON });
-      continue;
-    }
-    setDevice(dev.id, { plannedState: blockedPlannedState, reason: nextReason });
-  }
-}
-
 function canSwapOutDevice(
   dev: DevicePlanDevice,
   behavior: ShedBehavior,
@@ -375,7 +318,7 @@ function canSwapOutDevice(
  * `NEUTRAL_STARTUP_HOLD_REASON`; an actuating lane keeps its own reason.
  */
 export function resolveOffDeviceReason(
-  timing: OffDeviceReasonTiming,
+  timing: RestoreTiming,
   defaultReason: DeviceReason,
   lastControlledMs?: number,
 ): DeviceReason | null {

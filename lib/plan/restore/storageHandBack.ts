@@ -37,7 +37,9 @@ import { buildReserveAdmittedLogFields, resolveReserveAdmission } from '../admis
 import { computeRestoreBufferKw } from './accounting';
 import { canAdmitWithinBatch, canAttemptBatchContinuation, recordBatchAdmission } from './batch';
 import { shouldWaitForOtherRecovery } from './coordination';
-import { resolveCapacityRestoreBlockReason, resolveMeterSettlingReason } from './timing';
+import {
+  inCycleRestoreWait, otherRecoveryWait, resolveCapacityRestoreBlockReason, resolveMeterSettlingReason,
+} from './timing';
 import type { RestoreCycle, RestoreLoopState } from './types';
 
 /** Hand the battery back if the lane admits it now: its limit hold (`resolveStorageHandBack`). */
@@ -76,11 +78,13 @@ export function planStorageHandBack(
   if (resolveMeterSettlingReason(timing, state.actuation.lastRestoreMs, blockedByInCycleRestore) !== null) {
     return reject('meter_settling');
   }
-  const gateReason = resolveCapacityRestoreBlockReason({
+  // A restore already admitted this cycle is checked before other devices still recovering.
+  const gateReason = resolveCapacityRestoreBlockReason(
     timing,
-    restoredOneThisCycle: blockedByInCycleRestore,
-    waitingForOtherRecovery: shouldWaitForOtherRecovery(deviceMap, dev.id, batchContinuation),
-  });
+    inCycleRestoreWait(blockedByInCycleRestore)
+      ?? otherRecoveryWait(shouldWaitForOtherRecovery(deviceMap, dev.id, batchContinuation)),
+    true,
+  );
   if (gateReason) return reject(gateReason.code);
 
   const neededKw = handBackChargeKw + computeRestoreBufferKw(handBackChargeKw);

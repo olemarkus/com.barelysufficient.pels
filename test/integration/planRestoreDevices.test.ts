@@ -8,9 +8,10 @@ import {
   isSteppedRestoreCandidate,
   isOffSteppedRestoreCandidate,
   getSteppedRestoreCandidates,
-  markOffDevicesStayOff,
   isShedPostureBinaryRestoreCandidate,
 } from '../../lib/plan/restore/devices';
+import { holdOffDevices, markOffDevicesStayOff } from '../../lib/plan/restore/marking';
+import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import { buildIdentityDecorationBundle } from '../../lib/plan/planBuilderDecoration';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -21,7 +22,7 @@ import type {
   SteppedDiscriminantProbe,
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { buildPlanDevice } from '../utils/planTestUtils';
+import { buildPlanDevice, restoreCycleFixture } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
 
@@ -304,48 +305,23 @@ describe('plan restore device helpers', () => {
         expectedPowerSource: 'load-setting',
       })],
     ]);
-    const setDevice = vi.fn((id: string, updates: Partial<DevicePlanDevice>) => {
-      const current = deviceMap.get(id);
-      if (current) deviceMap.set(id, { ...current, ...updates });
+    markOffDevicesStayOff(restoreCycleFixture(deviceMap, createPlanEngineState(), {
+      inCooldown: true,
+      restoreCooldownSeconds: 12,
+      shedCooldownRemainingSec: 7,
+    }));
+    expect(deviceMap.get('dev1')).toMatchObject({
+      plannedState: 'shed',
+      reason: fixtureDeviceReason('cooldown (shedding, 7s remaining)'),
     });
-    markOffDevicesStayOff({
-      deviceMap,
-      timing: {
-        activeOvershoot: false,
-        inCooldown: true,
-        inStartupStabilization: false,
-        restoreCooldownSeconds: 12,
-        shedCooldownRemainingSec: 7,
-      },
-      setDevice,
-    });
-    expect(setDevice).toHaveBeenCalledWith(
-      'dev1',
-      expect.objectContaining({ reason: fixtureDeviceReason('cooldown (shedding, 7s remaining)') }),
-    );
-    expect(setDevice).toHaveBeenCalledWith('ev1', expect.objectContaining({
+    expect(deviceMap.get('ev1')).toMatchObject({
       plannedState: 'inactive',
       reason: fixtureDeviceReason('inactive (charger is unplugged)'),
-    }));
-    setDevice.mockClear();
+    });
     deviceMap.set('dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: fixtureDeviceReason('shed due to capacity')!, expectedPowerKw: 2.2 }));
 
-    markOffDevicesStayOff({
-      deviceMap,
-      timing: {
-        activeOvershoot: false,
-        inCooldown: false,
-        inStartupStabilization: false,
-        restoreCooldownSeconds: 9,
-        shedCooldownRemainingSec: null,
-      },
-      setDevice,
-      reasonOverride: (device) => ({ code: 'inactive', detail: `blocked ${device.id}` }),
-    });
-    expect(setDevice).toHaveBeenCalledWith(
-      'dev2',
-      expect.objectContaining({ reason: { code: 'inactive', detail: 'blocked dev2' } }),
-    );
+    holdOffDevices(deviceMap, (device) => ({ code: 'inactive', detail: `blocked ${device.id}` }));
+    expect(deviceMap.get('dev2')?.reason).toEqual({ code: 'inactive', detail: 'blocked dev2' });
   });
 
   it('skips devices excluded by deviceFilter and defaults to marking every candidate', () => {
@@ -353,30 +329,16 @@ describe('plan restore device helpers', () => {
       ['exempt', makeDevice({ id: 'exempt', name: 'Exempt', budgetExempt: true, expectedPowerKw: 1 })],
       ['plain', makeDevice({ id: 'plain', name: 'Plain', expectedPowerKw: 1 })],
     ]);
-    const setDevice = vi.fn();
-    const timing = {
-      activeOvershoot: true,
-      inCooldown: false,
-      inStartupStabilization: false,
-      restoreCooldownSeconds: 9,
-      shedCooldownRemainingSec: null,
-      startupStabilizationRemainingSec: null,
-    };
+    const cycle = restoreCycleFixture(deviceMap, createPlanEngineState(), { activeOvershoot: true });
     // Filtered: only the non-exempt device is marked (the exempt lane relies on
     // this so marking cannot overwrite an admission it makes afterwards).
-    markOffDevicesStayOff({
-      deviceMap,
-      timing,
-      setDevice,
-      deviceFilter: (dev) => dev.budgetExempt !== true,
-    });
-    expect(setDevice).toHaveBeenCalledTimes(1);
-    expect(setDevice).toHaveBeenCalledWith('plain', expect.anything());
+    markOffDevicesStayOff(cycle, (dev) => dev.budgetExempt !== true);
+    expect(deviceMap.get('exempt')?.plannedState).toBe('keep');
+    expect(deviceMap.get('plain')?.plannedState).toBe('shed');
 
     // Default (no filter): both candidates are marked — unchanged behavior.
-    setDevice.mockClear();
-    markOffDevicesStayOff({ deviceMap, timing, setDevice });
-    expect(setDevice).toHaveBeenCalledTimes(2);
+    markOffDevicesStayOff(cycle);
+    expect(deviceMap.get('exempt')?.plannedState).toBe('shed');
   });
 
   it('shares the same live eligibility gate across restore candidate paths', () => {

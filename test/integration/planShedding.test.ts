@@ -2358,60 +2358,15 @@ describe('buildSheddingPlan', () => {
     expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(1, 6);
   });
 
-  it('excludes zero-power devices from shed candidate stats', async () => {
-    const state = createPlanEngineState();
-
-    const capacityGuard = capacityGuardSpy();
-
-    const result = await buildSheddingPlanForSpec(
-      ...cycleArgs({
-        devices: [
-          buildDevice({
-            id: 'positive',
-            name: 'Positive',
-            currentDrawKw: 1, expectedPowerKw: 1,
-            binaryControl: { on: true },
-            controllable: true,
-          }),
-          buildDevice({
-            id: 'zero',
-            name: 'Zero',
-            currentDrawKw: 0, expectedPowerKw: 0,
-            binaryControl: { on: true },
-            controllable: true,
-          }),
-        ],
-        total: 5,
-        softLimit: 4.5,
-        capacitySoftLimit: 4.5,
-        headroomRaw: -0.5,
-        headroom: -0.5,
-        softLimitSource: 'capacity',
-      }),
-      state,
-      {
-        ...sheddingWiring(state),
-        capacityGuard,
-        shortfallThresholdKw: 4.5,
-        powerTracker: { lastTimestamp: 1002 } as PowerTrackerState,
-      },
-    );
-
-    expect(result.overshootStats?.eligibleCandidateCount).toBe(1);
-    expect(result.overshootStats?.reducibleControlledKw).toBeCloseTo(1, 6);
-    expect(result.overshootStats?.blockedCandidateCount).toBe(0);
-    expect(result.overshootStats?.allShedCandidatesExhausted).toBe(false);
-    expect(result.overshootStats?.controlRecoverable).toBe(true);
-  });
-
   // One fact, read by both the fixture's residual and the planner's own deps.
   const AT_SETPOINT_SHED_BEHAVIOR = { action: 'set_temperature', temperature: 15 } as const;
 
   it('skips a setpoint limit that would make the device work harder', async () => {
     // A cooling unit targeting 24 with a cooling limit of 20: writing the limit
-    // would ADD demand. The candidate is skipped, and the counters say why.
+    // would ADD demand. The candidate is skipped, and the skip log says why.
     const state = createPlanEngineState();
     const capacityGuard = capacityGuardSpy();
+    const debugStructured = vi.fn();
     const shedBehavior = { action: 'set_temperature', temperature: 20 } as const;
 
     const result = await buildSheddingPlanForSpec(
@@ -2446,12 +2401,13 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
         getShedBehavior: () => shedBehavior,
+        debugStructured,
       },
     );
 
     expect(result.shedSet.has('ac')).toBe(false);
-    expect(result.overshootStats).toEqual(expect.objectContaining({
-      eligibleCandidateCount: 0,
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'limit_would_add_demand', count: 1 }],
     }));
@@ -2461,6 +2417,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = capacityGuardSpy();
+    const debugStructured = vi.fn();
 
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
@@ -2497,23 +2454,19 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
         getShedBehavior: () => AT_SETPOINT_SHED_BEHAVIOR,
+        debugStructured,
       },
     );
 
-    expect(result.overshootStats).toEqual({
-      needed: 0.8,
-      eligibleCandidateCount: 0,
-      blockedCandidateCount: 0,
-      reducibleControlledKw: 0,
-      blockedReducibleControlledKw: 0,
-      allShedCandidatesExhausted: true,
-      controlRecoverable: false,
-      // The device is already parked at its shed setpoint, which is exactly why
-      // nothing is reducible — the counters now say so instead of reading as
-      // "no candidates" with no explanation.
+    expect(result.shedSet.size).toBe(0);
+    // The device is already parked at its shed setpoint, which is exactly why
+    // nothing is reducible — the skip log says so instead of reading as "no
+    // candidates" with no explanation.
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'already_at_shed_temperature', count: 1 }],
-    });
+    }));
     expect(capacityGuard.recordPlanVerdict).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), expect.objectContaining({
       remainingReducibleControlledLoadW: 0,
       remainingReducibleControlledLoad: false,
@@ -2523,11 +2476,12 @@ describe('buildSheddingPlan', () => {
     expect(lastVerdictDeficitKw(capacityGuard)).toBeCloseTo(0.8, 6);
   });
 
-  it('counts stepped lowest non-zero load as blocked-or-minimum, not reducible, when cooldown blocks further shedding', async () => {
+  it('skips a set_step device already at its lowest active step', async () => {
     const state = createPlanEngineState();
     state.actuation.lastDeviceRestoreMs.stepper = Date.now() - 30_000;
 
     const capacityGuard = capacityGuardSpy();
+    const debugStructured = vi.fn();
 
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
@@ -2564,29 +2518,26 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_step' }),
+        debugStructured,
       },
     );
 
-    expect(result.overshootStats).toEqual({
-      needed: 0.4,
-      eligibleCandidateCount: 0,
-      blockedCandidateCount: 0,
-      reducibleControlledKw: 0,
-      blockedReducibleControlledKw: 0,
-      allShedCandidatesExhausted: true,
-      controlRecoverable: false,
-      // A `set_step` device already at its lowest ACTIVE step has no rung left:
-      // the ladder descent must not reach the off step for it, because turning
-      // it off is not the shed behaviour its owner configured.
+    expect(result.shedSet.size).toBe(0);
+    // A `set_step` device already at its lowest ACTIVE step has no rung left:
+    // the ladder descent must not reach the off step for it, because turning
+    // it off is not the shed behaviour its owner configured.
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'no_lower_step_reachable', count: 1 }],
-    });
+    }));
   });
 
-  it('does not count policy-blocked devices as reducible load', async () => {
+  it('records a budget-exempt device as skipped while the daily budget binds', async () => {
     const state = createPlanEngineState();
 
     const capacityGuard = capacityGuardSpy();
+    const debugStructured = vi.fn();
 
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
@@ -2613,20 +2564,16 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 8,
         powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
+        debugStructured,
       },
     );
 
-    expect(result.overshootStats).toEqual({
-      needed: 0.4,
-      eligibleCandidateCount: 0,
-      blockedCandidateCount: 1,
-      reducibleControlledKw: 0,
-      blockedReducibleControlledKw: 0.4,
-      allShedCandidatesExhausted: true,
-      controlRecoverable: false,
+    expect(result.shedSet.size).toBe(0);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'budget_exempt_daily_only', count: 1 }],
-    });
+    }));
   });
 
   it('skips budget-exempt devices when shedding due to the daily budget', async () => {
@@ -3282,17 +3229,6 @@ describe('buildSheddingPlan', () => {
 
     expect(sameSampleResult.shedSet.size).toBe(0);
     expect(sameSampleResult.outcome).toEqual({ kind: 'none' });
-    expect(sameSampleResult.overshootStats).toEqual({
-      needed: 0.8,
-      eligibleCandidateCount: 1,
-      blockedCandidateCount: 0,
-      reducibleControlledKw: 0.8,
-      blockedReducibleControlledKw: 0,
-      allShedCandidatesExhausted: false,
-      controlRecoverable: true,
-      skippedCandidateCount: 0,
-      skippedCandidateReasons: [],
-    });
     expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
@@ -4031,24 +3967,14 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.size).toBe(0);
     expect(result.outcome).toEqual({ kind: 'none' });
-    expect(result.overshootStats).toEqual({
-      needed: 0.8,
-      eligibleCandidateCount: 1,
-      blockedCandidateCount: 0,
-      reducibleControlledKw: 0.8,
-      blockedReducibleControlledKw: 0,
-      allShedCandidatesExhausted: false,
-      controlRecoverable: true,
-      skippedCandidateCount: 0,
-      skippedCandidateReasons: [],
-    });
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
-  it('does not count ineligible off devices as blocked reducible load', async () => {
+  it('records a device confirmed off as skipped, not as load it could shed', async () => {
     const state = createPlanEngineState();
 
     const capacityGuard = capacityGuardSpy();
+    const debugStructured = vi.fn();
 
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
@@ -4074,20 +4000,16 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1006 } as PowerTrackerState,
+        debugStructured,
       },
     );
 
-    expect(result.overshootStats).toEqual({
-      needed: 0.8,
-      eligibleCandidateCount: 0,
-      blockedCandidateCount: 0,
-      reducibleControlledKw: 0,
-      blockedReducibleControlledKw: 0,
-      allShedCandidatesExhausted: true,
-      controlRecoverable: false,
+    expect(result.shedSet.size).toBe(0);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'binary_confirmed_off', count: 1 }],
-    });
+    }));
   });
 
   // Field incident 2026-08-05 (`inc_26449fb9`): the house sat 526 W over the hard
@@ -4146,7 +4068,6 @@ describe('buildSheddingPlan', () => {
     // Cleared in one cycle instead of 4.5 minutes: off releases what the meter
     // reports, which is more than the 0.84 kW deficit.
     expect([...result.shedSet]).toEqual(['heater']);
-    expect(result.overshootStats?.skippedCandidateCount).toBe(0);
   });
 
   // A descent that lands on the off step is a full turn-off, not a step
@@ -4258,11 +4179,10 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(result.overshootStats?.skippedCandidateReasons)
-      .toEqual([{ reason: 'zero_step_relief', count: 1 }]);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
+      skippedCandidateReasons: [{ reason: 'zero_step_relief', count: 1 }],
       devices: [expect.objectContaining({
         deviceId: 'heater',
         reasonCode: 'zero_step_relief',
@@ -4334,7 +4254,9 @@ describe('buildSheddingPlan', () => {
     // `low` is both the rung that was priced and the rung materialization
     // commands — never `off`, which a `set_step` shed may not reach.
     expect(result.shedStepTargets.get('heater')).toBe('low');
-    expect(result.overshootStats?.skippedCandidateReasons ?? []).toEqual([]);
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_shed_candidates_skipped',
+    }));
   });
 
   it('sheds all eligible non-exempt devices through the shedding planner when hourly budget is exhausted', async () => {

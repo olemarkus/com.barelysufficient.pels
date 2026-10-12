@@ -5,13 +5,9 @@ import {
   getOnDevices,
   getRestoreCandidates,
   getStorageHandBackCandidates,
-  markOffDevicesStayOff,
   sortRestoreCandidates,
 } from './devices';
-import {
-  markSteppedDevicesStayAtCurrentLevel,
-  setRestorePlanDevice as setDevice,
-} from './helpers';
+import { markSteppedDevicesStayAtCurrentLevel } from './helpers';
 import type { RestoreTiming } from './timing';
 import {
   buildRestoreTiming,
@@ -24,11 +20,14 @@ import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
 import { resolveHeadroomReserves, resolveRestoreDecisionPhase, type HeadroomReserve } from '../admission';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
-import { markRestoreCandidatesHeld, markRestoreCandidatesStayShedForShortfall } from './marking';
+import {
+  markOffDevicesStayOff,
+  markRestoreCandidatesHeld,
+  markRestoreCandidatesStayShedForShortfall,
+} from './marking';
 import {
   applyActiveSteppedRestoreCandidates,
   applyRestoreCandidates,
-  buildSteppedSwapExecutor,
 } from './candidateLoop';
 import type {
   RestoreCycle,
@@ -47,11 +46,12 @@ export function applyRestorePlan(params: {
   /** The holds PELS keeps on home batteries after this build's limit step (`StorageRelief.levers`). */
   storageLevers: Readonly<Record<string, StorageLeverState>>;
   sheddingActive: boolean;
-  guardInShortfall?: boolean;
+  /** The capacity guard is in shortfall this cycle (`SheddingPlan.guardInShortfall`). */
+  guardInShortfall: boolean;
   deps: RestoreDeps;
 }): RestorePlanResult {
   const {
-    planDevices, context, power, state, storageLevers, sheddingActive, guardInShortfall = false, deps,
+    planDevices, context, power, state, storageLevers, sheddingActive, guardInShortfall, deps,
   } = params;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapLedger = state.swapLedger;
@@ -107,11 +107,7 @@ export function applyRestorePlan(params: {
   };
 
   if (guardInShortfall) {
-    markRestoreCandidatesStayShedForShortfall({
-      deviceMap,
-      headroomKw: power.headroomKw,
-      setDevice: (id, updates) => setDevice(deviceMap, id, updates),
-    });
+    markRestoreCandidatesStayShedForShortfall(deviceMap, power.headroomKw);
   } else if (restoresPlannable) {
     ({ restoredOneThisCycle } = applyFullRestorePass(cycle, ledger, restoredOneThisCycle));
   } else if (exemptRestoresPlannable) {
@@ -125,17 +121,8 @@ export function applyRestorePlan(params: {
     || timing.inCooldown
     || effectiveTiming.inStartupStabilization
   ) {
-    markOffDevicesStayOff({
-      deviceMap,
-      timing: effectiveTiming,
-      setDevice: (id, updates) => setDevice(deviceMap, id, updates),
-      getLastControlledMs: (deviceId) => state.actuation.lastDeviceControlledMs[deviceId],
-    });
-    markSteppedDevicesStayAtCurrentLevel({
-      deviceMap,
-      timing: effectiveTiming,
-      getLastControlledMs: (deviceId) => state.actuation.lastDeviceControlledMs[deviceId],
-    });
+    markOffDevicesStayOff(cycle);
+    markSteppedDevicesStayAtCurrentLevel(cycle);
   } else if (effectiveTiming.inRestoreCooldown) {
     applyRestorePlanInCooldown(cycle);
   }
@@ -217,10 +204,8 @@ function applyFullRestorePass(
     ...getRestoreCandidates(snapshot, cycle.state.shedDecisions),
     ...getStorageHandBackCandidates(snapshot, cycle.storageLevers),
   ]);
-  const onDevices = getOnDevices(snapshot, deps.getShedBehavior, deps.temperatureSetpoints);
   const lane: RestoreLane = {
-    onDevices,
-    steppedSwapExecutor: buildSteppedSwapExecutor(cycle, onDevices),
+    onDevices: getOnDevices(snapshot, deps.getShedBehavior, deps.temperatureSetpoints),
   };
   ({ restoredOneThisCycle } = applyRestoreCandidates(
     cycle, lane, restoreCandidates, ledger, restoredOneThisCycle,

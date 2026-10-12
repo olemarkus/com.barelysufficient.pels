@@ -8,7 +8,7 @@ import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 const noCommands = { binary: { kind: 'none' as const }, step: { kind: 'none' as const }, target: null };
 const offPlan = steppedPlanDevice({
   id: 'connected-300', currentState: 'on', selectedStepId: 'low', reportedStepId: 'low',
-  targetStepId: 'low', desiredStepId: 'low', plannedState: 'shed',
+  desiredStepId: 'low', plannedState: 'shed',
   plannedShedTargetKind: 'binary_off', shedAction: 'turn_off',
   reason: { code: 'deferred_objective_avoid' },
 });
@@ -29,7 +29,7 @@ describe('resolveDeviceExecutionState', () => {
   it('expects a step-only device to resume through its active step without a binary command', () => {
     const plan = steppedPlanDevice({ binaryCapabilityId: undefined, currentState: 'off',
       selectedStepId: 'off', reportedStepId: 'off', plannedState: 'keep',
-      desiredStepId: 'low', targetStepId: 'low' });
+      desiredStepId: 'low' });
     const observed = buildExecutableObservedDeviceStateFromSnapshot(buildDriftObservedSnapshot({
       id: plan.id, name: plan.name, isEvCharger: false, available: true, targets: [], reportedStepId: 'off',
       steppedLoadProfile: plan.steppedLoadProfile,
@@ -46,7 +46,7 @@ describe('resolveDeviceExecutionState', () => {
 
   it('reports a pending stepped transition while binary restoration waits at a matching active step', () => {
     const plan = steppedPlanDevice({ currentState: 'off', selectedStepId: 'low',
-      reportedStepId: 'low', desiredStepId: 'low', targetStepId: 'low', plannedState: 'keep' });
+      reportedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
     expect(resolveDeviceExecutionState(buildExecutableDeviceIntent(plan), observe(false, 'low'), {
       ...noCommands, binary: { kind: 'pending', desired: true },
     }, false)).toMatchObject({ physicalState: 'off', desiredBinary: 'on', resumeExpected: true,

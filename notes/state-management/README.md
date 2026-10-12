@@ -52,7 +52,7 @@ Use these meanings consistently at their owning layer:
 Internally, stepped-load feedback and intent use synthetic PELS capability IDs:
 
 - `pels_measure_step`: observed stepped-load position, surfaced as `reportedStepId`.
-- `pels_target_step`: requested stepped-load position, surfaced as `targetStepId` / `desiredStepId`.
+- `pels_target_step`: requested stepped-load position, surfaced as `desiredStepId`.
 
 These IDs are internal capability-shaped contracts. They are not Homey-declared device
 capabilities unless a future change intentionally exposes them.
@@ -186,7 +186,9 @@ confirms the command within the fixed 90 s window (`CONTROL_COMMAND_CONFIRMATION
 Internal compatibility fields keep distinct meanings; they are not settings-UI wire fields:
 
 - `selectedStepId`: planner-effective current step. This may be reported or inferred.
-- `desiredStepId`: legacy alias for the current target step.
+- `desiredStepId`: on the planner input, the step the device was last commanded to; on the plan
+  device, the step this plan decided it should be on (the one field the executor and its Flow
+  step feedback read).
 
 The retired `actualStepId` / `assumedStepId` / `actualStepSource` trio is not a source of runtime
 truth. Normalize older persisted payloads at their boundary rather than restoring these fields.

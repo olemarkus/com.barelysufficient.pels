@@ -3,20 +3,7 @@ import {
   type DeviceReason,
   type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-
-export type PlanStarvationCountingCause =
-  | 'capacity'
-  | 'daily_budget'
-  | 'hourly_budget'
-  | 'shortfall'
-  | 'swap_pending'
-  | 'swapped_out'
-  | 'insufficient_headroom'
-  | 'cooldown'
-  | 'restore'
-  | 'restore_throttled'
-  | 'activation_backoff'
-  | 'reserved_for_start';
+import type { DeviceDiagnosticsStarvationCountingCause } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 
 export type PlanStarvationPauseReason =
   | 'restore'
@@ -29,7 +16,7 @@ export type PlanStarvationPauseReason =
 export type PlanStarvationSuppressionSemantics =
   | { state: 'none'; countingCause: null; pauseReason: null }
   | { state: 'paused'; countingCause: null; pauseReason: PlanStarvationPauseReason }
-  | { state: 'counting'; countingCause: PlanStarvationCountingCause; pauseReason: null };
+  | { state: 'counting'; countingCause: DeviceDiagnosticsStarvationCountingCause; pauseReason: null };
 
 const RESTORE_ADMISSION_HOLD_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.meterSettling,
@@ -121,7 +108,7 @@ const COOLDOWN_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
 // `observeDiagnostics`), while every measured build re-derives its reasons. Give it a cause
 // here only together with a path that observes it, and a cause of its own — no existing one
 // describes a meter that stopped reporting.
-const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, PlanStarvationCountingCause>> = {
+const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, DeviceDiagnosticsStarvationCountingCause>> = {
   [PLAN_REASON_CODES.gridImport]: 'capacity',
   [PLAN_REASON_CODES.capacity]: 'capacity',
   [PLAN_REASON_CODES.dailyBudget]: 'daily_budget',

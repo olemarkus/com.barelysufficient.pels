@@ -1,9 +1,10 @@
 import { spendPowerHeadroom } from '../powerLimitMath';
 import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
-import type { PlanEngineState } from '../planState';
 import {
   PLAN_REASON_CODES,
 } from '../../../packages/shared-domain/src/planReasonSemantics';
+import { getSteppedLoadLowestActiveStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
+import type { SteppedLoadStep } from '../../../packages/contracts/src/types';
 import { isOffSteppedRestoreCandidate } from './devices';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { countShedDevices } from './coordination';
@@ -12,7 +13,6 @@ import {
   buildReservedForStartReason,
   isReserveAdmitted,
   resolveReserveAdmission,
-  type HeadroomReserve,
   type ReserveInsufficient,
 } from '../admission';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
@@ -21,19 +21,9 @@ import {
   resolveRejectedSteppedSwapUpdate,
   setRestorePlanDevice,
 } from './planDeviceUpdates';
-import type { SwapRestoreOutcome } from './swap';
-import type { RestoreBatchState, RestoreLoopState, SteppedRestoreNeed } from './types';
+import { attemptSwapRestore } from './swap';
+import type { RestoreCycle, RestoreLane, RestoreLoopState, SteppedRestoreNeed } from './types';
 import { recordShedPostureRestoreBatchAdmission } from './batch';
-
-export type SteppedSwapExecutor = (params: {
-  dev: SteppedPlanDevice;
-  needed: number;
-  devPower: number;
-  availableHeadroom: number;
-  restoreDebugKey: string;
-  admittedDeviceUpdate: Partial<DevicePlanDevice>;
-  rejectedDeviceUpdate: Partial<DevicePlanDevice>;
-}) => SwapRestoreOutcome;
 
 /** The reason a stepped restore climb carries, admitted directly or through a swap. */
 function buildSteppedRestoreNeedReason(
@@ -50,27 +40,19 @@ function buildSteppedRestoreNeedReason(
 }
 
 export function admitSteppedRestore(
-  params: {
-    dev: SteppedPlanDevice;
-    deviceMap: Map<string, DevicePlanDevice>;
-    state: PlanEngineState;
-    phase: 'startup' | 'runtime';
-    nextStep: { id: string; planningPowerW: number };
-    lowestNonZeroStep: { id: string; planningPowerW: number } | null;
-    need: SteppedRestoreNeed;
-    restoreDebugKey: string;
-    swapExecutor?: SteppedSwapExecutor;
-    headroomReserves: readonly HeadroomReserve[];
-  },
+  cycle: RestoreCycle,
+  lane: RestoreLane,
+  dev: SteppedPlanDevice,
   loop: RestoreLoopState,
-  batchState: RestoreBatchState,
+  nextStep: SteppedLoadStep,
+  need: SteppedRestoreNeed,
   batchContinuation: boolean,
 ): RestoreLoopState {
-  const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
-    need: { deltaKw, neededKw }, restoreDebugKey,
-    swapExecutor, headroomReserves } = params;
+  const { deviceMap, state, phase, headroomReserves, batchState } = cycle;
+  const { deltaKw, neededKw: needed } = need;
   const { availableHeadroom, restoredOneThisCycle } = loop;
-  const needed = neededKw;
+  const restoreDebugKey = `stepped:${dev.id}`;
+  const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
   // See the binary twin in `gating.ts`: admit against the power this device may actually claim
   // (raw minus any higher-priority startup reservation), while the running headroom total keeps
   // tracking the raw figure.
@@ -89,25 +71,27 @@ export function admitSteppedRestore(
       ));
       return loop;
     }
-    if (!batchContinuation && swapExecutor && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
+    if (!batchContinuation && canUseSwapForSteppedRestore(dev, nextStep, lowestNonZeroStep)) {
       // Hand the swap the RESERVED figure for the same reason as the binary twin in `gating.ts`:
       // it may only proceed by freeing enough to cover this step on top of a block already
       // promised to a higher-priority device. The raw total is restored on the way out.
       const reservedHeadroomKw = reserved.reservedKw;
-      const swapResult = swapExecutor({
+      const swapResult = attemptSwapRestore(
+        cycle,
+        lane.onDevices,
         dev,
-        needed,
-        devPower: nextStep.planningPowerW / 1000,
-        availableHeadroom: reserved.availableKw - reservedHeadroomKw,
+        reserved.availableKw - reservedHeadroomKw,
+        { needed, devPower: nextStep.planningPowerW / 1000, penaltyLevel: 0, penaltyExtraKw: 0 },
         restoreDebugKey,
-        admittedDeviceUpdate: {
-          desiredStepId: nextStep.id,
-          targetStepId: nextStep.id,
-          expectedPowerKw: nextStep.planningPowerW / 1000,
-          reason: buildSteppedRestoreNeedReason(dev, nextStep.id, needed),
+        {
+          admitted: {
+            desiredStepId: nextStep.id,
+            expectedPowerKw: nextStep.planningPowerW / 1000,
+            reason: buildSteppedRestoreNeedReason(dev, nextStep.id, needed),
+          },
+          rejected: resolveRejectedSteppedSwapUpdate(dev),
         },
-        rejectedDeviceUpdate: resolveRejectedSteppedSwapUpdate(dev),
-      });
+      );
       // `no_source` falls through: nothing was running to swap out, so the
       // reject below is the decision, with the step's own shortfall figures.
       if (swapResult.kind === 'decided') {
@@ -117,10 +101,7 @@ export function admitSteppedRestore(
         };
       }
     }
-    return rejectSteppedRestoreForInsufficientHeadroom({
-      dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-      reserved, need: params.need, restoreDebugKey,
-    }, loop);
+    return rejectSteppedRestoreForInsufficientHeadroom(cycle, dev, loop, nextStep, shedDeviceCount, reserved, need);
   }
   const admittedLog = buildReserveAdmittedLogFields(reserved);
   setRestorePlanDevice(deviceMap, dev.id, {
@@ -158,16 +139,12 @@ export function admitSteppedRestore(
 }
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function blockSteppedRestoreForShedInvariant(params: {
-  dev: SteppedPlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  state: PlanEngineState;
-  nextStep: { id: string; planningPowerW: number };
-  lowestNonZeroStep: { id: string; planningPowerW: number } | null;
-  phase: 'startup' | 'runtime';
-  restoreDebugKey: string;
-}): boolean {
-  const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, restoreDebugKey } = params;
+export function blockSteppedRestoreForShedInvariant(
+  cycle: RestoreCycle,
+  dev: SteppedPlanDevice,
+  nextStep: SteppedLoadStep,
+): boolean {
+  const { deviceMap, state, phase } = cycle;
   // Boost is the user's priority override: it bypasses the fairness invariant.
   // No draw-evidence consult here — `resolveBoostActive` already released the
   // boost if the device is drawing nothing, so an active boost IS a device with
@@ -175,6 +152,7 @@ export function blockSteppedRestoreForShedInvariant(params: {
   // freshly-entered rung has no accepted calibration samples of its own (see the
   // regression in planRestoreBoostShedInvariantBypass.test.ts).
   if (dev.boostActive) return false;
+  const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id, state.shedDecisions);
   if (shedDeviceCount === 0) return false;
@@ -195,7 +173,7 @@ export function blockSteppedRestoreForShedInvariant(params: {
   if (!unchanged) {
     emitRestoreDebugEventOnChange({
       state,
-      key: restoreDebugKey,
+      key: `stepped:${dev.id}`,
       payload: {
         event: 'restore_stepped_rejected',
         deviceId: dev.id,
@@ -221,12 +199,11 @@ export function blockSteppedRestoreForShedInvariant(params: {
 }
 /* eslint-enable functional/immutable-data */
 
-function canUseSwapForSteppedRestore(params: {
-  dev: SteppedPlanDevice;
-  nextStep: { id: string; planningPowerW: number };
-  lowestNonZeroStep: { id: string; planningPowerW: number } | null;
-}): boolean {
-  const { dev, nextStep, lowestNonZeroStep } = params;
+function canUseSwapForSteppedRestore(
+  dev: SteppedPlanDevice,
+  nextStep: SteppedLoadStep,
+  lowestNonZeroStep: SteppedLoadStep | null,
+): boolean {
   if (lowestNonZeroStep === null) return false;
   if (isOffSteppedRestoreCandidate(dev) && nextStep.id === lowestNonZeroStep.id) return true;
   // Pausing a running lower-priority device to feed a boosted one is only worth
@@ -238,22 +215,16 @@ function canUseSwapForSteppedRestore(params: {
 }
 
 function rejectSteppedRestoreForInsufficientHeadroom(
-  params: {
-    dev: SteppedPlanDevice;
-    deviceMap: Map<string, DevicePlanDevice>;
-    state: PlanEngineState;
-    phase: 'startup' | 'runtime';
-    nextStep: { id: string };
-    lowestNonZeroStep: { id: string } | null;
-    shedDeviceCount: number;
-    reserved: ReserveInsufficient;
-    need: SteppedRestoreNeed;
-    restoreDebugKey: string;
-  },
+  cycle: RestoreCycle,
+  dev: SteppedPlanDevice,
   loop: RestoreLoopState,
+  nextStep: SteppedLoadStep,
+  shedDeviceCount: number,
+  reserved: ReserveInsufficient,
+  need: SteppedRestoreNeed,
 ): RestoreLoopState {
-  const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-    reserved: { admission, availableKw: availableHeadroom }, need, restoreDebugKey } = params;
+  const { deviceMap, state, phase } = cycle;
+  const { admission, availableKw: availableHeadroom } = reserved;
   const reason = buildRestoreHeadroomReason({
     neededKw: need.neededKw,
     availableKw: availableHeadroom,
@@ -262,7 +233,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(
   setRestorePlanDevice(deviceMap, dev.id, buildSteppedRestoreHoldUpdate(dev, reason));
   emitRestoreDebugEventOnChange({
     state,
-    key: restoreDebugKey,
+    key: `stepped:${dev.id}`,
     payload: {
       event: 'restore_stepped_rejected',
       deviceId: dev.id,
@@ -270,7 +241,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(
       phase,
       currentStepId: dev.selectedStepId,
       requestedStepId: nextStep.id,
-      lowestNonZeroStepId: lowestNonZeroStep?.id,
+      lowestNonZeroStepId: getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id,
       blockedByShedInvariant: false,
       shedDeviceCount,
       neededKw: need.neededKw,

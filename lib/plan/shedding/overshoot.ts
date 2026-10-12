@@ -8,7 +8,6 @@ import {
   RECENT_RESTORE_SHED_GRACE_MS,
 } from '../planConstants';
 import { PENDING_RELIEF_EPSILON_KW, resolvePendingShedRelief, type PendingShedRelief } from './pendingRelief';
-import type { OvershootStats } from './types';
 
 /**
  * Whether this cycle's measurement may drive a shed: it may (`proceed`,
@@ -99,42 +98,4 @@ export function resolveRecentRestoreState(
     return true;
   }
   return false;
-}
-
-/** The candidate-walk summary a cycle's `OvershootStats` is built from. */
-export type OvershootStatsInputs = {
-  needed: number;
-  eligibleCandidateCount: number;
-  blockedCandidateCount: number;
-  reducibleControlledKw: number;
-  blockedReducibleControlledKw: number;
-  skippedCandidateCount?: number;
-  skippedCandidateReasons?: OvershootStats['skippedCandidateReasons'];
-};
-
-export function buildOvershootStats(params: OvershootStatsInputs): OvershootStats {
-  const {
-    needed,
-    eligibleCandidateCount,
-    blockedCandidateCount,
-    reducibleControlledKw,
-    blockedReducibleControlledKw,
-    skippedCandidateCount = 0,
-    skippedCandidateReasons = [],
-  } = params;
-  return {
-    needed,
-    eligibleCandidateCount,
-    blockedCandidateCount,
-    reducibleControlledKw,
-    blockedReducibleControlledKw,
-    allShedCandidatesExhausted: eligibleCandidateCount === 0,
-    controlRecoverable: reducibleControlledKw > 0,
-    // Counted here so "no candidates" is falsifiable: a cycle with zero eligible
-    // candidates can now say how many controlled devices were considered and
-    // which gate stopped each. Shed-candidacy skips have no other counter — the
-    // capacity summary's blocked-device counters are all RESTORE-side holds.
-    skippedCandidateCount,
-    skippedCandidateReasons,
-  };
 }

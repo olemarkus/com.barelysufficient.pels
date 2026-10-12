@@ -164,6 +164,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       })),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
         temperatureSetpoints: new Map(),

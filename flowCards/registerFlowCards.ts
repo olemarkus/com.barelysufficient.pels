@@ -90,9 +90,9 @@ export type FlowCardDeps = {
    */
   getHeadroom: () => ObservedHeadroom;
   // Decorated: the runtime snapshot carries the app-layer step-command
-  // decoration (`desiredStepId` / `targetStepId`) that the clamp-deviation
-  // check reads. The runtime already returns decorated objects; the type just
-  // stops narrowing them away.
+  // decoration (`desiredStepId`) that the clamp-deviation check reads. The
+  // runtime already returns decorated objects; the type just stops narrowing
+  // them away.
   getSnapshot: () => Promise<DecoratedDeviceSnapshot[]>;
   /**
    * Identity + config, for the cards that select and configure a device rather

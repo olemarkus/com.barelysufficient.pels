@@ -17,7 +17,6 @@ import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import {
   createShedCandidateSkipRecorder,
   type ShedCandidateSkipRecorder,
-  type ShedCandidateSkipSummary,
 } from './candidateSkipLog';
 import {
   type LoadShedCandidate,
@@ -119,69 +118,37 @@ export function buildShedCandidateParams(
   };
 }
 
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildSheddingCandidates(params: ShedCandidateParams): {
   candidates: ShedCandidate[];
-  reducibleControlledKw: number;
-  blockedCandidateCount: number;
-  blockedReducibleControlledKw: number;
   physicalLimitBreached: boolean;
-} & ShedCandidateSkipSummary {
-  const result = collectSheddingCandidates(params, { includeCandidates: true });
-  return { ...result, candidates: rankCandidates(result.candidates) };
-}
-
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function collectSheddingCandidates(
-  params: ShedCandidateParams,
-  options: { includeCandidates: boolean },
-): {
-  candidates: ShedCandidate[];
-  eligibleCandidateCount: number;
-  reducibleControlledKw: number;
-  blockedCandidateCount: number;
-  blockedReducibleControlledKw: number;
-  physicalLimitBreached: boolean;
-} & ShedCandidateSkipSummary {
-  const { physicalLimitBreached, deps } = params;
+} {
   const nowTs = Date.now();
   const candidates: ShedCandidate[] = [];
   // Every exit below either produces a candidate or records why it did not, so a
   // cycle that sheds nothing can say which devices it considered and what stopped
   // each one (`candidateSkipLog.ts`). Devices that are not controllable at all
   // are out of scope rather than skipped, and are not recorded.
-  const recorder = createShedCandidateSkipRecorder(deps.debugStructured);
-  let eligibleCandidateCount = 0;
-  let reducibleControlledKw = 0;
-  let blockedCandidateCount = 0;
-  let blockedReducibleControlledKw = 0;
+  const recorder = createShedCandidateSkipRecorder(params.deps.debugStructured);
 
   for (const device of params.devices) {
     const walked = walkDevice(device, params, recorder, nowTs);
     if (walked === null) continue;
     if (walked.allowedByLimitPolicy === false) {
-      blockedCandidateCount += 1;
-      blockedReducibleControlledKw += walked.candidate.effectivePower;
-      recorder.record({ device: walked.candidate, reasonCode: 'budget_exempt_daily_only' });
+      recorder.record(walked.candidate, 'budget_exempt_daily_only');
       continue;
     }
-    eligibleCandidateCount += 1;
-    if (options.includeCandidates) candidates.push(walked.candidate);
-    reducibleControlledKw += walked.candidate.effectivePower;
+    candidates.push(walked.candidate);
   }
 
   recorder.emit();
 
   return {
-    candidates,
-    eligibleCandidateCount,
-    reducibleControlledKw,
-    blockedCandidateCount,
-    blockedReducibleControlledKw,
+    candidates: rankCandidates(candidates),
     // Surfaced so the shed reason is attributed from the SAME breach decision that
     // gated budget-exempt candidates above, rather than a recomputation that could
     // drift from it.
-    physicalLimitBreached,
-    ...recorder.summary(),
+    physicalLimitBreached: params.physicalLimitBreached,
   };
 }
 /* eslint-enable functional/immutable-data */
@@ -228,7 +195,7 @@ function addLoadCandidate(
 ): LoadShedCandidate | null {
   if (device.control.commandAuthority === false || !isMeteredPlanDevice(device)) return null;
   if (!isEligibleForShedding(device)) {
-    recorder.record({ device, reasonCode: 'binary_confirmed_off' });
+    recorder.record(device, 'binary_confirmed_off');
     return null;
   }
   const candidate = addCandidatePower(device, params, recorder, nowTs);
@@ -306,15 +273,9 @@ function addCandidatePower(
   if (isTemperaturePlanDevice(device) && target?.id) {
     const { shed } = temperatureSetpointsFor(temperatureSetpoints, device.id);
     if (shed.action === 'set_temperature') {
-      return buildTemperatureCandidate({
-        device,
-        priority,
-        recentlyRestored,
-        shedTemperature: shed.limitC,
-        targetCapabilityId: target.id,
-        pendingTargetCommands: state.pendingTargetCommands,
-        recorder,
-      });
+      return buildTemperatureCandidate(
+        device, priority, recentlyRestored, shed.limitC, target.id, state.pendingTargetCommands, recorder,
+      );
     }
   }
   return buildBinaryCandidate(device, priority, recentlyRestored, deps.pendingBinaryCommandStore, recorder);

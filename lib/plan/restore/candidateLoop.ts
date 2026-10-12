@@ -1,4 +1,4 @@
-import type { DevicePlanDevice, MeteredDevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
+import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
 import {
   getSteppedRestoreCandidates,
@@ -10,11 +10,9 @@ import {
 import {
   planRestoreForSteppedDevice,
   setRestorePlanDevice,
-  type SteppedSwapExecutor,
 } from './helpers';
 import type { RestoreHeadroomLedger } from './headroomLedger';
 import {
-  attemptSwapRestore,
   holdPendingSwapTargetUntilSourcesAreOff,
   holdSteppedSwapDonor,
 } from './swap';
@@ -51,7 +49,7 @@ export function applyRestoreCandidates(
 // Single shared entry for every stepped-restore path. It applies the pending-swap source-off
 // hold (a stepped-swap target must not be restored while its swapped-out sources are still on)
 // and the donor hold (a device paused to fund a swap stays paused until that swap settles), and
-// then routes through planRestoreForSteppedDevice with the stepped-swap executor context.
+// then routes through planRestoreForSteppedDevice with the lane's swap sources.
 // Funnelling normal restore, restore cooldown, meter-settling, and active stepped-upgrade paths
 // through here keeps both admission wrappers applied uniformly.
 export function planSteppedRestoreThroughSourceHold(
@@ -62,17 +60,7 @@ export function planSteppedRestoreThroughSourceHold(
 ): RestoreLoopState {
   if (holdPendingSwapTargetUntilSourcesAreOff(cycle.swapLedger, dev, cycle.deviceMap)) return loop;
   if (holdSteppedSwapDonor(cycle, dev)) return loop;
-  const result = planRestoreForSteppedDevice({
-    dev,
-    deviceMap: cycle.deviceMap,
-    state: cycle.state,
-    timing: cycle.timing,
-    availableHeadroom: loop.availableHeadroom,
-    restoredOneThisCycle: loop.restoredOneThisCycle,
-    swapExecutor: lane.steppedSwapExecutor,
-    headroomReserves: cycle.headroomReserves,
-  }, cycle.batchState);
-  return result;
+  return planRestoreForSteppedDevice(cycle, lane, dev, loop);
 }
 
 export function applyActiveSteppedRestoreCandidates(
@@ -135,24 +123,4 @@ function applyRestoreCandidate(
     return planSteppedRestoreThroughSourceHold(cycle, lane, dev, loop);
   }
   return loop;
-}
-
-export function buildSteppedSwapExecutor(
-  cycle: RestoreCycle,
-  onDevices: MeteredDevicePlanDevice[],
-): SteppedSwapExecutor {
-  return ({
-    dev, needed, devPower, availableHeadroom, restoreDebugKey,
-    admittedDeviceUpdate, rejectedDeviceUpdate,
-  }) => (
-    attemptSwapRestore(
-      cycle,
-      onDevices,
-      dev,
-      availableHeadroom,
-      { needed, devPower, penaltyLevel: 0, penaltyExtraKw: 0 },
-      restoreDebugKey,
-      { admitted: admittedDeviceUpdate, rejected: rejectedDeviceUpdate },
-    )
-  );
 }

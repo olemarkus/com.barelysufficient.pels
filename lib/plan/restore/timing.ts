@@ -160,12 +160,7 @@ const resolveRestoreCooldown = (
     lastRestoreCooldownBumpMs = lastInstabilityMs;
   }
 
-  if (shouldBumpRestoreCooldown({
-    lastRestoreMs,
-    lastInstabilityMs,
-    instabilityAgeMs,
-    lastRestoreCooldownBumpMs,
-  })) {
+  if (shouldBumpRestoreCooldown(lastRestoreMs, lastInstabilityMs, instabilityAgeMs, lastRestoreCooldownBumpMs)) {
     restoreCooldownMs = Math.min(
       restoreCooldownMs * RESTORE_COOLDOWN_BACKOFF_MULTIPLIER,
       RESTORE_COOLDOWN_MAX_MS,
@@ -187,18 +182,12 @@ const shouldResetRestoreCooldown = (
  * A restore that this instability followed, still inside the stable-reset
  * window, that this cooldown has not already been bumped for.
  */
-const shouldBumpRestoreCooldown = (params: {
-  lastRestoreMs: number | null;
-  lastInstabilityMs: number;
-  instabilityAgeMs: number;
-  lastRestoreCooldownBumpMs: number | null;
-}): boolean => {
-  const {
-    lastRestoreMs,
-    lastInstabilityMs,
-    instabilityAgeMs,
-    lastRestoreCooldownBumpMs,
-  } = params;
+const shouldBumpRestoreCooldown = (
+  lastRestoreMs: number | null,
+  lastInstabilityMs: number,
+  instabilityAgeMs: number,
+  lastRestoreCooldownBumpMs: number | null,
+): boolean => {
   if (lastRestoreMs === null || lastInstabilityMs <= lastRestoreMs) return false;
   if (instabilityAgeMs >= RESTORE_STABLE_RESET_MS) return false;
   return lastRestoreCooldownBumpMs === null || lastRestoreCooldownBumpMs < lastInstabilityMs;
@@ -250,87 +239,66 @@ export function getShedCooldownState(
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { buildMeterSettlingReason } from '../planReasonStrings';
 
-export type CapacityRestoreBlockReasonTiming = Pick<
-  RestoreTiming,
-  | 'activeOvershoot'
-  | 'inCooldown'
-  | 'inRestoreCooldown'
-  | 'inStartupStabilization'
-  | 'restoreCooldownSeconds'
-  | 'shedCooldownRemainingSec'
-  | 'restoreCooldownRemainingSec'
-> & Partial<Pick<
-  RestoreTiming,
-  | 'nowTs'
-  | 'restoreCooldownMs'
-  | 'shedCooldownStartedAtMs'
-  | 'shedCooldownTotalSec'
-  | 'restoreCooldownStartedAtMs'
-  | 'restoreCooldownTotalSec'
->>;
-
 /**
  * The countdown fields a timer hold reason carries, for the card to
  * interpolate: each present only when the timer reported it.
  */
 export const buildCountdownTiming = (
-  startedAtMs: number | null | undefined,
-  totalSec: number | null | undefined,
+  startedAtMs: number | null,
+  totalSec: number | null,
 ) => ({
   ...(typeof startedAtMs === 'number' ? { countdownStartedAtMs: startedAtMs } : {}),
   ...(typeof totalSec === 'number' && totalSec > 0 ? { countdownTotalSec: totalSec } : {}),
 });
 
-type MeterSettlingTiming = Pick<
-  RestoreTiming,
-  'activeOvershoot' | 'measurementTs' | 'nowTs'
->;
+/** A restore already admitted this cycle is the wait, when there is one. */
+export const inCycleRestoreWait = (blocked: boolean): 'in_cycle_restore' | null => (
+  blocked ? 'in_cycle_restore' : null
+);
 
-export function resolveCapacityRestoreBlockReason(params: {
-  timing: CapacityRestoreBlockReasonTiming;
-  restoredOneThisCycle?: boolean;
-  waitingForOtherRecovery?: boolean;
-  useThrottleLabel?: boolean;
-  showStartupStabilization?: boolean;
-}): DeviceReason | null {
-  const {
-    timing,
-    restoredOneThisCycle = false,
-    waitingForOtherRecovery = false,
-    useThrottleLabel = false,
-    showStartupStabilization = true,
-  } = params;
+/** Other devices still recovering are the wait, when they are. */
+export const otherRecoveryWait = (waiting: boolean): 'other_recovery' | null => (
+  waiting ? 'other_recovery' : null
+);
 
+/**
+ * The timer or wait holding a restore, or null. After startup stabilization and
+ * the cooldowns, `waitingOn` names the one other cause a caller found: a restore
+ * already admitted this cycle, or other devices still recovering.
+ */
+export function resolveCapacityRestoreBlockReason(
+  timing: RestoreTiming,
+  waitingOn: 'in_cycle_restore' | 'other_recovery' | null,
+  showStartupStabilization: boolean,
+): DeviceReason | null {
   const startupReason = resolveStartupStabilizationReason(timing, showStartupStabilization);
   if (startupReason !== null) return startupReason;
 
   const cooldownReason = resolveCapacityRestoreCooldownReason(timing);
   if (cooldownReason !== null) return cooldownReason;
 
-  if (restoredOneThisCycle) {
-    return useThrottleLabel
-      ? { code: PLAN_REASON_CODES.restoreThrottled }
-      : {
-        code: PLAN_REASON_CODES.cooldownRestore,
-        remainingSec: timing.restoreCooldownSeconds,
-        ...buildCountdownTiming(timing.nowTs, timing.restoreCooldownSeconds),
-      };
+  if (waitingOn === 'in_cycle_restore') {
+    return {
+      code: PLAN_REASON_CODES.cooldownRestore,
+      remainingSec: timing.restoreCooldownSeconds,
+      ...buildCountdownTiming(timing.nowTs, timing.restoreCooldownSeconds),
+    };
   }
-  if (waitingForOtherRecovery) {
+  if (waitingOn === 'other_recovery') {
     return { code: PLAN_REASON_CODES.waitingForOtherDevices };
   }
   return null;
 }
 
 function resolveStartupStabilizationReason(
-  timing: CapacityRestoreBlockReasonTiming,
+  timing: RestoreTiming,
   showStartupStabilization: boolean,
 ): DeviceReason | null {
   if (!timing.inStartupStabilization) return null;
   return showStartupStabilization ? { code: PLAN_REASON_CODES.startupStabilization } : null;
 }
 
-function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreBlockReasonTiming): DeviceReason | null {
+function resolveCapacityRestoreCooldownReason(timing: RestoreTiming): DeviceReason | null {
   if (timing.activeOvershoot) return null;
   if (timing.inCooldown) return buildShedCooldownReason(timing);
   return timing.inRestoreCooldown ? buildRestoreCooldownReason(timing) : null;
@@ -342,10 +310,7 @@ function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreBlockReason
  * (`resolveCapacityRestoreBlockReason` here, `resolveOffDeviceReason` in
  * `restore/devices.ts`).
  */
-export function buildShedCooldownReason(
-  timing: Pick<RestoreTiming, 'shedCooldownRemainingSec'>
-    & Partial<Pick<RestoreTiming, 'shedCooldownStartedAtMs' | 'shedCooldownTotalSec'>>,
-): DeviceReason {
+export function buildShedCooldownReason(timing: RestoreTiming): DeviceReason {
   return {
     code: PLAN_REASON_CODES.cooldownShedding,
     remainingSec: timing.shedCooldownRemainingSec ?? 0,
@@ -354,7 +319,7 @@ export function buildShedCooldownReason(
 }
 
 /** The restore cooldown as a hold reason, counting down to the next resume. */
-export function buildRestoreCooldownReason(timing: CapacityRestoreBlockReasonTiming): DeviceReason {
+export function buildRestoreCooldownReason(timing: RestoreTiming): DeviceReason {
   return {
     code: PLAN_REASON_CODES.cooldownRestore,
     remainingSec: timing.restoreCooldownRemainingSec ?? 0,
@@ -370,7 +335,7 @@ export function buildRestoreCooldownReason(timing: CapacityRestoreBlockReasonTim
  * the countdown the card interpolates, so each restore lane resolves it once.
  */
 export function resolveMeterSettlingReason(
-  timing: MeterSettlingTiming,
+  timing: RestoreTiming,
   lastRestoreTs: number | null,
   restoredOneThisCycle = false,
 ): DeviceReason | null {

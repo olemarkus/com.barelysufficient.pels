@@ -13,8 +13,8 @@ import {
   buildResidualKwForPlanDevice,
 } from './residualKwForPlanDevice';
 import type {
-  PlanInputDeviceProjectionFacts,
   PlanInputProjectionSource,
+  ResolvedPlanInputFacts,
   ToPlanDeviceInput,
   ToPlanDeviceOptions,
 } from './planInputDeviceTypes';
@@ -50,12 +50,23 @@ export const resolveStandingCommandGrant = (
   resolveDeviceStartPolicy(source.getDeviceStartPolicies(), deviceId),
 );
 
+/** The contract's present-only-when-set postures: the key is the whole of "set". */
+const resolvePresenceFlags = (
+  steppedLadderMissing: boolean,
+  surplusOnly: boolean,
+  externalOffHoldActive: boolean,
+): Pick<ResolvedPlanInputFacts, 'steppedLadderMissing' | 'surplusOnly' | 'externalOffHoldActive'> => ({
+  ...(steppedLadderMissing ? { steppedLadderMissing: true as const } : {}),
+  ...(surplusOnly ? { surplusOnly: true as const } : {}),
+  ...(externalOffHoldActive ? { externalOffHoldActive: true as const } : {}),
+});
+
 /** Resolve configuration and observation into the facts used by plan input. */
 export const resolvePlanInputDeviceFacts = (
   source: PlanInputProjectionSource,
   device: ToPlanDeviceInput,
   options: ToPlanDeviceOptions,
-): PlanInputDeviceProjectionFacts => {
+): ResolvedPlanInputFacts => {
   const isSteppedDevice = isSteppedLoadSnapshot(device);
   const plannerSteppedLoadProfile = isSteppedDevice
     ? resolveEvTargetPowerPlannerProfile({
@@ -65,7 +76,6 @@ export const resolvePlanInputDeviceFacts = (
     })
     : undefined;
   const steppedCluster = resolveSteppedClusterFields(plannerSteppedLoadProfile, device);
-  const steppedLadderMissing = resolveSteppedLadderMissing(device, steppedCluster);
   const observedCurrentState = resolveObservedCurrentState(device);
   const powerCalibration = source.getPowerCalibrationSnapshot();
   const calibration = isSteppedDevice || device.isEvCharger
@@ -129,25 +139,23 @@ export const resolvePlanInputDeviceFacts = (
   });
 
   return {
-    steppedCluster,
-    steppedLadderMissing,
-    observedCurrentState,
-    calibration,
+    ...steppedCluster,
+    ...resolvePresenceFlags(resolveSteppedLadderMissing(device, steppedCluster), surplusOnly, externalOffHoldActive),
+    currentState: observedCurrentState,
+    ...(calibration ? { stepPowerCalibration: calibration } : {}),
     confirmedNotDrawing,
     commandableNow: commandability.commandableNow,
-    commandabilityReason,
-    objective,
-    boost: resolvePlanBoostFields(boostInput),
+    ...(commandabilityReason ? { commandabilityReason } : {}),
+    ...objective,
+    ...resolvePlanBoostFields(boostInput),
     canSetControlResolved,
     startPolicy,
     control,
     startPolicyInForce,
-    surplusOnly,
     surplusTracking,
-    externalOffHoldActive,
     hasStandingDemand,
     residualKw,
     budgetExempt: source.isBudgetExempt(device.id),
-    storageCluster: resolveStorageCluster(source, device, options),
+    ...resolveStorageCluster(source, device, options),
   };
 };

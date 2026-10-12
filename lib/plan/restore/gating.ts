@@ -9,6 +9,8 @@ import {
   shouldWaitForOtherRecovery,
 } from './coordination';
 import {
+  inCycleRestoreWait,
+  otherRecoveryWait,
   resolveCapacityRestoreBlockReason,
   resolveMeterSettlingReason,
 } from './timing';
@@ -58,10 +60,7 @@ export function planRestoreForDevice(
   const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);
   // One restore per cycle, unless the batch is still open for this one to join.
   const shouldBlockForInCycleRestore = restoredOneThisCycle && !batchContinuation;
-  const gateReason = resolveCapacityRestoreBlockReason({
-    timing,
-    restoredOneThisCycle: shouldBlockForInCycleRestore,
-  });
+  const gateReason = resolveCapacityRestoreBlockReason(timing, inCycleRestoreWait(shouldBlockForInCycleRestore), true);
   const meterSettlingReason = resolveMeterSettlingReason(
     timing, state.actuation.lastRestoreMs, shouldBlockForInCycleRestore,
   );
@@ -82,22 +81,14 @@ export function planRestoreForDevice(
     return { availableHeadroom, restoredOneThisCycle };
   }
 
-  const waitingReason = resolveCapacityRestoreBlockReason({
-    timing,
-    waitingForOtherRecovery: shouldWaitForOtherRecovery(deviceMap, dev.id, batchContinuation),
-  });
+  const waitingReason = resolveCapacityRestoreBlockReason(
+    timing, otherRecoveryWait(shouldWaitForOtherRecovery(deviceMap, dev.id, batchContinuation)), true,
+  );
   if (waitingReason) {
     return rejectBinaryRestore(cycle, dev, loop, waitingReason);
   }
 
-  if (blockRestoreForRecentActivationSetback({
-    deviceMap,
-    deviceId: dev.id,
-    deviceName: dev.name,
-    state,
-    nowTs: timing.nowTs,
-    stepped: false,
-  })) {
+  if (blockRestoreForRecentActivationSetback(cycle, dev, false)) {
     return { availableHeadroom, restoredOneThisCycle };
   }
 

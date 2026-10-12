@@ -5,39 +5,63 @@ import { buildRestoreShortfallReason } from './accounting';
 import {
   getOffDevices,
   getSteppedRestoreCandidates,
+  isOffBinaryRestoreHoldCandidate,
   isOffSteppedRestoreCandidate,
-  markOffDevicesStayOff,
+  NEUTRAL_STARTUP_HOLD_REASON,
   resolveInactiveRestoreUpdate,
+  resolveOffDeviceReason,
 } from './devices';
 import { buildSteppedRestoreHoldUpdate, setRestorePlanDevice as setDevice } from './planDeviceUpdates';
 import { materializeShedSnapshotFields } from '../planActionMaterialization';
 import { holdPendingSwapTargetUntilSourcesAreOff } from './swap';
+import type { RestoreCycle } from './types';
 
-export function markRestoreCandidatesStayShedForShortfall(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  headroomKw: number | null;
-  setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
-}): void {
-  const { deviceMap, headroomKw, setDevice: setPlanDevice } = params;
+/**
+ * Holds each off binary restore candidate this cycle: one the restore lanes
+ * must leave alone is parked `inactive`, any other is held shed with
+ * `reasonFor`'s reason, or the neutral startup hold when that has none to claim.
+ */
+export function holdOffDevices(
+  deviceMap: Map<string, DevicePlanDevice>,
+  reasonFor: (dev: DevicePlanDevice) => DeviceReason | null,
+  deviceFilter?: (dev: DevicePlanDevice) => boolean,
+): void {
+  const offDevices = Array.from(deviceMap.values())
+    .filter((device) => isOffBinaryRestoreHoldCandidate(device))
+    .filter((device) => deviceFilter?.(device) ?? true);
+  for (const dev of offDevices) {
+    const inactiveUpdate = resolveInactiveRestoreUpdate(dev);
+    if (inactiveUpdate) {
+      setDevice(deviceMap, dev.id, inactiveUpdate);
+      continue;
+    }
+    setDevice(deviceMap, dev.id, { plannedState: 'shed', reason: reasonFor(dev) ?? NEUTRAL_STARTUP_HOLD_REASON });
+  }
+}
+
+/** The blocked restore pass's stay-off marking: each off device names the timer or overshoot holding it. */
+export function markOffDevicesStayOff(
+  cycle: RestoreCycle,
+  deviceFilter?: (dev: DevicePlanDevice) => boolean,
+): void {
+  const { deviceMap, timing, state } = cycle;
+  holdOffDevices(deviceMap, (dev) => resolveOffDeviceReason(
+    timing, dev.reason, state.actuation.lastDeviceControlledMs[dev.id],
+  ), deviceFilter);
+}
+
+export function markRestoreCandidatesStayShedForShortfall(
+  deviceMap: Map<string, DevicePlanDevice>,
+  headroomKw: number | null,
+): void {
   if (headroomKw === null) return;
   const steppedCandidates = getSteppedRestoreCandidates([...deviceMap.values()]);
-  markOffDevicesStayOff({
-    deviceMap,
-    timing: {
-      activeOvershoot: false,
-      inCooldown: false,
-      inStartupStabilization: false,
-      restoreCooldownSeconds: 0,
-      shedCooldownRemainingSec: null,
-    },
-    setDevice: setPlanDevice,
-    reasonOverride: (dev) => buildRestoreShortfallReason(dev, headroomKw),
-  });
+  holdOffDevices(deviceMap, (dev) => buildRestoreShortfallReason(dev, headroomKw));
 
   for (const dev of steppedCandidates) {
     const reason = buildRestoreShortfallReason(dev, headroomKw);
     if (isOffSteppedRestoreCandidate(dev) || dev.selectedStepId === undefined) {
-      setPlanDevice(dev.id, buildSteppedRestoreHoldUpdate(dev, reason));
+      setDevice(deviceMap, dev.id, buildSteppedRestoreHoldUpdate(dev, reason));
       continue;
     }
     // Route the post-plan revision through the chunk-6 materialisation adapter so this
@@ -48,11 +72,10 @@ export function markRestoreCandidatesStayShedForShortfall(params: {
       intent: { kind: 'set_step', targetStepId: dev.selectedStepId },
       shouldShed: true,
     });
-    setPlanDevice(dev.id, {
+    setDevice(deviceMap, dev.id, {
       reason,
       plannedState: 'shed',
       desiredStepId: dev.selectedStepId,
-      targetStepId: dev.selectedStepId,
       shedAction: triple.shedAction,
       shedTemperature: triple.shedTemperature,
       releaseShedStepId: triple.releaseShedStepId,

@@ -13,7 +13,7 @@ import type {
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 import type {
-  DeviceControlPosture,
+  PlanInputDeviceBase,
   StoragePlanInputKind,
 } from '../../packages/planner-types/src/planInputDevice';
 import type { StorageLaneBinding } from '../ports/batteryControlOwner';
@@ -62,26 +62,18 @@ export type ToPlanDeviceOptions = {
 export type ToPlanDeviceInput = PlanInputSnapshotDevice & AssociatedCarDecoration;
 export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
 
-/** Resolved facts shared by the plan-device assembly stages. */
-export type PlanInputDeviceProjectionFacts = {
-  steppedCluster: SteppedClusterFields;
-  steppedLadderMissing: boolean;
-  observedCurrentState: PlanInputDevice['currentState'];
-  calibration: Record<string, number> | undefined;
-  confirmedNotDrawing: boolean;
-  commandableNow: boolean;
-  commandabilityReason: PlanInputDevice['commandabilityReason'] | undefined;
-  objective: Pick<PlanInputDevice, 'objectiveKind' | 'objectiveSessionInactive'>;
-  boost: Pick<PlanInputDevice, 'boostSupported' | 'boostRequested'>;
-  canSetControlResolved: boolean;
-  startPolicy: DeviceStartPolicy;
-  control: DeviceControlPosture;
-  startPolicyInForce: PlanInputDevice['startPolicyInForce'];
-  surplusOnly: boolean;
-  surplusTracking: boolean;
-  externalOffHoldActive: boolean;
-  hasStandingDemand: boolean;
-  residualKw: PlanInputDevice['residualKw'];
-  budgetExempt: boolean;
-  storageCluster: StorageClusterFields;
-};
+/**
+ * The planner-input fields the projection resolves from owner reads, already in
+ * the contract's own shape (optional flags present only when set), so
+ * `assemblePlanInputDevice` lays them over the device rather than re-listing them.
+ */
+export type ResolvedPlanInputFacts = Pick<PlanInputDeviceBase,
+  | 'currentState' | 'confirmedNotDrawing' | 'commandableNow' | 'commandabilityReason'
+  | 'objectiveKind' | 'objectiveSessionInactive' | 'boostSupported' | 'boostRequested'
+  | 'canSetControlResolved' | 'startPolicy' | 'control' | 'startPolicyInForce'
+  | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'steppedLadderMissing'
+  | 'stepPowerCalibration' | 'hasStandingDemand' | 'residualKw' | 'budgetExempt'>
+  & SteppedClusterFields
+  // Not `StorageClusterFields`: its empty member is `Record<string, never>`,
+  // which no object carrying the fields above can satisfy.
+  & (StoragePlanInputKind | { storage?: never });

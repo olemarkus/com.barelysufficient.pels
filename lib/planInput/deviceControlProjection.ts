@@ -52,12 +52,10 @@ function projectSteppedDeviceControl<T extends DeviceControlProjectionSource>(
   device: T, profile: SteppedLoadProfile, store: SteppedCommandStore,
 ): T & DeviceControlDecoration {
   const currentDesired = store.getDesired(device.id);
-  const targetStepId = getSteppedLoadStep(profile, currentDesired?.stepId)?.id;
   const selectedStepId = device.reportedStepId ?? getSteppedLoadLowestActiveStep(profile)?.id;
   return {
     ...device,
-    targetStepId,
-    desiredStepId: targetStepId,
+    desiredStepId: getSteppedLoadStep(profile, currentDesired?.stepId)?.id,
     selectedStepId,
     controlModel: 'stepped_load',
     previousStepId: currentDesired?.previousStepId,

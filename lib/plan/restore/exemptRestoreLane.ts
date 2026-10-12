@@ -1,14 +1,12 @@
 import type { DevicePlanDevice } from '../planTypes';
-import {
-  getRestoreCandidates, getStorageHandBackCandidates, markOffDevicesStayOff, sortRestoreCandidates,
-} from './devices';
-import { markSteppedDevicesStayAtCurrentLevel, setRestorePlanDevice as setDevice } from './helpers';
+import { getRestoreCandidates, getStorageHandBackCandidates, sortRestoreCandidates } from './devices';
+import { markSteppedDevicesStayAtCurrentLevel } from './helpers';
+import { markOffDevicesStayOff } from './marking';
 import type { RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState } from './batch';
 import {
   applyActiveSteppedRestoreCandidates,
   applyRestoreCandidates,
-  buildSteppedSwapExecutor,
 } from './candidateLoop';
 import type { RestoreCycle, RestoreLane } from './types';
 
@@ -38,33 +36,19 @@ export function applyBudgetExemptRestorePass(
   ledger: RestoreHeadroomLedger,
   restoredOne: boolean,
 ): { restoredOneThisCycle: boolean } {
-  const { deviceMap, state, timing } = cycle;
+  const { deviceMap, state } = cycle;
   let restoredOneThisCycle = restoredOne;
   // No swap sources: `attemptSwapRestore` finds nothing and falls through to the
   // ordinary insufficient-headroom reject. The batch throttle is disabled here,
   // so this lane derives its own cycle rather than borrowing the caller's.
   const laneCycle: RestoreCycle = { ...cycle, batchState: buildDisabledRestoreBatchState() };
-  const lane: RestoreLane = {
-    onDevices: [],
-    steppedSwapExecutor: buildSteppedSwapExecutor(laneCycle, []),
-  };
+  const lane: RestoreLane = { onDevices: [] };
 
   // Mark non-exempt devices FIRST (and only them): an admitted exempt device is
   // still observed off this cycle, so an unfiltered mark afterwards would
   // overwrite its admission back to 'shed'.
-  markOffDevicesStayOff({
-    deviceMap,
-    timing,
-    setDevice: (id, updates) => setDevice(deviceMap, id, updates),
-    getLastControlledMs: (deviceId) => state.actuation.lastDeviceControlledMs[deviceId],
-    deviceFilter: (dev) => !isBudgetExempt(dev),
-  });
-  markSteppedDevicesStayAtCurrentLevel({
-    deviceMap,
-    timing,
-    getLastControlledMs: (deviceId) => state.actuation.lastDeviceControlledMs[deviceId],
-    deviceFilter: (dev) => !isBudgetExempt(dev),
-  });
+  markOffDevicesStayOff(cycle, (dev) => !isBudgetExempt(dev));
+  markSteppedDevicesStayAtCurrentLevel(cycle, (dev) => !isBudgetExempt(dev));
 
   const snapshot = Array.from(deviceMap.values());
   const restoreCandidates = sortRestoreCandidates([

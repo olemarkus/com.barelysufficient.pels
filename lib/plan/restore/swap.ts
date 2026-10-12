@@ -9,8 +9,7 @@ import {
 } from '../swap';
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
 import { isOffSteppedRestoreCandidate } from './devices';
-import { setRestorePlanDevice as setDevice } from './helpers';
-import { buildOffSteppedRestoreHoldUpdate } from './planDeviceUpdates';
+import { buildOffSteppedRestoreHoldUpdate, setRestorePlanDevice as setDevice } from './planDeviceUpdates';
 import type { RestoreNeed } from './support';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { buildRestoreAdmissionMetrics } from '../admission';
@@ -49,8 +48,7 @@ export type SwapDeviceUpdates = {
 
 export function attemptSwapRestore(
   cycle: RestoreCycle,
-  /** Only the on-devices half of the lane: taking the whole lane would make the
-   *  stepped-swap executor depend on a lane that contains itself. */
+  /** The lane's swap sources (`RestoreLane.onDevices`). */
   onDevices: MeteredDevicePlanDevice[],
   dev: DevicePlanDevice,
   availableHeadroom: number,

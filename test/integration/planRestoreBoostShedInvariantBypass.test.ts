@@ -87,6 +87,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       ...cycleArgsFor(buildContext()),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -138,6 +139,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       ...cycleArgsFor(buildContext()),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -178,6 +180,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       ...cycleArgsFor(buildContext()),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),

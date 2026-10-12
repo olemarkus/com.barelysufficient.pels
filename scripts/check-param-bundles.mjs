@@ -22,12 +22,14 @@
 //
 // THE INVERSE FAILURE COUNTS TOO, and this guard cannot see it: taking a real
 // domain object and exploding it into loose scalars downstream. `RestoreTiming`
-// (17 fields, lib/plan/restore/timing.ts) is flattened into 14 scalars on
-// `RestorePlanResult`, re-listed at the call site, re-declared as 12 scalars
-// under different names in `ShedHoldParams`, re-destructured, re-passed
-// individually, and narrowed by three `Pick<>`s — one of which
-// (`CapacityRestoreGateTiming`) had no consumer outside its own file. When you
-// already hold the domain object, pass it.
+// (lib/plan/restore/timing.ts) was the worked example: flattened into scalars on
+// the restore result, re-declared under renamed keys on the setpoint hold
+// lane's parameter type, re-passed one by one into the reason context, and
+// narrowed by a `Pick<>` per helper. Now the restore result carries it whole,
+// and the stages after the restore pass take the objects their callers already
+// hold — the restore lanes a `RestoreCycle`, the hold lane the
+// `RestorePlanResult` and `SheddingPlan` themselves — instead of a list of
+// their members. When you already hold the domain object, pass it.
 //
 // WHAT COUNTS AS A VIOLATION: a parameter whose type is an inline object
 // literal (a TypeScript `TypeLiteral`) declaring 3 or more members. Two members

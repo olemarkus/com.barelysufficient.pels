@@ -80,7 +80,7 @@ export type SwapReservation = {
  * promises a rung, anything else promises only that it comes on.
  */
 export function resolveSwapPromise(admittedUpdate: Partial<DevicePlanDevice>): SwapPromise {
-  const stepId = admittedUpdate.targetStepId ?? admittedUpdate.desiredStepId;
+  const stepId = admittedUpdate.desiredStepId;
   return stepId === undefined ? { kind: 'binary' } : { kind: 'stepped', stepId };
 }
 

@@ -1,8 +1,10 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { SteppedLoadStep } from '../../packages/contracts/src/types';
 import { incPerfCounter } from '../utils/perfCounters';
-import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from './planTypes';
-import type { PlanEngineState } from './planState';
+import type { MeteredKind, SteppedPlanDevice } from './planTypes';
 import { computeRestoreBufferKw } from './restore/accounting';
+import { setRestorePlanDevice } from './restore/planDeviceUpdates';
+import type { RestoreCycle, RestoreLoopState } from './restore/types';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import {
   buildPendingSteppedRestoreHold,
@@ -16,40 +18,25 @@ export type SteppedRestoreAttemptHold =
   | { kind: 'not_handled'; availableHeadroom: number | null; restoredOneThisCycle: boolean };
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function applySteppedRestoreAttemptHold(params: {
-  dev: SteppedPlanDevice & MeteredKind;
-  nextStepId: string;
-  nextStepPowerKw: number;
-  lastRestoreMs?: number;
-  measurementTs?: number | null;
-  phase: 'startup' | 'runtime';
-  state: PlanEngineState;
-  restoreDebugKey: string;
-  availableHeadroom: number | null;
-  restoredOneThisCycle: boolean;
-  setDevice: (updates: Partial<DevicePlanDevice>) => void;
-}): SteppedRestoreAttemptHold {
-  const {
-    dev,
-    nextStepId,
-    nextStepPowerKw,
-    lastRestoreMs,
-    measurementTs = null,
-    phase,
-    state,
-    restoreDebugKey,
-    availableHeadroom,
-    restoredOneThisCycle,
-    setDevice,
-  } = params;
+export function applySteppedRestoreAttemptHold(
+  cycle: RestoreCycle,
+  dev: SteppedPlanDevice & MeteredKind,
+  loop: RestoreLoopState,
+  nextStep: SteppedLoadStep,
+): SteppedRestoreAttemptHold {
+  const { state, timing, phase, deviceMap } = cycle;
+  const { availableHeadroom, restoredOneThisCycle } = loop;
+  const nextStepId = nextStep.id;
+  const nextStepPowerKw = nextStep.planningPowerW / 1000;
+  const restoreDebugKey = `stepped:${dev.id}`;
   const nowMs = Date.now();
   const steppedRestoreAttempt = resolveSteppedRestoreAttemptState(
     dev,
     nextStepId,
     nowMs,
     {
-      lastRestoreMs,
-      measurementTs,
+      lastRestoreMs: state.actuation.lastDeviceRestoreMs[dev.id],
+      measurementTs: timing.measurementTs,
     },
   );
   const pendingRestoreHold = buildPendingSteppedRestoreHold(steppedRestoreAttempt);
@@ -63,7 +50,7 @@ export function applySteppedRestoreAttemptHold(params: {
         : resolveSteppedRestoreObservedGapKw(dev, steppedRestoreAttempt);
     }
     const needed = reservationGapKw > 0 ? computeRestoreBufferKw(reservationGapKw) : 0;
-    setDevice({
+    setRestorePlanDevice(deviceMap, dev.id, {
       desiredStepId: nextStepId,
       expectedPowerKw: nextStepPowerKw,
       reason: pendingRestoreHold.reason,
@@ -103,7 +90,7 @@ export function applySteppedRestoreAttemptHold(params: {
   if (steppedRestoreAttempt?.status === 'retry_backoff') {
     delete state.steppedRestoreRejectedByDevice[dev.id];
     clearRestoreDebugEvent(state, restoreDebugKey);
-    setDevice({
+    setRestorePlanDevice(deviceMap, dev.id, {
       desiredStepId: nextStepId,
       expectedPowerKw: nextStepPowerKw,
       reason: { code: PLAN_REASON_CODES.keep, detail: null },

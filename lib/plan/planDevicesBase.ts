@@ -96,8 +96,11 @@ type PlannedDeviceDecision = {
 
 function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDeviceDecision {
   const {
-    dev, recentlyRestored, control, boostActive, surplusCeilingStepId,
+    dev, recentlyRestored, boostActive, surplusCeilingStepId,
   } = inputs;
+  // The whole posture: this builder asks BOTH questions of it, and they have
+  // different answers for a managed device with power limiting off.
+  const { control } = dev;
   const { shedSet, shedStepTargets, shedReasons } = inputs.sheddingPlan;
   const shouldShed = shedSet.has(dev.id);
   // ONE effective shed behaviour for this DEVICE-BUILD stage, resolved before
@@ -120,12 +123,7 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
     && shedDesiredStepId !== undefined
     && shedDesiredStepId !== dev.selectedStepId;
   const plannedState = resolvePlannedState(control, shouldShed || isSteppedShed);
-  const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction({
-    dev,
-    control,
-    shouldShed,
-    shedBehavior,
-  });
+  const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction(dev, shouldShed, shedBehavior);
   return {
     plannedState,
     effectiveDesiredStepId: resolveSteppedKeepDesiredStepIdFor(
@@ -159,14 +157,9 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
  */
 export type BasePlanDeviceInputs = {
   dev: PlanInputDevice;
-  priority: number;
   recentlyRestored: boolean;
   binaryCommandPending: boolean;
-  currentState: string;
   plannedTarget: number | undefined;
-  // The whole posture: this builder asks BOTH questions of it, and they have
-  // different answers for a managed device with power limiting off.
-  control: DeviceControlPosture;
   shedBehavior: ShedBehavior;
   /**
    * This cycle's shedding decision, WHOLE — who is shed, why, and the rung each
@@ -188,8 +181,9 @@ export type BasePlanDeviceInputs = {
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDevice {
   const {
-    dev, priority, binaryCommandPending, currentState, control, boostActive, surplusAbsorbActive,
+    dev, binaryCommandPending, boostActive, surplusAbsorbActive,
   } = inputs;
+  const { currentState } = dev;
   const {
     plannedState, effectiveDesiredStepId, shedDesiredStepId, baseReason,
     shedAction, shedTemperature, releaseShedStepId, plannedTarget: resolvedPlannedTarget,
@@ -214,14 +208,13 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     // Finalize decides (`finalizePlanDevices`); pre-finalize always false.
     recordRestoreOnTargetApply: false,
     reportedStepId: dev.reportedStepId,
-    targetStepId: effectiveDesiredStepId,
     desiredStepId: effectiveDesiredStepId,
     previousStepId: dev.previousStepId,
     lastDesiredStepId: dev.desiredStepId,
     lastStepCommandIssuedAt: dev.lastStepCommandIssuedAt,
     stepCommandRetryCount: dev.stepCommandRetryCount,
     nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
-    priority,
+    priority: dev.priority,
     expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
     expectedPowerSource: dev.expectedPowerSource,
     controlAdapter: dev.controlAdapter,
@@ -232,7 +225,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     commandableNow: dev.commandableNow,
     hasStandingDemand: dev.hasStandingDemand,
     reason: baseReason,
-    control,
+    control: dev.control,
     budgetExempt: dev.budgetExempt,
     available: dev.available,
     boostActive,
@@ -382,23 +375,19 @@ function resolveEffectiveShedBehavior(
   return shouldShed && heldOff && canTurnOff ? TURN_OFF_SHED_BEHAVIOR : configured;
 }
 
-function resolveShedAction(params: {
-  dev: PlanInputDevice;
-  control: DeviceControlPosture;
-  shouldShed: boolean;
+function resolveShedAction(
+  dev: PlanInputDevice,
+  shouldShed: boolean,
   /** Already resolved by {@link resolveEffectiveShedBehavior} — never the raw configured floor. */
-  shedBehavior: ShedBehavior;
-}): { shedAction: ShedAction; shedTemperature: number | null; releaseShedStepId: string | null } {
-  const {
-    dev, control, shouldShed, shedBehavior,
-  } = params;
+  shedBehavior: ShedBehavior,
+): { shedAction: ShedAction; shedTemperature: number | null; releaseShedStepId: string | null } {
   // Single resolution site for the shed-action intent. Called once here with
   // the post-admission authority so the deferred-objective rescue lane
   // (`applyDeferredAdmissionToInput`) is honoured. The materialiser then only
   // gates on the per-cycle `shouldShed` decision (no producer equivalent).
   const intent = resolveShedIntent({
     shedBehavior,
-    commandAuthority: control.commandAuthority,
+    commandAuthority: dev.control.commandAuthority,
     hasBinaryControl: isBinaryPlanDevice(dev),
     steppedLoadProfile: isSteppedLoadDevice(dev) ? dev.steppedLoadProfile : undefined,
     primaryTarget: getPrimaryTargetCapability(dev.targets),

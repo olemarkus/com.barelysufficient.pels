@@ -337,38 +337,27 @@ export class PlanBuilder {
     // the restore lane below would resume the device the hold exists to keep off.
     const heldContext = withHeldOffOnRelease(context, postureHolds.heldOffOnReleaseIds);
 
-    let planDevices = this.stages.buildPlanDevices(
-      heldContext,
-      sheddingPlan,
-      resolveShortfallOffState(sheddingPlan.guardInShortfall, power.headroomKw),
-    );
     const restoreResult = this.stages.applyRestorePlan(
-      planDevices, heldContext, admissionPower, sheddingPlan, limitedStorage.levers,
+      this.stages.buildPlanDevices(
+        heldContext,
+        sheddingPlan,
+        resolveShortfallOffState(sheddingPlan.guardInShortfall, power.headroomKw),
+      ),
+      heldContext, admissionPower, sheddingPlan, limitedStorage.levers,
     );
-    planDevices = restoreResult.planDevices;
     const storageRelief = this.handBackStorage(limitedStorage, restoreResult, power, surplusOffers);
 
     const holdResult = this.stages.applyHoldPlan(
-      planDevices,
       restoreResult,
       sheddingPlan,
       heldContext.temperatureSetpoints,
     );
-    planDevices = holdResult.planDevices;
-
-    planDevices = this.stages.normalizeReasons({
-      planDevices,
-      context: heldContext,
-      power: admissionPower,
-      restoreResult,
-      sheddingPlan,
-      holds: {
+    const planDevices = attachDeferredReleaseIntents(this.stages.normalizeReasons(
+      heldContext, admissionPower, restoreResult, sheddingPlan, {
         deferredObjectiveAvoidDeviceIds: decoration.deferredAvoidDeviceIds,
         postureHoldReasonById: postureHolds.reasonById,
-      },
-      holdResult,
-    });
-    planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, true);
+      }, holdResult,
+    ), decoration.deferredReleaseIntentByDeviceId, true);
     const decidedDevices = attachStorageDecisions(
       this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints, nowTs).planDevices, storageRelief,
     );
@@ -401,15 +390,15 @@ export class PlanBuilder {
       shortfallBudgetThresholdKw,
       hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(heldContext),
     }, power));
-    this.stages.observeDiagnostics({
-      context: heldContext,
+    this.stages.observeDiagnostics(
+      heldContext,
       power,
-      planDevices: decidedDevices,
+      decidedDevices,
       restoreResult,
-      budgetPressureEligible: isDailyBudgetBelowPlanningCeiling(dailyBudgetSnapshot, settings),
-      smartTaskDrivingDeviceIds: decoration.drivingDeviceIds,
+      isDailyBudgetBelowPlanningCeiling(dailyBudgetSnapshot, settings),
+      decoration.drivingDeviceIds,
       nowTs,
-    });
+    );
     return {
       meta,
       devices: decidedDevices,

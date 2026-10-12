@@ -1,6 +1,6 @@
 import { SwapLedger } from '../../lib/plan/swap';
 import { fixtureLimitedSetpoints, fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
-import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
+import { finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
 import { buildCeilingShortfallInputs, resolveCeilingShortfall } from '../../lib/plan/planReasonShortfall';
 import { computeBaseRestoreNeed } from '../../lib/plan/restore/accounting';
 import { getRestoreNeed } from '../../lib/plan/restore/support';
@@ -14,7 +14,7 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../../lib/plan/planTypes';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
-import { buildPlanDevice, restoreTimingFixture } from '../utils/planTestUtils';
+import { applyShedTemperatureHoldForSpec, buildPlanDevice, restoreTimingFixture } from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { reasonContext } from '../helpers/reasonContext';
 
@@ -973,7 +973,7 @@ describe('applyShedTemperatureHold', () => {
     const run = (budgetExempt: boolean) => {
       const state = createPlanEngineState();
       state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
-      return applyShedTemperatureHold({
+      return applyShedTemperatureHoldForSpec({
         temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
         planDevices: [withBinaryOn(buildPlanDevice({
           id: 'dev-temp',
@@ -1019,7 +1019,7 @@ describe('applyShedTemperatureHold', () => {
       // `moved` sat at its limit and was just planned off it.
       state.actuation.lastDeviceRestoreMs.moved = now - 1_000;
       const limited = { currentState: 'keep' as const, expectedPowerKw: 1, shedAction: 'set_temperature' as const, shedTemperature: 16 };
-      return applyShedTemperatureHold({
+      return applyShedTemperatureHoldForSpec({
         temperatureSetpoints: new Map([
           ['moved', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(16, false), keepAddsDemand: movedAddsDemand })],
           ['dev-temp', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(16, false), keepAddsDemand: true })],
@@ -1072,7 +1072,7 @@ describe('applyShedTemperatureHold', () => {
       reason: fixtureDeviceReason('shed due to capacity')!,
     }), true);
 
-    const result = applyShedTemperatureHold({
+    const result = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: new Map([['dev-temp', fixtureTemperatureSetpointsEntry()]]),
       planDevices: [planned],
       state,
@@ -1092,7 +1092,7 @@ describe('applyShedTemperatureHold', () => {
   it('keeps existing special shed reasons while temperature hold is active', () => {
     const state = createPlanEngineState();
 
-    const result = applyShedTemperatureHold({
+    const result = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
@@ -1124,7 +1124,7 @@ describe('applyShedTemperatureHold', () => {
   it('preserves neutral startup holds for set_temperature devices', () => {
     const state = createPlanEngineState();
 
-    const result = applyShedTemperatureHold({
+    const result = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
@@ -1160,7 +1160,7 @@ describe('applyShedTemperatureHold', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
-    const held = applyShedTemperatureHold({
+    const held = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
@@ -1228,7 +1228,7 @@ describe('applyShedTemperatureHold', () => {
       if (params.lastControlledMs !== undefined) {
         state.actuation.lastDeviceControlledMs['dev-temp'] = params.lastControlledMs;
       }
-      return applyShedTemperatureHold({
+      return applyShedTemperatureHoldForSpec({
         temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
         planDevices: [withBinaryOn(buildPlanDevice({
           id: 'dev-temp',

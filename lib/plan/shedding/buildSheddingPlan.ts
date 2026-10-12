@@ -4,7 +4,6 @@ import type { MeasuredPower, PlanContext } from '../planContext';
 
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 import {
-  type OvershootStats,
   type PlanSheddingResult,
   type ShedCandidateParams,
   type SheddingDeps,
@@ -17,7 +16,6 @@ import type { StorageRelief } from '../battery/storageRelief';
 import {
   emitOvershootEscalationBlocked,
   resolveSameMeasurementSheddingDecision,
-  buildOvershootStats,
 } from './overshoot';
 import {
   candidatesBeyondPendingRelief,
@@ -59,7 +57,6 @@ export async function buildSheddingPlan(
     shedStepTargets,
     storageSetpoints,
     outcome,
-    overshootStats,
   } = selection;
   const wasSheddingActive = state.sheddingActive;
   // Resolved before the guard hears about the reading: its shortfall path
@@ -87,7 +84,6 @@ export async function buildSheddingPlan(
     guardInShortfall,
     outcome,
     recoveredAtMs: recoveredFromShedding ? nowTs : null,
-    overshootStats,
   };
 }
 /* eslint-enable functional/immutable-data */
@@ -96,17 +92,13 @@ function shouldPlanShedding(headroom: number | null): boolean {
   return headroom !== null && headroom < 0;
 }
 
-function emptySheddingResult(
-  outcome: SheddingOutcome,
-  overshootStats: PlanSheddingResult['overshootStats'],
-): PlanSheddingResult {
+function emptySheddingResult(outcome: SheddingOutcome): PlanSheddingResult {
   return {
     shedSet: new Set<string>(),
     shedReasons: new Map<string, DeviceReason>(),
     shedStepTargets: new Map<string, string>(),
     storageSetpoints: new Map<string, StorageSetpoint>(),
     outcome,
-    overshootStats,
     pendingReliefKw: 0,
   };
 }
@@ -121,14 +113,14 @@ function planShedding(
   storage: StorageRelief,
 ): PlanSheddingResult {
   const entry = resolveShedEntry(context, power, state, overshoot, storage.shed);
-  if (entry.kind === 'none') return emptySheddingResult(NO_SHEDDING_OUTCOME, null);
+  if (entry.kind === 'none') return emptySheddingResult(NO_SHEDDING_OUTCOME);
   const { hourlyBudgetExhausted, shedsEverything, leadingStorageOnly } = entry;
 
   const candidateParams = buildShedCandidateParams(context, power, state, deps, storage);
   const walked = restrictToLeadingStorage(buildSheddingCandidates(candidateParams), leadingStorageOnly);
   // The grace defers every device: with no battery ranked ahead of them there
   // is nothing to decide, exactly as without a battery.
-  if (leadingStorageOnly && walked.candidates.length === 0) return emptySheddingResult(NO_SHEDDING_OUTCOME, null);
+  if (leadingStorageOnly && walked.candidates.length === 0) return emptySheddingResult(NO_SHEDDING_OUTCOME);
   const needed = candidateParams.deficitKw;
 
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
@@ -151,9 +143,7 @@ function planShedding(
   if (escalatedSameSample) {
     deps.debugStructured?.({ event: 'plan_shed_escalating_unchanged_measurement' });
   }
-  const candidateSummary = walked;
-  const { candidates } = candidateSummary;
-  const overshootStats = buildCandidateOvershootStats(needed, candidateSummary);
+  const { candidates } = walked;
   const result = selectShedDevices(
     candidates,
     needed,
@@ -162,7 +152,7 @@ function planShedding(
     // pre-2026-08 reason mapping.
     resolveShedReason(
       candidateParams.limitSource,
-      candidateSummary.physicalLimitBreached,
+      walked.physicalLimitBreached,
       hourlyBudgetExhausted,
     ),
     shedsEverything,
@@ -172,9 +162,9 @@ function planShedding(
   if (isEmptySelection(result)) {
     if (!escalatedSameSample) {
       // Nothing to shed: any retirement the pending answer found still lands.
-      return emptySheddingResult(retainPendingLatch(measurementDecision.pending), overshootStats);
+      return emptySheddingResult(retainPendingLatch(measurementDecision.pending));
     }
-    return blockEscalation(context, deps, overshootStats, candidates.length, measurementTs, nowTs);
+    return blockEscalation(context, deps, needed, candidates.length, measurementTs, nowTs);
   }
   // The reading and the decision it produced latch as one pair (copied:
   // `shedSet` is mutated downstream when holds are merged in).
@@ -185,7 +175,6 @@ function planShedding(
     shedStepTargets: result.shedStepTargets,
     storageSetpoints: result.storageSetpoints,
     outcome: { kind: 'shed', atMs: nowTs, measurementTs, latch, escalatedSameSample },
-    overshootStats,
     pendingReliefKw: 0,
   };
 }
@@ -252,10 +241,7 @@ function resolveMeasurementPowerW(powerTracker: SheddingDeps['powerTracker']): n
  * window is held where it stands rather than dropped: a rebuild between
  * readings (a settings change, the switch from dry-run to live control) would
  * otherwise lose a shed nothing has countermanded, and with it the command.
- *
- * Unreachable in an hour that sheds everything (it never withholds), so
- * `needed` here is `deficitKw`, never the severity sentinel: the measured
- * deficit, or the import a battery answers an exhausted hour down to.
+ * Unreachable in an hour that sheds everything: it never withholds.
  */
 function skipSheddingAwaitingMeasurement(
   candidateParams: ShedCandidateParams,
@@ -263,10 +249,10 @@ function skipSheddingAwaitingMeasurement(
   held: PendingShedRelief | null,
   hourlyBudgetExhausted: boolean,
 ): PlanSheddingResult {
-  const { deps, deficitKw: needed, limitSource } = candidateParams;
+  const { deps, limitSource } = candidateParams;
   if (held === null || held.held.size === 0) {
     deps.debugStructured?.({ event: 'plan_shed_skipped_awaiting_measurement', heldShedDevices: 0 });
-    return emptySheddingResult(retainPendingLatch(held), buildCandidateOvershootStats(needed, candidateSummary));
+    return emptySheddingResult(retainPendingLatch(held));
   }
   const decision = holdPendingShedDecision(
     candidateSummary.candidates,
@@ -280,7 +266,6 @@ function skipSheddingAwaitingMeasurement(
   return {
     ...decision,
     outcome: retainPendingLatch(held),
-    overshootStats: buildCandidateOvershootStats(needed, candidateSummary),
     pendingReliefKw: held.totalKw,
   };
 }
@@ -316,7 +301,6 @@ function shedBeyondPendingRelief(
   const { deps, deficitKw: needed, limitSource } = candidateParams;
   const { candidates } = candidateSummary;
   const reason = resolveShedReason(limitSource, candidateSummary.physicalLimitBreached, hourlyBudgetExhausted);
-  const overshootStats = buildCandidateOvershootStats(needed, candidateSummary);
   const held = holdPendingShedDecision(candidates, pending, reason);
   const residualKw = needed - pending.totalKw;
   const creditFields = {
@@ -330,7 +314,7 @@ function shedBeyondPendingRelief(
   if (residualKw <= PENDING_RELIEF_EPSILON_KW) {
     deps.debugStructured?.({ event: 'plan_shed_held_pending_relief', ...creditFields });
     return {
-      ...held, outcome: retainPendingLatch(pending), overshootStats, pendingReliefKw: pending.totalKw,
+      ...held, outcome: retainPendingLatch(pending), pendingReliefKw: pending.totalKw,
     };
   }
   const beyond = selectShedDevices(
@@ -357,7 +341,7 @@ function shedBeyondPendingRelief(
       escalatedSameSample: false,
     };
   return {
-    ...merged, outcome, overshootStats, pendingReliefKw: pending.totalKw,
+    ...merged, outcome, pendingReliefKw: pending.totalKw,
   };
 }
 
@@ -368,22 +352,6 @@ function shedBeyondPendingRelief(
  */
 function retainPendingLatch(pending: PendingShedRelief | null): SheddingOutcome {
   return pending === null ? NO_SHEDDING_OUTCOME : { kind: 'held', latch: pending.retained };
-}
-
-/** The overshoot stats of one candidate walk, for the two paths that hold a decision. */
-function buildCandidateOvershootStats(
-  needed: number,
-  candidateSummary: ReturnType<typeof buildSheddingCandidates>,
-): OvershootStats {
-  return buildOvershootStats({
-    needed,
-    eligibleCandidateCount: candidateSummary.candidates.length,
-    blockedCandidateCount: candidateSummary.blockedCandidateCount,
-    reducibleControlledKw: candidateSummary.reducibleControlledKw,
-    blockedReducibleControlledKw: candidateSummary.blockedReducibleControlledKw,
-    skippedCandidateCount: candidateSummary.skippedCandidateCount,
-    skippedCandidateReasons: candidateSummary.skippedCandidateReasons,
-  });
 }
 
 /**
@@ -411,17 +379,18 @@ function mergeShedDecisions(
 function blockEscalation(
   context: PlanContext,
   deps: SheddingDeps,
-  overshootStats: OvershootStats,
+  /** The deficit the escalation found nothing to shed against, kW. */
+  needed: number,
   candidateCount: number,
   measurementTs: number | null,
   nowTs: number,
 ): PlanSheddingResult {
   if (context.devices.some((device) => device.control.commandAuthority)) {
     emitOvershootEscalationBlocked(
-      deps.capacityGuard, overshootStats.needed, candidateCount, measurementTs, nowTs, deps.structuredLog,
+      deps.capacityGuard, needed, candidateCount, measurementTs, nowTs, deps.structuredLog,
     );
   }
-  return emptySheddingResult({ kind: 'escalation_blocked', atMs: nowTs }, overshootStats);
+  return emptySheddingResult({ kind: 'escalation_blocked', atMs: nowTs });
 }
 
 /** Whether a selection limited nothing: no device shed and no battery limited. */

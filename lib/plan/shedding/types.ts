@@ -5,7 +5,6 @@ import type { PlanContext } from '../planContext';
 import type { PlanEngineState, SheddingOutcome, StorageLeverState } from '../planState';
 import type { MeteredPlanInputDevice, PlanInputDevice, ShedBehavior } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
-import type { ShedCandidateSkipSummary } from './candidateSkipLog';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ObservedStorageInput } from '../../../packages/planner-types/src/planInputDevice';
 
@@ -46,7 +45,6 @@ export type SheddingPlan = {
   outcome: SheddingOutcome;
   /** When this cycle's guard update released the shedding latch, or null when it did not. */
   recoveredAtMs: number | null;
-  overshootStats: OvershootStats | null;
 };
 
 /**
@@ -111,18 +109,6 @@ export const NO_STORAGE_SHED_TERM: StorageShedTerm = Object.freeze({
   drawMarginKw: 0,
 });
 
-export type OvershootStats = {
-  needed: number;
-  eligibleCandidateCount: number;
-  blockedCandidateCount: number;
-  reducibleControlledKw: number;
-  blockedReducibleControlledKw: number;
-  allShedCandidatesExhausted: boolean;
-  controlRecoverable: boolean;
-  skippedCandidateCount: number;
-  skippedCandidateReasons: ShedCandidateSkipSummary['skippedCandidateReasons'];
-};
-
 export type SheddingDeps = {
   capacityGuard: CapacityGuard;
   /** Producer-resolved `computeShortfallThreshold` for this build. */
@@ -144,7 +130,6 @@ export type PlanSheddingResult = {
   shedStepTargets: SheddingPlan['shedStepTargets'];
   storageSetpoints: SheddingPlan['storageSetpoints'];
   outcome: SheddingOutcome;
-  overshootStats: SheddingPlan['overshootStats'];
   /**
    * Relief a recent shed counted on that this cycle's reading does not show yet
    * and that the cycle credited (`pendingRelief.ts`); 0 when none was. Relief

@@ -89,11 +89,9 @@ export function buildPlanCapacityStateSummary(
   for (const device of plan.devices) {
     if (device.control.commandAuthority === false) continue;
     summary.controlledDevices += 1;
-    const plannedShedCounts = buildPlannedShedCounts({
-      plannedShed: device.plannedState === 'shed',
-      pending: hasPendingCommand(device),
-      active: isActiveControlledDevice(device),
-    });
+    const plannedShedCounts = buildPlannedShedCounts(
+      device.plannedState === 'shed', hasPendingCommand(device), isActiveControlledDevice(device),
+    );
     summary.plannedShedDevices += plannedShedCounts.plannedShedDevices;
     summary.pendingPlannedShedDevices += plannedShedCounts.pendingPlannedShedDevices;
     summary.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
@@ -105,10 +103,9 @@ export function buildPlanCapacityStateSummary(
     summary.blockedByInvariantDevices += Number(isBlockedByInvariant(device));
   }
   const remainingContext = resolvePlanRemainingSheddableContext(plan);
-  const remainingReducibleControlledLoadKw = sumPlanRemainingSheddableLoadKw(plan.devices, remainingContext);
-  const remainingActionableControlledLoadKw = sumActionableControlledLoadKw(plan.devices, remainingContext);
-  const remainingReducibleControlledLoadW = roundPowerW(remainingReducibleControlledLoadKw);
-  const remainingActionableControlledLoadW = roundPowerW(remainingActionableControlledLoadKw);
+  const remaining = sumRemainingSheddableLoadKw(plan.devices, remainingContext);
+  const remainingReducibleControlledLoadW = roundPowerW(remaining.reducibleKw);
+  const remainingActionableControlledLoadW = roundPowerW(remaining.actionableKw);
   return {
     ...summary,
     // The managed/background split exists only on a measured meta; the
@@ -178,11 +175,7 @@ export function countPlanInputDevices(
     // per device was the shape this summary had before the store owned the
     // question.
     const pending = hasPendingInputCommand(device, isBinaryCommandPending);
-    const plannedShedCounts = buildPlannedShedCounts({
-      plannedShed: shedSet.has(device.id),
-      pending,
-      active: isActiveInputDevice(device),
-    });
+    const plannedShedCounts = buildPlannedShedCounts(shedSet.has(device.id), pending, isActiveInputDevice(device));
     counts.plannedShedDevices += plannedShedCounts.plannedShedDevices;
     counts.pendingPlannedShedDevices += plannedShedCounts.pendingPlannedShedDevices;
     counts.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
@@ -195,23 +188,30 @@ export function countPlanInputDevices(
 /* eslint-enable functional/immutable-data */
 
 function buildPlannedShedCounts(
-  counts: { plannedShed: boolean; pending: boolean; active: boolean },
+  plannedShed: boolean,
+  pending: boolean,
+  active: boolean,
 ): Pick<
   ReturnType<typeof buildEmptyCapacityStateSummary>,
   'plannedShedDevices' | 'pendingPlannedShedDevices' | 'activePlannedShedDevices'
 > {
   return {
-    plannedShedDevices: Number(counts.plannedShed),
-    pendingPlannedShedDevices: Number(counts.plannedShed && counts.pending),
-    activePlannedShedDevices: Number(counts.plannedShed && counts.active),
+    plannedShedDevices: Number(plannedShed),
+    pendingPlannedShedDevices: Number(plannedShed && pending),
+    activePlannedShedDevices: Number(plannedShed && active),
   };
 }
 
-function sumPlanRemainingSheddableLoadKw(
+/**
+ * The load the plan could still shed, in kW, and the part of it on devices that
+ * count as actionable for a shortfall: one walk, each device priced once.
+ */
+function sumRemainingSheddableLoadKw(
   devices: DevicePlanDevice[],
   context: RemainingSheddableContext,
-): number {
-  let totalKw = 0;
+): { reducibleKw: number; actionableKw: number } {
+  let reducibleKw = 0;
+  let actionableKw = 0;
   for (const sourceDevice of devices) {
     // Only a device with a power axis has sheddable load to count.
     if (!isMeteredPlanDevice(sourceDevice)) continue;
@@ -221,31 +221,11 @@ function sumPlanRemainingSheddableLoadKw(
       limitSource: context.limitSource,
       breachOverridesExemption: context.physicalLimitBreached,
     });
-    if (power > 0) {
-      totalKw += power;
-    }
+    if (power <= 0) continue;
+    reducibleKw += power;
+    if (isActionableShortfallCandidate(sourceDevice)) actionableKw += power;
   }
-  return totalKw;
-}
-
-function sumActionableControlledLoadKw(
-  devices: DevicePlanDevice[],
-  context: RemainingSheddableContext,
-): number {
-  let totalKw = 0;
-  for (const sourceDevice of devices) {
-    if (!isMeteredPlanDevice(sourceDevice) || !isActionableShortfallCandidate(sourceDevice)) continue;
-    const power = resolveRemainingSheddableLoadKw({
-      device: toPlanRemainingSheddableDevice(sourceDevice),
-      alreadyShed: sourceDevice.plannedState === 'shed',
-      limitSource: context.limitSource,
-      breachOverridesExemption: context.physicalLimitBreached,
-    });
-    if (power > 0) {
-      totalKw += power;
-    }
-  }
-  return totalKw;
+  return { reducibleKw, actionableKw };
 }
 
 function roundPowerW(powerKw: number): number {

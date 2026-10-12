@@ -723,7 +723,7 @@ describe('buildInitialPlanDevices', () => {
     // Staleness is folded into the observer's four-valued label at the producer
     // (`toPlanDevice` → `resolveObservedCurrentState`), so a stale binary device
     // arrives with `currentState: 'unknown'`. The planner TRUSTS that label
-    // (`planDevices.resolveCurrentState`) — it does not re-derive off/unknown from
+    // (`buildBasePlanDevice` copies it) — it does not re-derive off/unknown from
     // staleness, which the plan device no longer carries.
     const device = inputDevice({
       id: 'dev-1',
@@ -1159,7 +1159,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     expect(planDevice.plannedState).toBe('keep');
     expect(isSteppedLoadDevice(planDevice) ? planDevice.selectedStepId : undefined).toBe('low');
     expect(planDevice.desiredStepId).toBe('max');
-    expect(planDevice.targetStepId).toBe('max');
     expect(planDevice.lastDesiredStepId).toBe('max');
   });
 
@@ -1423,19 +1422,15 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     });
 
     it('uses the mode target when present', () => {
-      const debugStructured = vi.fn();
       const [planDevice] = buildInitialPlanDevices({
         context: buildContext([tempInputDevice()], { getModeDeviceTargets: () => ({ Home: { tank: 55 } }) }),
         state: createPlanEngineState(),
         sheddingPlan: sheddingPlanFixture(),
         shortfall: { inShortfall: false },
-        deps: { ...defaultDeps, debugStructured },
+        deps: defaultDeps,
       });
 
       expect(plannedTargetOf(planDevice)).toBe(55);
-      expect(debugStructured).not.toHaveBeenCalledWith(
-        expect.objectContaining({ event: 'missing_mode_target' }),
-      );
     });
 
     it('combines a filled target with an active deferred objective', () => {

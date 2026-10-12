@@ -105,12 +105,11 @@ type SteppedShedLadderResult =
  * deficit.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function buildSteppedShedDescentTargets(params: {
-  profile: SteppedLoadProfile;
-  initialTargetStep: SteppedLoadStep;
-  shedAction: 'turn_off' | 'set_step';
-}): SteppedLoadStep[] {
-  const { profile, initialTargetStep, shedAction } = params;
+function buildSteppedShedDescentTargets(
+  profile: SteppedLoadProfile,
+  initialTargetStep: SteppedLoadStep,
+  shedAction: 'turn_off' | 'set_step',
+): SteppedLoadStep[] {
   const targets: SteppedLoadStep[] = [initialTargetStep];
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
   if (lowestActiveStep) {
@@ -159,15 +158,14 @@ function buildSteppedShedDescentTargets(params: {
  * See `chooseShedRung`.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function resolveSteppedShedLadder(params: {
-  device: MeteredPlanInputDevice;
-  profile: SteppedLoadProfile;
-  initialTargetStep: SteppedLoadStep | null;
-  shedAction: 'turn_off' | 'set_step';
-}): SteppedShedLadderResult {
-  const { device, profile, initialTargetStep, shedAction } = params;
+export function resolveSteppedShedLadder(
+  device: MeteredPlanInputDevice,
+  profile: SteppedLoadProfile,
+  initialTargetStep: SteppedLoadStep | null,
+  shedAction: 'turn_off' | 'set_step',
+): SteppedShedLadderResult {
   if (!initialTargetStep) return { kind: 'no_reachable_step' };
-  const targets = buildSteppedShedDescentTargets({ profile, initialTargetStep, shedAction });
+  const targets = buildSteppedShedDescentTargets(profile, initialTargetStep, shedAction);
   const rungsTried: string[] = [];
   const rungs: PricedShedRung[] = [];
   let fromStepId: string | undefined;
@@ -258,7 +256,7 @@ export function buildSteppedCandidate(params: SteppedCandidateParams): LoadShedC
   // deliberately does NOT say "measured": how the producer knows is not this
   // layer's business, and a consumer that started caring would be re-deriving.
   if (device.currentDrawKw === 0) {
-    recorder?.record({ device, reasonCode: 'stepped_zero_draw' });
+    recorder?.record(device, 'stepped_zero_draw');
     return null;
   }
   if (isTemperaturePlanDevice(device)) {
@@ -280,18 +278,12 @@ function buildSteppedTemperatureCandidate(
   const { device, priority, recentlyRestored, state, recorder } = params;
   const target = device.targets?.[0];
   if (!target?.id) {
-    recorder?.record({ device, reasonCode: 'no_temperature_target' });
+    recorder?.record(device, 'no_temperature_target');
     return null;
   }
-  return buildTemperatureCandidate({
-    device,
-    priority,
-    recentlyRestored,
-    shedTemperature,
-    targetCapabilityId: target.id,
-    pendingTargetCommands: state.pendingTargetCommands,
-    recorder,
-  });
+  return buildTemperatureCandidate(
+    device, priority, recentlyRestored, shedTemperature, target.id, state.pendingTargetCommands, recorder,
+  );
 }
 
 function buildSteppedStepDownCandidate(
@@ -301,28 +293,19 @@ function buildSteppedStepDownCandidate(
   const { device, devices, priority, recentlyRestored, neededKw, state, recorder } = params;
   if (!isSteppedLoadDevice(device)) return null;
   const profile = device.steppedLoadProfile;
-  const targetStep = resolveSteppedShedTargetStep({
-    device,
-    devices,
-    state,
-    shedBehaviorAction: shedAction,
-    effectiveCurrentStepId: resolveEffectiveCurrentStepIdForSteppedShedding(device),
-  });
+  const targetStep = resolveSteppedShedTargetStep(
+    device, devices, state, shedAction, resolveEffectiveCurrentStepIdForSteppedShedding(device),
+  );
   // Price the whole ladder rather than only the next rung down: a measurement
   // that lags a step-up prices the adjacent rung at exactly zero relief, which
   // would drop a device the meter shows drawing, and an adjacent rung worth a
   // fraction of the deficit answers a breach it cannot close.
-  const ladder = resolveSteppedShedLadder({
-    device,
-    profile,
-    initialTargetStep: targetStep,
-    shedAction,
-  });
+  const ladder = resolveSteppedShedLadder(device, profile, targetStep, shedAction);
   if (ladder.kind === 'no_reachable_step') {
-    return buildSteppedNoRungFallbackCandidate({ params, shedAction, targetStep });
+    return buildSteppedNoRungFallbackCandidate(params, shedAction, targetStep);
   }
   if (ladder.kind === 'no_relief') {
-    recorder?.record({ device, reasonCode: 'zero_step_relief', rungsTried: ladder.rungsTried });
+    recorder?.record(device, 'zero_step_relief', ladder.rungsTried);
     return null;
   }
   return {
@@ -337,7 +320,7 @@ function buildSteppedStepDownCandidate(
     effectivePower: chooseShedRung(ladder.rungs, Number.POSITIVE_INFINITY)?.reliefKw ?? 0,
     fromStepId: ladder.fromStepId,
     rungs: ladder.rungs,
-    preemptiveStepDown: isPreemptiveStepReduction({ profile, rungs: ladder.rungs, neededKw }),
+    preemptiveStepDown: isPreemptiveStepReduction(profile, ladder.rungs, neededKw),
   };
 }
 
@@ -371,12 +354,11 @@ function buildSteppedStepDownCandidate(
  * step of `off` clamps every rung to `off` while the confirmed position is still
  * high.
  */
-function isPreemptiveStepReduction(params: {
-  profile: SteppedLoadProfile;
-  rungs: readonly PricedShedRung[];
-  neededKw: number;
-}): boolean {
-  const { profile, rungs, neededKw } = params;
+function isPreemptiveStepReduction(
+  profile: SteppedLoadProfile,
+  rungs: readonly PricedShedRung[],
+  neededKw: number,
+): boolean {
   const firstPickRung = chooseShedRung(rungs, neededKw);
   if (!firstPickRung) return false;
   return !isSteppedLoadOffStep(profile, firstPickRung.toStepId);
@@ -388,25 +370,16 @@ function isPreemptiveStepReduction(params: {
  * off. (The old measured-fallback for a device with no known step is gone —
  * the effective step is producer-guaranteed for every stepped device.)
  */
-function buildSteppedNoRungFallbackCandidate(args: {
-  params: SteppedCandidateParams;
-  shedAction: 'turn_off' | 'set_step';
-  targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>;
-}): LoadShedCandidate | null {
-  const { params, shedAction, targetStep } = args;
-  const { device, priority, recentlyRestored, pendingBinaryCommandStore, recorder } = params;
+function buildSteppedNoRungFallbackCandidate(
+  params: SteppedCandidateParams,
+  shedAction: 'turn_off' | 'set_step',
+  targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>,
+): LoadShedCandidate | null {
+  const { device, recorder } = params;
   if (!isSteppedLoadDevice(device)) return null;
-  const preparedBinaryOffCandidate = buildPreparedSteppedBinaryOffCandidate({
-    device,
-    steppedProfile: device.steppedLoadProfile,
-    targetStep,
-    priority,
-    recentlyRestored,
-    shedAction,
-    pendingBinaryCommandStore,
-  });
+  const preparedBinaryOffCandidate = buildPreparedSteppedBinaryOffCandidate(params, device, targetStep, shedAction);
   if (preparedBinaryOffCandidate) return preparedBinaryOffCandidate;
-  recorder?.record({ device, reasonCode: 'no_lower_step_reachable' });
+  recorder?.record(device, 'no_lower_step_reachable');
   return null;
 }
 
@@ -421,24 +394,15 @@ function resolveEffectiveCurrentStepIdForSteppedShedding(device: SteppedPlanInpu
   return pendingIsLower ? device.desiredStepId : device.selectedStepId;
 }
 
-function buildPreparedSteppedBinaryOffCandidate(params: {
-  device: SteppedPlanInputDevice & MeteredPlanInputKind;
-  steppedProfile: SteppedLoadProfile;
-  targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>;
-  priority: number;
-  recentlyRestored: boolean;
-  shedAction: 'turn_off' | 'set_step';
-  pendingBinaryCommandStore: PendingBinaryCommandStore;
-}): LoadShedCandidate | null {
-  const {
-    device,
-    steppedProfile,
-    targetStep,
-    priority,
-    recentlyRestored,
-    shedAction,
-    pendingBinaryCommandStore,
-  } = params;
+function buildPreparedSteppedBinaryOffCandidate(
+  params: SteppedCandidateParams,
+  /** `params.device`, narrowed to its ladder. */
+  device: SteppedPlanInputDevice & MeteredPlanInputKind,
+  targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>,
+  shedAction: 'turn_off' | 'set_step',
+): LoadShedCandidate | null {
+  const { priority, recentlyRestored, pendingBinaryCommandStore } = params;
+  const steppedProfile = device.steppedLoadProfile;
   if (
     shedAction !== 'turn_off'
     || !isBinaryPlanDevice(device)
@@ -468,14 +432,13 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   };
 }
 
-function resolveSteppedShedTargetStep(params: {
-  device: PlanInputDevice;
-  devices: PlanInputDevice[];
-  state: PlanEngineState;
-  shedBehaviorAction: ShedAction;
-  effectiveCurrentStepId?: string;
-}): SteppedLoadStep | null {
-  const { device, devices, state, shedBehaviorAction, effectiveCurrentStepId } = params;
+function resolveSteppedShedTargetStep(
+  device: PlanInputDevice,
+  devices: PlanInputDevice[],
+  state: PlanEngineState,
+  shedBehaviorAction: ShedAction,
+  effectiveCurrentStepId: string | undefined,
+): SteppedLoadStep | null {
   const forceLowestActiveStep = shedBehaviorAction === 'set_step'
     && devices.some((candidate) => candidate.id !== device.id && isNonSteppedDeviceRecovering(candidate, state));
   if (forceLowestActiveStep) {

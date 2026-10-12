@@ -24,6 +24,15 @@ import {
 } from '../../lib/plan/planTypes';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
+import type { RestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
+import type { HeadroomReserve } from '../../lib/plan/admission';
+import type { PlanEngineState } from '../../lib/plan/planState';
+import type { RestoreCycle } from '../../lib/plan/restore/types';
+import type { PowerTrackerState } from '../../lib/power/tracker';
+import { buildDisabledRestoreBatchState } from '../../lib/plan/restore/batch';
+import { resolveRestoreDecisionPhase } from '../../lib/plan/admission';
+import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
+import { applyShedTemperatureHold } from '../../lib/plan/planReasons';
 import type { StorageSurplus } from '../../lib/plan/planSurplusAbsorb';
 import type {
   DeviceDescriptorRead,
@@ -109,8 +118,8 @@ export const resolveFixtureCurrentOn = (device: {
  * Mirror the production producer (`toPlanDevice` → `resolveObservedCurrentState`):
  * the four-valued `currentState` label is resolved ONCE from the raw observed
  * signals and carried on the plan device, so plan consumers
- * (`planDevices.resolveCurrentState`) can trust it without
- * re-resolving from the raw binary axis. An explicit fixture `currentState` wins;
+ * (`buildBasePlanDevice`) can trust it without re-resolving from the raw
+ * binary axis. An explicit fixture `currentState` wins;
  * otherwise resolve from the binary axis (explicit `binaryControl`, else derived
  * from the resolved `currentOn` for a binary device) + the stepped profile +
  * staleness — the SAME resolver the runtime producer uses, so a fixture's label
@@ -713,8 +722,14 @@ export const withFixtureResidualKw = <T extends object>(
   control: DeviceControlPosture;
   startPolicy: DeviceStartPolicy;
   startPolicyInForce: DeviceStartPolicy;
+  currentState: string;
+  budgetExempt: boolean;
 } => {
   const priority = (fields as { priority?: number }).priority ?? 1;
+  // Both REQUIRED on the input contract, and resolved by the producer for every
+  // device; a literal passed straight through gets what the producer would stamp.
+  const currentState = resolveFixtureCurrentState(fields as Parameters<typeof resolveFixtureCurrentState>[0]);
+  const budgetExempt = (fields as { budgetExempt?: boolean }).budgetExempt ?? false;
   // Defaulted here for the same reason the posture is — see the note below.
   const startPolicy = (fields as { startPolicy?: DeviceStartPolicy }).startPolicy
     ?? DEFAULT_DEVICE_START_POLICY;
@@ -740,6 +755,8 @@ export const withFixtureResidualKw = <T extends object>(
       control,
       startPolicy,
       startPolicyInForce,
+      currentState,
+      budgetExempt,
       residualKw: { shed: declared.shed, restore: declared.restore },
     };
   }
@@ -750,6 +767,8 @@ export const withFixtureResidualKw = <T extends object>(
     control,
     startPolicy,
     startPolicyInForce,
+    currentState,
+    budgetExempt,
     residualKw: {
       shed: declared?.shed ?? resolved.shed,
       restore: declared?.restore ?? resolved.restore,
@@ -1388,6 +1407,71 @@ export const restoreTimingFixture = (overrides: Partial<RestoreTiming> = {}): Re
 
 
 /**
+ * One restore pass over `deviceMap` for a spec that drives a single stage of it:
+ * the given timing over the fixture defaults, no reservations, no batteries,
+ * and the batch throttle off.
+ */
+export const restoreCycleFixture = (
+  deviceMap: Map<string, DevicePlanDevice>,
+  state: PlanEngineState,
+  timing: Partial<RestoreTiming> = {},
+): RestoreCycle => ({
+  state,
+  deps: {
+    powerTracker: {} as PowerTrackerState,
+    getShedBehavior: () => ({ action: 'turn_off' }),
+    temperatureSetpoints: new Map(),
+  },
+  deviceMap,
+  swapLedger: state.swapLedger,
+  timing: restoreTimingFixture(timing),
+  restoredThisCycle: new Set(),
+  storageHandedBack: new Set(),
+  storageLevers: {},
+  storageHandBackWaitingAt: Number.POSITIVE_INFINITY,
+  headroomReserves: [],
+  batchState: buildDisabledRestoreBatchState(),
+  phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
+});
+
+/**
+ * The setpoint hold lane as the builder drives it, from the fields a spec sets:
+ * the restore pass's result and this cycle's shedding plan are assembled
+ * around them, with the restore pass's per-axis availability read off `ledger`.
+ */
+export const applyShedTemperatureHoldForSpec = (params: {
+  temperatureSetpoints: TemperatureSetpointsByDevice;
+  planDevices: DevicePlanDevice[];
+  state: PlanEngineState;
+  shedReasons: Map<string, DeviceReason>;
+  timing: RestoreTiming;
+  sheddingActive: boolean;
+  guardInShortfall: boolean;
+  ledger: RestoreHeadroomLedger;
+  headroomReserves: readonly HeadroomReserve[];
+  restoredOneThisCycle: boolean;
+  restoredThisCycle: Set<string>;
+}): ReturnType<typeof applyShedTemperatureHold> => applyShedTemperatureHold(
+  params.state,
+  {
+    planDevices: params.planDevices,
+    restoredThisCycle: params.restoredThisCycle,
+    storageHandedBack: new Set(),
+    availableHeadroom: params.ledger.summaryAvailableKw(),
+    ...params.ledger.axes(),
+    headroomReserves: params.headroomReserves,
+    restoredOneThisCycle: params.restoredOneThisCycle,
+    timing: params.timing,
+  },
+  sheddingPlanFixture({
+    shedReasons: params.shedReasons,
+    sheddingActive: params.sheddingActive,
+    guardInShortfall: params.guardInShortfall,
+  }),
+  params.temperatureSetpoints,
+);
+
+/**
  * A `SheddingPlan` for a spec that drives `buildInitialPlanDevices` directly.
  *
  * The builder takes this cycle's shedding decision WHOLE, so a spec that only
@@ -1404,6 +1488,5 @@ export const sheddingPlanFixture = (overrides: Partial<SheddingPlan> = {}): Shed
   guardInShortfall: false,
   outcome: NO_SHEDDING_OUTCOME,
   recoveredAtMs: null,
-  overshootStats: null,
   ...overrides,
 });

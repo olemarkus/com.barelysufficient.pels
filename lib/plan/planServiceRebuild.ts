@@ -66,14 +66,11 @@ export type PlanRebuildHost = {
 
 export async function performPlanRebuild(
   host: PlanRebuildHost,
-  params: {
-    trigger: PlanRebuildTrigger;
-    detail?: string;
-    queueWaitMs: number;
-    queueDepth: number;
-  },
+  trigger: PlanRebuildTrigger,
+  detail: string | undefined,
+  queueWaitMs: number,
+  queueDepth: number,
 ): Promise<PlanRebuildOutcome> {
-  const { trigger, detail, queueWaitMs, queueDepth } = params;
   // The composed label is for humans reading logs. Everything that DECIDES
   // anything keeps the closed `trigger` value.
   const reason = describePlanRebuildTrigger(trigger, detail);
@@ -94,9 +91,7 @@ export async function performPlanRebuild(
       throw error;
     } finally {
       const durationMs = Date.now() - rebuildStart;
-      recordPlanRebuildMetrics({
-        reason, queueWaitMs, queueDepth, rebuildStart, outcome,
-      });
+      recordPlanRebuildMetrics(reason, queueWaitMs, queueDepth, rebuildStart, outcome);
       recordOpRssDelta('plan_rebuild_ms', rssBefore, safeRss());
       stopSpan();
       const rebuildLogLevel = getPlanRebuildLogLevel(trigger, durationMs, outcome);
@@ -152,30 +147,16 @@ async function executePlanRebuild(
     });
   }
 
-  const {
-    applyMs, appliedActions, deviceWriteCount, commandRequestCount, deviceApplyFailureCount, writtenDeviceIds,
-  } = await maybeApplyPlanChanges(
-    host,
-    stampedPlan,
-    changes,
-    isDryRun,
-    observationRevision,
-  );
+  await maybeApplyPlanChanges(host, stampedPlan, changes, isDryRun, observationRevision, outcome);
   Object.assign(outcome, {
     buildMs,
     changeMs,
     snapshotMs,
     statusMs,
     statusWriteMs,
-    applyMs,
     actionChanged: changes.actionChanged,
     detailChanged: changes.detailChanged,
     metaChanged: changes.metaChanged,
-    appliedActions,
-    deviceWriteCount,
-    commandRequestCount,
-    deviceApplyFailureCount,
-    writtenDeviceIds,
     hadShedding,
   });
 }
@@ -302,41 +283,28 @@ function shouldApplyPlan(
   return host.deps.planEngine.hasExecutionWorkOutstanding(plan, observationRevision);
 }
 
+/**
+ * Applies the plan when `shouldApplyPlan` says so, recording the actuation result
+ * whole, whether it actuated anything, and how long the apply took onto this
+ * rebuild's outcome. A plan it does not apply leaves the outcome's zeroed
+ * actuation as it stands.
+ */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 async function maybeApplyPlanChanges(
   host: PlanRebuildHost,
   plan: DevicePlan,
   changes: PlanChangeSet,
   isDryRun: boolean,
   observationRevision: number,
-): Promise<{
-  applyMs: number;
-  appliedActions: boolean;
-  deviceWriteCount: number;
-  commandRequestCount: number;
-  deviceApplyFailureCount: number;
-  writtenDeviceIds: string[];
-}> {
-  if (!shouldApplyPlan(host, plan, changes, isDryRun, observationRevision)) {
-    return {
-      applyMs: 0,
-      appliedActions: false,
-      deviceWriteCount: 0,
-      commandRequestCount: 0,
-      deviceApplyFailureCount: 0,
-      writtenDeviceIds: [],
-    };
-  }
+  outcome: PlanRebuildOutcome,
+): Promise<void> {
+  if (!shouldApplyPlan(host, plan, changes, isDryRun, observationRevision)) return;
 
   const applyStart = Date.now();
-  let appliedActions = false;
-  let deviceWriteCount = 0;
-  let commandRequestCount = 0;
-  let deviceApplyFailureCount = 0;
-  let writtenDeviceIds: string[] = [];
   try {
     const actuation = await host.deps.planEngine.applyPlanActions(plan);
-    ({ deviceWriteCount, commandRequestCount, deviceApplyFailureCount, writtenDeviceIds } = actuation);
-    appliedActions = deviceWriteCount > 0 || commandRequestCount > 0;
+    const appliedActions = actuation.deviceWriteCount > 0 || actuation.commandRequestCount > 0;
+    Object.assign(outcome, actuation, { appliedActions });
     if (appliedActions) {
       host.deps.schedulePostActuationRefresh();
     }
@@ -347,15 +315,9 @@ async function maybeApplyPlanChanges(
       error: normalizeError(error),
     });
   }
-  return {
-    applyMs: Date.now() - applyStart,
-    appliedActions,
-    deviceWriteCount,
-    commandRequestCount,
-    deviceApplyFailureCount,
-    writtenDeviceIds,
-  };
+  Object.assign(outcome, { applyMs: Date.now() - applyStart });
 }
+/* eslint-enable functional/immutable-data */
 
 function refreshLatestPlanSnapshotPendingState(host: PlanRebuildHost): void {
   const current = host.getLatestPlanSnapshot();

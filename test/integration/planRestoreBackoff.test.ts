@@ -21,7 +21,9 @@ import {
   NEUTRAL_STARTUP_HOLD_REASON,
 } from '../../lib/plan/restore/devices';
 import { planRestoreForSteppedDevice } from '../../lib/plan/restore/helpers';
-import { applyShedTemperatureHold } from '../../lib/plan/planReasons';
+import type { RestoreLoopState } from '../../lib/plan/restore/types';
+import type { RestoreTiming } from '../../lib/plan/restore/timing';
+import type { PlanEngineState } from '../../lib/plan/planState';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   hasAnyReservation,
@@ -39,7 +41,9 @@ import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedge
 import { resolveMeterSettlingReason } from '../../lib/plan/restore/timing';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
-import { buildPlanDevice, restoreTimingFixture, steppedPlanDevice } from '../utils/planTestUtils';
+import {
+  applyShedTemperatureHoldForSpec, buildPlanDevice, restoreCycleFixture, restoreTimingFixture, steppedPlanDevice,
+} from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import type {
@@ -72,6 +76,23 @@ const steppedDevOf = (deviceMap: Map<string, MeteredDevicePlanDevice>): SteppedP
   if (!dev || !isSteppedLoadDevice(dev)) throw new Error('fixture: dev-step must be a stepped plan device');
   return dev;
 };
+
+// One stepped restore decision inside a restore pass of its own: the device's
+// map and state, the given timing over the fixture defaults, no swap sources
+// on the lane, and the batch throttle off.
+const planSteppedRestoreInCycle = (params: {
+  dev: SteppedPlanDevice & MeteredKind;
+  deviceMap: Map<string, DevicePlanDevice>;
+  state: PlanEngineState;
+  timing: Partial<RestoreTiming>;
+  availableHeadroom: number | null;
+  restoredOneThisCycle: boolean;
+}): RestoreLoopState => planRestoreForSteppedDevice(
+  restoreCycleFixture(params.deviceMap, params.state, params.timing),
+  { onDevices: [] },
+  params.dev,
+  { availableHeadroom: params.availableHeadroom, restoredOneThisCycle: params.restoredOneThisCycle },
+);
 
 const buildBinarySteppedPlanDevice = (
   overrides: Parameters<typeof steppedPlanDevice>[0]
@@ -109,7 +130,10 @@ const restoreEventsFor = (event: string, deviceId: string): Record<string, unkno
 // later restore/hold stages in the same planner build still read the prior set.
 // Specs for off/keep activation use the raw planner entry point or assert the
 // candidate helpers directly.
-const applyRestorePlan = (params: Parameters<typeof applyRestorePlanFromPlanState>[0]) => {
+// Out of shortfall unless a spec says otherwise.
+const applyRestorePlan = (
+  params: Omit<Parameters<typeof applyRestorePlanFromPlanState>[0], 'guardInShortfall'> & { guardInShortfall?: boolean },
+) => {
   const { state, planDevices } = params;
   const previouslyPlannedIds = state.shedDecisions.lastPlannedDeviceIds;
   state.shedDecisions.lastPlannedShedIds = new Set([
@@ -131,7 +155,7 @@ const applyRestorePlan = (params: Parameters<typeof applyRestorePlanFromPlanStat
       .filter((device) => device.control.commandAuthority && !state.shedDecisions.lastPlannedShedIds.has(device.id))
       .map(({ id }) => id),
   ]);
-  return applyRestorePlanFromPlanState(params);
+  return applyRestorePlanFromPlanState({ guardInShortfall: false, ...params });
 };
 
 /** The stepped restore verdicts in order, which is stronger than a bare count. */
@@ -1133,7 +1157,6 @@ describe('restore cooldown backoff', () => {
           currentState: 'off',
           selectedStepId: 'off',
           desiredStepId: 'low',
-          targetStepId: 'low',
           currentDrawKw: 0,
           planningPowerKw: 1.25,
         }),
@@ -1155,7 +1178,6 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.plannedState).toBe('shed');
     expect(reasonText(steppedDevice?.reason)).toBe('meter settling (55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('off');
-    expect(steppedDevice?.targetStepId).toBe('off');
   });
 
   it('clears meter settling after a fresh whole-home sample and falls back to restore cooldown', () => {
@@ -1683,7 +1705,7 @@ describe('restore cooldown backoff', () => {
     expect(restore.restoredThisCycle).toEqual(new Set(['off-heater']));
     expect(restore.availableHeadroom).toBeLessThan(headroom);
 
-    const held = applyShedTemperatureHold({
+    const held = applyShedTemperatureHoldForSpec({
       planDevices: restore.planDevices,
       state,
       shedReasons: new Map(),
@@ -1751,7 +1773,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps,
     });
-    const held = applyShedTemperatureHold({
+    const held = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: deps.temperatureSetpoints,
       planDevices: restore.planDevices,
       state,
@@ -1808,7 +1830,7 @@ describe('restore cooldown backoff', () => {
         getShedBehavior,
       },
     });
-    const held = applyShedTemperatureHold({
+    const held = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: fixtureLimitedSetpoints({ 'temp': 16 }),
       planDevices: restore.planDevices,
       state,
@@ -1865,7 +1887,7 @@ describe('restore cooldown backoff', () => {
       sheddingActive: false,
       deps,
     });
-    const held = applyShedTemperatureHold({
+    const held = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: deps.temperatureSetpoints,
       planDevices: restore.planDevices,
       state,
@@ -2055,11 +2077,11 @@ describe('restore cooldown backoff', () => {
   });
 
   it('returns the full settle window for a same-cycle restore before any sample arrives', () => {
-    expect(resolveMeterSettlingReason({
+    expect(resolveMeterSettlingReason(restoreTimingFixture({
       activeOvershoot: false,
       measurementTs: null,
       nowTs: 0,
-    }, 0)).toEqual({
+    }), 0)).toEqual({
       code: 'meter_settling',
       remainingSec: 60,
       countdownStartedAtMs: 0,
@@ -2628,7 +2650,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
     const deviceMap = new Map([[inactiveEv.id, inactiveEv]]);
 
-    const result = planRestoreForSteppedDevice({
+    const result = planSteppedRestoreInCycle({
       dev: inactiveEv,
       deviceMap,
       state,
@@ -2705,6 +2727,7 @@ describe('restore admission — headroom and penalty gates', () => {
       ...freshBatchContext(5),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: freshBatchDeps(now),
     });
 
@@ -2732,6 +2755,7 @@ describe('restore admission — headroom and penalty gates', () => {
       ...freshBatchContext(0.1),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: freshBatchDeps(now),
     });
 
@@ -3288,7 +3312,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const state = createPlanEngineState();
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
 
-    const result = applyShedTemperatureHold({
+    const result = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 18 }),
       planDevices: [
         buildBinaryPlanDevice({
@@ -3330,7 +3354,7 @@ describe('restore admission — headroom and penalty gates', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     state.activationPenaltyByDevice['dev-temp'] = { level: 1, lastSetbackMs: now - 1_000 };
 
-    const result = applyShedTemperatureHold({
+    const result = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 18 }),
       planDevices: [
         buildBinaryPlanDevice({
@@ -3426,7 +3450,6 @@ describe('restore admission — headroom and penalty gates', () => {
         boostActive: false,
         selectedStepId: 'medium',
         desiredStepId: 'max',
-        targetStepId: 'max',
         currentDrawKw: 2,
       })],
       ...buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
@@ -3443,7 +3466,6 @@ describe('restore admission — headroom and penalty gates', () => {
     const device = result.planDevices.find((entry) => entry.id === 'dev-step');
     expect(device?.plannedState).toBe('shed');
     expect(device?.desiredStepId).toBe('medium');
-    expect(device?.targetStepId).toBe('medium');
     expect(device?.shedAction).toBe('set_step');
     expect(device?.releaseShedStepId).toBe('medium');
     expect(reasonText(device?.reason)).toContain('shortfall');
@@ -3465,7 +3487,6 @@ describe('restore admission — headroom and penalty gates', () => {
         boostActive: false,
         selectedStepId: 'off',
         desiredStepId: 'max',
-        targetStepId: 'max',
         currentDrawKw: 0,
       })],
       ...buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
@@ -3482,7 +3503,6 @@ describe('restore admission — headroom and penalty gates', () => {
     const device = result.planDevices.find((entry) => entry.id === 'dev-step');
     expect(device?.plannedState).toBe('shed');
     expect(device?.desiredStepId).toBe('off');
-    expect(device?.targetStepId).toBe('off');
     expect(device?.shedAction).toBe('turn_off');
     expect(reasonText(device?.reason)).toContain('shortfall');
   });
@@ -3531,7 +3551,7 @@ describe('restore admission — the device need is the whole bar', () => {
     const state = createPlanEngineState();
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
     // This exercises the target-restore headroom path via applyShedTemperatureHold
-    const result = applyShedTemperatureHold({
+    const result = applyShedTemperatureHoldForSpec({
       temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
       planDevices: [buildBinaryPlanDevice({
         id: 'dev-temp',
@@ -3581,7 +3601,7 @@ describe('restore admission — the device need is the whole bar', () => {
 
     // low step = 1.25kW, buffer≈0.225 → needed≈1.475, and nothing is withheld on
     // top. Use 1.474 → marginKw ≈ -0.001, a watt short of admission.
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -3601,7 +3621,6 @@ describe('restore admission — the device need is the whole bar', () => {
     const dev = deviceMap.get('dev-step')!;
     expect(dev.plannedState).toBe('shed');
     expect(dev.desiredStepId).toBe('off');
-    expect(dev.targetStepId).toBe('off');
     expect(reasonText(dev.reason)).toContain('insufficient headroom');
   });
 
@@ -3620,7 +3639,7 @@ describe('restore admission — the device need is the whole bar', () => {
       })],
     ]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -3640,7 +3659,6 @@ describe('restore admission — the device need is the whole bar', () => {
     const dev = deviceMap.get('dev-step')!;
     expect(dev.plannedState).toBe('shed');
     expect(dev.desiredStepId).toBe('off');
-    expect(dev.targetStepId).toBe('off');
     expect(reasonText(dev.reason)).toContain('insufficient headroom');
   });
 
@@ -3661,7 +3679,7 @@ describe('restore admission — the device need is the whole bar', () => {
       })],
     ]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -3681,7 +3699,6 @@ describe('restore admission — the device need is the whole bar', () => {
     const dev = deviceMap.get('dev-step')!;
     expect(dev.plannedState).toBe('shed');
     expect(dev.desiredStepId).toBe('off');
-    expect(dev.targetStepId).toBe('off');
     expect(dev.shedAction).toBe('set_step');
     expect(reasonText(dev.reason)).toContain('insufficient headroom');
   });
@@ -3698,13 +3715,12 @@ describe('restore admission — the device need is the whole bar', () => {
         boostActive: false,
         selectedStepId: 'off',
         desiredStepId: 'low',
-        targetStepId: 'low',
         currentDrawKw: 0,
         reason: { code: PLAN_REASON_CODES.keep, detail: null },
       })],
     ]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -3724,7 +3740,6 @@ describe('restore admission — the device need is the whole bar', () => {
     const dev = deviceMap.get('dev-step')!;
     expect(dev.plannedState).toBe('shed');
     expect(dev.desiredStepId).toBe('off');
-    expect(dev.targetStepId).toBe('off');
     expect(reasonText(dev.reason)).toBe('meter settling (60s remaining)');
   });
 
@@ -3749,7 +3764,7 @@ describe('restore admission — the device need is the whole bar', () => {
       })],
     ]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -3792,7 +3807,7 @@ describe('restore admission — the device need is the whole bar', () => {
       })],
     ]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -3830,7 +3845,7 @@ describe('restore admission — the device need is the whole bar', () => {
     ]);
 
     // needed≈1.475, and nothing is withheld on top → exact min = 1.475kW
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -3868,7 +3883,7 @@ describe('restore admission — the device need is the whole bar', () => {
       })],
     ]);
 
-    const result = planRestoreForSteppedDevice({
+    const result = planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -3929,7 +3944,7 @@ describe('stepped-load shed invariant', () => {
       ['dev-step', steppedDev],
     ]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -3962,7 +3977,7 @@ describe('stepped-load shed invariant', () => {
       ['dev-step', steppedDev],
     ]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -4009,7 +4024,7 @@ describe('stepped-load shed invariant', () => {
       ['dev-step', steppedDev],
     ]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -4036,7 +4051,7 @@ describe('stepped-load shed invariant', () => {
     });
     const deviceMap = new Map([['dev-step', steppedDev]]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -4066,7 +4081,7 @@ describe('stepped-load shed invariant', () => {
       ['dev-step', steppedDev],
     ]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -4106,11 +4121,11 @@ describe('stepped-load shed invariant', () => {
     };
 
     // First call: emits
-    planRestoreForSteppedDevice(callArgs);
+    planSteppedRestoreInCycle(callArgs);
     expect(steppedVerdicts()).toEqual(['restore_stepped_rejected']);
 
     // Second call with identical params: suppressed
-    planRestoreForSteppedDevice({ ...callArgs, dev: steppedDevOf(deviceMap) });
+    planSteppedRestoreInCycle({ ...callArgs, dev: steppedDevOf(deviceMap) });
     expect(steppedVerdicts()).toEqual(['restore_stepped_rejected']);
   });
 
@@ -4125,7 +4140,7 @@ describe('stepped-load shed invariant', () => {
 
     // First call with 1 shed device
     const map1 = new Map([['shed-1', shed1], ['dev-step', steppedDev]]);
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(map1),
       deviceMap: map1,
       state,
@@ -4137,7 +4152,7 @@ describe('stepped-load shed invariant', () => {
 
     // Second call with 2 shed devices: different shed count → re-emits
     const map2 = new Map([['shed-1', shed1], ['shed-2', shed2], ['dev-step', steppedDev]]);
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(map2),
       deviceMap: map2,
       state,
@@ -4166,7 +4181,7 @@ describe('stepped-load shed invariant', () => {
 
     // First: blocked, emits
     const mapShed = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(mapShed),
       deviceMap: mapShed,
       state,
@@ -4179,7 +4194,7 @@ describe('stepped-load shed invariant', () => {
     // Second: no shed devices → not blocked, tracking cleared (restore_stepped_admitted may fire)
     state.shedDecisions.lastPlannedShedIds = new Set();
     const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(mapClear),
       deviceMap: mapClear,
       state,
@@ -4190,7 +4205,7 @@ describe('stepped-load shed invariant', () => {
 
     // Third: shed resumes → first rejection again, must re-emit
     state.shedDecisions.lastPlannedShedIds = new Set(['binary-shed']);
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(mapShed),
       deviceMap: mapShed,
       state,
@@ -4215,7 +4230,7 @@ describe('stepped-load shed invariant', () => {
 
     // Round 1: shed active, blocked by invariant → emits
     const mapShed = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(mapShed),
       deviceMap: mapShed,
       state,
@@ -4229,7 +4244,7 @@ describe('stepped-load shed invariant', () => {
     // admits the step-up to 'max', clearing the invariant tracking as a side effect.
     state.shedDecisions.lastPlannedShedIds = new Set();
     const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(mapClear),
       deviceMap: mapClear,
       state,
@@ -4241,7 +4256,7 @@ describe('stepped-load shed invariant', () => {
 
     // Round 3: new shed episode starts → must re-emit (tracking was cleared in round 2)
     state.shedDecisions.lastPlannedShedIds = new Set(['binary-shed']);
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(mapShed),
       deviceMap: mapShed,
       state,
@@ -4269,7 +4284,7 @@ describe('stepped-load shed invariant', () => {
     });
     const deviceMap = new Map([['dev-step', steppedDev]]);
 
-    planRestoreForSteppedDevice({
+    planSteppedRestoreInCycle({
       dev: steppedDevOf(deviceMap),
       deviceMap,
       state,
@@ -4516,7 +4531,6 @@ describe('stepped-load shed invariant', () => {
     const swappedOut = result.planDevices.find((d) => d.id === 'lower-priority');
     expect(steppedDev?.plannedState).toBe('shed');
     expect(steppedDev?.desiredStepId).toBeUndefined();
-    expect(steppedDev?.targetStepId).toBeUndefined();
     expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.swapPending);
     expect(swappedOut?.plannedState).toBe('shed');
     expect(swappedOut?.reason).toMatchObject({
@@ -4631,7 +4645,6 @@ describe('stepped-load shed invariant', () => {
     const lowerPriority = result.planDevices.find((d) => d.id === 'lower-priority');
     expect(steppedDev?.plannedState).toBe('keep');
     expect(steppedDev?.desiredStepId).toBe('medium');
-    expect(steppedDev?.targetStepId).toBeUndefined();
     expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.swapPending);
     expect(lowerPriority?.plannedState).toBe('shed');
     expect(lowerPriority?.reason).toMatchObject({
@@ -4883,7 +4896,6 @@ describe('stepped-load shed invariant', () => {
     const lowerPriority = result.planDevices.find((d) => d.id === 'lower-priority');
     expect(steppedDev?.plannedState).toBe('shed');
     expect(steppedDev?.desiredStepId).toBe('off');
-    expect(steppedDev?.targetStepId).toBe('off');
     expect(steppedDev?.shedAction).toBe('turn_off');
     expect(reasonText(steppedDev?.reason)).toMatch(/insufficient headroom/);
     expect(lowerPriority?.plannedState).toBe('keep');

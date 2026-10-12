@@ -1,24 +1,12 @@
-export type PlanRebuildTrace = {
+import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
+
+/** One finished rebuild as the diagnostics window keeps it: its outcome, and where it sat in the queue. */
+export type PlanRebuildTrace = Omit<PlanRebuildOutcome, 'gated' | 'writtenDeviceIds'> & {
   reason: string;
   endedAtMs: number;
   queueDepth: number;
   queueWaitMs: number;
-  buildMs: number;
-  changeMs: number;
-  snapshotMs: number;
-  statusMs: number;
-  statusWriteMs: number;
-  applyMs: number;
   totalMs: number;
-  actionChanged: boolean;
-  detailChanged: boolean;
-  metaChanged: boolean;
-  isDryRun: boolean;
-  appliedActions: boolean;
-  deviceWriteCount: number;
-  commandRequestCount: number;
-  hadShedding: boolean;
-  failed: boolean;
 };
 
 export type RecentPlanRebuildTrace = PlanRebuildTrace & {
@@ -48,44 +36,8 @@ const MAX_RECENT_REBUILD_TRACES = 64;
 
 let traces: PlanRebuildTrace[] = [];
 
-const roundMs = (value: number): number => (
-  Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0
-);
-
-const normalizeReason = (reason: string | null | undefined): string => {
-  const trimmed = typeof reason === 'string' ? reason.trim() : '';
-  return trimmed || 'unspecified';
-};
-
-export const recordPlanRebuildTrace = (
-  trace: Omit<PlanRebuildTrace, 'endedAtMs'> & { endedAtMs?: number },
-): void => {
-  traces = [
-    ...traces,
-    {
-      ...trace,
-      reason: normalizeReason(trace.reason),
-      endedAtMs: typeof trace.endedAtMs === 'number' ? trace.endedAtMs : Date.now(),
-      queueDepth: Math.max(0, Math.round(trace.queueDepth)),
-      queueWaitMs: roundMs(trace.queueWaitMs),
-      buildMs: roundMs(trace.buildMs),
-      changeMs: roundMs(trace.changeMs),
-      snapshotMs: roundMs(trace.snapshotMs),
-      statusMs: roundMs(trace.statusMs),
-      statusWriteMs: roundMs(trace.statusWriteMs),
-      applyMs: roundMs(trace.applyMs),
-      totalMs: roundMs(trace.totalMs),
-      actionChanged: trace.actionChanged === true,
-      detailChanged: trace.detailChanged === true,
-      metaChanged: trace.metaChanged === true,
-      isDryRun: trace.isDryRun === true,
-      appliedActions: trace.appliedActions === true,
-      deviceWriteCount: roundMs(trace.deviceWriteCount),
-      commandRequestCount: roundMs(trace.commandRequestCount),
-      hadShedding: trace.hadShedding === true,
-      failed: trace.failed === true,
-    },
-  ];
+export const recordPlanRebuildTrace = (trace: PlanRebuildTrace): void => {
+  traces = [...traces, trace];
   if (traces.length > MAX_RECENT_REBUILD_TRACES) {
     traces = traces.slice(-MAX_RECENT_REBUILD_TRACES);
   }

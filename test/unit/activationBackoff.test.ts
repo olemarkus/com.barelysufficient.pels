@@ -489,6 +489,7 @@ describe('activation backoff', () => {
       })),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -526,6 +527,7 @@ describe('activation backoff', () => {
       })),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -621,6 +623,7 @@ describe('activation backoff', () => {
       })),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),

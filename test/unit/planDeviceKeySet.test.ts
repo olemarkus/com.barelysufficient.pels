@@ -35,7 +35,7 @@ const ALWAYS: readonly string[] = [
   'plannedState', 'previousStepId', 'priority', 'reason', 'recordRestoreOnTargetApply',
   'releaseShedStepId', 'reportedStepId', 'residualKw', 'shedAction', 'shedTemperature',
   'stepCommandPending', 'stepCommandRetryCount', 'stepCommandStatus', 'storageHold', 'surplusAbsorbActive',
-  'surplusTracking', 'targetStepId',
+  'surplusTracking',
 ];
 
 const TEMPERATURE_CLUSTER = ['currentTarget', 'currentTemperature', 'plannedTarget'];
@@ -197,16 +197,12 @@ const buildFor = (kind: Kind): Record<string, unknown> => {
     guardInShortfall: false,
     outcome: NO_SHEDDING_OUTCOME,
     recoveredAtMs: null,
-    overshootStats: null,
   };
   return buildBasePlanDevice({
     dev: kind.dev,
-    priority: 3,
     recentlyRestored: kind.restored === true,
     binaryCommandPending: kind.pending === true,
-    currentState: kind.dev.currentState ?? 'on',
     plannedTarget: kind.target,
-    control: kind.dev.control,
     shedBehavior: kind.behavior ?? TURN_OFF,
     sheddingPlan,
     anyOtherDeviceLimited: kind.otherLimited === true,

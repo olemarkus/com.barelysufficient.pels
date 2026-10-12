@@ -327,7 +327,7 @@ export async function emitSteppedLoadClampDeviationLog(params: {
   // the commanded step — a lower report is expected, not a clamp. Only judge a
   // settled command.
   if (device.stepCommandPending === true) return;
-  const commandedStepId = device.desiredStepId ?? device.targetStepId;
+  const commandedStepId = device.desiredStepId;
   if (!commandedStepId || commandedStepId === reportedStepId) return;
   const steps = isSteppedLoadSnapshot(device) ? device.steppedLoadProfile.steps : [];
   const commandedStep = steps.find((step) => step.id === commandedStepId);

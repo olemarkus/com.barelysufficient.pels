@@ -108,6 +108,7 @@ describe('stepped swap donor hold', () => {
       ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: deps(T0),
     });
     expect(swappedOutFor(state, 'charger')).toBe('heater');
@@ -128,6 +129,7 @@ describe('stepped swap donor hold', () => {
       ...buildPlanCycle({ headroomRaw: 2.1, headroom: 2.1 }),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: deps(T0 + 90_000),
     });
     expect(byId(served.planDevices, 'charger')).toMatchObject({
@@ -149,6 +151,7 @@ describe('stepped swap donor hold', () => {
       ...buildPlanCycle({ headroomRaw: 2.1, headroom: 2.1 }),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: deps(T0 + 120_000),
     });
     expect(hasReservation(state, 'heater')).toBe(false);
@@ -167,6 +170,7 @@ describe('stepped swap donor hold', () => {
       ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: deps(T0),
     });
     expect(swappedOutFor(state, 'charger')).toBe('heater');
@@ -179,6 +183,7 @@ describe('stepped swap donor hold', () => {
       ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: deps(T0 + 10_000),
     });
     expect(byId(lagging.planDevices, 'charger')).toMatchObject({

@@ -2930,7 +2930,6 @@ describe('PlanExecutor stepped loads', () => {
       currentState: 'off',
       selectedStepId: 'off',
       desiredStepId: 'low',
-      targetStepId: 'low',
       reason: fixtureDeviceReason('meter settling (30s remaining)'),
     }));
 

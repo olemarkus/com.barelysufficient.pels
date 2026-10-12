@@ -1,60 +1,35 @@
 import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
-import type { RestoreTiming } from './timing';
-import type { PlanEngineState } from '../planState';
 import {
+  inCycleRestoreWait,
+  otherRecoveryWait,
   resolveCapacityRestoreBlockReason,
   resolveMeterSettlingReason,
 } from './timing';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { hasOtherDevicesBlockingSteppedRestore } from './coordination';
+import { isActiveSteppedRestoreCandidate } from './devices';
 import {
   buildOffSteppedRestoreHoldUpdate,
   setRestorePlanDevice,
 } from './planDeviceUpdates';
-
-export type SteppedDeviceGateTiming = Pick<RestoreTiming,
-| 'activeOvershoot'
-| 'inCooldown'
-| 'inRestoreCooldown'
-| 'inStartupStabilization'
-| 'measurementTs'
-| 'nowTs'
-| 'restoreCooldownSeconds'
-| 'restoreCooldownMs'
-| 'shedCooldownRemainingSec'
-| 'restoreCooldownRemainingSec'
-| 'startupStabilizationRemainingSec'
->;
+import type { RestoreCycle, RestoreLoopState } from './types';
 
 // Returns true if a gate fired and planRestoreForSteppedDevice should return early.
 // Encapsulates meter-settling and capacity-block gate checks, applying global gates only
 // to OFF devices and per-device settling to active devices.
-export function applySteppedDeviceGates(params: {
-  dev: SteppedPlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  state: PlanEngineState;
-  timing: SteppedDeviceGateTiming;
-  deviceIsActive: boolean;
-  restoredOneThisCycle: boolean;
-  batchContinuation: boolean;
-  restoreDebugKey: string;
-  availableHeadroom: number | null;
-  phase: 'startup' | 'runtime';
-  requestedStepId: string | null;
-}): boolean {
-  const {
-    dev,
-    deviceMap,
-    state,
-    timing,
-    deviceIsActive,
-    restoredOneThisCycle,
-    batchContinuation,
-    restoreDebugKey,
-    availableHeadroom,
-    phase,
-    requestedStepId,
-  } = params;
+export function applySteppedDeviceGates(
+  cycle: RestoreCycle,
+  dev: SteppedPlanDevice,
+  loop: RestoreLoopState,
+  batchContinuation: boolean,
+  requestedStepId: string | null,
+): boolean {
+  const { deviceMap, state, timing, phase } = cycle;
+  const { availableHeadroom, restoredOneThisCycle } = loop;
+  // Active stepped devices (ON but below their target step) must not be blocked by the global
+  // restore cooldown or meter-settling gate — per-device restore timing still applies. Resolve
+  // "active" via the step axis so a step-only stepper (no binary handle) is recognised too.
+  const deviceIsActive = isActiveSteppedRestoreCandidate(dev);
   const gateRestoredOneThisCycle = restoredOneThisCycle && !batchContinuation;
   // Every gate holds the device the same way: an active device keeps its level
   // with the gate's reason, an off one is held at its off step.
@@ -67,7 +42,7 @@ export function applySteppedDeviceGates(params: {
     );
     emitRestoreDebugEventOnChange({
       state,
-      key: restoreDebugKey,
+      key: `stepped:${dev.id}`,
       payload: {
         event: 'restore_stepped_rejected',
         deviceId: dev.id,
@@ -90,18 +65,12 @@ export function applySteppedDeviceGates(params: {
   const gateTiming = deviceIsActive
     ? { ...timing, inRestoreCooldown: false as const, inCooldown: false as const }
     : timing;
-  const gateReason = resolveCapacityRestoreBlockReason({
-    timing: gateTiming,
-    restoredOneThisCycle: gateRestoredOneThisCycle,
-  });
+  const gateReason = resolveCapacityRestoreBlockReason(gateTiming, inCycleRestoreWait(gateRestoredOneThisCycle), true);
   if (gateReason) return reject(gateReason, 'restore_gate');
   const waitingForOtherRecovery = !batchContinuation
     && deviceIsActive
     && hasOtherDevicesBlockingSteppedRestore(deviceMap, dev.id, state.shedDecisions);
-  const waitingReason = resolveCapacityRestoreBlockReason({
-    timing: gateTiming,
-    waitingForOtherRecovery,
-  });
+  const waitingReason = resolveCapacityRestoreBlockReason(gateTiming, otherRecoveryWait(waitingForOtherRecovery), true);
   if (waitingReason) return reject(waitingReason, 'waiting_for_other_recovery');
   return false;
 }

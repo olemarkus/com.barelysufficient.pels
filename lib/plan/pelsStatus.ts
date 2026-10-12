@@ -88,8 +88,8 @@ export type PelsStatus = {
   dryRunEffective: boolean;
 };
 
-export function buildPelsStatus(params: {
-  plan: DevicePlan;
+export function buildPelsStatus(
+  plan: DevicePlan,
   /**
    * Producer-resolved (`PriceService.getCurrentHourPriceLevel`), including the
    * `UNKNOWN` case. This used to arrive as two raw flags plus the combined-price
@@ -97,8 +97,8 @@ export function buildPelsStatus(params: {
    * at all — a consumer re-deriving what the price service already knew, and the
    * reason the status had to read the (uncached) price store to build at all.
    */
-  priceLevel: PriceLevel;
-  lastPowerUpdate: number;
+  priceLevel: PriceLevel,
+  lastPowerUpdate: number,
   /**
    * The dry-run this home gates on — `getCapacityDryRun()`, which folds the
    * boot-window readiness fence into the persisted flag for EVERY home, so a
@@ -108,19 +108,18 @@ export function buildPelsStatus(params: {
    * meanings — actuation posture AND home kind — and left main's own posture
    * flips invisible to the write-forcing that exists for that transition.
    */
-  dryRunEffective: boolean;
-}): PelsStatus {
-  const { plan, priceLevel, lastPowerUpdate, dryRunEffective } = params;
+  dryRunEffective: boolean,
+): PelsStatus {
   const summary = summarizePlanForStatus(plan);
   const limitReason = resolveLimitReason(plan, summary);
   return {
     ...resolveMeasuredStatusFields(plan.meta),
     powerLimitKw: plan.meta.softLimitKw,
     hourlyUsageKwh: plan.meta.hourUsedKWh,
-    dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh ?? 0,
-    dailyBudgetExceeded: plan.meta.dailyBudgetExceeded ?? false,
+    dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh,
+    dailyBudgetExceeded: plan.meta.dailyBudgetExceeded,
     limitReason,
-    capacityShortfall: plan.meta.capacityShortfall ?? false,
+    capacityShortfall: plan.meta.capacityShortfall,
     shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw,
     priceLevel,
     devicesOn: summary.devicesOn,

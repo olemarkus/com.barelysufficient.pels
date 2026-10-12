@@ -2,6 +2,7 @@ import { spendPowerHeadroom } from './powerLimitMath';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import {
   PLAN_REASON_CODES,
+  type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   buildReserveAdmittedLogFields,
@@ -20,10 +21,7 @@ import {
 import {
   resolveRestoreDecisionPhase,
 } from './admission';
-import {
-  resolveCapacityRestoreBlockReason,
-  resolveMeterSettlingReason,
-} from './restore/timing';
+import { resolveMeterSettlingReason } from './restore/timing';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import type { HoldLoopState, HoldPass } from './planReasonsShared';
 
@@ -37,7 +35,8 @@ import type { HoldLoopState, HoldPass } from './planReasonsShared';
  * cause for the same cycle.
  */
 function restorePassTookCooldownLane(pass: HoldPass): boolean {
-  const { timing, sheddingActive, guardInShortfall } = pass;
+  const { timing } = pass.restoreResult;
+  const { sheddingActive, guardInShortfall } = pass.sheddingPlan;
   return timing.inRestoreCooldown
     && !guardInShortfall
     && !sheddingActive
@@ -58,7 +57,8 @@ export function resolveMeterSettlingHold(
   wasShedLastPlan: boolean,
   observedAtShedFloor: boolean,
 ): HoldDecision | null {
-  const { timing, state } = pass;
+  const { state } = pass;
+  const { timing } = pass.restoreResult;
   if (!restorePassTookCooldownLane(pass) || !wasShedLastPlan || !observedAtShedFloor) return null;
   const reason = resolveMeterSettlingReason(timing, state.actuation.lastRestoreMs);
   if (reason === null) return null;
@@ -107,7 +107,8 @@ export function resolveActivationBackoffHold(
   dev: DevicePlanDevice,
   availableHeadroom: number | null,
 ): HoldDecision | null {
-  const { state, timing } = pass;
+  const { state } = pass;
+  const { timing } = pass.restoreResult;
   const restoreDebugKey = `target:${dev.id}`;
   const block = resolveActivationRestoreBlock(state, dev.id, timing.nowTs);
   if (block === null) return null;
@@ -163,24 +164,11 @@ export function resolveRestoreGateHold(
   restoreNeed: ReturnType<typeof getRestoreNeed>,
   reserved: ReserveAdmitted,
 ): HoldDecision | null {
-  const { restoreCooldownSeconds, restoreCooldownRemainingSec } = pass.timing;
   const { availableHeadroom, restoredOneThisCycle } = loop;
   const restoreDebugKey = `target:${dev.id}`;
-
-  const gateReason = resolveCapacityRestoreBlockReason({
-    timing: {
-      activeOvershoot: false,
-      inCooldown: false,
-      inRestoreCooldown: false,
-      inStartupStabilization: false,
-      restoreCooldownSeconds,
-      shedCooldownRemainingSec: null,
-      restoreCooldownRemainingSec,
-    },
-    restoredOneThisCycle,
-    useThrottleLabel: true,
-  });
-  if (!gateReason) return null;
+  // One setpoint raise per cycle: a second waits for the next one.
+  if (!restoredOneThisCycle) return null;
+  const gateReason: DeviceReason = { code: PLAN_REASON_CODES.restoreThrottled };
 
   const reason: PlanReasonDecision = { code: 'existing', reason: gateReason };
   emitRestoreRejectedDebug(pass, dev, restoreDebugKey, gateReason.code, {
@@ -210,14 +198,15 @@ export function resolveRestoreDecision(
   observedAtShedFloor: boolean,
   baseShedReason: PlanReasonDecision | undefined,
 ): HoldDecision {
-  const { state, restoredThisCycle, headroomReserves } = pass;
+  const { state } = pass;
+  const { restoredThisCycle, headroomReserves, timing } = pass.restoreResult;
   const { availableHeadroom } = loop;
   const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
   const restoreDebugKey = `target:${dev.id}`;
   const setbackHold = resolveActivationBackoffHold(pass, dev, availableHeadroom);
   if (setbackHold) return setbackHold;
 
-  const restoreNeed = getRestoreNeed(dev, state, pass.timing.nowTs, undefined);
+  const restoreNeed = getRestoreNeed(dev, state, timing.nowTs, undefined);
   // Admit against the power this device may actually claim: raw available power
   // minus any startup reservation held by a strictly higher-priority device that
   // (`restore/gating.ts`). Without it, a setpoint raise was the one restore that

@@ -22,7 +22,6 @@ const heldSelection = (deviceId: string): PlanSheddingResult => ({
   shedStepTargets: new Map(),
   storageSetpoints: new Map(),
   outcome: NO_SHEDDING_OUTCOME,
-  overshootStats: null,
   pendingReliefKw: 0,
 });
 

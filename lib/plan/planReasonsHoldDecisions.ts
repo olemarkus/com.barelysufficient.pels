@@ -7,8 +7,9 @@ import { resolveNormalizedShedFloors, shedFloorCFor } from './normalizedShedFloo
 import { temperatureSetpointsFor, unlimitedSetpointAddsDemand } from './planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { PlanEngineState } from './planState';
-import type { HeadroomReserve } from './admission';
-import type { RestoreHeadroomLedger } from './restore/headroomLedger';
+import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
+import type { RestorePlanResult } from './restore/types';
+import type { SheddingPlan } from './shedding/types';
 import {
   PLAN_REASON_CODES,
   type DeviceReason,
@@ -22,7 +23,6 @@ import { isBudgetReason, isShortfallReason, isSwapReason } from './planReasonsSh
 import type { HoldLoopState, HoldPass, PendingRestoreDelay } from './planReasonsShared';
 import { RESTORE_CONFIRM_RETRY_MS } from './planConstants';
 import { NEUTRAL_STARTUP_HOLD_REASON, resolveOffDeviceReason } from './restore/devices';
-import type { RestoreTiming } from './restore/timing';
 import {
   resolveMeterSettlingHold,
   resolveRestoreDecision,
@@ -103,7 +103,9 @@ function resolveHoldReason(
   floorC: number,
   shouldHold: boolean,
 ): PlanReasonDecision {
-  const { state, shedReasons, timing } = pass;
+  const { state } = pass;
+  const { shedReasons } = pass.sheddingPlan;
+  const { timing } = pass.restoreResult;
   const producerReason = getProducerShedReason({ dev, shedReasons });
   if (producerReason) return producerReason;
   // `shouldHold` false means the shortfall guard aborted the restore with no
@@ -120,38 +122,20 @@ function resolveHoldReason(
   return timedReason === null ? CAPACITY_FALLBACK_REASON : { code: 'existing', reason: timedReason };
 }
 
-export type ShedHoldParams = {
-  planDevices: DevicePlanDevice[];
-  state: PlanEngineState;
-  shedReasons: Map<string, DeviceReason>;
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
+export function applyShedTemperatureHold(
+  state: PlanEngineState,
   /**
-   * This cycle's restore timing, whole — the same object the restore pass
-   * decided from (`RestorePlanResult` carries it). The lane names WHICH of the
-   * four `inShedWindow` causes is holding a device instead of defaulting to
-   * the power ceiling, reads the restore gate off it, and decides the
-   * meter-settling hold from `measurementTs`/`nowTs`. It used to arrive as
-   * twelve loose scalars under renamed keys — the inverse failure the
-   * param-bundle guard's header cites by this type's name.
+   * The restore pass this lane runs after, whole: the devices it decided, which
+   * this lane holds or restores next. Its per-axis availability
+   * seeds this lane's ledger, so a budget-exempt setpoint-shed device admits
+   * its raise against the CAPACITY axis exactly like the binary/stepped lanes;
+   * its startup reservations bind a raise the way they bind those lanes
+   * (`restore/gating.ts`) — a raise into a reserved block is PELS giving the
+   * promised power away.
    */
-  timing: RestoreTiming;
-  restoredOneThisCycle: boolean;
-  restoredThisCycle: Set<string>;
-  // Per-axis ledger carried over from the restore pass: a budget-exempt
-  // setpoint-shed device admits its raise against the CAPACITY axis, exactly
-  // like the binary/stepped lanes.
-  ledger: RestoreHeadroomLedger;
-  // This cycle's startup reservations, resolved once by the restore pass. A
-  // setpoint-shed restore admits against them exactly like the binary/stepped
-  // lanes (`restore/gating.ts`) — a raise into a reserved block is PELS giving
-  // the promised power away.
-  headroomReserves: readonly HeadroomReserve[];
-  guardInShortfall: boolean;
-  /**
-   * The capacity guard's shedding latch this cycle (`SheddingPlan.sheddingActive`).
-   * Required: the restore pass forks on it ahead of its cooldown lane, and the
-   * setpoint lane must fork the same way to name the same cause.
-   */
-  sheddingActive: boolean;
+  restoreResult: RestorePlanResult,
+  sheddingPlan: SheddingPlan,
   /**
    * This build's resolved setpoints. The limit on them is capability-normalized
    * before the planner — the SAME value `resolveShedIntent` stamps on a freshly
@@ -162,11 +146,8 @@ export type ShedHoldParams = {
    * for an off-step configured limit plans a setpoint the device can never
    * report back — a futile re-write per cycle.
    */
-  temperatureSetpoints: TemperatureSetpointsByDevice;
-};
-
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function applyShedTemperatureHold(params: ShedHoldParams): {
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+): {
   planDevices: DevicePlanDevice[];
   availableHeadroom: number | null;
   restoredOneThisCycle: boolean;
@@ -176,37 +157,22 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   // restores admitted here and over-report availability.
   ledgerAxes: RestoreHeadroomAxes;
 } {
-  const {
-    planDevices,
-    state,
-    shedReasons,
-    timing,
-    restoredOneThisCycle,
-    restoredThisCycle,
-    ledger,
-    headroomReserves,
-    guardInShortfall,
-    sheddingActive,
-    temperatureSetpoints,
-  } = params;
+  const { planDevices } = restoreResult;
   const normalizedShedFloorCByDevice = resolveNormalizedShedFloors(temperatureSetpoints);
 
-  let restoredOne = restoredOneThisCycle;
+  const ledger = buildRestoreHeadroomLedger(restoreResult);
+  let restoredOne = restoreResult.restoredOneThisCycle;
   const nextDevices: DevicePlanDevice[] = [];
   const pendingRestoreDelay = getPendingRestoreDelay(
     planDevices, state, temperatureSetpoints, normalizedShedFloorCByDevice,
   );
   const pass: HoldPass = {
     state,
-    shedReasons,
-    timing,
+    restoreResult,
+    sheddingPlan,
     pendingRestoreDelay,
-    headroomReserves,
-    guardInShortfall,
-    sheddingActive,
     temperatureSetpoints,
     normalizedShedFloorCByDevice,
-    restoredThisCycle,
   };
 
   for (const dev of planDevices) {
@@ -236,7 +202,9 @@ function resolveHoldGating(
   dev: DevicePlanDevice,
   floorC: number,
 ): { shouldAbortRestoreForShortfall: boolean; shouldHold: boolean; wasShedLastPlan: boolean } {
-  const { state, timing, guardInShortfall } = pass;
+  const { state } = pass;
+  const { timing } = pass.restoreResult;
+  const { guardInShortfall } = pass.sheddingPlan;
   const isTemperature = isTemperaturePlanDevice(dev);
   // All three floor facts read the NORMALIZED floor — the observation and the
   // hold stamps both carry normalized values, so a raw comparison would make
@@ -257,7 +225,8 @@ function resolveHoldDecision(
   dev: DevicePlanDevice,
   loop: HoldLoopState,
 ): HoldDecision {
-  const { shedReasons, normalizedShedFloorCByDevice } = pass;
+  const { normalizedShedFloorCByDevice } = pass;
+  const { shedReasons } = pass.sheddingPlan;
 
   if (dev.control.commandAuthority === false) {
     return { type: 'skip' };
@@ -359,7 +328,7 @@ function applyHoldToDevice(
   // The restore pass already admitted this device and debited its power. Its
   // setpoint is part of that same restoration: admitting it again would either
   // charge it twice or replace its own turn-on admission with a throttle hold.
-  if (pass.restoredThisCycle.has(dev.id)) {
+  if (pass.restoreResult.restoredThisCycle.has(dev.id)) {
     return { device: dev, availableHeadroom, restoredOneThisCycle };
   }
 
@@ -437,7 +406,7 @@ function applyHoldUpdate(
   // narrow has already decided, and one that could never have been false.
   //
   // The floor VALUE comes from the per-build normalized map (semantics on
-  // `ShedHoldParams.temperatureSetpoints`) so every stage stamps the
+  // `applyShedTemperatureHold`'s `temperatureSetpoints`) so every stage stamps the
   // SAME capability-normalized floor a fresh shed would.
   const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);
   const device: DevicePlanDevice & TemperatureKind = {

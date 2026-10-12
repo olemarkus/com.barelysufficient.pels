@@ -149,7 +149,6 @@ describe('swap reservation completion', () => {
       binaryControl: { on: true },
       reportedStepId: 'max',
       desiredStepId: undefined,
-      targetStepId: undefined,
     }), BINARY_PROMISE)).toBe(false);
   });
 

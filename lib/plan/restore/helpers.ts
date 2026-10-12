@@ -1,9 +1,7 @@
 import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
-import type { RestoreTiming } from './timing';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from '../planState';
 import {
   getSteppedRestoreCandidates,
-  isActiveSteppedRestoreCandidate,
   isOffSteppedRestoreCandidate,
   NEUTRAL_STARTUP_HOLD_REASON,
   resolveInactiveRestoreUpdate,
@@ -13,17 +11,13 @@ import {
   getSteppedLoadNextRestoreStep,
   resolveStepChangeKw,
 } from '../planSteppedLoad';
-import {
-  getSteppedLoadLowestActiveStep,
-  getSteppedLoadStep,
-} from '../../../packages/shared-domain/src/deviceControlProfiles';
+import { getSteppedLoadStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import {
   getActivationPenaltyLevel,
   resolveActivationRestoreBlock,
 } from '../admission';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import { countShedDevices } from './coordination';
-import { resolveRestoreDecisionPhase } from '../admission';
 import { buildActivationBackoffReason } from '../planReasonStrings';
 import {
   applySteppedRestoreAttemptHold,
@@ -32,7 +26,6 @@ import {
 import { setRestorePlanDevice } from './planDeviceUpdates';
 import { applySteppedDeviceGates } from './steppedRestoreGates';
 import {
-  buildDisabledRestoreBatchState,
   canContinueShedPostureRestoreBatch,
   recordShedPostureRestoreBatchAdmission,
 } from './batch';
@@ -40,12 +33,11 @@ import { computeRestoreBufferKw } from './accounting';
 import {
   admitSteppedRestore,
   blockSteppedRestoreForShedInvariant,
-  type SteppedSwapExecutor,
 } from './steppedRestoreAdmission';
-import type { HeadroomReserve } from '../admission';
 import type {
   RestoreBatchState,
-  RestoreDeviceTiming,
+  RestoreCycle,
+  RestoreLane,
   RestoreLoopState,
   SteppedRestoreNeed,
 } from './types';
@@ -54,37 +46,12 @@ import type {
 // (lib/plan/restore/index.ts, lib/plan/restore/gating.ts, tests) are unchanged
 // while the implementation lives in cohesive sibling modules.
 export { setRestorePlanDevice } from './planDeviceUpdates';
-export type { SteppedSwapExecutor } from './steppedRestoreAdmission';
 
-export function markSteppedDevicesStayAtCurrentLevel(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  timing: Pick<RestoreTiming,
-  | 'activeOvershoot'
-  | 'inCooldown'
-  | 'inRestoreCooldown'
-  | 'inStartupStabilization'
-  | 'measurementTs'
-  | 'nowTs'
-  | 'restoreCooldownSeconds'
-  | 'restoreCooldownMs'
-  | 'shedCooldownRemainingSec'
-  | 'shedCooldownStartedAtMs'
-  | 'shedCooldownTotalSec'
-  | 'restoreCooldownRemainingSec'
-  | 'restoreCooldownStartedAtMs'
-  | 'restoreCooldownTotalSec'
-  | 'startupStabilizationRemainingSec'>;
-  currentOffPlannedState?: 'shed' | 'keep';
-  getLastControlledMs?: (deviceId: string) => number | undefined;
-  deviceFilter?: (dev: DevicePlanDevice) => boolean;
-}): void {
-  const {
-    deviceMap,
-    timing,
-    currentOffPlannedState = 'shed',
-    getLastControlledMs,
-    deviceFilter,
-  } = params;
+export function markSteppedDevicesStayAtCurrentLevel(
+  cycle: RestoreCycle,
+  deviceFilter?: (dev: DevicePlanDevice) => boolean,
+): void {
+  const { deviceMap, timing, state } = cycle;
   const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()))
     .filter((dev) => deviceFilter?.(dev) ?? true);
   for (const dev of steppedDevices) {
@@ -94,9 +61,10 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
     // for such a device, letting the executor step a `keep`-normalised load back
     // up during a restore-blocked window without admission.
     const currentOff = isOffSteppedRestoreCandidate(dev);
+    const lastControlledMs = state.actuation.lastDeviceControlledMs[dev.id];
     const neverControlledStartupHold = timing.inStartupStabilization
       && currentOff
-      && getLastControlledMs?.(dev.id) === undefined;
+      && lastControlledMs === undefined;
     if (neverControlledStartupHold) {
       setRestorePlanDevice(deviceMap, dev.id, {
         plannedState: 'shed',
@@ -104,10 +72,7 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
       });
       continue;
     }
-    const reason = resolveCapacityRestoreBlockReason({
-      timing,
-      showStartupStabilization: getLastControlledMs ? getLastControlledMs(dev.id) !== undefined : true,
-    });
+    const reason = resolveCapacityRestoreBlockReason(timing, null, lastControlledMs !== undefined);
     if (!reason) {
       if (!currentOff) continue;
       setRestorePlanDevice(deviceMap, dev.id, {
@@ -119,28 +84,19 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
     setRestorePlanDevice(
       deviceMap,
       dev.id,
-      currentOff ? { plannedState: currentOffPlannedState, reason } : { reason },
+      currentOff ? { plannedState: 'shed', reason } : { reason },
     );
   }
 }
 
-export function blockRestoreForRecentActivationSetback(params: {
-  deviceMap: Map<string, DevicePlanDevice>;
-  deviceId: string;
-  deviceName: string | undefined;
-  state: PlanEngineState;
-  nowTs: number;
-  stepped: boolean;
-}): boolean {
-  const {
-    deviceMap,
-    deviceId,
-    deviceName,
-    state,
-    nowTs,
-    stepped,
-  } = params;
-  const block = resolveActivationRestoreBlock(state, deviceId, nowTs);
+export function blockRestoreForRecentActivationSetback(
+  cycle: RestoreCycle,
+  dev: DevicePlanDevice,
+  stepped: boolean,
+): boolean {
+  const { deviceMap, state } = cycle;
+  const deviceId = dev.id;
+  const block = resolveActivationRestoreBlock(state, deviceId, cycle.timing.nowTs);
   if (block === null) return false;
   const { remainingMs } = block;
   const reason = buildActivationBackoffReason(remainingMs, block);
@@ -158,7 +114,7 @@ export function blockRestoreForRecentActivationSetback(params: {
     payload: {
       event: 'restore_blocked_setback',
       deviceId,
-      deviceName,
+      deviceName: dev.name,
       penaltyLevel: getActivationPenaltyLevel(state, deviceId),
       remainingMs,
       stepped,
@@ -185,7 +141,7 @@ function admitStepUnderSurplusCeiling<T extends { id: string; planningPowerW: nu
 ): T | null {
   if (!nextStep) return null;
   if (!dev.surplusTracking) return nextStep;
-  if (dev.boostActive === true) return nextStep;
+  if (dev.boostActive) return nextStep;
   const ceilingStepId = resolveSurplusCeilingStepId(state, dev.id);
   if (ceilingStepId === undefined) return nextStep;
   const ceilingStep = getSteppedLoadStep(dev.steppedLoadProfile, ceilingStepId);
@@ -221,39 +177,18 @@ function resolveSteppedRestoreNeed(
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function planRestoreForSteppedDevice(
-  params: {
-    dev: SteppedPlanDevice & MeteredKind;
-    deviceMap: Map<string, DevicePlanDevice>;
-    state: PlanEngineState;
-    timing: RestoreDeviceTiming;
-    availableHeadroom: number | null;
-    restoredOneThisCycle: boolean;
-    swapExecutor?: SteppedSwapExecutor;
-    headroomReserves?: readonly HeadroomReserve[];
-  },
-  batchState: RestoreBatchState = buildDisabledRestoreBatchState(),
+  cycle: RestoreCycle,
+  lane: RestoreLane,
+  dev: SteppedPlanDevice & MeteredKind,
+  loop: RestoreLoopState,
 ): RestoreLoopState {
-  const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle,
-    swapExecutor, headroomReserves = [] } = params;
-  const restoreDebugKey = `stepped:${dev.id}`;
-  if (keepInactiveSteppedDeviceInactive({
-    dev,
-    deviceMap,
-    state,
-    restoreDebugKey,
-  })) {
-    return { availableHeadroom, restoredOneThisCycle };
-  }
+  const { deviceMap, state, batchState } = cycle;
+  if (keepInactiveSteppedDeviceInactive(cycle, dev)) return loop;
 
   if (countShedDevices(deviceMap, dev.id, state.shedDecisions) === 0) {
     delete state.steppedRestoreRejectedByDevice[dev.id];
   }
 
-  const phase = resolveRestoreDecisionPhase(state.currentRebuildTrigger);
-  // Active stepped devices (ON but below their target step) must not be blocked by the global
-  // restore cooldown or meter-settling gate — per-device restore timing still applies. Resolve
-  // "active" via the step axis so a step-only stepper (no binary handle) is recognised too.
-  const deviceIsActive = isActiveSteppedRestoreCandidate(dev);
   const requestedStep = getSteppedLoadNextRestoreStep(dev);
   // The gates below see the step the ladder WANTED — that is what their logging
   // and admission are about — while `nextStep` is the step the surplus ceiling
@@ -264,77 +199,27 @@ export function planRestoreForSteppedDevice(
     batchState,
     state.shedDecisions,
     dev.id,
-    restoredOneThisCycle,
+    loop.restoredOneThisCycle,
     restoreNeed.neededKw,
   );
-  if (applySteppedDeviceGates({
-    dev,
-    deviceMap,
-    state,
-    timing,
-    deviceIsActive,
-    restoredOneThisCycle,
-    batchContinuation,
-    restoreDebugKey,
-    availableHeadroom,
-    phase,
-    requestedStepId: requestedStep?.id ?? null,
-  })) {
-    return { availableHeadroom, restoredOneThisCycle };
+  if (applySteppedDeviceGates(cycle, dev, loop, batchContinuation, requestedStep?.id ?? null)) return loop;
+
+  if (blockRestoreForRecentActivationSetback(cycle, dev, true)) return loop;
+
+  if (!nextStep || restoreNeed.deltaKw <= 0) {
+    clearRestoreDebugEvent(state, `stepped:${dev.id}`);
+    return loop;
   }
 
-  if (blockRestoreForRecentActivationSetback({
-    deviceMap, deviceId: dev.id, deviceName: dev.name, state, nowTs: timing.nowTs, stepped: true,
-  })) {
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  if (!nextStep) {
-    clearRestoreDebugEvent(state, restoreDebugKey);
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
-  if (restoreNeed.deltaKw <= 0) {
-    clearRestoreDebugEvent(state, restoreDebugKey);
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-  const attemptHold = applySteppedRestoreAttemptHold({
-    dev,
-    nextStepId: nextStep.id,
-    nextStepPowerKw: nextStep.planningPowerW / 1000,
-    lastRestoreMs: state.actuation.lastDeviceRestoreMs[dev.id],
-    measurementTs: typeof timing.measurementTs === 'number' ? timing.measurementTs : null,
-    phase,
-    state,
-    restoreDebugKey,
-    availableHeadroom,
-    restoredOneThisCycle,
-    setDevice: (updates) => setRestorePlanDevice(deviceMap, dev.id, updates),
-  });
+  const attemptHold = applySteppedRestoreAttemptHold(cycle, dev, loop, nextStep);
   if (attemptHold.kind !== 'not_handled') {
     return commitSteppedRestoreAttempt(batchState, state, dev, restoreNeed, attemptHold);
   }
 
-  if (blockSteppedRestoreForShedInvariant({
-    dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, restoreDebugKey,
-  })) {
-    return { availableHeadroom, restoredOneThisCycle };
-  }
+  if (blockSteppedRestoreForShedInvariant(cycle, dev, nextStep)) return loop;
   delete state.steppedRestoreRejectedByDevice[dev.id];
 
-  return admitSteppedRestore({
-    dev,
-    deviceMap,
-    state,
-    phase,
-    nextStep,
-    lowestNonZeroStep,
-    need: restoreNeed,
-    restoreDebugKey,
-    swapExecutor,
-    headroomReserves,
-  }, { availableHeadroom, restoredOneThisCycle }, batchState, batchContinuation);
+  return admitSteppedRestore(cycle, lane, dev, loop, nextStep, restoreNeed, batchContinuation);
 }
 /* eslint-enable functional/immutable-data */
 
@@ -359,15 +244,10 @@ function commitSteppedRestoreAttempt(
   };
 }
 
-function keepInactiveSteppedDeviceInactive(params: {
-  dev: DevicePlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  state: PlanEngineState;
-  restoreDebugKey: string;
-}): boolean {
-  const inactiveUpdate = resolveInactiveRestoreUpdate(params.dev);
+function keepInactiveSteppedDeviceInactive(cycle: RestoreCycle, dev: DevicePlanDevice): boolean {
+  const inactiveUpdate = resolveInactiveRestoreUpdate(dev);
   if (!inactiveUpdate) return false;
-  clearRestoreDebugEvent(params.state, params.restoreDebugKey);
-  setRestorePlanDevice(params.deviceMap, params.dev.id, inactiveUpdate);
+  clearRestoreDebugEvent(cycle.state, `stepped:${dev.id}`);
+  setRestorePlanDevice(cycle.deviceMap, dev.id, inactiveUpdate);
   return true;
 }

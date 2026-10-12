@@ -88,6 +88,7 @@ describe('boost-driven escalation swaps on the boost decision alone', () => {
       ...cycleArgsFor(buildContext({ headroomRaw: 0.8, headroom: 0.8 })),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),

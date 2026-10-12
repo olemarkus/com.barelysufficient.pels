@@ -1,9 +1,8 @@
 import type { ClassifiedPlanReason } from './planReasonStrings';
 import type { PlanEngineState } from './planState';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { HeadroomReserve } from './admission';
-import type { RestoreTiming } from './restore/timing';
+import type { RestorePlanResult } from './restore/types';
+import type { SheddingPlan } from './shedding/types';
 /** Local shape: the pending-restore countdown a hold names. */
 export type PendingRestoreDelay = { remainingSec: number; countdownStartedAtMs: number; countdownTotalSec: number };
 
@@ -28,29 +27,32 @@ export function isShortfallReason(reason: ClassifiedPlanReason): boolean {
 /**
  * One shed-temperature hold pass, as every stage of it sees the pass.
  *
- * `applyShedTemperatureHold` resolves `pendingRestoreDelay` once; the rest comes
- * straight off `ShedHoldParams`. Before this type each stage below re-declared
- * the same seventeen members inline: `resolveHoldDecision` declared 18 and read
- * 3, `applyHoldToDevice` declared 18 and read 4, and the two lists were
- * identical but for the `behavior` type. That is the inverse failure the root
- * `AGENTS.md` names — a domain object the caller already holds, exploded into
- * loose values on the way down. `timing` is that domain object, carried whole:
- * the shed-window ladder (`resolveOffDeviceReason`), the restore gate and the
- * meter-settling check all read it directly.
+ * `applyShedTemperatureHold` resolves `pendingRestoreDelay` and the normalized
+ * floors once; the rest is the two decisions the pass runs after, carried
+ * whole. Each stage below once re-declared seventeen members inline, and the
+ * pass itself later re-listed the restore result's timing, reservations and
+ * restored set and the shedding plan's reasons and latch beside each other —
+ * the inverse failure the root `AGENTS.md` names, a domain object the caller
+ * already holds exploded into loose values on the way down.
  */
 export type HoldPass = {
   readonly state: PlanEngineState;
-  readonly shedReasons: Map<string, DeviceReason>;
-  readonly timing: RestoreTiming;
+  /**
+   * The restore pass this lane runs after, whole: its effective `timing` (the
+   * shed-window ladder `resolveOffDeviceReason`, the restore gate and the
+   * meter-settling check all read it), its startup reservations, and the
+   * devices it restored, which this lane neither admits again nor debits twice.
+   */
+  readonly restoreResult: RestorePlanResult;
+  /**
+   * This cycle's shedding decision: the fresh shed reasons, the guard's
+   * shortfall, and its shedding latch — the restore pass forks on the latch
+   * before its cooldown lane, and this lane must fork the same way.
+   */
+  readonly sheddingPlan: SheddingPlan;
   readonly pendingRestoreDelay: PendingRestoreDelay | null;
-  /** Empty rather than absent: no reservations is a value, not a missing input. */
-  readonly headroomReserves: readonly HeadroomReserve[];
-  readonly guardInShortfall: boolean;
-  /** The guard's shedding latch this cycle — the restore pass forks on it before the cooldown lane. */
-  readonly sheddingActive: boolean;
   readonly temperatureSetpoints: TemperatureSetpointsByDevice;
   readonly normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
-  readonly restoredThisCycle: Set<string>;
 };
 
 /** The running pair the per-device loop threads through the pass. */

@@ -686,7 +686,6 @@ describe('resolved device control composition and command lifecycle', () => {
       () => false, () => {}, () => ({
         devices: [{
           id: 'dev-1',
-          targetStepId: 'low',
           desiredStepId: 'low',
         }],
       } as never),
@@ -712,7 +711,6 @@ describe('resolved device control composition and command lifecycle', () => {
     const [decorated] = helpers.decorateTargetSnapshotList(snapshots);
     expect(decorated.reportedStepId).toBe('max');
     expect(decorated.selectedStepId).toBe('max');
-    expect(decorated.targetStepId).toBe('low');
     expect(decorated.desiredStepId).toBe('low');
 
     expect(structuredLogger.info).toHaveBeenCalledWith(expect.objectContaining({
@@ -795,7 +793,6 @@ describe('resolved device control composition and command lifecycle', () => {
       () => false, () => {}, () => ({
         devices: [{
           id: 'dev-1',
-          targetStepId: 'low',
           desiredStepId: 'low',
         }],
       } as never),
@@ -829,7 +826,6 @@ describe('resolved device control composition and command lifecycle', () => {
       () => false, () => {}, () => ({
         devices: [{
           id: 'dev-1',
-          targetStepId: 'low',
           desiredStepId: 'low',
         }],
       } as never),
@@ -862,7 +858,6 @@ describe('resolved device control composition and command lifecycle', () => {
     const [decorated] = helpers.decorateTargetSnapshotList(snapshots);
     expect(decorated.reportedStepId).toBe('low');
     expect(decorated.selectedStepId).toBe('low');
-    expect(decorated.targetStepId).toBe('low');
     expect(decorated.desiredStepId).toBe('low');
 
     expect(structuredLogger.info).toHaveBeenCalledWith(expect.objectContaining({
@@ -883,7 +878,6 @@ describe('resolved device control composition and command lifecycle', () => {
       () => false, () => {}, () => ({
         devices: [{
           id: 'dev-1',
-          targetStepId: 'low',
           desiredStepId: 'low',
         }],
       } as never),
@@ -1018,7 +1012,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => ({
-        devices: [{ id: 'dev-1', targetStepId: 'max', desiredStepId: 'max' }],
+        devices: [{ id: 'dev-1', desiredStepId: 'max' }],
       } as never),
       { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
     );
@@ -1087,7 +1081,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => ({
-        devices: [{ id: 'dev-1', targetStepId: 'max', desiredStepId: 'max' }],
+        devices: [{ id: 'dev-1', desiredStepId: 'max' }],
       } as never),
       { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
     );
@@ -1157,7 +1151,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => ({
-        devices: [{ id: 'dev-1', targetStepId: 'low', desiredStepId: 'low' }],
+        devices: [{ id: 'dev-1', desiredStepId: 'low' }],
       } as never),
       { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
     );

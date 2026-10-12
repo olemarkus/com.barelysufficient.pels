@@ -12,7 +12,6 @@ import type {
   SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
 import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
-import { readHomeBatteryCardForHome } from './batteryStatusReadModel';
 import {
   createIdleClassifier,
   type IdleClassifier,
@@ -113,6 +112,7 @@ const buildOverviewPublication = (
 ): OverviewPublication | null => {
   const execution = deps.planEngine.getDeviceExecutionStates(plan);
   const snapshot = buildSettingsOverviewReadModel(plan, {
+    ...deps,
     getDeviceExecutionState: (id) => {
       const value = execution.get(id);
       if (!value) throw new Error(`Missing execution state for ${id}`);
@@ -122,12 +122,6 @@ const buildOverviewPublication = (
     nowMs: Date.now(),
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
-    getObservedEvChargingState: deps.getObservedEvChargingState,
-    getAssociatedCarChargingState: deps.getAssociatedCarChargingState,
-    getObservedStateOfCharge: deps.getObservedStateOfCharge,
-    getObservedTemperature: deps.getObservedTemperature,
-    getHomeBatteryCard: (deviceId) => readHomeBatteryCardForHome(deps.homeId, deps.getHomeBatteryCard, deviceId),
-    getSteppedLoadProfileById: deps.getSteppedLoadProfileById,
   });
   return snapshot ? { snapshot, plan, execution } : null;
 };
@@ -252,7 +246,7 @@ export class PlanService {
     const decision = this.getLatestPlanSnapshot()?.devices.find((device) => device.id === deviceId);
     const temperature = this.deps.getObservedTemperature(deviceId);
     if (!current || !isMeteredPlanDevice(current) || !decision || !current.available
-      || current.currentState === undefined || temperature.kind !== 'observed') return undefined;
+      || temperature.kind !== 'observed') return undefined;
     return this.idleClassifier.getLiveStallEvidence({
       id: current.id, name: current.name, currentState: current.currentState,
       currentDrawKw: current.currentDrawKw, plannedState: decision.plannedState,
@@ -509,9 +503,7 @@ export class PlanService {
           incPerfCounter('plan_rebuild_aborted_stale_total');
           return createPlanRebuildOutcome(this.deps.getCapacityDryRun());
         }
-        return performPlanRebuild(this.rebuildHost, {
-          trigger, detail, queueWaitMs: waitMs, queueDepth,
-        });
+        return performPlanRebuild(this.rebuildHost, trigger, detail, waitMs, queueDepth);
       },
       'Failed to rebuild plan',
       fallbackOutcome,

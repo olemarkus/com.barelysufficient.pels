@@ -491,7 +491,7 @@ describe('applyDeferredObjectiveAdmission', () => {
 
     const device = buildEvDevice({ id: 'dev1', controllable: true });
     const { devices } = applyDeferredAdmissionToInput([device], decisions);
-    expect(devices[0]?.budgetExempt).toBeUndefined();
+    expect(devices[0]?.budgetExempt).toBe(false);
   });
 
   it('sets budgetExempt on the device input cap-agnostically when the decision is budget-exempt', () => {

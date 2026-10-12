@@ -69,7 +69,7 @@ right question — twice over:
 
 - It is an inference about the car from PELS's own state, not an observation.
 - It is wrong whenever PELS is not the one in control. For a device with
-  Power-limit control off, the planner's keep path still fills `targetStepId`
+  Power-limit control off, the planner's keep path still fills `desiredStepId`
   with a powered step (`resolveSteppedKeepDesiredStepId`), so an idle,
   switched-off charger read as a charge command PELS never sent. Prod
   2026-08-04, `Elbillader`: control off, charger `false`, both charger and car

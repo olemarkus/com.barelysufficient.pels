@@ -6,8 +6,10 @@ import {
   type SettingsOverviewReadModelDeps,
 } from '../../lib/plan/settingsOverviewReadModel';
 import { buildPlanMeta } from './planTestUtils';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 
 type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
+  | 'homeId'
   | 'getOverviewStarvation'
   | 'getIdleClassification'
   | 'getAssociatedCarChargingState'
@@ -15,10 +17,11 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
 
 /**
  * The read-model deps the plan service always wires, for a spec that is not
- * about them: no starvation, no idle classification, no associated car, no
- * stepped profiles. A spec about one of them overrides it.
+ * about them: the main home, no starvation, no idle classification, no
+ * associated car, no stepped profiles. A spec about one of them overrides it.
  */
 export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
+  homeId: MAIN_HOME_ID,
   getOverviewStarvation: () => undefined,
   getIdleClassification: () => undefined,
   getAssociatedCarChargingState: () => undefined,

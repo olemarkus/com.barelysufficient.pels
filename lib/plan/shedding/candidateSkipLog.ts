@@ -24,6 +24,7 @@
  * which counts the same set.
  */
 import type { StructuredDebugEmitter } from '../../logging/logger';
+import type { MeteredPlanInputDevice } from '../planTypes';
 
 export type ShedCandidateSkipReason =
   | 'binary_confirmed_off'
@@ -41,11 +42,6 @@ export type ShedCandidateSkipReason =
   // whose ladder releases nothing it could visibly answer.
   | 'storage_not_drivable'
   | 'storage_nothing_to_release';
-
-export type ShedCandidateSkipSummary = {
-  skippedCandidateCount: number;
-  skippedCandidateReasons: Array<{ reason: ShedCandidateSkipReason; count: number }>;
-};
 
 type SkippedDeviceRecord = {
   deviceId: string;
@@ -67,13 +63,12 @@ export type StorageCandidateSkipRecord = {
 };
 
 export type ShedCandidateSkipRecorder = {
-  record: (params: {
-    device: { id: string; name?: string; currentDrawKw: number };
-    reasonCode: ShedCandidateSkipReason;
-    rungsTried?: string[];
-  }) => void;
+  record: (
+    device: Pick<MeteredPlanInputDevice, 'id' | 'name' | 'currentDrawKw'>,
+    reasonCode: ShedCandidateSkipReason,
+    rungsTried?: string[],
+  ) => void;
   recordStorage: (params: StorageCandidateSkipRecord) => void;
-  summary: () => ShedCandidateSkipSummary;
   emit: () => void;
 };
 
@@ -84,10 +79,10 @@ export function createShedCandidateSkipRecorder(
   const counts = new Map<ShedCandidateSkipReason, number>();
   return {
     /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-    record: ({ device, reasonCode, rungsTried }) => {
+    record: (device, reasonCode, rungsTried) => {
       skipped.push({
         deviceId: device.id,
-        ...(device.name !== undefined ? { deviceName: device.name } : {}),
+        deviceName: device.name,
         reasonCode,
         currentDrawKw: device.currentDrawKw,
         ...(rungsTried ? { rungsTried } : {}),
@@ -99,10 +94,6 @@ export function createShedCandidateSkipRecorder(
       counts.set(reasonCode, (counts.get(reasonCode) ?? 0) + 1);
     },
     /* eslint-enable functional/immutable-data */
-    summary: () => ({
-      skippedCandidateCount: skipped.length,
-      skippedCandidateReasons: [...counts.entries()].map(([reason, count]) => ({ reason, count })),
-    }),
     emit: () => {
       if (!debugStructured || skipped.length === 0) return;
       debugStructured({

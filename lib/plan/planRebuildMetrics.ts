@@ -1,6 +1,7 @@
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
-import type { DevicePlan, PlanRebuildOutcome } from './planTypes';
+import type { DevicePlan } from './planTypes';
+import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
@@ -53,17 +54,15 @@ export const buildPlanHeadroomLogFields = (
   };
 };
 
-export const recordPlanRebuildMetrics = (params: {
-  reason: string;
-  queueWaitMs: number;
-  queueDepth: number;
-  rebuildStart: number;
-  outcome: PlanRebuildOutcome;
-}): void => {
-  const {
-    reason, queueWaitMs, queueDepth, rebuildStart, outcome,
-  } = params;
-  const totalMs = Date.now() - rebuildStart;
+export const recordPlanRebuildMetrics = (
+  reason: string,
+  queueWaitMs: number,
+  queueDepth: number,
+  rebuildStart: number,
+  outcome: PlanRebuildOutcome,
+): void => {
+  const endedAtMs = Date.now();
+  const totalMs = endedAtMs - rebuildStart;
   addPerfDuration('plan_rebuild_ms', totalMs);
   addPerfDuration('plan_rebuild_build_ms', outcome.buildMs);
   addPerfDuration('plan_rebuild_change_ms', outcome.changeMs);
@@ -72,26 +71,10 @@ export const recordPlanRebuildMetrics = (params: {
   addPerfDuration('plan_rebuild_status_write_ms', outcome.statusWriteMs);
   addPerfDuration('plan_rebuild_apply_ms', outcome.applyMs);
   incPerfCounter('plan_rebuild_total');
+  // A gated rebuild never reaches here, and the written ids have no trace reader.
+  const { gated: _gated, writtenDeviceIds: _writtenDeviceIds, ...measured } = outcome;
   recordPlanRebuildTrace({
-    reason,
-    queueDepth,
-    queueWaitMs,
-    buildMs: outcome.buildMs,
-    changeMs: outcome.changeMs,
-    snapshotMs: outcome.snapshotMs,
-    statusMs: outcome.statusMs,
-    statusWriteMs: outcome.statusWriteMs,
-    applyMs: outcome.applyMs,
-    totalMs,
-    actionChanged: outcome.actionChanged,
-    detailChanged: outcome.detailChanged,
-    metaChanged: outcome.metaChanged,
-    isDryRun: outcome.isDryRun,
-    appliedActions: outcome.appliedActions,
-    deviceWriteCount: outcome.deviceWriteCount,
-    commandRequestCount: outcome.commandRequestCount,
-    hadShedding: outcome.hadShedding,
-    failed: outcome.failed,
+    ...measured, reason, queueDepth, queueWaitMs, totalMs, endedAtMs,
   });
 };
 

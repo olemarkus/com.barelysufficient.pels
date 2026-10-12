@@ -310,7 +310,6 @@ export type PlanInputDeviceBase = {
   // means "unchanged", not "unknown". `available === false` is the one honest
   // "this device is gone" signal, and it comes from the SDK.
   reportedStepId?: string;
-  targetStepId?: string;
   // `selectedStepId` is NOT here: it is a fact about a step ladder and lives on
   // `SteppedPlanInputKind`, reached through `isSteppedLoadDevice`.
   desiredStepId?: string;
@@ -452,11 +451,6 @@ export type PlanInputDeviceBase = {
    */
   canSetControlResolved?: boolean;
   /**
-   * Producer-resolved aggregate boost flag (chunk 2): true if either the
-   * temperature-boost or EV-boost policy is active this cycle.
-   */
-  boostActive?: boolean;
-  /**
    * Producer-resolved residual-kW projection (chunks 3-4 of the planner-
    * detype refactor).
    *
@@ -496,8 +490,9 @@ export type PlanInputDeviceBase = {
   // (`lib/plan/planBinaryDevice.ts`), present IFF the device has binary control
   // (the observer resolved `currentOn`) this cycle. Raw observed `binaryControl` is no
   // longer carried — it stays transport/observer-internal. `currentState` (the
-  // four-valued reason/UI label) is producer-resolved at `toPlanDevice`.
-  currentState?: string;
+  // four-valued reason/UI label) is producer-resolved at `toPlanDevice`, for
+  // every device (`resolveObservedCurrentState` always answers).
+  currentState: string;
   /**
    * What the device draws while running, as the producer resolved it. REQUIRED —
    * never null, never undefined, never absent. The twin of `currentDrawKw` below:
@@ -610,7 +605,8 @@ export type PlanInputDeviceBase = {
    * missed release event can never make the planner ignore a running device.
    */
   externalOffHoldActive?: true;
-  budgetExempt?: boolean;
+  /** The owner's daily-budget exemption, resolved for every device. */
+  budgetExempt: boolean;
   /** Producer-resolved device reachability; absence is not a planner state. */
   available: boolean;
   lastLocalWriteMs?: number;
@@ -830,8 +826,7 @@ export type PlanDeviceCarriedKey =
   | 'nextStepCommandRetryAtMs' | 'planningPowerKw' | 'powerCapable'
   | 'previousStepId' | 'priority' | 'reportedStepId' | 'reportedStepObservedAtMs'
   | 'reportedStepPowerW' | 'selectedStepId' | 'stateOfCharge' | 'stepCommandPending'
-  | 'stepCommandRetryCount' | 'stepCommandStatus' | 'targetStepId'
-  | 'targets';
+  | 'stepCommandRetryCount' | 'stepCommandStatus' | 'targets';
 
 /**
  * Stripped before planning: raw observations and the decorator's own stamps.

@@ -13,8 +13,5 @@ export function resolveLatestPlanDesiredStepId(
   profile: SteppedLoadProfile,
 ): string | undefined {
   const plannedDevice = plan?.devices.find((device) => device.id === deviceId);
-  return getSteppedLoadStep(
-    profile,
-    plannedDevice?.targetStepId ?? plannedDevice?.desiredStepId,
-  )?.id;
+  return getSteppedLoadStep(profile, plannedDevice?.desiredStepId)?.id;
 }

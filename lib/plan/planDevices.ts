@@ -8,11 +8,10 @@ import {
   resolveSteppedShedHypotheticalStepId,
 } from './planSteppedShedResolution';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { isSurplusLiftEngaged, type PriceOptDeviceConfig } from './planSurplusAbsorb';
+import { isSurplusLiftEngaged } from './planSurplusAbsorb';
 import { resolvePriceOptimizationConfig } from '../price/priceOptimizer';
 import { isSurplusHeldDevice } from './shedding/surplusHold';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
-import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { applyOffStateReason, type ShortfallOffState } from './planOffStateReason';
 import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isDeferredHoldShed } from './shedding/deferredHold';
@@ -24,22 +23,11 @@ import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { temperatureSetpointsFor } from './planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import { addPerfDuration } from '../utils/perfCounters';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import type { PlanBuilderDeps } from './planBuilderDeps';
 
-export type PlanDevicesDeps = {
-  getShedBehavior: (deviceId: string) => ShedBehavior;
-  // The surplus opt-in only; the lift's value is already in the resolved setpoints.
-  getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
-  // Producer-resolved inferred curtailed-surplus term (kW, >= 0) for the surplus
-  // allocator's pool; 0 = no inferred surplus. The producer
-  // (`lib/solar/curtailmentSurplus.ts`, injected flat via setup wiring) owns
-  // every safety decision about the term — this layer never re-validates it.
-  getInferredSurplusKw: () => number;
-  // Observer-owned pending-binary-command store; plan-side raw reads go
-  // through `peek(id)` rather than `state.pendingBinaryCommands[id]`.
-  pendingBinaryCommandStore: PendingBinaryCommandStore;
-  debugStructured?: StructuredDebugEmitter;
-};
+/** The slice of the builder's deps the per-device materialization reads. */
+export type PlanDevicesDeps = Pick<PlanBuilderDeps,
+  'getShedBehavior' | 'getPriceOptimizationSettings' | 'getInferredSurplusKw' | 'pendingBinaryCommandStore'>;
 
 // `undefined` ⟺ the device is not a temperature device (no setpoint to plan).
 // For a temperature device the resolution is TOTAL: the observer's atomic facet
@@ -81,8 +69,8 @@ export function buildInitialPlanDevices(params: {
   const effectiveShedSet = buildEffectiveShedPosture({
     devices: context.devices,
     shedSet,
-    isExcluded: (dev) => isPhantomSetStepShed({ dev, devices: context.devices, state, deps })
-      || isSurplusOnlyHoldShed({ dev, state, shedReasons })
+    isExcluded: (dev) => isPhantomSetStepShed(dev, context.devices, state, deps)
+      || isSurplusOnlyHoldShed(dev, state, shedReasons)
       || isStartPolicyHoldShed(dev, shedReasons)
       || isDeferredHoldShed(dev, shedReasons),
   });
@@ -101,13 +89,7 @@ export function buildInitialPlanDevices(params: {
   /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
   const result = context.devices.map((dev) => {
     const t0 = Date.now();
-    const priority = dev.priority;
-    const plannedTarget = resolvePlannedTarget({
-      dev,
-      temperatureSetpoints: context.temperatureSetpoints,
-      state,
-      deps,
-    });
+    const plannedTarget = resolvePlannedTarget(dev, context.temperatureSetpoints, state, deps);
     // Binary dump-load surplus flag: "PELS is running this device on solar
     // surplus right now" — eligible per the allocator, not held this cycle, and
     // actually observed on. `resolvePlannedTarget` above reset the per-cycle
@@ -136,7 +118,6 @@ export function buildInitialPlanDevices(params: {
         && decision?.kind === 'rung'
         && decision.funded;
     }
-    const currentState = resolveCurrentState(dev);
     const shedBehavior: ShedBehavior = (
       isSteppedLoadDevice(dev) || isTemperaturePlanDevice(dev)
     )
@@ -149,12 +130,9 @@ export function buildInitialPlanDevices(params: {
     const t1 = Date.now();
     const base = buildBasePlanDevice({
       dev,
-      priority,
       recentlyRestored: isRecentlyRestored(state.actuation.lastDeviceRestoreMs[dev.id]),
       binaryCommandPending: deps.pendingBinaryCommandStore.hasActiveTurnOn(dev.id),
-      currentState,
       plannedTarget,
-      control: dev.control,
       shedBehavior,
       sheddingPlan,
       anyOtherDeviceLimited: isAnyOtherDeviceLimited(effectiveShedSet, dev.id),
@@ -183,14 +161,13 @@ export function buildInitialPlanDevices(params: {
  * (`PlanContext.temperatureSetpoints`); this only picks. A limit is not decided
  * here — `resolveShedAction` swaps in the limit for a device the plan sheds.
  */
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function resolvePlannedTarget(params: {
-  dev: PlanInputDevice;
-  temperatureSetpoints: TemperatureSetpointsByDevice;
-  state: PlanEngineState;
-  deps: PlanDevicesDeps;
-}): ResolvedPlannedTarget {
-  const { dev, temperatureSetpoints, state, deps } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign -- Stamps this device's surplus flag in place. */
+function resolvePlannedTarget(
+  dev: PlanInputDevice,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+  state: PlanEngineState,
+  deps: PlanDevicesDeps,
+): ResolvedPlannedTarget {
   // Default: surplus is not the binding cause unless the lift below proves it is.
   // Reset every cycle for every device so a stale true never lingers.
   state.surplusAbsorbActiveByDevice[dev.id] = false;
@@ -205,14 +182,8 @@ function resolvePlannedTarget(params: {
   state.surplusAbsorbActiveByDevice[dev.id] = lifted && setpoints.surplusC !== setpoints.keepC;
   return lifted ? setpoints.surplusC : setpoints.keepC;
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
-function resolveCurrentState(device: PlanInputDevice): string {
-  // Trust the producer-resolved label (`toPlanDevice` resolves it from the raw
-  // observed state once); the raw binary axis it was folded from no longer rides
-  // on the plan input.
-  return device.currentState ?? 'unknown';
-}
 function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
   if (!lastRestoreMs) return false;
   return Date.now() - lastRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
@@ -227,13 +198,12 @@ function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
 // move?" — so there is no planner decision to honour yet. Materialization is the
 // opposite case and must never recompute: it is handed the rung the shed was
 // priced at (`resolveSteppedLoadDirectShedStepId`).
-function isPhantomSetStepShed(params: {
-  dev: PlanInputDevice;
-  devices: PlanInputDevice[];
-  state: PlanEngineState;
-  deps: PlanDevicesDeps;
-}): boolean {
-  const { dev, devices, state, deps } = params;
+function isPhantomSetStepShed(
+  dev: PlanInputDevice,
+  devices: PlanInputDevice[],
+  state: PlanEngineState,
+  deps: PlanDevicesDeps,
+): boolean {
   if (!isSteppedLoadDevice(dev)) return false;
   const behavior = deps.getShedBehavior(dev.id);
   if (behavior.action !== 'set_step') return false;
@@ -252,12 +222,11 @@ function isPhantomSetStepShed(params: {
 // this cycle — exactly the condition under which `normalizeShedReasons` adopts the
 // `awaitingSolarSurplus` reason. A dump load genuinely capacity-shed (in
 // `shedReasons`) is excluded from this and still counts as posture.
-function isSurplusOnlyHoldShed(params: {
-  dev: PlanInputDevice;
-  state: PlanEngineState;
-  shedReasons: Map<string, DeviceReason>;
-}): boolean {
-  const { dev, state, shedReasons } = params;
+function isSurplusOnlyHoldShed(
+  dev: PlanInputDevice,
+  state: PlanEngineState,
+  shedReasons: Map<string, DeviceReason>,
+): boolean {
   // Delegates to `isSurplusHeldDevice`, the one definition shared with
   // `resolveSurplusHold`. These two were hand-mirrored and drifted once: the
   // proxy used here missed the release-pending window (eligible latched, still

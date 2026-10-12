@@ -97,6 +97,7 @@ const runLane = (params: {
     ...cycleArgsFor(buildContext(params.context)),
     state,
     sheddingActive: true,
+    guardInShortfall: false,
     deps: {
       powerTracker: { lastTimestamp: Date.now() } as PowerTrackerState,
       temperatureSetpoints: new Map(),

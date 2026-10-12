@@ -263,7 +263,6 @@ export class SilentMeterPlanBuilder {
       guardInShortfall: false,
       outcome: NO_SHEDDING_OUTCOME,
       recoveredAtMs: null,
-      overshootStats: null,
     };
   }
 }

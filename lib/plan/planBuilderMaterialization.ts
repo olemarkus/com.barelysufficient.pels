@@ -17,17 +17,13 @@ import type { RestoreHeadroomAxes } from './restore/headroomLedger';
  * membership into per-device `plannedState`/shed actions, or decline to lift an
  * existing shed.
  */
-import type { DevicePlanDevice, MeteredDevicePlanDevice, ShedBehavior } from './planTypes';
+import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { PlanEngineState, StorageLeverState } from './planState';
 import type { MeasuredPower, PlanContext } from './planContext';
 import type { SheddingPlan } from './shedding';
-import type { PriceOptDeviceConfig } from './planBuilderSurplus';
-import type { PowerTrackerState } from '../power/tracker';
-import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
-import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { PlanBuilderDeps } from './planBuilderDeps';
 import { buildInitialPlanDevices } from './planDevices';
 import type { ShortfallOffState } from './planOffStateReason';
 import { applyRestorePlan, type RestorePlanResult } from './restore';
@@ -40,26 +36,9 @@ import {
 import { rankRestoreCooldownCohort } from './planRestoreCooldownCohort';
 import { syncHeadroomCardState } from './planHeadroomDevice';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
-import { buildRestoreHeadroomLedger } from './restore/headroomLedger';
 import { buildCeilingShortfallInputs } from './planReasonShortfall';
 import { getOnDevices } from './restore/devices';
 import { trackPlanStage } from './planStageTiming';
-
-/**
- * The slice of `PlanBuilderDeps` the materialization stages read. Declared
- * structurally (like `OvershootTrackerDeps`) so this module never imports
- * `planBuilder.ts` back — the builder passes its own `deps` object through.
- * Read live off that shared object every cycle, never snapshotted.
- */
-export type PlanMaterializationDeps = {
-  getShedBehavior: (deviceId: string) => ShedBehavior;
-  getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
-  getInferredSurplusKw: () => number;
-  getPowerTracker: () => PowerTrackerState;
-  pendingBinaryCommandStore: PendingBinaryCommandStore;
-  deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  structuredLog?: PinoLogger;
-};
 
 type HoldPlanResult = {
   planDevices: DevicePlanDevice[];
@@ -73,14 +52,11 @@ type FinalizedPlanResult = {
 };
 
 export class PlanMaterializationStages {
+  /** The builder's own deps, read live every cycle, never snapshotted. */
   constructor(
-    private readonly deps: PlanMaterializationDeps,
+    private readonly deps: PlanBuilderDeps,
     private readonly state: PlanEngineState,
   ) { }
-
-  private get priceOptimizationSettings(): Record<string, PriceOptDeviceConfig> {
-    return this.deps.getPriceOptimizationSettings();
-  }
 
   buildPlanDevices(
     context: PlanContext,
@@ -92,12 +68,7 @@ export class PlanMaterializationStages {
       state: this.state,
       sheddingPlan,
       shortfall,
-      deps: {
-        getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-        getPriceOptimizationSettings: () => this.priceOptimizationSettings,
-        getInferredSurplusKw: this.deps.getInferredSurplusKw,
-        pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
-      },
+      deps: this.deps,
     }));
   }
 
@@ -109,59 +80,55 @@ export class PlanMaterializationStages {
     /** The holds PELS keeps on home batteries after this build's limit step (`StorageRelief.levers`). */
     storageLevers: Readonly<Record<string, StorageLeverState>>,
   ): RestorePlanResult {
-    return trackPlanStage('plan_restore_ms', () => this.applyRestorePlanAndUpdateState({
-      planDevices,
-      context,
-      power,
-      storageLevers,
-      sheddingActive: sheddingPlan.sheddingActive,
-      guardInShortfall: sheddingPlan.guardInShortfall,
-    }));
+    return trackPlanStage('plan_restore_ms', () => {
+      const restoreResult = applyRestorePlan({
+        planDevices,
+        context,
+        power,
+        state: this.state,
+        storageLevers,
+        sheddingActive: sheddingPlan.sheddingActive,
+        guardInShortfall: sheddingPlan.guardInShortfall,
+        deps: {
+          powerTracker: this.deps.getPowerTracker(),
+          getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
+          temperatureSetpoints: context.temperatureSetpoints,
+          deviceDiagnostics: this.deps.deviceDiagnostics,
+          structuredLog: this.deps.structuredLog,
+        },
+      });
+      this.state.restoreBackoff.commitCooldown(restoreResult.timing);
+      return restoreResult;
+    });
   }
 
   applyHoldPlan(
-    planDevices: DevicePlanDevice[],
+    // The restore pass's result carries the devices it decided and this
+    // cycle's effective timing — the same object the binary stay-off lane was
+    // fed (startup fields zeroed unless capacity is the binding source) — so
+    // both lanes name the same cause for the same cycle.
     restoreResult: RestorePlanResult,
     sheddingPlan: SheddingPlan,
     // Resolved ONCE per build before the planner and shared with restore
     // classification, so no stage can disagree about this build's limit.
-    // Semantics on `ShedHoldParams.temperatureSetpoints`.
+    // Semantics on `applyShedTemperatureHold`'s `temperatureSetpoints`.
     temperatureSetpoints: TemperatureSetpointsByDevice,
   ): HoldPlanResult {
-    return trackPlanStage('plan_hold_ms', () => applyShedTemperatureHold({
-      temperatureSetpoints,
-      ledger: buildRestoreHeadroomLedger({
-        capacityAvailableKw: restoreResult.capacityAvailableKw,
-        gridAvailableKw: restoreResult.gridAvailableKw,
-        budgetAvailableKw: restoreResult.budgetAvailableKw,
-      }),
-      headroomReserves: restoreResult.headroomReserves,
-      planDevices,
-      state: this.state,
-      shedReasons: sheddingPlan.shedReasons,
-      // This cycle's effective timing — the same object the binary stay-off lane
-      // was fed (startup fields zeroed unless capacity is the binding source) —
-      // so both lanes name the same cause for the same cycle.
-      timing: restoreResult.timing,
-      restoredOneThisCycle: restoreResult.restoredOneThisCycle,
-      restoredThisCycle: restoreResult.restoredThisCycle,
-      guardInShortfall: sheddingPlan.guardInShortfall,
-      sheddingActive: sheddingPlan.sheddingActive,
-    }));
+    return trackPlanStage('plan_hold_ms', () => applyShedTemperatureHold(
+      this.state, restoreResult, sheddingPlan, temperatureSetpoints,
+    ));
   }
 
-  normalizeReasons(params: {
-    planDevices: DevicePlanDevice[];
-    context: PlanContext;
-    power: MeasuredPower;
-    restoreResult: RestorePlanResult;
-    sheddingPlan: SheddingPlan;
-    holds: ShedReasonHoldInputs;
-    holdResult: HoldPlanResult;
-  }): DevicePlanDevice[] {
-    const {
-      planDevices, context, power, restoreResult, sheddingPlan, holds, holdResult,
-    } = params;
+  normalizeReasons(
+    context: PlanContext,
+    power: MeasuredPower,
+    restoreResult: RestorePlanResult,
+    sheddingPlan: SheddingPlan,
+    holds: ShedReasonHoldInputs,
+    /** The hold lane's result: the devices it settled and the availability it left. */
+    holdResult: HoldPlanResult,
+  ): DevicePlanDevice[] {
+    const { planDevices } = holdResult;
     // The cohort rank runs on the FULL list — every lane has written its
     // countdown by now — and before any carrier reads the plan. Only while a
     // restore cooldown is actually running: the countdown code has other
@@ -174,11 +141,7 @@ export class PlanMaterializationStages {
       shedReasons: sheddingPlan.shedReasons,
       guardInShortfall: sheddingPlan.guardInShortfall,
       headroomRaw: power.headroomKw,
-      inCooldown: restoreResult.timing.inCooldown,
-      activeOvershoot: restoreResult.timing.activeOvershoot,
-      shedCooldownRemainingSec: restoreResult.timing.shedCooldownRemainingSec,
-      shedCooldownStartedAtMs: restoreResult.timing.shedCooldownStartedAtMs,
-      shedCooldownTotalSec: restoreResult.timing.shedCooldownTotalSec,
+      timing: restoreResult.timing,
       ...holds,
       softLimitSource: context.softLimitSource,
       // The one resolved breach answer: this used to read the RAW total, which
@@ -260,58 +223,26 @@ export class PlanMaterializationStages {
    * previous batch's starvation, since the deferred callback hadn't run yet
    * when `serializePlanForUi` queried `live.starvation`.
    */
-  observeDiagnostics(params: {
-    context: PlanContext;
-    power: MeasuredPower;
-    planDevices: DevicePlanDevice[];
-    restoreResult: RestorePlanResult;
-    budgetPressureEligible: boolean;
-    smartTaskDrivingDeviceIds: ReadonlySet<string>;
-    nowTs: number;
-  }): void {
+  observeDiagnostics(
+    context: PlanContext,
+    power: MeasuredPower,
+    planDevices: DevicePlanDevice[],
+    restoreResult: RestorePlanResult,
+    budgetPressureEligible: boolean,
+    smartTaskDrivingDeviceIds: ReadonlySet<string>,
+    nowTs: number,
+  ): void {
     trackPlanStage('plan_observe_diag_ms', () => {
       if (!this.deps.deviceDiagnostics) return;
-      const { nowTs } = params;
       const observations = buildDeviceDiagnosticsObservations({
-        context: params.context,
-        power: params.power,
-        planDevices: params.planDevices,
-        restoreResult: params.restoreResult,
-        budgetPressureEligible: params.budgetPressureEligible,
-        smartTaskDrivingDeviceIds: params.smartTaskDrivingDeviceIds,
+        context,
+        power,
+        planDevices,
+        restoreResult,
+        budgetPressureEligible,
+        smartTaskDrivingDeviceIds,
       });
       this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
     });
-  }
-
-  private applyRestorePlanAndUpdateState(params: {
-    planDevices: DevicePlanDevice[];
-    context: PlanContext;
-    power: MeasuredPower;
-    storageLevers: Readonly<Record<string, StorageLeverState>>;
-    sheddingActive: boolean;
-    guardInShortfall: boolean;
-  }): RestorePlanResult {
-    const {
-      planDevices, context, power, storageLevers, sheddingActive, guardInShortfall,
-    } = params;
-    const restoreResult = applyRestorePlan({
-      planDevices,
-      context,
-      power,
-      state: this.state,
-      storageLevers,
-      sheddingActive,
-      guardInShortfall,
-      deps: {
-        powerTracker: this.deps.getPowerTracker(),
-        getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-        temperatureSetpoints: context.temperatureSetpoints,
-        deviceDiagnostics: this.deps.deviceDiagnostics,
-        structuredLog: this.deps.structuredLog,
-      },
-    });
-    this.state.restoreBackoff.commitCooldown(restoreResult.timing);
-    return restoreResult;
   }
 }

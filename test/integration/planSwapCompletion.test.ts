@@ -101,6 +101,7 @@ describe('swap reservation lifetime', () => {
       ...buildContext({ headroomRaw: 0, headroom: 0 }),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: buildDeps(1_000),
     });
     expect(reasonText(first.planDevices.find((d) => d.id === 'dev-off')?.reason)).toBe('swap pending');
@@ -120,6 +121,7 @@ describe('swap reservation lifetime', () => {
         ...buildContext({ headroomRaw: -1, headroom: -1 }),
         state,
         sheddingActive: true,
+        guardInShortfall: false,
         deps: buildDeps(1_000 + elapsed),
       });
     }
@@ -138,6 +140,7 @@ describe('swap reservation lifetime', () => {
       ...buildContext({ headroomRaw: 2, headroom: 2 }),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: buildDeps(1_000 + SWAP_TIMEOUT_MS + 30_000),
     });
 
@@ -162,6 +165,7 @@ describe('swap reservation lifetime', () => {
       ...buildContext({ headroomRaw: 0, headroom: 0 }),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: buildDeps(1_000),
     });
     expect(hasReservation(state, 'dev-off')).toBe(true);
@@ -174,6 +178,7 @@ describe('swap reservation lifetime', () => {
       ...buildContext({ headroomRaw: 2, headroom: 2 }),
       state,
       sheddingActive: false,
+      guardInShortfall: false,
       deps: buildDeps(1_000 + SWAP_TIMEOUT_MS + 30_000),
     });
 

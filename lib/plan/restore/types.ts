@@ -6,7 +6,6 @@ import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnost
 import type { PowerTrackerState } from '../../power/tracker';
 import type { RestoreTiming } from './timing';
 import type { PlanEngineState, StorageLeverState } from '../planState';
-import type { SteppedSwapExecutor } from './helpers';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 
 export type RestoreDeps = {
@@ -47,11 +46,10 @@ export type RestoreLoopState = {
  * parameter objects across this directory, 356 declared properties of which
  * only 169 were ever read by the function declaring them. The rest were relay.
  *
- * Cycle-scoped, so what is NOT here matters: `onDevices` and the stepped-swap
- * executor are rebuilt per lane from a fresh device snapshot (a restore inside
- * the lane changes which devices are on), and the running
- * `availableHeadroom`/`restoredOneThisCycle` pair is `RestoreLoopState`. Those
- * three change during the pass; everything below does not.
+ * Cycle-scoped, so what is NOT here matters: `onDevices` is rebuilt per lane
+ * from a fresh device snapshot (a restore inside the lane changes which devices
+ * are on), and the running `availableHeadroom`/`restoredOneThisCycle` pair is
+ * `RestoreLoopState`. Those change during the pass; everything below does not.
  */
 export type RestoreCycle = {
   readonly state: PlanEngineState;
@@ -86,26 +84,13 @@ export type RestoreCycle = {
 };
 
 /**
- * The lane-scoped half: the devices currently on, and the swap executor closed
- * over them. Rebuilt per lane because restoring a device changes both.
+ * The lane-scoped half: the devices currently on, which both the binary and the
+ * stepped lane may swap out. Rebuilt per lane because restoring a device changes
+ * which devices are on.
  */
 export type RestoreLane = {
   readonly onDevices: MeteredDevicePlanDevice[];
-  readonly steppedSwapExecutor: SteppedSwapExecutor;
 };
-
-export type RestoreDeviceTiming = Pick<RestoreTiming,
-| 'activeOvershoot'
-| 'inCooldown'
-| 'inRestoreCooldown'
-| 'inStartupStabilization'
-| 'measurementTs'
-| 'nowTs'
-| 'restoreCooldownSeconds'
-| 'restoreCooldownMs'
-| 'shedCooldownRemainingSec'
-| 'restoreCooldownRemainingSec'
-| 'startupStabilizationRemainingSec'>;
 
 /**
  * Result contract of the restore pass (`applyRestorePlan`), owned by

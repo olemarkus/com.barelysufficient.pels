@@ -1012,7 +1012,6 @@ export type SteppedLoadDecoration = {
     temperatureAdjustmentsDisabled?: true;
     selectedStepId?: string;
     planningPowerKw?: number;
-    targetStepId?: string;
     desiredStepId?: string;
     previousStepId?: string;
     lastStepCommandIssuedAt?: number;

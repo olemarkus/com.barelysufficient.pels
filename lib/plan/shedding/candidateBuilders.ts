@@ -41,12 +41,12 @@ export function buildBinaryCandidate(
   // the executor (`getBinaryControlPlan === null`), which would waste the shed
   // slot and leave the overshoot unrelieved while a writable device goes unshed.
   if (!isCanSetControl(device)) {
-    recorder?.record({ device, reasonCode: 'control_not_writable' });
+    recorder?.record(device, 'control_not_writable');
     return null;
   }
   const power = device.currentDrawKw;
   if (power <= 0) {
-    recorder?.record({ device, reasonCode: 'zero_current_draw' });
+    recorder?.record(device, 'zero_current_draw');
     return null;
   }
   return {
@@ -67,22 +67,19 @@ export function isEligibleForShedding(device: PlanInputDevice): boolean {
   return !isBinaryPlanDevice(device) || device.currentOn;
 }
 
-export function buildTemperatureCandidate(params: {
-  device: MeteredPlanInputDevice;
-  priority: number;
-  recentlyRestored: boolean;
+export function buildTemperatureCandidate(
+  device: MeteredPlanInputDevice,
+  priority: number,
+  recentlyRestored: boolean,
   /** The capability-normalized limit, resolved before the planner (`ResolvedShedBehavior`). */
-  shedTemperature: number;
-  targetCapabilityId: string;
-  pendingTargetCommands: PlanEngineState['pendingTargetCommands'];
-  recorder?: ShedCandidateSkipRecorder;
-}): TemperatureShedCandidate | null {
-  const {
-    device, priority, recentlyRestored, shedTemperature, targetCapabilityId, pendingTargetCommands, recorder,
-  } = params;
+  shedTemperature: number,
+  targetCapabilityId: string,
+  pendingTargetCommands: PlanEngineState['pendingTargetCommands'],
+  recorder: ShedCandidateSkipRecorder | undefined,
+): TemperatureShedCandidate | null {
   const power = device.currentDrawKw;
   if (power <= 0) {
-    recorder?.record({ device, reasonCode: 'zero_current_draw' });
+    recorder?.record(device, 'zero_current_draw');
     return null;
   }
   const pending = pendingTargetCommands[device.id];
@@ -137,11 +134,11 @@ export function recordSetpointShedSkip(
   recorder: ShedCandidateSkipRecorder,
 ): boolean {
   if (!isNotAtShedTemperature(candidate)) {
-    recorder.record({ device, reasonCode: 'already_at_shed_temperature' });
+    recorder.record(device, 'already_at_shed_temperature');
     return true;
   }
   if (limitWouldAddDemand(candidate, temperatureSetpoints)) {
-    recorder.record({ device, reasonCode: 'limit_would_add_demand' });
+    recorder.record(device, 'limit_would_add_demand');
     return true;
   }
   return false;

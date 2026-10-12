@@ -155,13 +155,7 @@ export class PlanStatusWriter {
       powerIsMeasured: plan.meta.powerIsMeasured,
       dryRunEffective,
     });
-    const status = this.resolveStatusResult({
-      inputKey,
-      plan,
-      priceLevel,
-      lastPowerUpdate,
-      dryRunEffective,
-    });
+    const status = this.resolveStatusResult(inputKey, plan, priceLevel, lastPowerUpdate, dryRunEffective);
 
     return {
       status,
@@ -171,24 +165,18 @@ export class PlanStatusWriter {
     };
   }
 
-  private resolveStatusResult(params: {
-    inputKey: string;
-    plan: DevicePlan;
-    priceLevel: PriceLevel;
-    lastPowerUpdate: number;
-    dryRunEffective: boolean;
-  }): PelsStatus {
-    const { inputKey, plan, priceLevel, lastPowerUpdate, dryRunEffective } = params;
+  private resolveStatusResult(
+    inputKey: string,
+    plan: DevicePlan,
+    priceLevel: PriceLevel,
+    lastPowerUpdate: number,
+    dryRunEffective: boolean,
+  ): PelsStatus {
     if (this.lastPelsStatusInputKey === inputKey && this.lastPelsStatusResult) {
       return this.lastPelsStatusResult;
     }
 
-    const result = buildPelsStatus({
-      plan,
-      priceLevel,
-      lastPowerUpdate,
-      dryRunEffective,
-    });
+    const result = buildPelsStatus(plan, priceLevel, lastPowerUpdate, dryRunEffective);
     this.lastPelsStatusInputKey = inputKey;
     this.lastPelsStatusResult = result;
     return result;

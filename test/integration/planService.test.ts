@@ -855,7 +855,6 @@ describe('PlanService', () => {
           currentDrawKw: 0,
           planningPowerKw: 3,
           reportedStepId: 'max',
-          targetStepId: 'max',
         })),
         computePhysicalPowerLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),

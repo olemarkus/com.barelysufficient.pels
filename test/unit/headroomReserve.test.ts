@@ -54,7 +54,6 @@ describe('resolveHeadroomReserves', () => {
       reservesStartupPower: true,
       steppedLoadProfile: steppedProfile,
       desiredStepId: 'max',
-      targetStepId: 'max',
     })]);
     expect(reserves[0]?.kw).toBe(1.25);
   });
@@ -77,6 +76,7 @@ describe('resolveHeadroomReserves', () => {
       },
       selectedStepId: 'off',
       binaryControl: { on: false },
+      currentState: 'off',
       currentDrawKw: 0,
       targets: [],
       stepPowerCalibration: { '6a': 0.7878, '10a': 1.9 },
@@ -90,16 +90,12 @@ describe('resolveHeadroomReserves', () => {
       guardInShortfall: false,
       outcome: NO_SHEDDING_OUTCOME,
       recoveredAtMs: null,
-      overshootStats: null,
     };
     const charger = buildBasePlanDevice({
       dev: input,
-      priority: 1,
       recentlyRestored: false,
       binaryCommandPending: false,
-      currentState: 'off',
       plannedTarget: undefined,
-      control: input.control,
       shedBehavior: { action: 'turn_off' },
       sheddingPlan: noShedding,
       anyOtherDeviceLimited: false,

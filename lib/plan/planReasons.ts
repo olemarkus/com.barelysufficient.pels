@@ -7,7 +7,7 @@ import {
   type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildRestoreShortfallReason } from './restore/accounting';
-import { buildShedCooldownReason } from './restore/timing';
+import { buildShedCooldownReason, type RestoreTiming } from './restore/timing';
 import {
   classifyPlanReason,
   type ClassifiedPlanReason,
@@ -71,11 +71,11 @@ export type ReasonContext = {
   readonly shedReasons: Map<string, DeviceReason>;
   readonly guardInShortfall: boolean;
   readonly headroomRaw: number | null;
-  readonly inCooldown: boolean;
-  readonly activeOvershoot: boolean;
-  readonly shedCooldownRemainingSec: number | null;
-  readonly shedCooldownStartedAtMs: number | null;
-  readonly shedCooldownTotalSec: number | null;
+  /**
+   * This cycle's effective restore timing, whole (`RestorePlanResult.timing`):
+   * the shed cooldown and the overshoot it yields to are read off it.
+   */
+  readonly timing: RestoreTiming;
   /**
    * Devices whose active smart task is between planned hours. When such a device
    * ends up held this cycle, that framing wins over capacity/dailyBudget because
@@ -119,7 +119,7 @@ function maybeApplyCooldownReason(
   ctx: ReasonContext,
   currentReason: ClassifiedPlanReason,
 ): DeviceReason | null {
-  const { inCooldown, activeOvershoot } = ctx;
+  const { inCooldown, activeOvershoot } = ctx.timing;
   if (
     inCooldown
     && !activeOvershoot
@@ -136,7 +136,7 @@ function maybeApplyCooldownReason(
     // where some device happened to be shed inside the last 60 s.
     && currentReason.code !== PLAN_REASON_CODES.startupStabilization
   ) {
-    return buildShedCooldownReason(ctx);
+    return buildShedCooldownReason(ctx.timing);
   }
   return null;
 }

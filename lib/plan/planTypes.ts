@@ -1,6 +1,5 @@
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
 import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
-import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
@@ -11,11 +10,7 @@ import type {
   PlanInputDeviceBase,
 } from '../../packages/planner-types/src/planInputDevice';
 import type {
-  DeviceControlAdapterSnapshot,
-  ExpectedPowerSource,
   PlannedDeviceState,
-  RestorePowerSource,
-  SteppedLoadCommandStatus,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
@@ -481,20 +476,75 @@ export function withMeteredDiscriminant<TBase>(
 
 export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
 
-type DevicePlanDeviceBase = {
-  id: string;
-  name: string;
-  // Carried flat so the `isTemperaturePlanDevice` guard's runtime predicate
-  // (`deviceType === 'temperature'`) reads identically on the output plan device
-  // as on the input device. Stamped by the producer in `lib/plan/planDevices.ts`.
-  deviceType: 'temperature' | 'onoff';
-  // Carried flat for the same reason: producer-resolved identity, which the
-  // settings-overview read model forwards rather than re-deriving it from
-  // whether a plug-state reading existed.
-  isEvCharger: boolean;
-  // A home battery or solar device: never a load the shed/restore lanes command.
-  // The overview shows a managed battery with its own card, never a solar device.
-  isBatteryOrSolar: boolean;
+/**
+ * The input facts a plan device carries unchanged from its `PlanInputDevice`,
+ * each with its contract and docblock on the input. Copied by the one producer
+ * (`buildBasePlanDevice`); no later stage rewrites them.
+ *
+ * Why the output carries them, where the input docs do not say:
+ * - `deviceType` and `isEvCharger` ride flat so the `isTemperaturePlanDevice`
+ *   guard's runtime predicate (`deviceType === 'temperature'`) reads
+ *   identically on the output as on the input, and so the settings-overview
+ *   read model forwards identity rather than re-deriving it from whether a
+ *   plug-state reading existed.
+ * - `isBatteryOrSolar`: never a load the shed/restore lanes command. The
+ *   overview shows a managed battery with its own card, never a solar device.
+ * - `commandableNow` MUST be carried. It was optional through the dual-read
+ *   transition, and the consequence was concrete: the plan device does not
+ *   carry `evChargingState`, so every plan-device `isCommandableNow` call fell
+ *   into the raw-field fallback, found nothing, and returned "charger state
+ *   unknown" — leaving `hasStableBinaryReleaseActuation` dead in production.
+ * - `control` is what PELS is permitted to do with this device
+ *   (`DeviceControlPosture`), so the planner's decision and the executor's
+ *   actuation read one answer. Read the member that matches the question:
+ *   `managed` for whether PELS may touch the device at all, `commandAuthority`
+ *   for whether it may command it this cycle. They were a single
+ *   `controllable` boolean until the split, which is why "managed but not
+ *   power-limited" was indistinguishable from "ignore this device".
+ * - `surplusOnly` and `surplusTracking`: the `shedDecisions.surplusOnlyByDevice`
+ *   stamp is built from the INPUT devices; these copies ride the plan for the
+ *   readers that have only the plan — the reason-pair validator, which pairs
+ *   `awaiting_solar_surplus` with the posture that earned it, and the settings UI.
+ * - `externalOffHoldActive`: the planner makes the device inactive and never
+ *   asks why it is off.
+ * - `available` means "not known to be unavailable": the transport resolves a
+ *   non-boolean read OPTIMISTICALLY to `true` (`managerHelpers.getIsAvailable`),
+ *   and every reader spells it `!== false`. That optimism is the capacity-UNSAFE
+ *   direction (`planHeadroomDevice` zeroes headroom only on
+ *   `available === false`, so an unreadable device stays sheddable and its
+ *   expected relief may never materialize). Do not read it as proof Homey said yes.
+ * - `residualKw` is read by `lib/plan/planRemainingSheddableLoad.ts` and
+ *   `lib/plan/restore/accounting.ts` after the flat plan-cycle gates.
+ * - There is intentionally no device-observation freshness field: the plan
+ *   trusts the producer-resolved `currentOn`/`currentState`. Nothing anywhere
+ *   ages a device observation out — a Homey driver only republishes a
+ *   capability on value CHANGE, so silence means "unchanged", not "unknown".
+ *
+ * Deliberately NOT carried:
+ * - `confirmedNotDrawing`: an input to the one boost decision
+ *   (`resolveBoostActive`), and that decision's result — `boostActive` — is what
+ *   the plan carries. Propagating the evidence as well is how the restore path
+ *   came to re-ask the same question with its own answer.
+ * - `stepPowerCalibration`: the planner prices every rung at its nameplate
+ *   (`resolveStepChangeKw`) and does not read the learned figure. Smart tasks
+ *   read it off `PlanInputDevice`, which is where it stays.
+ * - The boost configs and `stateOfCharge`: a boost threshold is configuration
+ *   and a battery level is an observation. The plan carries the DECISION they
+ *   produced (`boostActive`), resolved once by the producer. The battery level
+ *   reaches the settings UI from the seam that owns it
+ *   (`getObservedStateOfCharge` in `createPlanService`); the configured
+ *   thresholds never cross the plan wire at all.
+ * - The start-policy settings: the DECISION travels (`startPolicyHoldActive`).
+ */
+type CarriedInputKey =
+  | 'id' | 'name' | 'deviceType' | 'isEvCharger' | 'isBatteryOrSolar' | 'currentState'
+  | 'reportedStepId' | 'previousStepId' | 'lastStepCommandIssuedAt' | 'stepCommandRetryCount'
+  | 'nextStepCommandRetryAtMs' | 'stepCommandPending' | 'stepCommandStatus' | 'controlAdapter'
+  | 'commandableNow' | 'commandabilityReason' | 'objectiveKind' | 'hasStandingDemand'
+  | 'priority' | 'expectedPowerSource' | 'control' | 'budgetExempt' | 'available'
+  | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'residualKw';
+
+type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   // Why PELS holds a home battery this cycle (`StorageHold`). `none` while it
   // runs its own mode, and on every device that is not a battery. Stamped by
   // the storage stages (`attachStorageDecisions`).
@@ -502,7 +552,6 @@ type DevicePlanDeviceBase = {
   // `binaryControl` is split off onto the orthogonal `BinaryControlKind` cluster;
   // reach it through the `isBinaryPlanDevice` guard (`lib/plan/planBinaryDevice.ts`).
   // Present iff the producer resolved a binary `currentOn` value.
-  currentState: string;
   plannedState: PlannedDeviceState;
   // `currentTarget`, `currentTemperature`, and `plannedTarget` (planner output)
   // are split off onto the orthogonal `TemperatureKind` cluster; reach them
@@ -510,42 +559,16 @@ type DevicePlanDeviceBase = {
   // (`lib/plan/planTemperatureDevice.ts`). The boost configs and readings are
   // off the plan device entirely — it carries the resolved `boostActive`
   // decision and nothing behind it.
-  // There is intentionally no device-observation freshness field: the plan
-  // trusts the producer-resolved `currentOn`/`currentState`. Nothing anywhere
-  // ages a device observation out — a Homey driver only republishes a
-  // capability on value CHANGE, so silence means "unchanged", not "unknown".
-  reportedStepId?: string;
-  targetStepId?: string;
   // `selectedStepId` is NOT here: it is a fact about a step ladder and lives on
   // `SteppedLoadKind`, reached through `isSteppedLoadDevice`.
-  desiredStepId?: string;
-  previousStepId?: string;
-  lastDesiredStepId?: string;
-  lastStepCommandIssuedAt?: number;
-  stepCommandRetryCount?: number;
-  nextStepCommandRetryAtMs?: number;
-  controlAdapter?: DeviceControlAdapterSnapshot;
-  // No `evBoost` / `stateOfCharge` / `temperatureBoost`: a boost threshold is
-  // configuration and a battery level is an observation, and the plan device
-  // carries neither. It carries the DECISION they produced (`boostActive`
-  // below), resolved once by the producer. The battery level reaches the
-  // settings UI from the seam that owns it (`getObservedStateOfCharge` in
-  // `createPlanService`); the configured thresholds never cross the plan wire at
-  // all — the settings UI reads them straight from the settings store.
   /**
-   * Producer-resolved commandability, REQUIRED so no consumer can read absence
-   * as an answer. It was optional through the dual-read transition, and the
-   * consequence was concrete: the plan device does not carry `evChargingState`,
-   * so every plan-device `isCommandableNow` call fell into the raw-field
-   * fallback, found nothing, and returned "charger state unknown" — leaving
-   * `hasStableBinaryReleaseActuation` dead in production. Same class of bug as a
-   * fabricated `currentOn: true`.
+   * The step this cycle decided the device should be on: the keep rung capped by
+   * boost and the surplus ceiling, revised by the restore and hold stages. The
+   * one field for that decision — the executor and its step feedback read it.
    */
-  commandableNow: boolean;
-  commandabilityReason?: PlanInputDevice['commandabilityReason'];
-  objectiveKind?: PlanInputDevice['objectiveKind'];
-  /** Producer-resolved standing demand — see the twin docblock on `PlanInputDevice`. */
-  hasStandingDemand: boolean;
+  desiredStepId?: string;
+  /** The step the device was last commanded to, as the plan input reported it. */
+  lastDesiredStepId?: string;
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
   // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled
   // devices map to 'binary_restore'/'binary_release' and use the dedicated binary executor path;
@@ -553,32 +576,15 @@ type DevicePlanDeviceBase = {
   // configured shedBehavior (turn_off / set_temperature / set_step) exactly once, gated by
   // observed-state idempotency.
   deferredReleaseIntent?: 'binary_restore' | 'binary_release' | 'shed_release';
-  /** Rank in the active mode: unique, gap-free `1..N`, lower wins. REQUIRED —
-   * see the twin docblock on `PlanInputDevice`. */
-  priority: number;
   /** Draw when running, in kW. REQUIRED — see the twin docblock on `PlanInputDevice`. */
   expectedPowerKw: number;
   // `planningPowerKw` is NOT here: it is a stepped-ladder fact and lives on
   // `SteppedLoadKind`, reached through `isSteppedLoadDevice`.
-  /** Which rung produced the figure. REQUIRED — see the twin docblock on `DeviceDescriptor`. */
-  expectedPowerSource: ExpectedPowerSource;
   // `currentDrawKw` is split off onto the orthogonal `MeteredKind` cluster;
   // reach it through the `isMeteredPlanDevice` guard (`lib/plan/planMeteredDevice.ts`).
   // Present iff the device has a real per-device power reading this cycle.
   // Formal planner decision contract. UI/log text must be rendered from this structured reason.
   reason: DeviceReason;
-  /**
-   * What PELS is permitted to do with this device — see
-   * {@link DeviceControlPosture}. Carried through from the plan input unchanged,
-   * so the planner's decision and the executor's actuation read one answer.
-   *
-   * Read the member that matches the question: `managed` for whether PELS may
-   * touch the device at all, `commandAuthority` for whether it may command it
-   * this cycle. They were a single `controllable` boolean until the split, which
-   * is why "managed but not power-limited" was indistinguishable from "ignore
-   * this device".
-   */
-  control: DeviceControlPosture;
   /**
    * Is the "Only PELS starts this device" policy holding this device off THIS
    * CYCLE — the owner opted in and no smart task is driving it. Producer-resolved
@@ -631,7 +637,6 @@ type DevicePlanDeviceBase = {
    * for power even when capacity also wanted it off.
    */
   nonCapacityHoldShed?: true;
-  budgetExempt?: boolean;
   /**
    * The device's boost decision this cycle, and the planner's whole boost
    * vocabulary. REQUIRED: `resolveBoostActive` (`lib/plan/planBoost.ts`) answers
@@ -651,27 +656,10 @@ type DevicePlanDeviceBase = {
   // cycle's planned target (raised the setpoint to self-consume solar, not overridden by a
   // deadline floor). Drives the device card's "Raised to use your solar power" reason line.
   surplusAbsorbActive?: boolean;
-  // Producer-resolved "Run on solar surplus" dump-load posture, forwarded flat from
-  // `PlanInputDevice.surplusOnly` (see its doc block). The
-  // `shedDecisions.surplusOnlyByDevice` stamp is built from the INPUT devices,
-  // not from this copy; this one rides the plan device for the readers that
-  // have only the plan — the reason-flag validation and the settings UI.
-  surplusOnly?: true;
-  // Producer-resolved "Match solar surplus" tracking posture, forwarded flat from
-  // `PlanInputDevice.surplusTracking` (see its doc block). Rides the plan device
-  // so the reason-pair validator can pair `awaiting_solar_surplus` with the
-  // posture that earned it, exactly as `surplusOnly` does.
-  surplusTracking: boolean;
-  // Producer-resolved "Leave off until turned on again" posture, forwarded flat
-  // from `PlanInputDevice.externalOffHoldActive` (see its doc block). The planner
-  // makes the device inactive and never asks why it is off.
-  externalOffHoldActive?: true;
   // Forwarded flat from `PlanInputDevice.reservesStartupPower` (see its doc block): this device
   // may hold back its lowest-active-step power from lower-priority devices' admission until it
   // has started. Read only by `lib/plan/admission/headroomReserve.ts`.
   reservesStartupPower?: true;
-  stepCommandPending?: boolean;
-  stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending: boolean;
   // The shed triple, materialized as a unit by `materializeShedSnapshotFields`
   // (`lib/plan/planActionMaterialization.ts`) at both producers
@@ -727,50 +715,7 @@ type DevicePlanDeviceBase = {
    * the planner's problem (owner ruling, 2026-08-25).
    */
   recordRestoreOnTargetApply: boolean;
-  /**
-   * Producer-resolved reachability. REQUIRED because the transport already
-   * answers it for every device — but note HOW: `managerHelpers.getIsAvailable`
-   * resolves a non-boolean read OPTIMISTICALLY to `true`. So this field means
-   * "not known to be unavailable", and every reader has always spelled that
-   * `!== false`. Requiring it changes no decision; it just stops a third state
-   * existing in the type for a two-state answer.
-   *
-   * That optimism is the capacity-UNSAFE direction (`planHeadroomDevice` zeroes
-   * headroom only on `available === false`, so an unreadable device stays
-   * sheddable and its expected relief may never materialize). Pre-existing, and
-   * not something requiring the field makes better or worse — but do not read
-   * this field as proof Homey said yes.
-   */
-  available: boolean;
-  lastLocalWriteMs?: number;
   pendingTargetCommand?: PendingTargetCommandSummary;
-  // `confirmedNotDrawing` deliberately does NOT travel onto the plan output.
-  // It is an input to the one boost decision (`resolveBoostActive`), and that
-  // decision's result — `boostActive` — is what the plan carries. Propagating
-  // the evidence as well is how the restore path came to re-ask the same
-  // question with its own answer.
-  // `stepPowerCalibration` does not travel either: the planner prices every rung
-  // at its nameplate (`resolveStepChangeKw`) and does not read the learned
-  // figure. Smart tasks read it off `PlanInputDevice`, which is where it stays.
-  /**
-   * Producer-resolved residual-kW projection propagated from
-   * `PlanInputDevice.residualKw` at plan-build time (chunks 3-4 of the
-   * planner-detype refactor). Consumers in
-   * `lib/plan/planRemainingSheddableLoad.ts` (chunk 3) and
-   * `lib/plan/restore/accounting.ts` (chunk 4) read this after the flat
-   * plan-cycle gates. See the corresponding doc-block on `PlanInputDevice`
-   * for field semantics.
-   *
-   * Both halves are REQUIRED, for the reason stated there: the producer always
-   * stamps them, so absence is not a state a consumer can observe.
-   */
-  residualKw: {
-    shed: number;
-    restore: {
-      kw: number;
-      source: RestorePowerSource;
-    };
-  };
 };
 
 /**
@@ -901,48 +846,7 @@ export type StatusPlanChanges = Pick<
   'actionChanged' | 'actionSignature' | 'detailSignature' | 'metaSignature'
 >;
 
-export type PlanRebuildOutcome = {
-  buildMs: number;
-  changeMs: number;
-  snapshotMs: number;
-  statusMs: number;
-  statusWriteMs: number;
-  applyMs: number;
-  actionChanged: boolean;
-  detailChanged: boolean;
-  metaChanged: boolean;
-  appliedActions: boolean;
-  deviceWriteCount: number;
-  /**
-   * Devices whose apply threw (caught per-device by the dispatch). The
-   * silence escalation reads this: a fail-closed pass whose writes all
-   * failed did NOT take effect and must not latch as completed.
-   */
-  deviceApplyFailureCount: number;
-  /**
-   * Ids of the devices this rebuild actually wrote to. `appliedActions` says only
-   * that SOMETHING was written; this says which.
-   *
-   * Its original consumer was the realtime circuit breaker, which needed per-device
-   * attribution to avoid charging a strike to a device that merely reported a
-   * change while a different one was actuated. That breaker went with the
-   * observation lane, so nothing reads this today — it survives as the honest
-   * shape of the answer, and as what a per-device consumer would need.
-   */
-  writtenDeviceIds: string[];
-  commandRequestCount: number;
-  hadShedding: boolean;
-  isDryRun: boolean;
-  failed: boolean;
-  /**
-   * True when no plan was built because the wiring layer's build gate was shut
-   * (in production: this home has no meter measurement yet), or because app
-   * teardown released the snapshot warmup gate. Distinct from `failed` —
-   * nothing went wrong, there was simply nothing to plan from — and distinct
-   * from a zeroed no-op, which means a plan WAS built and changed nothing.
-   */
-  gated: boolean;
-};
+export type { PlanRebuildOutcome } from '../planContract/planActuationResult';
 
 // `PlanInputDevice` (the planner's input contract) now lives in the
 // `@pels/planner-types` workspace, below the domain peer layer alongside

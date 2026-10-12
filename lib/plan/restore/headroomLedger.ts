@@ -61,7 +61,7 @@ export function buildRestoreHeadroomLedger(axes: RestoreHeadroomAxes): RestoreHe
   let budgetKw = axes.budgetAvailableKw;
   return {
     availableFor(dev) {
-      return minPowerLimit(capacityKw, gridKw, dev.budgetExempt === true ? null : budgetKw);
+      return minPowerLimit(capacityKw, gridKw, dev.budgetExempt ? null : budgetKw);
     },
     commit(dev, spentKw) {
       // Finite-positive gate: a NaN delta from an upstream regression must not
@@ -71,7 +71,7 @@ export function buildRestoreHeadroomLedger(axes: RestoreHeadroomAxes): RestoreHe
       if (!Number.isFinite(spentKw) || spentKw <= 0) return;
       if (capacityKw !== null) capacityKw -= spentKw;
       if (gridKw !== null) gridKw -= spentKw;
-      if (dev.budgetExempt !== true && budgetKw !== null) budgetKw -= spentKw;
+      if (!dev.budgetExempt && budgetKw !== null) budgetKw -= spentKw;
     },
     summaryAvailableKw() {
       return minPowerLimit(capacityKw, gridKw, budgetKw);

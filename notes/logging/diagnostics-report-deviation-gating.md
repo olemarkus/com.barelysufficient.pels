@@ -85,8 +85,8 @@ state). Dedupe maps prune via `shouldEmitOnChange` (160 MB RSS ceiling).
 2. **EV / stepped-load clamp** (`flowCards/registerFlowCards.ts`,
    `stepped_load_report_clamp_detected`). `report_stepped_load_*` was never a flooder
    (~80 lines/86 h), so the routine accepted/unchanged report stays at info; this **adds**
-   one self-contained `warn` joining the **commanded** step (`desiredStepId` /
-   `targetStepId` off the decorated snapshot) to the **reported** power when the device
+   one self-contained `warn` joining the **commanded** step (`desiredStepId` off the
+   decorated snapshot) to the **reported** power when the device
    reports materially below its commanded step — a downward shortfall beyond the existing
    `getSteppedLoadPowerCeilingMarginW` margin. Per-device dedupe + 10-min heartbeat so a
    stuck clamp emits once, not per report. (Required tightening `getFlowSnapshot` /

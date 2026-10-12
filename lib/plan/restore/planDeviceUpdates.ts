@@ -29,7 +29,6 @@ function buildOffSteppedRestoreShedUpdate(dev: DevicePlanDevice): Partial<Device
   return {
     plannedState: 'shed',
     desiredStepId: offStepId,
-    targetStepId: offStepId,
     shedAction: dev.shedAction ?? (isBinaryPlanDevice(dev) ? 'turn_off' : 'set_step'),
   };
 }

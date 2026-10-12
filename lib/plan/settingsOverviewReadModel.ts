@@ -14,12 +14,6 @@ import type {
   EvChargingState,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
-import type {
-  HomeBatteryCardRead,
-  ObservedEvChargingStateRead,
-  ObservedStateOfChargeRead,
-  ObservedTemperatureRead,
-} from '../observer/observedDeviceStateProjection';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
@@ -31,33 +25,31 @@ import { buildDeviceStatus } from './deviceStatusReadModel';
 import {
   buildHomeBatteryStatus,
   buildSettingsUiPlanHomeBattery,
+  readHomeBatteryCardForHome,
   type HomeBatteryCard,
 } from './batteryStatusReadModel';
+import type { PlanServiceDeps } from './planServiceDeps';
 
-export type SettingsOverviewReadModelDeps = {
+/**
+ * The read model's deps: the plan service's own observer-owned reads, each
+ * documented on `PlanServiceDeps` and passed through unchanged (the planner
+ * carries none of these readings — the observer is their canonical source),
+ * with the home whose battery card it may show, plus this publication's
+ * execution, posture and clock.
+ *
+ * `getSteppedLoadProfileById` is the observational ladder map, built once per
+ * serialize from the raw, undecorated snapshot so there is no re-decoration
+ * side effect. Stepped-ness is NOT resolved from it: it is the plan device's own
+ * ladder (`buildOverviewSteppedLoad`).
+ */
+export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
+  | 'homeId' | 'getObservedEvChargingState' | 'getAssociatedCarChargingState' | 'getObservedStateOfCharge'
+  | 'getObservedTemperature' | 'getHomeBatteryCard' | 'getSteppedLoadProfileById'> & {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
   dryRun: boolean;
   nowMs: number;
   getOverviewStarvation: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
   getIdleClassification: (deviceId: string) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
-  // EV charging state is observed state — the observer is its canonical source
-  // (`ObservedDeviceState.evChargingState`), not the planner. The read model
-  // uses it to resolve presentation; the raw string never reaches the UI.
-  getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
-  getAssociatedCarChargingState: (deviceId: string) => EvChargingState | undefined;
-  // The device's battery level, for the charger card. Observer-owned like the
-  // plug-state above: the plan device carries the boost DECISION, never the
-  // reading it was made from.
-  getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
-  getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
-  // A home battery's card facts (control surface, own power and level), or
-  // `none` for any other device. Observer-owned like the readings above.
-  getHomeBatteryCard: (deviceId: string) => HomeBatteryCardRead;
-  // Observational device kind, for the temperature card. Supplied as a
-  // built-once map sourced from the raw, undecorated snapshot so there is no
-  // re-decoration side effect. Stepped-ness is NOT resolved from a map: it is
-  // the plan device's own ladder (`buildOverviewSteppedLoad`).
-  getSteppedLoadProfileById: () => Map<string, SteppedLoadProfile>;
 };
 
 function resolveFiniteKWh(value: number | undefined): number | undefined {
@@ -283,7 +275,7 @@ export function buildSettingsOverviewReadModel(
     // the owner does not manage is not in the plan at all, and one in a meter
     // area reads as no battery card (`readHomeBatteryCardForHome`).
     devices: plan.devices.flatMap((device) => {
-      const homeBattery = deps.getHomeBatteryCard(device.id);
+      const homeBattery = readHomeBatteryCardForHome(deps.homeId, deps.getHomeBatteryCard, device.id);
       if (homeBattery.kind === 'battery') return [buildHomeBatteryOverviewDevice(device, homeBattery, deps)];
       if (device.isBatteryOrSolar) return [];
       return [buildLoadOverviewDevice(

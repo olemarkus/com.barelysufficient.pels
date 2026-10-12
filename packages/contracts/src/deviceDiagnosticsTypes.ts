@@ -1,7 +1,7 @@
 export type DeviceDiagnosticsWindowKey = '1d' | '7d' | '21d';
 
-// Why the starvation clock is RUNNING. Mirrors `PlanStarvationCountingCause`
-// (`lib/planContract/planDecisionSemantics.ts`), which is the only producer of the
+// Why the starvation clock is RUNNING. The planner classifier
+// (`lib/planContract/planDecisionSemantics.ts`) is the only producer of the
 // planner-derived members; the rule for membership is "PELS is the reason the device is
 // down" (`notes/starvation/README.md`). Each cause stays distinct because device detail
 // renders it — a cooldown must not read as a reservation.

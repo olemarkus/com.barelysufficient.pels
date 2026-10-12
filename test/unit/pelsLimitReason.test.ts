@@ -68,12 +68,12 @@ describe('pels status limit reason', () => {
       reason: 'cooldown (shedding, 45s remaining)',
     });
 
-    const status = buildPelsStatus({
+    const status = buildPelsStatus(
       plan,
-      priceLevel: PriceLevel.NORMAL,
-      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-      dryRunEffective: false,
-    });
+      PriceLevel.NORMAL,
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
 
     expect(status.limitReason).toBe(expected);
   });
@@ -93,12 +93,12 @@ describe('pels status limit reason', () => {
       reason,
     });
 
-    const status = buildPelsStatus({
+    const status = buildPelsStatus(
       plan,
-      priceLevel: PriceLevel.NORMAL,
-      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-      dryRunEffective: false,
-    });
+      PriceLevel.NORMAL,
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
 
     // The held device still counts in devicesOff even though the reason is a
     // transient restore/settling hold, not the cap — this is exactly the pair
@@ -114,12 +114,12 @@ describe('pels status limit reason', () => {
     const plan = buildPlan({ softLimitSource: 'capacity', reason: 'waiting for cheaper hours' });
     plan.devices[0] = { ...plan.devices[0], nonCapacityHoldShed: true };
 
-    const status = buildPelsStatus({
+    const status = buildPelsStatus(
       plan,
-      priceLevel: PriceLevel.NORMAL,
-      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-      dryRunEffective: false,
-    });
+      PriceLevel.NORMAL,
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
 
     expect(status.limitReason).toBe('none');
   });
@@ -131,12 +131,12 @@ describe('pels status limit reason', () => {
       // `nonCapacityHoldShed`, and no limit drives it either.
       const plan = buildPlan({ softLimitSource, reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid } });
 
-      const status = buildPelsStatus({
+      const status = buildPelsStatus(
         plan,
-        priceLevel: PriceLevel.NORMAL,
-        lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-        dryRunEffective: false,
-      });
+        PriceLevel.NORMAL,
+        Date.UTC(2026, 1, 7, 12, 0, 0),
+        false,
+      );
 
       expect(status.limitReason).toBe('none');
     },
@@ -151,12 +151,12 @@ describe('pels status limit reason', () => {
     const plan = buildPlan({ softLimitSource, reason: { code } });
     plan.devices[0] = { ...plan.devices[0], nonCapacityHoldShed: true };
 
-    const status = buildPelsStatus({
+    const status = buildPelsStatus(
       plan,
-      priceLevel: PriceLevel.NORMAL,
-      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-      dryRunEffective: false,
-    });
+      PriceLevel.NORMAL,
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
 
     expect(status.limitReason).toBe('none');
   });
@@ -172,12 +172,12 @@ describe('pels status limit reason', () => {
       powerIsMeasured: false,
     });
 
-    const status = buildPelsStatus({
+    const status = buildPelsStatus(
       plan,
-      priceLevel: PriceLevel.NORMAL,
-      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-      dryRunEffective: false,
-    });
+      PriceLevel.NORMAL,
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
 
     expect(status.limitReason).toBe('none');
     expect(status.powerKnown).toBe(false);
@@ -221,12 +221,12 @@ describe('pels status limit reason', () => {
       storageReleases: [],
     };
 
-    const status = buildPelsStatus({
+    const status = buildPelsStatus(
       plan,
-      priceLevel: PriceLevel.NORMAL,
-      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-      dryRunEffective: false,
-    });
+      PriceLevel.NORMAL,
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
 
     expect(status.limitReason).toBe('none');
     expect(status.devicesOn).toBe(0);
@@ -248,12 +248,12 @@ describe('pels status limit reason', () => {
       storageReleases: [],
     };
 
-    const status = buildPelsStatus({
+    const status = buildPelsStatus(
       plan,
-      priceLevel: PriceLevel.NORMAL,
-      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-      dryRunEffective: false,
-    });
+      PriceLevel.NORMAL,
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
 
     expect(status.capacityShortfall).toBe(true);
     expect(status.shortfallBudgetThresholdKw).toBe(6);
@@ -275,12 +275,12 @@ describe('pels status limit reason', () => {
     PriceLevel.UNKNOWN,
   ] as const)('carries the producer-resolved price level through to the status', (priceLevel) => {
     const plan = buildPlan({ softLimitSource: 'capacity', reason: 'keep' });
-    const status = buildPelsStatus({
+    const status = buildPelsStatus(
       plan,
       priceLevel,
-      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
-      dryRunEffective: false,
-    });
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
     expect(status.priceLevel).toBe(priceLevel);
   });
 });
@@ -295,12 +295,12 @@ describe('pels status projected-over-hard-cap flag', () => {
   // Takes a PARTIAL meta and completes it via the shared fixture: the plan meta
   // is required almost throughout now, and each case here is about two or three
   // numbers, not about spelling a full meta.
-  const statusFor = (meta: PlanMetaOverrides) => buildPelsStatus({
-    plan: buildPlanWithMeta(buildPlanMeta(meta)),
-    priceLevel: PriceLevel.NORMAL,
-    lastPowerUpdate: Date.UTC(2026, 6, 5, 12, 0, 0),
-    dryRunEffective: false,
-  });
+  const statusFor = (meta: PlanMetaOverrides) => buildPelsStatus(
+    buildPlanWithMeta(buildPlanMeta(meta)),
+    PriceLevel.NORMAL,
+    Date.UTC(2026, 6, 5, 12, 0, 0),
+    false,
+  );
 
   it('flags the trajectory when projected hour energy lands past the cap', () => {
     // projected = 1.9 + 6.0 × 28/60 = 4.7 kWh > 4.5 kWh cap.
@@ -359,12 +359,12 @@ describe('pels status effective dry-run posture (per-home Limits card)', () => {
     devices: [],
     storageReleases: [],
   };
-  const statusWith = (dryRunEffective: boolean) => buildPelsStatus({
-    plan: emptyPlan,
-    priceLevel: PriceLevel.NORMAL,
-    lastPowerUpdate: 1_745_000_000_000,
+  const statusWith = (dryRunEffective: boolean) => buildPelsStatus(
+    emptyPlan,
+    PriceLevel.NORMAL,
+    1_745_000_000_000,
     dryRunEffective,
-  });
+  );
 
   it('emits the posture every home supplies, whichever way it reads', () => {
     expect(statusWith(true).dryRunEffective).toBe(true);
@@ -384,12 +384,12 @@ describe('pels status hard-cap trajectory (measured figures only)', () => {
   // frozen in the blob for the whole outage, beside a payload that withholds
   // every figure it was derived from.
   const overCapMeta = { totalKw: 9.5, usedKWh: 9, minutesRemaining: 30, hardCapLimitKw: 10 };
-  const statusFor = (meta: DevicePlan['meta']) => buildPelsStatus({
-    plan: { meta, devices: [], storageReleases: [] },
-    priceLevel: PriceLevel.NORMAL,
-    lastPowerUpdate: 1_745_000_000_000,
-    dryRunEffective: false,
-  });
+  const statusFor = (meta: DevicePlan['meta']) => buildPelsStatus(
+    { meta, devices: [], storageReleases: [] },
+    PriceLevel.NORMAL,
+    1_745_000_000_000,
+    false,
+  );
 
   it('publishes the verdict on a measured plan', () => {
     expect(statusFor(buildPlanMeta(overCapMeta)).projectedOverHardCap).toBe(true);
@@ -444,12 +444,12 @@ describe('pels status meter total (Limits "Power now")', () => {
     devices: [],
     storageReleases: [],
   };
-  const statusWith = (dryRunEffective: boolean) => buildPelsStatus({
-    plan: drawPlan,
-    priceLevel: PriceLevel.NORMAL,
-    lastPowerUpdate: 1_745_000_000_000,
+  const statusWith = (dryRunEffective: boolean) => buildPelsStatus(
+    drawPlan,
+    PriceLevel.NORMAL,
+    1_745_000_000_000,
     dryRunEffective,
-  });
+  );
 
   it('emits the meter total so a card renders Power now without per-device attribution', () => {
     expect(statusWith(true).totalKw).toBe(5.2);
@@ -457,12 +457,12 @@ describe('pels status meter total (Limits "Power now")', () => {
   });
 
   it('omits the total only when the plan was unmeasured — measurement, not home kind', () => {
-    const status = buildPelsStatus({
-      plan: { meta: buildUnmeasuredPlanMeta({ totalKw: 5.2, softLimitKw: 6 }), devices: [], storageReleases: [] },
-      priceLevel: PriceLevel.NORMAL,
-      lastPowerUpdate: 1_745_000_000_000,
-      dryRunEffective: false,
-    });
+    const status = buildPelsStatus(
+      { meta: buildUnmeasuredPlanMeta({ totalKw: 5.2, softLimitKw: 6 }), devices: [], storageReleases: [] },
+      PriceLevel.NORMAL,
+      1_745_000_000_000,
+      false,
+    );
     expect(status.totalKw).toBeUndefined();
     expect(Object.prototype.hasOwnProperty.call(JSON.parse(JSON.stringify(status)), 'totalKw')).toBe(false);
   });
