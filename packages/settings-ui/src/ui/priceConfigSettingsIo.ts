@@ -1,9 +1,7 @@
 import { getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { state } from './state.ts';
 import {
-  readCurrentPriceSettings,
   resolveChangedPriceSettingWrites,
-  parsePriceSettingsInputs,
   normalizeNorwayPriceModel,
   normalizePriceSchemeSetting,
 } from './priceSettingsPersistence.ts';
@@ -77,6 +75,45 @@ const numberSetting = (value: unknown, fallback: number): number => (
   typeof value === 'number' && Number.isFinite(value) ? value : fallback
 );
 
+/**
+ * The price settings the save validates and writes, as the store holds them.
+ *
+ * A save diffs against these rather than against the page's config state,
+ * because that state runs ahead of the store: each handler that saves through
+ * here patches it first, and a failed or rejected save leaves the edit there
+ * unsaved, so the next save re-sends it. The scheme change also reads the persisted
+ * scheme here (see `handleSchemeChange`).
+ */
+export const readCurrentPriceSettings = async (): Promise<PriceSettingsSaveInput> => {
+  const [
+    priceScheme,
+    norwayPriceModel,
+    priceArea,
+    providerSurcharge,
+    thresholdPercent,
+    minDiffOre,
+    powerhourDeviceId,
+  ] = await Promise.all([
+    getSetting(PRICE_SCHEME),
+    getSetting(NORWAY_PRICE_MODEL),
+    getSetting('price_area'),
+    getSetting('provider_surcharge'),
+    getSetting(PRICE_THRESHOLD_PERCENT),
+    getSetting(PRICE_MIN_DIFF_ORE),
+    getSetting(POWERHOUR_DEVICE_ID),
+  ]);
+
+  return {
+    priceScheme: normalizePriceSchemeSetting(priceScheme),
+    powerhourDeviceId: readPowerhourDeviceIdSetting(powerhourDeviceId),
+    norwayPriceModel: normalizeNorwayPriceModel(norwayPriceModel),
+    priceArea: stringSetting(priceArea, 'NO1'),
+    providerSurcharge: numberSetting(providerSurcharge, 0),
+    thresholdPercent: numberSetting(thresholdPercent, 25),
+    minDiffOre: numberSetting(minDiffOre, 0),
+  };
+};
+
 export const validateAndSavePriceSettings = async (input: PriceSettingsSaveInput) => {
   const {
     priceScheme, powerhourDeviceId, norwayPriceModel, priceArea,
@@ -97,17 +134,18 @@ export const validateAndSavePriceSettings = async (input: PriceSettingsSaveInput
     throw new Error('Minimum difference must be between 0 and 1000.');
   }
 
-  const nextSettings = parsePriceSettingsInputs({
-    priceSchemeValue: priceScheme,
+  const nextSettings: PriceSettingsSaveInput = {
+    priceScheme,
     // Carried through the save rather than defaulted: without it every save of
     // this form would write "no device" over a choice the owner had made.
-    powerhourDeviceIdValue: powerhourDeviceId,
-    norwayPriceModelValue: norwayPriceModel,
-    priceAreaValue: priceArea,
-    providerSurchargeValue: String(providerSurcharge),
-    thresholdPercentValue: String(thresholdPercent),
-    minDiffOreValue: String(minDiffOre),
-  });
+    powerhourDeviceId,
+    norwayPriceModel,
+    priceArea,
+    providerSurcharge,
+    // A whole percent, as the field steps: a fractional entry is stored truncated.
+    thresholdPercent: Math.trunc(thresholdPercent),
+    minDiffOre,
+  };
 
   const currentSettings = await readCurrentPriceSettings();
   const writes = resolveChangedPriceSettingWrites(nextSettings, currentSettings);
@@ -123,12 +161,7 @@ export const validateAndSavePriceSettings = async (input: PriceSettingsSaveInput
  */
 export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatch> => {
   const [
-    priceScheme,
-    norwayPriceModel,
-    priceArea,
-    providerSurcharge,
-    thresholdPercent,
-    minDiffOre,
+    savedPriceSettings,
     priceOptEnabled,
     countyCode,
     organizationNumber,
@@ -136,14 +169,8 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     priceOptSettings,
     exportSettings,
     pvForecastSource,
-    powerhourDeviceId,
   ] = await Promise.all([
-    getSetting(PRICE_SCHEME),
-    getSetting(NORWAY_PRICE_MODEL),
-    getSetting('price_area'),
-    getSetting('provider_surcharge'),
-    getSetting(PRICE_THRESHOLD_PERCENT),
-    getSetting(PRICE_MIN_DIFF_ORE),
+    readCurrentPriceSettings(),
     getSetting(PRICE_OPTIMIZATION_ENABLED),
     getSetting('nettleie_fylke'),
     getSetting('nettleie_orgnr'),
@@ -151,7 +178,6 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
     getSetting(PRICE_OPTIMIZATION_SETTINGS),
     readExportPriceSettings(),
     getSetting(PV_FORECAST_SOURCE),
-    getSetting(POWERHOUR_DEVICE_ID),
   ]);
 
   const priceOptimizationRead = classifyPriceOptimizationConfigMap(priceOptSettings);
@@ -160,14 +186,8 @@ export const readPriceConfigSettings = async (): Promise<PriceConfigSettingsPatc
   }
 
   return {
+    ...savedPriceSettings,
     optimizationEnabled: priceOptEnabled !== false,
-    priceScheme: normalizePriceSchemeSetting(priceScheme),
-    powerhourDeviceId: readPowerhourDeviceIdSetting(powerhourDeviceId),
-    norwayPriceModel: normalizeNorwayPriceModel(norwayPriceModel),
-    priceArea: stringSetting(priceArea, 'NO1'),
-    providerSurcharge: numberSetting(providerSurcharge, 0),
-    thresholdPercent: numberSetting(thresholdPercent, 25),
-    minDiffOre: numberSetting(minDiffOre, 0),
     countyCode: stringSetting(countyCode, '03'),
     organizationNumber: stringSettingOrEmpty(organizationNumber),
     tariffGroup: stringSetting(tariffGroup, 'Husholdning'),

@@ -16,9 +16,11 @@ describe('PriceAwareDevicesView', () => {
     renderPriceAwareDevicesView(mount, {
       optimizationEnabled: true,
       devices: [{ id: 'hp', name: 'Heat pump', cheapDelta: -3, expensiveDelta: 2 }],
-      onOptimizationToggle: vi.fn(),
-      onDeviceCheapDeltaChange: vi.fn(),
-      onDeviceExpensiveDeltaChange,
+      handlers: {
+        onOptimizationToggle: vi.fn(),
+        onDeviceCheapDeltaChange: vi.fn(),
+        onDeviceExpensiveDeltaChange,
+      },
     });
 
     const values = Array.from(mount.querySelectorAll('.value-adjuster__value')).map((node) => node.textContent);

@@ -13,7 +13,6 @@ import { state, defaultPriceOptimizationConfig, type SettingsUiDeviceView } from
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { resolveManagedState, resolveHomeExhibitsSolar } from './state.ts';
 import { gridCompanies } from './gridCompanies.ts';
-import { readCurrentPriceSettings } from './priceSettingsPersistence.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import {
   applyExportSchemeChangePlan,
@@ -24,6 +23,7 @@ import {
   resolveExportSchemeChangePlan,
 } from './exportPriceSettings.ts';
 import {
+  readCurrentPriceSettings,
   readPriceConfigSettings,
   validateAndSavePriceSettings as saveValidatedPriceSettings,
   writePriceOptimizationSettings,
@@ -43,10 +43,12 @@ import { buildFlowStatus, buildHomeyStatus, buildPowerhourStatus } from './price
 import { resolveLiveSummarySignals } from './livePriceSignals.ts';
 import {
   renderElectricityPricesView,
+  type ElectricityPricesHandlers,
   type ElectricityPricesViewProps,
 } from './views/ElectricityPricesView.tsx';
 import {
   renderPriceAwareDevicesView,
+  type PriceAwareDevicesHandlers,
   type PriceAwareDevicesViewProps,
 } from './views/PriceAwareDevicesView.tsx';
 import type {
@@ -115,32 +117,9 @@ const buildPriceOptDevices = (devices: SettingsUiDeviceView[]): PriceOptDevice[]
 const renderElectricityPrices = () => {
   if (!electricityPricesSurface) return;
   const props: ElectricityPricesViewProps = {
-    thresholdPercent: configState.thresholdPercent,
-    minDiffOre: configState.minDiffOre,
-    priceScheme: configState.priceScheme,
-    norwayPriceModel: configState.norwayPriceModel,
-    priceArea: configState.priceArea,
-    providerSurcharge: configState.providerSurcharge,
-    countyCode: configState.countyCode,
-    organizationNumber: configState.organizationNumber,
-    tariffGroup: configState.tariffGroup,
-    flowStatus: configState.flowStatus,
-    homeyStatus: configState.homeyStatus,
-    powerhourStatus: configState.powerhourStatus,
-    powerhourDeviceId: configState.powerhourDeviceId,
-    currentPriceLevel: configState.currentPriceLevel,
-    lastFetchedShort: configState.liveSummary.lastFetchedShort,
-    // Gate the live export/planning signals on the CURRENT enabled setting, not
-    // the cached prices: `combined_prices` keeps carrying exportPrice/budgetPrice
-    // for up to an hour after the user turns export pricing off (the prices only
-    // drop them on the next rebuild), and `onEnabledChange` repaints without
-    // recomputing `liveSummary`. Reading the live flag here suppresses the export
-    // row and the `using your solar` reason line the instant the toggle flips —
-    // an enabled user is byte-identical.
-    currentExportPriceText: configState.exportPriceEnabled ? configState.liveSummary.exportText : null,
-    planningPriceReasonLine: configState.exportPriceEnabled ? configState.liveSummary.planningReasonLine : null,
+    config: configState,
+    handlers: electricityPricesHandlers,
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
-    showPriceAwareDevicesLink: false,
     // Prosumer gate: any home that exhibits solar — a managed solar device OR
     // material exhibited grid export (a meter-only / string-inverter home) — OR
     // an already-enabled export config, so an enabled user is never stranded
@@ -160,29 +139,6 @@ const renderElectricityPrices = () => {
       || configState.pvForecastSource !== 'auto'
       || (configState.pvForecastStatus.kind === 'selected'
         && configState.pvForecastStatus.homeyForecastAvailable),
-    pvForecastSource: configState.pvForecastSource,
-    pvForecastStatus: configState.pvForecastStatus,
-    exportPriceEnabled: configState.exportPriceEnabled,
-    exportPriceSource: configState.exportPriceSource,
-    exportSpotFactor: configState.exportSpotFactor,
-    exportFixed: configState.exportFixed,
-    onSchemeChange: handleSchemeChange,
-    onPowerhourDeviceChange: handlePowerhourDeviceChange,
-    onNorwayModelChange: handleNorwayModelChange,
-    onPriceAreaChange: handlePriceAreaChange,
-    onProviderSurchargeChange: handleProviderSurchargeChange,
-    onThresholdChange: handleThresholdChange,
-    onMinDiffChange: handleMinDiffChange,
-    onCountyChange: handleCountyChange,
-    onOrganizationChange: handleOrganizationChange,
-    onTariffGroupChange: handleTariffGroupChange,
-    onRefreshPrices: handleRefreshPrices,
-    onRefreshGridTariff: handleRefreshGridTariff,
-    onPvForecastSourceChange: handlePvForecastSourceChange,
-    onExportEnabledChange: exportPriceHandlers.onEnabledChange,
-    onExportSourceChange: exportSourceHandler,
-    onExportSpotFactorChange: exportPriceHandlers.onSpotFactorChange,
-    onExportFixedChange: exportPriceHandlers.onFixedChange,
   };
   renderElectricityPricesView(electricityPricesSurface, props);
 };
@@ -192,9 +148,7 @@ const renderPriceAwareDevices = () => {
   const props: PriceAwareDevicesViewProps = {
     optimizationEnabled: configState.optimizationEnabled,
     devices: buildPriceOptDevices(state.latestDevices),
-    onOptimizationToggle: handleOptimizationToggle,
-    onDeviceCheapDeltaChange: handleDeviceCheapDeltaChange,
-    onDeviceExpensiveDeltaChange: handleDeviceExpensiveDeltaChange,
+    handlers: priceAwareDevicesHandlers,
   };
   renderPriceAwareDevicesView(priceAwareDevicesSurface, props);
 };
@@ -515,6 +469,32 @@ const handleRefreshGridTariff = async () => {
     await logSettingsError('Failed to refresh grid tariff', error, 'priceConfig');
     await showToastError(error, 'Failed to refresh grid tariffs. If this keeps happening, send a diagnostics report.');
   }
+};
+
+const electricityPricesHandlers: ElectricityPricesHandlers = {
+  onSchemeChange: handleSchemeChange,
+  onPowerhourDeviceChange: handlePowerhourDeviceChange,
+  onNorwayModelChange: handleNorwayModelChange,
+  onPriceAreaChange: handlePriceAreaChange,
+  onProviderSurchargeChange: handleProviderSurchargeChange,
+  onThresholdChange: handleThresholdChange,
+  onMinDiffChange: handleMinDiffChange,
+  onCountyChange: handleCountyChange,
+  onOrganizationChange: handleOrganizationChange,
+  onTariffGroupChange: handleTariffGroupChange,
+  onRefreshPrices: handleRefreshPrices,
+  onRefreshGridTariff: handleRefreshGridTariff,
+  onPvForecastSourceChange: handlePvForecastSourceChange,
+  onExportEnabledChange: exportPriceHandlers.onEnabledChange,
+  onExportSourceChange: exportSourceHandler,
+  onExportSpotFactorChange: exportPriceHandlers.onSpotFactorChange,
+  onExportFixedChange: exportPriceHandlers.onFixedChange,
+};
+
+const priceAwareDevicesHandlers: PriceAwareDevicesHandlers = {
+  onOptimizationToggle: handleOptimizationToggle,
+  onDeviceCheapDeltaChange: handleDeviceCheapDeltaChange,
+  onDeviceExpensiveDeltaChange: handleDeviceExpensiveDeltaChange,
 };
 
 const refreshStatusInfo = async () => {

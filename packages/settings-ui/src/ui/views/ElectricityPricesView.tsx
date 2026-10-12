@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import type {
+  PriceConfigState,
   PriceScheme,
   NorwayPriceModel,
   FlowStatus,
@@ -8,8 +9,8 @@ import type {
   StatusValue,
   GridCompanyOption,
   PvForecastSourceSetting,
-  PvForecastSourceUiStatus,
 } from '../priceConfigTypes.ts';
+import { normalizeNorwayPriceModel, normalizePriceSchemeSelection } from '../priceSettingsPersistence.ts';
 import type {
   PowerhourDeviceUiOption,
   PowerhourSourceUiStatus,
@@ -52,51 +53,8 @@ const readFiniteNumber = (event: Event): number | null => {
   return Number.isFinite(value) ? value : null;
 };
 
-export type ElectricityPricesViewProps = {
-  thresholdPercent: number;
-  minDiffOre: number;
-  priceScheme: PriceScheme;
-  // Live price signals for the summary card. `currentPriceLevel` is the raw
-  // free-form Homey level (cheap / normal / expensive / null) — fed through the
-  // canonical `resolvePriceLevelChip` helper so the wording matches the budget
-  // hero and runtime logs. `lastFetchedShort` is a pre-formatted short clock
-  // time (or null when prices have not been fetched yet).
-  currentPriceLevel: string | null;
-  lastFetchedShort: string | null;
-  // Current-hour export price (pre-scaled display text) and the `using your
-  // solar` reason line for the "Right now" card. Both null for a non-prosumer,
-  // so the card renders exactly as before outside a solar home.
-  currentExportPriceText: string | null;
-  planningPriceReasonLine: string | null;
-  norwayPriceModel: NorwayPriceModel;
-  priceArea: string;
-  providerSurcharge: number;
-  countyCode: string;
-  organizationNumber: string;
-  tariffGroup: string;
-  flowStatus: FlowStatus | null;
-  homeyStatus: HomeyStatus | null;
-  gridCompanyOptions: GridCompanyOption[];
-  showPriceAwareDevicesLink: boolean;
-  // Export (feed-in) price section. Prosumer-gated by the orchestrator: shown
-  // when the home has a managed solar device OR export pricing is already on
-  // (never strand an enabled user behind the gate).
-  showExportSection: boolean;
-  // Solar forecast source section. Solar-gated like the export section, plus
-  // shown whenever a non-default source is already stored (never strand it).
-  showSolarForecastSection: boolean;
-  pvForecastSource: PvForecastSourceSetting;
-  pvForecastStatus: PvForecastSourceUiStatus;
-  exportPriceEnabled: boolean;
-  // Where the feed-in price comes from. Offered only where Homey holds export
-  // terms PELS can read (the Homey Energy price source); elsewhere the owner's
-  // own amounts are the only source and no selector is shown.
-  exportPriceSource: ExportPriceSourceSetting;
-  exportSpotFactor: number;
-  exportFixed: number;
-  powerhourStatus: PowerhourStatus | null;
-  /** The page's own copy of the choice, ahead of the runtime while a save is in flight. */
-  powerhourDeviceId: string | null;
+/** The page's callbacks into its controller (`priceConfig.ts`), one per control. */
+export type ElectricityPricesHandlers = {
   onSchemeChange: (scheme: PriceScheme) => void;
   onPowerhourDeviceChange: (deviceId: string) => void;
   onNorwayModelChange: (model: NorwayPriceModel) => void;
@@ -116,6 +74,19 @@ export type ElectricityPricesViewProps = {
   // unsaved value can be snapped back to the stored one (see ExportPriceForm).
   onExportSpotFactorChange: (val: number, field: { value: string }) => void;
   onExportFixedChange: (val: number, field: { value: string }) => void;
+};
+
+export type ElectricityPricesViewProps = {
+  config: PriceConfigState;
+  handlers: ElectricityPricesHandlers;
+  gridCompanyOptions: GridCompanyOption[];
+  // Export (feed-in) price section. Prosumer-gated by the orchestrator: shown
+  // when the home has a managed solar device OR export pricing is already on
+  // (never strand an enabled user behind the gate).
+  showExportSection: boolean;
+  // Solar forecast source section. Solar-gated like the export section, plus
+  // shown whenever a non-default source is already stored (never strand it).
+  showSolarForecastSection: boolean;
 };
 
 const Header = () => (
@@ -139,24 +110,25 @@ const StatusRow = ({ label, value, tone }: { label: string; value: string; tone?
 // logs; `normal` / unknown levels return null, in which case we carry the calm
 // state as toned text rather than inventing a third chip (the M3 chip rail
 // stays quiet when there is nothing exceptional to say).
-const LiveSummaryCard = ({
-  currentPriceLevel,
-  lastFetchedShort,
-  currentExportPriceText,
-  planningPriceReasonLine,
-}: {
-  currentPriceLevel: string | null;
-  lastFetchedShort: string | null;
+const LiveSummaryCard = ({ config }: { config: PriceConfigState }) => {
+  const { currentPriceLevel, liveSummary } = config;
+  // Gate the live export/planning signals on the CURRENT enabled setting, not
+  // the cached prices: `combined_prices` keeps carrying exportPrice/budgetPrice
+  // for up to an hour after the user turns export pricing off (the prices only
+  // drop them on the next rebuild), and `onEnabledChange` repaints without
+  // recomputing `liveSummary`. Reading the live flag here suppresses the export
+  // row and the `using your solar` reason line the instant the toggle flips —
+  // an enabled user is byte-identical.
+  //
   // Current-hour export (feed-in) price, pre-formatted and scaled through the
   // CostDisplay divisor (e.g. `0.34 kr/kWh`), or null when no export price
   // covers this hour. A non-prosumer never has one, so the row never renders.
-  currentExportPriceText: string | null;
+  const currentExportPriceText = config.exportPriceEnabled ? liveSummary.exportText : null;
   // The registered `using your solar` reason line, present only when the
   // current-hour planning price (which the "Current price" level tiers on
   // post-#1808) diverges from the import price. Null otherwise, so a
   // non-prosumer sees nothing new.
-  planningPriceReasonLine: string | null;
-}) => {
+  const planningPriceReasonLine = config.exportPriceEnabled ? liveSummary.planningReasonLine : null;
   const chip = resolvePriceLevelChip(currentPriceLevel);
   const chipToneCls = chip ? (chip.tone === 'warn' ? 'plan-chip--warn' : 'plan-chip--info') : '';
   // No chip → calm wording. Only the recognised, actionable-but-quiet level
@@ -196,7 +168,7 @@ const LiveSummaryCard = ({
         <StatusRow label={EXPORT_PRICE_LABEL} value={currentExportPriceText} />
       ) : null}
       {hasUsablePriceLevel ? (
-        <StatusRow label="Last fetched" value={lastFetchedShort ?? '—'} />
+        <StatusRow label="Last fetched" value={liveSummary.lastFetchedShort ?? '—'} />
       ) : null}
     </section>
   );
@@ -460,45 +432,15 @@ const schemeNote = (scheme: PriceScheme): string | null => {
   return null;
 };
 
-const NorwaySection = ({
-  norwayPriceModel,
-  priceArea,
-  providerSurcharge,
-  countyCode,
-  organizationNumber,
-  tariffGroup,
-  gridCompanyOptions,
-  onNorwayModelChange,
-  onPriceAreaChange,
-  onProviderSurchargeChange,
-  onCountyChange,
-  onOrganizationChange,
-  onTariffGroupChange,
-  onRefreshGridTariff,
-}: {
-  norwayPriceModel: NorwayPriceModel;
-  priceArea: string;
-  providerSurcharge: number;
-  countyCode: string;
-  organizationNumber: string;
-  tariffGroup: string;
-  gridCompanyOptions: GridCompanyOption[];
-  onNorwayModelChange: (m: NorwayPriceModel) => void;
-  onPriceAreaChange: (a: string) => void;
-  onProviderSurchargeChange: (v: number) => void;
-  onCountyChange: (c: string) => void;
-  onOrganizationChange: (o: string) => void;
-  onTariffGroupChange: (g: string) => void;
-  onRefreshGridTariff: () => void;
-}) => (
+const NorwaySection = ({ config, handlers, gridCompanyOptions }: ElectricityPricesViewProps) => (
   <>
     <p class="eyebrow eyebrow--inline">Grid tariff</p>
     <div class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-county-label">County</span>
       <MdFilledSelect
-        value={countyCode}
+        value={config.countyCode}
         aria-labelledby="electricity-prices-county-label"
-        onChange={(e) => onCountyChange(readValue(e))}
+        onChange={(e) => handlers.onCountyChange(readValue(e))}
       >
         <MdSelectOption value="03"><div slot="headline">Oslo</div></MdSelectOption>
         <MdSelectOption value="11"><div slot="headline">Rogaland</div></MdSelectOption>
@@ -520,11 +462,11 @@ const NorwaySection = ({
     <div class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-grid-company-label">Grid company</span>
       <MdFilledSelect
-        value={organizationNumber || GRID_COMPANY_NONE}
+        value={config.organizationNumber || GRID_COMPANY_NONE}
         aria-labelledby="electricity-prices-grid-company-label"
         onChange={(e) => {
           const next = readValue(e);
-          onOrganizationChange(next === GRID_COMPANY_NONE ? '' : next);
+          handlers.onOrganizationChange(next === GRID_COMPANY_NONE ? '' : next);
         }}
       >
         <MdSelectOption value={GRID_COMPANY_NONE}><div slot="headline">Select grid company</div></MdSelectOption>
@@ -541,9 +483,9 @@ const NorwaySection = ({
     <div class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-tariff-group-label">Tariff group</span>
       <MdFilledSelect
-        value={tariffGroup}
+        value={config.tariffGroup}
         aria-labelledby="electricity-prices-tariff-group-label"
-        onChange={(e) => onTariffGroupChange(readValue(e))}
+        onChange={(e) => handlers.onTariffGroupChange(readValue(e))}
       >
         <MdSelectOption value="Husholdning"><div slot="headline">Household</div></MdSelectOption>
         <MdSelectOption value="Hytter og fritidshus">
@@ -552,7 +494,7 @@ const NorwaySection = ({
       </MdFilledSelect>
     </div>
     <div class="form__actions">
-      <MdOutlinedButton type="button" onClick={onRefreshGridTariff}>
+      <MdOutlinedButton type="button" onClick={handlers.onRefreshGridTariff}>
         Refresh tariffs
       </MdOutlinedButton>
     </div>
@@ -561,9 +503,9 @@ const NorwaySection = ({
     <div class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-norway-model-label">Norway pricing model</span>
       <MdFilledSelect
-        value={norwayPriceModel}
+        value={config.norwayPriceModel}
         aria-labelledby="electricity-prices-norway-model-label"
-        onChange={(e) => onNorwayModelChange(readValue(e) as NorwayPriceModel)}
+        onChange={(e) => handlers.onNorwayModelChange(normalizeNorwayPriceModel(readValue(e)))}
       >
         <MdSelectOption value="stromstotte">
           <div slot="headline">Electricity Subsidy Scheme (Strømstøtte)</div>
@@ -578,7 +520,7 @@ const NorwaySection = ({
         Choose whether Norway prices use the Electricity Subsidy Scheme or Norway Price (Norgespris).
       </small>
     </div>
-    {norwayPriceModel === 'norgespris' && (
+    {config.norwayPriceModel === 'norgespris' && (
       <p class="muted">
         Official Norgespris rules are applied automatically: fixed spot target 50 øre/kWh incl. VAT.
         Monthly cap: household 5000 kWh, cabin 1000 kWh.
@@ -587,9 +529,9 @@ const NorwaySection = ({
     <div class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-price-area-label">Price area</span>
       <MdFilledSelect
-        value={priceArea}
+        value={config.priceArea}
         aria-labelledby="electricity-prices-price-area-label"
-        onChange={(e) => onPriceAreaChange(readValue(e))}
+        onChange={(e) => handlers.onPriceAreaChange(readValue(e))}
       >
         <MdSelectOption value="NO1"><div slot="headline">NO1 — Oslo / East Norway</div></MdSelectOption>
         <MdSelectOption value="NO2"><div slot="headline">NO2 — Kristiansand / South Norway</div></MdSelectOption>
@@ -607,7 +549,7 @@ const NorwaySection = ({
       <span class="field__label pels-text-settings-label" id="electricity-prices-provider-surcharge-label">Provider surcharge</span>
       <MdFilledTextField
         type="number"
-        value={String(providerSurcharge)}
+        value={String(config.providerSurcharge)}
         step="0.1"
         min="-100"
         max="100"
@@ -615,7 +557,7 @@ const NorwaySection = ({
         aria-labelledby="electricity-prices-provider-surcharge-label"
         onChange={(e) => {
           const val = readFiniteNumber(e);
-          if (val !== null) onProviderSurchargeChange(val);
+          if (val !== null) handlers.onProviderSurchargeChange(val);
         }}
       />
       <small class="field__hint">Provider surcharge on top of spot price, incl. VAT. Can be negative.</small>
@@ -624,11 +566,12 @@ const NorwaySection = ({
 );
 
 const SourceForm = (props: ElectricityPricesViewProps) => {
-  const note = schemeNote(props.priceScheme);
-  const isNorway = props.priceScheme === 'norway';
-  const isFlow = props.priceScheme === 'flow';
-  const isHomey = props.priceScheme === 'homey';
-  const isPowerhour = props.priceScheme === 'powerhour';
+  const { config, handlers } = props;
+  const note = schemeNote(config.priceScheme);
+  const isNorway = config.priceScheme === 'norway';
+  const isFlow = config.priceScheme === 'flow';
+  const isHomey = config.priceScheme === 'homey';
+  const isPowerhour = config.priceScheme === 'powerhour';
 
   return (
     <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
@@ -637,8 +580,8 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
         <MdFilledSelect
           id="price-source-select"
           aria-label="Price source"
-          value={props.priceScheme}
-          onChange={(e) => props.onSchemeChange(readValue(e) as PriceScheme)}
+          value={config.priceScheme}
+          onChange={(e) => handlers.onSchemeChange(normalizePriceSchemeSelection(readValue(e)))}
         >
           <MdSelectOption value="norway">
             <div slot="headline">Norway (spot + grid tariff)</div>
@@ -657,38 +600,21 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
       </div>
 
       {note && <p class="muted">{note}</p>}
-      {isFlow && props.flowStatus && <FlowStatusBlock status={props.flowStatus} />}
-      {isHomey && props.homeyStatus && <HomeyStatusBlock status={props.homeyStatus} />}
-      {isPowerhour && props.powerhourStatus && (
+      {isFlow && config.flowStatus && <FlowStatusBlock status={config.flowStatus} />}
+      {isHomey && config.homeyStatus && <HomeyStatusBlock status={config.homeyStatus} />}
+      {isPowerhour && config.powerhourStatus && (
         <PowerhourStatusBlock
-          status={props.powerhourStatus}
-          pendingDeviceId={props.powerhourDeviceId}
-          onDeviceChange={props.onPowerhourDeviceChange}
+          status={config.powerhourStatus}
+          pendingDeviceId={config.powerhourDeviceId}
+          onDeviceChange={handlers.onPowerhourDeviceChange}
         />
       )}
 
-      {isNorway && (
-        <NorwaySection
-          norwayPriceModel={props.norwayPriceModel}
-          priceArea={props.priceArea}
-          providerSurcharge={props.providerSurcharge}
-          countyCode={props.countyCode}
-          organizationNumber={props.organizationNumber}
-          tariffGroup={props.tariffGroup}
-          gridCompanyOptions={props.gridCompanyOptions}
-          onNorwayModelChange={props.onNorwayModelChange}
-          onPriceAreaChange={props.onPriceAreaChange}
-          onProviderSurchargeChange={props.onProviderSurchargeChange}
-          onCountyChange={props.onCountyChange}
-          onOrganizationChange={props.onOrganizationChange}
-          onTariffGroupChange={props.onTariffGroupChange}
-          onRefreshGridTariff={props.onRefreshGridTariff}
-        />
-      )}
+      {isNorway && <NorwaySection {...props} />}
 
       {!isFlow && (
         <div class="form__actions">
-          <MdOutlinedButton type="button" onClick={props.onRefreshPrices}>
+          <MdOutlinedButton type="button" onClick={handlers.onRefreshPrices}>
             Refresh prices
           </MdOutlinedButton>
         </div>
@@ -701,10 +627,9 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
 // Electricity prices view because its output IS the planning price's surplus
 // input (the `using your solar` reason line above); labels follow
 // `notes/ui-terminology.md` — say what happens, no internal jargon.
-const SolarForecastForm = ({ pvForecastSource, pvForecastStatus, onPvForecastSourceChange }: {
-  pvForecastSource: PvForecastSourceSetting;
-  pvForecastStatus: PvForecastSourceUiStatus;
-  onPvForecastSourceChange: (source: PvForecastSourceSetting) => void;
+const SolarForecastForm = ({ config, handlers }: {
+  config: PriceConfigState;
+  handlers: ElectricityPricesHandlers;
 }) => (
   <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
     <h3 class="section-title">Solar forecast</h3>
@@ -712,12 +637,12 @@ const SolarForecastForm = ({ pvForecastSource, pvForecastStatus, onPvForecastSou
       <MdFilledSelect
         id="solar-forecast-source-select"
         aria-label="Solar forecast source"
-        value={pvForecastSource}
+        value={config.pvForecastSource}
         onChange={(e) => {
           const next = readValue(e);
           // The options below ARE the union, so a value outside it can only be a
           // malformed DOM read: a no-op, never a silent rewrite of the choice.
-          if (isPvForecastSourceSetting(next)) onPvForecastSourceChange(next);
+          if (isPvForecastSourceSetting(next)) handlers.onPvForecastSourceChange(next);
         }}
       >
         <MdSelectOption value="auto">
@@ -737,8 +662,8 @@ const SolarForecastForm = ({ pvForecastSource, pvForecastStatus, onPvForecastSou
         otherwise.
       </small>
     </div>
-    {pvForecastStatus.kind === 'selected'
-      && <p class="muted">{resolvePvForecastStatusLine(pvForecastStatus)}</p>}
+    {config.pvForecastStatus.kind === 'selected'
+      && <p class="muted">{resolvePvForecastStatusLine(config.pvForecastStatus)}</p>}
   </form>
 );
 
@@ -769,27 +694,13 @@ const spotShareHint = (hasSpotPrice: boolean, staleSpotShare: boolean): string =
 // spot plus the user's feed-in contract terms, never from the import price
 // (`lib/price/exportPrice.ts`). Labels follow `notes/ui-terminology.md`
 // § "Solar and export price vocabulary".
-const ExportPriceForm = ({
-  priceScheme,
-  exportPriceEnabled,
-  exportPriceSource,
-  exportSpotFactor,
-  exportFixed,
-  onExportEnabledChange,
-  onExportSourceChange,
-  onExportSpotFactorChange,
-  onExportFixedChange,
-}: {
-  priceScheme: PriceScheme;
-  exportPriceEnabled: boolean;
-  exportPriceSource: ExportPriceSourceSetting;
-  exportSpotFactor: number;
-  exportFixed: number;
-  onExportEnabledChange: (enabled: boolean) => void;
-  onExportSourceChange: (source: ExportPriceSourceSetting) => void;
-  onExportSpotFactorChange: (val: number, field: { value: string }) => void;
-  onExportFixedChange: (val: number, field: { value: string }) => void;
+const ExportPriceForm = ({ config, handlers }: {
+  config: PriceConfigState;
+  handlers: ElectricityPricesHandlers;
 }) => {
+  const {
+    priceScheme, exportPriceEnabled, exportPriceSource, exportSpotFactor, exportFixed,
+  } = config;
   // A spot-linked share is only meaningful where an hourly spot price is
   // isolatable, which only the Norway source provides. On the flow / Homey
   // sources a share settled at 0 renders disabled with the fixed-only note.
@@ -820,7 +731,7 @@ const ExportPriceForm = ({
           id="electricity-prices-export-enabled"
           aria-label="Use an export price"
           {...(exportPriceEnabled ? { selected: true } : {})}
-          onChange={(e) => onExportEnabledChange((e.currentTarget as SwitchElement).selected)}
+          onChange={(e) => handlers.onExportEnabledChange((e.currentTarget as SwitchElement).selected)}
         />
         <span class="md-switch-row__content">
           <span class="md-switch-row__label pels-text-settings-label">Use an export price</span>
@@ -835,7 +746,7 @@ const ExportPriceForm = ({
             id="electricity-prices-export-source"
             aria-labelledby="electricity-prices-export-source-label"
             value={exportPriceSource}
-            onChange={(e) => onExportSourceChange(readValue(e) as ExportPriceSourceSetting)}
+            onChange={(e) => handlers.onExportSourceChange(readValue(e) as ExportPriceSourceSetting)}
           >
             <MdSelectOption value="manual">
               <div slot="headline">Amounts I enter here</div>
@@ -873,7 +784,7 @@ const ExportPriceForm = ({
                 // Pass the element so a rejected value can be snapped back:
                 // Preact's retained VDOM won't rewrite a value prop that
                 // didn't change, so the handler resets it imperatively.
-                if (val !== null) onExportSpotFactorChange(val, e.currentTarget as ValueElement);
+                if (val !== null) handlers.onExportSpotFactorChange(val, e.currentTarget as ValueElement);
               }}
             />
             <small class="field__hint">
@@ -897,7 +808,7 @@ const ExportPriceForm = ({
               onChange={(e) => {
                 const val = readFiniteNumber(e);
                 // Same snap-back contract as the spot-share field above.
-                if (val !== null) onExportFixedChange(val, e.currentTarget as ValueElement);
+                if (val !== null) handlers.onExportFixedChange(val, e.currentTarget as ValueElement);
               }}
             />
             <small class="field__hint">
@@ -912,18 +823,9 @@ const ExportPriceForm = ({
   );
 };
 
-const ThresholdForm = ({
-  thresholdPercent,
-  minDiffOre,
-  isExternal,
-  onThresholdChange,
-  onMinDiffChange,
-}: {
-  thresholdPercent: number;
-  minDiffOre: number;
-  isExternal: boolean;
-  onThresholdChange: (val: number) => void;
-  onMinDiffChange: (val: number) => void;
+const ThresholdForm = ({ config, handlers }: {
+  config: PriceConfigState;
+  handlers: ElectricityPricesHandlers;
 }) => (
   <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
     <h3 class="section-title">Cheap and expensive prices</h3>
@@ -932,7 +834,7 @@ const ThresholdForm = ({
       <span class="field__label pels-text-settings-label" id="electricity-prices-threshold-label">Price threshold</span>
       <MdFilledTextField
         type="number"
-        value={String(thresholdPercent)}
+        value={String(config.thresholdPercent)}
         min="5"
         max="50"
         step="1"
@@ -940,7 +842,7 @@ const ThresholdForm = ({
         aria-labelledby="electricity-prices-threshold-label"
         onChange={(e) => {
           const val = readFiniteNumber(e);
-          if (val !== null) onThresholdChange(val);
+          if (val !== null) handlers.onThresholdChange(val);
         }}
       />
       <small class="field__hint">Hours this % below or above average are marked cheap or expensive.</small>
@@ -951,16 +853,16 @@ const ThresholdForm = ({
       </span>
       <MdFilledTextField
         type="number"
-        value={String(minDiffOre)}
+        value={String(config.minDiffOre)}
         min="0"
         max="1000"
         step="any"
-        {...(isExternal ? {} : { 'suffix-text': 'øre/kWh' })}
+        {...(config.priceScheme === 'norway' ? { 'suffix-text': 'øre/kWh' } : {})}
         inputmode="decimal"
         aria-labelledby="electricity-prices-min-diff-label"
         onChange={(e) => {
           const val = readFiniteNumber(e);
-          if (val !== null) onMinDiffChange(val);
+          if (val !== null) handlers.onMinDiffChange(val);
         }}
       />
       <small class="field__hint">Skip optimization if savings are less than this.</small>
@@ -968,58 +870,16 @@ const ThresholdForm = ({
   </form>
 );
 
-const PriceAwareDevicesLink = () => (
-  <div class="form__actions">
-    <MdOutlinedButton data-settings-target="price-aware-devices">
-      Manage price-aware devices →
-    </MdOutlinedButton>
-  </div>
+const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => (
+  <>
+    <Header />
+    <LiveSummaryCard config={props.config} />
+    <SourceForm {...props} />
+    {props.showSolarForecastSection && <SolarForecastForm config={props.config} handlers={props.handlers} />}
+    {props.showExportSection && <ExportPriceForm config={props.config} handlers={props.handlers} />}
+    <ThresholdForm config={props.config} handlers={props.handlers} />
+  </>
 );
-
-const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => {
-  const isExternal = props.priceScheme !== 'norway';
-
-  return (
-    <>
-      <Header />
-      <LiveSummaryCard
-        currentPriceLevel={props.currentPriceLevel}
-        lastFetchedShort={props.lastFetchedShort}
-        currentExportPriceText={props.currentExportPriceText}
-        planningPriceReasonLine={props.planningPriceReasonLine}
-      />
-      <SourceForm {...props} />
-      {props.showSolarForecastSection && (
-        <SolarForecastForm
-          pvForecastSource={props.pvForecastSource}
-          pvForecastStatus={props.pvForecastStatus}
-          onPvForecastSourceChange={props.onPvForecastSourceChange}
-        />
-      )}
-      {props.showExportSection && (
-        <ExportPriceForm
-          priceScheme={props.priceScheme}
-          exportPriceEnabled={props.exportPriceEnabled}
-          exportPriceSource={props.exportPriceSource}
-          exportSpotFactor={props.exportSpotFactor}
-          exportFixed={props.exportFixed}
-          onExportEnabledChange={props.onExportEnabledChange}
-          onExportSourceChange={props.onExportSourceChange}
-          onExportSpotFactorChange={props.onExportSpotFactorChange}
-          onExportFixedChange={props.onExportFixedChange}
-        />
-      )}
-      <ThresholdForm
-        thresholdPercent={props.thresholdPercent}
-        minDiffOre={props.minDiffOre}
-        isExternal={isExternal}
-        onThresholdChange={props.onThresholdChange}
-        onMinDiffChange={props.onMinDiffChange}
-      />
-      {props.showPriceAwareDevicesLink && <PriceAwareDevicesLink />}
-    </>
-  );
-};
 
 export const renderElectricityPricesView = (
   surface: HTMLElement,

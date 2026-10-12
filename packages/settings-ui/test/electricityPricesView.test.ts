@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderElectricityPricesView, type ElectricityPricesViewProps } from '../src/ui/views/ElectricityPricesView.tsx';
-import type { HomeyStatus, PowerhourStatus } from '../src/ui/priceConfigTypes.ts';
+import {
+  renderElectricityPricesView,
+  type ElectricityPricesHandlers,
+  type ElectricityPricesViewProps,
+} from '../src/ui/views/ElectricityPricesView.tsx';
+import type { HomeyStatus, PowerhourStatus, PriceConfigState } from '../src/ui/priceConfigTypes.ts';
+import type { LiveSummarySignals } from '../src/ui/livePriceSignals.ts';
 import type { PowerhourSourceUiStatus } from '../../contracts/src/settingsUiApi.ts';
 
-const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): ElectricityPricesViewProps => ({
+const buildConfig = (overrides: Partial<PriceConfigState> = {}): PriceConfigState => ({
+  optimizationEnabled: true,
   thresholdPercent: 20,
   minDiffOre: 5,
   priceScheme: 'norway',
@@ -18,21 +24,17 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   powerhourStatus: null,
   powerhourDeviceId: null,
   currentPriceLevel: null,
-  lastFetchedShort: null,
-  currentExportPriceText: null,
-  planningPriceReasonLine: null,
-  gridCompanyOptions: [
-    { name: 'Grid Company', organizationNumber: '123' },
-  ],
-  showPriceAwareDevicesLink: true,
-  showExportSection: false,
-  showSolarForecastSection: false,
-  pvForecastSource: 'auto',
-  pvForecastStatus: { kind: 'unknown' },
+  liveSummary: { lastFetchedShort: null, exportText: null, planningReasonLine: null },
   exportPriceEnabled: false,
   exportPriceSource: 'manual',
   exportSpotFactor: 0,
   exportFixed: 0,
+  pvForecastSource: 'auto',
+  pvForecastStatus: { kind: 'unknown' },
+  ...overrides,
+});
+
+const buildHandlers = (overrides: Partial<ElectricityPricesHandlers> = {}): ElectricityPricesHandlers => ({
   onSchemeChange: vi.fn(),
   onNorwayModelChange: vi.fn(),
   onPriceAreaChange: vi.fn(),
@@ -50,6 +52,27 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   onExportFixedChange: vi.fn(),
   onPvForecastSourceChange: vi.fn(),
   onPowerhourDeviceChange: vi.fn(),
+  ...overrides,
+});
+
+const buildProps = (
+  config: Partial<PriceConfigState> = {},
+  overrides: Partial<ElectricityPricesViewProps> = {},
+): ElectricityPricesViewProps => ({
+  config: buildConfig(config),
+  handlers: buildHandlers(),
+  gridCompanyOptions: [
+    { name: 'Grid Company', organizationNumber: '123' },
+  ],
+  showExportSection: false,
+  showSolarForecastSection: false,
+  ...overrides,
+});
+
+const liveSummary = (overrides: Partial<LiveSummarySignals>): LiveSummarySignals => ({
+  lastFetchedShort: null,
+  exportText: null,
+  planningReasonLine: null,
   ...overrides,
 });
 
@@ -81,7 +104,10 @@ describe('ElectricityPricesView', () => {
     document.body.appendChild(mount);
 
     const onOrganizationChange = vi.fn();
-    renderElectricityPricesView(mount, buildProps({ organizationNumber: '', onOrganizationChange }));
+    renderElectricityPricesView(mount, buildProps(
+      { organizationNumber: '' },
+      { handlers: buildHandlers({ onOrganizationChange }) },
+    ));
 
     const gridSelect = mount.querySelector(
       'md-filled-select[aria-labelledby="electricity-prices-grid-company-label"]',
@@ -116,7 +142,7 @@ describe('ElectricityPricesView', () => {
 
     renderElectricityPricesView(mount, buildProps({
       currentPriceLevel: 'expensive',
-      lastFetchedShort: '14:05',
+      liveSummary: liveSummary({ lastFetchedShort: '14:05' }),
     }));
 
     const summary = mount.querySelector('.electricity-prices-live-summary');
@@ -135,7 +161,7 @@ describe('ElectricityPricesView', () => {
 
     renderElectricityPricesView(mount, buildProps({
       currentPriceLevel: 'normal',
-      lastFetchedShort: null,
+      liveSummary: liveSummary({ lastFetchedShort: null }),
     }));
 
     const summary = mount.querySelector('.electricity-prices-live-summary');
@@ -150,9 +176,12 @@ describe('ElectricityPricesView', () => {
 
     renderElectricityPricesView(mount, buildProps({
       currentPriceLevel: 'cheap',
-      lastFetchedShort: '14:05',
-      currentExportPriceText: '0.34 kr/kWh',
-      planningPriceReasonLine: 'using your solar',
+      exportPriceEnabled: true,
+      liveSummary: liveSummary({
+        lastFetchedShort: '14:05',
+        exportText: '0.34 kr/kWh',
+        planningReasonLine: 'using your solar',
+      }),
     }));
 
     const summary = mount.querySelector('.electricity-prices-live-summary');
@@ -168,9 +197,7 @@ describe('ElectricityPricesView', () => {
 
     renderElectricityPricesView(mount, buildProps({
       currentPriceLevel: 'cheap',
-      lastFetchedShort: '14:05',
-      currentExportPriceText: null,
-      planningPriceReasonLine: null,
+      liveSummary: liveSummary({ lastFetchedShort: '14:05' }),
     }));
 
     const summary = mount.querySelector('.electricity-prices-live-summary');
@@ -184,7 +211,7 @@ describe('ElectricityPricesView', () => {
 
     renderElectricityPricesView(mount, buildProps({
       currentPriceLevel: 'unknown',
-      lastFetchedShort: null,
+      liveSummary: liveSummary({ lastFetchedShort: null }),
     }));
 
     const summary = mount.querySelector('.electricity-prices-live-summary');
@@ -194,15 +221,18 @@ describe('ElectricityPricesView', () => {
   });
 
   describe('export price section', () => {
-    const mountView = (overrides: Partial<ElectricityPricesViewProps>) => {
+    const mountView = (
+      config: Partial<PriceConfigState>,
+      overrides: Partial<ElectricityPricesViewProps> = { showExportSection: true },
+    ) => {
       const mount = document.createElement('div');
       document.body.appendChild(mount);
-      renderElectricityPricesView(mount, buildProps(overrides));
+      renderElectricityPricesView(mount, buildProps(config, overrides));
       return mount;
     };
 
     it('renders no export section when the prosumer gate is off', () => {
-      const mount = mountView({ showExportSection: false });
+      const mount = mountView({}, { showExportSection: false });
       expect(mount.querySelector('#electricity-prices-export-section')).toBeNull();
     });
 
@@ -211,7 +241,6 @@ describe('ElectricityPricesView', () => {
       // anywhere else the owner's own amounts are the only source and a
       // selector would be a choice with one answer.
       const mount = mountView({
-        showExportSection: true,
         exportPriceEnabled: true,
         priceScheme: 'norway',
       });
@@ -221,7 +250,6 @@ describe('ElectricityPricesView', () => {
 
     it('lets a Homey Energy home choose where the export price comes from', () => {
       const mount = mountView({
-        showExportSection: true,
         exportPriceEnabled: true,
         priceScheme: 'homey',
         exportPriceSource: 'manual',
@@ -234,7 +262,6 @@ describe('ElectricityPricesView', () => {
 
     it("replaces the amount fields once Homey's terms are the source", () => {
       const mount = mountView({
-        showExportSection: true,
         exportPriceEnabled: true,
         priceScheme: 'homey',
         exportPriceSource: 'homey_energy',
@@ -247,7 +274,7 @@ describe('ElectricityPricesView', () => {
     });
 
     it('shows only the toggle while export pricing is off', () => {
-      const mount = mountView({ showExportSection: true, exportPriceEnabled: false });
+      const mount = mountView({ exportPriceEnabled: false });
       const section = mount.querySelector('#electricity-prices-export-section');
       expect(section).not.toBeNull();
       expect(section?.querySelector('#electricity-prices-export-enabled')).not.toBeNull();
@@ -258,7 +285,6 @@ describe('ElectricityPricesView', () => {
 
     it('reveals both fields with Norwegian units when enabled on the norway scheme', () => {
       const mount = mountView({
-        showExportSection: true,
         exportPriceEnabled: true,
         exportSpotFactor: 90,
         exportFixed: -5,
@@ -283,7 +309,6 @@ describe('ElectricityPricesView', () => {
 
     it('disables a settled spot-price share (0) with the fixed-only note on flow/homey schemes', () => {
       const mount = mountView({
-        showExportSection: true,
         exportPriceEnabled: true,
         exportSpotFactor: 0,
         priceScheme: 'flow',
@@ -305,7 +330,6 @@ describe('ElectricityPricesView', () => {
       // stay editable so the user can zero it, and name the repair, never
       // pretend a working 0.
       const mount = mountView({
-        showExportSection: true,
         exportPriceEnabled: true,
         exportSpotFactor: 90,
         priceScheme: 'flow',
@@ -322,12 +346,9 @@ describe('ElectricityPricesView', () => {
       const onExportEnabledChange = vi.fn();
       const onExportSpotFactorChange = vi.fn();
       const onExportFixedChange = vi.fn();
-      const mount = mountView({
+      const mount = mountView({ exportPriceEnabled: true }, {
         showExportSection: true,
-        exportPriceEnabled: true,
-        onExportEnabledChange,
-        onExportSpotFactorChange,
-        onExportFixedChange,
+        handlers: buildHandlers({ onExportEnabledChange, onExportSpotFactorChange, onExportFixedChange }),
       });
 
       const toggle = mount.querySelector('#electricity-prices-export-enabled') as (HTMLElement & { selected: boolean }) | null;
@@ -353,20 +374,23 @@ describe('ElectricityPricesView', () => {
   });
 
   describe('solar forecast section', () => {
-    const mountView = (overrides: Partial<ElectricityPricesViewProps>) => {
+    const mountView = (
+      config: Partial<PriceConfigState>,
+      overrides: Partial<ElectricityPricesViewProps> = { showSolarForecastSection: true },
+    ) => {
       const mount = document.createElement('div');
       document.body.appendChild(mount);
-      renderElectricityPricesView(mount, buildProps(overrides));
+      renderElectricityPricesView(mount, buildProps(config, overrides));
       return mount;
     };
 
     it('stays hidden for a non-solar home on the default source', () => {
-      const mount = mountView({});
+      const mount = mountView({}, {});
       expect(mount.textContent).not.toContain('Solar forecast');
     });
 
     it('renders the three source choices when shown', () => {
-      const mount = mountView({ showSolarForecastSection: true });
+      const mount = mountView({});
       expect(mount.textContent).toContain('Solar forecast');
       const select = mount.querySelector('#solar-forecast-source-select') as (HTMLElement & { value: string }) | null;
       expect(select?.value).toBe('auto');
@@ -377,13 +401,11 @@ describe('ElectricityPricesView', () => {
 
     it('says which forecast is in use, from the runtime provenance', () => {
       const homey = mountView({
-        showSolarForecastSection: true,
         pvForecastStatus: { kind: 'selected', activeSource: 'homey_energy', homeyForecastAvailable: true, learnedForecastAvailable: false },
       });
       expect(homey.textContent).toContain('Using Homey\u2019s solar forecast.');
 
       const learned = mountView({
-        showSolarForecastSection: true,
         pvForecastStatus: { kind: 'selected', activeSource: 'learned', homeyForecastAvailable: false, learnedForecastAvailable: true },
       });
       expect(learned.textContent).toContain('Using the forecast PELS learns from your solar production.');
@@ -391,7 +413,6 @@ describe('ElectricityPricesView', () => {
 
     it('states honestly that a pinned Homey source has no forecast yet, and names the way out', () => {
       const mount = mountView({
-        showSolarForecastSection: true,
         pvForecastSource: 'homey_energy',
         pvForecastStatus: { kind: 'selected', activeSource: 'homey_energy', homeyForecastAvailable: false, learnedForecastAvailable: true },
       });
@@ -401,7 +422,6 @@ describe('ElectricityPricesView', () => {
 
     it('says so while the learned model is still learning (no forecast from either source)', () => {
       const mount = mountView({
-        showSolarForecastSection: true,
         pvForecastStatus: { kind: 'selected', activeSource: 'learned', homeyForecastAvailable: false, learnedForecastAvailable: false },
       });
       expect(mount.textContent).toContain(
@@ -410,14 +430,17 @@ describe('ElectricityPricesView', () => {
     });
 
     it('says nothing about the active source before the runtime reports', () => {
-      const mount = mountView({ showSolarForecastSection: true, pvForecastStatus: { kind: 'unknown' } });
+      const mount = mountView({ pvForecastStatus: { kind: 'unknown' } });
       expect(mount.textContent).not.toContain('Using ');
       expect(mount.textContent).not.toContain('no solar forecast yet');
     });
 
     it('routes a source change through the handler', () => {
       const onPvForecastSourceChange = vi.fn();
-      const mount = mountView({ showSolarForecastSection: true, onPvForecastSourceChange });
+      const mount = mountView({}, {
+        showSolarForecastSection: true,
+        handlers: buildHandlers({ onPvForecastSourceChange }),
+      });
       const select = mount.querySelector('#solar-forecast-source-select') as (HTMLElement & { value: string });
       select.value = 'homey_energy';
       select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -434,7 +457,7 @@ describe('ElectricityPricesView', () => {
     // claim "Last fetched 06:31" next to "Awaiting prices".
     renderElectricityPricesView(mount, buildProps({
       currentPriceLevel: 'unknown',
-      lastFetchedShort: '06:31',
+      liveSummary: liveSummary({ lastFetchedShort: '06:31' }),
     }));
 
     const summary = mount.querySelector('.electricity-prices-live-summary');

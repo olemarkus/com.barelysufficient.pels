@@ -5,12 +5,17 @@ import { AppBar } from './AppBar.tsx';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { MAX_PRICE_ADJUSTMENT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
 
-export type PriceAwareDevicesViewProps = {
-  optimizationEnabled: boolean;
-  devices: PriceOptDevice[];
+/** The page's callbacks into its controller (`priceConfig.ts`), one per control. */
+export type PriceAwareDevicesHandlers = {
   onOptimizationToggle: (enabled: boolean) => void;
   onDeviceCheapDeltaChange: (id: string, val: number) => void;
   onDeviceExpensiveDeltaChange: (id: string, val: number) => void;
+};
+
+export type PriceAwareDevicesViewProps = {
+  optimizationEnabled: boolean;
+  devices: PriceOptDevice[];
+  handlers: PriceAwareDevicesHandlers;
 };
 
 const DELTA_MIN = 0;
@@ -139,15 +144,7 @@ const RespondTogglesCard = ({
   </label>
 );
 
-const DeviceRow = ({
-  device,
-  onCheapChange,
-  onExpensiveChange,
-}: {
-  device: PriceOptDevice;
-  onCheapChange: (val: number) => void;
-  onExpensiveChange: (val: number) => void;
-}) => {
+const DeviceRow = ({ device, handlers }: { device: PriceOptDevice; handlers: PriceAwareDevicesHandlers }) => {
   // Magnitudes, whatever sign an older save stored: the planner applies each
   // delta by its magnitude, so clamping a backwards sign to zero here showed a
   // number that does not take effect.
@@ -172,7 +169,7 @@ const DeviceRow = ({
           unit="°C"
           increaseLabel={`Increase cheap-hour boost for ${displayName}`}
           decreaseLabel={`Decrease cheap-hour boost for ${displayName}`}
-          onChange={(val) => onCheapChange(val)}
+          onChange={(val) => handlers.onDeviceCheapDeltaChange(device.id, val)}
         />
       </div>
       <div class="price-aware-grid__cell">
@@ -189,22 +186,14 @@ const DeviceRow = ({
           unit="°C"
           increaseLabel={`Increase expensive-hour reduction for ${displayName}`}
           decreaseLabel={`Decrease expensive-hour reduction for ${displayName}`}
-          onChange={(val) => onExpensiveChange(-val)}
+          onChange={(val) => handlers.onDeviceExpensiveDeltaChange(device.id, -val)}
         />
       </div>
     </div>
   );
 };
 
-const DevicesSection = ({
-  devices,
-  onDeviceCheapDeltaChange,
-  onDeviceExpensiveDeltaChange,
-}: {
-  devices: PriceOptDevice[];
-  onDeviceCheapDeltaChange: (id: string, val: number) => void;
-  onDeviceExpensiveDeltaChange: (id: string, val: number) => void;
-}) => {
+const DevicesSection = ({ devices, handlers }: { devices: PriceOptDevice[]; handlers: PriceAwareDevicesHandlers }) => {
   if (devices.length === 0) {
     return (
       <div class="settings-form-card">
@@ -240,12 +229,7 @@ const DevicesSection = ({
           </span>
         </div>
         {devices.map((device) => (
-          <DeviceRow
-            key={device.id}
-            device={device}
-            onCheapChange={(val) => onDeviceCheapDeltaChange(device.id, val)}
-            onExpensiveChange={(val) => onDeviceExpensiveDeltaChange(device.id, val)}
-          />
+          <DeviceRow key={device.id} device={device} handlers={handlers} />
         ))}
       </div>
     </div>
@@ -255,14 +239,8 @@ const DevicesSection = ({
 const PriceAwareDevicesRoot = (props: PriceAwareDevicesViewProps) => (
   <>
     <Header />
-    <RespondTogglesCard enabled={props.optimizationEnabled} onToggle={props.onOptimizationToggle} />
-    {props.optimizationEnabled && (
-      <DevicesSection
-        devices={props.devices}
-        onDeviceCheapDeltaChange={props.onDeviceCheapDeltaChange}
-        onDeviceExpensiveDeltaChange={props.onDeviceExpensiveDeltaChange}
-      />
-    )}
+    <RespondTogglesCard enabled={props.optimizationEnabled} onToggle={props.handlers.onOptimizationToggle} />
+    {props.optimizationEnabled && <DevicesSection devices={props.devices} handlers={props.handlers} />}
   </>
 );
 

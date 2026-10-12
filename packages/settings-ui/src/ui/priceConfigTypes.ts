@@ -1,11 +1,19 @@
-import type { PriceScheme, NorwayPriceModel } from './priceSettingsPersistence.ts';
 import type {
   PowerhourSourceUiStatus,
+  PriceSchemeSetting,
   PvForecastSourceSetting,
   PvForecastSourceUiStatus,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { LiveSummarySignals } from './livePriceSignals.ts';
 import type { ExportPriceSourceSetting } from '../../../shared-domain/src/settings/exportPriceSource.ts';
+
+/**
+ * Declared once, in contracts, and read through one shared policy — see
+ * `packages/shared-domain/src/settings/priceScheme.ts` for why this union is
+ * not written out here.
+ */
+export type PriceScheme = PriceSchemeSetting;
+export type NorwayPriceModel = 'stromstotte' | 'norgespris';
 
 export type StatusTone = 'ok' | 'warn';
 
@@ -63,7 +71,6 @@ export type GridCompanyOption = {
   organizationNumber: string;
 };
 
-export type { PriceScheme, NorwayPriceModel };
 export type { PowerhourSourceUiStatus, PvForecastSourceSetting, PvForecastSourceUiStatus };
 
 /**

@@ -205,7 +205,6 @@ packages/settings-ui/src/ui/modeRename.ts 1
 packages/settings-ui/src/ui/powerStats.ts 3
 packages/settings-ui/src/ui/powerUsageSplit.ts 1
 packages/settings-ui/src/ui/powerWeekChartEcharts.ts 2
-packages/settings-ui/src/ui/priceSettingsPersistence.ts 1
 packages/settings-ui/src/ui/smartTaskEdit.ts 1
 packages/settings-ui/src/ui/solarStats.ts 3
 packages/settings-ui/src/ui/solarUsageSection.ts 3
@@ -214,14 +213,13 @@ packages/settings-ui/src/ui/views/BudgetOverview.tsx 6
 packages/settings-ui/src/ui/views/DeadlinePlan.tsx 5
 packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx 6
 packages/settings-ui/src/ui/views/DeadlinesHistoryList.tsx 1
-packages/settings-ui/src/ui/views/ElectricityPricesView.tsx 6
+packages/settings-ui/src/ui/views/ElectricityPricesView.tsx 1
 packages/settings-ui/src/ui/views/HomeLimitsSection.tsx 1
 packages/settings-ui/src/ui/views/HomesSettingsSection.tsx 3
 packages/settings-ui/src/ui/views/PlanDeviceCards.tsx 5
 packages/settings-ui/src/ui/views/PlanHero.tsx 3
 packages/settings-ui/src/ui/views/PlanOverview.tsx 1
 packages/settings-ui/src/ui/views/PlanSteppedCard.tsx 1
-packages/settings-ui/src/ui/views/PriceAwareDevicesView.tsx 2
 packages/settings-ui/src/ui/views/WeatherInsight.tsx 1
 packages/settings-ui/src/ui/views/WeatherSettingsSection.tsx 1
 packages/shared-domain/src/activePlanRevisionLog.ts 2
