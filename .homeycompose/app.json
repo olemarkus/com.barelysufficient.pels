@@ -25,7 +25,7 @@
     "fr": "Règle la recharge, le chauffage et l'eau chaude selon vos tarifs et la puissance disponible.",
     "it": "Regola ricarica, riscaldamento e scaldacqua secondo prezzi e potenza disponibile.",
     "sv": "Styr elbilsladdning, värme och varmvatten efter elpriset och hemmets effektgränser.",
-    "de": "Steuert Wallbox, Wärmepumpe und Speicher nach Strompreisen und Solarüberschuss.",
+    "de": "Steuert Wallbox und Heizung nach Strompreisen und nutzt Solarüberschüsse für Warmwasser und Speicher.",
     "da": "Elbilopladning, varme og varmt vand tilpasset elpriser og nettariffer.",
     "fi": "Ajoita auton lataus, sähkölämmitys ja käyttöveden lämmitys pörssisähkön hinnan mukaan.",
     "pl": "Ładuje auto i ogrzewa dom nadwyżkami z fotowoltaiki lub tańszym prądem."
